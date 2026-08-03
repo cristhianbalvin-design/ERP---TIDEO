@@ -93,7 +93,7 @@ export async function cargarContextoSociedades({ empresa, userId, sociedadPrefer
       .eq('activo', true),
     supabase
       .from('sociedades')
-      .select('id, empresa_id, codigo, nombre, razon_social, ruc, direccion_fiscal, logo_url, firma_url, activa')
+      .select('id, empresa_id, codigo, nombre, razon_social, ruc, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, activa')
       .eq('empresa_id', empresa.id)
       .eq('activa', true)
       .order('nombre'),

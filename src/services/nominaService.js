@@ -88,7 +88,7 @@ export function getPrimaSeguroAfp(afpNombre, rows = []) {
 // (trabajador, turno, periodo, datosNomina), nombres de campo distintos a las columnas
 // (dias_asistidos→dias_laborados, comision_flujo→comision_afp_flujo, prima_seguro→
 // prima_seguro_afp) y campos que no existen en el esquema (tramos, valor_dia, etc.).
-export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
+export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
   const quincena = periodo?.quincena ?? null;
   return {
     trabajador_id: c.trabajador_id,
@@ -140,7 +140,7 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
     // Refleja el % efectivamente aplicado por el motor (Rama Q1), no un valor recalculado
     // aparte. Q2 hoy todavia calcula al 100% (factorQuincena=1, Rama Q2 aun no implementada):
     // guardar 50/50 teorico seria incorrecto y no coincidiria con lo que el motor uso.
-    pct_quincena_aplicado: quincena === 1 ? Number(empresaCfg?.pct_quincena_1 ?? 50) : (quincena === 2 ? 100 : null),
+    pct_quincena_aplicado: quincena === 1 ? Number(empresaCfgResuelta?.pct_quincena_1 ?? 50) : (quincena === 2 ? 100 : null),
   };
 }
 

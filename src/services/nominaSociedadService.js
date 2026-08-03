@@ -1,5 +1,25 @@
 const texto = value => String(value || '').trim().toLowerCase();
 
+export function resolverParametrosNominaSociedad({
+  empresaCfg = {},
+  sociedad = null,
+  multisociedadHabilitado = false,
+} = {}) {
+  const regimenTenant = empresaCfg?.regimen_laboral_empresa || 'general';
+  const pctQuincenaTenant = Number(empresaCfg?.pct_quincena_1 ?? 50);
+  const usarOverride = Boolean(multisociedadHabilitado && sociedad);
+
+  return {
+    ...empresaCfg,
+    regimen_laboral_empresa: usarOverride
+      ? (sociedad.regimen_laboral ?? regimenTenant)
+      : regimenTenant,
+    pct_quincena_1: Number(usarOverride
+      ? (sociedad.pct_quincena_1 ?? pctQuincenaTenant)
+      : pctQuincenaTenant),
+  };
+}
+
 export function esTipoContratoNomina(tipo = {}) {
   const nombre = texto(tipo.nombre || tipo.label || tipo.codigo);
   const categoria = texto(tipo.categoria);

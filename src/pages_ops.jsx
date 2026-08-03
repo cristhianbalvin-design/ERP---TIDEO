@@ -31,7 +31,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad, resolverParametrosNominaSociedad } from './services/nominaSociedadService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
@@ -17573,6 +17573,20 @@ function Nomina() {
     periodo,
   }), [personalDocumentos, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
 
+  const sociedadConfigNomina = useMemo(() => {
+    if (!empresa?.multisociedad_habilitado || !periodo?.sociedad_id) return null;
+    return sociedadesDisponibles.find(sociedad => sociedad.id === periodo.sociedad_id) || null;
+  }, [empresa?.multisociedad_habilitado, periodo?.sociedad_id, sociedadesDisponibles]);
+
+  // Los valores regulatorios permanecen en empresaCfg. Solo estas dos politicas internas
+  // pueden ser sobreescritas por la sociedad del periodo, cada una con fallback independiente.
+  const empresaCfgPeriodo = resolverParametrosNominaSociedad({
+    empresaCfg,
+    sociedad: sociedadConfigNomina,
+    multisociedadHabilitado: Boolean(empresa?.multisociedad_habilitado),
+  });
+  const parametrosSociedadNominaKey = `${empresaCfgPeriodo.regimen_laboral_empresa}|${empresaCfgPeriodo.pct_quincena_1}`;
+
   const trabajadores = useMemo(() => {
     if (!empresa?.multisociedad_habilitado) return trabajadoresLegacy;
     const personasPorId = new Map(personasCompartidas.map(persona => [persona.id, persona]));
@@ -17688,7 +17702,7 @@ function Nomina() {
       const montoIngresoRemunerativo = periodo.quincena === 2
         ? (ingresoRemunerativoMesCompletoPorTrabajador[t.id] || 0)
         : ingresoInfo.remunerativo;
-      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
+      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfgPeriodo, q1Snapshot, montoIngresoRemunerativo);
       if (!base) return base;
       const descExtra = Number(descExtraPorTrabajador[t.id] || 0);
       const ingresoNoRemunerativo = ingresoInfo.noRemunerativo;
@@ -17706,7 +17720,7 @@ function Nomina() {
         neto: Math.round((Number(base.neto || 0) + ingresoNoRemunerativo - descExtra) * 100) / 100,
       };
     }).filter(Boolean);
-  }, [periodo?.id, trabajadores, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado]);
+  }, [periodo?.id, trabajadores, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado, parametrosSociedadNominaKey]);
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
     SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
@@ -17767,7 +17781,7 @@ function Nomina() {
       }
 
       if (isSupabaseConfigured() && empresa?.id) {
-        const filas = calculos.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfg));
+        const filas = calculos.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfgPeriodo));
         const guardadas = await nominaService.guardarDetalle(empresa.id, periodo.id, filas, periodo.sociedad_id || null);
         const actualizado = await nominaService.upsertPeriodo(empresa.id, { id: periodo.id, estado: 'en_proceso' });
         setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
