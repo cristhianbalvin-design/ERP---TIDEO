@@ -1,0 +1,745 @@
+{
+  "pages": {
+    "pages_aceptar.jsx": [
+      "PaginaAceptacion",
+      "PaginaConformidadOT"
+    ],
+    "pages_admin.jsx": [],
+    "pages_api_keys.jsx": [
+      "ApiKeys"
+    ],
+    "pages_bi_fin.jsx": [
+      "BIFinanciero"
+    ],
+    "pages_core.jsx": [],
+    "pages_cs.jsx": [
+      "CSOnboarding",
+      "CSPlanes",
+      "CSHealthScore",
+      "CSRenovaciones",
+      "CSFidelizacion",
+      "BICustomerSuccess"
+    ],
+    "pages_evaluaciones.jsx": [
+      "EvaluacionesDesempeno"
+    ],
+    "pages_extra.jsx": [],
+    "pages_fin.jsx": [],
+    "pages_fin_deuda.jsx": [
+      "FinanciamientoDeuda"
+    ],
+    "pages_ia.jsx": [
+      "IAComercial",
+      "IAOperativa",
+      "IAFinanciera"
+    ],
+    "pages_liquidaciones.jsx": [
+      "LiquidacionesCese"
+    ],
+    "pages_mi_portal.jsx": [
+      "MiPortal"
+    ],
+    "pages_mobile.jsx": [],
+    "pages_ops.jsx": [
+      "PlaceholderCompras",
+      "ComprasGastos",
+      "SolicitudesRrhh",
+      "TareoAdmin",
+      "ControlHoras"
+    ],
+    "pages_pdf.jsx": [
+      "HojaCostooPDF",
+      "CotizacionPDF",
+      "GuiaRemisionPDF",
+      "PapeletaMovimientoPDF",
+      "AmonestacionPDF"
+    ],
+    "pages_plataforma.jsx": [
+      "SaludImplementacion"
+    ],
+    "pages_reclutamiento.jsx": [
+      "Reclutamiento",
+      "PostulacionPublica"
+    ],
+    "pages_rrhh.jsx": [],
+    "pages_salud_tenant.jsx": [
+      "SaludImplementacionTenant"
+    ],
+    "pages_turnos.jsx": [
+      "TurnosHorarios"
+    ]
+  },
+  "services": {
+    "activosService.js": [
+      "getActivos",
+      "crearActivo",
+      "actualizarActivo",
+      "darBajaActivo",
+      "importarActivosMasivo"
+    ],
+    "amonestacionesService.js": [
+      "cargarAmonestaciones",
+      "registrarAmonestacion",
+      "anularAmonestacion",
+      "getAmonestacionesActivas",
+      "notificarAmonestacion"
+    ],
+    "apiKeysService.js": [
+      "hashKey",
+      "generarApiKey",
+      "apiKeysService"
+    ],
+    "auditoriaService.js": [
+      "auditoriaService"
+    ],
+    "autoservicioEmpleadoService.js": [
+      "autoservicioEmpleadoService"
+    ],
+    "biometricoService.js": [
+      "BIOMETRICO_PERFIL_DEFAULT",
+      "leerArchivoMarcaciones",
+      "previsualizarImportacionBiometrica",
+      "biometricoService"
+    ],
+    "cajaChicaService.js": [
+      "insertWithFallback",
+      "updateWithFallback",
+      "cajaChicaService"
+    ],
+    "campanasService.js": [
+      "campanasService"
+    ],
+    "comprasService.js": [
+      "insertWithOptionalColumnFallback",
+      "comprasService",
+      "siguienteCorrelativoDev",
+      "devolucionesService"
+    ],
+    "createMockRepository.js": [
+      "createMockRepository"
+    ],
+    "createSupabaseRepository.js": [
+      "createSupabaseRepository"
+    ],
+    "crmService.js": [
+      "persistirLead",
+      "actualizarLead",
+      "eliminarLead",
+      "persistirCuenta",
+      "actualizarCuenta",
+      "eliminarCuenta",
+      "subirLogoCuenta",
+      "persistirContacto",
+      "actualizarContacto",
+      "persistirOportunidad",
+      "actualizarOportunidad",
+      "persistirCotizacion",
+      "actualizarCotizacion",
+      "subirArchivoSustento",
+      "persistirOSCliente",
+      "actualizarOSCliente",
+      "vincularCotizacionAOS",
+      "persistirHojaCosteo",
+      "crearHojaCosteoRpc",
+      "aprobarHojaCosteoRpc",
+      "actualizarHojaCosteoSvc",
+      "persistirAgendaEvento",
+      "actualizarAgendaEventoSvc",
+      "persistirActividadComercial",
+      "actualizarActividadComercial",
+      "loadCrmFromSupabase",
+      "insertarNotificacionesSistema",
+      "cargarNotificacionesSistema",
+      "marcarNotificacionLeida",
+      "marcarNotificacionesLeidas",
+      "insertarHistorialAcuerdo",
+      "cargarHistorialAcuerdo",
+      "loadCsFromSupabase"
+    ],
+    "cxcMassiveImportService.js": [
+      "CXC_MASSIVE_SHEET",
+      "CXC_MASSIVE_HEADERS",
+      "TIPOS_CXC_MASIVA",
+      "normalizarRucCxc",
+      "normalizarCodigoCxc",
+      "normalizarNumeroCxc",
+      "normalizarFechaCxc",
+      "huellaDuplicadoCxc",
+      "cargarCatalogosCxcMasivo",
+      "descargarPlantillaCxcMasiva",
+      "ejecutarImportacionCxcMasiva"
+    ],
+    "cxpMassiveImportService.js": [
+      "CXP_MASSIVE_SHEET",
+      "CXP_MASSIVE_HEADERS",
+      "TIPOS_CXP_MASIVA",
+      "normalizarRucCxp",
+      "normalizarTextoCxp",
+      "normalizarCodigoCxp",
+      "normalizarFechaCxp",
+      "esColaboradorElegibleRhe",
+      "retencionRheInterna",
+      "huellaDuplicadoCxp",
+      "huellaDuplicadoRhe",
+      "cargarCatalogosCxpMasivo",
+      "descargarPlantillaCxpMasiva",
+      "ejecutarImportacionCxpMasiva"
+    ],
+    "estadoResultadosService.js": [
+      "ER_CURRENCIES",
+      "ER_TIPO_SISTEMA_LABELS",
+      "ER_TIPO_SISTEMA_OPTIONS",
+      "resolverCategoriaPorTipoSistema",
+      "resolveCecoFilter",
+      "loadFacturas",
+      "loadCostosOt",
+      "loadComprasGastos",
+      "loadCxPDevengos",
+      "loadNomina",
+      "loadPagosFinancieros",
+      "loadCajaChica",
+      "cargarConfiguracionER",
+      "getEstadoResultados"
+    ],
+    "evaluacionesDesempenoService.js": [
+      "DEFAULT_EVALUACION_CONFIG",
+      "cargarEvaluacionesDesempeno",
+      "crearPlantillaCompleta",
+      "actualizarPlantilla",
+      "actualizarEvaluacion",
+      "upsertRespuestasCompetencias",
+      "upsertRespuestasObjetivos"
+    ],
+    "financiamientosService.js": [
+      "nextCuota",
+      "isCapitalPayment",
+      "paymentDate",
+      "crearFinanciamientoConAmortizacion",
+      "registrarPagoFinanciamientoRpc",
+      "createFinanciamientosRepository",
+      "createFinanciamientosDataSource"
+    ],
+    "finanzasService.js": [
+      "CONDICION_PAGO_DEFECTO_CXC",
+      "diasPorCondicion",
+      "normalizarCondicionPagoCxC",
+      "resolverCondicionPagoCxC",
+      "calcularFechaVencimientoCxC",
+      "finanzasService"
+    ],
+    "firmaPersonalService.js": [
+      "CATEGORIA_FIRMA_RUBRICA",
+      "obtenerFirmaVigente"
+    ],
+    "geofencingService.js": [
+      "GEO_CONSENT_VERSION",
+      "GEO_OFFLINE_QUEUE_KEY",
+      "GEO_CONFIG_DEFAULT",
+      "syncGeoQueue",
+      "geofencingService"
+    ],
+    "guiasService.js": [
+      "MOTIVOS_TRASLADO",
+      "CAMPOS_OBLIGATORIOS_GR",
+      "siguienteCorrelativo",
+      "getGuias",
+      "getGuia",
+      "crearGuia",
+      "actualizarGuia",
+      "emitirGuia",
+      "marcarEnTransito",
+      "confirmarEntrega",
+      "sincronizarDespachoOV",
+      "anularGuia",
+      "getTransportistas",
+      "crearTransportista",
+      "actualizarTransportista",
+      "getVehiculos",
+      "crearVehiculo",
+      "getConductores",
+      "crearConductor"
+    ],
+    "index.js": [],
+    "inventarioService.js": [
+      "resolverAlmacen",
+      "registrarMovimiento",
+      "registrarEntrada",
+      "registrarSalidaDevolucion",
+      "registrarSalida",
+      "registrarTransferencia",
+      "registrarAjuste",
+      "reservarStock",
+      "liberarReserva",
+      "anularMovimiento",
+      "iniciarConteo",
+      "listarConteos",
+      "guardarAvanceConteo",
+      "cerrarConteo",
+      "getAnaliticaInventario",
+      "getKardex",
+      "getStockCompleto",
+      "getMaterialesBajoReorden",
+      "getStockEnTransito",
+      "registrarEntradaDesdeRecepcion",
+      "registrarEntradaOcPendienteFactura",
+      "listarEntradasOcPendientesValorizacion",
+      "ajustarValorizacionOcPendiente",
+      "registrarConsumoOT"
+    ],
+    "liquidacionesCeseService.js": [
+      "TIPOS_CESE_LABELS",
+      "bloquearAccesoColaborador",
+      "reactivarAccesoColaborador",
+      "selectAll",
+      "cargarLiquidaciones",
+      "crearLiquidacion",
+      "confirmarLiquidacion",
+      "anularLiquidacion"
+    ],
+    "maestrosService.js": [
+      "importarMaestroSinSobrescribir",
+      "maestrosService"
+    ],
+    "materialService.js": [
+      "getMaterialGrupos",
+      "crearMaterialGrupo",
+      "actualizarMaterialGrupo",
+      "eliminarMaterialGrupo",
+      "getMaterialFamilias",
+      "crearMaterialFamilia",
+      "actualizarMaterialFamilia",
+      "eliminarMaterialFamilia",
+      "getMaterialSubfamilias",
+      "crearMaterialSubfamilia",
+      "actualizarMaterialSubfamilia",
+      "eliminarMaterialSubfamilia",
+      "getMateriales",
+      "generarCodigoMaterial",
+      "crearMaterial",
+      "actualizarMaterial",
+      "eliminarMaterial",
+      "importarMaterialesMasivo"
+    ],
+    "nominaService.js": [
+      "INGRESO_EXTRAORDINARIO_SUBTIPOS",
+      "AFP_NOMBRES",
+      "AFP_PRIMA_SEGURO_FALLBACK",
+      "AFP_PARAMETROS_DEFAULT",
+      "nominaService"
+    ],
+    "operacionesService.js": [
+      "persistirBacklog",
+      "actualizarBacklog",
+      "persistirOT",
+      "crearOTDesdeOSRpc",
+      "actualizarOT",
+      "upsertCostoOT",
+      "selectRows",
+      "cargarTareasOT",
+      "cargarTareasPendientesTecnico",
+      "crearTarea",
+      "actualizarAvanceTarea",
+      "completarTarea",
+      "reabrirTarea",
+      "actualizarAvanceSupervisor",
+      "cargarHistorialAvance",
+      "procesarCierreOTConTareas",
+      "calcularCostoRealOT",
+      "calcularCostosComprometidosOT",
+      "calcularCostosOS",
+      "eliminarOT",
+      "subirConformidadOT",
+      "persistirParteDiario",
+      "actualizarParteDiario",
+      "persistirCierreTecnico",
+      "consumirInventario",
+      "loadOpsFromSupabase"
+    ],
+    "personalDocumentosService.js": [
+      "getDocumentosPersona",
+      "getDocumentosActivosPersona",
+      "getDocumentosActivos",
+      "getDocumentosPendientes",
+      "getTiposDocumentoConfig",
+      "getHistorialPorGrupo",
+      "subirDocumento",
+      "renovarDocumento",
+      "validarDocumento",
+      "corregirDocumento",
+      "nuevoContrato",
+      "renovarUrlDocumento",
+      "TIPOS_DOC_OPERATIVO",
+      "TIPOS_DOC_ADMIN",
+      "BADGE_VENCIMIENTO",
+      "LABEL_VENCIMIENTO",
+      "BADGE_VALIDACION",
+      "BADGE_FIRMA",
+      "LABEL_FIRMA",
+      "enviarDocumentoAFirma",
+      "cancelarEnvioFirma",
+      "reenviarNotificacionFirma",
+      "vincularDocumentoFirmado"
+    ],
+    "plannerService.js": [
+      "getAsignaciones",
+      "detectarConflictos",
+      "crearAsignacionesRango",
+      "agregarTecnicoDia",
+      "quitarTecnicoDia",
+      "actualizarAsignacion",
+      "getCuadrillas",
+      "crearCuadrilla",
+      "actualizarCuadrilla"
+    ],
+    "plataformaService.js": [
+      "plataformaService"
+    ],
+    "portalFase2Service.js": [
+      "sha256Text",
+      "portalFase2Service"
+    ],
+    "posicionesService.js": [
+      "posicionesService"
+    ],
+    "presupuestosService.js": [
+      "presupuestosService"
+    ],
+    "reclutamientoService.js": [
+      "RECLUTAMIENTO_ETAPAS",
+      "reclutamientoService"
+    ],
+    "rolesService.js": [
+      "rolesService"
+    ],
+    "rosterMineroService.js": [
+      "ESTADOS_AUSENCIA_AUTORIZADA",
+      "esAusenciaAutorizadaRoster",
+      "getSnapshotsRoster",
+      "previsualizarReinicioRosterMinero",
+      "reiniciarRosterMinero",
+      "previsualizarReinicioJornadaTrabajadores",
+      "reiniciarJornadaTrabajadores",
+      "calcularYGuardarRoster",
+      "ajusteAprobadoPosteriorASnapshot",
+      "recalcularSnapshotRosterDirigido",
+      "cerrarRosterPeriodo",
+      "crearAjusteRosterMinero",
+      "getAjustesRosterMinero",
+      "resolverAjusteRosterMinero",
+      "confirmarRevisionAjusteRoster"
+    ],
+    "rrhhService.js": [
+      "CONTRATO_DURACION_DEFAULT",
+      "CONTRATO_DURACION_OPCIONES",
+      "normalizarModalidadContrato",
+      "esModalidadHonorarios",
+      "normalizarTipoContratoDuracion",
+      "requiereFechaFinContrato",
+      "esRegimenMinero",
+      "getTipoFiscalizacion",
+      "fiscalizacionLabel",
+      "diasVacacionesPorRegimen",
+      "asignacionFamiliarMonto",
+      "retencionIrHonorariosLabel",
+      "calcularHorasBaseMesDesdeTurno",
+      "buscarPersonalAsistenciaBloqueada",
+      "enriquecerAsistenciaHorasExtra",
+      "crearCompensacionHePendiente",
+      "rrhhService"
+    ],
+    "servicioPreciosClienteService.js": [
+      "servicioPreciosClienteService"
+    ],
+    "solicitudesRrhhService.js": [
+      "ESTADOS_ASISTENCIA_SOLICITUD",
+      "ESTADOS_VACACIONES_DESCUENTA",
+      "siguienteCorrelativoPM",
+      "cargarSolicitudes",
+      "crearSolicitud",
+      "cambiarEstado",
+      "aprobarJefe",
+      "rechazarJefe",
+      "confirmarRrhh",
+      "rechazarRrhh",
+      "anularSolicitud",
+      "aplicarSolicitudAsistencia",
+      "cargarConfigAusencias",
+      "calcularSaldoVacaciones",
+      "cargarHistorial"
+    ],
+    "storageService.js": [
+      "STORAGE_BUCKETS",
+      "MAX_FILE_SIZE_BYTES",
+      "subirAdjunto",
+      "cargarAdjuntos",
+      "cargarAdjuntoPorId",
+      "obtenerUrlAdjunto",
+      "eliminarAdjunto"
+    ],
+    "tareosAdminService.js": [
+      "sb",
+      "cargarTareos",
+      "cargarOTsAdminDelDia",
+      "cargarCecosActivos",
+      "crearTareo",
+      "actualizarTareo",
+      "enviarTareosDia",
+      "corregirTareo"
+    ],
+    "tesoreriaService.js": [
+      "claveEquivalenciaMovimientoCuenta",
+      "movimientoTieneCuentaBancaria",
+      "movimientoAsignadoACuenta",
+      "monedasDifierenMovimientoCuenta",
+      "montoMovimientoEnCuenta"
+    ],
+    "ticketsService.js": [
+      "getTicketById",
+      "cargarTickets",
+      "crearTicket",
+      "cambiarEstadoTicket",
+      "actualizarTicket",
+      "eliminarTicket",
+      "subirImagenEvidencia",
+      "cargarComentariosTicket",
+      "agregarComentarioTicket",
+      "actualizarQcEstado",
+      "reabrirTicket"
+    ],
+    "tipoCambioService.js": [
+      "getTipoCambioPorFecha",
+      "getTipoCambioHoy"
+    ],
+    "tiposDocumentoService.js": [
+      "tiposDocumentoService"
+    ],
+    "unidadMineraService.js": [
+      "getUnidadMineraAsignaciones",
+      "crearUnidadMineraAsignacion",
+      "actualizarUnidadMineraAsignacion"
+    ],
+    "usuariosService.js": [
+      "usuariosService"
+    ],
+    "ventasService.js": [
+      "siguienteNumeroOV",
+      "getCatalogoVenta",
+      "crearProductoCatalogo",
+      "actualizarProductoCatalogo",
+      "getOrdenesVenta",
+      "crearOrdenVenta",
+      "confirmarOrdenVenta",
+      "actualizarOrdenVenta",
+      "anularOrdenVenta"
+    ],
+    "whatsappService.js": [
+      "WHATSAPP_TIPOS_ALERTA",
+      "WHATSAPP_TEMPLATES_DEFAULT",
+      "WHATSAPP_RUTAS_DEFAULT",
+      "whatsappService"
+    ]
+  },
+  "migrations": [
+    {
+      "file": "364_salud_implementacion.sql",
+      "tables_created": [
+        "tideo_salud_configuracion",
+        "tideo_salud_anotaciones"
+      ],
+      "tables_altered": [
+        "tideo_salud_configuracion",
+        "tideo_salud_anotaciones"
+      ],
+      "rpcs": [
+        "get_salud_implementacion_conteos"
+      ]
+    },
+    {
+      "file": "365_salud_implementacion_mejoras.sql",
+      "tables_created": [],
+      "tables_altered": [
+        "tideo_salud_anotaciones"
+      ],
+      "rpcs": [
+        "get_salud_implementacion_conteos_local"
+      ]
+    },
+    {
+      "file": "366_corregir_documento_indefinido.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "corregir_documento_personal"
+      ]
+    },
+    {
+      "file": "367_salud_implementacion_fase3.sql",
+      "tables_created": [],
+      "tables_altered": [
+        "tideo_salud_anotaciones"
+      ],
+      "rpcs": [
+        "get_salud_implementacion_conteos",
+        "get_salud_implementacion_conteos_local"
+      ]
+    },
+    {
+      "file": "368_fix_salud_conteos_superadmin_auth_uid.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "get_salud_implementacion_conteos"
+      ]
+    },
+    {
+      "file": "369_filtrar_tenants_operativos_salud.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "get_salud_implementacion_conteos",
+        "get_salud_implementacion_conteos"
+      ]
+    },
+    {
+      "file": "370_salud_implementacion_correccion3.sql",
+      "tables_created": [
+        "tideo_salud_comentarios"
+      ],
+      "tables_altered": [
+        "tideo_salud_configuracion",
+        "tideo_salud_anotaciones",
+        "tideo_salud_comentarios"
+      ],
+      "rpcs": [
+        "tideo_salud_contar_configuracion",
+        "get_salud_implementacion_conteos",
+        "get_salud_implementacion_conteos",
+        "get_salud_implementacion_conteos_local",
+        "tideo_salud_usuario_pertenece_tenant",
+        "get_salud_implementacion_usuarios",
+        "validar_tideo_salud_responsables",
+        "guardar_salud_implementacion_responsables",
+        "preparar_tideo_salud_comentario"
+      ]
+    },
+    {
+      "file": "371_salud_responsable_tideo_por_tenant.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "tideo_salud_usuario_es_responsable_tideo",
+        "get_salud_implementacion_usuarios",
+        "validar_tideo_salud_responsables"
+      ]
+    },
+    {
+      "file": "372_salud_usuarios_por_membresia_activa.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "tideo_salud_usuario_pertenece_tenant"
+      ]
+    },
+    {
+      "file": "373_completar_pantallas_salud_implementacion.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": []
+    },
+    {
+      "file": "374_normalizar_secciones_nuevas_salud.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": []
+    },
+    {
+      "file": "375_eliminar_plataforma_salud_implementacion.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": []
+    },
+    {
+      "file": "376_habilitar_usuarios_salud_prueba.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "get_salud_implementacion_usuarios"
+      ]
+    },
+    {
+      "file": "377_observaciones_tideo_visibilidad.sql",
+      "tables_created": [],
+      "tables_altered": [
+        "tideo_salud_comentarios"
+      ],
+      "rpcs": [
+        "tideo_salud_usuario_actual_es_personal_tideo",
+        "tideo_salud_personal_tideo_tiene_acceso"
+      ]
+    },
+    {
+      "file": "378_habilitar_guardado_responsables_salud_prueba.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "guardar_salud_implementacion_responsables"
+      ]
+    },
+    {
+      "file": "379_salud_estados_respuestas.sql",
+      "tables_created": [],
+      "tables_altered": [
+        "tideo_salud_anotaciones",
+        "tideo_salud_comentarios"
+      ],
+      "rpcs": [
+        "preparar_tideo_salud_estados",
+        "guardar_salud_implementacion_estado",
+        "validar_tideo_salud_respuesta"
+      ]
+    },
+    {
+      "file": "380_salud_respuestas_heredar_hilo.sql",
+      "tables_created": [],
+      "tables_altered": [
+        "tideo_salud_comentarios"
+      ],
+      "rpcs": [
+        "preparar_tideo_salud_comentario",
+        "validar_tideo_salud_respuesta"
+      ]
+    },
+    {
+      "file": "381_reinicio_roster_minero.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "bloquear_retro_asignacion_jornada_nomina_procesada",
+        "reinicio_roster_minero_impactos",
+        "previsualizar_reinicio_roster_minero",
+        "reiniciar_roster_minero"
+      ]
+    },
+    {
+      "file": "382_reinicio_roster_orden_division.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "reiniciar_roster_minero"
+      ]
+    },
+    {
+      "file": "383_reinicio_jornada_por_trabajadores.sql",
+      "tables_created": [],
+      "tables_altered": [],
+      "rpcs": [
+        "reinicio_jornada_trabajadores_impactos",
+        "previsualizar_reinicio_jornada_trabajadores",
+        "reiniciar_jornada_trabajadores"
+      ]
+    }
+  ],
+  "app_routes": [],
+  "context_exports": [],
+  "dead_code": []
+}
