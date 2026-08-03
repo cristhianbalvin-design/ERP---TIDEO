@@ -9,6 +9,7 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { SociedadFormField } from './components/SociedadFormField.jsx';
+import { generarCodigoSociedadBase } from './services/sociedadesService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -1268,7 +1269,11 @@ function Tenants() {
   const [confirmando, setConfirmando] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [creando, setCreando] = useState(false);
-  const [formNuevo, setFormNuevo] = useState({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
+  const [formNuevo, setFormNuevo] = useState({
+    nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
+    admin_email: '', admin_nombre: '',
+    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+  });
 
   const abrirEditar = (t) => {
     setForm({
@@ -1278,6 +1283,7 @@ function Tenants() {
       pais: t.pais || 'PE',
       moneda_base: t.moneda_base || t.moneda || 'PEN',
       estado: t.estado || 'activa',
+      multisociedad_habilitado: Boolean(t.multisociedad_habilitado),
     });
     setEditando(t);
   };
@@ -1297,12 +1303,20 @@ function Tenants() {
   };
 
   const crearNuevo = async () => {
-    if (!formNuevo.razon_social?.trim()) return;
+    const sociedad = formNuevo.sociedad || {};
+    if (!formNuevo.nombre_grupo?.trim()
+      || !sociedad.razon_social?.trim()
+      || !sociedad.nombre?.trim()
+      || !sociedad.ruc?.trim()) return;
     setSaving(true);
     try {
       await crearTenantConAdmin(formNuevo);
       setCreando(false);
-      setFormNuevo({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
+      setFormNuevo({
+        nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
+        admin_email: '', admin_nombre: '',
+        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+      });
     } catch (e) {
       addNotificacion(`Error al crear tenant: ${e.message}`);
     } finally {
@@ -1336,7 +1350,7 @@ function Tenants() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Empresas / Tenants</h1><div className="page-sub">{activos} tenants activos · alta operativa sin dependencia de pagos</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary" onClick={() => setCreando(true)}>{I.plus} Nueva empresa</button></div>
+        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary" onClick={() => setCreando(true)}>{I.plus} Nuevo grupo</button></div>
       </div>
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Tenants activos</div><div className="kpi-value">{activos}</div><div className="kpi-icon cyan">{I.building}</div></div>
@@ -1377,8 +1391,8 @@ function Tenants() {
           <h3 style={{marginBottom:20}}>Editar tenant</h3>
           <div className="col" style={{gap:14}}>
             <div className="input-group">
-              <label>Razón Social *</label>
-              <input className="input" value={form.razon_social} onChange={e => setForm(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+              <label>{form.multisociedad_habilitado ? 'Nombre del grupo *' : 'Razón Social *'}</label>
+              <input className="input" value={form.razon_social} onChange={e => setForm(f => ({...f, razon_social: e.target.value}))} placeholder={form.multisociedad_habilitado ? 'Nombre del grupo' : 'Razón Social'} autoFocus/>
             </div>
             <div className="input-group">
               <label>Nombre Comercial</label>
@@ -1413,6 +1427,23 @@ function Tenants() {
                 </select>
               </div>
             </div>
+            <label style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8}}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.multisociedad_habilitado)}
+                disabled={Boolean(editando?.multisociedad_habilitado)}
+                onChange={e => setForm(f => ({ ...f, multisociedad_habilitado: e.target.checked }))}
+                style={{marginTop:2}}
+              />
+              <span>
+                <strong style={{display:'block',fontSize:13}}>Habilitar multisociedad</strong>
+                <span className="text-muted" style={{fontSize:11}}>
+                  {editando?.multisociedad_habilitado
+                    ? 'Multisociedad ya está habilitada para este tenant.'
+                    : 'Si no existen sociedades, se creará automáticamente la principal con los datos actuales del tenant.'}
+                </span>
+              </span>
+            </label>
           </div>
           <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={() => setEditando(null)} disabled={saving}>Cancelar</button>
@@ -1421,25 +1452,41 @@ function Tenants() {
         </div>
       </>}
 
-      {/* Modal: Nueva empresa */}
+      {/* Modal: Nuevo grupo */}
       {creando && <>
         <div className="side-panel-backdrop" onClick={() => setCreando(false)}/>
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:500,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
-          <h3 style={{marginBottom:20}}>Nueva empresa / tenant</h3>
+          <h3 style={{marginBottom:20}}>Nuevo grupo / tenant</h3>
           <div className="col" style={{gap:14}}>
             <div className="input-group">
-              <label>Razón Social *</label>
-              <input className="input" value={formNuevo.razon_social} onChange={e => setFormNuevo(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+              <label>Nombre del grupo *</label>
+              <input className="input" value={formNuevo.nombre_grupo} onChange={e => setFormNuevo(f => ({...f, nombre_grupo: e.target.value}))} placeholder="Ej. Grupo DIFESMAQ" autoFocus/>
+              <span className="text-muted" style={{fontSize:11}}>El código grp_ se genera automáticamente y no depende del RUC.</span>
             </div>
-            <div className="input-group">
-              <label>Nombre Comercial</label>
-              <input className="input" value={formNuevo.nombre_comercial} onChange={e => setFormNuevo(f => ({...f, nombre_comercial: e.target.value}))} placeholder="Nombre que aparece en el sistema (opcional)"/>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>Sociedad principal obligatoria</div>
+              <div className="col" style={{gap:12}}>
+                <div className="input-group">
+                  <label>Razón social *</label>
+                  <input className="input" value={formNuevo.sociedad.razon_social} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, razon_social: e.target.value } }))} placeholder="Razón social de la sociedad"/>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div className="input-group">
+                    <label>Nombre comercial *</label>
+                    <input className="input" value={formNuevo.sociedad.nombre} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, nombre: e.target.value } }))} placeholder="Nombre corto"/>
+                  </div>
+                  <div className="input-group">
+                    <label>RUC / NIT *</label>
+                    <input className="input" inputMode="numeric" maxLength={11} value={formNuevo.sociedad.ruc} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, ruc: sanitizeRuc(e.target.value) } }))} placeholder="20000000000"/>
+                  </div>
+                </div>
+                <div className="input-group">
+                  <label>Código de sociedad</label>
+                  <input className="input" value={formNuevo.sociedad.codigo} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, codigo: generarCodigoSociedadBase(e.target.value) } }))} placeholder="Se genera desde la razón social"/>
+                </div>
+              </div>
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-              <div className="input-group">
-                <label>RUC / NIT</label>
-                <input className="input" inputMode="numeric" maxLength={11} value={formNuevo.ruc} onChange={e => setFormNuevo(f => ({...f, ruc: sanitizeRuc(e.target.value)}))} placeholder="20000000000"/>
-              </div>
               <div className="input-group">
                 <label>País</label>
                 <input className="input" value={formNuevo.pais} onChange={e => setFormNuevo(f => ({...f, pais: e.target.value}))} placeholder="PE"/>
@@ -1480,7 +1527,7 @@ function Tenants() {
           </div>
           <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={() => setCreando(false)} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={crearNuevo} disabled={saving || !formNuevo.razon_social?.trim()}>{saving ? 'Creando...' : 'Crear empresa'}</button>
+            <button className="btn btn-primary" onClick={crearNuevo} disabled={saving || !formNuevo.nombre_grupo?.trim() || !formNuevo.sociedad.razon_social?.trim() || !formNuevo.sociedad.nombre?.trim() || !formNuevo.sociedad.ruc?.trim()}>{saving ? 'Creando...' : 'Crear grupo'}</button>
           </div>
         </div>
       </>}

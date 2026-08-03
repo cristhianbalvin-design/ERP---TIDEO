@@ -7,6 +7,90 @@ export const PERFIL_SOCIEDAD = Object.freeze({
   SOCIEDAD: 'sociedad',
 });
 
+export function normalizarSlugTideo(valor, { maximo = 20, quitarSufijoLegal = false } = {}) {
+  let slug = String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  if (quitarSufijoLegal) {
+    slug = slug.replace(/-(s-a-c|sac|s-a|sa|s-r-l|srl|e-i-r-l|eirl)$/i, '');
+  }
+
+  return slug.slice(0, Math.max(Number(maximo) || 20, 1)).replace(/-+$/g, '');
+}
+
+export function generarCodigoSociedadBase(nombre) {
+  return normalizarSlugTideo(nombre, { maximo: 30, quitarSufijoLegal: true }) || 'sociedad';
+}
+
+function siguienteCodigoSociedad(base, existentes) {
+  if (!existentes.has(base)) return base;
+  let sufijo = 2;
+  while (existentes.has(`${base}-${sufijo}`)) sufijo += 1;
+  return `${base}-${sufijo}`;
+}
+
+export async function crearSociedad(datos = {}) {
+  const empresaId = String(datos.empresa_id || '').trim();
+  const razonSocial = String(datos.razon_social || '').trim();
+  const nombre = String(datos.nombre || datos.nombre_comercial || razonSocial).trim();
+  const ruc = String(datos.ruc || '').trim();
+
+  if (!empresaId) throw new Error('La sociedad requiere empresa_id.');
+  if (!razonSocial) throw new Error('La razón social de la sociedad es obligatoria.');
+  if (!nombre) throw new Error('El nombre de la sociedad es obligatorio.');
+  if (!ruc) throw new Error('El RUC de la sociedad es obligatorio.');
+
+  const supabase = await getSupabaseClient();
+  const { data: existentes, error: codigosError } = await supabase
+    .from('sociedades')
+    .select('codigo')
+    .eq('empresa_id', empresaId);
+  if (codigosError) throw codigosError;
+
+  const codigos = new Set((existentes || []).map(item => item.codigo).filter(Boolean));
+  const base = generarCodigoSociedadBase(datos.codigo || razonSocial || nombre);
+  let codigo = siguienteCodigoSociedad(base, codigos);
+
+  for (let intento = 0; intento < 20; intento += 1) {
+    const payload = {
+      empresa_id: empresaId,
+      codigo,
+      nombre,
+      razon_social: razonSocial,
+      ruc,
+      activa: datos.activa !== false,
+      direccion_fiscal: datos.direccion_fiscal || null,
+      logo_url: datos.logo_url || null,
+      firma_url: datos.firma_url || null,
+      regimen_laboral: datos.regimen_laboral || null,
+      pct_quincena_1: datos.pct_quincena_1 == null || datos.pct_quincena_1 === ''
+        ? null
+        : Number(datos.pct_quincena_1),
+      es_principal: Boolean(datos.es_principal),
+    };
+
+    const { data, error } = await supabase
+      .from('sociedades')
+      .insert(payload)
+      .select('id, empresa_id, codigo, nombre, razon_social, ruc, activa, created_at, updated_at, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, es_principal')
+      .single();
+
+    if (!error) return data;
+    const colisionCodigo = error.code === '23505'
+      && /sociedades_empresa_codigo_key|empresa_id.*codigo/i.test(error.message || '');
+    if (!colisionCodigo) throw error;
+
+    codigos.add(codigo);
+    codigo = siguienteCodigoSociedad(base, codigos);
+  }
+
+  throw new Error('No fue posible generar un código único para la sociedad.');
+}
+
 const sociedadIdsDeAsignaciones = (asignaciones, tipos = [PERFIL_SOCIEDAD.SOCIEDAD]) => [
   ...new Set(
     asignaciones
@@ -93,7 +177,7 @@ export async function cargarContextoSociedades({ empresa, userId, sociedadPrefer
       .eq('activo', true),
     supabase
       .from('sociedades')
-      .select('id, empresa_id, codigo, nombre, razon_social, ruc, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, activa')
+      .select('id, empresa_id, codigo, nombre, razon_social, ruc, direccion_fiscal, logo_url, firma_url, regimen_laboral, pct_quincena_1, activa, es_principal')
       .eq('empresa_id', empresa.id)
       .eq('activa', true)
       .order('nombre'),

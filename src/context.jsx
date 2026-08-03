@@ -18,7 +18,7 @@ import { rrhhService } from './services/rrhhService.js';
 import { reclutamientoService } from './services/reclutamientoService.js';
 import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
-import { plataformaService } from './services/plataformaService.js';
+import { generarCodigoTenant, plataformaService } from './services/plataformaService.js';
 import { usuariosService } from './services/usuariosService.js';
 import {
   cargarContextoSociedades,
@@ -1599,17 +1599,20 @@ export function AppProvider({ children }) {
       const rows = await plataformaService.listarEmpresas();
       setEmpresasPlataforma(rows.map(normalizarEmpresaSupabase));
       addNotificacion(result?.admin_vinculado
-        ? `Tenant creado y admin vinculado: ${datos.admin_email}.`
-        : 'Tenant creado. El email admin aun no existe en Supabase Auth; queda pendiente vincularlo.');
+        ? `Grupo ${result.empresa_id} creado y admin vinculado: ${datos.admin_email}.`
+        : `Grupo ${result.empresa_id} creado con su sociedad principal. El email admin aún no existe en Supabase Auth; queda pendiente vincularlo.`);
       return result;
     }
 
+    const nuevoId = await generarCodigoTenant(datos.nombre_grupo, {
+      verificarDisponibilidad: async codigo => !empresasPlataforma.some(item => item.id === codigo),
+    });
     const nuevo = {
-      id: generateId('emp'),
-      razon_social: datos.razon_social,
-      nombre_comercial: datos.nombre_comercial || datos.razon_social,
-      nombre: datos.nombre_comercial || datos.razon_social,
-      ruc: datos.ruc || '',
+      id: nuevoId,
+      razon_social: datos.nombre_grupo,
+      nombre_comercial: datos.nombre_grupo,
+      nombre: datos.nombre_grupo,
+      ruc: '',
       pais: datos.pais || 'PE',
       moneda_base: datos.moneda_base || 'PEN',
       moneda: datos.moneda_base || 'PEN',
@@ -1617,6 +1620,8 @@ export function AppProvider({ children }) {
       plan: null,
       admin_email: datos.admin_email || '',
       color: '#0ea5e9',
+      multisociedad_habilitado: true,
+      sociedad: { ...datos.sociedad, activa: true, es_principal: true },
     };
     setEmpresasPlataforma(prev => [nuevo, ...prev]);
     addNotificacion(`Tenant creado en modo prototipo: ${nuevo.nombre}.`);
