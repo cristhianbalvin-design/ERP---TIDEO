@@ -47,7 +47,7 @@ import { contarDiasDescontablesAsistencia } from './utils/asistenciaNomina.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import * as XLSX from 'xlsx';
-import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido, esAusenciaAutorizadaRoster, previsualizarReinicioRosterMinero, reiniciarRosterMinero, previsualizarReinicioJornadaTrabajadores, reiniciarJornadaTrabajadores } from './services/rosterMineroService.js';
+import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, cerrarRosterPeriodo, calcularRosterPeriodo, calcularRangoRosterMinero, getAjustesRosterMinero, crearAjusteRosterMinero, resolverAjusteRosterMinero, confirmarRevisionAjusteRoster, ajusteAprobadoPosteriorASnapshot, recalcularSnapshotRosterDirigido, esAusenciaAutorizadaRoster } from './services/rosterMineroService.js';
 import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUnidadMineraAsignacion } from './services/unidadMineraService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
@@ -13242,8 +13242,9 @@ function asistenciaBadge(estado) {
     : 'badge-gray';
 }
 
-function workerTurno(turnos, worker = {}, fechaStr = null) {
-  const turno = (turnos || []).find(t => t.id === worker.turno_id) || {};
+function workerTurno(turnos, worker, fechaStr = null) {
+  const w = worker || {};
+  const turno = (turnos || []).find(t => t.id === w.turno_id) || {};
   if (!turno.id) return turno;
   if (!fechaStr || turno.dias_variables || !turno.detalle_dias) return turno;
 
@@ -14375,22 +14376,7 @@ function ControlAsistencia() {
   const [recalculoDirigidoId, setRecalculoDirigidoId] = useState(null);
   const [retroWallSnapshotRoster, setRetroWallSnapshotRoster] = useState(null); // { snapshot, ajuste, mensaje } | null
   const [retroWallMotivoSnapshotRoster, setRetroWallMotivoSnapshotRoster] = useState('');
-  const [reinicioRosterModal, setReinicioRosterModal] = useState(false);
-  const [reinicioRosterSedeId, setReinicioRosterSedeId] = useState('');
-  const [reinicioRosterPreview, setReinicioRosterPreview] = useState(null);
-  const [reinicioRosterLoading, setReinicioRosterLoading] = useState(false);
-  const [reinicioRosterEjecutando, setReinicioRosterEjecutando] = useState(false);
-  const [reinicioRosterError, setReinicioRosterError] = useState('');
-  const [reinicioJornadaSeleccionados, setReinicioJornadaSeleccionados] = useState([]);
-  const [reinicioJornadaModal, setReinicioJornadaModal] = useState(false);
-  const [reinicioJornadaPreview, setReinicioJornadaPreview] = useState(null);
-  const [reinicioJornadaLoading, setReinicioJornadaLoading] = useState(false);
-  const [reinicioJornadaEjecutando, setReinicioJornadaEjecutando] = useState(false);
-  const [reinicioJornadaError, setReinicioJornadaError] = useState('');
-  const puedeReiniciarRoster = empresa?.id === 'emp_20601829101' && Boolean(
-    role?.permisos?.todo
-    || role?.permisos?.editar?.includes?.('asistencia')
-  );
+
 
   useEffect(() => {
     if (!empresa?.id || !hayMinerosRoster) return;
@@ -14437,165 +14423,6 @@ function ControlAsistencia() {
   }, [empresa?.id]);
 
   const sedesUm = sedes.filter(s => s.tipo === 'unidad_minera');
-  const rangoReinicioRoster = () => {
-    const anio = rosterPeriodo?.anio || rosterAnioVisible;
-    const mes = rosterPeriodo?.mes || rosterMesVisible;
-    return {
-      fechaInicio: `${anio}-${String(mes).padStart(2, '0')}-01`,
-      fechaFin: `${anio}-${String(mes).padStart(2, '0')}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`,
-    };
-  };
-
-  const cargarPreviewReinicioRoster = async (sedeId) => {
-    if (!sedeId || !empresa?.id) return;
-    const { fechaInicio, fechaFin } = rangoReinicioRoster();
-    setReinicioRosterLoading(true);
-    setReinicioRosterPreview(null);
-    setReinicioRosterError('');
-    try {
-      const preview = await previsualizarReinicioRosterMinero(
-        empresa.id, sedeId, fechaInicio, fechaFin
-      );
-      setReinicioRosterPreview(preview);
-    } catch (err) {
-      setReinicioRosterError(err?.message || 'No se pudo calcular el impacto del reinicio.');
-    } finally {
-      setReinicioRosterLoading(false);
-    }
-  };
-
-  const abrirReinicioRoster = () => {
-    const sedeId = reinicioRosterSedeId || sedesUm[0]?.id || '';
-    setReinicioRosterModal(true);
-    setReinicioRosterSedeId(sedeId);
-    setReinicioRosterPreview(null);
-    setReinicioRosterError('');
-    if (sedeId) cargarPreviewReinicioRoster(sedeId);
-  };
-
-  const cerrarReinicioRoster = () => {
-    if (reinicioRosterEjecutando) return;
-    setReinicioRosterModal(false);
-    setReinicioRosterPreview(null);
-    setReinicioRosterError('');
-  };
-
-  const confirmarReinicioRoster = async () => {
-    if (!reinicioRosterSedeId || !reinicioRosterPreview || !empresa?.id) return;
-    const { fechaInicio, fechaFin } = rangoReinicioRoster();
-    setReinicioRosterEjecutando(true);
-    setReinicioRosterError('');
-    try {
-      const resultado = await reiniciarRosterMinero(
-        empresa.id, reinicioRosterSedeId, fechaInicio, fechaFin
-      );
-      if (!resultado?.ok) {
-        setReinicioRosterPreview(prev => ({
-          ...(prev || {}),
-          bloqueos: resultado?.bloqueos || [],
-          jornadas_bloqueadas: resultado?.bloqueos?.length || 0,
-        }));
-        setReinicioRosterError(resultado?.mensaje || 'El retro wall bloqueó el reinicio.');
-        return;
-      }
-
-      const [anioReinicio, mesReinicio] = fechaInicio.split('-').map(Number);
-      const [jornadasActualizadas, snapshotsActualizados] = await Promise.all([
-        rrhhService.getAsignacionesJornada(empresa.id),
-        getSnapshotsRoster(empresa.id, anioReinicio, mesReinicio),
-      ]);
-      setAsignacionesJornada(jornadasActualizadas || []);
-      setRosterRows(snapshotsActualizados || []);
-      setReinicioRosterModal(false);
-      setReinicioRosterPreview(null);
-      addNotificacion(
-        `Roster reiniciado: ${resultado.trabajadores_afectados || 0} trabajador(es), `
-        + `${resultado.jornadas_eliminadas || 0} jornada(s) eliminada(s) y `
-        + `${resultado.jornadas_divididas || 0} dividida(s).`
-      );
-    } catch (err) {
-      setReinicioRosterError(err?.message || 'No se pudo reiniciar el roster. No se modificó ningún dato.');
-    } finally {
-      setReinicioRosterEjecutando(false);
-    }
-  };
-
-  const cargarPreviewReinicioJornada = async (personalIds) => {
-    const ids = [...new Set(personalIds || [])].filter(Boolean);
-    if (!ids.length || !empresa?.id) return;
-    const { fechaInicio, fechaFin } = rangoReinicioRoster();
-    setReinicioJornadaLoading(true);
-    setReinicioJornadaPreview(null);
-    setReinicioJornadaError('');
-    try {
-      const preview = await previsualizarReinicioJornadaTrabajadores(
-        empresa.id, ids, fechaInicio, fechaFin
-      );
-      setReinicioJornadaPreview(preview);
-    } catch (err) {
-      setReinicioJornadaError(err?.message || 'No se pudo calcular el impacto del reinicio.');
-    } finally {
-      setReinicioJornadaLoading(false);
-    }
-  };
-
-  const abrirReinicioJornada = (personalIds) => {
-    const ids = [...new Set(personalIds || reinicioJornadaSeleccionados)].filter(Boolean);
-    if (!ids.length) return;
-    setReinicioJornadaSeleccionados(ids);
-    setReinicioJornadaModal(true);
-    setReinicioJornadaPreview(null);
-    setReinicioJornadaError('');
-    cargarPreviewReinicioJornada(ids);
-  };
-
-  const cerrarReinicioJornada = () => {
-    if (reinicioJornadaEjecutando) return;
-    setReinicioJornadaModal(false);
-    setReinicioJornadaPreview(null);
-    setReinicioJornadaError('');
-  };
-
-  const confirmarReinicioJornada = async () => {
-    if (!reinicioJornadaSeleccionados.length || !reinicioJornadaPreview || !empresa?.id) return;
-    const { fechaInicio, fechaFin } = rangoReinicioRoster();
-    setReinicioJornadaEjecutando(true);
-    setReinicioJornadaError('');
-    try {
-      const resultado = await reiniciarJornadaTrabajadores(
-        empresa.id, reinicioJornadaSeleccionados, fechaInicio, fechaFin
-      );
-      if (!resultado?.ok) {
-        setReinicioJornadaPreview(prev => ({
-          ...(prev || {}),
-          bloqueos: resultado?.bloqueos || [],
-          jornadas_bloqueadas: resultado?.bloqueos?.length || 0,
-        }));
-        setReinicioJornadaError(resultado?.mensaje || 'El retro wall bloqueó el reinicio.');
-        return;
-      }
-
-      const [anioReinicio, mesReinicio] = fechaInicio.split('-').map(Number);
-      const [jornadasActualizadas, snapshotsActualizados] = await Promise.all([
-        rrhhService.getAsignacionesJornada(empresa.id),
-        getSnapshotsRoster(empresa.id, anioReinicio, mesReinicio),
-      ]);
-      setAsignacionesJornada(jornadasActualizadas || []);
-      setRosterRows(snapshotsActualizados || []);
-      setReinicioJornadaModal(false);
-      setReinicioJornadaPreview(null);
-      setReinicioJornadaSeleccionados([]);
-      addNotificacion(
-        `Jornada reiniciada: ${resultado.trabajadores_afectados || 0} trabajador(es), `
-        + `${resultado.jornadas_eliminadas || 0} jornada(s) eliminada(s) y `
-        + `${resultado.jornadas_divididas || 0} dividida(s).`
-      );
-    } catch (err) {
-      setReinicioJornadaError(err?.message || 'No se pudo reiniciar la jornada. No se modificó ningún dato.');
-    } finally {
-      setReinicioJornadaEjecutando(false);
-    }
-  };
 
   const idsMinerosCicloVigente = new Set(
     asignacionesJornada.filter(a => a.regimen_jornada === 'ciclo_acumulativo' && !a.fecha_fin).map(a => a.personal_id)
@@ -16609,15 +16436,6 @@ function ControlAsistencia() {
               <button className="btn btn-primary" disabled={rosterLoading || rosterPeriodo?.estado === 'cerrado'} onClick={recalcularRoster}>
                 {rosterLoading ? 'Calculando...' : 'Calcular / Recalcular'}
               </button>
-              {puedeReiniciarRoster && <button
-                type="button"
-                className="btn btn-secondary"
-                style={{color:'var(--danger)', borderColor:'var(--danger)'}}
-                disabled={rosterLoading || rosterPeriodo?.estado === 'cerrado' || !sedesUm.length}
-                onClick={abrirReinicioRoster}
-              >
-                Reiniciar roster del período
-              </button>}
             </div>
           </div>
           {rosterPeriodo?.estado === 'cerrado' && <div className="alert alert-warning" style={{marginBottom:12}}>Este período está cerrado. No se puede recalcular.</div>}
@@ -16715,43 +16533,19 @@ function ControlAsistencia() {
               }
               const esGrupoSinUm = grupo.key === '__sin_um__';
               const idsGrupo = grupo.trabajadores.map(t => t.id);
-              const seleccionadosGrupo = reinicioJornadaSeleccionados.filter(id => idsGrupo.includes(id));
-              const todosSeleccionados = idsGrupo.length > 0 && seleccionadosGrupo.length === idsGrupo.length;
               return (
                 <div key={grupo.key} style={{marginTop:16}}>
                   <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:8}}>
                     <div style={{fontWeight:700, fontSize:13, color: esGrupoSinUm ? 'var(--danger)' : 'var(--fg)'}}>
                       {esGrupoSinUm ? `⚠ ${grupo.nombre}` : grupo.nombre} <span className="text-muted" style={{fontWeight:400}}>({grupo.trabajadores.length})</span>
                     </div>
-                    {esGrupoSinUm && puedeReiniciarRoster && <div className="row" style={{gap:10}}>
-                      <label className="row text-muted" style={{gap:5, fontSize:11, cursor:'pointer'}}>
-                        <input
-                          type="checkbox"
-                          checked={todosSeleccionados}
-                          disabled={rosterPeriodo?.estado === 'cerrado'}
-                          onChange={e => setReinicioJornadaSeleccionados(prev => e.target.checked
-                            ? [...new Set([...prev.filter(id => !idsGrupo.includes(id)), ...idsGrupo])]
-                            : prev.filter(id => !idsGrupo.includes(id)))}
-                        />
-                        Seleccionar todos
-                      </label>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-secondary"
-                        style={{color:'var(--danger)', borderColor:'var(--danger)'}}
-                        disabled={rosterPeriodo?.estado === 'cerrado' || seleccionadosGrupo.length === 0}
-                        onClick={() => abrirReinicioJornada(seleccionadosGrupo)}
-                      >
-                        Reiniciar jornada ({seleccionadosGrupo.length})
-                      </button>
-                    </div>}
+
                   </div>
                   <div className="table-wrap">
                     <table className="tbl" style={{fontSize:11}}>
                       <thead>
                         <tr>
-                          {esGrupoSinUm && puedeReiniciarRoster && <th style={{position:'sticky', left:0, width:36, background:'var(--bg-card, var(--bg))', zIndex:2}}>Sel.</th>}
-                          <th style={{position:'sticky', left:esGrupoSinUm && puedeReiniciarRoster ? 36 : 0, background:'var(--bg-card, var(--bg))', zIndex:1}}>Trabajador</th>
+                          <th style={{position:'sticky', left:0, background:'var(--bg-card, var(--bg))', zIndex:1}}>Trabajador</th>
                           <th>Modalidad</th>
                           {diasRango.map(f => <th key={f} style={{textAlign:'center', minWidth:28}}>{f.slice(8,10)}</th>)}
                           <th title="Días en mina (snapshot del período)">Mina</th>
@@ -16765,18 +16559,7 @@ function ControlAsistencia() {
                           const fila = filaGridRoster(t);
                           return (
                             <tr key={t.id} style={estiloSinContratoVigente(t)}>
-                              {esGrupoSinUm && puedeReiniciarRoster && <td style={{position:'sticky', left:0, background:sinContratoVigente(t) ? 'var(--bg-subtle)' : 'var(--bg-card, var(--bg))', zIndex:2}}>
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Seleccionar a ${t.nombre}`}
-                                  checked={reinicioJornadaSeleccionados.includes(t.id)}
-                                  disabled={rosterPeriodo?.estado === 'cerrado'}
-                                  onChange={e => setReinicioJornadaSeleccionados(prev => e.target.checked
-                                    ? [...new Set([...prev, t.id])]
-                                    : prev.filter(id => id !== t.id))}
-                                />
-                              </td>}
-                              <td style={{position:'sticky', left:esGrupoSinUm && puedeReiniciarRoster ? 36 : 0, background:sinContratoVigente(t) ? 'var(--bg-subtle)' : 'var(--bg-card, var(--bg))', zIndex:1}}><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
+                              <td style={{position:'sticky', left:0, background:sinContratoVigente(t) ? 'var(--bg-subtle)' : 'var(--bg-card, var(--bg))', zIndex:1}}><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
                               <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
                               {fila.dias.map(dia => {
                                 const est = estiloCeldaRoster(dia);
@@ -17230,165 +17013,6 @@ function ControlAsistencia() {
         </>;
       })()}
 
-      {reinicioRosterModal && <>
-        <div className="side-panel-backdrop" onClick={cerrarReinicioRoster}/>
-        <div className="side-panel" style={{width:'min(620px,96vw)'}}>
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Acción destructiva controlada</div>
-              <div className="font-display" style={{fontSize:22,fontWeight:700}}>Reiniciar roster del período</div>
-            </div>
-            <button className="icon-btn" onClick={cerrarReinicioRoster} disabled={reinicioRosterEjecutando}>{I.x}</button>
-          </div>
-          <div className="side-panel-body">
-            <div className="input-group">
-              <label>Unidad minera</label>
-              <select
-                className="select"
-                value={reinicioRosterSedeId}
-                disabled={reinicioRosterEjecutando}
-                onChange={e => {
-                  setReinicioRosterSedeId(e.target.value);
-                  cargarPreviewReinicioRoster(e.target.value);
-                }}
-              >
-                {sedesUm.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </select>
-            </div>
-
-            <div className="card" style={{padding:14, marginTop:12}}>
-              <div className="text-muted" style={{fontSize:12}}>Período exacto</div>
-              <strong>{rangoReinicioRoster().fechaInicio} a {rangoReinicioRoster().fechaFin}</strong>
-            </div>
-
-            {reinicioRosterLoading && <div style={{padding:24, textAlign:'center'}} className="text-muted">Calculando impacto real…</div>}
-            {reinicioRosterError && <div className="alert alert-danger" style={{marginTop:12}}>{reinicioRosterError}</div>}
-
-            {reinicioRosterPreview && <>
-              <div className="kpi-grid" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))', marginTop:14}}>
-                <div className="kpi-card"><div className="kpi-label">Trabajadores afectados</div><div className="kpi-value">{reinicioRosterPreview.trabajadores_afectados || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Jornadas afectadas</div><div className="kpi-value">{reinicioRosterPreview.jornadas_afectadas || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Se eliminarán</div><div className="kpi-value">{reinicioRosterPreview.jornadas_eliminar || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Se dividirán</div><div className="kpi-value">{reinicioRosterPreview.jornadas_dividir || 0}</div></div>
-              </div>
-
-              {(reinicioRosterPreview.trabajadores || []).length > 0 && <div className="card" style={{padding:14, marginTop:12}}>
-                <div style={{fontWeight:700, marginBottom:8}}>Trabajadores incluidos</div>
-                <div style={{display:'flex', flexDirection:'column', gap:5, maxHeight:150, overflow:'auto'}}>
-                  {reinicioRosterPreview.trabajadores.map(t => <div key={`${t.personal_tipo}-${t.personal_id}`} style={{fontSize:12}}>{t.nombre} <span className="text-muted">· {t.personal_tipo}</span></div>)}
-                </div>
-              </div>}
-
-              {(reinicioRosterPreview.bloqueos || []).length > 0 && <div className="alert alert-danger" style={{marginTop:12}}>
-                <strong>Retro wall: {reinicioRosterPreview.jornadas_bloqueadas} jornada(s) bloqueada(s).</strong>
-                <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:8}}>
-                  {reinicioRosterPreview.bloqueos.map(b => <div key={b.jornada_id} style={{fontSize:12}}>
-                    <strong>{b.nombre}</strong> · {(b.periodos || []).join(', ')}<br/>{b.motivo}
-                  </div>)}
-                </div>
-              </div>}
-
-              <div className="alert alert-warning" style={{marginTop:12, lineHeight:1.55}}>
-                <strong>Advertencia sobre Nómina:</strong> Los campos de régimen de estos trabajadores en su ficha podrían seguir mostrando el valor anterior hasta que se les asigne una nueva jornada. Verifica manualmente antes de procesar Nómina para estos trabajadores.
-              </div>
-
-              <div className="text-muted" style={{fontSize:12, marginTop:10}}>
-                No se modificarán registros de asistencia ni ajustes de roster. Los tramos fuera del período seleccionado se conservarán.
-              </div>
-            </>}
-
-            <div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}>
-              <button type="button" className="btn btn-secondary" onClick={cerrarReinicioRoster} disabled={reinicioRosterEjecutando}>Cancelar</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{background:'var(--danger)', borderColor:'var(--danger)'}}
-                onClick={confirmarReinicioRoster}
-                disabled={reinicioRosterLoading
-                  || reinicioRosterEjecutando
-                  || !reinicioRosterPreview
-                  || Number(reinicioRosterPreview?.jornadas_afectadas || 0) === 0
-                  || Number(reinicioRosterPreview?.jornadas_bloqueadas || 0) > 0}
-              >
-                {reinicioRosterEjecutando ? 'Reiniciando…' : 'Confirmar reinicio'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </>}
-
-      {reinicioJornadaModal && <>
-        <div className="side-panel-backdrop" onClick={cerrarReinicioJornada}/>
-        <div className="side-panel" style={{width:'min(620px,96vw)'}}>
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Acción destructiva controlada</div>
-              <div className="font-display" style={{fontSize:22,fontWeight:700}}>Reiniciar jornada</div>
-              <div className="text-muted" style={{fontSize:12}}>Selección directa de trabajadores · no requiere unidad minera</div>
-            </div>
-            <button className="icon-btn" onClick={cerrarReinicioJornada} disabled={reinicioJornadaEjecutando}>{I.x}</button>
-          </div>
-          <div className="side-panel-body">
-            <div className="card" style={{padding:14}}>
-              <div className="text-muted" style={{fontSize:12}}>Período exacto</div>
-              <strong>{rangoReinicioRoster().fechaInicio} a {rangoReinicioRoster().fechaFin}</strong>
-            </div>
-
-            {reinicioJornadaLoading && <div style={{padding:24, textAlign:'center'}} className="text-muted">Calculando impacto real…</div>}
-            {reinicioJornadaError && <div className="alert alert-danger" style={{marginTop:12}}>{reinicioJornadaError}</div>}
-
-            {reinicioJornadaPreview && <>
-              <div className="kpi-grid" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))', marginTop:14}}>
-                <div className="kpi-card"><div className="kpi-label">Trabajadores afectados</div><div className="kpi-value">{reinicioJornadaPreview.trabajadores_afectados || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Jornadas afectadas</div><div className="kpi-value">{reinicioJornadaPreview.jornadas_afectadas || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Se eliminarán</div><div className="kpi-value">{reinicioJornadaPreview.jornadas_eliminar || 0}</div></div>
-                <div className="kpi-card"><div className="kpi-label">Se dividirán</div><div className="kpi-value">{reinicioJornadaPreview.jornadas_dividir || 0}</div></div>
-              </div>
-
-              {(reinicioJornadaPreview.trabajadores || []).length > 0 && <div className="card" style={{padding:14, marginTop:12}}>
-                <div style={{fontWeight:700, marginBottom:8}}>Trabajadores incluidos</div>
-                <div style={{display:'flex', flexDirection:'column', gap:5, maxHeight:150, overflow:'auto'}}>
-                  {reinicioJornadaPreview.trabajadores.map(t => <div key={`${t.personal_tipo}-${t.personal_id}`} style={{fontSize:12}}>{t.nombre} <span className="text-muted">· {t.personal_tipo}</span></div>)}
-                </div>
-              </div>}
-
-              {(reinicioJornadaPreview.bloqueos || []).length > 0 && <div className="alert alert-danger" style={{marginTop:12}}>
-                <strong>Retro wall: {reinicioJornadaPreview.jornadas_bloqueadas} jornada(s) bloqueada(s).</strong>
-                <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:8}}>
-                  {reinicioJornadaPreview.bloqueos.map(b => <div key={b.jornada_id} style={{fontSize:12}}>
-                    <strong>{b.nombre}</strong> · {(b.periodos || []).join(', ')}<br/>{b.motivo}
-                  </div>)}
-                </div>
-              </div>}
-
-              <div className="alert alert-warning" style={{marginTop:12, lineHeight:1.55}}>
-                <strong>Advertencia sobre Nómina:</strong> Los campos de régimen de estos trabajadores en su ficha podrían seguir mostrando el valor anterior hasta que se les asigne una nueva jornada. Verifica manualmente antes de procesar Nómina para estos trabajadores.
-              </div>
-
-              <div className="text-muted" style={{fontSize:12, marginTop:10}}>
-                No se requiere una asignación de unidad minera. No se modificarán registros de asistencia ni ajustes de roster. Los tramos fuera del período seleccionado se conservarán.
-              </div>
-            </>}
-
-            <div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}>
-              <button type="button" className="btn btn-secondary" onClick={cerrarReinicioJornada} disabled={reinicioJornadaEjecutando}>Cancelar</button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{background:'var(--danger)', borderColor:'var(--danger)'}}
-                onClick={confirmarReinicioJornada}
-                disabled={reinicioJornadaLoading
-                  || reinicioJornadaEjecutando
-                  || !reinicioJornadaPreview
-                  || Number(reinicioJornadaPreview?.jornadas_afectadas || 0) === 0
-                  || Number(reinicioJornadaPreview?.jornadas_bloqueadas || 0) > 0}
-              >
-                {reinicioJornadaEjecutando ? 'Reiniciando…' : 'Confirmar reinicio'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </>}
 
       {ubicacionModal && <UbicacionMarcacionModal registro={ubicacionModal.registro} estadoGeocerca={ubicacionModal.estadoGeocerca} estadoGeocercaSalida={ubicacionModal.estadoGeocercaSalida} onClose={() => setUbicacionModal(null)} />}
     </>
@@ -19440,7 +19064,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
@@ -19465,6 +19089,9 @@ function RRHH_Operativo() {
   const [formAsigError, setFormAsigError] = useState('');
   const [retroWallAsig, setRetroWallAsig] = useState(null);
   const [retroWallMotivoAsig, setRetroWallMotivoAsig] = useState('');
+  const [deletingAsigId, setDeletingAsigId] = useState(null);
+  const [retroWallDeleteAsig, setRetroWallDeleteAsig] = useState(null);
+  const [retroWallMotivoDeleteAsig, setRetroWallMotivoDeleteAsig] = useState('');
   // Estado para subir documentos en ficha
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -20981,6 +20608,29 @@ function RRHH_Operativo() {
               if (!a || a.regimen_jornada === 'general') return 'general';
               return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[`${Number(a.dias_ciclo_trabajo)}x${Number(a.dias_ciclo_descanso)}`] || '';
             };
+            const eliminarAsig = async (id, overrideOpts) => {
+              if (!confirm('¿Estás seguro de eliminar el tramo actual (el más reciente) de este trabajador?')) return;
+              const forzarOverride = overrideOpts?.forzarOverride || false;
+              const motivoOverride = overrideOpts?.motivoOverride || null;
+              setDeletingAsigId(id); setRetroWallDeleteAsig(null);
+              try {
+                await eliminarAsignacionJornadaCtx(id, forzarOverride, motivoOverride);
+                setDeletingAsigId(null);
+                setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig('');
+                addNotificacion('Tramo de jornada eliminado.');
+              } catch (e) {
+                setDeletingAsigId(null);
+                const msg = e.message || '';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) {
+                  addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                } else if (msg.startsWith('RETRO_WALL:')) {
+                  setRetroWallDeleteAsig(msg.replace('RETRO_WALL:', '').trim());
+                } else {
+                  addNotificacion(msg || 'Error al eliminar asignación.', 'error');
+                }
+              }
+            };
+
             const guardarAsig = async (overrideOpts) => {
               if (!formAsig.fecha_inicio) {
                 const mensaje = 'La fecha de inicio es obligatoria.';
@@ -21009,6 +20659,7 @@ function RRHH_Operativo() {
               try {
                 const payload = {
                   ...formAsig,
+                  fecha_inicio: !asigActiva ? fechaInicioSugerida : formAsig.fecha_inicio,
                   regimen_jornada: preset.regimen,
                   dias_ciclo_trabajo: preset.t,
                   dias_ciclo_descanso: preset.d,
@@ -21070,7 +20721,7 @@ function RRHH_Operativo() {
                           <option value="normal">Normal</option>
                         </select>
                       </div>
-                      <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsig.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsig(f => ({ ...f, fecha_inicio: fecha, fecha_fin: f.fecha_fin || finContratoParaFecha(fecha) || '' })); setFormAsigError(''); }}/></div>
+                      <div className="input-group"><label>Fecha de inicio {!asigActiva && <span className="text-muted" style={{fontWeight:'normal'}}>(obligatoria por continuidad)</span>}</label><input className="input" type="date" disabled={!asigActiva} value={formAsig.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsig(f => ({ ...f, fecha_inicio: fecha, fecha_fin: f.fecha_fin || finContratoParaFecha(fecha) || '' })); setFormAsigError(''); }}/></div>
                       <div className="input-group"><label>Fecha de fin {finContratoSugerido ? <span className="text-muted">(propuesta: vence contrato {finContratoSugerido})</span> : <span className="text-muted">(opcional)</span>}</label><input className="input" type="date" min={formAsig.fecha_inicio || undefined} value={formAsig.fecha_fin || ''} onChange={e => { setFormAsig(f => ({ ...f, fecha_fin: e.target.value })); setFormAsigError(''); }}/></div>
                       {formAsig.fecha_fin && formAsig.fecha_inicio && formAsig.fecha_fin < formAsig.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                       {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>
@@ -21125,22 +20776,59 @@ function RRHH_Operativo() {
                   </div>
                 )}
 
+                {retroWallDeleteAsig && (
+                  <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginBottom:16}}>
+                    <div style={{color:'var(--danger)', fontWeight:600}}>Eliminación bloqueada por nómina ya procesada</div>
+                    <div>{retroWallDeleteAsig}</div>
+                    <div className="input-group">
+                      <label>Justificación para forzar la eliminación (obligatoria)</label>
+                      <textarea className="input" rows={2} value={retroWallMotivoDeleteAsig} onChange={e=>setRetroWallMotivoDeleteAsig(e.target.value)} />
+                    </div>
+                    <div className="row" style={{justifyContent:'flex-end', gap:8}}>
+                      <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig(''); setDeletingAsigId(null); }}>Cancelar</button>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={!deletingAsigId || !retroWallMotivoDeleteAsig.trim()}
+                        onClick={() => eliminarAsig(deletingAsigId, { forzarOverride: true, motivoOverride: retroWallMotivoDeleteAsig.trim() })}
+                      >
+                        Forzar eliminación (requiere autorización)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
                 {asigsTrabajador.length === 0
                   ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
                   : <div className="table-wrap" style={{margin:'0 -16px'}}><table className="tbl" style={{fontSize:12, width:'100%'}}>
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead>
+                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th><th>Acciones</th></tr></thead>
                       <tbody>
-                        {asigsTrabajador.map(a => (
-                          <tr key={a.id}>
-                            <td>{a.fecha_inicio}</td>
-                            <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
-                            <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
-                            <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
-                            <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
-                            <td className="text-muted">{a.motivo || '—'}</td>
-                          </tr>
-                        ))}
+                        {asigsTrabajador.map((a, i) => {
+                          const isVigente = i === 0;
+                          return (
+                            <tr key={a.id}>
+                              <td>{a.fecha_inicio}</td>
+                              <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
+                              <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
+                              <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
+                              <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
+                              <td className="text-muted">{a.motivo || '—'}</td>
+                              <td>
+                                {isVigente && (
+                                  <button
+                                    className="btn btn-danger btn-sm"
+                                    onClick={() => eliminarAsig(a.id)}
+                                    disabled={deletingAsigId === a.id}
+                                    style={{padding:'2px 8px', fontSize:11}}
+                                  >
+                                    {deletingAsigId === a.id ? 'Eliminando...' : 'Eliminar'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table></div>
                 }

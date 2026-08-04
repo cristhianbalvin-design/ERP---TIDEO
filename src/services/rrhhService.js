@@ -1299,4 +1299,14 @@ export const rrhhService = {
     if (error) throw error;
     return data;
   },
+
+  async eliminarAsignacionJornada(id, forzarOverride = false, motivoOverride = null) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.rpc('eliminar_asignacion_jornada', {
+      p_id: id,
+      p_forzar_override: forzarOverride,
+      p_motivo_override: motivoOverride,
+    });
+    if (error) throw error;
+  },
 };

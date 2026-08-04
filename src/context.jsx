@@ -8736,6 +8736,15 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const eliminarAsignacionJornadaCtx = async (id, forzarOverride = false, motivoOverride = null) => {
+    await rrhhService.eliminarAsignacionJornada(id, forzarOverride, motivoOverride);
+    const actualizado = await rrhhService.getAsignacionesJornada(empresa?.id);
+    setAsignacionesJornada(actualizado || []);
+    // La eliminación reabre el tramo anterior si existe. La actualización del campo
+    // "regimen_jornada" espejo en personal_operativo/admin podría quedar desincronizado localmente,
+    // pero la vista de Roster usará las asignaciones directamente.
+  };
+
   const upsertListBy = (prev, rows, keyFn) => {
     const incoming = rows || [];
     if (!incoming.length) return prev;
@@ -10165,7 +10174,7 @@ export function AppProvider({ children }) {
     subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx,
     recargarPersonalDocumentosPersonaCtx,
     enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx,
-    asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
+    asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
     registrarIaLog,

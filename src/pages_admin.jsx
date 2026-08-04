@@ -8781,7 +8781,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -8817,6 +8817,9 @@ function RRHHAdmin() {
   const [formAsigAdminError, setFormAsigAdminError] = useState('');
   const [retroWallAsigAdmin, setRetroWallAsigAdmin] = useState(null);
   const [retroWallMotivoAsigAdmin, setRetroWallMotivoAsigAdmin] = useState('');
+  const [deletingAsigAdminId, setDeletingAsigAdminId] = useState(null);
+  const [retroWallDeleteAsigAdmin, setRetroWallDeleteAsigAdmin] = useState(null);
+  const [retroWallMotivoDeleteAsigAdmin, setRetroWallMotivoDeleteAsigAdmin] = useState('');
 
   const COLUMNAS_DEFAULT_ADMIN = [
     { key: 'codigo', label: 'Código' },
@@ -9721,10 +9724,29 @@ function RRHHAdmin() {
                 const mensaje = 'Completa la fecha de inicio del ciclo.';
                 setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
               }
+              const eliminarAsigAdmin = async (id, overrideOpts) => {
+                if (!confirm('¿Estás seguro de eliminar el tramo actual (el más reciente) de este trabajador?')) return;
+                const forzarOverride = overrideOpts?.forzarOverride || false;
+                const motivoOverride = overrideOpts?.motivoOverride || null;
+                setDeletingAsigAdminId(id); setRetroWallDeleteAsigAdmin(null);
+                try {
+                  await eliminarAsignacionJornadaCtx(id, forzarOverride, motivoOverride);
+                  setDeletingAsigAdminId(null);
+                  setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin('');
+                  addNotificacion('Tramo de jornada eliminado.');
+                } catch (e) {
+                  setDeletingAsigAdminId(null);
+                  const msg = e.message || '';
+                  if (msg.startsWith('RETRO_WALL_PERMISO:')) addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                  else if (msg.startsWith('RETRO_WALL:')) setRetroWallDeleteAsigAdmin(msg.replace('RETRO_WALL:', '').trim());
+                  else addNotificacion(msg || 'Error al eliminar asignación.', 'error');
+                }
+              };
               setSavingAsigAdmin(true); setRetroWallAsigAdmin(null); setFormAsigAdminError('');
               try {
                 await crearAsignacionJornadaCtx(persona.id, 'administrativo', {
                   ...formAsigAdmin,
+                  fecha_inicio: !asigActiva ? fechaInicioSugerida : formAsigAdmin.fecha_inicio,
                   tipo_tramo: 'normal',
                   regimen_jornada: preset.regimen,
                   dias_ciclo_trabajo: preset.trabajo,
@@ -9763,7 +9785,7 @@ function RRHHAdmin() {
 
               {showFormAsigAdmin && <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
                 <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsigAdmin(f => ({...f, fecha_inicio:fecha, fecha_fin:f.fecha_fin || finContratoParaFecha(fecha) || ''})); setFormAsigAdminError(''); }} /></div>
+                  <div className="input-group"><label>Fecha de inicio {!asigActiva && <span className="text-muted" style={{fontWeight:'normal'}}>(obligatoria por continuidad)</span>}</label><input className="input" type="date" disabled={!asigActiva} value={formAsigAdmin.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsigAdmin(f => ({...f, fecha_inicio:fecha, fecha_fin:f.fecha_fin || finContratoParaFecha(fecha) || ''})); setFormAsigAdminError(''); }} /></div>
                   <div className="input-group"><label>Fecha de fin {finContratoSugerido ? <span className="text-muted">(propuesta: vence contrato {finContratoSugerido})</span> : <span className="text-muted">(opcional)</span>}</label><input className="input" type="date" min={formAsigAdmin.fecha_inicio || undefined} value={formAsigAdmin.fecha_fin} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_fin:e.target.value})); setFormAsigAdminError(''); }} /></div>
                   {formAsigAdmin.fecha_fin && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                   {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Es una advertencia: si el período tiene nómina procesada, el retro wall pedirá justificación y autorización al guardar.</div>}
@@ -9785,8 +9807,17 @@ function RRHHAdmin() {
                 <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}><button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsigAdmin(false); setFormAsigAdminError(''); }}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={() => guardarAsignacion()} disabled={savingAsigAdmin}>{savingAsigAdmin ? 'Guardando...' : 'Guardar asignación'}</button></div>
               </div>}
 
+              {retroWallDeleteAsigAdmin && <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, marginTop:12, marginBottom:16}}>
+                <div style={{color:'var(--danger)', fontWeight:600, marginBottom:6}}>Eliminación bloqueada por nómina ya procesada</div><div>{retroWallDeleteAsigAdmin}</div>
+                <div className="input-group" style={{marginTop:8}}><label>Justificación para forzar la eliminación (obligatoria)</label><textarea className="input" rows={2} value={retroWallMotivoDeleteAsigAdmin} onChange={e => setRetroWallMotivoDeleteAsigAdmin(e.target.value)} /></div>
+                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin(''); setDeletingAsigAdminId(null); }}>Cancelar</button>
+                  <button className="btn btn-danger btn-sm" disabled={!deletingAsigAdminId || !retroWallMotivoDeleteAsigAdmin.trim()} onClick={() => eliminarAsigAdmin(deletingAsigAdminId, {forzarOverride:true, motivoOverride:retroWallMotivoDeleteAsigAdmin.trim()})}>Forzar eliminación (requiere autorización)</button>
+                </div>
+              </div>}
+
               <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
-              {asigsTrabajador.length === 0 ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div> : <div className="table-wrap"><table className="tbl" style={{fontSize:12, width:'100%'}}><thead><tr><th>Desde</th><th>Hasta</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead><tbody>{asigsTrabajador.map(a => <tr key={a.id}><td>{a.fecha_inicio}</td><td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td><td>{presets[presetDeAsignacion(a)]?.label || a.regimen_jornada}</td><td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} · inicio ${a.fecha_inicio_ciclo || '—'}` : '—'}</td><td className="text-muted">{a.motivo || '—'}</td></tr>)}</tbody></table></div>}
+              {asigsTrabajador.length === 0 ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div> : <div className="table-wrap"><table className="tbl" style={{fontSize:12, width:'100%'}}><thead><tr><th>Desde</th><th>Hasta</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th><th>Acciones</th></tr></thead><tbody>{asigsTrabajador.map((a, i) => { const isVigente = i === 0; return <tr key={a.id}><td>{a.fecha_inicio}</td><td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td><td>{presets[presetDeAsignacion(a)]?.label || a.regimen_jornada}</td><td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} · inicio ${a.fecha_inicio_ciclo || '—'}` : '—'}</td><td className="text-muted">{a.motivo || '—'}</td><td>{isVigente && <button className="btn btn-danger btn-sm" onClick={() => eliminarAsigAdmin(a.id)} disabled={deletingAsigAdminId === a.id} style={{padding:'2px 8px', fontSize:11}}>{deletingAsigAdminId === a.id ? 'Eliminando...' : 'Eliminar'}</button>}</td></tr>; })}</tbody></table></div>}
             </div>;
           })()}
 
