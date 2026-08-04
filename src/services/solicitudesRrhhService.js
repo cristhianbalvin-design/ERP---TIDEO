@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { getDataMode } from '../lib/dataMode.js';
+import { resolverSociedadContratoVigente } from './nominaSociedadService.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,28 +91,33 @@ export function computarSaldoVacaciones(fechaIngreso, diasAnio, solicitudes) {
 let _mockPmCorrelativo = 3;
 const _mockPmMap = new Map();
 
-async function siguienteCorrelativoPM(supabase, empresaId) {
-  const { data: existing } = await supabase
+async function siguienteCorrelativoPM(supabase, empresaId, sociedadId = null) {
+  let query = supabase
     .from('correlativos_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
     .eq('tipo_documento', 'papeleta_movimiento')
-    .eq('serie', 'PM')
-    .maybeSingle();
+    .eq('serie', 'PM');
+  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  const { data: existing, error: correlativoError } = await query.maybeSingle();
+  if (correlativoError) throw correlativoError;
   const siguiente = Number(existing?.ultimo_numero ?? 0) + 1;
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const corId = `cor_${String(r).replace(/-/g, '').slice(0, 18)}`;
   if (existing) {
-    await supabase.from('correlativos_documentos')
+    const { error } = await supabase.from('correlativos_documentos')
       .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
       .eq('id', existing.id);
+    if (error) throw error;
   } else {
-    await supabase.from('correlativos_documentos').insert({
+    const { error } = await supabase.from('correlativos_documentos').insert({
       id: corId, empresa_id: empresaId,
+      sociedad_id: sociedadId,
       tipo_documento: 'papeleta_movimiento', serie: 'PM',
       ultimo_numero: siguiente,
       updated_at: new Date().toISOString(),
     });
+    if (error) throw error;
   }
   return `PM-${String(siguiente).padStart(4, '0')}`;
 }
@@ -283,7 +289,19 @@ export async function rechazarJefe(solicitudId, empresaId, comentario, usuario) 
 
 export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
   const isMock = getDataMode() !== 'supabase';
-  const solicitud = isMock ? mockSolicitudes.find(s => s.id === solicitudId) : null;
+  const supabase = isMock ? null : await getSupabaseClient();
+  let solicitud = isMock ? mockSolicitudes.find(s => s.id === solicitudId) : null;
+  let multisociedadHabilitado = false;
+  if (!isMock) {
+    const [{ data: solicitudDb, error: solicitudError }, { data: empresaDb, error: empresaError }] = await Promise.all([
+      supabase.from('solicitudes_rrhh').select('*').eq('id', solicitudId).eq('empresa_id', empresaId).single(),
+      supabase.from('empresas').select('multisociedad_habilitado').eq('id', empresaId).single(),
+    ]);
+    if (solicitudError) throw solicitudError;
+    if (empresaError) throw empresaError;
+    solicitud = solicitudDb;
+    multisociedadHabilitado = Boolean(empresaDb?.multisociedad_habilitado);
+  }
   const tipo = opts.tipo || solicitud?.tipo;
   const dias = opts.diasHabiles || solicitud?.dias_habiles || 0;
   const diasLicEmpresa = opts.diasLicenciaEmpresa ?? mockConfig.dias_licencia_empresa;
@@ -296,12 +314,35 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
     if (isMock) {
       numero_correlativo = mockCorrelativoPM(empresaId);
     } else {
-      try {
-        const supabase = await getSupabaseClient();
-        numero_correlativo = await siguienteCorrelativoPM(supabase, empresaId);
-      } catch (err) {
-        console.warn('[solicitudesRrhh] No se pudo asignar correlativo:', err?.message);
+      let sociedadId = null;
+      if (multisociedadHabilitado) {
+        if (!solicitud.fecha_inicio) {
+          throw new Error('La fecha de inicio de la solicitud es obligatoria para derivar la sociedad del contrato vigente.');
+        }
+        const [{ data: documentos, error: documentosError }, { data: tipos, error: tiposError }, { data: sociedades, error: sociedadesError }] = await Promise.all([
+          supabase.from('personal_documentos').select('*').eq('empresa_id', empresaId).eq('personal_id', solicitud.personal_id),
+          supabase.from('tipos_documento_empresa').select('*').eq('empresa_id', empresaId),
+          supabase.from('sociedades').select('id,codigo,nombre,activa').eq('empresa_id', empresaId).eq('activa', true),
+        ]);
+        if (documentosError) throw documentosError;
+        if (tiposError) throw tiposError;
+        if (sociedadesError) throw sociedadesError;
+        const resolucion = resolverSociedadContratoVigente({
+          documentos: documentos || [],
+          tiposDocumento: tipos || [],
+          sociedades: sociedades || [],
+          personalId: solicitud.personal_id,
+          fecha: solicitud.fecha_inicio,
+        });
+        if (resolucion.conflicto) {
+          throw new Error(`El colaborador tiene contratos vigentes en sociedades distintas: ${resolucion.nombres.join(', ')}. Resuelve manualmente la sociedad antes de continuar.`);
+        }
+        if (!resolucion.sociedadId) {
+          throw new Error('El colaborador no tiene un contrato societario vigente para la fecha de inicio de la solicitud. Resuelve el contrato antes de continuar.');
+        }
+        sociedadId = resolucion.sociedadId;
       }
+      numero_correlativo = await siguienteCorrelativoPM(supabase, empresaId, sociedadId);
     }
   }
 

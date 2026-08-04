@@ -128,6 +128,35 @@ export function resolverContratosNominaSociedad({
   return { contratos, ambiguos };
 }
 
+export function resolverSociedadContratoVigente({
+  documentos = [],
+  tiposDocumento = [],
+  sociedades = [],
+  personalId,
+  fecha,
+} = {}) {
+  const tiposPorId = new Map(tiposDocumento.map(tipo => [tipo.id, tipo]));
+  const candidatos = documentos
+    .filter(doc => doc.personal_id === personalId && doc.sociedad_id)
+    .filter(doc => doc.activo === true && doc.estado_validacion === 'aprobado' && doc.periodo_estado !== 'archivado')
+    .filter(doc => esContratoDocumentoNomina(doc, tiposDocumento))
+    .filter(doc => vigenteDurantePeriodo(doc, { fecha_inicio: fecha, fecha_fin: fecha }));
+  const vigentes = candidatos.filter(contrato => !contratoEsSuperado(contrato, candidatos, tiposPorId));
+  const sociedadIds = [...new Set(vigentes.map(contrato => contrato.sociedad_id).filter(Boolean))];
+  const sociedadesPorId = new Map((sociedades || []).map(sociedad => [sociedad.id, sociedad]));
+  const nombres = sociedadIds.map(id => {
+    const sociedad = sociedadesPorId.get(id);
+    return sociedad ? `${sociedad.codigo ? `${sociedad.codigo} - ` : ''}${sociedad.nombre}` : id;
+  });
+  return {
+    sociedadId: sociedadIds.length === 1 ? sociedadIds[0] : null,
+    conflicto: sociedadIds.length > 1,
+    sociedadIds,
+    nombres,
+    contratos: vigentes,
+  };
+}
+
 export function aplicarContratoATrabajador(persona, contrato) {
   const condiciones = contrato?.condiciones_laborales || {};
   const remuneracion = Number(condiciones.remuneracion_base);

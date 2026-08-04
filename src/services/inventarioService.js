@@ -975,7 +975,7 @@ export async function ajustarValorizacionOcPendiente(empresaId, { orden_compra_i
   return ajustes;
 }
 
-export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId) {
+export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId, sociedadId = null) {
   for (const item of itemsADescontar) {
     if (!item.material_id) continue;
     try {
@@ -985,6 +985,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
 
       let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
         .eq('empresa_id', empresaId).eq('material_id', item.material_id);
+      stockQ = sociedadId ? stockQ.eq('sociedad_id', sociedadId) : stockQ.is('sociedad_id', null);
       if (item.lote != null) stockQ = stockQ.eq('lote', item.lote);
       if (item.serie != null) stockQ = stockQ.eq('serie', item.serie);
       const { data: stocks } = await stockQ;
@@ -996,6 +997,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
       await supabase.from('kardex').insert({
         id: mkId('kdx'),
         empresa_id: empresaId,
+        sociedad_id: sociedadId,
         material_id: item.material_id,
         almacen_id: item.almacen_id || stock.almacen_id || null,
         tipo: 'salida',

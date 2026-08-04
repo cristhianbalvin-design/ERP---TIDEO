@@ -77,6 +77,20 @@ const buscarPorCodigoExacto = (items, value) => {
   return (items || []).find(item => normalizarCodigoImportacion(item?.codigo) === codigo) || null;
 };
 
+const resolverSociedad = (sociedades, value) => {
+  const referencia = String(value ?? '').trim();
+  if (!referencia) return { sociedad: null, ambigua: false };
+  const key = normalizarTexto(referencia);
+  const coincidencias = (sociedades || []).filter(sociedad =>
+    sociedad?.activa !== false && [sociedad?.id, sociedad?.codigo, sociedad?.nombre]
+      .some(candidate => normalizarTexto(candidate) === key)
+  );
+  return {
+    sociedad: coincidencias.length === 1 ? coincidencias[0] : null,
+    ambigua: coincidencias.length > 1,
+  };
+};
+
 const resolverEspecialidad = (especialidades, value) => {
   const referencia = String(value ?? '').trim();
   if (!referencia) return { especialidad: null, ambigua: false };
@@ -207,9 +221,25 @@ export const validarFilasImportacionCeco = (rows, catalogos = {}) => {
     const tipo = normalizarTipo(row?.tipo);
     const estado = validarCamposComunes(row, tipo, CECO_TIPOS_IMPORTACION, errores);
 
-    const cebe = buscarPorCodigoExacto(catalogos.centrosBeneficio, row?.cebe_padre);
-    if (String(row?.cebe_padre ?? '').trim() && !cebe) {
+    const cebeReferencia = String(row?.cebe_padre ?? '').trim();
+    const cebe = buscarPorCodigoExacto(catalogos.centrosBeneficio, cebeReferencia);
+    if (catalogos.multisociedadHabilitado && !cebeReferencia) {
+      errores.push('CEBE padre obligatorio: se requiere para derivar la sociedad en un tenant con multisociedad.');
+    } else if (cebeReferencia && !cebe) {
       errores.push(`CEBE padre inexistente: no se encontró el código "${normalizarCodigoImportacion(row.cebe_padre)}" en este tenant.`);
+    }
+    if (catalogos.multisociedadHabilitado && cebe && !cebe.sociedad_id) {
+      errores.push(`El CEBE padre "${cebe.codigo || cebe.id}" no tiene sociedad asignada; no se puede importar el CECO en un tenant con multisociedad.`);
+    }
+    const sociedadInformada = resolverSociedad(catalogos.sociedades, row?.sociedad ?? row?.sociedad_id);
+    if (catalogos.multisociedadHabilitado && String(row?.sociedad ?? row?.sociedad_id ?? '').trim()) {
+      if (!sociedadInformada.sociedad) {
+        errores.push(sociedadInformada.ambigua
+          ? `Sociedad ambigua: "${String(row?.sociedad ?? row?.sociedad_id).trim()}" coincide con más de una sociedad activa.`
+          : `Sociedad inexistente o inactiva: "${String(row?.sociedad ?? row?.sociedad_id).trim()}".`);
+      } else if (cebe?.sociedad_id && sociedadInformada.sociedad.id !== cebe.sociedad_id) {
+        errores.push('La sociedad informada no coincide con la sociedad del CEBE padre.');
+      }
     }
     const sede = buscarPorCodigoExacto(catalogos.sedes, row?.sede_padre);
     if (String(row?.sede_padre ?? '').trim() && !sede) {
@@ -238,6 +268,7 @@ export const validarFilasImportacionCeco = (rows, catalogos = {}) => {
       tipo,
       estado,
       cebe_id: cebe?.id || null,
+      sociedad_id: catalogos.multisociedadHabilitado ? (cebe?.sociedad_id || null) : null,
       sede_padre: sede?.id || null,
       especialidad: especialidadResult.especialidad?.id || null,
       responsable_id: responsable.responsable_id,
@@ -261,6 +292,14 @@ export const validarFilasImportacionCebe = (rows, catalogos = {}) => {
     const codigo = validarDuplicado(row, index, codigosArchivo, codigosExistentes, errores);
     const tipo = normalizarTipo(row?.tipo);
     const estado = validarCamposComunes(row, tipo, CEBE_TIPOS_IMPORTACION, errores);
+
+    const sociedadReferencia = row?.sociedad ?? row?.sociedad_id;
+    const sociedadResult = resolverSociedad(catalogos.sociedades, sociedadReferencia);
+    if (catalogos.multisociedadHabilitado && String(sociedadReferencia ?? '').trim() && !sociedadResult.sociedad) {
+      errores.push(sociedadResult.ambigua
+        ? `Sociedad ambigua: "${String(sociedadReferencia).trim()}" coincide con más de una sociedad activa.`
+        : `Sociedad inexistente o inactiva: "${String(sociedadReferencia).trim()}".`);
+    }
 
     const cargoRaw = String(row?.cargo_financiero_dbs ?? '').trim();
     const cargo = catalogoCanonico(cargoRaw, CARGOS_FINANCIEROS_DBS);
@@ -301,6 +340,7 @@ export const validarFilasImportacionCebe = (rows, catalogos = {}) => {
       cargo_financiero_dbs: cargo,
       modelo_negocio: modelo,
       cuenta_id: cuentaResult.cuenta?.id || null,
+      sociedad_id: catalogos.multisociedadHabilitado ? (sociedadResult.sociedad?.id || null) : null,
       responsable_id: responsable.responsable_id,
       responsable_nombre: responsable.responsable_nombre,
       fecha_inicio: fechas.fecha_inicio,

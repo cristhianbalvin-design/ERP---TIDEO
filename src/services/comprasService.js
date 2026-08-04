@@ -411,28 +411,35 @@ const mkId = (prefix) => {
   return `${prefix}_${String(r).replace(/-/g, '').slice(0, 18)}`;
 };
 
-async function siguienteCorrelativoDev(supabase, empresaId) {
-  const { data: existing } = await supabase
+async function siguienteCorrelativoDev(supabase, empresaId, sociedadId = null) {
+  let correlativoQuery = supabase
     .from('correlativos_documentos')
     .select('*')
     .eq('empresa_id', empresaId)
     .eq('tipo_documento', 'devolucion_proveedor')
-    .eq('serie', 'DEV')
-    .maybeSingle();
+    .eq('serie', 'DEV');
+  correlativoQuery = sociedadId
+    ? correlativoQuery.eq('sociedad_id', sociedadId)
+    : correlativoQuery.is('sociedad_id', null);
+  const { data: existing, error: correlativoErr } = await correlativoQuery.maybeSingle();
+  if (correlativoErr) throw correlativoErr;
 
   const siguiente = Number(existing?.ultimo_numero ?? 0) + 1;
 
   if (existing) {
-    await supabase.from('correlativos_documentos')
+    const { error } = await supabase.from('correlativos_documentos')
       .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
       .eq('id', existing.id);
+    if (error) throw error;
   } else {
-    await supabase.from('correlativos_documentos').insert({
+    const { error } = await supabase.from('correlativos_documentos').insert({
       id: mkId('cor'), empresa_id: empresaId,
+      sociedad_id: sociedadId,
       tipo_documento: 'devolucion_proveedor', serie: 'DEV',
       ultimo_numero: siguiente,
       updated_at: new Date().toISOString(),
     });
+    if (error) throw error;
   }
   return `DEV-${String(siguiente).padStart(4, '0')}`;
 }
@@ -455,7 +462,47 @@ export const devolucionesService = {
 
   crearDevolucion: async (empresaId, { recepcion_id, proveedor_id, oc_id, fecha, motivo, descripcion_motivo, lineas = [] }, usuarioId) => {
     const supabase = await getSupabaseClient();
-    const numero_devolucion = await siguienteCorrelativoDev(supabase, empresaId);
+    const [{ data: empresaDb, error: empresaErr }, { data: recepcion, error: recepcionErr }] = await Promise.all([
+      supabase.from('empresas').select('multisociedad_habilitado').eq('id', empresaId).single(),
+      supabase.from('recepciones').select('*').eq('id', recepcion_id).eq('empresa_id', empresaId).single(),
+    ]);
+    if (empresaErr) throw empresaErr;
+    if (recepcionErr || !recepcion) throw recepcionErr || new Error('Recepción no encontrada');
+
+    const multisociedadHabilitado = Boolean(empresaDb?.multisociedad_habilitado);
+    const ordenCompraId = oc_id || recepcion.orden_compra_id || recepcion.oc_id || null;
+    const ordenServicioId = recepcion.orden_servicio_id || recepcion.os_id || null;
+    let sociedadId = null;
+
+    if (multisociedadHabilitado) {
+      if (ordenCompraId) {
+        const { data: ordenCompra, error } = await supabase
+          .from('ordenes_compra')
+          .select('sociedad_id')
+          .eq('id', ordenCompraId)
+          .eq('empresa_id', empresaId)
+          .single();
+        if (error) throw error;
+        sociedadId = ordenCompra?.sociedad_id || null;
+      } else if (ordenServicioId) {
+        const { data: ordenServicio, error } = await supabase
+          .from('ordenes_servicio_interna')
+          .select('sociedad_id')
+          .eq('id', ordenServicioId)
+          .eq('empresa_id', empresaId)
+          .single();
+        if (error) throw error;
+        sociedadId = ordenServicio?.sociedad_id || null;
+      } else {
+        throw new Error('La recepción no tiene una OC ni una orden de servicio de origen para derivar la sociedad.');
+      }
+
+      if (!sociedadId) {
+        throw new Error('El documento de compra que originó la recepción no tiene sociedad; no se puede crear la devolución en un tenant con multisociedad.');
+      }
+    }
+
+    const numero_devolucion = await siguienteCorrelativoDev(supabase, empresaId, sociedadId);
     const devId = mkId('dev');
 
     const { data: dev, error: devErr } = await supabase
@@ -463,9 +510,10 @@ export const devolucionesService = {
       .insert({
         id: devId,
         empresa_id: empresaId,
+        sociedad_id: sociedadId,
         recepcion_id,
         proveedor_id,
-        oc_id: oc_id || null,
+        oc_id: ordenCompraId,
         numero_devolucion,
         fecha: fecha || new Date().toISOString().split('T')[0],
         motivo,
@@ -482,6 +530,7 @@ export const devolucionesService = {
       const lineasData = lineas.map(l => ({
         id: mkId('dvl'),
         empresa_id: empresaId,
+        sociedad_id: sociedadId,
         devolucion_id: devId,
         material_id: l.material_id || null,
         descripcion: l.descripcion,
@@ -523,12 +572,15 @@ export const devolucionesService = {
       // Auto-resolver almacen si no fue guardado en la línea
       let almacenId = linea.almacen_id;
       if (!almacenId) {
-        const { data: stockRows } = await supabase.from('stock')
+        let stockQuery = supabase.from('stock')
           .select('almacen_id, disponible')
           .eq('empresa_id', empresaId)
           .eq('material_id', linea.material_id)
-          .gte('disponible', linea.cantidad_devuelta)
-          .limit(1);
+          .gte('disponible', linea.cantidad_devuelta);
+        stockQuery = dev.sociedad_id
+          ? stockQuery.eq('sociedad_id', dev.sociedad_id)
+          : stockQuery.is('sociedad_id', null);
+        const { data: stockRows } = await stockQuery.limit(1);
         almacenId = stockRows?.[0]?.almacen_id;
       }
       if (!almacenId) continue;
@@ -542,6 +594,7 @@ export const devolucionesService = {
         referencia_id: devolucionId,
         nro_documento: dev.numero_devolucion,
         proveedor_id: dev.proveedor_id,
+        sociedad_id: dev.sociedad_id || null,
         observacion: `Devolución ${dev.numero_devolucion}`,
       }, usuarioId);
       kardexIds.push(res.kardex_id);

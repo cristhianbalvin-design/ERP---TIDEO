@@ -40,6 +40,7 @@ import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
+import { resolverSociedadContratoVigente } from './services/nominaSociedadService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
   prepararDesvinculacionMovimientoCuenta,
@@ -3529,6 +3530,11 @@ export function AppProvider({ children }) {
   const cerrarTecnicamenteOT = async (otId, datosCierre) => {
     const { conformidad_archivo, tareas_incompletas, snapshot_tareas, ...restDatos } = datosCierre;
     const cierreId = generateId('cier');
+    const anterior = ots.find(o => o.id === otId) || null;
+    const sociedadOtId = anterior?.sociedad_id || null;
+    if (empresa?.multisociedad_habilitado && !sociedadOtId) {
+      throw new Error('La OT no tiene sociedad asignada. No se puede consumir inventario en un tenant con multisociedad.');
+    }
 
     let tokenConformidad = null;
     let conformidadArchivoUrl = null;
@@ -3543,7 +3549,6 @@ export function AppProvider({ children }) {
       } catch (_) {}
     }
 
-    const anterior = ots.find(o => o.id === otId) || null;
     const updateOts = (o) => {
       if (o.id !== otId) return o;
       let newTareas = o.tareas || [];
@@ -3587,7 +3592,9 @@ export function AppProvider({ children }) {
           existente.cantidad += Number(mu.cantidad);
         } else {
           const stockRow = inventario.find(i =>
-            i.material_id === mu.material_id && (!mu.lote || i.lote === mu.lote)
+            i.material_id === mu.material_id &&
+            (!mu.lote || i.lote === mu.lote) &&
+            (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
           );
           itemsADescontar.push({
             material_id: mu.material_id,
@@ -3596,6 +3603,7 @@ export function AppProvider({ children }) {
             lote: mu.lote || null,
             serie: mu.serie || null,
             vencimiento: mu.vencimiento || null,
+            sociedad_id: sociedadOtId,
           });
         }
       });
@@ -3606,17 +3614,18 @@ export function AppProvider({ children }) {
         const desc = itemsADescontar.find(d =>
           d.material_id === i.material_id &&
           d.lote === (i.lote || null) &&
-          d.serie === (i.serie || null)
+          d.serie === (i.serie || null) &&
+          (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
         );
         if (desc) return { ...i, stock_actual: Math.max(0, i.stock_actual - desc.cantidad) };
         return i;
       }));
       if (isSupabaseConfigured()) {
-        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id))
+        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
           .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
           .catch(err => console.error('consumo OT inventario:', err));
       } else {
-        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId));
+        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId, sociedadOtId));
       }
     }
 
@@ -3670,6 +3679,33 @@ export function AppProvider({ children }) {
     opsSync(sb => sb.from('solpe_interna').update({ estado: 'aprobada', aprobada_por: authUser?.id || null, aprobada_at: new Date().toISOString() }).eq('id', solpeId));
   };
 
+  const resolverSociedadOperacion = (registro = {}) => {
+    if (!empresa?.multisociedad_habilitado) return null;
+    const otId = registro.ot_vinc_id || registro.ot_id || null;
+    const ot = otId ? (ots || []).find(item => item.id === otId) : null;
+    if (otId && !ot?.sociedad_id) {
+      throw new Error('La OT vinculada no tiene sociedad asignada. Corrige la OT antes de registrar el gasto.');
+    }
+    if (ot?.sociedad_id) {
+      if (registro.sociedad_id && registro.sociedad_id !== ot.sociedad_id) {
+        throw new Error('La sociedad informada no coincide con la sociedad de la OT vinculada.');
+      }
+      return ot.sociedad_id;
+    }
+    const cecoId = registro.centro_costo_id || registro.ceco_id || null;
+    const ceco = cecoId ? (centrosCosto || []).find(item => item.id === cecoId) : null;
+    if (cecoId && !ceco?.sociedad_id) {
+      throw new Error('El CECO seleccionado no tiene sociedad asignada. Corrige el CECO antes de registrar el gasto.');
+    }
+    if (ceco?.sociedad_id) {
+      if (registro.sociedad_id && registro.sociedad_id !== ceco.sociedad_id) {
+        throw new Error('La sociedad informada no coincide con la sociedad del CECO seleccionado.');
+      }
+      return ceco.sociedad_id;
+    }
+    return registro.sociedad_id || null;
+  };
+
   const compraGastoPayload = (gasto) => ({
     id: gasto.id,
     empresa_id: empresa.id,
@@ -3685,12 +3721,13 @@ export function AppProvider({ children }) {
     referencia_pago: gasto.referencia_pago || null,
     cxp_id: gasto.cxp_id || null,
     centro_costo_id: gasto.centro_costo_id || null,
+    sociedad_id: resolverSociedadOperacion(gasto),
     periodo_nomina_id: gasto.periodo_nomina_id || null,
     es_activo_fijo: gasto.es_activo_fijo || false,
     activo_tipo: gasto.activo_tipo || null,
     vida_util_anos: gasto.vida_util_anos || null,
     ...(gasto.personal_id ? { personal_id: gasto.personal_id } : {}),
-    ...(gasto.ot_vinc_id ? { ot_vinc_id: gasto.ot_vinc_id } : {}),
+    ...((gasto.ot_vinc_id || gasto.ot_id) ? { ot_vinc_id: gasto.ot_vinc_id || gasto.ot_id } : {}),
   });
 
   const removeMissingColumnFromPayload = (payload, error) => {
@@ -3722,6 +3759,7 @@ export function AppProvider({ children }) {
       estado: 'registrado',
       created_at: new Date().toISOString(),
       ...datos,
+      sociedad_id: resolverSociedadOperacion(datos),
     };
     setComprasGastos(prev => [...prev, gasto]);
     auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gasto.id, accion: 'crear', valor_nuevo: gasto });
@@ -5392,6 +5430,24 @@ export function AppProvider({ children }) {
       return d.toISOString().split('T')[0];
     })();
 
+    let sociedadHonorariosId = null;
+    if (empresa?.multisociedad_habilitado) {
+      const resolucionSociedad = resolverSociedadContratoVigente({
+        documentos: personalDocumentos,
+        tiposDocumento,
+        sociedades: sociedadesDisponibles,
+        personalId: recibo.vendedor_id,
+        fecha: fechaEmision,
+      });
+      if (resolucionSociedad.conflicto) {
+        throw new Error(`El colaborador tiene contratos vigentes en sociedades distintas: ${resolucionSociedad.nombres.join(', ')}. Resuelve manualmente la sociedad antes de continuar.`);
+      }
+      if (!resolucionSociedad.sociedadId) {
+        throw new Error('El colaborador no tiene un contrato societario vigente para la fecha de emisión. Resuelve el contrato antes de continuar.');
+      }
+      sociedadHonorariosId = resolucionSociedad.sociedadId;
+    }
+
     const monedaOriginal = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
     const monedaCxP = moneda_rhe || monedaOriginal;
     const tc = Number(tipo_cambio || 1);
@@ -5420,6 +5476,7 @@ export function AppProvider({ children }) {
     let cuentaPagar = {
       id: cxpId,
       empresa_id: empresa.id,
+      sociedad_id: sociedadHonorariosId,
       tipo_beneficiario: 'personal',
       tipo_comprobante: 'RHE',
       personal_id: recibo.vendedor_id || null,
@@ -5992,13 +6049,15 @@ export function AppProvider({ children }) {
 
   const generarCxP = async (datos = {}) => {
     const { no_devengar_er, ...datosDb } = datos || {};
+    const sociedadId = resolverSociedadOperacion(datosDb);
     let cuentaPagar = {
       id: generateId('cxp'),
       empresa_id: empresa.id,
       estado: 'por_pagar',
       monto_pagado: 0,
       saldo: datosDb.monto_total,
-      ...datosDb
+      ...datosDb,
+      sociedad_id: sociedadId,
     };
     const cxpParaDevengo = { ...cuentaPagar, no_devengar_er };
     const yaDevengado = (comprasGastos || []).some(g => g.cxp_id === cuentaPagar.id);
@@ -7663,16 +7722,32 @@ export function AppProvider({ children }) {
       setDevolucionesProveedor(prev => [data, ...prev]);
       return data;
     }
+    const recepcionOrigen = (recepciones || []).find(r => r.id === datos.recepcion_id);
+    const ordenCompraId = datos.oc_id || recepcionOrigen?.orden_compra_id || recepcionOrigen?.oc_id || null;
+    const ordenServicioId = recepcionOrigen?.orden_servicio_id || recepcionOrigen?.os_id || null;
+    const documentoOrigen = ordenCompraId
+      ? (ordenesCompra || []).find(o => o.id === ordenCompraId)
+      : (ordenesServicio || []).find(o => o.id === ordenServicioId);
+    const sociedadDevolucionId = empresa?.multisociedad_habilitado ? (documentoOrigen?.sociedad_id || null) : null;
+    if (empresa?.multisociedad_habilitado && !sociedadDevolucionId) {
+      throw new Error('El documento de compra que originó la recepción no tiene sociedad; no se puede crear la devolución en un tenant con multisociedad.');
+    }
     const mock = {
       ...datos,
       id: generateId('dev'),
       empresa_id: empresa.id,
+      sociedad_id: sociedadDevolucionId,
+      oc_id: ordenCompraId,
       numero_devolucion: `DEV-${String(devolucionesProveedor.length + 1).padStart(4, '0')}`,
       estado: 'borrador',
       kardex_salida_ids: [],
       creado_en: new Date().toISOString(),
       actualizado_en: new Date().toISOString(),
-      devoluciones_proveedor_lineas: datos.lineas || [],
+      devoluciones_proveedor_lineas: (datos.lineas || []).map(linea => ({
+        ...linea,
+        empresa_id: empresa.id,
+        sociedad_id: sociedadDevolucionId,
+      })),
     };
     setDevolucionesProveedor(prev => [mock, ...prev]);
     return mock;

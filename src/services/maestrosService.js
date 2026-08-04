@@ -355,7 +355,7 @@ export const maestrosService = {
     const payload = {
       id: cebe.id || makeId('cebe'),
       empresa_id: empresaId,
-      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      ...pick(cebe, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
     };
     const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
     if (error) throw error;
@@ -363,7 +363,7 @@ export const maestrosService = {
   },
   actualizarCentroBeneficio: async (cebeId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
+    const { data, error } = await supabase.from('centros_beneficio').update(pick(payload, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cebeId).select().single();
     if (error) throw error;
     return data;
   },
@@ -375,7 +375,7 @@ export const maestrosService = {
       empresaId,
       filas: cebes,
       prefijoId: 'cebe',
-      campos: ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
+      campos: ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
     });
   },
   getCentrosCosto: async (empresaId) => {
@@ -390,7 +390,7 @@ export const maestrosService = {
     const payload = {
       id: ceco.id || makeId('ceco'),
       empresa_id: empresaId,
-      ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sociedad_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
     };
     const { data, error } = await supabase.from('centros_costo').insert([payload]).select().single();
     if (error) throw error;
@@ -398,7 +398,7 @@ export const maestrosService = {
   },
   actualizarCentroCosto: async (cecoId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
+    const { data, error } = await supabase.from('centros_costo').update(pick(payload, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sociedad_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'])).eq('id', cecoId).select().single();
     if (error) throw error;
     return data;
   },
@@ -410,7 +410,7 @@ export const maestrosService = {
       empresaId,
       filas: cecos,
       prefijoId: 'ceco',
-      campos: ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
+      campos: ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sociedad_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
     });
   },
 

@@ -1602,7 +1602,7 @@ function Stub({title, description}) {
 // ============ CECO / CEBE ============
 function CecoCebePanel({ onClose }) {
   const {
-    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades,
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades, sociedadesDisponibles,
     crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
     crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
@@ -1674,6 +1674,9 @@ function CecoCebePanel({ onClose }) {
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
     if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
     if (empresa?.multisociedad_habilitado && !cecoForm.sociedad_id) return setCecoError('La sociedad es obligatoria.');
+    const cebeSeleccionado = (centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id);
+    if (empresa?.multisociedad_habilitado && !cebeSeleccionado?.sociedad_id) return setCecoError('El CEBE seleccionado no tiene sociedad asignada. Corrige el CEBE antes de guardar el CECO.');
+    if (empresa?.multisociedad_habilitado && cebeSeleccionado.sociedad_id !== cecoForm.sociedad_id) return setCecoError('La sociedad del CECO debe coincidir con la sociedad del CEBE padre.');
     if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
     const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
     if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
@@ -1756,11 +1759,15 @@ function CecoCebePanel({ onClose }) {
     sedes,
     especialidades,
     usuarios,
+    sociedades: sociedadesDisponibles,
+    multisociedadHabilitado: Boolean(empresa?.multisociedad_habilitado),
   });
   const validarCebeImport = rows => validarFilasImportacionCebe(rows, {
     centrosBeneficio,
     cuentas,
     usuarios,
+    sociedades: sociedadesDisponibles,
+    multisociedadHabilitado: Boolean(empresa?.multisociedad_habilitado),
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
@@ -1941,7 +1948,7 @@ function CecoCebePanel({ onClose }) {
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -2133,7 +2140,7 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, estado</code></p>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es opcional.</p>
                     <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CEBEs'); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { formatCurrencyTotals, formatMoney, sumByCurrency } from './lib/currency.js';
+import { SociedadFormField } from './components/SociedadFormField.jsx';
 import {
   buildEgresoTesoreria,
   buildDebtSummary,
@@ -43,6 +44,7 @@ function NuevoFinanciamientoPanel({ form, setForm, onClose, onSubmit, isSubmitti
             <div className="input-group"><label>Entidad *</label><input className="input" value={form.entidad} onChange={e=>set('entidad', e.target.value)} required/></div>
             <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e=>set('moneda', e.target.value)}><option>PEN</option><option>USD</option></select></div>
             <div className="input-group"><label>Monto recibido *</label><input className="input" type="number" value={form.monto_original} onChange={e=>set('monto_original', e.target.value)} required/></div>
+            <SociedadFormField value={form.sociedad_id} onChange={sociedad_id=>set('sociedad_id', sociedad_id)} style={{gridColumn:'1 / -1'}} />
             <div className="input-group"><label>Fecha desembolso</label><input className="input" type="date" value={form.fecha_desembolso} onChange={e=>set('fecha_desembolso', e.target.value)}/></div>
             <div className="input-group"><label>Tasa anual</label><input className="input" type="number" value={form.tasa_anual} onChange={e=>set('tasa_anual', e.target.value)}/></div>
             <div className="input-group"><label>Plazo meses</label><input className="input" type="number" value={form.plazo_meses} onChange={e=>set('plazo_meses', e.target.value)}/></div>
@@ -101,7 +103,7 @@ export function FinanciamientoDeuda() {
   const [errorNuevoFinanciamiento, setErrorNuevoFinanciamiento] = useState('');
   const [guardandoPago, setGuardandoPago] = useState(false);
   const [errorPago, setErrorPago] = useState('');
-  const [form, setForm] = useState({ tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' });
+  const [form, setForm] = useState({ tipo:'bancario', entidad:'', tipo_entidad:'banco', contacto_nombre:'', contacto_telefono:'', contacto_email:'', monto_original:50000, moneda:'PEN', sociedad_id:'', fecha_desembolso:'2026-04-01', tasa_anual:12, tipo_tasa:'TEA', plazo_meses:24, meses_gracia:0, dia_pago:5, tipo_cuota:'frances', centro_costo:'CC-OPS', proposito:'', cuenta_bancaria_destino:'BCP Cta. cte.', notas:'' });
   const detalle = activeParams?.detail ? financiamientos.find(f => f.id === activeParams.detail) : null;
   const dataSource = createFinanciamientosDataSource({
     empresa,
@@ -124,9 +126,17 @@ export function FinanciamientoDeuda() {
       setErrorNuevoFinanciamiento('Completa los campos obligatorios (*) antes de guardar.');
       return;
     }
+    if (empresa?.multisociedad_habilitado && !form.sociedad_id) {
+      setErrorNuevoFinanciamiento('Selecciona la sociedad que contrata el financiamiento.');
+      return;
+    }
     setErrorNuevoFinanciamiento('');
     setGuardandoFinanciamiento(true);
-    const nuevo = buildFinanciamiento({ form, empresa, sequence: financiamientos.length + 1 });
+    const nuevo = buildFinanciamiento({
+      form: { ...form, sociedad_id: empresa?.multisociedad_habilitado ? form.sociedad_id : null },
+      empresa,
+      sequence: financiamientos.length + 1,
+    });
     try {
       if (dataSource.mode === 'supabase') {
         const persistido = await crearFinanciamientoConAmortizacion({ empresa, nuevo });
