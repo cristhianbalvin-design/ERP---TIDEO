@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
+import { PERFIL_SOCIEDAD, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 
 
 const SIDEBAR = [
@@ -509,8 +509,11 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
 
   const isSupabase = dataMode === 'supabase';
   const canSwitchCompany = isSupabase ? todasMembresias.length > 1 : Boolean(role.permisos?.plataforma);
-  const mostrarSelectorSociedad = Boolean(empresa?.multisociedad_habilitado) &&
-    perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD;
+  const mostrarSelectorSociedad = debeMostrarSelectorSociedad({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadesDisponibles,
+  });
   const unreadCount = notificaciones.filter(n => !n.read).length;
 
   const avatarText = isSupabase && authUser?.email

@@ -7,6 +7,20 @@ export const PERFIL_SOCIEDAD = Object.freeze({
   SOCIEDAD: 'sociedad',
 });
 
+export function resolverSociedadUnicaId(sociedades = []) {
+  return sociedades.length === 1 ? (sociedades[0]?.id || null) : null;
+}
+
+export function debeMostrarSelectorSociedad({
+  multisociedadHabilitado = false,
+  perfilSociedad = PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+  sociedadesDisponibles = [],
+} = {}) {
+  return Boolean(multisociedadHabilitado)
+    && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD
+    && sociedadesDisponibles.length >= 2;
+}
+
 export function normalizarSlugTideo(valor, { maximo = 20, quitarSufijoLegal = false } = {}) {
   let slug = String(valor || '')
     .normalize('NFD')
