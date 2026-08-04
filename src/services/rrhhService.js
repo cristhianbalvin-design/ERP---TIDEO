@@ -1002,6 +1002,7 @@ export const rrhhService = {
       if (error.code === '23505') {
         let query = supabase.from('periodos_nomina').select('*')
           .eq('empresa_id', empresaId).eq('anio', periodo.anio).eq('mes', periodo.mes);
+        query = periodo.sociedad_id == null ? query.is('sociedad_id', null) : query.eq('sociedad_id', periodo.sociedad_id);
         query = periodo.quincena == null ? query.is('quincena', null) : query.eq('quincena', periodo.quincena);
         const { data: existente, error: errSel } = await query.maybeSingle();
         if (errSel) throw errSel;
@@ -1297,5 +1298,15 @@ export const rrhhService = {
     });
     if (error) throw error;
     return data;
+  },
+
+  async eliminarAsignacionJornada(id, forzarOverride = false, motivoOverride = null) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.rpc('eliminar_asignacion_jornada', {
+      p_id: id,
+      p_forzar_override: forzarOverride,
+      p_motivo_override: motivoOverride,
+    });
+    if (error) throw error;
   },
 };

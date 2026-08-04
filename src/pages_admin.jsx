@@ -8,6 +8,13 @@ import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
+import { SociedadFormField } from './components/SociedadFormField.jsx';
+import {
+  actualizarSociedad,
+  crearSociedad,
+  generarCodigoSociedadBase,
+  listarSociedadesAdministracion,
+} from './services/sociedadesService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -1267,7 +1274,11 @@ function Tenants() {
   const [confirmando, setConfirmando] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [creando, setCreando] = useState(false);
-  const [formNuevo, setFormNuevo] = useState({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
+  const [formNuevo, setFormNuevo] = useState({
+    nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
+    admin_email: '', admin_nombre: '',
+    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+  });
 
   const abrirEditar = (t) => {
     setForm({
@@ -1277,6 +1288,7 @@ function Tenants() {
       pais: t.pais || 'PE',
       moneda_base: t.moneda_base || t.moneda || 'PEN',
       estado: t.estado || 'activa',
+      multisociedad_habilitado: Boolean(t.multisociedad_habilitado),
     });
     setEditando(t);
   };
@@ -1296,12 +1308,20 @@ function Tenants() {
   };
 
   const crearNuevo = async () => {
-    if (!formNuevo.razon_social?.trim()) return;
+    const sociedad = formNuevo.sociedad || {};
+    if (!formNuevo.nombre_grupo?.trim()
+      || !sociedad.razon_social?.trim()
+      || !sociedad.nombre?.trim()
+      || !sociedad.ruc?.trim()) return;
     setSaving(true);
     try {
       await crearTenantConAdmin(formNuevo);
       setCreando(false);
-      setFormNuevo({ razon_social: '', nombre_comercial: '', ruc: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa', admin_email: '', admin_nombre: '' });
+      setFormNuevo({
+        nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
+        admin_email: '', admin_nombre: '',
+        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+      });
     } catch (e) {
       addNotificacion(`Error al crear tenant: ${e.message}`);
     } finally {
@@ -1335,7 +1355,7 @@ function Tenants() {
     <>
       <div className="page-header">
         <div><h1 className="page-title">Empresas / Tenants</h1><div className="page-sub">{activos} tenants activos · alta operativa sin dependencia de pagos</div></div>
-        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary" onClick={() => setCreando(true)}>{I.plus} Nueva empresa</button></div>
+        <div className="row"><button className="btn btn-secondary">{I.download} Reporte plataforma</button><button className="btn btn-primary" onClick={() => setCreando(true)}>{I.plus} Nuevo grupo</button></div>
       </div>
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Tenants activos</div><div className="kpi-value">{activos}</div><div className="kpi-icon cyan">{I.building}</div></div>
@@ -1376,8 +1396,8 @@ function Tenants() {
           <h3 style={{marginBottom:20}}>Editar tenant</h3>
           <div className="col" style={{gap:14}}>
             <div className="input-group">
-              <label>Razón Social *</label>
-              <input className="input" value={form.razon_social} onChange={e => setForm(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+              <label>{form.multisociedad_habilitado ? 'Nombre del grupo *' : 'Razón Social *'}</label>
+              <input className="input" value={form.razon_social} onChange={e => setForm(f => ({...f, razon_social: e.target.value}))} placeholder={form.multisociedad_habilitado ? 'Nombre del grupo' : 'Razón Social'} autoFocus/>
             </div>
             <div className="input-group">
               <label>Nombre Comercial</label>
@@ -1412,6 +1432,23 @@ function Tenants() {
                 </select>
               </div>
             </div>
+            <label style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8}}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.multisociedad_habilitado)}
+                disabled={Boolean(editando?.multisociedad_habilitado)}
+                onChange={e => setForm(f => ({ ...f, multisociedad_habilitado: e.target.checked }))}
+                style={{marginTop:2}}
+              />
+              <span>
+                <strong style={{display:'block',fontSize:13}}>Habilitar multisociedad</strong>
+                <span className="text-muted" style={{fontSize:11}}>
+                  {editando?.multisociedad_habilitado
+                    ? 'Multisociedad ya está habilitada para este tenant.'
+                    : 'Si no existen sociedades, se creará automáticamente la principal con los datos actuales del tenant.'}
+                </span>
+              </span>
+            </label>
           </div>
           <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={() => setEditando(null)} disabled={saving}>Cancelar</button>
@@ -1420,25 +1457,41 @@ function Tenants() {
         </div>
       </>}
 
-      {/* Modal: Nueva empresa */}
+      {/* Modal: Nuevo grupo */}
       {creando && <>
         <div className="side-panel-backdrop" onClick={() => setCreando(false)}/>
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:500,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',maxHeight:'90vh',overflowY:'auto'}}>
-          <h3 style={{marginBottom:20}}>Nueva empresa / tenant</h3>
+          <h3 style={{marginBottom:20}}>Nuevo grupo / tenant</h3>
           <div className="col" style={{gap:14}}>
             <div className="input-group">
-              <label>Razón Social *</label>
-              <input className="input" value={formNuevo.razon_social} onChange={e => setFormNuevo(f => ({...f, razon_social: e.target.value}))} placeholder="Razón Social" autoFocus/>
+              <label>Nombre del grupo *</label>
+              <input className="input" value={formNuevo.nombre_grupo} onChange={e => setFormNuevo(f => ({...f, nombre_grupo: e.target.value}))} placeholder="Ej. Grupo DIFESMAQ" autoFocus/>
+              <span className="text-muted" style={{fontSize:11}}>El código grp_ se genera automáticamente y no depende del RUC.</span>
             </div>
-            <div className="input-group">
-              <label>Nombre Comercial</label>
-              <input className="input" value={formNuevo.nombre_comercial} onChange={e => setFormNuevo(f => ({...f, nombre_comercial: e.target.value}))} placeholder="Nombre que aparece en el sistema (opcional)"/>
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:14}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>Sociedad principal obligatoria</div>
+              <div className="col" style={{gap:12}}>
+                <div className="input-group">
+                  <label>Razón social *</label>
+                  <input className="input" value={formNuevo.sociedad.razon_social} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, razon_social: e.target.value } }))} placeholder="Razón social de la sociedad"/>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div className="input-group">
+                    <label>Nombre comercial *</label>
+                    <input className="input" value={formNuevo.sociedad.nombre} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, nombre: e.target.value } }))} placeholder="Nombre corto"/>
+                  </div>
+                  <div className="input-group">
+                    <label>RUC / NIT *</label>
+                    <input className="input" inputMode="numeric" maxLength={11} value={formNuevo.sociedad.ruc} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, ruc: sanitizeRuc(e.target.value) } }))} placeholder="20000000000"/>
+                  </div>
+                </div>
+                <div className="input-group">
+                  <label>Código de sociedad</label>
+                  <input className="input" value={formNuevo.sociedad.codigo} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, codigo: generarCodigoSociedadBase(e.target.value) } }))} placeholder="Se genera desde la razón social"/>
+                </div>
+              </div>
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-              <div className="input-group">
-                <label>RUC / NIT</label>
-                <input className="input" inputMode="numeric" maxLength={11} value={formNuevo.ruc} onChange={e => setFormNuevo(f => ({...f, ruc: sanitizeRuc(e.target.value)}))} placeholder="20000000000"/>
-              </div>
               <div className="input-group">
                 <label>País</label>
                 <input className="input" value={formNuevo.pais} onChange={e => setFormNuevo(f => ({...f, pais: e.target.value}))} placeholder="PE"/>
@@ -1479,7 +1532,7 @@ function Tenants() {
           </div>
           <div className="row" style={{gap:8, marginTop:24, justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={() => setCreando(false)} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={crearNuevo} disabled={saving || !formNuevo.razon_social?.trim()}>{saving ? 'Creando...' : 'Crear empresa'}</button>
+            <button className="btn btn-primary" onClick={crearNuevo} disabled={saving || !formNuevo.nombre_grupo?.trim() || !formNuevo.sociedad.razon_social?.trim() || !formNuevo.sociedad.nombre?.trim() || !formNuevo.sociedad.ruc?.trim()}>{saving ? 'Creando...' : 'Crear grupo'}</button>
           </div>
         </div>
       </>}
@@ -1549,7 +1602,7 @@ function Stub({title, description}) {
 // ============ CECO / CEBE ============
 function CecoCebePanel({ onClose }) {
   const {
-    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades,
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades, sociedadesDisponibles,
     crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
     crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
@@ -1557,7 +1610,7 @@ function CecoCebePanel({ onClose }) {
 
   const [tab, setTab] = useState('ceco');
 
-  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', sociedad_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cecoForm, setCecoForm] = useState(cecoBase);
   const [cecoEditId, setCecoEditId] = useState(null);
   const [cecoSaving, setCecoSaving] = useState(false);
@@ -1569,7 +1622,7 @@ function CecoCebePanel({ onClose }) {
   const [cecoImportRows, setCecoImportRows] = useState([]);
   const [cecoImportStep, setCecoImportStep] = useState(1);
 
-  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', sociedad_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cebeForm, setCebeForm] = useState(cebeBase);
   const [cebeEditId, setCebeEditId] = useState(null);
   const [cebeSaving, setCebeSaving] = useState(false);
@@ -1612,7 +1665,7 @@ function CecoCebePanel({ onClose }) {
   // ---- CECO ----
   const resetCecoForm = () => { setCecoForm(cecoBase); setCecoEditId(null); setCecoError(''); };
   const editarCeco = c => {
-    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', sociedad_id:c.sociedad_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCecoEditId(c.id); setCecoError('');
   };
   const guardarCeco = async e => {
@@ -1620,6 +1673,10 @@ function CecoCebePanel({ onClose }) {
     if (!cecoForm.codigo.trim()) return setCecoError('El código del CECO es obligatorio.');
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
     if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
+    if (empresa?.multisociedad_habilitado && !cecoForm.sociedad_id) return setCecoError('La sociedad es obligatoria.');
+    const cebeSeleccionado = (centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id);
+    if (empresa?.multisociedad_habilitado && !cebeSeleccionado?.sociedad_id) return setCecoError('El CEBE seleccionado no tiene sociedad asignada. Corrige el CEBE antes de guardar el CECO.');
+    if (empresa?.multisociedad_habilitado && cebeSeleccionado.sociedad_id !== cecoForm.sociedad_id) return setCecoError('La sociedad del CECO debe coincidir con la sociedad del CEBE padre.');
     if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
     const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
     if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
@@ -1643,13 +1700,14 @@ function CecoCebePanel({ onClose }) {
   // ---- CEBE ----
   const resetCebeForm = () => { setCebeForm(cebeBase); setCebeEditId(null); setCebeError(''); };
   const editarCebe = c => {
-    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', sociedad_id:c.sociedad_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCebeEditId(c.id); setCebeError('');
   };
   const guardarCebe = async e => {
     e.preventDefault();
     if (!cebeForm.codigo.trim()) return setCebeError('El código del CEBE es obligatorio.');
     if (!cebeForm.nombre.trim()) return setCebeError('El nombre es obligatorio.');
+    if (empresa?.multisociedad_habilitado && !cebeForm.sociedad_id) return setCebeError('La sociedad es obligatoria.');
     if ((centrosBeneficio||[]).some(c => c.codigo === cebeForm.codigo.trim() && c.id !== cebeEditId)) return setCebeError('Este código ya está en uso. Elige uno diferente.');
     setCebeSaving(true); setCebeError('');
     try {
@@ -1701,11 +1759,15 @@ function CecoCebePanel({ onClose }) {
     sedes,
     especialidades,
     usuarios,
+    sociedades: sociedadesDisponibles,
+    multisociedadHabilitado: Boolean(empresa?.multisociedad_habilitado),
   });
   const validarCebeImport = rows => validarFilasImportacionCebe(rows, {
     centrosBeneficio,
     cuentas,
     usuarios,
+    sociedades: sociedadesDisponibles,
+    multisociedadHabilitado: Boolean(empresa?.multisociedad_habilitado),
   });
   const exportCsv = (data, headers, filename) => {
     const rows = [headers.join(','), ...data.map(r => headers.map(h=>`"${r[h]??''}"` ).join(','))];
@@ -1799,6 +1861,7 @@ function CecoCebePanel({ onClose }) {
                     <label>Presupuesto mensual</label>
                     <input className="input" type="number" min="0" value={cecoForm.presupuesto_mensual} onChange={e=>setCecoForm(p=>({...p,presupuesto_mensual:e.target.value}))} placeholder="0.00"/>
                   </div>
+                  <SociedadFormField value={cecoForm.sociedad_id} onChange={sociedad_id => setCecoForm(prev => ({ ...prev, sociedad_id }))} />
                   {['proyecto','temporal'].includes(cecoForm.tipo) && <>
                     <div className="input-group">
                       <label>Fecha inicio</label>
@@ -1885,7 +1948,7 @@ function CecoCebePanel({ onClose }) {
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -1928,6 +1991,7 @@ function CecoCebePanel({ onClose }) {
                     <label>Meta de ingresos</label>
                     <input className="input" type="number" min="0" value={cebeForm.meta_ingresos} onChange={e=>setCebeForm(p=>({...p,meta_ingresos:e.target.value}))} placeholder="0.00"/>
                   </div>
+                  <SociedadFormField value={cebeForm.sociedad_id} onChange={sociedad_id => setCebeForm(prev => ({ ...prev, sociedad_id }))} />
                   <div className="input-group">
                     <label>Fecha inicio</label>
                     <input className="input" type="date" value={cebeForm.fecha_inicio} onChange={e=>setCebeForm(p=>({...p,fecha_inicio:e.target.value}))}/>
@@ -2076,7 +2140,7 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, estado</code></p>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es opcional.</p>
                     <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CEBEs'); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}
@@ -6583,10 +6647,264 @@ function EgresosConfigAdmin() {
   );
 }
 
+const SOCIEDAD_FORM_INICIAL = {
+  id: null,
+  razon_social: '',
+  nombre: '',
+  ruc: '',
+  codigo: '',
+  direccion_fiscal: '',
+  logo_url: null,
+  firma_url: null,
+  regimen_laboral: '',
+  pct_quincena_1: '',
+  hereda_pct_quincena: true,
+  activa: true,
+  es_principal: false,
+};
+
+const sociedadAFormulario = sociedad => ({
+  ...SOCIEDAD_FORM_INICIAL,
+  ...sociedad,
+  razon_social: sociedad?.razon_social || '',
+  nombre: sociedad?.nombre || '',
+  ruc: sociedad?.ruc || '',
+  codigo: sociedad?.codigo || '',
+  direccion_fiscal: sociedad?.direccion_fiscal || '',
+  regimen_laboral: sociedad?.regimen_laboral || '',
+  pct_quincena_1: sociedad?.pct_quincena_1 == null ? '' : String(sociedad.pct_quincena_1),
+  hereda_pct_quincena: sociedad?.pct_quincena_1 == null,
+  activa: sociedad?.activa !== false,
+  es_principal: Boolean(sociedad?.es_principal),
+});
+
+function SociedadesAdmin() {
+  const {
+    empresa,
+    subirImagenEmpresa,
+    recargarSociedades,
+    addNotificacion,
+  } = useApp();
+  const [sociedades, setSociedades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [form, setForm] = useState(null);
+  const [logoFileSociedad, setLogoFileSociedad] = useState(null);
+  const [firmaFileSociedad, setFirmaFileSociedad] = useState(null);
+  const [logoPreviewSociedad, setLogoPreviewSociedad] = useState(null);
+  const [firmaPreviewSociedad, setFirmaPreviewSociedad] = useState(null);
+  const [savingSociedad, setSavingSociedad] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const cargarSociedades = useCallback(async () => {
+    if (!empresa?.id) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      setSociedades(await listarSociedadesAdministracion(empresa.id));
+    } catch (error) {
+      setLoadError(error?.message || 'No se pudo cargar la lista de sociedades.');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => { cargarSociedades(); }, [cargarSociedades]);
+
+  const abrirFormulario = sociedad => {
+    const siguiente = sociedad ? sociedadAFormulario(sociedad) : { ...SOCIEDAD_FORM_INICIAL };
+    setForm(siguiente);
+    setLogoFileSociedad(null);
+    setFirmaFileSociedad(null);
+    setLogoPreviewSociedad(siguiente.logo_url || null);
+    setFirmaPreviewSociedad(siguiente.firma_url || null);
+    setFormError('');
+  };
+
+  const cerrarFormulario = () => {
+    setForm(null);
+    setLogoFileSociedad(null);
+    setFirmaFileSociedad(null);
+    setLogoPreviewSociedad(null);
+    setFirmaPreviewSociedad(null);
+    setFormError('');
+  };
+
+  const seleccionarImagenSociedad = (setFile, setPreview) => event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFile(file);
+    setPreview(URL.createObjectURL(file));
+  };
+
+  const guardarSociedad = async event => {
+    event.preventDefault();
+    setSavingSociedad(true);
+    setFormError('');
+    try {
+      const payload = {
+        razon_social: form.razon_social,
+        nombre: form.nombre,
+        ruc: form.ruc,
+        codigo: form.codigo,
+        direccion_fiscal: form.direccion_fiscal,
+        logo_url: form.logo_url,
+        firma_url: form.firma_url,
+        regimen_laboral: form.regimen_laboral || null,
+        pct_quincena_1: form.hereda_pct_quincena ? null : form.pct_quincena_1,
+        activa: Boolean(form.activa),
+      };
+
+      let guardada = form.id
+        ? await actualizarSociedad(form.id, empresa.id, payload)
+        : await crearSociedad({ ...payload, empresa_id: empresa.id, es_principal: false });
+
+      const urls = {};
+      const advertencias = [];
+      if (logoFileSociedad) {
+        try {
+          const subida = await subirImagenEmpresa(`sociedad-${guardada.id}-logo`, logoFileSociedad);
+          urls.logo_url = typeof subida === 'string' ? subida : subida?.url;
+        } catch (error) {
+          advertencias.push(`logo: ${error?.message || 'error de storage'}`);
+        }
+      }
+      if (firmaFileSociedad) {
+        try {
+          const subida = await subirImagenEmpresa(`sociedad-${guardada.id}-firma`, firmaFileSociedad);
+          urls.firma_url = typeof subida === 'string' ? subida : subida?.url;
+        } catch (error) {
+          advertencias.push(`firma: ${error?.message || 'error de storage'}`);
+        }
+      }
+      if (Object.values(urls).some(Boolean)) {
+        guardada = await actualizarSociedad(guardada.id, empresa.id, urls);
+      }
+
+      await cargarSociedades();
+      await recargarSociedades?.();
+      cerrarFormulario();
+      addNotificacion(advertencias.length
+        ? `Sociedad guardada. No se pudo subir ${advertencias.join(' / ')}.`
+        : 'Sociedad guardada correctamente.');
+    } catch (error) {
+      const mensaje = error?.message || 'No se pudo guardar la sociedad.';
+      setFormError(mensaje);
+      addNotificacion(`No se pudo guardar la sociedad: ${mensaje}`);
+    } finally {
+      setSavingSociedad(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="card params-card mb-6">
+        <div className="card-head">
+          <div>
+            <h3>Sociedades del grupo</h3>
+            <div className="text-muted" style={{fontSize:12, marginTop:4}}>Administra la identidad legal y los overrides de nomina de cada sociedad.</div>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => abrirFormulario(null)}>{I.plus} Nueva sociedad</button>
+        </div>
+        {loadError && <div className="alert alert-danger" style={{margin:16}}>{loadError}</div>}
+        {loading ? (
+          <div className="card-body text-muted">Cargando sociedades...</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead><tr><th>Sociedad</th><th>Codigo</th><th>RUC</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+              <tbody>
+                {sociedades.map(sociedad => (
+                  <tr key={sociedad.id}>
+                    <td>
+                      <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                        <strong>{sociedad.nombre}</strong>
+                        {sociedad.es_principal && <span className="badge badge-cyan">Principal</span>}
+                      </div>
+                      {sociedad.razon_social && <div className="text-muted" style={{fontSize:11, marginTop:2}}>{sociedad.razon_social}</div>}
+                    </td>
+                    <td><span className="mono">{sociedad.codigo}</span></td>
+                    <td>{sociedad.ruc || '-'}</td>
+                    <td><span className={`badge ${sociedad.activa ? 'badge-green' : 'badge-gray'}`}>{sociedad.activa ? 'Activa' : 'Inactiva'}</span></td>
+                    <td style={{textAlign:'right'}}><button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirFormulario(sociedad)}>{I.edit} Editar</button></td>
+                  </tr>
+                ))}
+                {!sociedades.length && <tr><td colSpan={5} className="text-muted" style={{textAlign:'center', padding:24}}>No hay sociedades registradas.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {form && (
+        <div className="modal-backdrop" onClick={event => { if (event.target === event.currentTarget && !savingSociedad) cerrarFormulario(); }}>
+          <div className="modal" style={{maxWidth:760, width:'min(760px, calc(100vw - 32px))'}}>
+            <div className="modal-head">
+              <div><h3>{form.id ? 'Editar sociedad' : 'Nueva sociedad'}</h3>{form.es_principal && <span className="badge badge-cyan" style={{marginTop:6}}>Sociedad Principal</span>}</div>
+              <button type="button" className="icon-btn" disabled={savingSociedad} onClick={cerrarFormulario}>{I.x}</button>
+            </div>
+            <form onSubmit={guardarSociedad}>
+              <div className="modal-body" style={{maxHeight:'70vh', overflowY:'auto'}}>
+                {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
+                <div className="grid-2" style={{gap:16}}>
+                  <div className="input-group"><label>Razon social</label><input className="input" required value={form.razon_social} onChange={e=>setForm(p=>({...p,razon_social:e.target.value}))}/></div>
+                  <div className="input-group"><label>Nombre comercial</label><input className="input" required value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))}/></div>
+                  <div className="input-group"><label>RUC</label><input className="input" required value={form.ruc} onChange={e=>setForm(p=>({...p,ruc:e.target.value}))}/></div>
+                  <div className="input-group"><label>Codigo</label><input className="input" value={form.codigo} onChange={e=>setForm(p=>({...p,codigo:e.target.value}))} placeholder="Se genera desde el nombre si se deja vacio"/></div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Direccion fiscal</label><input className="input" value={form.direccion_fiscal} onChange={e=>setForm(p=>({...p,direccion_fiscal:e.target.value}))}/></div>
+
+                  <div className="input-group">
+                    <label>Logo</label>
+                    <div style={{width:150, height:82, border:'1px dashed var(--border)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', marginBottom:8}}>
+                      {logoPreviewSociedad ? <img src={logoPreviewSociedad} alt="Logo de la sociedad" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span className="text-muted" style={{fontSize:11}}>Sin logo</span>}
+                    </div>
+                    <label className="btn btn-secondary btn-sm" style={{cursor:'pointer', width:'fit-content'}}>{I.upload} Subir logo<input type="file" accept="image/*" hidden onChange={seleccionarImagenSociedad(setLogoFileSociedad, setLogoPreviewSociedad)}/></label>
+                  </div>
+                  <div className="input-group">
+                    <label>Firma</label>
+                    <div style={{width:180, height:82, border:'1px dashed var(--border)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', marginBottom:8}}>
+                      {firmaPreviewSociedad ? <img src={firmaPreviewSociedad} alt="Firma de la sociedad" style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}/> : <span className="text-muted" style={{fontSize:11}}>Sin firma</span>}
+                    </div>
+                    <label className="btn btn-secondary btn-sm" style={{cursor:'pointer', width:'fit-content'}}>{I.upload} Subir firma<input type="file" accept="image/*" hidden onChange={seleccionarImagenSociedad(setFirmaFileSociedad, setFirmaPreviewSociedad)}/></label>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Regimen laboral</label>
+                    <select className="select" value={form.regimen_laboral} onChange={e=>setForm(p=>({...p,regimen_laboral:e.target.value}))}>
+                      <option value="">Heredar del tenant</option>
+                      <option value="general">General</option>
+                      <option value="pequena_empresa">Pequena empresa</option>
+                      <option value="microempresa">Microempresa</option>
+                    </select>
+                  </div>
+                  <div className="input-group">
+                    <label>% Quincena 1</label>
+                    <label style={{display:'flex', alignItems:'center', gap:8, fontSize:12, marginBottom:8, cursor:'pointer'}}><input type="checkbox" checked={form.hereda_pct_quincena} onChange={e=>setForm(p=>({...p,hereda_pct_quincena:e.target.checked,pct_quincena_1:e.target.checked?'':p.pct_quincena_1}))}/> Heredar del tenant</label>
+                    <input className="input" type="number" min="1" max="99" step="0.01" required={!form.hereda_pct_quincena} disabled={form.hereda_pct_quincena} value={form.pct_quincena_1} onChange={e=>setForm(p=>({...p,pct_quincena_1:e.target.value}))}/>
+                  </div>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer'}}><input type="checkbox" checked={form.activa} onChange={e=>setForm(p=>({...p,activa:e.target.checked}))}/> Sociedad activa</label>
+                    <div className="text-muted" style={{fontSize:11, marginTop:5}}>La base de datos impedira desactivar la ultima sociedad activa del tenant.</div>
+                  </div>
+                </div>
+              </div>
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8}}>
+                <button type="button" className="btn btn-secondary" disabled={savingSociedad} onClick={cerrarFormulario}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingSociedad}>{I.save} {savingSociedad ? 'Guardando...' : 'Guardar sociedad'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function Parametros() {
   const {
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa, addNotificacion,
+    empresa, role, authUser, membresiaActiva,
     afpParametros = AFP_PARAMETROS_DEFAULT, guardarAfpParametro,
     seriesDocumentarias = [], slaPlantillas = [], diccionarioComercial = [],
     monedasImpuestosUnidades = [],
@@ -6637,6 +6955,18 @@ function Parametros() {
   const [logoPreview, setLogoPreview]   = useState(null);
   const [firmaPreview, setFirmaPreview] = useState(null);
   const [paramSection, setParamSection] = useState('identidad');
+  const puedeAdministrarSociedades = Boolean(
+    empresa?.multisociedad_habilitado
+    && (
+      authUser?.es_admin_empresa
+      || authUser?.es_superadmin
+      || (membresiaActiva && (role?.es_admin_empresa || role?.permisos?.tenant_admin || role?.permisos?.todo))
+    )
+  );
+
+  useEffect(() => {
+    if (paramSection === 'sociedades' && !puedeAdministrarSociedades) setParamSection('identidad');
+  }, [paramSection, puedeAdministrarSociedades]);
 
   // ── Estado configuración de nómina ──
   const nominaBase = {
@@ -7043,6 +7373,9 @@ function Parametros() {
     .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)));
   const paramsSections = [
     { key: 'identidad', title: 'Identidad', description: 'Datos legales, marca, firma y colores que viajan a tus PDFs.' },
+    ...(puedeAdministrarSociedades
+      ? [{ key: 'sociedades', title: 'Sociedades', description: 'Identidad legal, estado y configuracion de nomina por sociedad.' }]
+      : []),
     { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
     { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
     { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
@@ -7832,7 +8165,11 @@ function Parametros() {
             <EgresosConfigAdmin />
           )}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && (
+          {paramSection === 'sociedades' && puedeAdministrarSociedades && (
+            <SociedadesAdmin />
+          )}
+
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
@@ -7913,7 +8250,7 @@ const rrhhAdminEsDocContrato = (doc = {}, tiposDocumento = []) => {
     return false;
   }
   const tipo = tiposDocumento.find(t => t.id === doc.tipo_documento_id || t.id === doc.tipo_doc);
-  return Boolean(tipo?.captura_snapshot_laboral && !tipo?.documento_padre_tipo_id);
+  return rrhhAdminEsTipoContrato(tipo);
 };
 const rrhhAdminContratoActivoPersonal = (docs = [], personalId, tiposDocumento = []) =>
   (docs || [])
@@ -7940,7 +8277,7 @@ const rrhhAdminContratoTipoDocValue = (tipos = []) => {
     console.warn('rrhhAdminContratoTipoDocValue: catálogo tipos no disponible. Fallback por texto desactivado.');
     return null;
   }
-  const tipo = tipos.find(t => t.captura_snapshot_laboral && !t.documento_padre_tipo_id);
+  const tipo = tipos.find(rrhhAdminEsTipoContrato);
   return tipo?.id || tipo?.key || null;
 };
 const rrhhAdminTipoDocumentoTexto = (tipo, fallback = '') => [
@@ -7948,7 +8285,9 @@ const rrhhAdminTipoDocumentoTexto = (tipo, fallback = '') => [
 ].map(rrhhAdminContratoDocTexto).join(' ');
 const rrhhAdminEsTipoContrato = (tipo) => {
   if (!tipo) return false;
-  return Boolean(tipo.captura_snapshot_laboral && !tipo.documento_padre_tipo_id);
+  const descriptor = rrhhAdminTipoDocumentoTexto(tipo);
+  const esAdenda = Boolean(tipo.documento_padre_tipo_id) || descriptor.includes('adenda');
+  return !esAdenda && (descriptor.includes('contrato') || rrhhAdminContratoDocTexto(tipo.categoria) === 'contractual' || Boolean(tipo.captura_snapshot_laboral));
 };
 const rrhhAdminEsTipoAdenda = (tipo, fallback = '') =>
   Boolean(tipo?.documento_padre_tipo_id) ||
@@ -8442,7 +8781,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -8462,7 +8801,7 @@ function RRHHAdmin() {
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
   // Estados para subida de documentos en tab Documentos
-  const docUploadFormBase = { tipoDoc: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
+  const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -8478,6 +8817,9 @@ function RRHHAdmin() {
   const [formAsigAdminError, setFormAsigAdminError] = useState('');
   const [retroWallAsigAdmin, setRetroWallAsigAdmin] = useState(null);
   const [retroWallMotivoAsigAdmin, setRetroWallMotivoAsigAdmin] = useState('');
+  const [deletingAsigAdminId, setDeletingAsigAdminId] = useState(null);
+  const [retroWallDeleteAsigAdmin, setRetroWallDeleteAsigAdmin] = useState(null);
+  const [retroWallMotivoDeleteAsigAdmin, setRetroWallMotivoDeleteAsigAdmin] = useState('');
 
   const COLUMNAS_DEFAULT_ADMIN = [
     { key: 'codigo', label: 'Código' },
@@ -8507,7 +8849,7 @@ function RRHHAdmin() {
   const [previewLoadingUrlAdmin, setPreviewLoadingUrlAdmin] = useState(false);
   const visorTimerRefAdmin = useRef(null);
 
-  const inlineUploadFormBase = { fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
+  const inlineUploadFormBase = { sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', modoSubida: 'nueva_version', periodoIdAnterior: null, esIndefinido: false };
   const [inlineUploadReq, setInlineUploadReq] = useState(null);
   const [inlineUploadForm, setInlineUploadForm] = useState(inlineUploadFormBase);
   const [inlineUploadFile, setInlineUploadFile] = useState(null);
@@ -9382,10 +9724,29 @@ function RRHHAdmin() {
                 const mensaje = 'Completa la fecha de inicio del ciclo.';
                 setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
               }
+              const eliminarAsigAdmin = async (id, overrideOpts) => {
+                if (!confirm('¿Estás seguro de eliminar el tramo actual (el más reciente) de este trabajador?')) return;
+                const forzarOverride = overrideOpts?.forzarOverride || false;
+                const motivoOverride = overrideOpts?.motivoOverride || null;
+                setDeletingAsigAdminId(id); setRetroWallDeleteAsigAdmin(null);
+                try {
+                  await eliminarAsignacionJornadaCtx(id, forzarOverride, motivoOverride);
+                  setDeletingAsigAdminId(null);
+                  setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin('');
+                  addNotificacion('Tramo de jornada eliminado.');
+                } catch (e) {
+                  setDeletingAsigAdminId(null);
+                  const msg = e.message || '';
+                  if (msg.startsWith('RETRO_WALL_PERMISO:')) addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                  else if (msg.startsWith('RETRO_WALL:')) setRetroWallDeleteAsigAdmin(msg.replace('RETRO_WALL:', '').trim());
+                  else addNotificacion(msg || 'Error al eliminar asignación.', 'error');
+                }
+              };
               setSavingAsigAdmin(true); setRetroWallAsigAdmin(null); setFormAsigAdminError('');
               try {
                 await crearAsignacionJornadaCtx(persona.id, 'administrativo', {
                   ...formAsigAdmin,
+                  fecha_inicio: !asigActiva ? fechaInicioSugerida : formAsigAdmin.fecha_inicio,
                   tipo_tramo: 'normal',
                   regimen_jornada: preset.regimen,
                   dias_ciclo_trabajo: preset.trabajo,
@@ -9424,7 +9785,7 @@ function RRHHAdmin() {
 
               {showFormAsigAdmin && <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
                 <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group"><label>Fecha de inicio</label><input className="input" type="date" value={formAsigAdmin.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsigAdmin(f => ({...f, fecha_inicio:fecha, fecha_fin:f.fecha_fin || finContratoParaFecha(fecha) || ''})); setFormAsigAdminError(''); }} /></div>
+                  <div className="input-group"><label>Fecha de inicio {!asigActiva && <span className="text-muted" style={{fontWeight:'normal'}}>(obligatoria por continuidad)</span>}</label><input className="input" type="date" disabled={!asigActiva} value={formAsigAdmin.fecha_inicio} onChange={e => { const fecha = e.target.value; setFormAsigAdmin(f => ({...f, fecha_inicio:fecha, fecha_fin:f.fecha_fin || finContratoParaFecha(fecha) || ''})); setFormAsigAdminError(''); }} /></div>
                   <div className="input-group"><label>Fecha de fin {finContratoSugerido ? <span className="text-muted">(propuesta: vence contrato {finContratoSugerido})</span> : <span className="text-muted">(opcional)</span>}</label><input className="input" type="date" min={formAsigAdmin.fecha_inicio || undefined} value={formAsigAdmin.fecha_fin} onChange={e => { setFormAsigAdmin(f => ({...f, fecha_fin:e.target.value})); setFormAsigAdminError(''); }} /></div>
                   {formAsigAdmin.fecha_fin && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_fin < formAsigAdmin.fecha_inicio && <div className="alert alert-danger" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>La fecha de fin debe ser igual o posterior a la fecha de inicio.</div>}
                   {fechaAnteriorATramoVigente && <div className="alert alert-warning" style={{gridColumn:'1/-1', fontSize:12, margin:0}}>Esta fecha queda antes del tramo vigente actual ({asigActiva.fecha_inicio}). Es una advertencia: si el período tiene nómina procesada, el retro wall pedirá justificación y autorización al guardar.</div>}
@@ -9446,8 +9807,17 @@ function RRHHAdmin() {
                 <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}><button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsigAdmin(false); setFormAsigAdminError(''); }}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={() => guardarAsignacion()} disabled={savingAsigAdmin}>{savingAsigAdmin ? 'Guardando...' : 'Guardar asignación'}</button></div>
               </div>}
 
+              {retroWallDeleteAsigAdmin && <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, marginTop:12, marginBottom:16}}>
+                <div style={{color:'var(--danger)', fontWeight:600, marginBottom:6}}>Eliminación bloqueada por nómina ya procesada</div><div>{retroWallDeleteAsigAdmin}</div>
+                <div className="input-group" style={{marginTop:8}}><label>Justificación para forzar la eliminación (obligatoria)</label><textarea className="input" rows={2} value={retroWallMotivoDeleteAsigAdmin} onChange={e => setRetroWallMotivoDeleteAsigAdmin(e.target.value)} /></div>
+                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin(''); setDeletingAsigAdminId(null); }}>Cancelar</button>
+                  <button className="btn btn-danger btn-sm" disabled={!deletingAsigAdminId || !retroWallMotivoDeleteAsigAdmin.trim()} onClick={() => eliminarAsigAdmin(deletingAsigAdminId, {forzarOverride:true, motivoOverride:retroWallMotivoDeleteAsigAdmin.trim()})}>Forzar eliminación (requiere autorización)</button>
+                </div>
+              </div>}
+
               <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
-              {asigsTrabajador.length === 0 ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div> : <div className="table-wrap"><table className="tbl" style={{fontSize:12, width:'100%'}}><thead><tr><th>Desde</th><th>Hasta</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th></tr></thead><tbody>{asigsTrabajador.map(a => <tr key={a.id}><td>{a.fecha_inicio}</td><td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td><td>{presets[presetDeAsignacion(a)]?.label || a.regimen_jornada}</td><td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} · inicio ${a.fecha_inicio_ciclo || '—'}` : '—'}</td><td className="text-muted">{a.motivo || '—'}</td></tr>)}</tbody></table></div>}
+              {asigsTrabajador.length === 0 ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div> : <div className="table-wrap"><table className="tbl" style={{fontSize:12, width:'100%'}}><thead><tr><th>Desde</th><th>Hasta</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th><th>Acciones</th></tr></thead><tbody>{asigsTrabajador.map((a, i) => { const isVigente = i === 0; return <tr key={a.id}><td>{a.fecha_inicio}</td><td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td><td>{presets[presetDeAsignacion(a)]?.label || a.regimen_jornada}</td><td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} · inicio ${a.fecha_inicio_ciclo || '—'}` : '—'}</td><td className="text-muted">{a.motivo || '—'}</td><td>{isVigente && <button className="btn btn-danger btn-sm" onClick={() => eliminarAsigAdmin(a.id)} disabled={deletingAsigAdminId === a.id} style={{padding:'2px 8px', fontSize:11}}>{deletingAsigAdminId === a.id ? 'Eliminando...' : 'Eliminar'}</button>}</td></tr>; })}</tbody></table></div>}
             </div>;
           })()}
 
@@ -9767,6 +10137,7 @@ function RRHHAdmin() {
               const inlineEsContrato = rrhhAdminEsTipoContrato(inlineUploadReq.tipo);
               const inlineEsAdenda = rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id);
               if (inlineEsAdenda && !inlineUploadForm.contratoReferenciaId) { setInlineUploadError('Selecciona el contrato original que modifica la adenda.'); return; }
+              if (empresa?.multisociedad_habilitado && inlineEsContrato && !inlineUploadForm.sociedadId) { setInlineUploadError('Selecciona la sociedad empleadora.'); return; }
               const esCorreccion = inlineUploadForm.modoSubida === 'corregir' && inlineUploadReq.doc;
               const esNuevoContrato = inlineUploadForm.modoSubida === 'nuevo_contrato';
               if (inlineUploadReq.tipo?.exige_vencimiento && !inlineEsAdenda && !inlineUploadForm.esIndefinido && !inlineUploadForm.fechaVencimiento) {
@@ -9795,6 +10166,9 @@ function RRHHAdmin() {
                   tipo_contrato: inlineUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
                   descripcion_cambio: inlineUploadForm.descripcionCambio || '',
                 }) : {};
+                const sociedadDocumento = inlineEsAdenda
+                  ? contratosValidados.find(d => d.id === inlineUploadForm.contratoReferenciaId)?.sociedad_id
+                  : inlineUploadForm.sociedadId;
                 if (esNuevoContrato) {
                   await nuevoContratoPeriodoCtx({
                     personalId: persona.id, personalTipo: 'administrativo',
@@ -9803,10 +10177,11 @@ function RRHHAdmin() {
                     file: inlineUploadFile,
                     fechaEmision: inlineUploadForm.fechaEmision || null,
                     fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
-          es_indefinido: inlineUploadForm.esIndefinido,
+                    esIndefinido: inlineUploadForm.esIndefinido,
                     notas: inlineUploadForm.notas || null,
                     condicionesLaborales,
                     periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    sociedadId: sociedadDocumento || null,
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Nuevo contrato creado. El período anterior quedó archivado.');
@@ -9825,6 +10200,22 @@ function RRHHAdmin() {
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
+                } else if (inlineEsContrato && empresa?.multisociedad_habilitado) {
+                  await nuevoContratoPeriodoCtx({
+                    personalId: persona.id, personalTipo: 'administrativo',
+                    tipoDoc: inlineUploadReq.tipo_documento_id,
+                    tipoDocumentoId: inlineUploadReq.tipo_documento_id,
+                    file: inlineUploadFile,
+                    fechaEmision: inlineUploadForm.fechaEmision || null,
+                    fechaVencimiento: inlineUploadForm.esIndefinido ? null : (inlineUploadForm.fechaVencimiento || null),
+                    notas: inlineUploadForm.notas || null,
+                    condicionesLaborales,
+                    periodoIdAnterior: inlineUploadForm.periodoIdAnterior || null,
+                    esIndefinido: inlineUploadForm.esIndefinido,
+                    sociedadId: sociedadDocumento,
+                    forzarOverride, motivoOverride,
+                  });
+                  addNotificacion('Contrato de la sociedad registrado correctamente.');
                 } else {
                   await subirDocumentoPersonalCtx({
                     personalId: persona.id, personalTipo: 'administrativo',
@@ -9847,6 +10238,7 @@ function RRHHAdmin() {
                     seccionDocumental: 'requisito_cargo',
                     contratoPeriodoId: inlineUploadForm.periodoIdAnterior || null,
                     forzarOverride, motivoOverride,
+                    sociedadId: sociedadDocumento || null,
                   });
                   addNotificacion('Documento subido correctamente.');
                 }
@@ -9873,6 +10265,7 @@ function RRHHAdmin() {
               e.preventDefault();
               if (!docUploadFile || !docUploadForm.tipoDoc) { setDocUploadError('Selecciona el tipo y el archivo.'); return; }
               if (docUploadEsAdendaAdmin && !docUploadForm.contratoReferenciaId) { setDocUploadError('Selecciona el contrato original que modifica la adenda.'); return; }
+              if (empresa?.multisociedad_habilitado && docUploadEsContratoAdmin && !docUploadForm.sociedadId) { setDocUploadError('Selecciona la sociedad empleadora.'); return; }
               setDocUploading(true); setDocUploadError('');
               try {
                 const cargoSelDoc = cargos.find(c => c.id === docUploadForm.cargoIdFirma);
@@ -9893,7 +10286,10 @@ function RRHHAdmin() {
                   tipo_contrato: docUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
                   descripcion_cambio: docUploadForm.descripcionCambio || '',
                 }) : {};
-                await subirDocumentoPersonalCtx({
+                const sociedadDocumento = docUploadEsAdendaAdmin
+                  ? contratosValidados.find(d => d.id === docUploadForm.contratoReferenciaId)?.sociedad_id
+                  : docUploadForm.sociedadId;
+                const payloadDocumento = {
                   personalId: persona.id, personalTipo: 'administrativo',
                   tipoDoc: docUploadForm.tipoDoc,
                   tipoDocumentoId: tiposDocAdminLocal.length > 0 ? docUploadForm.tipoDoc : null,
@@ -9912,7 +10308,13 @@ function RRHHAdmin() {
                   } : {},
                   fechaVigenciaCambio: docUploadEsAdendaAdmin ? (docUploadForm.fechaVigenciaCambio || null) : null,
                   seccionDocumental: 'adicional',
-                });
+                  sociedadId: sociedadDocumento || null,
+                };
+                if (docUploadEsContratoAdmin && empresa?.multisociedad_habilitado) {
+                  await nuevoContratoPeriodoCtx({ ...payloadDocumento, esIndefinido: docUploadForm.esIndefinido });
+                } else {
+                  await subirDocumentoPersonalCtx(payloadDocumento);
+                }
                 setDocUploadFile(null);
                 setDocUploadForm(docUploadFormBase);
                 addNotificacion('Documento subido correctamente.');
@@ -10466,6 +10868,9 @@ function RRHHAdmin() {
                           )}
                           {(rrhhAdminEsTipoContrato(inlineUploadReq.tipo) || rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
                             <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                              {rrhhAdminEsTipoContrato(inlineUploadReq.tipo) && (
+                                <SociedadFormField label="Sociedad empleadora" value={inlineUploadForm.sociedadId} onChange={sociedadId=>setInlineUploadForm(f=>({...f,sociedadId}))} />
+                              )}
                               {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (
                                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                                   <label>Modo de guardado</label>
@@ -10661,6 +11066,9 @@ function RRHHAdmin() {
                         </div>
                         {(docUploadEsContratoAdmin || docUploadEsAdendaAdmin) && (
                           <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                            {docUploadEsContratoAdmin && (
+                              <SociedadFormField label="Sociedad empleadora" value={docUploadForm.sociedadId} onChange={sociedadId=>setDocUploadForm(f=>({...f,sociedadId}))} />
+                            )}
                             {docUploadEsAdendaAdmin && <>
                               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
                               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>

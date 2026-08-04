@@ -7,6 +7,7 @@ import { cajaChicaService } from '../services/cajaChicaService.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
+import { SociedadFormField } from './SociedadFormField.jsx';
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
@@ -117,6 +118,7 @@ const FORM_VACIO = {
   monto:            '',
   moneda:           'PEN',
   centro_costo_id:  '',
+  sociedad_id:      '',
   ot_vinc_id:       '',
   ya_pagado:        false,
   metodo_pago:      'Transferencia bancaria',
@@ -480,6 +482,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         )}
       </div>
 
+      <SociedadFormField value={form.sociedad_id} onChange={value => setF('sociedad_id', value)} />
+
       {/* OT vinculada (opcional) */}
       <div className="input-group">
         <label>OT vinculada <span style={{ color: 'var(--fg-muted)', fontWeight: 400, fontSize: 11 }}>(opcional)</span></label>
@@ -720,6 +724,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           onClick={() => {
             let ok = true;
             if (!form.centro_costo_id) { setErrCeco(true); ok = false; }
+            if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); ok = false; }
             if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); ok = false; }
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
@@ -818,6 +823,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
     if (!form.centro_costo_id) { setErrCeco(true); setPaso(2); return; }
+    if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
     if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {
       setErrFondo(true);
@@ -845,6 +851,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       const gastoBase = {
         id:                 gastoId,
         empresa_id:         empresa.id,
+        sociedad_id:        empresa?.multisociedad_habilitado ? form.sociedad_id : null,
         tipo:               'gasto',
         descripcion:        form.concepto.trim(),
         categoria,
@@ -884,6 +891,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const gastoPayload = {
           id:               gastoId,
           empresa_id:       empresa.id,
+          sociedad_id:      empresa?.multisociedad_habilitado ? form.sociedad_id : null,
           tipo:             'gasto',
           descripcion:      form.concepto.trim(),
           categoria,
@@ -933,6 +941,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const ccRecord = {
           id:                ccId,
           empresa_id:        empresa.id,
+          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
           fecha:             form.fecha,
           concepto:          form.concepto.trim(),
           monto,
@@ -973,6 +982,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
+          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -999,6 +1009,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const pagoRecord = {
           id:                pagoId,
           empresa_id:        empresa.id,
+          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
           cxp_id:            cxpId,
           fecha_pago:        fechaPago,
           monto,
@@ -1055,6 +1066,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
+          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',

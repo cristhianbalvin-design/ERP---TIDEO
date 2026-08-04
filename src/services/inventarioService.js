@@ -60,6 +60,7 @@ export async function registrarMovimiento(empresaId, {
   precio_unitario_provisional = null,
   precio_unitario_real = null,
   recepcion_id = null,
+  sociedad_id = null,
 }, { skipCostoPromedio = false } = {}) {
   const supabase = await getSupabaseClient();
   if (!empresaId || !material_id || !almacen_id || !cantidad || cantidad <= 0) {
@@ -67,9 +68,11 @@ export async function registrarMovimiento(empresaId, {
   }
 
   // 1. Leer stock actual
-  const { data: stockRow } = await supabase.from('stock').select('*')
+  let stockQuery = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
-    .is('lote', lote).is('serie', serie).maybeSingle();
+    .is('lote', lote).is('serie', serie);
+  stockQuery = sociedad_id ? stockQuery.eq('sociedad_id', sociedad_id) : stockQuery.is('sociedad_id', null);
+  const { data: stockRow } = await stockQuery.maybeSingle();
 
   const stockFisico = Number(stockRow?.fisico ?? stockRow?.disponible ?? 0);
   const stockDisponible = Number(stockRow?.disponible ?? 0);
@@ -116,6 +119,7 @@ export async function registrarMovimiento(empresaId, {
     empresa_id: empresaId,
     material_id,
     almacen_id,
+    sociedad_id,
     tipo,
     motivo: motivo || tipo,
     cantidad,
@@ -166,6 +170,7 @@ export async function registrarMovimiento(empresaId, {
       empresa_id: empresaId,
       material_id,
       almacen_id,
+      sociedad_id,
       fisico: nuevoFisico,
       disponible: nuevoDisponible,
       reservado: 0,
@@ -194,7 +199,7 @@ export async function registrarEntrada(empresaId, form, usuarioId) {
   const {
     material_id, almacen_id, almacen_codigo, cantidad, costo_unitario = 0,
     costo_unitario_usd = 0, moneda = 'PEN', motivo = 'saldo_inicial',
-    lote, serie, vencimiento, proveedor_id, nro_documento, observacion,
+    lote, serie, vencimiento, proveedor_id, nro_documento, observacion, sociedad_id = null,
   } = form;
 
   if (!material_id) throw new Error('Material requerido');
@@ -222,6 +227,7 @@ export async function registrarEntrada(empresaId, form, usuarioId) {
     proveedor_id: proveedor_id || null, nro_documento: nro_documento || null,
     referencia_tipo: motivo, referencia_id: null, observacion: observacion || null,
     usuario_id: usuarioId,
+    sociedad_id,
   });
 }
 
@@ -242,6 +248,7 @@ export async function registrarSalidaDevolucion(empresaId, form, usuarioId) {
     proveedor_id: form.proveedor_id || null,
     observacion: form.observacion || null,
     usuario_id: usuarioId,
+    sociedad_id: form.sociedad_id || null,
   });
 }
 
@@ -249,23 +256,29 @@ export async function registrarSalidaDevolucion(empresaId, form, usuarioId) {
 // motivos: 'consumo_ot' | 'despacho' | 'merma' | 'devolucion_proveedor'
 export async function registrarSalida(empresaId, form, usuarioId) {
   const { material_id, almacen_id, cantidad, motivo = 'consumo_ot',
-    referencia_tipo, referencia_id, lote, serie, observacion } = form;
+    referencia_tipo, referencia_id, lote, serie, observacion, sociedad_id = null } = form;
   if (!material_id) throw new Error('Material requerido');
   if (!cantidad || Number(cantidad) <= 0) throw new Error('Cantidad debe ser mayor a cero');
   return registrarMovimiento(empresaId, {
     tipo: 'salida', motivo, material_id, almacen_id,
     cantidad: Number(cantidad), lote: lote || null, serie: serie || null,
     referencia_tipo, referencia_id, observacion, usuario_id: usuarioId,
+    sociedad_id,
   });
 }
 
 // ─── Transferencia entre almacenes ────────────────────────────────────────────
 export async function registrarTransferencia(empresaId, form, usuarioId) {
-  const { material_id, almacen_origen_id, almacen_destino_id, cantidad, lote, serie, observacion } = form;
+  const { material_id, almacen_origen_id, almacen_destino_id, cantidad, lote, serie, observacion,
+    sociedad_origen_id = null, sociedad_destino_id = null, tipo_origen = 'traslado_interno' } = form;
   if (!material_id) throw new Error('Material requerido');
   if (!almacen_origen_id || !almacen_destino_id) throw new Error('Almacén origen y destino requeridos');
   if (almacen_origen_id === almacen_destino_id) throw new Error('Origen y destino no pueden ser el mismo almacén');
   if (!cantidad || Number(cantidad) <= 0) throw new Error('Cantidad debe ser mayor a cero');
+  const esEntreSociedades = sociedad_origen_id && sociedad_destino_id && sociedad_origen_id !== sociedad_destino_id;
+  if (esEntreSociedades && tipo_origen !== 'transferencia_intercompania') {
+    throw new Error('Una transferencia entre sociedades requiere una guía de transferencia intercompañía.');
+  }
 
   const supabase = await getSupabaseClient();
   const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', material_id).maybeSingle();
@@ -277,6 +290,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
     almacen_id: almacen_origen_id, cantidad: Number(cantidad),
     costo_unitario: costoPromedio, lote: lote || null, serie: serie || null,
     referencia_tipo: 'transferencia', observacion, usuario_id: usuarioId,
+    sociedad_id: sociedad_origen_id,
   }, { skipCostoPromedio: true });
 
   // Entrada al destino (conserva costo y lote/serie del origen)
@@ -286,6 +300,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
     costo_unitario: costoPromedio, lote: lote || null, serie: serie || null,
     referencia_tipo: 'transferencia', referencia_id: salida.kardex_id,
     observacion, usuario_id: usuarioId,
+    sociedad_id: sociedad_destino_id || sociedad_origen_id,
   }, { skipCostoPromedio: true });
 
   return { salida, entrada };
@@ -294,7 +309,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
 // ─── Ajuste de inventario ─────────────────────────────────────────────────────
 // delta positivo = ajuste positivo; delta negativo = ajuste negativo (merma/pérdida)
 export async function registrarAjuste(empresaId, form, usuarioId) {
-  const { material_id, almacen_id, cantidad_teorica, cantidad_fisica, motivo = 'ajuste_conteo', observacion, lote, serie, referencia_tipo = 'ajuste', referencia_id = null } = form;
+  const { material_id, almacen_id, cantidad_teorica, cantidad_fisica, motivo = 'ajuste_conteo', observacion, lote, serie, referencia_tipo = 'ajuste', referencia_id = null, sociedad_id = null } = form;
   const supabase = await getSupabaseClient();
 
   if (!material_id) throw new Error('Material requerido');
@@ -315,16 +330,19 @@ export async function registrarAjuste(empresaId, form, usuarioId) {
     lote: lote || null, serie: serie || null,
     referencia_tipo, referencia_id, observacion,
     usuario_id: usuarioId,
+    sociedad_id,
   });
 }
 
 // ─── Reserva de stock ─────────────────────────────────────────────────────────
 // Reduce disponible sin tocar físico. El consumo posterior convierte la reserva en salida.
-export async function reservarStock(empresaId, material_id, almacen_id, cantidad, otId) {
+export async function reservarStock(empresaId, material_id, almacen_id, cantidad, otId, sociedadId = null) {
   const supabase = await getSupabaseClient();
-  const { data: stockRow } = await supabase.from('stock').select('*')
+  let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
-    .is('lote', null).is('serie', null).maybeSingle();
+    .is('lote', null).is('serie', null);
+  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  const { data: stockRow } = await query.maybeSingle();
 
   if (!stockRow) throw new Error('No hay stock de este material en el almacén indicado');
   if (Number(stockRow.disponible) < cantidad) {
@@ -340,11 +358,13 @@ export async function reservarStock(empresaId, material_id, almacen_id, cantidad
   return true;
 }
 
-export async function liberarReserva(empresaId, material_id, almacen_id, cantidad) {
+export async function liberarReserva(empresaId, material_id, almacen_id, cantidad, sociedadId = null) {
   const supabase = await getSupabaseClient();
-  const { data: stockRow } = await supabase.from('stock').select('*')
+  let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
-    .is('lote', null).is('serie', null).maybeSingle();
+    .is('lote', null).is('serie', null);
+  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  const { data: stockRow } = await query.maybeSingle();
   if (!stockRow) return;
   const liberado = Math.min(cantidad, Number(stockRow.reservado));
   const { error } = await supabase.from('stock').update({
@@ -380,11 +400,12 @@ export async function anularMovimiento(kardexId, motivo, usuarioId) {
     referencia_tipo: 'anulacion', referencia_id: kardexId,
     observacion: `Anulación de ${kardexId}: ${motivo}`,
     usuario_id: usuarioId,
+    sociedad_id: kdx.sociedad_id || null,
   });
 }
 
 // ─── Conteo físico ────────────────────────────────────────────────────────────
-export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen_id, zona }, usuarioId) {
+export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen_id, zona, sociedad_id = null }, usuarioId) {
   const supabase = await getSupabaseClient();
   const count = await supabase.from('inventario_conteos').select('id', { count: 'exact' }).eq('empresa_id', empresaId);
   const n = (count.count || 0) + 1;
@@ -395,6 +416,7 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
     .select('material_id, almacen_id, fisico, lote, serie, vencimiento, materiales(id, codigo, descripcion, unidad, familia, tipo_control), almacenes(id, codigo, nombre)')
     .eq('empresa_id', empresaId);
   if (almacen_id) q = q.eq('almacen_id', almacen_id);
+  q = sociedad_id ? q.eq('sociedad_id', sociedad_id) : q.is('sociedad_id', null);
   const { data: stocks } = await q;
 
   const items = (stocks || []).map(s => ({
@@ -415,7 +437,7 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
   }));
 
   const { data, error } = await supabase.from('inventario_conteos').insert({
-    id: mkId('cnt'), empresa_id: empresaId, codigo, nombre, tipo, almacen_id: almacen_id || null,
+    id: mkId('cnt'), empresa_id: empresaId, sociedad_id, codigo, nombre, tipo, almacen_id: almacen_id || null,
     zona: zona || null, estado: 'en_proceso', items, ajustes_generados: false,
     creado_por: usuarioId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }).select().single();
@@ -442,7 +464,7 @@ export async function guardarAvanceConteo(empresaId, conteoId, items, usuarioId)
   if (!empresaId || !conteoId) throw new Error('Conteo requerido');
   const supabase = await getSupabaseClient();
   const { data: conteo, error: getErr } = await supabase.from('inventario_conteos')
-    .select('id, estado')
+    .select('id, estado, sociedad_id')
     .eq('empresa_id', empresaId)
     .eq('id', conteoId)
     .maybeSingle();
@@ -462,7 +484,7 @@ export async function guardarAvanceConteo(empresaId, conteoId, items, usuarioId)
 export async function cerrarConteo(empresaId, conteoId, itemsContados, usuarioId) {
   const supabase = await getSupabaseClient();
   const { data: conteo, error: getErr } = await supabase.from('inventario_conteos')
-    .select('id, estado')
+    .select('id, estado, sociedad_id')
     .eq('empresa_id', empresaId)
     .eq('id', conteoId)
     .maybeSingle();
@@ -494,6 +516,7 @@ export async function cerrarConteo(empresaId, conteoId, itemsContados, usuarioId
           serie: item.serie || null,
           referencia_tipo: 'conteo_fisico',
           referencia_id: conteoId,
+          sociedad_id: conteo.sociedad_id || null,
         }, usuarioId);
         resultados.push({ ...item, ajuste: res });
       } catch (_) {
@@ -952,7 +975,7 @@ export async function ajustarValorizacionOcPendiente(empresaId, { orden_compra_i
   return ajustes;
 }
 
-export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId) {
+export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId, sociedadId = null) {
   for (const item of itemsADescontar) {
     if (!item.material_id) continue;
     try {
@@ -962,6 +985,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
 
       let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
         .eq('empresa_id', empresaId).eq('material_id', item.material_id);
+      stockQ = sociedadId ? stockQ.eq('sociedad_id', sociedadId) : stockQ.is('sociedad_id', null);
       if (item.lote != null) stockQ = stockQ.eq('lote', item.lote);
       if (item.serie != null) stockQ = stockQ.eq('serie', item.serie);
       const { data: stocks } = await stockQ;
@@ -973,6 +997,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
       await supabase.from('kardex').insert({
         id: mkId('kdx'),
         empresa_id: empresaId,
+        sociedad_id: sociedadId,
         material_id: item.material_id,
         almacen_id: item.almacen_id || stock.almacen_id || null,
         tipo: 'salida',

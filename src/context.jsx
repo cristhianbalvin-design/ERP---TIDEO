@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MOCK } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, aprobarHojaCosteoRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -13,12 +13,18 @@ import {
 import { maestrosService } from './services/maestrosService.js';
 import { comprasService, devolucionesService } from './services/comprasService.js';
 import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { registrarTransferenciaIntercompania } from './services/transferenciasIntercompaniaService.js';
 import { rrhhService } from './services/rrhhService.js';
 import { reclutamientoService } from './services/reclutamientoService.js';
 import * as plannerSvc from './services/plannerService.js';
 import { auditoriaService } from './services/auditoriaService.js';
-import { plataformaService } from './services/plataformaService.js';
+import { generarCodigoTenant, plataformaService } from './services/plataformaService.js';
 import { usuariosService } from './services/usuariosService.js';
+import {
+  cargarContextoSociedades,
+  PERFIL_SOCIEDAD,
+  resolverSociedadActiva,
+} from './services/sociedadesService.js';
 import { posicionesService } from './services/posicionesService.js';
 import { rolesService } from './services/rolesService.js';
 import { campanasService } from './services/campanasService.js';
@@ -34,6 +40,7 @@ import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
+import { resolverSociedadContratoVigente } from './services/nominaSociedadService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
   prepararDesvinculacionMovimientoCuenta,
@@ -285,6 +292,11 @@ export function AppProvider({ children }) {
   const [todasMembresias, setTodasMembresias] = useState([]);
   const [membresiaActiva, setMembresiaActiva] = useState(null);
   const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseConfigured());
+  const [perfilSociedad, setPerfilSociedad] = useState(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+  const [sociedadesIdsAlcance, setSociedadesIdsAlcance] = useState(null);
+  const [sociedadActiva, setSociedadActiva] = useState(null);
+  const [sociedadesDisponibles, setSociedadesDisponibles] = useState([]);
+  const sociedadLoadRequestRef = useRef(0);
   const [empresasPlataforma, setEmpresasPlataforma] = useState(MOCK.empresas);
 
   useEffect(() => {
@@ -651,6 +663,9 @@ export function AppProvider({ children }) {
     await supabase.auth.signOut();
     setAuthSession(null);
     setAuthUser(null);
+    setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+    setSociedadActiva(null);
+    setSociedadesDisponibles([]);
   };
 
   const loadSupabaseFinanceData = async () => {
@@ -1280,6 +1295,47 @@ export function AppProvider({ children }) {
     return () => { mounted = false; };
   }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
 
+  const cargarSociedadesDeEmpresa = async (empresaResuelta) => {
+    const requestId = ++sociedadLoadRequestRef.current;
+    const storageKey = `last_sociedad_id_${empresaResuelta?.id || ''}`;
+    let sociedadPreferidaId = null;
+    try { sociedadPreferidaId = empresaResuelta?.id ? localStorage.getItem(storageKey) : null; } catch {}
+
+    try {
+      const contexto = await cargarContextoSociedades({
+        empresa: empresaResuelta,
+        userId: authUser?.id,
+        sociedadPreferidaId,
+      });
+      if (requestId !== sociedadLoadRequestRef.current) return;
+      setPerfilSociedad(contexto.perfilSociedad);
+      setSociedadesIdsAlcance(contexto.sociedadesIdsAlcance);
+      setSociedadActiva(contexto.sociedadActiva);
+      setSociedadesDisponibles(contexto.sociedadesDisponibles);
+    } catch (error) {
+      if (requestId !== sociedadLoadRequestRef.current) return;
+      console.error('[SOCIEDADES context]', error?.message || error, error);
+      setPerfilSociedad(
+        empresaResuelta?.multisociedad_habilitado
+          ? PERFIL_SOCIEDAD.GRUPO
+          : PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD
+      );
+      setSociedadesIdsAlcance(null);
+      setSociedadActiva(null);
+      setSociedadesDisponibles([]);
+    }
+  };
+
+  const seleccionarSociedad = sociedadId => {
+    if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return;
+    const siguiente = resolverSociedadActiva(sociedadesDisponibles, sociedadId);
+    if (!siguiente || siguiente.id !== sociedadId) return;
+    setSociedadActiva(siguiente);
+    try { localStorage.setItem(`last_sociedad_id_${empresa.id}`, siguiente.id); } catch {}
+  };
+
+  const recargarSociedades = () => cargarSociedadesDeEmpresa(empresa);
+
   const cargarMembresiaCompleta = async (mem) => {
     try {
       const supabase = await getSupabaseClient();
@@ -1287,7 +1343,8 @@ export function AppProvider({ children }) {
         .from('permisos_roles')
         .select('*')
         .eq('rol_id', mem.rol_id);
-      if (mem.empresa) setEmpresa(normalizarEmpresaSupabase(mem.empresa));
+      const empresaResuelta = mem.empresa ? normalizarEmpresaSupabase(mem.empresa) : null;
+      if (empresaResuelta) setEmpresa(empresaResuelta);
       setMembresiaActiva({
         empresa: mem.empresa,
         rol: mem.rol,
@@ -1297,8 +1354,12 @@ export function AppProvider({ children }) {
         campo_modulos: mem.campo_modulos || [],
         permisos_rows: permisosRows || [],
       });
+      await cargarSociedadesDeEmpresa(empresaResuelta);
     } catch (_err) {
       setMembresiaActiva(null);
+      setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+      setSociedadActiva(null);
+      setSociedadesDisponibles([]);
     } finally {
       setMembresiaCargando(false);
     }
@@ -1324,6 +1385,9 @@ export function AppProvider({ children }) {
       if (isSupabaseConfigured()) {
         setTodasMembresias([]);
         setMembresiaActiva(null);
+        setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+        setSociedadActiva(null);
+        setSociedadesDisponibles([]);
         setMembresiaCargando(false);
       }
       return;
@@ -1348,7 +1412,7 @@ export function AppProvider({ children }) {
         const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
 
         const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
-          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma').in('id', empresaIds),
+          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado').in('id', empresaIds),
           supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
         ]);
 
@@ -1538,17 +1602,20 @@ export function AppProvider({ children }) {
       const rows = await plataformaService.listarEmpresas();
       setEmpresasPlataforma(rows.map(normalizarEmpresaSupabase));
       addNotificacion(result?.admin_vinculado
-        ? `Tenant creado y admin vinculado: ${datos.admin_email}.`
-        : 'Tenant creado. El email admin aun no existe en Supabase Auth; queda pendiente vincularlo.');
+        ? `Grupo ${result.empresa_id} creado y admin vinculado: ${datos.admin_email}.`
+        : `Grupo ${result.empresa_id} creado con su sociedad principal. El email admin aún no existe en Supabase Auth; queda pendiente vincularlo.`);
       return result;
     }
 
+    const nuevoId = await generarCodigoTenant(datos.nombre_grupo, {
+      verificarDisponibilidad: async codigo => !empresasPlataforma.some(item => item.id === codigo),
+    });
     const nuevo = {
-      id: generateId('emp'),
-      razon_social: datos.razon_social,
-      nombre_comercial: datos.nombre_comercial || datos.razon_social,
-      nombre: datos.nombre_comercial || datos.razon_social,
-      ruc: datos.ruc || '',
+      id: nuevoId,
+      razon_social: datos.nombre_grupo,
+      nombre_comercial: datos.nombre_grupo,
+      nombre: datos.nombre_grupo,
+      ruc: '',
       pais: datos.pais || 'PE',
       moneda_base: datos.moneda_base || 'PEN',
       moneda: datos.moneda_base || 'PEN',
@@ -1556,6 +1623,8 @@ export function AppProvider({ children }) {
       plan: null,
       admin_email: datos.admin_email || '',
       color: '#0ea5e9',
+      multisociedad_habilitado: true,
+      sociedad: { ...datos.sociedad, activa: true, es_principal: true },
     };
     setEmpresasPlataforma(prev => [nuevo, ...prev]);
     addNotificacion(`Tenant creado en modo prototipo: ${nuevo.nombre}.`);
@@ -2371,6 +2440,9 @@ export function AppProvider({ children }) {
   };
 
   const crearHojaCosteo = async (datos) => {
+    if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
+      throw new Error('Selecciona una sociedad para crear la Hoja de Costeo.');
+    }
     const hc = {
       id: generateId('hc'),
       empresa_id: empresa.id,
@@ -2389,7 +2461,9 @@ export function AppProvider({ children }) {
     const calculada = calcularHojaCosteo(hc);
     try {
       if (isSupabaseConfigured()) {
-        const result = await crmPersist(sb => crearHojaCosteoRpc(sb, empresa.id, calculada));
+        const result = await crmPersist(sb => empresa?.multisociedad_habilitado
+          ? crearHojaCosteoSociedadRpc(sb, empresa.id, calculada)
+          : crearHojaCosteoRpc(sb, empresa.id, calculada));
         if (result?.data) Object.assign(calculada, result.data);
         if (calculada.moneda && calculada.moneda !== 'PEN') {
           crmSync(sb => actualizarHojaCosteoSvc(sb, calculada.id, { moneda: calculada.moneda }));
@@ -2466,10 +2540,13 @@ export function AppProvider({ children }) {
         igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
         total: hc.precio_sugerido_total,
         items: construirItemsCotizacionDesdeHC(hc),
-        hoja_costeo_id: hcId
+        hoja_costeo_id: hcId,
+        sociedad_id: hc.sociedad_id || null,
       };
       try {
-        const result = await crmPersist(sb => aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
+        const result = await crmPersist(sb => hc.sociedad_id
+          ? aprobarHojaCosteoSociedadRpc(sb, empresa.id, hcId, cotBase)
+          : aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
         const cotFinal = { ...cotBase, ...(result?.data?.cotizacion || {}), items: cotBase.items };
         const hcFinal = result?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
         crmSync(sb => svcActualizarCotizacion(sb, cotFinal.id, {
@@ -3453,6 +3530,11 @@ export function AppProvider({ children }) {
   const cerrarTecnicamenteOT = async (otId, datosCierre) => {
     const { conformidad_archivo, tareas_incompletas, snapshot_tareas, ...restDatos } = datosCierre;
     const cierreId = generateId('cier');
+    const anterior = ots.find(o => o.id === otId) || null;
+    const sociedadOtId = anterior?.sociedad_id || null;
+    if (empresa?.multisociedad_habilitado && !sociedadOtId) {
+      throw new Error('La OT no tiene sociedad asignada. No se puede consumir inventario en un tenant con multisociedad.');
+    }
 
     let tokenConformidad = null;
     let conformidadArchivoUrl = null;
@@ -3467,7 +3549,6 @@ export function AppProvider({ children }) {
       } catch (_) {}
     }
 
-    const anterior = ots.find(o => o.id === otId) || null;
     const updateOts = (o) => {
       if (o.id !== otId) return o;
       let newTareas = o.tareas || [];
@@ -3511,7 +3592,9 @@ export function AppProvider({ children }) {
           existente.cantidad += Number(mu.cantidad);
         } else {
           const stockRow = inventario.find(i =>
-            i.material_id === mu.material_id && (!mu.lote || i.lote === mu.lote)
+            i.material_id === mu.material_id &&
+            (!mu.lote || i.lote === mu.lote) &&
+            (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
           );
           itemsADescontar.push({
             material_id: mu.material_id,
@@ -3520,6 +3603,7 @@ export function AppProvider({ children }) {
             lote: mu.lote || null,
             serie: mu.serie || null,
             vencimiento: mu.vencimiento || null,
+            sociedad_id: sociedadOtId,
           });
         }
       });
@@ -3530,17 +3614,18 @@ export function AppProvider({ children }) {
         const desc = itemsADescontar.find(d =>
           d.material_id === i.material_id &&
           d.lote === (i.lote || null) &&
-          d.serie === (i.serie || null)
+          d.serie === (i.serie || null) &&
+          (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
         );
         if (desc) return { ...i, stock_actual: Math.max(0, i.stock_actual - desc.cantidad) };
         return i;
       }));
       if (isSupabaseConfigured()) {
-        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id))
+        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
           .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
           .catch(err => console.error('consumo OT inventario:', err));
       } else {
-        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId));
+        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId, sociedadOtId));
       }
     }
 
@@ -3594,6 +3679,33 @@ export function AppProvider({ children }) {
     opsSync(sb => sb.from('solpe_interna').update({ estado: 'aprobada', aprobada_por: authUser?.id || null, aprobada_at: new Date().toISOString() }).eq('id', solpeId));
   };
 
+  const resolverSociedadOperacion = (registro = {}) => {
+    if (!empresa?.multisociedad_habilitado) return null;
+    const otId = registro.ot_vinc_id || registro.ot_id || null;
+    const ot = otId ? (ots || []).find(item => item.id === otId) : null;
+    if (otId && !ot?.sociedad_id) {
+      throw new Error('La OT vinculada no tiene sociedad asignada. Corrige la OT antes de registrar el gasto.');
+    }
+    if (ot?.sociedad_id) {
+      if (registro.sociedad_id && registro.sociedad_id !== ot.sociedad_id) {
+        throw new Error('La sociedad informada no coincide con la sociedad de la OT vinculada.');
+      }
+      return ot.sociedad_id;
+    }
+    const cecoId = registro.centro_costo_id || registro.ceco_id || null;
+    const ceco = cecoId ? (centrosCosto || []).find(item => item.id === cecoId) : null;
+    if (cecoId && !ceco?.sociedad_id) {
+      throw new Error('El CECO seleccionado no tiene sociedad asignada. Corrige el CECO antes de registrar el gasto.');
+    }
+    if (ceco?.sociedad_id) {
+      if (registro.sociedad_id && registro.sociedad_id !== ceco.sociedad_id) {
+        throw new Error('La sociedad informada no coincide con la sociedad del CECO seleccionado.');
+      }
+      return ceco.sociedad_id;
+    }
+    return registro.sociedad_id || null;
+  };
+
   const compraGastoPayload = (gasto) => ({
     id: gasto.id,
     empresa_id: empresa.id,
@@ -3609,12 +3721,13 @@ export function AppProvider({ children }) {
     referencia_pago: gasto.referencia_pago || null,
     cxp_id: gasto.cxp_id || null,
     centro_costo_id: gasto.centro_costo_id || null,
+    sociedad_id: resolverSociedadOperacion(gasto),
     periodo_nomina_id: gasto.periodo_nomina_id || null,
     es_activo_fijo: gasto.es_activo_fijo || false,
     activo_tipo: gasto.activo_tipo || null,
     vida_util_anos: gasto.vida_util_anos || null,
     ...(gasto.personal_id ? { personal_id: gasto.personal_id } : {}),
-    ...(gasto.ot_vinc_id ? { ot_vinc_id: gasto.ot_vinc_id } : {}),
+    ...((gasto.ot_vinc_id || gasto.ot_id) ? { ot_vinc_id: gasto.ot_vinc_id || gasto.ot_id } : {}),
   });
 
   const removeMissingColumnFromPayload = (payload, error) => {
@@ -3646,6 +3759,7 @@ export function AppProvider({ children }) {
       estado: 'registrado',
       created_at: new Date().toISOString(),
       ...datos,
+      sociedad_id: resolverSociedadOperacion(datos),
     };
     setComprasGastos(prev => [...prev, gasto]);
     auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gasto.id, accion: 'crear', valor_nuevo: gasto });
@@ -3656,6 +3770,9 @@ export function AppProvider({ children }) {
 
   // ── Presupuestos ─────────────────────────────────────────────────────────────
   const crearPresupuesto = async (datos, partidas) => {
+    if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
+      throw new Error('Selecciona una sociedad para crear el presupuesto.');
+    }
     const pre = {
       id: generateId('pre'),
       empresa_id: empresa.id,
@@ -3663,6 +3780,7 @@ export function AppProvider({ children }) {
       periodo: datos.periodo,
       centro_costo_id: datos.centro_costo_id || null,
       cebe_id: datos.cebe_id || null,
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
       estado: 'borrador',
       creado_por: authUser?.email || null,
       creado_en: new Date().toISOString(),
@@ -3677,6 +3795,7 @@ export function AppProvider({ children }) {
       monto_presupuestado: Number(p.monto_presupuestado || 0),
       moneda: p.moneda || 'PEN',
       orden: i,
+      sociedad_id: pre.sociedad_id,
     }));
     setPresupuestos(prev => [pre, ...prev]);
     setPresupuestoPartidas(prev => [...prev, ...ppas]);
@@ -3698,6 +3817,7 @@ export function AppProvider({ children }) {
       periodo: datos.periodo,
       centro_costo_id: datos.centro_costo_id || null,
       cebe_id: datos.cebe_id || null,
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
     };
     const ppas = (partidas || []).map((p, i) => ({
       id: p.id || generateId('ppa'),
@@ -3708,6 +3828,7 @@ export function AppProvider({ children }) {
       monto_presupuestado: Number(p.monto_presupuestado || 0),
       moneda: p.moneda || 'PEN',
       orden: i,
+      sociedad_id: updates.sociedad_id,
     }));
     setPresupuestos(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
     setPresupuestoPartidas(prev => [...prev.filter(p => p.presupuesto_id !== id), ...ppas]);
@@ -3732,6 +3853,7 @@ export function AppProvider({ children }) {
       estado: 'pendiente',
       fecha_accion: null,
       comentario: null,
+      sociedad_id: presupuestos.find(p => p.id === id)?.sociedad_id || null,
     }));
     setPresupuestos(prev => prev.map(p => p.id === id ? { ...p, estado: 'en_aprobacion' } : p));
     setPresupuestoAprobaciones(prev => [...prev.filter(p => p.presupuesto_id !== id), ...aprs]);
@@ -4421,6 +4543,9 @@ export function AppProvider({ children }) {
   };
 
   const emitirFacturaConCxC = async (datos = {}) => {
+    if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
+      throw new Error('Debe seleccionar una sociedad para emitir la factura.');
+    }
     const vencimientoCxC = resolverVencimientoCxC(datos || {});
     const fechaEmision = vencimientoCxC.fechaEmision;
     const fechaVencimiento = vencimientoCxC.fechaVencimiento;
@@ -4455,6 +4580,7 @@ export function AppProvider({ children }) {
       os_cliente_id: datos.os_cliente_id || null,
       valorizacion_id: datos.valorizacion_id || null,
       centro_beneficio_id: centroBeneficioId,
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
       items: datos.items || [],
       numero,
       fecha_emision: fechaEmision,
@@ -4500,6 +4626,7 @@ export function AppProvider({ children }) {
       monto_retencion: datos.monto_retencion || 0,
       moneda: datos.moneda || 'PEN',
       estado: 'por_cobrar',
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
     });
 
     if (datos.os_cliente_id) {
@@ -5303,6 +5430,24 @@ export function AppProvider({ children }) {
       return d.toISOString().split('T')[0];
     })();
 
+    let sociedadHonorariosId = null;
+    if (empresa?.multisociedad_habilitado) {
+      const resolucionSociedad = resolverSociedadContratoVigente({
+        documentos: personalDocumentos,
+        tiposDocumento,
+        sociedades: sociedadesDisponibles,
+        personalId: recibo.vendedor_id,
+        fecha: fechaEmision,
+      });
+      if (resolucionSociedad.conflicto) {
+        throw new Error(`El colaborador tiene contratos vigentes en sociedades distintas: ${resolucionSociedad.nombres.join(', ')}. Resuelve manualmente la sociedad antes de continuar.`);
+      }
+      if (!resolucionSociedad.sociedadId) {
+        throw new Error('El colaborador no tiene un contrato societario vigente para la fecha de emisión. Resuelve el contrato antes de continuar.');
+      }
+      sociedadHonorariosId = resolucionSociedad.sociedadId;
+    }
+
     const monedaOriginal = normalizarMonedaComision(recibo.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN');
     const monedaCxP = moneda_rhe || monedaOriginal;
     const tc = Number(tipo_cambio || 1);
@@ -5331,6 +5476,7 @@ export function AppProvider({ children }) {
     let cuentaPagar = {
       id: cxpId,
       empresa_id: empresa.id,
+      sociedad_id: sociedadHonorariosId,
       tipo_beneficiario: 'personal',
       tipo_comprobante: 'RHE',
       personal_id: recibo.vendedor_id || null,
@@ -5444,6 +5590,9 @@ export function AppProvider({ children }) {
   };
 
   const crearCuentaBancaria = async (datos) => {
+    if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
+      throw new Error('Selecciona una sociedad para la cuenta bancaria.');
+    }
     const cuenta = {
       id: generateId('cb'),
       empresa_id: empresa.id,
@@ -5455,6 +5604,7 @@ export function AppProvider({ children }) {
       tipo: datos.tipo || 'corriente',
       estado: datos.estado || 'activo',
       saldo_inicial: Number(datos.saldo_inicial || 0),
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
       creado_en: new Date().toISOString(),
     };
     setCuentasBancarias(prev => [...prev, cuenta]);
@@ -5894,17 +6044,20 @@ export function AppProvider({ children }) {
     periodo_nomina_id: null,
     personal_id: cxp.personal_id || null,
     ot_vinc_id: cxp.ot_vinc_id || null,
+    sociedad_id: cxp.sociedad_id || null,
   });
 
   const generarCxP = async (datos = {}) => {
     const { no_devengar_er, ...datosDb } = datos || {};
+    const sociedadId = resolverSociedadOperacion(datosDb);
     let cuentaPagar = {
       id: generateId('cxp'),
       empresa_id: empresa.id,
       estado: 'por_pagar',
       monto_pagado: 0,
       saldo: datosDb.monto_total,
-      ...datosDb
+      ...datosDb,
+      sociedad_id: sociedadId,
     };
     const cxpParaDevengo = { ...cuentaPagar, no_devengar_er };
     const yaDevengado = (comprasGastos || []).some(g => g.cxp_id === cuentaPagar.id);
@@ -5936,6 +6089,9 @@ export function AppProvider({ children }) {
   };
 
   const registrarEgresoCajaChica = async (datos) => {
+    if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
+      throw new Error('Selecciona una sociedad para el egreso de caja chica.');
+    }
     const fecha = datos.fecha || new Date().toISOString().split('T')[0];
     const gastoId = generateId('gasto');
     const ccId = generateId('cc');
@@ -5953,6 +6109,7 @@ export function AppProvider({ children }) {
       estado_pago: 'pagado',
       estado: 'registrado',
       centro_costo_id: datos.ceco_id || null,
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
     };
 
     const movimiento = {
@@ -5983,6 +6140,7 @@ export function AppProvider({ children }) {
       num_comprobante: datos.num_comprobante || null,
       estado: 'registrado',
       gasto_id: gastoId,
+      sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
     };
 
     setComprasGastos(prev => [gasto, ...prev]);
@@ -6007,6 +6165,7 @@ export function AppProvider({ children }) {
         estado: 'registrado',
         estado_pago: 'pagado',
         centro_costo_id: gasto.centro_costo_id || null,
+        sociedad_id: gasto.sociedad_id || null,
       }]));
     }
     addNotificacion(`Egreso de caja chica registrado: S/ ${Number(datos.monto).toFixed(2)}`);
@@ -7563,16 +7722,32 @@ export function AppProvider({ children }) {
       setDevolucionesProveedor(prev => [data, ...prev]);
       return data;
     }
+    const recepcionOrigen = (recepciones || []).find(r => r.id === datos.recepcion_id);
+    const ordenCompraId = datos.oc_id || recepcionOrigen?.orden_compra_id || recepcionOrigen?.oc_id || null;
+    const ordenServicioId = recepcionOrigen?.orden_servicio_id || recepcionOrigen?.os_id || null;
+    const documentoOrigen = ordenCompraId
+      ? (ordenesCompra || []).find(o => o.id === ordenCompraId)
+      : (ordenesServicio || []).find(o => o.id === ordenServicioId);
+    const sociedadDevolucionId = empresa?.multisociedad_habilitado ? (documentoOrigen?.sociedad_id || null) : null;
+    if (empresa?.multisociedad_habilitado && !sociedadDevolucionId) {
+      throw new Error('El documento de compra que originó la recepción no tiene sociedad; no se puede crear la devolución en un tenant con multisociedad.');
+    }
     const mock = {
       ...datos,
       id: generateId('dev'),
       empresa_id: empresa.id,
+      sociedad_id: sociedadDevolucionId,
+      oc_id: ordenCompraId,
       numero_devolucion: `DEV-${String(devolucionesProveedor.length + 1).padStart(4, '0')}`,
       estado: 'borrador',
       kardex_salida_ids: [],
       creado_en: new Date().toISOString(),
       actualizado_en: new Date().toISOString(),
-      devoluciones_proveedor_lineas: datos.lineas || [],
+      devoluciones_proveedor_lineas: (datos.lineas || []).map(linea => ({
+        ...linea,
+        empresa_id: empresa.id,
+        sociedad_id: sociedadDevolucionId,
+      })),
     };
     setDevolucionesProveedor(prev => [mock, ...prev]);
     return mock;
@@ -7966,6 +8141,7 @@ export function AppProvider({ children }) {
         monto_pagado: 0,
         saldo: saldoCxP,
         moneda: base.moneda || 'PEN',
+        sociedad_id: base.sociedad_id || null,
         estado: saldoCxP <= 0 ? 'pagada' : 'por_pagar',
         origen: 'recepcion',
         recepcion_id: recepcionLocal.id,
@@ -8061,7 +8237,12 @@ export function AppProvider({ children }) {
   const registrarTransferenciaCtx = async (form) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
-      const res = await registrarTransferencia(empresa.id, form, authUser?.id);
+      const entreSociedades = form.sociedad_origen_id
+        && form.sociedad_destino_id
+        && form.sociedad_origen_id !== form.sociedad_destino_id;
+      const res = entreSociedades
+        ? await registrarTransferenciaIntercompania(empresa.id, form, authUser?.id)
+        : await registrarTransferencia(empresa.id, form, authUser?.id);
       await recargarInventario();
       return res;
     }
@@ -8309,6 +8490,8 @@ export function AppProvider({ children }) {
   // ── Documentos del personal ──────────────────────────────────────────────────
   const aplicarSnapshotDocumentoPersonal = (doc) => {
     if (!doc || doc.estado_validacion !== 'aprobado') return;
+    // En multisociedad las condiciones pertenecen al contrato, no a la ficha compartida.
+    if (empresa?.multisociedad_habilitado && doc.sociedad_id) return;
     const tipo = String(`${doc.tipo_doc || ''} ${doc.tipo_doc_codigo || ''} ${doc.tipo_documento_codigo || ''} ${doc.tipo_documento_id || ''}`).toLowerCase();
 
     // Detección por catálogo (tipo_doc almacena IDs, no texto descriptivo)
@@ -8417,7 +8600,8 @@ export function AppProvider({ children }) {
       return prev.map(d => {
         if (d.id === documentoId) return { ...data, activo: true };
         if (d.personal_id === data.personal_id &&
-            (d.tipo_documento_id === data.tipo_documento_id || d.tipo_doc === data.tipo_doc)) {
+            (d.tipo_documento_id === data.tipo_documento_id || d.tipo_doc === data.tipo_doc) &&
+            (data.sociedad_id == null || d.sociedad_id === data.sociedad_id)) {
           return { ...d, activo: false };
         }
         return d;
@@ -8470,7 +8654,7 @@ export function AppProvider({ children }) {
       fechaVencimiento: docEnviado?.fecha_vencimiento || null,
       condicionesLaborales: docEnviado?.condiciones_laborales || {},
       notas: 'Documento firmado cargado desde Mi portal',
-      subidoDesde: 'mobile',
+      subidoDesde: 'mobile', sociedadId: docEnviado?.sociedad_id || null,
     });
     if (isSupabaseConfigured() && nuevoDoc?.id) {
       await personalDocumentosService.vincularDocumentoFirmado({
@@ -8498,7 +8682,7 @@ export function AppProvider({ children }) {
       contratoPeriodoId: docOriginal.contrato_periodo_id || null,
       condicionesLaborales: docOriginal.condiciones_laborales || {},
       notas: 'Contrato firmado cargado desde portal empleado',
-      subidoDesde: 'mobile',
+      subidoDesde: 'mobile', sociedadId: docOriginal.sociedad_id || null,
     });
 
     if (isSupabaseConfigured() && nuevoDoc?.id) {
@@ -8550,6 +8734,15 @@ export function AppProvider({ children }) {
       }
     }
     return data;
+  };
+
+  const eliminarAsignacionJornadaCtx = async (id, forzarOverride = false, motivoOverride = null) => {
+    await rrhhService.eliminarAsignacionJornada(id, forzarOverride, motivoOverride);
+    const actualizado = await rrhhService.getAsignacionesJornada(empresa?.id);
+    setAsignacionesJornada(actualizado || []);
+    // La eliminación reabre el tramo anterior si existe. La actualización del campo
+    // "regimen_jornada" espejo en personal_operativo/admin podría quedar desincronizado localmente,
+    // pero la vista de Roster usará las asignaciones directamente.
   };
 
   const upsertListBy = (prev, rows, keyFn) => {
@@ -9795,6 +9988,7 @@ export function AppProvider({ children }) {
     searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
     todasMembresias, membresiaActiva, membresiaCargando, seleccionarEmpresa,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, recargarSociedades,
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin, actualizarTenant, eliminarTenant,
     // Data
     usuarios, setUsuarios,
@@ -9980,7 +10174,7 @@ export function AppProvider({ children }) {
     subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx,
     recargarPersonalDocumentosPersonaCtx,
     enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, subirDocumentoFirmadoPortalCtx, subirContratoFirmadoAprobadoCtx,
-    asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx,
+    asignacionesJornada, setAsignacionesJornada, crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx,
     crearOnboarding, registrarNPS,
     generarRenovacion, crearPlanRetencion,
     registrarIaLog,

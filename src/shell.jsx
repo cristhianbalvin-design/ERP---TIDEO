@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { PERFIL_SOCIEDAD, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 
 
 const SIDEBAR = [
@@ -416,8 +417,82 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   );
 }
 
+export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, isMobile }) {
+  const [open, setOpen] = useState(false);
+
+  if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return null;
+
+  const nombreActivo = sociedadActiva?.nombre || 'Sin sociedades registradas';
+
+  return (
+    <div style={{position:'relative'}}>
+      <button
+        type="button"
+        className="user-zone"
+        onClick={() => setOpen(v => !v)}
+        title={`Sociedad: ${nombreActivo}`}
+        style={{
+          display:'flex',
+          alignItems:'center',
+          gap: isMobile ? 0 : 8,
+          padding: isMobile ? 7 : '6px 10px',
+          borderRadius:99,
+          background:'rgba(255,255,255,0.08)',
+          border:'1px solid rgba(255,255,255,0.15)',
+          color:'#fff',
+          cursor:'pointer',
+          maxWidth: isMobile ? 38 : 190,
+        }}
+      >
+        <span style={{display:'flex', flexShrink:0}}>{I.building}</span>
+        {!isMobile && (
+          <div style={{textAlign:'left', minWidth:0}}>
+            <div style={{fontSize:9, color:'rgba(255,255,255,0.6)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em'}}>Sociedad</div>
+            <div style={{fontSize:11, fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{nombreActivo}</div>
+          </div>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="dropdown"
+          style={{top:48, right:0, minWidth: isMobile ? 'min(280px, calc(100vw - 24px))' : 280, zIndex:110}}
+          onMouseLeave={() => !isMobile && setOpen(false)}
+        >
+          <div style={{padding:'8px 12px', fontSize:11, color:'var(--fg-subtle)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700, borderBottom:'1px solid var(--border-subtle)'}}>
+            Sociedades disponibles
+          </div>
+          {sociedadesDisponibles.length === 0 ? (
+            <div style={{padding:'14px 12px', fontSize:12, color:'var(--fg-subtle)'}}>No hay sociedades activas configuradas.</div>
+          ) : (
+            <div style={{maxHeight:260, overflowY:'auto'}}>
+              {sociedadesDisponibles.map(sociedad => (
+                <div
+                  key={sociedad.id}
+                  className={'dropdown-item ' + (sociedad.id === sociedadActiva?.id ? 'active' : '')}
+                  onClick={() => { seleccionarSociedad(sociedad.id); setOpen(false); }}
+                >
+                  <span className="company-dot" style={{background:'#0ea5e9', width:8, height:8, borderRadius:999}}/>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{sociedad.nombre}</div>
+                    <div style={{fontSize:11, color:'var(--fg-subtle)'}}>{sociedad.codigo}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode, openSelectorSignal }) {
-  const { notificaciones, markNotificacionesRead, navigate, dataMode, authUser, todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy } = useApp();
+  const {
+    notificaciones, markNotificacionesRead, navigate, dataMode, authUser,
+    todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy,
+    perfilSociedad, sociedadActiva, sociedadesDisponibles, seleccionarSociedad,
+  } = useApp();
   const [compOpen, setCompOpen] = useState(false);
   useEffect(() => { if (openSelectorSignal > 0) setCompOpen(true); }, [openSelectorSignal]);
   const [roleOpen, setRoleOpen] = useState(false);
@@ -434,6 +509,11 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
 
   const isSupabase = dataMode === 'supabase';
   const canSwitchCompany = isSupabase ? todasMembresias.length > 1 : Boolean(role.permisos?.plataforma);
+  const mostrarSelectorSociedad = debeMostrarSelectorSociedad({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadesDisponibles,
+  });
   const unreadCount = notificaciones.filter(n => !n.read).length;
 
   const avatarText = isSupabase && authUser?.email
@@ -553,6 +633,16 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
 
         <button className="icon-btn" onClick={() => setDark(!dark)} title="Dark mode">{dark ? I.sun : I.moon}</button>
       </div>
+
+      {mostrarSelectorSociedad && (
+        <SociedadSelector
+          perfilSociedad={perfilSociedad}
+          sociedadActiva={sociedadActiva}
+          sociedadesDisponibles={sociedadesDisponibles}
+          seleccionarSociedad={seleccionarSociedad}
+          isMobile={isMobile}
+        />
+      )}
 
       {/* Separador — oculto en móvil */}
       {!isMobile && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}

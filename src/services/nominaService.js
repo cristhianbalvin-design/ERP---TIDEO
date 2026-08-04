@@ -88,7 +88,7 @@ export function getPrimaSeguroAfp(afpNombre, rows = []) {
 // (trabajador, turno, periodo, datosNomina), nombres de campo distintos a las columnas
 // (dias_asistidos→dias_laborados, comision_flujo→comision_afp_flujo, prima_seguro→
 // prima_seguro_afp) y campos que no existen en el esquema (tramos, valor_dia, etc.).
-export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
+export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
   const quincena = periodo?.quincena ?? null;
   return {
     trabajador_id: c.trabajador_id,
@@ -140,7 +140,7 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfg = {}) {
     // Refleja el % efectivamente aplicado por el motor (Rama Q1), no un valor recalculado
     // aparte. Q2 hoy todavia calcula al 100% (factorQuincena=1, Rama Q2 aun no implementada):
     // guardar 50/50 teorico seria incorrecto y no coincidiria con lo que el motor uso.
-    pct_quincena_aplicado: quincena === 1 ? Number(empresaCfg?.pct_quincena_1 ?? 50) : (quincena === 2 ? 100 : null),
+    pct_quincena_aplicado: quincena === 1 ? Number(empresaCfgResuelta?.pct_quincena_1 ?? 50) : (quincena === 2 ? 100 : null),
   };
 }
 
@@ -209,14 +209,17 @@ export const nominaService = {
   // Borrado + insercion transaccional de todo el detalle de un periodo (RPC de Postgres,
   // migracion 333). Reemplaza filas huerfanas de un "Procesar" anterior con roster distinto;
   // ambas operaciones ocurren dentro de la misma transaccion de la funcion en el servidor.
-  guardarDetalle: async (empresaId, periodoId, filas) => {
+  guardarDetalle: async (empresaId, periodoId, filas, sociedadId = null) => {
     if (!filas.length) return 0;
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.rpc('guardar_nomina_detalle_periodo', {
+    const rpc = sociedadId ? 'guardar_nomina_detalle_periodo_sociedad' : 'guardar_nomina_detalle_periodo';
+    const params = {
       p_empresa_id: empresaId,
       p_periodo_id: periodoId,
       p_filas: filas,
-    });
+      ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
+    };
+    const { data, error } = await supabase.rpc(rpc, params);
     if (error) throw error;
     return data ?? 0;
   },

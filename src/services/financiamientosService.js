@@ -189,9 +189,10 @@ export async function crearFinanciamientoConAmortizacion({ empresa, nuevo }) {
     p_centro_costo: nuevo.centro_costo || null,
     p_cuenta_bancaria_destino: nuevo.cuenta_bancaria_destino || null,
     p_notas: nuevo.notas || null,
+    p_sociedad_id: nuevo.sociedad_id || null,
   });
   if (error) throw error;
-  return { ...data, pagos_realizados: [] };
+  return { ...data, sociedad_id: nuevo.sociedad_id || null, pagos_realizados: [] };
 }
 
 export function buildPagoFinanciamiento({ financiamiento, datos, nuevoSaldo }) {
@@ -221,6 +222,7 @@ export function buildGastoIntereses({ financiamiento, cuota, interes, fecha, emp
   return {
     id: `gasto_int_${financiamiento.id}_${cuota.numero}`,
     empresa_id: empresa.id,
+    sociedad_id: financiamiento.sociedad_id || null,
     tipo: 'gasto',
     descripcion: `Intereses ${financiamiento.entidad} - Cuota ${cuota.numero}/${financiamiento.plazo_meses}`,
     categoria: 'Gastos financieros',

@@ -3,7 +3,7 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { isSupabaseMode } from './lib/dataMode.js';
-import { ER_CURRENCIES, buildEstadoResultados, getEstadoResultados, cargarConfiguracionER } from './services/estadoResultadosService.js';
+import { ER_CURRENCIES, ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultados, getEstadoResultadosPorScope, cargarConfiguracionER } from './services/estadoResultadosService.js';
 import {
   buildTesoreriaSummary,
   calcularMovimientosMesPorMoneda,
@@ -42,6 +42,8 @@ import {
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -1773,7 +1775,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
 }
 
 function Tesoreria() {
-  const cuentaBancariaFormVacio = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'' };
+  const cuentaBancariaFormVacio = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
   const [tab, setTab] = useState('match');
   const [panel, setPanel] = useState(false);
   const [movSel, setMovSel] = useState(null);
@@ -2173,6 +2175,10 @@ function Tesoreria() {
   const guardarNuevaCuentaBancaria = async e => {
     e.preventDefault();
     if (!formCuentaBancaria.nombre.trim() || !formCuentaBancaria.banco.trim() || savingCuentaBancaria) return;
+    if (empresa?.multisociedad_habilitado && !formCuentaBancaria.sociedad_id) {
+      alert('Selecciona una sociedad para la cuenta bancaria.');
+      return;
+    }
     setSavingCuentaBancaria(true);
     try {
       await crearCuentaBancaria?.({
@@ -2861,6 +2867,7 @@ function Tesoreria() {
                 <div className="input-group"><label>Moneda</label><select className="select" value={formCuentaBancaria.moneda} onChange={setCuentaBancariaField('moneda')}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
                 <div className="input-group"><label>Tipo</label><select className="select" value={formCuentaBancaria.tipo} onChange={setCuentaBancariaField('tipo')}><option value="corriente">Corriente</option><option value="ahorros">Ahorros</option><option value="recaudadora">Recaudadora</option><option value="caja_chica">Caja chica</option></select></div>
                 <div className="input-group" style={{gridColumn:'1/-1'}}><label>Saldo inicial ({formCuentaBancaria.moneda})</label><input className="input" type="number" step="0.01" value={formCuentaBancaria.saldo_inicial} onChange={setCuentaBancariaField('saldo_inicial')} placeholder="0.00 - dejar en blanco si la cuenta empieza desde cero" /></div>
+                <SociedadFormField value={formCuentaBancaria.sociedad_id} onChange={sociedad_id => setFormCuentaBancaria(prev => ({ ...prev, sociedad_id }))} style={{gridColumn:'1/-1'}} />
               </div>
               <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:18}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarNuevaCuentaBancaria}>Cancelar</button>
@@ -2916,13 +2923,15 @@ const erMoney = (totals, currency) => moneyCurrency(erAmount(totals, currency), 
 
 function Resultados({ role }) {
   const [expanded, setExpanded] = useState({ ingresos: true, costo: false, gastos: false, gastosFin: false });
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, tipoCambioHoy } = useApp();
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, tipoCambioHoy, perfilSociedad, sociedadActiva, sociedadesDisponibles } = useApp();
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [erData, setErData] = useState(null);
   const [tcPeriodo, setTcPeriodo] = useState(null);
+  const [scopeMode, setScopeMode] = useState(ER_SCOPE_MODE.SOCIEDAD);
+  const [scopeSociedadId, setScopeSociedadId] = useState(sociedadActiva?.id || '');
   const supabaseMode = isSupabaseMode();
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const now = new Date();
@@ -2931,6 +2940,23 @@ function Resultados({ role }) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     return { v: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l: `${MESES[d.getMonth()]} ${d.getFullYear()}` };
   });
+  const multisociedadActiva = Boolean(empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+  const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
+  const scopeSociedadIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
+    ? [scopeSociedadId || sociedadActiva?.id].filter(Boolean)
+    : sociedadesDisponibles.map(s => s.id);
+
+  useEffect(() => {
+    if (!multisociedadActiva) {
+      setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
+      setScopeSociedadId('');
+      return;
+    }
+    if (!sociedadesDisponibles.some(s => s.id === scopeSociedadId)) {
+      setScopeSociedadId(sociedadActiva?.id || sociedadesDisponibles[0]?.id || '');
+    }
+    if (!puedeComparar && scopeMode !== ER_SCOPE_MODE.SOCIEDAD) setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
+  }, [multisociedadActiva, puedeComparar, scopeMode, scopeSociedadId, sociedadActiva?.id, sociedadesDisponibles]);
 
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
   const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
@@ -2970,12 +2996,22 @@ function Resultados({ role }) {
     let mounted = true;
     setLoading(true);
     setError('');
-    getEstadoResultados({
-      empresaId: empresa.id,
-      periodo,
-      cecoIds: cecosSel,
-      cebeIds: cebesSel,
-    })
+    const request = multisociedadActiva
+      ? getEstadoResultadosPorScope({
+          empresaId: empresa.id,
+          periodo,
+          mode: scopeMode,
+          sociedadIds: scopeSociedadIds,
+          cecoIds: cecosSel,
+          cebeIds: cebesSel,
+        })
+      : getEstadoResultados({
+          empresaId: empresa.id,
+          periodo,
+          cecoIds: cecosSel,
+          cebeIds: cebesSel,
+        });
+    request
       .then(data => {
         if (mounted) setErData(data);
       })
@@ -2989,7 +3025,7 @@ function Resultados({ role }) {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [supabaseMode, canFin, empresa?.id, periodo, cecosSel, cebesSel, comprasGastos?.length]);
+  }, [supabaseMode, canFin, empresa?.id, periodo, cecosSel, cebesSel, comprasGastos?.length, multisociedadActiva, scopeMode, scopeSociedadId, sociedadesDisponibles]);
 
   useEffect(() => {
     const currentPeriodo = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -3015,7 +3051,8 @@ function Resultados({ role }) {
     </div>
   );
 
-  const data = supabaseMode ? erData : mockErData;
+  const comparativo = erData?.scopeMode === ER_SCOPE_MODE.COMPARATIVO ? erData.comparativo : null;
+  const data = supabaseMode ? (comparativo ? null : erData) : mockErData;
   const er = data?.er || mockErData.er;
   const utilidadBruta = data?.utilidadBruta || mockErData.utilidadBruta;
   const resultadoOp = data?.resultadoOp || mockErData.resultadoOp;
@@ -3087,6 +3124,18 @@ function Resultados({ role }) {
           <div className="page-sub">{periodoLabel} - {empresa?.nombre || 'Empresa'}</div>
         </div>
         <div className="row" style={{ gap:8, flexWrap:'wrap' }}>
+          {multisociedadActiva && (
+            <select className="select" style={{ width:150 }} value={scopeMode} onChange={e => setScopeMode(e.target.value)}>
+              <option value={ER_SCOPE_MODE.SOCIEDAD}>Sociedad única</option>
+              {puedeComparar && <option value={ER_SCOPE_MODE.COMPARATIVO}>Comparativo</option>}
+              {puedeComparar && <option value={ER_SCOPE_MODE.CONSOLIDADO}>Consolidado</option>}
+            </select>
+          )}
+          {multisociedadActiva && scopeMode === ER_SCOPE_MODE.SOCIEDAD && (
+            <select className="select" style={{ width:190 }} value={scopeSociedadId} onChange={e => setScopeSociedadId(e.target.value)}>
+              {sociedadesDisponibles.map(s => <option key={s.id} value={s.id}>{s.codigo ? `${s.codigo} - ` : ''}{s.nombre}</option>)}
+            </select>
+          )}
           <select className="select" style={{ width:160 }} value={periodo} onChange={e=>setPeriodo(e.target.value)}>
             {periodoOpts.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
@@ -3102,6 +3151,30 @@ function Resultados({ role }) {
         </div>
       )}
       <div className="card">
+        {comparativo && !loading ? (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr><th>Concepto</th>{comparativo.map(item => { const s = sociedadesDisponibles.find(x => x.id === item.sociedadId); return <th key={item.sociedadId} className="num">{s?.nombre || item.sociedadId}</th>; })}</tr>
+              </thead>
+              <tbody>
+                {[
+                  ['Ingresos', d => d.er.ingresos.total],
+                  ['Costo de ventas', d => d.er.costoVentas.total],
+                  ['Utilidad bruta', d => d.utilidadBruta],
+                  ['Gastos operativos', d => d.er.gastosOp.total],
+                  ['Gastos financieros', d => d.er.gastosFin.total],
+                  ['Resultado neto', d => d.resultadoNeto],
+                ].map(([label, getter]) => (
+                  <tr key={label}>
+                    <td><strong>{label}</strong></td>
+                    {comparativo.map(item => <td key={item.sociedadId} className="num">{ER_CURRENCIES.map(moneda => <div key={moneda}>{moneda}: {moneyCurrency(erAmount(getter(item.data), moneda), moneda)}</div>)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <>
         <div style={{ display:'flex', gap:12, padding:'10px 20px', borderBottom:'1px solid var(--border-subtle)', color:'var(--fg-muted)', fontSize:12, fontWeight:700 }}>
           <div style={{ flex:1 }}>Concepto</div>
           {ER_CURRENCIES.map(currency => <div key={currency} className="num" style={{ minWidth:130, textAlign:'right' }}>{currency}</div>)}
@@ -3147,6 +3220,7 @@ function Resultados({ role }) {
             </div>
           </>
         )}
+        </>}
       </div>
       <div className="text-muted mt-4" style={{ fontSize:12, textAlign:'center' }}>
         Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.
@@ -3239,7 +3313,7 @@ function Facturacion() {
   const [valSel, setValSel] = useState('');
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
-  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'' });
+  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'', sociedad_id:'' });
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
@@ -3610,7 +3684,7 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'', sociedad_id:'' });
     setVencimientoManual(false);
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
@@ -3738,6 +3812,7 @@ function Facturacion() {
     if (!cuentaId) { alert('Debe seleccionar un cliente.'); return; }
     if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
     if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
+    if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Debe seleccionar una sociedad para emitir la factura.'); return; }
     const centroBeneficio = (centrosBeneficio || []).find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
     if (!form.centro_beneficio_id) { alert('Debe seleccionar un CEBE para emitir la factura.'); return; }
     if (!centroBeneficio) { alert('El CEBE seleccionado no existe en el tenant actual.'); return; }
@@ -3780,6 +3855,7 @@ function Facturacion() {
         os_cliente_id: mode === 'val' ? getVal(valSel)?.os_cliente_id : (osSel || null),
         valorizacion_id: mode === 'val' ? valSel : null,
         centro_beneficio_id: form.centro_beneficio_id,
+        sociedad_id: empresa?.multisociedad_habilitado ? form.sociedad_id : null,
         items: partidas.map(p => ({
           descripcion: p.descripcion,
           cantidad: Number(p.cantidad || 0),
@@ -4759,6 +4835,7 @@ function Facturacion() {
                     : 'Obligatorio. Selecciona un CEBE activo y vigente para la fecha de emisión.'}
                 </div>
               </div>
+              <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => handleFormChange('sociedad_id', sociedad_id)} style={{marginTop:16}} />
             </div>
 
             {/* Partidas */}
@@ -8713,7 +8790,8 @@ function Presupuestos() {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
     comprasGastos, ots, usuarios, empresa, authUser,
-    centrosCosto, centrosBeneficio,
+    centrosCosto, centrosBeneficio, perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles,
   } = useApp();
 
   const now = new Date();
@@ -8723,7 +8801,7 @@ function Presupuestos() {
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [panelDetalle, setPanelDetalle] = useState(null);
   const [panelEnviar, setPanelEnviar]   = useState(false);
-  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'' });
+  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'', sociedad_id: sociedadActiva?.id || '' });
   const [formParts, setFormParts]   = useState([{ categoria:'Materiales', descripcion:'', monto_presupuestado:'' }]);
   const [aprobadores, setAprobadores] = useState([null]);
   const [comentarioApr, setComentarioApr] = useState('');
@@ -8739,10 +8817,15 @@ function Presupuestos() {
   const [yy, mm] = periodo.split('-');
   const periodoLabel = `${MESES_PRE[parseInt(mm)-1]} ${yy}`;
 
-  const presDePeriodo = (presupuestos||[]).filter(p => p.empresa_id === empresaId && p.periodo === periodo);
+  const presupuestosAlcance = useMemo(
+    () => filtrarRegistrosPorAlcanceSociedad(presupuestos || [], perfilSociedad, sociedadesIdsAlcance),
+    [presupuestos, perfilSociedad, sociedadesIdsAlcance]
+  );
+  const presDePeriodo = presupuestosAlcance.filter(p => p.empresa_id === empresaId && p.periodo === periodo);
   const presActivo = preSelId
-    ? (presupuestos||[]).find(p => p.id === preSelId)
+    ? presupuestosAlcance.find(p => p.id === preSelId) || presDePeriodo[0] || null
     : presDePeriodo[0] || null;
+  const sociedadNombre = sociedadId => (sociedadesDisponibles || []).find(s => s.id === sociedadId)?.nombre || 'Sin sociedad';
 
   const partidas = useMemo(() =>
     presActivo ? (presupuestoPartidas||[]).filter(p => p.presupuesto_id === presActivo.id).sort((a,b)=>a.orden-b.orden) : [],
@@ -8753,17 +8836,26 @@ function Presupuestos() {
     [presActivo, presupuestoAprobaciones]);
 
   const esPeriodoMensual = periodo.length === 7;
+  const sociedadDeOt = o => {
+    const ceco = (centrosCosto || []).find(c => c.id === o.centro_costo_id);
+    const cebe = (centrosBeneficio || []).find(c => c.id === o.centro_beneficio_id);
+    return ceco?.sociedad_id || cebe?.sociedad_id || null;
+  };
+  const perteneceASociedadActiva = row => {
+    if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD || !presActivo?.sociedad_id) return true;
+    return (row.sociedad_id || sociedadDeOt(row)) === presActivo.sociedad_id;
+  };
 
   const calcReal = (categoria) => {
     if (categoria === 'Mano de obra') {
       return (ots||[]).filter(o => {
-        if (o.empresa_id !== empresaId) return false;
+        if (o.empresa_id !== empresaId || !perteneceASociedadActiva(o)) return false;
         const p = esPeriodoMensual ? (o.fecha_cierre||o.fecha_inicio||'').slice(0,7) : (o.fecha_cierre||o.fecha_inicio||'').slice(0,4);
         return p === periodo && ['cerrada','facturada'].includes(o.estado);
       }).reduce((s,o) => s + Number(o.costo_real||0), 0);
     }
     return (comprasGastos||[]).filter(g => {
-      if (g.empresa_id !== empresaId) return false;
+      if (g.empresa_id !== empresaId || !perteneceASociedadActiva(g)) return false;
       const p = esPeriodoMensual ? (g.fecha||'').slice(0,7) : (g.fecha||'').slice(0,4);
       return p === periodo && g.categoria === categoria;
     }).reduce((s,g) => s + Number(g.monto||0), 0);
@@ -8772,13 +8864,13 @@ function Presupuestos() {
   const getDesglose = (categoria) => {
     if (categoria === 'Mano de obra') {
       return (ots||[]).filter(o => {
-        if (o.empresa_id !== empresaId) return false;
+        if (o.empresa_id !== empresaId || !perteneceASociedadActiva(o)) return false;
         const p = esPeriodoMensual ? (o.fecha_cierre||o.fecha_inicio||'').slice(0,7) : (o.fecha_cierre||o.fecha_inicio||'').slice(0,4);
         return p === periodo && ['cerrada','facturada'].includes(o.estado);
       }).map(o => ({ fecha:o.fecha_cierre||o.fecha_inicio||'', descripcion:o.numero?`OT ${o.numero}`:o.nombre||'OT', proveedor:o.tecnico_lider||'—', monto:Number(o.costo_real||0), documento:o.numero||'—' }));
     }
     return (comprasGastos||[]).filter(g => {
-      if (g.empresa_id !== empresaId) return false;
+      if (g.empresa_id !== empresaId || !perteneceASociedadActiva(g)) return false;
       const p = esPeriodoMensual ? (g.fecha||'').slice(0,7) : (g.fecha||'').slice(0,4);
       return p === periodo && g.categoria === categoria;
     }).map(g => ({ fecha:g.fecha||'', descripcion:g.descripcion||'—', proveedor:g.proveedor||'—', monto:Number(g.monto||0), documento:g.numero_documento||g.factura||'—' }));
@@ -8839,13 +8931,13 @@ function Presupuestos() {
           </select>
           {presDePeriodo.length > 0 && (
             <select className="select" style={{width:200}} value={presActivo?.id||''} onChange={e => setPreSelId(e.target.value||null)}>
-              {presDePeriodo.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {presDePeriodo.map(p => <option key={p.id} value={p.id}>{p.nombre}{perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD ? ` — ${sociedadNombre(p.sociedad_id)}` : ''}</option>)}
             </select>
           )}
           {presActivo?.estado === 'borrador' && (
             <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelEnviar(true)}>Enviar a aprobación</button>
           )}
-          <button className="btn btn-primary" data-local-form="true" onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:'',sociedad_id:sociedadActiva?.id||''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
             {I.plus} Nuevo presupuesto
           </button>
         </div>
@@ -8888,6 +8980,7 @@ function Presupuestos() {
               <div className="card-head">
                 <h3>Partidas presupuestales — {periodoLabel}</h3>
                 <div className="row" style={{gap:8}}>
+                  <SociedadBadge sociedadId={presActivo.sociedad_id} />
                   <span className={`badge ${BADGE_E[presActivo.estado]?.cls||''}`}>{BADGE_E[presActivo.estado]?.label||presActivo.estado}</span>
                   <span className="text-muted" style={{fontSize:12}}>{partidas.length} partidas</span>
                 </div>
@@ -9020,18 +9113,23 @@ function Presupuestos() {
                   <label>Período <span style={{color:'var(--fg-muted)',fontWeight:400}}>(YYYY-MM mensual · YYYY anual)</span></label>
                   <input className="input" value={formPre.periodo} onChange={e=>setFormPre(p=>({...p,periodo:e.target.value}))} placeholder="2026-05"/>
                 </div>
+                <SociedadFormField
+                  value={formPre.sociedad_id || ''}
+                  onChange={sociedad_id => setFormPre(p => ({ ...p, sociedad_id, centro_costo_id:'', cebe_id:'' }))}
+                  style={{gridColumn:'1/-1'}}
+                />
                 <div className="input-group">
                   <label>CECO <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={formPre.centro_costo_id} onChange={e=>setFormPre(p=>({...p,centro_costo_id:e.target.value}))}>
                     <option value="">— Todos —</option>
-                    {(centrosCosto||[]).filter(c=>c.empresa_id===empresaId).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    {(centrosCosto||[]).filter(c=>c.empresa_id===empresaId && (!formPre.sociedad_id || c.sociedad_id===formPre.sociedad_id)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
                 <div className="input-group">
                   <label>CEBE <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={formPre.cebe_id} onChange={e=>setFormPre(p=>({...p,cebe_id:e.target.value}))}>
                     <option value="">— Todos —</option>
-                    {(centrosBeneficio||[]).filter(c=>c.empresa_id===empresaId).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    {(centrosBeneficio||[]).filter(c=>c.empresa_id===empresaId && (!formPre.sociedad_id || c.sociedad_id===formPre.sociedad_id)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
               </div>
@@ -9075,7 +9173,7 @@ function Presupuestos() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button className="btn btn-secondary" onClick={()=>setPanelNuevo(false)}>Cancelar</button>
-                <button className="btn btn-primary" disabled={saving||!formPre.nombre.trim()||formParts.length===0} onClick={guardarNuevo}>
+                <button className="btn btn-primary" disabled={saving||!formPre.nombre.trim()||formParts.length===0||(empresa?.multisociedad_habilitado&&!formPre.sociedad_id)} onClick={guardarNuevo}>
                   {saving ? 'Guardando…' : `${I.check} Guardar presupuesto`}
                 </button>
               </div>

@@ -2721,6 +2721,7 @@ function ComprasView({ screen, setScreen }) {
           fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
           monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto',
           categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
+          ot_vinc_id: otId || null,
         });
       } else {
         crearGasto(gastoBase);
