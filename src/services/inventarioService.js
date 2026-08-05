@@ -859,6 +859,7 @@ export async function registrarEntradaDesdeRecepcion(empresaId, item, referencia
     referencia_id: referencia?.id || null,
     observacion: referencia?.observacion || null,
     usuario_id: usuarioId,
+    sociedad_id: referencia?.sociedad_id ?? item.sociedad_id ?? null,
     valorizacion_estado: referencia?.valorizacion_estado || null,
     orden_compra_id: referencia?.orden_compra_id || referencia?.oc_id || null,
     orden_compra_item_idx: referencia?.orden_compra_item_idx ?? null,
@@ -872,6 +873,14 @@ export async function registrarEntradaDesdeRecepcion(empresaId, item, referencia
 // Descuenta stock al costo promedio vigente y registra en kardex con created_by
 export async function registrarEntradaOcPendienteFactura(empresaId, { orden_compra_id, proveedor_id = null, moneda = 'PEN', almacen_id = null, almacen_codigo = 'ALM-001', lineas = [] }, usuarioId) {
   if (!empresaId || !orden_compra_id) throw new Error('Empresa y OC son requeridas');
+  const supabase = await getSupabaseClient();
+  const { data: ordenCompra, error: ocError } = await supabase
+    .from('ordenes_compra')
+    .select('sociedad_id')
+    .eq('id', orden_compra_id)
+    .eq('empresa_id', empresaId)
+    .single();
+  if (ocError) throw ocError;
   const entradas = [];
   for (const linea of lineas || []) {
     const cantidad = Number(linea.cantidad_recibida ?? linea.cantidad ?? 0);
@@ -892,6 +901,7 @@ export async function registrarEntradaOcPendienteFactura(empresaId, { orden_comp
       tipo: 'oc_pendiente_factura',
       id: orden_compra_id,
       orden_compra_id,
+      sociedad_id: ordenCompra?.sociedad_id || null,
       orden_compra_item_idx: linea.index ?? linea.orden_compra_item_idx ?? null,
       proveedor_id,
       valorizacion_estado: 'pendiente_factura',

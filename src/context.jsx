@@ -23,6 +23,7 @@ import { usuariosService } from './services/usuariosService.js';
 import {
   cargarContextoSociedades,
   PERFIL_SOCIEDAD,
+  SOCIEDAD_TODAS_ID,
   resolverSociedadActiva,
 } from './services/sociedadesService.js';
 import { posicionesService } from './services/posicionesService.js';
@@ -1328,8 +1329,10 @@ export function AppProvider({ children }) {
 
   const seleccionarSociedad = sociedadId => {
     if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return;
+    const esVistaConsolidada = sociedadId === SOCIEDAD_TODAS_ID;
+    if (!esVistaConsolidada && !sociedadesDisponibles.some(sociedad => sociedad.id === sociedadId)) return;
     const siguiente = resolverSociedadActiva(sociedadesDisponibles, sociedadId);
-    if (!siguiente || siguiente.id !== sociedadId) return;
+    if (!siguiente) return;
     setSociedadActiva(siguiente);
     try { localStorage.setItem(`last_sociedad_id_${empresa.id}`, siguiente.id); } catch {}
   };
@@ -8073,6 +8076,8 @@ export function AppProvider({ children }) {
           }, {
             tipo: 'recepcion',
             id: recepcion.id,
+            orden_compra_id: base.id,
+            sociedad_id: base.sociedad_id || null,
             proveedor_id: base.proveedor_id || null,
             observacion: `Entrada por recepcion ${recepcion.codigo}`
           }, authUser?.id))).then(async () => {
@@ -9009,7 +9014,34 @@ export function AppProvider({ children }) {
     if (!empresa?.id) throw new Error('No hay empresa activa.');
     const confirmedBy = authUser?.id || null;
     if (isSupabaseConfigured()) {
-      const data = await liquidacionesCeseService.confirmarLiquidacion(liquidacionId, params, confirmedBy);
+      const liquidacionLocal = liquidacionesCese.find(item => item.id === liquidacionId);
+      const personalId = params.personal_id || liquidacionLocal?.personal_id;
+      const fechaCese = params.fecha_cese || liquidacionLocal?.fecha_cese;
+      let sociedadLiquidacionId = null;
+      if (empresa?.multisociedad_habilitado) {
+        if (!personalId || !fechaCese) {
+          throw new Error('No se pudo identificar al colaborador y la fecha de cese para derivar la sociedad de la liquidación.');
+        }
+        const resolucionSociedad = resolverSociedadContratoVigente({
+          documentos: personalDocumentos,
+          tiposDocumento,
+          sociedades: sociedadesDisponibles,
+          personalId,
+          fecha: fechaCese,
+        });
+        if (resolucionSociedad.conflicto) {
+          throw new Error(`El colaborador tiene contratos vigentes en sociedades distintas: ${resolucionSociedad.nombres.join(', ')}. Resuelve los contratos antes de confirmar la liquidación.`);
+        }
+        if (!resolucionSociedad.sociedadId) {
+          throw new Error('El colaborador no tiene un contrato societario vigente para la fecha de cese. Resuelve el contrato antes de confirmar la liquidación.');
+        }
+        sociedadLiquidacionId = resolucionSociedad.sociedadId;
+      }
+      const { personal_id: _personalId, fecha_cese: _fechaCese, ...paramsServicio } = params;
+      const data = await liquidacionesCeseService.confirmarLiquidacion(liquidacionId, {
+        ...paramsServicio,
+        sociedad_id: sociedadLiquidacionId,
+      }, confirmedBy);
       setLiquidacionesCese(prev => prev.map(l => l.id === liquidacionId ? data.liquidacion : l));
       setLiquidacionesConceptos(prev => [
         ...prev.filter(c => c.liquidacion_id !== liquidacionId),

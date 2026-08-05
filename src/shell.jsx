@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { PERFIL_SOCIEDAD, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
+import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 
 
 const SIDEBAR = [
@@ -422,7 +422,10 @@ export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDis
 
   if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return null;
 
-  const nombreActivo = sociedadActiva?.nombre || 'Sin sociedades registradas';
+  const esVistaConsolidada = sociedadActiva?.id === SOCIEDAD_TODAS_ID;
+  const nombreActivo = esVistaConsolidada
+    ? 'GRUPO — Vista consolidada'
+    : (sociedadActiva?.nombre || 'Sin sociedades registradas');
 
   return (
     <div style={{position:'relative'}}>
@@ -466,6 +469,18 @@ export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDis
             <div style={{padding:'14px 12px', fontSize:12, color:'var(--fg-subtle)'}}>No hay sociedades activas configuradas.</div>
           ) : (
             <div style={{maxHeight:260, overflowY:'auto'}}>
+              {sociedadesDisponibles.length >= 2 && (
+                <div
+                  className={'dropdown-item ' + (esVistaConsolidada ? 'active' : '')}
+                  onClick={() => { seleccionarSociedad(SOCIEDAD_TODAS_ID); setOpen(false); }}
+                >
+                  <span className="company-dot" style={{background:'#64748b', width:8, height:8, borderRadius:999}}/>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontWeight:600}}>Todas (vista consolidada)</div>
+                    <div style={{fontSize:11, color:'var(--fg-subtle)'}}>Grupo de sociedades</div>
+                  </div>
+                </div>
+              )}
               {sociedadesDisponibles.map(sociedad => (
                 <div
                   key={sociedad.id}

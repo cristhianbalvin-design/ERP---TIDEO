@@ -644,6 +644,7 @@ export const devolucionesService = {
     const { error: cxpErr } = await supabase.from('cxp').insert({
       id: cxpAjusteId,
       empresa_id: empresaId,
+      sociedad_id: dev.sociedad_id || null,
       proveedor_id: dev.proveedor_id,
       tipo_comprobante: 'nota_credito',
       numero_comprobante: numero_nc || dev.numero_devolucion,

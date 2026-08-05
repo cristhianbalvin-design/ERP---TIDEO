@@ -43,7 +43,7 @@ import {
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
-import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD } from './services/sociedadesService.js';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -4071,6 +4071,7 @@ function Facturacion() {
         const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 15); return dt.toISOString().split('T')[0]; };
         await generarCxP({
           tipo_beneficiario: 'cliente',
+          sociedad_id: facOrigen.sociedad_id || null,
           cuenta_id: facOrigen.cuenta_id,
           concepto: `Devolución NC — ${facOrigen.numero} — ${cuentaNombre(facOrigen.cuenta_id)}`,
           factura_numero: `NC/${facOrigen.numero}`,
@@ -8789,10 +8790,19 @@ function Presupuestos() {
   const {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
-    comprasGastos, ots, usuarios, empresa, authUser,
+    comprasGastos, ots, usuarios, empresa, authUser, addToast,
     centrosCosto, centrosBeneficio, perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles,
   } = useApp();
+
+  const modoVistaSociedadPresupuesto = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un presupuesto.';
 
   const now = new Date();
   const [periodo, setPeriodo]       = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
@@ -8801,7 +8811,7 @@ function Presupuestos() {
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [panelDetalle, setPanelDetalle] = useState(null);
   const [panelEnviar, setPanelEnviar]   = useState(false);
-  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'', sociedad_id: sociedadActiva?.id || '' });
+  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'', sociedad_id: modoVistaSociedadPresupuesto.sociedadIdEscritura || '' });
   const [formParts, setFormParts]   = useState([{ categoria:'Materiales', descripcion:'', monto_presupuestado:'' }]);
   const [aprobadores, setAprobadores] = useState([null]);
   const [comentarioApr, setComentarioApr] = useState('');
@@ -8890,6 +8900,7 @@ function Presupuestos() {
   const usuariosEmpresa = (usuarios||[]).filter(u => u.empresa_id === empresaId || !u.empresa_id);
 
   const guardarNuevo = async () => {
+    if (!modoVistaSociedadPresupuesto.permiteEscritura) { addToast(mensajeSeleccionSociedad, 'error'); return; }
     if (!formPre.nombre.trim() || !formPre.periodo.trim() || formParts.length === 0) return;
     setSaving(true);
     try {
@@ -8937,7 +8948,8 @@ function Presupuestos() {
           {presActivo?.estado === 'borrador' && (
             <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelEnviar(true)}>Enviar a aprobación</button>
           )}
-          <button className="btn btn-primary" data-local-form="true" onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:'',sociedad_id:sociedadActiva?.id||''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
+          {!modoVistaSociedadPresupuesto.permiteEscritura && <span className="text-muted" style={{fontSize:12}}>{mensajeSeleccionSociedad}</span>}
+          <button className="btn btn-primary" data-local-form="true" disabled={!modoVistaSociedadPresupuesto.permiteEscritura} title={!modoVistaSociedadPresupuesto.permiteEscritura ? mensajeSeleccionSociedad : 'Crear presupuesto'} onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:'',sociedad_id:modoVistaSociedadPresupuesto.sociedadIdEscritura||''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
             {I.plus} Nuevo presupuesto
           </button>
         </div>
@@ -9104,6 +9116,11 @@ function Presupuestos() {
               <button className="icon-btn" onClick={()=>setPanelNuevo(false)}>{I.x}</button>
             </div>
             <div className="side-panel-body">
+              {!modoVistaSociedadPresupuesto.permiteEscritura && (
+                <div style={{padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13, marginBottom:14}}>
+                  {mensajeSeleccionSociedad}
+                </div>
+              )}
               <div className="grid-2" style={{gap:12}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Nombre del presupuesto <span style={{color:'var(--danger)'}}>*</span></label>
@@ -9173,7 +9190,7 @@ function Presupuestos() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button className="btn btn-secondary" onClick={()=>setPanelNuevo(false)}>Cancelar</button>
-                <button className="btn btn-primary" disabled={saving||!formPre.nombre.trim()||formParts.length===0||(empresa?.multisociedad_habilitado&&!formPre.sociedad_id)} onClick={guardarNuevo}>
+                <button className="btn btn-primary" disabled={!modoVistaSociedadPresupuesto.permiteEscritura||saving||!formPre.nombre.trim()||formParts.length===0||(empresa?.multisociedad_habilitado&&!formPre.sociedad_id)} onClick={guardarNuevo}>
                   {saving ? 'Guardando…' : `${I.check} Guardar presupuesto`}
                 </button>
               </div>

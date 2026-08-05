@@ -7,7 +7,7 @@ import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
-import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD } from './services/sociedadesService.js';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
@@ -4475,7 +4475,18 @@ const calcPrecio = f => {
 
 // Subcomponente Editor Hoja de Costeo
 function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
-  const { usuarios, roles, empresa, authUser, sociedadActiva } = useApp();
+  const {
+    usuarios, roles, empresa, authUser, addToast, perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles,
+  } = useApp();
+  const modoVistaSociedadHC = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear una Hoja de Costeo.';
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const [form, setForm] = useState({
     oportunidad_id: opp.id,
@@ -4489,11 +4500,18 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
     margen_objetivo_pct: 35,
     responsable_costeo: 'Admin',
     notas: '',
-    sociedad_id: empresa?.multisociedad_habilitado ? (sociedadActiva?.id || '') : null,
+    sociedad_id: empresa?.multisociedad_habilitado ? (modoVistaSociedadHC.sociedadIdEscritura || '') : null,
   });
 
   const totalCosto = calcSub(form.mano_obra) + calcSub(form.materiales) + calcSub(form.servicios_terceros) + calcSub(form.logistica);
   const precioSinIgv = calcPrecio(form);
+  const guardarHojaCosteo = () => {
+    if (!modoVistaSociedadHC.permiteEscritura) {
+      addToast(mensajeSeleccionSociedad, 'error');
+      return;
+    }
+    onSave({ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 });
+  };
 
   return (
     <>
@@ -4505,9 +4523,15 @@ function EditorHC({ opp, getCuentaNombre, onSave, onCancel }) {
         </div>
         <div className="row">
           <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
-          <button className="btn btn-primary" disabled={empresa?.multisociedad_habilitado && !form.sociedad_id} onClick={() => onSave({ ...form, costo_total: totalCosto, precio_sugerido_sin_igv: precioSinIgv, precio_sugerido_total: precioSinIgv * 1.18 })}>{I.save} Guardar y Continuar</button>
+          <button className="btn btn-primary" title={!modoVistaSociedadHC.permiteEscritura ? mensajeSeleccionSociedad : 'Guardar Hoja de Costeo'} disabled={!modoVistaSociedadHC.permiteEscritura || (empresa?.multisociedad_habilitado && !form.sociedad_id)} onClick={guardarHojaCosteo}>{I.save} Guardar y Continuar</button>
         </div>
       </div>
+
+      {!modoVistaSociedadHC.permiteEscritura && (
+        <div style={{margin:'12px 32px 0', padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13}}>
+          {mensajeSeleccionSociedad}
+        </div>
+      )}
 
       <div style={{ padding: '12px 32px 0' }}>
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 16px', fontSize: 13 }}>

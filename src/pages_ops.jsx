@@ -9,6 +9,7 @@ import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { maestrosService } from './services/maestrosService.js';
+import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import {
   rrhhService,
@@ -17027,8 +17028,17 @@ function Nomina() {
     asignacionesJornada = [],
     portalBoletaAcuses = [],
     solicitudesRRHH = [],
-    personalDocumentos = [], tiposDocumento = [], sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad,
+    personalDocumentos = [], tiposDocumento = [], perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad,
   } = useApp();
+  const modoVistaSociedadNomina = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear períodos de nómina.';
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
   const [periodoId, setPeriodoId] = useState(null);
@@ -17074,18 +17084,34 @@ function Nomina() {
   const hoy = new Date();
 
   // Auto-generar (backfill) los períodos faltantes entre el último existente en BD y el mes actual
-  const autoGenNominaRef = useRef(false);
+  const autoGenNominaRef = useRef(new Set());
   useEffect(() => {
-    if (!empresa?.id || autoGenNominaRef.current || !isDataLoaded) return;
-    // En multisociedad el periodo requiere una sociedad elegida explicitamente.
-    if (empresa?.multisociedad_habilitado) return;
+    if (!empresa?.id || !isDataLoaded) return;
+    const esMultisociedad = Boolean(empresa?.multisociedad_habilitado);
+    if (esMultisociedad && !modoVistaSociedadNomina.permiteEscritura) return;
+    const sociedadPeriodoId = esMultisociedad ? modoVistaSociedadNomina.sociedadIdEscritura : null;
+    const claveGeneracion = `${empresa.id}:${sociedadPeriodoId || 'sin-sociedad'}`;
+    if (autoGenNominaRef.current.has(claveGeneracion)) return;
     const hoyAnio = hoy.getFullYear();
     const hoyMes = hoy.getMonth() + 1;
+
+    const periodosDelAlcance = periodosNomina.filter(periodo => (
+      esMultisociedad
+        ? periodo.sociedad_id === sociedadPeriodoId
+        : periodo.sociedad_id == null
+    ));
+    const existePeriodo = (anio, mes, quincena) => periodosDelAlcance.some(periodo => {
+      const quincenaPeriodo = periodo.quincena == null ? null : Number(periodo.quincena);
+      return Number(periodo.anio) === anio
+        && Number(periodo.mes) === mes
+        && quincenaPeriodo === quincena
+        && (periodo.sociedad_id || null) === sociedadPeriodoId;
+    });
 
     // Se ancla en el PRIMER período existente (no el último) para poder detectar y rellenar
     // huecos en medio del historial (ej. mayo existe, junio falta, julio existe), no solo
     // extender hacia adelante desde el más reciente.
-    const conFechaInicio = periodosNomina.filter(p => p.fecha_inicio);
+    const conFechaInicio = periodosDelAlcance.filter(p => p.fecha_inicio);
     let sigAnio = hoyAnio, sigMes = hoyMes;
     if (conFechaInicio.length) {
       const primero = [...conFechaInicio].sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio))[0];
@@ -17101,34 +17127,43 @@ function Nomina() {
     }
     if (!mesesFaltantes.length) return;
 
-    autoGenNominaRef.current = true;
+    autoGenNominaRef.current.add(claveGeneracion);
     (async () => {
-      for (const { anio, mes } of mesesFaltantes) {
-        const inicioMes = `${anio}-${String(mes).padStart(2,'0')}-01`;
-        if (periodosNomina.some(p => p.fecha_inicio === inicioMes)) continue;
-        const finMes = `${anio}-${String(mes).padStart(2,'0')}-${String(new Date(anio, mes, 0).getDate()).padStart(2,'0')}`;
-        const mesN = mesNombres[mes - 1];
-        try {
-          if (empresaCfg.frecuencia_pago === 'quincenal') {
-            const finQ1 = `${anio}-${String(mes).padStart(2,'0')}-15`;
-            const inicioQ2 = `${anio}-${String(mes).padStart(2,'0')}-16`;
-            const p1 = { anio, mes, quincena: 1, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_inicio: inicioMes, fecha_fin: finQ1, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
-            const p2 = { anio, mes, quincena: 2, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_inicio: inicioQ2, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
-            try { await crearPeriodoNominaCtx(p1); } catch (err) { console.error(`Error generando período de nómina automático (${mesN} ${anio} 1ra quincena):`, err); }
-            try { await crearPeriodoNominaCtx(p2); } catch (err) { console.error(`Error generando período de nómina automático (${mesN} ${anio} 2da quincena):`, err); }
-            addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
-          } else {
-            const p = { anio, mes, quincena: null, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_inicio: inicioMes, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
-            await crearPeriodoNominaCtx(p);
-            addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
+      try {
+        for (const { anio, mes } of mesesFaltantes) {
+          const inicioMes = `${anio}-${String(mes).padStart(2,'0')}-01`;
+          const finMes = `${anio}-${String(mes).padStart(2,'0')}-${String(new Date(anio, mes, 0).getDate()).padStart(2,'0')}`;
+          const mesN = mesNombres[mes - 1];
+          try {
+            if (empresaCfg.frecuencia_pago === 'quincenal') {
+              const finQ1 = `${anio}-${String(mes).padStart(2,'0')}-15`;
+              const inicioQ2 = `${anio}-${String(mes).padStart(2,'0')}-16`;
+              const p1 = { anio, mes, quincena: 1, sociedad_id: sociedadPeriodoId, periodo: `${mesN} ${anio} — 1ra quincena`, estado: 'abierto', fecha_inicio: inicioMes, fecha_fin: finQ1, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q1 || 10).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q1 || 15).padStart(2,'0')}` };
+              const p2 = { anio, mes, quincena: 2, sociedad_id: sociedadPeriodoId, periodo: `${mesN} ${anio} — 2da quincena`, estado: 'abierto', fecha_inicio: inicioQ2, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_q2 || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_q2 || 30).padStart(2,'0')}` };
+              let creados = 0;
+              if (!existePeriodo(anio, mes, 1)) {
+                try { await crearPeriodoNominaCtx(p1); creados += 1; } catch (err) { console.error(`Error generando período de nómina automático (${mesN} ${anio} 1ra quincena):`, err); }
+              }
+              if (!existePeriodo(anio, mes, 2)) {
+                try { await crearPeriodoNominaCtx(p2); creados += 1; } catch (err) { console.error(`Error generando período de nómina automático (${mesN} ${anio} 2da quincena):`, err); }
+              }
+              if (creados) addNotificacion(`Períodos de ${mesN} ${anio} generados automáticamente.`);
+            } else {
+              if (!existePeriodo(anio, mes, null)) {
+                const p = { anio, mes, quincena: null, sociedad_id: sociedadPeriodoId, periodo: `${mesN} ${anio}`, estado: 'abierto', fecha_inicio: inicioMes, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2,'0')}`, fecha_pago: `${anio}-${String(mes).padStart(2,'0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2,'0')}` };
+                await crearPeriodoNominaCtx(p);
+                addNotificacion(`Período de ${mesN} ${anio} generado automáticamente.`);
+              }
+            }
+          } catch (err) {
+            console.error(`Error generando período de nómina automático (${mesN} ${anio}):`, err);
           }
-        } catch (err) {
-          console.error(`Error generando período de nómina automático (${mesN} ${anio}):`, err);
         }
+      } finally {
+        autoGenNominaRef.current.delete(claveGeneracion);
       }
-      autoGenNominaRef.current = false;
     })();
-  }, [periodosNomina.length, empresa?.id, empresa?.multisociedad_habilitado, isDataLoaded]);
+  }, [periodosNomina.length, empresa?.id, empresa?.multisociedad_habilitado, modoVistaSociedadNomina.permiteEscritura, modoVistaSociedadNomina.sociedadIdEscritura, isDataLoaded]);
 
   const periodosNominaVisibles = useMemo(() => {
     if (!empresa?.multisociedad_habilitado) return periodosNomina;
@@ -17771,6 +17806,7 @@ function Nomina() {
 
   const crearPeriodoManual = async (event) => {
     event.preventDefault();
+    if (!modoVistaSociedadNomina.permiteEscritura) { addToast(mensajeSeleccionSociedad, 'error'); return; }
     const [anio, mes] = String(nuevoPeriodoForm.mes || '').split('-').map(Number);
     if (!anio || !mes) { addToast('Selecciona el mes del periodo.', 'error'); return; }
     if (empresa?.multisociedad_habilitado && !nuevoPeriodoForm.sociedad_id) { addToast('Selecciona la sociedad del periodo.', 'error'); return; }
@@ -17905,8 +17941,14 @@ function Nomina() {
       {/* ── TAB: PERODOS ── */}
       {tab === 'periodos' && (
         <div>
-          <div className="row" style={{justifyContent:'flex-end', marginBottom:12}}>
-            <button className="btn btn-primary" onClick={() => { setNuevoPeriodoForm({ mes:new Date().toISOString().slice(0,7), sociedad_id:sociedadActiva?.id || '' }); setNuevoPeriodoPanel(true); }}>{I.plus} Nuevo período</button>
+          <div className="row" style={{justifyContent:'flex-end', marginBottom:12, flexWrap:'wrap'}}>
+            {!modoVistaSociedadNomina.permiteEscritura && <span className="text-muted" style={{fontSize:12}}>{mensajeSeleccionSociedad}</span>}
+            <button
+              className="btn btn-primary"
+              disabled={!modoVistaSociedadNomina.permiteEscritura}
+              title={!modoVistaSociedadNomina.permiteEscritura ? mensajeSeleccionSociedad : 'Crear período'}
+              onClick={() => { setNuevoPeriodoForm({ mes:new Date().toISOString().slice(0,7), sociedad_id:modoVistaSociedadNomina.sociedadIdEscritura || '' }); setNuevoPeriodoPanel(true); }}
+            >{I.plus} Nuevo período</button>
           </div>
           <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', marginBottom:20}}>
             <div className="kpi-card"><div className="kpi-label">Período activo</div><div className="kpi-value" style={{fontSize:18}}>{periodo?.periodo || '—'}</div></div>
@@ -18336,7 +18378,7 @@ function Nomina() {
       {/* Modal cierre */}
       {cierre && <div className="modal-backdrop" onClick={()=>setCierre(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo} disabled={cerrandoPeriodo}>{cerrandoPeriodo ? 'Cerrando...' : 'Confirmar cierre'}</button></div></div></div></div>}
       {advertenciaCorte && <div className="modal-backdrop" onClick={()=>setAdvertenciaCorte(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Fecha de corte no alcanzada</h3><button className="icon-btn" onClick={()=>setAdvertenciaCorte(false)}>{I.x}</button></div><div className="modal-body"><p>Aún no llega la fecha de corte configurada ({periodo?.fecha_corte}). ¿Deseas procesar de todos modos?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setAdvertenciaCorte(false)}>Cancelar</button><button className="btn btn-primary" onClick={confirmarProcesarPeseACorte}>Procesar de todos modos</button></div></div></div></div>}
-      {nuevoPeriodoPanel && <div className="modal-backdrop" onClick={()=>setNuevoPeriodoPanel(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Nuevo período de nómina</h3><button className="icon-btn" onClick={()=>setNuevoPeriodoPanel(false)}>{I.x}</button></div><form className="modal-body" onSubmit={crearPeriodoManual}><div className="input-group"><label>Mes *</label><input className="input" type="month" value={nuevoPeriodoForm.mes} onChange={e=>setNuevoPeriodoForm(f=>({...f,mes:e.target.value}))} required /></div><SociedadFormField value={nuevoPeriodoForm.sociedad_id} onChange={sociedad_id=>setNuevoPeriodoForm(f=>({...f,sociedad_id}))} /><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setNuevoPeriodoPanel(false)}>Cancelar</button><button className="btn btn-primary" disabled={creandoPeriodo}>{creandoPeriodo?'Creando...':'Crear período'}</button></div></form></div></div>}
+      {nuevoPeriodoPanel && <div className="modal-backdrop" onClick={()=>setNuevoPeriodoPanel(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Nuevo período de nómina</h3><button className="icon-btn" onClick={()=>setNuevoPeriodoPanel(false)}>{I.x}</button></div><form className="modal-body" onSubmit={crearPeriodoManual}>{!modoVistaSociedadNomina.permiteEscritura && <div style={{padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13, marginBottom:14}}>{mensajeSeleccionSociedad}</div>}<div className="input-group"><label>Mes *</label><input className="input" type="month" value={nuevoPeriodoForm.mes} onChange={e=>setNuevoPeriodoForm(f=>({...f,mes:e.target.value}))} required /></div><SociedadFormField value={nuevoPeriodoForm.sociedad_id} onChange={sociedad_id=>setNuevoPeriodoForm(f=>({...f,sociedad_id}))} /><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setNuevoPeriodoPanel(false)}>Cancelar</button><button className="btn btn-primary" title={!modoVistaSociedadNomina.permiteEscritura ? mensajeSeleccionSociedad : 'Crear período'} disabled={creandoPeriodo || !modoVistaSociedadNomina.permiteEscritura}>{creandoPeriodo?'Creando...':'Crear período'}</button></div></form></div></div>}
     </>
   );
 }
