@@ -150,7 +150,6 @@ const saveFunctionalAssignments = async (
     .eq("empresa_id", params.empresaId)
     .eq("user_id", params.userId)
     .eq("principal", true)
-    .eq("activo", true)
     .maybeSingle();
   if (principalLookupError && principalLookupError.code === "42P01") return [];
   if (principalLookupError) throw principalLookupError;
