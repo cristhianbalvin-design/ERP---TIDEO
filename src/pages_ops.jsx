@@ -14450,9 +14450,21 @@ function ControlAsistencia() {
 
   const sedesUm = sedes.filter(s => s.tipo === 'unidad_minera');
 
-  const idsMinerosCicloVigente = new Set(
-    asignacionesJornada.filter(a => a.regimen_jornada === 'ciclo_acumulativo' && !a.fecha_fin).map(a => a.personal_id)
-  );
+  const idsMinerosCicloVigente = new Set();
+  const _tramosVigentes = new Map();
+  asignacionesJornada.forEach(a => {
+    if (a.tipo_tramo === 'normal') {
+      const actual = _tramosVigentes.get(a.personal_id);
+      if (!actual || String(a.fecha_inicio).localeCompare(String(actual.fecha_inicio)) > 0) {
+        _tramosVigentes.set(a.personal_id, a);
+      }
+    }
+  });
+  _tramosVigentes.forEach((tramo, personalId) => {
+    if (tramo.regimen_jornada === 'ciclo_acumulativo') {
+      idsMinerosCicloVigente.add(personalId);
+    }
+  });
   const trabajadoresUmSelect = trabajadoresRoster.filter(t => idsMinerosCicloVigente.has(t.id));
 
   const sumarDiaISO = (fechaStr) => {
@@ -15352,7 +15364,13 @@ function ControlAsistencia() {
         return;
       }
 
-      const porTrabajador = new Map(trabajadores.map(t => [t.id, t]));
+      // No usar `trabajadores`: esa lista solo incluye personal con jornada vigente para
+      // `fecha` (el día seleccionado en la vista diaria), y el export cubre un rango de fechas
+      // distinto. Se resuelve el nombre contra el personal completo, sin ese filtro.
+      const porTrabajador = new Map([
+        ...personalOperativo.map(p => [p.id, { ...p, trabajador_tipo: 'operativo', area: p.area || 'Operativo' }]),
+        ...personalAdmin.map(p => [p.id, { ...p, trabajador_tipo: 'administrativo', area: p.area || 'Administrativo' }]),
+      ]);
       const filas = registros.map(r => {
         const t = porTrabajador.get(r.trabajador_id);
         return {
@@ -15777,12 +15795,12 @@ function ControlAsistencia() {
     return d.toISOString().split('T')[0];
   };
 
-  const getTramoMineroVigente = (personalId) => asignacionesJornada
-    .filter(a => a.personal_id === personalId
-      && !a.fecha_fin
-      && a.tipo_tramo === 'normal'
-      && a.regimen_jornada === 'ciclo_acumulativo')
-    .sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio))[0] || null;
+  const getTramoMineroVigente = (personalId) => {
+    const tramo = asignacionesJornada
+      .filter(a => a.personal_id === personalId && a.tipo_tramo === 'normal')
+      .sort((a, b) => String(b.fecha_inicio).localeCompare(String(a.fecha_inicio)))[0];
+    return (tramo && tramo.regimen_jornada === 'ciclo_acumulativo') ? tramo : null;
+  };
 
   const getCodigoRegimenTramo = (tramo) => {
     if (!tramo) return '';
@@ -16900,7 +16918,7 @@ function ControlAsistencia() {
                 ? Math.floor((new Date(formMinero.fecha_fin_induccion) - new Date(inicioCiclo)) / 86400000)
                 : null;
               const terminaEnODespuesDelDescanso = diaFinInduccionEnCiclo !== null && diaFinInduccionEnCiclo >= diasT;
-              const tramoTrabajador = asignacionesJornada.find(a => a.personal_id === formMinero.personal_id && a.regimen_jornada === 'ciclo_acumulativo' && !a.fecha_fin);
+              const tramoTrabajador = getTramoMineroVigente(formMinero.personal_id);
               const fueraDelTramo = Boolean(tramoTrabajador) && (
                 formMinero.fecha_fin_induccion < tramoTrabajador.fecha_inicio
                 || (Boolean(tramoTrabajador.fecha_fin) && formMinero.fecha_inicio_induccion > tramoTrabajador.fecha_fin)
