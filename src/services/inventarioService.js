@@ -745,6 +745,7 @@ export async function getStockCompleto(empresaId) {
   return (data || []).map(row => ({
     id: row.id,
     empresa_id: row.empresa_id,
+    sociedad_id: row.sociedad_id,
     material_id: row.material_id,
     almacen_id: row.almacen_id,
     sku: row.materiales?.codigo || row.material_id,

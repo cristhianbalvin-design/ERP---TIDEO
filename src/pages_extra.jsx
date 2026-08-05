@@ -7,7 +7,7 @@ import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
-import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
@@ -164,15 +164,29 @@ function CotizacionesInner() {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
     navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual,
     crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion,
-    authUser, roles, perfilSociedad, sociedadesIdsAlcance
+    authUser, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles
   } = useApp();
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
-  const cotizacionesAlcance = useMemo(
-    () => filtrarRegistrosPorAlcanceSociedad(cotizaciones, perfilSociedad, sociedadesIdsAlcance),
-    [cotizaciones, perfilSociedad, sociedadesIdsAlcance]
+  const modoVistaSociedadCotizaciones = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadCotizaciones = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadCotizaciones.permiteEscritura
+    && (modoVistaSociedadCotizaciones.sinFiltro || modoVistaSociedadCotizaciones.sociedadesIds.length > 0)
   );
+  const sociedadesIdsVistaCotizacionesKey = modoVistaSociedadCotizaciones.sociedadesIds.join('|');
+  const cotizacionesAlcance = useMemo(() => {
+    if (modoVistaSociedadCotizaciones.sinFiltro) return cotizaciones;
+    const permitidas = new Set(modoVistaSociedadCotizaciones.sociedadesIds);
+    return cotizaciones.filter(cotizacion => cotizacion.sociedad_id && permitidas.has(cotizacion.sociedad_id));
+  }, [cotizaciones, modoVistaSociedadCotizaciones.sinFiltro, sociedadesIdsVistaCotizacionesKey]);
 
   useEffect(() => {
     if (activeParams?.crear_os && activeParams?.detail) {
@@ -385,7 +399,7 @@ function CotizacionesInner() {
         <div className="table-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Número</th>{perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <th>Sociedad</th>}<th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
+              <tr><th>Número</th>{mostrarBadgeSociedadCotizaciones && <th>Sociedad</th>}<th>Cliente</th><th>Oportunidad</th><th>Implementación</th><th>Recurrente/mes</th><th>Fecha</th><th>Estado</th></tr>
             </thead>
             <tbody>
               {filtered.map(r => {
@@ -399,7 +413,7 @@ function CotizacionesInner() {
                       {r.numero}
                       {r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
                     </td>
-                    {perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
+                    {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{cliente}</strong></td>
                     <td className="text-muted">{opp?.nombre || '—'}</td>
                     <td className="num"><strong>{money(impl, currencySymbol(r.moneda))}</strong></td>
@@ -410,7 +424,7 @@ function CotizacionesInner() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD ? 8 : 7} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                <tr><td colSpan={mostrarBadgeSociedadCotizaciones ? 8 : 7} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                   {query ? `No se encontraron resultados para "${query}"` : 'No hay cotizaciones registradas.'}
                 </td></tr>
               )}
@@ -1775,7 +1789,25 @@ const MESES_VAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 const MODELO_LABELS = { avance_pct: 'Por avance %', costo_real: 'Por costo real', hitos_pago: 'Por hitos de pago' };
 
 function Valorizacion({ role }) {
-  const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery, personalOperativo, personalAdmin } = useApp();
+  const { valorizaciones, osClientes, cuentas, cotizaciones, partes, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion, emitirFacturaDesdeValorizacion, ots, cierresTecnicos, navigate, searchQuery, personalOperativo, personalAdmin, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
+  const modoVistaSociedadValorizaciones = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadValorizaciones = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadValorizaciones.permiteEscritura
+    && (modoVistaSociedadValorizaciones.sinFiltro || modoVistaSociedadValorizaciones.sociedadesIds.length > 0)
+  );
+  const sociedadesIdsVistaValorizacionesKey = modoVistaSociedadValorizaciones.sociedadesIds.join('|');
+  const valorizacionesVista = useMemo(() => {
+    if (modoVistaSociedadValorizaciones.sinFiltro) return valorizaciones;
+    const permitidas = new Set(modoVistaSociedadValorizaciones.sociedadesIds);
+    return valorizaciones.filter(valorizacion => valorizacion.sociedad_id && permitidas.has(valorizacion.sociedad_id));
+  }, [valorizaciones, modoVistaSociedadValorizaciones.sinFiltro, sociedadesIdsVistaValorizacionesKey]);
   const [editing, setEditing] = useState(false);
   const [step, setStep] = useState(1);
   const [selVal, setSelVal] = useState(null);
@@ -2028,7 +2060,7 @@ function Valorizacion({ role }) {
   // ── Ficha detail view ─────────────────────────────────────────────────
   let fichaVal = null;
   if (selVal) {
-    const v = valorizaciones.find(x => x.id === selVal);
+    const v = valorizacionesVista.find(x => x.id === selVal);
     if (v) {
     const os = getOs(v.os_cliente_id);
     const clienteNombre = getClienteNombre(v.os_cliente_id);
@@ -2073,6 +2105,7 @@ function Valorizacion({ role }) {
             <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
               <strong style={{fontSize:16}}>{v.numero}</strong>
               <span className={'badge ' + badgeC(v.estado)}>{badgeL(v.estado)}</span>
+              {mostrarBadgeSociedadValorizaciones && <SociedadBadge sociedadId={v.sociedad_id} />}
               {v.tipo === 'avance' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--orange) 15%,transparent)',color:'var(--orange)'}}>Avance</span>}
               {v.tipo === 'final' && <span style={{fontSize:10,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'color-mix(in srgb,var(--green) 15%,transparent)',color:'var(--green)'}}>Final</span>}
             </div>
@@ -2797,25 +2830,25 @@ function Valorizacion({ role }) {
   // KPIs
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-  const valMes = valorizaciones.filter(v => (v.fecha || '').startsWith(mesActual)).length;
-  const montoPendientePEN = valorizaciones.filter(v => v.estado === 'aprobada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoPendienteUSD = valorizaciones.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoPEN = valorizaciones.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
-  const montoFacturadoUSD = valorizaciones.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const valMes = valorizacionesVista.filter(v => (v.fecha || '').startsWith(mesActual)).length;
+  const montoPendientePEN = valorizacionesVista.filter(v => v.estado === 'aprobada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoPendienteUSD = valorizacionesVista.filter(v => v.estado === 'aprobada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoFacturadoPEN = valorizacionesVista.filter(v => v.estado === 'facturada' && (v.moneda || 'PEN') === 'PEN').reduce((s, v) => s + Number(v.total || 0), 0);
+  const montoFacturadoUSD = valorizacionesVista.filter(v => v.estado === 'facturada' && v.moneda === 'USD').reduce((s, v) => s + Number(v.total || 0), 0);
   const otsListasCount = ots.filter(ot => ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)).length;
 
   // Unique filter options from data
-  const clienteOpts = [...new Map(valorizaciones.map(v => {
+  const clienteOpts = [...new Map(valorizacionesVista.map(v => {
     const cId = getClienteId(v.os_cliente_id);
     return [cId, getClienteNombre(v.os_cliente_id)];
   })).entries()].filter(([k]) => k);
-  const osOpts = [...new Map(valorizaciones.map(v => [v.os_cliente_id, getOs(v.os_cliente_id)?.numero || v.os_cliente_id])).entries()];
-  const periodoOpts = [...new Set(valorizaciones.map(v => v.periodo).filter(Boolean))];
-  const modeloOpts = [...new Set(valorizaciones.map(v => v.modelo_calculo).filter(Boolean))];
+  const osOpts = [...new Map(valorizacionesVista.map(v => [v.os_cliente_id, getOs(v.os_cliente_id)?.numero || v.os_cliente_id])).entries()];
+  const periodoOpts = [...new Set(valorizacionesVista.map(v => v.periodo).filter(Boolean))];
+  const modeloOpts = [...new Set(valorizacionesVista.map(v => v.modelo_calculo).filter(Boolean))];
 
   // Filtering
   const query = searchQuery.toLowerCase();
-  const filtered = valorizaciones.filter(v => {
+  const filtered = valorizacionesVista.filter(v => {
     if (filterCliente && getClienteId(v.os_cliente_id) !== filterCliente) return false;
     if (filterOs && v.os_cliente_id !== filterOs) return false;
     if (filterEstado && v.estado !== filterEstado) return false;
@@ -2839,7 +2872,7 @@ function Valorizacion({ role }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">Valorizaciones</h1>
-          <div className="page-sub">{valorizaciones.length} valorizaciones registradas</div>
+          <div className="page-sub">{valorizacionesVista.length} valorizaciones registradas</div>
         </div>
         <button className="btn btn-primary" onClick={() => setEditing(true)}>{I.plus} Generar Valorización</button>
       </div>
@@ -2923,6 +2956,7 @@ function Valorizacion({ role }) {
             <thead>
               <tr>
                 <th>N° Valorización</th>
+                {mostrarBadgeSociedadValorizaciones && <th>Sociedad</th>}
                 <th>OS Cliente</th>
                 <th>Cliente</th>
                 <th>Período</th>
@@ -2938,6 +2972,7 @@ function Valorizacion({ role }) {
               {filtered.map(v => (
                 <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVal(v.id)}>
                   <td className="mono" style={{fontWeight:600}}>{v.numero}</td>
+                  {mostrarBadgeSociedadValorizaciones && <td><SociedadBadge sociedadId={v.sociedad_id} /></td>}
                   <td className="mono text-muted">{getOs(v.os_cliente_id)?.numero || '—'}</td>
                   <td style={{maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{getClienteNombre(v.os_cliente_id)}</td>
                   <td className="text-muted">{v.periodo || '—'}</td>
@@ -2967,7 +3002,7 @@ function Valorizacion({ role }) {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan="10" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                <tr><td colSpan={mostrarBadgeSociedadValorizaciones ? 11 : 10} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                   {query || hasFilters ? 'No se encontraron resultados' : 'No hay valorizaciones registradas'}
                 </td></tr>
               )}
@@ -3584,7 +3619,7 @@ function ModalIniciarConteo({ almacenes, onClose, onStart }) {
   );
 }
 
-function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast }) {
+function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast, mostrarBadgeSociedad }) {
   const [modalInicio, setModalInicio] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [items, setItems] = useState([]);
@@ -3738,13 +3773,14 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
           <div className="eyebrow">Historial</div>
           <div className="table-wrap" style={{marginTop:10}}>
             <table className="tbl">
-              <thead><tr><th>Fecha</th><th>Código</th><th>Tipo</th><th>SKUs</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fecha</th>{mostrarBadgeSociedad && <th>Sociedad</th>}<th>Código</th><th>Tipo</th><th>SKUs</th><th>Estado</th></tr></thead>
               <tbody>
                 {conteos.map(c => {
                   const ajustados = (c.items || []).filter(it => Number(it.diferencia || 0) !== 0).length;
                   return (
                     <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelectedId(c.id)}>
                       <td className="text-muted">{fmtDateShort(c.created_at)}</td>
+                      {mostrarBadgeSociedad && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                       <td className="mono">{c.codigo || c.id}</td>
                       <td>{c.tipo || 'total'}</td>
                       <td>{(c.items || []).length}{c.estado === 'cerrado' ? ` · ${ajustados} ajust.` : ''}</td>
@@ -3752,7 +3788,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
                     </tr>
                   );
                 })}
-                {conteos.length === 0 && <tr><td colSpan="5" style={{textAlign:'center', padding:30, color:'var(--fg-muted)'}}>Sin historial de conteos.</td></tr>}
+                {conteos.length === 0 && <tr><td colSpan={mostrarBadgeSociedad ? 6 : 5} style={{textAlign:'center', padding:30, color:'var(--fg-muted)'}}>Sin historial de conteos.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -3861,7 +3897,30 @@ function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
 }
 
 function Inventario() {
-  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], ordenesCompra = [], recepciones = [], entradasOcPendientes = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx } = useApp();
+  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], ordenesCompra = [], recepciones = [], entradasOcPendientes = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
+  const modoVistaSociedadInventario = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadInventario = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadInventario.permiteEscritura
+    && (modoVistaSociedadInventario.sinFiltro || modoVistaSociedadInventario.sociedadesIds.length > 0)
+  );
+  const sociedadesIdsVistaInventarioKey = modoVistaSociedadInventario.sociedadesIds.join('|');
+  const inventarioVista = useMemo(() => {
+    if (modoVistaSociedadInventario.sinFiltro) return inventario;
+    const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
+    return inventario.filter(item => item.sociedad_id && permitidas.has(item.sociedad_id));
+  }, [inventario, modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
+  const conteosVista = useMemo(() => {
+    if (modoVistaSociedadInventario.sinFiltro) return inventarioConteos;
+    const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
+    return inventarioConteos.filter(conteo => conteo.sociedad_id && permitidas.has(conteo.sociedad_id));
+  }, [inventarioConteos, modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
   const [selSku, setSelSku] = useState(null);
   const [modalEntrada, setModalEntrada] = useState(false);
   const [modalTransf, setModalTransf] = useState(false);
@@ -3879,7 +3938,7 @@ function Inventario() {
   }, []);
 
   const query = searchQuery.toLowerCase();
-  const filteredInv = inventario.filter(i =>
+  const filteredInv = inventarioVista.filter(i =>
     (i.sku || '').toLowerCase().includes(query) ||
     (i.nombre || '').toLowerCase().includes(query) ||
     (i.categoria || '').toLowerCase().includes(query) ||
@@ -3946,7 +4005,7 @@ function Inventario() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Almacenes e Inventario</h1>
-          <div className="page-sub">{inventario.length} SKUs · {almacenes.length} almacén(es)</div>
+          <div className="page-sub">{inventarioVista.length} SKUs · {almacenes.length} almacén(es)</div>
         </div>
         <div className="row" style={{gap:8}}>
           {cargando && <span style={{fontSize:12,color:'var(--fg-muted)',alignSelf:'center'}}>Actualizando...</span>}
@@ -3971,7 +4030,7 @@ function Inventario() {
         </div>}
 
       {mainTab === 'stock' && <div className="card mt-6">
-        {inventario.length === 0 && !cargando && (
+        {inventarioVista.length === 0 && !cargando && (
           <div style={{textAlign:'center',padding:60,color:'var(--fg-muted)'}}>
             <div style={{fontSize:40,marginBottom:12}}>📦</div>
             <div style={{fontWeight:600,fontSize:16,marginBottom:8}}>Sin stock registrado</div>
@@ -3979,12 +4038,12 @@ function Inventario() {
             <button className="btn btn-primary" onClick={() => setModalEntrada(true)}>{I.plus} Primera Entrada</button>
           </div>
         )}
-        {(inventario.length > 0 || cargando) && (
+        {(inventarioVista.length > 0 || cargando) && (
           <div className="table-wrap">
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>SKU</th><th>Descripción</th><th>Categoría</th><th>Almacén</th><th>Unidad</th>
+                  <th>SKU</th>{mostrarBadgeSociedadInventario && <th>Sociedad</th>}<th>Descripción</th><th>Categoría</th><th>Almacén</th><th>Unidad</th>
                   <th className="num">Físico</th><th className="num">Disponible</th><th className="num">Reservado</th>
                   <th className="num">Costo Prom.</th><th className="num">Valor Total</th><th>Control</th>
                 </tr>
@@ -3993,6 +4052,7 @@ function Inventario() {
                 {filteredInv.map(r => (
                   <tr key={r.id} onClick={() => setSelSku(r)} className="hover-row" style={{cursor:'pointer'}}>
                     <td className="mono" style={{fontWeight:600}}>{r.sku}</td>
+                    {mostrarBadgeSociedadInventario && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{r.nombre}</strong></td>
                     <td>{r.categoria}</td>
                     <td>{r.almacen}</td>
@@ -4006,10 +4066,10 @@ function Inventario() {
                   </tr>
                 ))}
                 {filteredInv.length === 0 && !cargando && (
-                  <tr><td colSpan="11" style={{textAlign:'center',padding:40,color:'var(--fg-muted)'}}>No se encontraron materiales para la búsqueda</td></tr>
+                  <tr><td colSpan={mostrarBadgeSociedadInventario ? 12 : 11} style={{textAlign:'center',padding:40,color:'var(--fg-muted)'}}>No se encontraron materiales para la búsqueda</td></tr>
                 )}
                 {cargando && (
-                  <tr><td colSpan="11" style={{textAlign:'center',padding:30,color:'var(--fg-muted)'}}>Cargando inventario...</td></tr>
+                  <tr><td colSpan={mostrarBadgeSociedadInventario ? 12 : 11} style={{textAlign:'center',padding:30,color:'var(--fg-muted)'}}>Cargando inventario...</td></tr>
                 )}
               </tbody>
             </table>
@@ -4019,14 +4079,15 @@ function Inventario() {
 
       {mainTab === 'conteo' && (
         <ConteoFisicoTab
-          inventario={inventario}
+          inventario={inventarioVista}
           almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
-          conteos={inventarioConteos}
+          conteos={conteosVista}
           iniciarConteoCtx={iniciarConteoCtx}
           guardarAvanceConteoCtx={guardarAvanceConteoCtx}
           cerrarConteoCtx={cerrarConteoCtx}
           recargarConteosInventarioCtx={recargarConteosInventarioCtx}
           mostrarToast={mostrarToast}
+          mostrarBadgeSociedad={mostrarBadgeSociedadInventario}
         />
       )}
 
@@ -4084,7 +4145,7 @@ function Inventario() {
 
 // ============ HOJA DE COSTEO ============
 function HojaCosteo() {
-  const { hojasCosteo, oportunidades, cuentas, activeParams, navigate, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, searchQuery, perfilSociedad, sociedadesIdsAlcance } = useApp();
+  const { hojasCosteo, oportunidades, cuentas, activeParams, navigate, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, searchQuery, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
 
   const getOpp = id => oportunidades.find(o => o.id === id);
   const getCuentaNombre = id => { const c = cuentas.find(x => x.id === id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
@@ -4092,10 +4153,24 @@ function HojaCosteo() {
   const labelEstadoHC = e => String(estadoHC(e)).replace('_', ' ');
   const badgeHC = e => estadoHC(e) === 'aprobada' ? 'badge-green' : estadoHC(e) === 'en_revision' ? 'badge-orange' : 'badge-gray';
 
-  const hojasCosteoAlcance = useMemo(
-    () => filtrarRegistrosPorAlcanceSociedad(hojasCosteo, perfilSociedad, sociedadesIdsAlcance),
-    [hojasCosteo, perfilSociedad, sociedadesIdsAlcance]
+  const modoVistaSociedadHC = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadHC = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadHC.permiteEscritura
+    && (modoVistaSociedadHC.sinFiltro || modoVistaSociedadHC.sociedadesIds.length > 0)
   );
+  const sociedadesIdsVistaHCKey = modoVistaSociedadHC.sociedadesIds.join('|');
+  const hojasCosteoAlcance = useMemo(() => {
+    if (modoVistaSociedadHC.sinFiltro) return hojasCosteo;
+    const permitidas = new Set(modoVistaSociedadHC.sociedadesIds);
+    return hojasCosteo.filter(hoja => hoja.sociedad_id && permitidas.has(hoja.sociedad_id));
+  }, [hojasCosteo, modoVistaSociedadHC.sinFiltro, sociedadesIdsVistaHCKey]);
   const query = searchQuery.toLowerCase();
   const filteredHC = hojasCosteoAlcance.filter(hc => {
     const opp = getOpp(hc.oportunidad_id);
@@ -4109,7 +4184,7 @@ function HojaCosteo() {
   if (activeParams?.detail) {
     const hc = hojasCosteoAlcance.find(h => h.id === activeParams.detail);
     if (!hc) return <div className="p-4">Hoja de Costeo no encontrada</div>;
-    return <DetalleHC hc={hc} getOpp={getOpp} getCuentaNombre={getCuentaNombre} badgeHC={badgeHC} actualizarHojaCosteo={actualizarHojaCosteo} aprobarHojaCosteo={aprobarHojaCosteo} navigate={navigate} />;
+    return <DetalleHC hc={hc} getOpp={getOpp} getCuentaNombre={getCuentaNombre} badgeHC={badgeHC} actualizarHojaCosteo={actualizarHojaCosteo} aprobarHojaCosteo={aprobarHojaCosteo} navigate={navigate} mostrarBadgeSociedad={mostrarBadgeSociedadHC} />;
   }
 
   if (activeParams?.nueva) {
@@ -4137,7 +4212,7 @@ function HojaCosteo() {
         <div className="table-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Número</th>{perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th></tr>
+              <tr><th>Número</th>{mostrarBadgeSociedadHC && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th></tr>
             </thead>
             <tbody>
               {filteredHC.map(hc => {
@@ -4145,7 +4220,7 @@ function HojaCosteo() {
                 return (
                   <tr key={hc.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => navigate('hoja_costeo', { detail: hc.id })}>
                     <td className="mono" style={{fontWeight:600}}>{hc.numero}</td>
-                    {perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD && <td><SociedadBadge sociedadId={hc.sociedad_id} /></td>}
+                    {mostrarBadgeSociedadHC && <td><SociedadBadge sociedadId={hc.sociedad_id} /></td>}
                     <td>{opp?.nombre || '—'}</td>
                     <td><strong>{getCuentaNombre(hc.cuenta_id)}</strong></td>
                     <td className="num">{moneyCurrency(hc.costo_total, opp?.moneda || hc.moneda)}</td>
@@ -4156,7 +4231,7 @@ function HojaCosteo() {
                   </tr>
                 );
               })}
-              {filteredHC.length === 0 && <tr><td colSpan={perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD ? 9 : 8} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'Sin resultados para la búsqueda' : 'No hay hojas de costeo. Créalas desde el Pipeline.'}</td></tr>}
+              {filteredHC.length === 0 && <tr><td colSpan={mostrarBadgeSociedadHC ? 9 : 8} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'Sin resultados para la búsqueda' : 'No hay hojas de costeo. Créalas desde el Pipeline.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -4270,7 +4345,7 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
   );
 }
 
-function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo, aprobarHojaCosteo, navigate }) {
+function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo, aprobarHojaCosteo, navigate, mostrarBadgeSociedad }) {
   const { usuarios, roles, empresa, authUser, role, cuentas, empresaConfig, addNotificacion } = useApp();
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const opp = getOpp(hc.oportunidad_id);
@@ -4372,7 +4447,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
       <div className="page-header" style={{borderBottom:'none', paddingBottom:0}}>
         <div>
           <button className="btn btn-ghost" onClick={() => navigate('hoja_costeo')} style={{marginBottom:10, padding:0, color:'var(--cyan)'}}>← Volver a lista</button>
-          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span><span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(hcMoneda)}</span><SociedadBadge sociedadId={hc.sociedad_id} /></h1>
+          <h1 className="page-title row" style={{gap:10}}>{hc.numero} <span className={'badge ' + badgeHC(estado)} style={{fontSize:12, textTransform:'uppercase'}}>{estadoLabel}</span><span className="badge badge-gray" style={{fontSize:11}}>{currencySymbol(hcMoneda)}</span>{mostrarBadgeSociedad && <SociedadBadge sociedadId={hc.sociedad_id} />}</h1>
           <div className="page-sub">Oportunidad: {opp?.nombre || '—'} · Cliente: <strong>{getCuentaNombre(hc.cuenta_id)}</strong></div>
         </div>
         <div className="row">

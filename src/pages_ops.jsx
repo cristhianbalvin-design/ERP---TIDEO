@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
-import { SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
+import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
@@ -32,7 +32,7 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad, resolverParametrosNominaSociedad } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes } from './services/nominaSociedadService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
@@ -1518,7 +1518,25 @@ function Cuentas() {
 }
 
 function OT({ role }) {
-  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const { ots, cuentas, partes, osClientes, usuarios, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate, actualizarOT, cerrarTecnicamenteOT, plannerAsignaciones, personalOperativo, personalAdmin, registrarParteDiario, actualizarBorradorParteDiario, crearAsignacionesRango, crearOT, crearOTDesdeOS, crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT, centrosCosto, centrosBeneficio, tiposServicio, authUser, inventario, materiales: catalogoMateriales, almacenes, addNotificacion, cotizaciones, hojasCosteo, cierresTecnicos, comprasGastos, ordenesCompra, ordenesServicio, recalcularCostoRealOT, enviarParteARevision, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario } = useApp();
+  const modoVistaSociedadOT = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadOT = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadOT.permiteEscritura
+    && (modoVistaSociedadOT.sinFiltro || modoVistaSociedadOT.sociedadesIds.length > 0)
+  );
+  const sociedadesIdsVistaOTKey = modoVistaSociedadOT.sociedadesIds.join('|');
+  const otsVisibles = useMemo(() => {
+    if (modoVistaSociedadOT.sinFiltro) return ots || [];
+    const permitidas = new Set(modoVistaSociedadOT.sociedadesIds);
+    return (ots || []).filter(ot => ot.sociedad_id && permitidas.has(ot.sociedad_id));
+  }, [ots, modoVistaSociedadOT.sinFiltro, sociedadesIdsVistaOTKey]);
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Resumen');
   const prevDetailRef = useRef(null);
@@ -2222,7 +2240,7 @@ function OT({ role }) {
 
   useEffect(() => {
     if (!activeParams?.detail) return;
-    const ot = ots.find(o => o.id === activeParams.detail);
+    const ot = otsVisibles.find(o => o.id === activeParams.detail);
     if (ot) {
       setSel(ot);
       const detailChanged = prevDetailRef.current !== activeParams.detail;
@@ -2232,8 +2250,14 @@ function OT({ role }) {
         prevTabParamRef.current = activeParams.tab ?? null;
         setActiveTab(activeParams.tab || 'Resumen');
       }
+    } else {
+      setSel(null);
     }
-  }, [activeParams?.detail, activeParams?.tab, ots]);
+  }, [activeParams?.detail, activeParams?.tab, otsVisibles]);
+
+  useEffect(() => {
+    if (sel && !otsVisibles.some(ot => ot.id === sel.id)) setSel(null);
+  }, [otsVisibles, sel?.id]);
 
   const calcCostoRealLive = (ot) => {
     const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
@@ -2264,7 +2288,7 @@ function OT({ role }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">Órdenes de Trabajo</h1>
-          <div className="page-sub">{ots.length} OTs totales</div>
+          <div className="page-sub">{otsVisibles.length} OTs totales</div>
         </div>
         <div className="row">
           <button className="btn btn-secondary">{I.filter} Filtrar</button>
@@ -2288,10 +2312,10 @@ function OT({ role }) {
         <div className="table-wrap">
           <table className="tbl">
             <thead><tr>
-              <th>OT</th><th>Cliente</th><th>Sede</th><th>Tipo</th><th>Estado</th><th>SLA</th>
+              <th>OT</th>{mostrarBadgeSociedadOT && <th>Sociedad</th>}<th>Cliente</th><th>Sede</th><th>Tipo</th><th>Estado</th><th>SLA</th>
               <th>Responsable</th>{canCost && <th>Costo est/real</th>}<th>Avance</th>
             </tr></thead>
-            <tbody>{ots.map(o => {
+            <tbody>{otsVisibles.map(o => {
               const asigs = plannerAsignaciones.filter(a => a.ot_id === o.id && a.estado !== 'cancelado');
               const uniqueTecs = new Set(asigs.map(a => a.tecnico_id)).size;
 
@@ -2311,6 +2335,7 @@ function OT({ role }) {
                     <div className="mono" style={{fontWeight:600}}>{o.numero}</div>
                     {o.gps && <span className="badge badge-cyan" style={{marginTop:4}}>{I.mapPin}GPS</span>}
                   </td>
+                  {mostrarBadgeSociedadOT && <td><SociedadBadge sociedadId={o.sociedad_id} /></td>}
                   <td>{getCuenta(o.cuenta_id) || o.cliente}</td>
                   <td className="text-muted">{o.sede}</td>
                   <td>{o.tipo}</td>
@@ -2347,7 +2372,7 @@ function OT({ role }) {
                 </tr>
               );
             })}
-            {ots.length===0 && <tr><td colSpan="9" style={{textAlign:'center', padding:40}}>No hay órdenes de trabajo</td></tr>}
+            {otsVisibles.length===0 && <tr><td colSpan={8 + (canCost ? 1 : 0) + (mostrarBadgeSociedadOT ? 1 : 0)} style={{textAlign:'center', padding:40}}>No hay órdenes de trabajo</td></tr>}
             </tbody>
           </table>
         </div>
@@ -17038,6 +17063,12 @@ function Nomina() {
     sociedadesIdsAlcance,
     sociedadesDisponibles,
   });
+  const mostrarBadgeSociedadNomina = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadNomina.permiteEscritura
+    && (modoVistaSociedadNomina.sinFiltro || modoVistaSociedadNomina.sociedadesIds.length > 0)
+  );
+  const sociedadesIdsVistaNominaKey = modoVistaSociedadNomina.sociedadesIds.join('|');
   const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear períodos de nómina.';
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const [tab, setTab] = useState('periodos');
@@ -17166,10 +17197,10 @@ function Nomina() {
   }, [periodosNomina.length, empresa?.id, empresa?.multisociedad_habilitado, modoVistaSociedadNomina.permiteEscritura, modoVistaSociedadNomina.sociedadIdEscritura, isDataLoaded]);
 
   const periodosNominaVisibles = useMemo(() => {
-    if (!empresa?.multisociedad_habilitado) return periodosNomina;
-    if (!sociedadActiva?.id) return [];
-    return periodosNomina.filter(p => p.sociedad_id === sociedadActiva.id);
-  }, [periodosNomina, empresa?.multisociedad_habilitado, sociedadActiva?.id]);
+    if (modoVistaSociedadNomina.sinFiltro) return periodosNomina || [];
+    const permitidas = new Set(modoVistaSociedadNomina.sociedadesIds);
+    return periodosNomina.filter(p => p.sociedad_id && permitidas.has(p.sociedad_id));
+  }, [periodosNomina, modoVistaSociedadNomina.sinFiltro, sociedadesIdsVistaNominaKey]);
 
   const periodoActivo = periodoId ? periodosNominaVisibles.find(p => p.id === periodoId) : null;
   const anioActual = hoy.getFullYear();
@@ -17822,7 +17853,7 @@ function Nomina() {
       } else {
         creados.push(await crearPeriodoNominaCtx({ ...base, quincena: null, periodo: `${mesNombres[mes - 1]} ${anio}`, fecha_inicio: inicioMes, fecha_fin: finMes, fecha_corte: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_corte_mensual || 25).padStart(2, '0')}`, fecha_pago: `${anio}-${String(mes).padStart(2, '0')}-${String(empresaConfig?.dia_pago_mensual || 30).padStart(2, '0')}` }));
       }
-      if (empresa?.multisociedad_habilitado && nuevoPeriodoForm.sociedad_id !== sociedadActiva?.id) seleccionarSociedad?.(nuevoPeriodoForm.sociedad_id);
+      if (empresa?.multisociedad_habilitado && nuevoPeriodoForm.sociedad_id !== modoVistaSociedadNomina.sociedadIdEscritura) seleccionarSociedad?.(nuevoPeriodoForm.sociedad_id);
       if (creados[0]?.id) setPeriodoId(creados[0].id);
       setNuevoPeriodoPanel(false);
       addToast('Periodo de nomina creado.', 'success');
@@ -17967,6 +17998,7 @@ function Nomina() {
                     </div>
                   </div>
                   <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+                    {mostrarBadgeSociedadNomina && <SociedadBadge sociedadId={p.sociedad_id} />}
                     {p.quincena && <span className={`badge ${p.quincena===1?'badge-cyan':'badge-purple'}`}>{p.quincena === 1 ? `1ra quincena (${empresaCfg.pct_quincena_1}%)` : `2da quincena (${100-empresaCfg.pct_quincena_1}%)`}</span>}
                     <span className={`badge ${estadoBadge(p.estado)}`}>{p.estado}</span>
                     {(() => { const n = p.id === periodo?.id ? resumen.total_trabajadores : (p.total_trabajadores || 0); return n > 0 ? <span className="badge badge-gray">{n} trabajadores</span> : null; })()}
@@ -19106,8 +19138,77 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
+  const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadPersonal = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadPersonal.permiteEscritura
+    && (modoVistaSociedadPersonal.sinFiltro || modoVistaSociedadPersonal.sociedadesIds.length > 0)
+  );
+  const vistaSociedadConcretaPersonal = Boolean(
+    empresa?.multisociedad_habilitado && modoVistaSociedadPersonal.permiteEscritura
+  );
+  const sociedadesContratosPersonalIds = modoVistaSociedadPersonal.sinFiltro
+    ? sociedadesDisponibles.map(sociedad => sociedad.id).filter(Boolean)
+    : modoVistaSociedadPersonal.sociedadesIds;
+  const sociedadesContratosPersonalKey = sociedadesContratosPersonalIds.join('|');
+  const fechaVigenciaPersonal = new Date().toISOString().slice(0, 10);
+  const resolucionPersonalSociedad = useMemo(() => {
+    if (!empresa?.multisociedad_habilitado) {
+      return { personal: personalOperativo, sociedadesPorPersonal: new Map(), ambiguos: [], personalSinContratoVigenteIds: new Set() };
+    }
+    if (!vistaSociedadConcretaPersonal && !mostrarBadgeSociedadPersonal) {
+      return { personal: [], sociedadesPorPersonal: new Map(), ambiguos: [], personalSinContratoVigenteIds: new Set() };
+    }
+    const resolucionVista = resolverPersonalConContratosVigentes({
+      personal: personalOperativo,
+      documentos: personalDocumentos,
+      tiposDocumento,
+      sociedadIds: sociedadesContratosPersonalIds,
+      fecha: fechaVigenciaPersonal,
+      incluirSinContrato: true,
+    });
+    if (!vistaSociedadConcretaPersonal) {
+      return {
+        ...resolucionVista,
+        personalSinContratoVigenteIds: new Set(
+          personalOperativo
+            .filter(persona => !resolucionVista.sociedadesPorPersonal.has(persona.id))
+            .map(persona => persona.id)
+        ),
+      };
+    }
+
+    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const resolucionGlobal = resolverPersonalConContratosVigentes({
+      personal: personalOperativo,
+      documentos: personalDocumentos,
+      tiposDocumento,
+      sociedadIds: todasLasSociedadesIds,
+      fecha: fechaVigenciaPersonal,
+      incluirSinContrato: true,
+    });
+    const personalSinContratoVigenteIds = new Set(
+      personalOperativo
+        .filter(persona => !resolucionGlobal.sociedadesPorPersonal.has(persona.id))
+        .map(persona => persona.id)
+    );
+    return {
+      ...resolucionVista,
+      personal: resolucionVista.personal.filter(persona => (
+        resolucionVista.sociedadesPorPersonal.has(persona.id)
+        || personalSinContratoVigenteIds.has(persona.id)
+      )),
+      personalSinContratoVigenteIds,
+    };
+  }, [empresa?.multisociedad_habilitado, personalOperativo, personalDocumentos, tiposDocumento, sociedadesContratosPersonalKey, fechaVigenciaPersonal, vistaSociedadConcretaPersonal, mostrarBadgeSociedadPersonal]);
   
   const [showTiposDocumentoRRHH, setShowTiposDocumentoRRHH] = useState(false);
   const [showRequisitosRRHH, setShowRequisitosRRHH] = useState(false);
@@ -19117,7 +19218,7 @@ function RRHH_Operativo() {
   const [filtroPersonal, setFiltroPersonal] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroModalidad, setFiltroModalidad] = useState('');
-  const personal = personalOperativo;
+  const personal = resolucionPersonalSociedad.personal;
   const [panelAlta, setPanelAlta] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [selTecnico, setSelTecnico] = useState(null);
@@ -19149,6 +19250,10 @@ function RRHH_Operativo() {
   const [docAlertaBusqueda, setDocAlertaBusqueda] = useState('');
   const [docAlertaTipo, setDocAlertaTipo] = useState('todos');
   const [docHighlightTipo, setDocHighlightTipo] = useState('');
+
+  useEffect(() => {
+    if (selTecnico && !personal.some(persona => persona.id === selTecnico.id)) setSelTecnico(null);
+  }, [personal, selTecnico?.id]);
 
   const COLUMNAS_DEFAULT_OPS = [
     { key: 'codigo', label: 'Código' },
@@ -19314,7 +19419,7 @@ function RRHH_Operativo() {
     regimen_jornada: formAlta.regimen_jornada,
     cargo_confianza: formAlta.cargo_confianza,
   });
-  const tecnicoOriginalEdicion = editandoId ? personal.find(p => p.id === editandoId) : null;
+  const tecnicoOriginalEdicion = editandoId ? personalOperativo.find(p => p.id === editandoId) : null;
   const advAdendaManual = tecnicoOriginalEdicion && (
     String(formAlta.cargo_id || '') !== String(tecnicoOriginalEdicion.cargo_id || '') ||
     Number(formAlta.sueldo_base || formAlta.monto_mensual || 0) !== Number(tecnicoOriginalEdicion.sueldo_base || tecnicoOriginalEdicion.monto_mensual || 0)
@@ -19378,7 +19483,7 @@ function RRHH_Operativo() {
     const cargo = String(p.cargo || '').toLowerCase();
     return p.perfil_campo === 'Supervisor' || cargo.includes('supervis');
   };
-  const supervisorOptions = personal
+  const supervisorOptions = personalOperativo
     .filter(p => p.estado !== 'inactivo' && p.id !== editandoId && esSupervisorOperativo(p))
     .map(p => ({ id: p.id, nombre: p.nombre, cargo: p.cargo || 'Supervisor' }));
 
@@ -19399,11 +19504,11 @@ function RRHH_Operativo() {
     return horas ? String(horas) : '';
   };
   const codigoSugeridoTecnico = () => {
-    const nums = (personal || [])
+    const nums = (personalOperativo || [])
       .map(p => String(p.codigo || '').match(/^TEC-(\d+)$/i)?.[1])
       .filter(Boolean)
       .map(Number);
-    const next = Math.max(0, ...nums, personal.length) + 1;
+    const next = Math.max(0, ...nums, personalOperativo.length) + 1;
     return `TEC-${String(next).padStart(4, '0')}`;
   };
   const abrirNuevoTecnico = () => {
@@ -19438,7 +19543,7 @@ function RRHH_Operativo() {
       cargo_id: p.cargo_id || '',
       especialidad: p.especialidad || '',
       especialidad2: p.especialidad2 || '',
-      supervisor_id: p.supervisor_id || personal.find(s => s.nombre === p.supervisor)?.id || '',
+      supervisor_id: p.supervisor_id || personalOperativo.find(s => s.nombre === p.supervisor)?.id || '',
       supervisor: p.supervisor || '',
       posicion_id: p.posicion_id || '',
       area: p.area || '',
@@ -19546,7 +19651,7 @@ function RRHH_Operativo() {
     }
     setAltaSaving(true);
     setAltaError('');
-    const idx = personal.length + 1;
+    const idx = personalOperativo.length + 1;
     const codigo = formAlta.codigo || `TEC-${String(idx).padStart(3,'0')}`;
     const supervisorSeleccionado = supervisorOptions.find(p => p.id === formAlta.supervisor_id);
     const nuevo = {
@@ -21910,6 +22015,7 @@ function RRHH_Operativo() {
               <thead><tr>
                 {visibleCols.includes('codigo') && <th>Código</th>}
                 {visibleCols.includes('tecnico') && <th>Técnico</th>}
+                {mostrarBadgeSociedadPersonal && <th>Sociedad</th>}
                 {visibleCols.includes('cargo') && <th>Cargo</th>}
                 {visibleCols.includes('unidad') && <th>Unidad organizacional</th>}
                 {visibleCols.includes('sede') && <th>Sede</th>}
@@ -21922,7 +22028,7 @@ function RRHH_Operativo() {
                 {visibleCols.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
               </tr></thead>
               <tbody>
-                {personal.length === 0 && <tr><td colSpan={12} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
+                {personal.length === 0 && <tr><td colSpan={12 + (mostrarBadgeSociedadPersonal ? 1 : 0)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
                 {personal.filter(p => {
                   if (filtroEstado && p.estado !== filtroEstado) return false;
                   if (filtroModalidad) {
@@ -21946,7 +22052,21 @@ function RRHH_Operativo() {
                       {visibleCols.includes('tecnico') && <td>
                         <div className="row">
                           <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                          <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
+                          <div>
+                            <strong>{p.nombre}</strong>
+                            <div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div>
+                            {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && (
+                              <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>}
+                      {mostrarBadgeSociedadPersonal && <td>
+                        <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
+                          {(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => (
+                            <SociedadBadge key={sociedadId} sociedadId={sociedadId} />
+                          ))}
+                          {resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="badge badge-orange">Sin contrato vigente</span>}
                         </div>
                       </td>}
                       {visibleCols.includes('cargo') && <td>{p.cargo}</td>}
@@ -22103,7 +22223,7 @@ function RRHH_Operativo() {
 
             <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos laborales</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personal.length+1}`}/></div>
+              <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personalOperativo.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
