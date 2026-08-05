@@ -128,6 +128,42 @@ export function resolverContratosNominaSociedad({
   return { contratos, ambiguos };
 }
 
+export function resolverPersonalConContratosVigentes({
+  personal = [],
+  documentos = [],
+  tiposDocumento = [],
+  sociedadIds = [],
+  fecha,
+  incluirSinContrato = false,
+} = {}) {
+  const ids = [...new Set((sociedadIds || []).filter(Boolean))];
+  const sociedadesPorPersonal = new Map();
+  const ambiguos = [];
+  const periodo = { fecha_inicio: fecha, fecha_fin: fecha };
+
+  ids.forEach(sociedadId => {
+    const resolucion = resolverContratosNominaSociedad({
+      documentos,
+      tiposDocumento,
+      sociedadId,
+      periodo,
+    });
+    ambiguos.push(...resolucion.ambiguos.map(item => ({ ...item, sociedad_id: sociedadId })));
+    resolucion.contratos.forEach(contrato => {
+      const actuales = sociedadesPorPersonal.get(contrato.personal_id) || [];
+      sociedadesPorPersonal.set(contrato.personal_id, [...actuales, sociedadId]);
+    });
+  });
+
+  return {
+    personal: incluirSinContrato
+      ? personal
+      : personal.filter(persona => sociedadesPorPersonal.has(persona.id)),
+    sociedadesPorPersonal,
+    ambiguos,
+  };
+}
+
 export function resolverSociedadContratoVigente({
   documentos = [],
   tiposDocumento = [],

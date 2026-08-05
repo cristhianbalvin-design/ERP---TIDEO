@@ -8,13 +8,15 @@ import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
-import { SociedadFormField } from './components/SociedadFormField.jsx';
+import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
 import {
   actualizarSociedad,
   crearSociedad,
   generarCodigoSociedadBase,
   listarSociedadesAdministracion,
+  resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
+import { resolverPersonalConContratosVigentes } from './services/nominaSociedadService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -1602,11 +1604,36 @@ function Stub({title, description}) {
 // ============ CECO / CEBE ============
 function CecoCebePanel({ onClose }) {
   const {
-    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades, sociedadesDisponibles,
+    centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
     crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
   } = useApp();
+
+  const modoVistaSociedadCentros = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadCentros = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadCentros.permiteEscritura
+    && (modoVistaSociedadCentros.sinFiltro || modoVistaSociedadCentros.sociedadesIds.length > 0)
+  );
+  const sociedadesIdsVistaCentrosKey = modoVistaSociedadCentros.sociedadesIds.join('|');
+  const centrosCostoVista = useMemo(() => {
+    if (modoVistaSociedadCentros.sinFiltro) return centrosCosto || [];
+    const permitidas = new Set(modoVistaSociedadCentros.sociedadesIds);
+    return (centrosCosto || []).filter(centro => centro.sociedad_id && permitidas.has(centro.sociedad_id));
+  }, [centrosCosto, modoVistaSociedadCentros.sinFiltro, sociedadesIdsVistaCentrosKey]);
+  const centrosBeneficioVista = useMemo(() => {
+    if (modoVistaSociedadCentros.sinFiltro) return centrosBeneficio || [];
+    const permitidas = new Set(modoVistaSociedadCentros.sociedadesIds);
+    return (centrosBeneficio || []).filter(centro => centro.sociedad_id && permitidas.has(centro.sociedad_id));
+  }, [centrosBeneficio, modoVistaSociedadCentros.sinFiltro, sociedadesIdsVistaCentrosKey]);
 
   const [tab, setTab] = useState('ceco');
 
@@ -1691,7 +1718,7 @@ function CecoCebePanel({ onClose }) {
     } catch (err) { setCecoError(err?.message || 'No se pudo guardar el CECO.'); }
     finally { setCecoSaving(false); }
   };
-  const cecosFiltrados = (centrosCosto||[]).filter(c =>
+  const cecosFiltrados = centrosCostoVista.filter(c =>
     (!cecoFiltroTipo || c.tipo === cecoFiltroTipo) &&
     (!cecoFiltroCebe || c.cebe_id === cecoFiltroCebe) &&
     (!cecoFiltroEstado || c.estado === cecoFiltroEstado)
@@ -1720,7 +1747,7 @@ function CecoCebePanel({ onClose }) {
     } catch (err) { setCebeError(err?.message || 'No se pudo guardar el CEBE.'); }
     finally { setCebeSaving(false); }
   };
-  const cebesFiltrados = (centrosBeneficio||[]).filter(c =>
+  const cebesFiltrados = centrosBeneficioVista.filter(c =>
     (!cebeFiltroTipo || c.tipo === cebeFiltroTipo) &&
     (!cebeFiltroEstado || c.estado === cebeFiltroEstado)
   );
@@ -1802,7 +1829,7 @@ function CecoCebePanel({ onClose }) {
           <div>
             <div className="eyebrow">Gestión de catálogo</div>
             <div className="font-display" style={{ fontSize:22, fontWeight:700, marginTop:2 }}>Centros de Costo y Beneficio</div>
-            <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>{(centrosCosto||[]).length} CECOs · {(centrosBeneficio||[]).length} CEBEs · empresa actual</div>
+            <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>{centrosCostoVista.length} CECOs · {centrosBeneficioVista.length} CEBEs · empresa actual</div>
           </div>
           <button className="icon-btn" onClick={onClose}>{I.x}</button>
         </div>
@@ -1820,7 +1847,7 @@ function CecoCebePanel({ onClose }) {
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cecos.xlsx`} download="plantilla_cecos.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCecoModalImport(true); setCecoImportRows([]); setCecoImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data = (centrosCosto||[]).map(c => ({ ...c, especialidad: (especialidades||[]).find(e=>e.id===c.especialidad)?.codigo || '', responsable: c.responsable_nombre || '', cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.codigo || '', sede_padre: (sedes||[]).find(s=>s.id===c.sede_padre)?.codigo || '' })); exportXlsx(data, ['codigo','nombre','tipo','especialidad','responsable','cebe_padre','sede_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data = centrosCostoVista.map(c => ({ ...c, especialidad: (especialidades||[]).find(e=>e.id===c.especialidad)?.codigo || '', responsable: c.responsable_nombre || '', cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.codigo || '', sede_padre: (sedes||[]).find(s=>s.id===c.sede_padre)?.codigo || '' })); exportXlsx(data, ['codigo','nombre','tipo','especialidad','responsable','cebe_padre','sede_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -1898,7 +1925,7 @@ function CecoCebePanel({ onClose }) {
               </select>
               <select className="select" style={{ width:'auto', fontSize:12 }} value={cecoFiltroCebe} onChange={e=>setCecoFiltroCebe(e.target.value)}>
                 <option value="">Todos los CEBEs</option>
-                {(centrosBeneficio||[]).map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                {centrosBeneficioVista.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
               </select>
               <select className="select" style={{ width:'auto', fontSize:12 }} value={cecoFiltroEstado} onChange={e=>setCecoFiltroEstado(e.target.value)}>
                 <option value="">Todos los estados</option>
@@ -1911,10 +1938,10 @@ function CecoCebePanel({ onClose }) {
             <div className="card">
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cecosFiltrados.length === 0
-                      ? <tr><td colSpan="8" className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CECOs con los filtros seleccionados.</td></tr>
+                      ? <tr><td colSpan={8 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CECOs con los filtros seleccionados.</td></tr>
                       : cecosFiltrados.map(c => {
                           const cebePadre = (centrosBeneficio||[]).find(b=>b.id===c.cebe_id);
                           const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
@@ -1922,6 +1949,7 @@ function CecoCebePanel({ onClose }) {
                             <tr key={c.id}>
                               <td className="mono">{c.codigo}</td>
                               <td style={{ fontWeight:500 }}>{c.nombre}</td>
+                              {mostrarBadgeSociedadCentros && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                               <td><span className="badge badge-purple" style={{ fontSize:11 }}>{labelTipo(c.tipo)}</span></td>
                               <td className="text-muted" style={{ fontSize:12 }}>{cebePadre ? `${cebePadre.codigo} — ${cebePadre.nombre}` : '—'}</td>
                               <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
@@ -1948,7 +1976,7 @@ function CecoCebePanel({ onClose }) {
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data=(centrosBeneficio||[]).map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data=centrosBeneficioVista.map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -2035,17 +2063,18 @@ function CecoCebePanel({ onClose }) {
             <div className="card">
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cebesFiltrados.length === 0
-                      ? <tr><td colSpan="8" className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CEBEs con los filtros seleccionados.</td></tr>
+                      ? <tr><td colSpan={8 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CEBEs con los filtros seleccionados.</td></tr>
                       : cebesFiltrados.map(c => {
                           const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
-                          const cecosCount = (centrosCosto||[]).filter(cc=>cc.cebe_id===c.id).length;
+                          const cecosCount = centrosCostoVista.filter(cc=>cc.cebe_id===c.id).length;
                           return (
                             <tr key={c.id}>
                               <td className="mono">{c.codigo}</td>
                               <td style={{ fontWeight:500 }}>{c.nombre}</td>
+                              {mostrarBadgeSociedadCentros && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                               <td><span className="badge badge-cyan" style={{ fontSize:11 }}>{labelTipo(c.tipo)}</span></td>
                               <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
                               <td className="mono text-muted" style={{ fontSize:12 }}>{c.meta_ingresos ? `S/ ${Number(c.meta_ingresos).toLocaleString('es-PE')}` : '—'}</td>
@@ -8781,7 +8810,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -8797,6 +8826,75 @@ function RRHHAdmin() {
   const [altaError, setAltaError] = useState('');
   const paramsHandledRef = useRef('');
   const canFinanzasAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
+  const modoVistaSociedadPersonalAdmin = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadPersonalAdmin = Boolean(
+    empresa?.multisociedad_habilitado
+    && !modoVistaSociedadPersonalAdmin.permiteEscritura
+    && (modoVistaSociedadPersonalAdmin.sinFiltro || modoVistaSociedadPersonalAdmin.sociedadesIds.length > 0)
+  );
+  const vistaSociedadConcretaPersonalAdmin = Boolean(
+    empresa?.multisociedad_habilitado && modoVistaSociedadPersonalAdmin.permiteEscritura
+  );
+  const sociedadesContratosPersonalAdminIds = modoVistaSociedadPersonalAdmin.sinFiltro
+    ? sociedadesDisponibles.map(sociedad => sociedad.id).filter(Boolean)
+    : modoVistaSociedadPersonalAdmin.sociedadesIds;
+  const sociedadesContratosPersonalAdminKey = sociedadesContratosPersonalAdminIds.join('|');
+  const fechaVigenciaPersonalAdmin = new Date().toISOString().slice(0, 10);
+  const resolucionPersonalAdminSociedad = useMemo(() => {
+    if (!empresa?.multisociedad_habilitado) {
+      return { personal: personalAdmin, sociedadesPorPersonal: new Map(), ambiguos: [], personalSinContratoVigenteIds: new Set() };
+    }
+    if (!vistaSociedadConcretaPersonalAdmin && !mostrarBadgeSociedadPersonalAdmin) {
+      return { personal: [], sociedadesPorPersonal: new Map(), ambiguos: [], personalSinContratoVigenteIds: new Set() };
+    }
+    const resolucionVista = resolverPersonalConContratosVigentes({
+      personal: personalAdmin,
+      documentos: personalDocumentos,
+      tiposDocumento,
+      sociedadIds: sociedadesContratosPersonalAdminIds,
+      fecha: fechaVigenciaPersonalAdmin,
+      incluirSinContrato: true,
+    });
+    if (!vistaSociedadConcretaPersonalAdmin) {
+      return {
+        ...resolucionVista,
+        personalSinContratoVigenteIds: new Set(
+          personalAdmin
+            .filter(persona => !resolucionVista.sociedadesPorPersonal.has(persona.id))
+            .map(persona => persona.id)
+        ),
+      };
+    }
+
+    const todasLasSociedadesIds = [...new Set(personalDocumentos.map(doc => doc.sociedad_id).filter(Boolean))];
+    const resolucionGlobal = resolverPersonalConContratosVigentes({
+      personal: personalAdmin,
+      documentos: personalDocumentos,
+      tiposDocumento,
+      sociedadIds: todasLasSociedadesIds,
+      fecha: fechaVigenciaPersonalAdmin,
+      incluirSinContrato: true,
+    });
+    const personalSinContratoVigenteIds = new Set(
+      personalAdmin
+        .filter(persona => !resolucionGlobal.sociedadesPorPersonal.has(persona.id))
+        .map(persona => persona.id)
+    );
+    return {
+      ...resolucionVista,
+      personal: resolucionVista.personal.filter(persona => (
+        resolucionVista.sociedadesPorPersonal.has(persona.id)
+        || personalSinContratoVigenteIds.has(persona.id)
+      )),
+      personalSinContratoVigenteIds,
+    };
+  }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
@@ -8936,7 +9034,7 @@ function RRHHAdmin() {
       setHistorialDniAlta(null);
     }
   };
-  const todosPersonal = personalAdmin;
+  const todosPersonal = resolucionPersonalAdminSociedad.personal;
   const persona = sel ? todosPersonal.find(p => p.id === sel) : null;
 
   // ── Motor de habilitaciones documentarias -- fuente unica: RPC calcular_habilitaciones_personal
@@ -11620,18 +11718,19 @@ function RRHHAdmin() {
   }
 
   // Vista lista — datos comunes
-  const vencimientosDocumentos = personalAdmin.flatMap(p =>
+  const personalAdminVisibleIds = new Set(todosPersonal.map(p => p.id));
+  const vencimientosDocumentos = todosPersonal.flatMap(p =>
     (p.documentos || []).filter(d => d.estado !== 'vigente').map(d => ({ persona: p.nombre, doc: d.nombre, estado: d.estado }))
   );
-  const colaboradoresActivos = personalAdmin.filter(p => p.estado === 'activo').length;
-  const vacPendientes = vacacionesSolicitudes.filter(v => v.estado === 'pendiente');
+  const colaboradoresActivos = todosPersonal.filter(p => p.estado === 'activo').length;
+  const vacPendientes = vacacionesSolicitudes.filter(v => v.estado === 'pendiente' && personalAdminVisibleIds.has(v.personal_id));
 
   // Vista Reportes — datos calculados
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-  const porArea = personalAdmin.reduce((acc, p) => { acc[p.area] = (acc[p.area] || 0) + 1; return acc; }, {});
+  const porArea = todosPersonal.reduce((acc, p) => { acc[p.area] = (acc[p.area] || 0) + 1; return acc; }, {});
   const maxArea = Math.max(...Object.values(porArea), 1);
-  const contratosVencer = personalAdmin
+  const contratosVencer = todosPersonal
     .map(p => {
       const contratoDoc = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
       const contratoInfo = rrhhAdminContratoVencimientoInfo(contratoDoc);
@@ -11639,10 +11738,10 @@ function RRHHAdmin() {
     })
     .filter(p => p.contratoDoc?.fecha_vencimiento && p.dias_restantes >= 0 && p.dias_restantes <= 30)
     .sort((a, b) => a.dias_restantes - b.dias_restantes);
-  const vacRanking = [...personalAdmin]
+  const vacRanking = [...todosPersonal]
     .map(p => ({ ...p, _vacDisp: rrhhAdminCalcVacProp(p, solicitudesRRHH) }))
     .sort((a, b) => b._vacDisp - a._vacDisp);
-  const solPend = solicitudesRRHH.filter(s => s.estado === 'pendiente');
+  const solPend = solicitudesRRHH.filter(s => s.estado === 'pendiente' && personalAdminVisibleIds.has(s.personal_id));
 
   return (
     <>
@@ -11705,6 +11804,7 @@ function RRHHAdmin() {
               <thead><tr>
                 {visibleColsAdmin.includes('codigo') && <th>Código</th>}
                 {visibleColsAdmin.includes('colaborador') && <th>Colaborador</th>}
+                {mostrarBadgeSociedadPersonalAdmin && <th>Sociedad</th>}
                 {visibleColsAdmin.includes('cargo') && <th>Cargo</th>}
                 {visibleColsAdmin.includes('unidad') && <th>Unidad organizacional</th>}
                 {visibleColsAdmin.includes('sede') && <th>Sede</th>}
@@ -11717,7 +11817,7 @@ function RRHHAdmin() {
                 {visibleColsAdmin.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
               </tr></thead>
               <tbody>
-                {todosPersonal.length === 0 && <tr><td colSpan={Math.max(visibleColsAdmin.length, 1)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
+                {todosPersonal.length === 0 && <tr><td colSpan={Math.max(visibleColsAdmin.length + (mostrarBadgeSociedadPersonalAdmin ? 1 : 0), 1)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
                 {todosPersonal.filter(p => {
                   if (filtroEstado && p.estado !== filtroEstado) return false;
                   if (filtroModalidad) {
@@ -11740,7 +11840,21 @@ function RRHHAdmin() {
                     {visibleColsAdmin.includes('colaborador') && <td>
                       <div className="row">
                         <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                        <div><strong>{p.nombre}</strong><div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div></div>
+                        <div>
+                          <strong>{p.nombre}</strong>
+                          <div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div>
+                          {vistaSociedadConcretaPersonalAdmin && resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id) && (
+                            <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>}
+                    {mostrarBadgeSociedadPersonalAdmin && <td>
+                      <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
+                        {(resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => (
+                          <SociedadBadge key={sociedadId} sociedadId={sociedadId} />
+                        ))}
+                        {resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="badge badge-orange">Sin contrato vigente</span>}
                       </div>
                     </td>}
                     {visibleColsAdmin.includes('cargo') && <td>{p.cargo}</td>}
@@ -11779,7 +11893,7 @@ function RRHHAdmin() {
           <div style={{display:'grid', gap:24}}>
             {/* Headcount por área */}
             <div className="card">
-              <div className="card-head"><h3>Headcount por Unidad organizacional</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personalAdmin.length} colaboradores</span></div>
+              <div className="card-head"><h3>Headcount por Unidad organizacional</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {todosPersonal.length} colaboradores</span></div>
               <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
                 {Object.entries(porArea).map(([area, cnt]) => (
                   <div key={area} style={{display:'grid', gridTemplateColumns:'140px 1fr 40px', gap:12, alignItems:'center'}}>
@@ -11792,9 +11906,9 @@ function RRHHAdmin() {
                 ))}
               </div>
               <div style={{padding:'0 20px 16px', display:'flex', gap:24, fontSize:12, color:'var(--fg-subtle)'}}>
-                <span>Remoto: <strong>{personalAdmin.filter(p=>p.modalidad==='Remoto').length}</strong></span>
-                <span>Presencial: <strong>{personalAdmin.filter(p=>p.modalidad==='Presencial').length}</strong></span>
-                <span>Híbrido: <strong>{personalAdmin.filter(p=>p.modalidad==='Híbrido').length}</strong></span>
+                <span>Remoto: <strong>{todosPersonal.filter(p=>p.modalidad==='Remoto').length}</strong></span>
+                <span>Presencial: <strong>{todosPersonal.filter(p=>p.modalidad==='Presencial').length}</strong></span>
+                <span>Híbrido: <strong>{todosPersonal.filter(p=>p.modalidad==='Híbrido').length}</strong></span>
               </div>
             </div>
 
@@ -11852,7 +11966,7 @@ function RRHHAdmin() {
                   <thead><tr><th>Colaborador</th><th>Tipo</th><th>Descripción</th><th>Fecha</th></tr></thead>
                   <tbody>
                     {solPend.map(s => {
-                      const p = personalAdmin.find(x=>x.id===s.personal_id);
+                      const p = todosPersonal.find(x=>x.id===s.personal_id);
                       return (
                         <tr key={s.id}>
                           <td style={{fontWeight:600}}>{p?.nombre||s.personal_id}</td>

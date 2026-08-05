@@ -419,6 +419,7 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
     .insert({
       id:               crypto.randomUUID(),
       empresa_id:       liq.empresa_id,
+      sociedad_id:      params.sociedad_id || null,
       tipo_beneficiario: 'personal',
       personal_id:      liq.personal_id,
       nombre_emisor:    beneficiario,

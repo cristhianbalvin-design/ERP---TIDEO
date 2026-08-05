@@ -43,7 +43,7 @@ import {
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
-import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD } from './services/sociedadesService.js';
+import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -51,6 +51,19 @@ const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 const normText = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const filtrarPorVistaSociedad = (registros = [], modoVista, sociedadIdDe = registro => registro?.sociedad_id) => {
+  if (modoVista.sinFiltro) return registros;
+  const permitidas = new Set(modoVista.sociedadesIds);
+  return registros.filter(registro => {
+    const sociedadId = sociedadIdDe(registro);
+    return sociedadId && permitidas.has(sociedadId);
+  });
+};
+const mostrarBadgeEnVistaSociedad = (empresa, modoVista) => Boolean(
+  empresa?.multisociedad_habilitado
+  && !modoVista.permiteEscritura
+  && (modoVista.sinFiltro || modoVista.sociedadesIds.length > 0)
+);
 // Futuro: mover este umbral a Parametros Generales.
 const RHE_DESVIACION_UMBRAL = 0.20;
 const RHE_MESES = [
@@ -142,9 +155,24 @@ function CxC() {
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
     registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, comisiones,
     condonarMoraCxC, restaurarMoraCxC,
-    navigate, role, empresa, addNotificacion,
+    navigate, role, empresa, addNotificacion, perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles = [],
     setCxc, setFacturas, setCuentas, setCobrosHistorial, setOsClientes,
   } = useApp();
+
+  const modoVistaSociedadCxC = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadCxC = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadCxC);
+  const sociedadesIdsVistaCxCKey = modoVistaSociedadCxC.sociedadesIds.join('|');
+  const cxcVista = useMemo(
+    () => filtrarPorVistaSociedad(cxc || [], modoVistaSociedadCxC),
+    [cxc, modoVistaSociedadCxC.sinFiltro, sociedadesIdsVistaCxCKey],
+  );
 
   const today = new Date().toISOString().split('T')[0];
   const TASA_MORA_DIARIA = 0.000833; // 0.083% diario — tasa legal Perú ~30% anual
@@ -266,7 +294,7 @@ function CxC() {
     { key:'+90',   label:'+90 dias',   min:91, max:null, color:'danger' },
   ];
   const monedaCxCDe = c => (c?.moneda || c?.facturas?.moneda || 'PEN') === 'USD' ? 'USD' : 'PEN';
-  const cxcActivas = useMemo(() => (cxc||[]).filter(c => !estadoTerminalCxC(c) && saldoDe(c) > 0), [cxc]);
+  const cxcActivas = useMemo(() => cxcVista.filter(c => !estadoTerminalCxC(c) && saldoDe(c) > 0), [cxcVista]);
   const totalPorCobrarPEN = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
   const totalPorCobrarUSD = useMemo(() => cxcActivas.filter(c => monedaCxCDe(c) === 'USD').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas]);
   const totalVencidoPEN   = useMemo(() => cxcActivas.filter(c => diasMoraDe(c) > 0 && monedaCxCDe(c) === 'PEN').reduce((s,c) => s + saldoDe(c), 0), [cxcActivas, today]);
@@ -317,7 +345,7 @@ function CxC() {
   }, {}), [cxcPendientesAging, today]);
 
   const cxcFiltrada = useMemo(() => {
-    let rows = cxc || [];
+    let rows = cxcVista;
     if (agingFilter) {
       const b = AGING_BUCKETS_CXC.find(a => a.key === agingFilter);
       if (b) rows = cxcActivas.filter(c => { const d = diasMoraDe(c); return saldoDe(c) > 0 && !['cobrada','pagada','anulada','cancelada'].includes(estadoDe(c)) && d >= b.min && (b.max == null || d <= b.max); });
@@ -332,18 +360,21 @@ function CxC() {
     if (fGestor)          rows = rows.filter(c => (c.gestor_cobranza_id || '') === fGestor);
     if (fPeriodoEmision)  rows = rows.filter(c => (c.fecha_emision || '').slice(0, 7) === fPeriodoEmision);
     return rows;
-  }, [cxc, cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, fPeriodoEmision, today, gestionesCobranza]);
+  }, [cxcVista, cxcActivas, agingFilter, fCliente, fEstado, fMoneda, fVenceDesde, fVenceHasta, fMoraDesde, fMoraHasta, fGestor, fPeriodoEmision, today, gestionesCobranza]);
 
   const cobradoEsteMesPorMoneda = useMemo(() => {
     const mes = fPeriodoEmision || today.slice(0, 7);
 
-    const cxcById = new Map((cxc || []).map(c => [c.id, c]));
+    const cxcById = new Map(cxcVista.map(c => [c.id, c]));
+    const cxcByFacturaId = new Map(cxcVista.filter(c => c.factura_id).map(c => [c.factura_id, c]));
     const vistos = new Set();
     const resultado = {};
 
     (cobrosHistorial || [])
       .filter(cb => (cb.fecha_cobro || cb.fecha || '').slice(0, 7) === mes)
       .forEach(cb => {
+        const cxcRel = cxcById.get(cb.cxc_id) || cxcByFacturaId.get(cb.factura_id);
+        if (!cxcRel) return;
         const monto = Number(cb.monto_capital ?? cb.monto ?? cb.importe ?? cb.total ?? 0);
         if (monto <= 0) return;
         const dedupeKey = cb.id || [
@@ -354,7 +385,6 @@ function CxC() {
         ].join('|');
         if (vistos.has(dedupeKey)) return;
         vistos.add(dedupeKey);
-        const cxcRel = cxcById.get(cb.cxc_id);
         const moneda = String(cb.moneda || cxcRel?.moneda || cxcRel?.facturas?.moneda || 'PEN').trim().toUpperCase();
         resultado[moneda] = (resultado[moneda] || 0) + monto;
       });
@@ -370,13 +400,13 @@ function CxC() {
       );
     };
 
-    return (cxc || [])
+    return cxcVista
       .filter(c => (c.fecha_cobro || c.fecha_pago || c.fecha_emision || '').slice(0, 7) === mes && pagadoDeFallback(c) > 0)
       .reduce((acc, c) => {
         const m = String(monedaCxCDe(c)).trim().toUpperCase();
         return { ...acc, [m]: (acc[m] || 0) + pagadoDeFallback(c) };
       }, {});
-  }, [cobrosHistorial, cxc, fPeriodoEmision, today]);
+  }, [cobrosHistorial, cxcVista, fPeriodoEmision, today]);
 
   const seccionesMoneda = useMemo(() => MONEDAS_CXC.map(meta => {
     const rows = cxcFiltrada.filter(c => monedaCxCDe(c) === meta.moneda);
@@ -586,7 +616,7 @@ function CxC() {
   // ── Ficha ─────────────────────────────────────────────────────────────
   let fichaJSX = null;
   if (selCxC) {
-    const c = (cxc||[]).find(x => x.id === selCxC);
+    const c = cxcVista.find(x => x.id === selCxC);
     if (!c) { setSelCxC(null); return null; }
     const dias     = diasMoraDe(c);
     const interes  = interesMoraDe(c);
@@ -989,7 +1019,7 @@ function CxC() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Cliente</th><th>Factura</th><th>OS Cliente</th><th>Vencimiento</th>
+                    <th>Cliente</th>{mostrarBadgeSociedadCxC && <th>Sociedad</th>}<th>Factura</th><th>OS Cliente</th><th>Vencimiento</th>
                     <th>Total</th><th>Saldo neto</th>{sec.mostrarRetencion && <th>Retencion SUNAT</th>}
                     <th>Medio pago esp.</th><th>Estado</th><th></th>
                   </tr>
@@ -1007,6 +1037,7 @@ function CxC() {
                           <strong>{clienteDe(c)}</strong>
                           {retencionDe(c)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retencion SUNAT</span>}
                         </td>
+                        {mostrarBadgeSociedadCxC && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                         <td className="mono">{facturaNumeroDe(c)}</td>
                         <td className="text-muted">{osNumeroDe(c)}</td>
                         <td style={{color:dias>0?'var(--danger)':dias===0?'var(--orange)':'inherit',fontWeight:dias>0?600:400}}>{vence}</td>
@@ -1024,7 +1055,7 @@ function CxC() {
                       </tr>
                     );
                   }) : (
-                    <tr><td colSpan={sec.mostrarRetencion ? 10 : 9} style={{textAlign:'center',padding:36,color:'var(--fg-muted)'}}>
+                    <tr><td colSpan={(sec.mostrarRetencion ? 10 : 9) + (mostrarBadgeSociedadCxC ? 1 : 0)} style={{textAlign:'center',padding:36,color:'var(--fg-muted)'}}>
                       {hayFiltros ? 'Sin resultados con los filtros aplicados.' : 'Sin facturas en esta moneda.'}
                     </td></tr>
                   )}
@@ -1804,13 +1835,71 @@ function Tesoreria() {
     movimientosTesoreria, movimientosBanco, cxc, cxp, facturas, cuentas, cuentasBancarias = [],
     conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, empresa, addNotificacion, actualizarCuentaBancaria, crearCuentaBancaria,
     registrarMovimientoManual, empresaConfig, financiamientos = [], periodosNomina = [],
-    tipoCambioHoy, convertirMonto,
+    tipoCambioHoy, convertirMonto, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+  const modoVistaSociedadTesoreria = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadTesoreria = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadTesoreria);
+  const sociedadesIdsVistaTesoreriaKey = modoVistaSociedadTesoreria.sociedadesIds.join('|');
   const empresaId = empresa?.id;
   const SIN_VINCULAR = '__sin_vincular';
 
   const hoy = new Date().toISOString().slice(0, 7);
-  const cuentasActivas = useMemo(() => (cuentasBancarias || []).filter(c => c.estado === 'activo'), [cuentasBancarias]);
+  const cuentasBancariasVista = useMemo(
+    () => filtrarPorVistaSociedad(cuentasBancarias || [], modoVistaSociedadTesoreria),
+    [cuentasBancarias, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const cxcVistaTesoreria = useMemo(
+    () => filtrarPorVistaSociedad(cxc || [], modoVistaSociedadTesoreria),
+    [cxc, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const cxpVistaTesoreria = useMemo(
+    () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadTesoreria),
+    [cxp, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const facturasVistaTesoreria = useMemo(
+    () => filtrarPorVistaSociedad(facturas || [], modoVistaSociedadTesoreria),
+    [facturas, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const periodosNominaVistaTesoreria = useMemo(
+    () => filtrarPorVistaSociedad(periodosNomina || [], modoVistaSociedadTesoreria),
+    [periodosNomina, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const cuentasBancariasPorId = useMemo(() => new Map((cuentasBancarias || []).map(cuenta => [cuenta.id, cuenta])), [cuentasBancarias]);
+  const cxcTodosPorId = useMemo(() => new Map((cxc || []).map(row => [row.id, row])), [cxc]);
+  const cxpTodosPorId = useMemo(() => new Map((cxp || []).map(row => [row.id, row])), [cxp]);
+  const facturasTodasPorId = useMemo(() => new Map((facturas || []).map(row => [row.id, row])), [facturas]);
+  const sociedadIdMovimientoTesoreriaDe = movimiento => {
+    const vinculoTipo = String(movimiento?.vinculo_tipo || movimiento?.vinculado_tipo || '').trim().toLowerCase();
+    const vinculoId = movimiento?.vinculo_id || movimiento?.vinculado_id;
+    const cxcOrigen = cxcTodosPorId.get(movimiento?.cxc_id || (vinculoTipo === 'cxc' ? vinculoId : null));
+    const cxpOrigen = cxpTodosPorId.get(movimiento?.cxp_id || (vinculoTipo === 'cxp' ? vinculoId : null));
+    const facturaOrigen = facturasTodasPorId.get(
+      movimiento?.factura_id
+      || cxcOrigen?.factura_id
+      || (vinculoTipo === 'factura' ? vinculoId : null),
+    );
+    return movimiento?.sociedad_id
+      || cuentasBancariasPorId.get(movimiento?.cuenta_bancaria_id)?.sociedad_id
+      || cxcOrigen?.sociedad_id
+      || cxpOrigen?.sociedad_id
+      || facturaOrigen?.sociedad_id
+      || null;
+  };
+  const movimientosTesoreriaAlcance = useMemo(
+    () => filtrarPorVistaSociedad(movimientosTesoreria || [], modoVistaSociedadTesoreria, sociedadIdMovimientoTesoreriaDe),
+    [movimientosTesoreria, cuentasBancariasPorId, cxcTodosPorId, cxpTodosPorId, facturasTodasPorId, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const movimientosBancoAlcance = useMemo(
+    () => filtrarPorVistaSociedad(movimientosBanco || [], modoVistaSociedadTesoreria, sociedadIdMovimientoTesoreriaDe),
+    [movimientosBanco, cuentasBancariasPorId, cxcTodosPorId, cxpTodosPorId, facturasTodasPorId, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
+  );
+  const cuentasActivas = useMemo(() => cuentasBancariasVista.filter(c => c.estado === 'activo'), [cuentasBancariasVista]);
   const cuentaResumenActiva = useMemo(
     () => cuentasActivas.find(c => c.id === resumenCuenta) || null,
     [cuentasActivas, resumenCuenta],
@@ -1846,9 +1935,9 @@ function Tesoreria() {
     return entries.length ? entries : [[defaultCurrency, 0]];
   };
 
-  const facturasPorId = useMemo(() => new Map((facturas || []).map(f => [f.id, f])), [facturas]);
-  const cxcPorId = useMemo(() => new Map((cxc || []).map(row => [row.id, row])), [cxc]);
-  const cxpPorId = useMemo(() => new Map((cxp || []).map(row => [row.id, row])), [cxp]);
+  const facturasPorId = useMemo(() => new Map(facturasVistaTesoreria.map(f => [f.id, f])), [facturasVistaTesoreria]);
+  const cxcPorId = useMemo(() => new Map(cxcVistaTesoreria.map(row => [row.id, row])), [cxcVistaTesoreria]);
+  const cxpPorId = useMemo(() => new Map(cxpVistaTesoreria.map(row => [row.id, row])), [cxpVistaTesoreria]);
   const categoriaMovimientoDe = m => {
     if (m.categoria) return catLabel(m.categoria);
     const vt = normalizeFinText(m.vinculo_tipo || m.vinculado_tipo || '');
@@ -1873,7 +1962,7 @@ function Tesoreria() {
   const movimientosTesoreriaVista = useMemo(() => {
     // Dedup de cobros con mismo cxc_id + monto + fecha (registro doble del mismo cobro)
     const cobrosVistos = new Set();
-    return (movimientosTesoreria || []).reduce((acc, m) => {
+    return movimientosTesoreriaAlcance.reduce((acc, m) => {
       if (!movimientoEsCobroFactura(m)) { acc.push(m); return acc; }
       const vinculoTipo = normalizeFinText(m.vinculo_tipo || m.vinculado_tipo);
       const cxcId = m.cxc_id || (vinculoTipo === 'cxc' ? (m.vinculo_id || m.vinculado_id) : null);
@@ -1897,7 +1986,7 @@ function Tesoreria() {
       });
       return acc;
     }, []);
-  }, [movimientosTesoreria, cxcPorId, facturasPorId]);
+  }, [movimientosTesoreriaAlcance, cxcPorId, facturasPorId]);
 
   const movimientosEmpresa = useMemo(() => (movimientosTesoreriaVista || []).filter(m =>
     (!empresaId || m.empresa_id === empresaId) &&
@@ -2008,29 +2097,29 @@ function Tesoreria() {
     return Math.max(0, Number(p?.monto_total ?? p?.monto ?? 0) - Number(p?.monto_pagado || 0));
   };
 
-  const cxcPendienteRows = useMemo(() => (cxc || []).filter(c =>
+  const cxcPendienteRows = useMemo(() => cxcVistaTesoreria.filter(c =>
     (!empresaId || c.empresa_id === empresaId) &&
     !['cobrada','pagada','anulada','cancelada'].includes(normalizeFinText(c.estado)) &&
     Number(c.saldo ?? c.monto_total ?? 0) > 0
-  ), [cxc, empresaId]);
-  const cxpPendienteRows = useMemo(() => (cxp || []).filter(p =>
+  ), [cxcVistaTesoreria, empresaId]);
+  const cxpPendienteRows = useMemo(() => cxpVistaTesoreria.filter(p =>
     (!empresaId || p.empresa_id === empresaId) &&
     !['pagada','cobrada','anulada','cancelada'].includes(normalizeFinText(p.estado)) &&
     saldoPendienteCxPDe(p) > 0
-  ), [cxp, empresaId]);
+  ), [cxpVistaTesoreria, empresaId]);
   const pendienteCxC = useMemo(() => sumarMoneda(cxcPendienteRows, c => c.saldo ?? c.monto_total, c => c.moneda || 'PEN'), [cxcPendienteRows]);
   const pendienteCxP = useMemo(() => sumarMoneda(cxpPendienteRows, saldoPendienteCxPDe, p => p.moneda || 'PEN'), [cxpPendienteRows]);
 
   const movBancoFiltrado = useMemo(() => {
-    const all = (movimientosBanco || []).filter(m => filtraPeriodoTesoreria(fechaBanco(m)));
+    const all = movimientosBancoAlcance.filter(m => filtraPeriodoTesoreria(fechaBanco(m)));
     if (filtroEstado === 'conciliados') return all.filter(m => m.conciliado);
     if (filtroEstado === 'pendientes') return all.filter(m => !m.conciliado);
     return all;
-  }, [movimientosBanco, filtroEstado, periodoTesoreria]);
+  }, [movimientosBancoAlcance, filtroEstado, periodoTesoreria]);
 
   const movimientosBancoPeriodo = useMemo(
-    () => (movimientosBanco || []).filter(m => filtraPeriodoTesoreria(fechaBanco(m))),
-    [movimientosBanco, periodoTesoreria],
+    () => movimientosBancoAlcance.filter(m => filtraPeriodoTesoreria(fechaBanco(m))),
+    [movimientosBancoAlcance, periodoTesoreria],
   );
   const vinculados = movimientosBancoPeriodo.filter(m => m.conciliado).length;
   const pendientes = movimientosBancoPeriodo.length - vinculados;
@@ -2049,7 +2138,7 @@ function Tesoreria() {
     const moneda = movSel.moneda || 'PEN';
     const pct2 = monto * 0.02;
     if (movSel.tipo === 'credito') {
-      return (cxc || []).filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => {
+      return cxcVistaTesoreria.filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => {
         const retencionCxCMatch = Number(c.monto_retencion || 0);
         const montoEsperado = retencionCxCMatch > 0
           ? Math.max(0, saldoCxc(c))
@@ -2063,14 +2152,14 @@ function Tesoreria() {
         };
       }).sort((a, b) => a.diff - b.diff);
     }
-    return (cxp || []).filter(p => saldoCxp(p) > 0 && (p.moneda || 'PEN') === moneda).map(p => ({
+    return cxpVistaTesoreria.filter(p => saldoCxp(p) > 0 && (p.moneda || 'PEN') === moneda).map(p => ({
       tipo: 'cxp', id: p.id,
       label: `${p.factura_numero || p.id} — ${p.proveedores?.razon_social || 'Proveedor'}`,
       monto: saldoCxp(p),
       diff: Math.abs(saldoCxp(p) - monto),
       sugerido: Math.abs(saldoCxp(p) - monto) <= pct2,
     })).sort((a, b) => a.diff - b.diff);
-  }, [movSel, cxc, cxp, cuentas]);
+  }, [movSel, cxcVistaTesoreria, cxpVistaTesoreria, cuentas]);
 
   const sugeridos = candidatos.filter(c => c.sugerido);
   const cuentaBancoMovSel = useMemo(
@@ -2084,13 +2173,13 @@ function Tesoreria() {
   const monedaSistemaMatch = useMemo(() => {
     if (!candidatoSeleccionado) return movSel?.moneda || 'PEN';
     if (candidatoSeleccionado.tipo === 'cxc') {
-      const row = (cxc || []).find(c => c.id === candidatoSeleccionado.id);
-      const factura = (facturas || []).find(f => f.id === row?.factura_id);
+      const row = cxcVistaTesoreria.find(c => c.id === candidatoSeleccionado.id);
+      const factura = facturasVistaTesoreria.find(f => f.id === row?.factura_id);
       return row?.moneda || factura?.moneda || movSel?.moneda || 'PEN';
     }
-    const row = (cxp || []).find(p => p.id === candidatoSeleccionado.id);
+    const row = cxpVistaTesoreria.find(p => p.id === candidatoSeleccionado.id);
     return row?.moneda || movSel?.moneda || 'PEN';
-  }, [candidatoSeleccionado, cxc, cxp, facturas, movSel]);
+  }, [candidatoSeleccionado, cxcVistaTesoreria, cxpVistaTesoreria, facturasVistaTesoreria, movSel]);
   const requiereTcMatch = Boolean(cuentaBancoMovSel && candidatoSeleccionado && monedaSistemaMatch !== cuentaBancoMovSel.moneda);
   const tcPreviewMatch = requiereTcMatch
     ? (monedaSistemaMatch === 'PEN' && cuentaBancoMovSel.moneda === 'USD'
@@ -2271,23 +2360,23 @@ function Tesoreria() {
       const e = fin.toISOString().slice(0, 10);
       const ingresosPorMoneda = {};
       const egresosPorMoneda = {};
-      (cxc || []).filter(c => !['cobrada','pagada','anulada','cancelada'].includes(normalizeFinText(c.estado)) && c.fecha_vencimiento >= s && c.fecha_vencimiento <= e)
+      cxcVistaTesoreria.filter(c => !['cobrada','pagada','anulada','cancelada'].includes(normalizeFinText(c.estado)) && c.fecha_vencimiento >= s && c.fecha_vencimiento <= e)
         .forEach(c => {
           const mon = (c.moneda || 'PEN').toUpperCase();
           ingresosPorMoneda[mon] = (ingresosPorMoneda[mon] || 0) + Number(c.saldo ?? c.monto_total ?? 0);
         });
-      (cxp || []).filter(p => !['pagada','anulada'].includes(p.estado) && p.fecha_vencimiento >= s && p.fecha_vencimiento <= e)
+      cxpVistaTesoreria.filter(p => !['pagada','anulada'].includes(p.estado) && p.fecha_vencimiento >= s && p.fecha_vencimiento <= e)
         .forEach(p => {
           const mon = (p.moneda || 'PEN').toUpperCase();
           egresosPorMoneda[mon] = (egresosPorMoneda[mon] || 0) + saldoPendienteCxPDe(p);
         });
-      const ultimaNomina = (periodosNomina || []).slice(-1)[0];
+      const ultimaNomina = periodosNominaVistaTesoreria.slice(-1)[0];
       if (i === 4 && ultimaNomina) {
         egresosPorMoneda['PEN'] = (egresosPorMoneda['PEN'] || 0) + Number(ultimaNomina.total_neto || ultimaNomina.total || 0);
       }
       return { label: `S${i+1}`, startStr: s, endStr: e, ingresosPorMoneda, egresosPorMoneda };
     });
-  }, [cxc, cxp, periodosNomina]);
+  }, [cxcVistaTesoreria, cxpVistaTesoreria, periodosNominaVistaTesoreria]);
 
   const bloques90 = useMemo(() => {
     const acumPorMoneda = {};
@@ -2450,6 +2539,7 @@ function Tesoreria() {
             <div key={cb.id} style={{...accountCardStyle, opacity: tieneMovimientosCuenta ? 1 : 0.6}}>
               <div className="text-muted" style={{fontSize:11, textTransform:'uppercase'}}>{cb.banco} - {cb.moneda}</div>
               <div style={{fontSize:13, fontWeight:500, marginTop:4}}>{cb.alias || cb.nombre}</div>
+              {mostrarBadgeSociedadTesoreria && <div style={{marginTop:6}}><SociedadBadge sociedadId={cb.sociedad_id} /></div>}
               <div style={{fontSize:20, fontWeight:800, color: cb.saldo >= 0 ? 'var(--green)' : 'var(--danger)', marginTop:8}}>{moneyCurrency(cb.saldo, cb.moneda)}</div>
               {editandoSaldoInicial ? (
                 <div className="row" style={{gap:6, alignItems:'center', marginTop:6, flexWrap:'nowrap'}}>
@@ -2524,7 +2614,7 @@ function Tesoreria() {
               <div className="card-head"><h3>Sistema (movimientos tesorería)</h3><span className="badge badge-cyan">{movimientosPeriodoTesoreria.length}</span></div>
               <div className="table-wrap" style={{maxHeight:420}}>
                 <table className="tbl" style={{minWidth:720}}>
-                  <thead><tr><th>Fecha</th><th>Descripcion</th><th>Tipo</th><th>Monto</th><th>Cuenta</th></tr></thead>
+                  <thead><tr><th>Fecha</th>{mostrarBadgeSociedadTesoreria && <th>Sociedad</th>}<th>Descripcion</th><th>Tipo</th><th>Monto</th><th>Cuenta</th></tr></thead>
                   <tbody>{(movimientosPeriodoTesoreria||[]).slice(0,50).map((m,i) => {
                     const cuentaMov = cuentaMovimientoDe(m);
                     const editandoCuenta = editandoCuentaMovId === m.id || !cuentaMov;
@@ -2536,6 +2626,7 @@ function Tesoreria() {
                     return (
                       <tr key={m.id||i}>
                         <td className="text-muted" style={{fontSize:12}}>{m.fecha}</td>
+                        {mostrarBadgeSociedadTesoreria && <td><SociedadBadge sociedadId={sociedadIdMovimientoTesoreriaDe(m)} /></td>}
                         <td style={{fontSize:12}}>{m.descripcion}</td>
                         <td><span className={'badge '+(m.tipo==='ingreso'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo}</span></td>
                         <td className="num" style={{fontSize:12, color:m.tipo==='ingreso'?'var(--green)':'var(--fg)'}}>
@@ -2577,10 +2668,11 @@ function Tesoreria() {
               <div className="card-head"><h3>Extracto bancario</h3><span className={'badge '+(pendientes>0?'badge-orange':'badge-green')}>{pendientes} pendientes</span></div>
               <div className="table-wrap" style={{maxHeight:420}}>
                 <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th></th></tr></thead>
+                  <thead><tr><th>Fecha</th>{mostrarBadgeSociedadTesoreria && <th>Sociedad</th>}<th>Descripción</th><th>Tipo</th><th>Monto</th><th></th></tr></thead>
                   <tbody>{movBancoFiltrado.map((m, i) => (
                     <tr key={m.id||i} style={{background: m.conciliado ? 'transparent' : sugeridos.length > 0 && !m.conciliado ? 'rgba(255,160,0,0.04)' : 'transparent'}}>
                       <td className="text-muted" style={{fontSize:12}}>{m.fecha}</td>
+                      {mostrarBadgeSociedadTesoreria && <td><SociedadBadge sociedadId={sociedadIdMovimientoTesoreriaDe(m)} /></td>}
                       <td style={{fontSize:12}}><strong>{m.descripcion || m.desc}</strong></td>
                       <td><span className={'badge '+(m.tipo==='credito'?'badge-green':'badge-orange')} style={{fontSize:10}}>{m.tipo==='credito'?'Crédito':'Débito'}</span></td>
                       <td className="num" style={{fontSize:12, color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</td>
@@ -2635,7 +2727,7 @@ function Tesoreria() {
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Categoría</th>
+                    <th>Fecha</th>{mostrarBadgeSociedadTesoreria && <th>Sociedad</th>}<th>Descripción</th><th>Tipo</th><th>Categoría</th>
                     <th className="num">Monto</th><th>Cuenta</th><th className="num">Saldo acum.</th>
                     <th>Conciliado</th><th>Vinculado a</th>
                   </tr>
@@ -2644,10 +2736,11 @@ function Tesoreria() {
                   const cb = cuentasActivas.find(c => c.id === m.cuenta_bancaria_id);
                   const vinculo = m.vinculo_id || m.vinculado_id;
                   const vinculoTipo = m.vinculo_tipo || m.vinculado_tipo;
-                  const movBanco = (movimientosBanco||[]).find(b => b.conciliado && (b.vinculado_id === m.id || b.vinculado_id === vinculo));
+                  const movBanco = movimientosBancoAlcance.find(b => b.conciliado && (b.vinculado_id === m.id || b.vinculado_id === vinculo));
                   return (
                     <tr key={m.id || i}>
                       <td style={{fontSize:12}}>{m.fecha}</td>
+                      {mostrarBadgeSociedadTesoreria && <td><SociedadBadge sociedadId={sociedadIdMovimientoTesoreriaDe(m)} /></td>}
                       <td style={{fontSize:12}}>
                         {m.descripcion}
                         {m.es_manual && <span className="badge badge-gray" style={{fontSize:9, marginLeft:4}}>Manual</span>}
@@ -2752,10 +2845,11 @@ function Tesoreria() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th><th>Conciliado</th><th>Vinculado a</th><th></th></tr></thead>
-              <tbody>{(movimientosBanco||[]).map((m,i) => (
+              <thead><tr><th>Fecha</th>{mostrarBadgeSociedadTesoreria && <th>Sociedad</th>}<th>Descripción</th><th>Tipo</th><th>Monto</th><th>Conciliado</th><th>Vinculado a</th><th></th></tr></thead>
+              <tbody>{movimientosBancoAlcance.map((m,i) => (
                 <tr key={m.id||i}>
                   <td>{m.fecha}</td>
+                  {mostrarBadgeSociedadTesoreria && <td><SociedadBadge sociedadId={sociedadIdMovimientoTesoreriaDe(m)} /></td>}
                   <td>{m.descripcion || m.desc}</td>
                   <td><span className={'badge '+(m.tipo==='credito'?'badge-green':'badge-orange')}>{m.tipo==='credito'?'Crédito':'Débito'}</span></td>
                   <td className="num" style={{color:m.tipo==='credito'?'var(--green)':'var(--fg)'}}>{m.tipo==='credito'?'+':'-'}{moneyCurrency(m.monto, m.moneda)}</td>
@@ -2765,7 +2859,7 @@ function Tesoreria() {
                 </tr>
               ))}</tbody>
             </table>
-            {(movimientosBanco||[]).length === 0 && (
+            {movimientosBancoAlcance.length === 0 && (
               <div style={{padding:'40px 16px', textAlign:'center', color:'var(--muted)'}}>
                 No hay extracto bancario cargado.{' '}
                 <button className="btn btn-secondary btn-sm" onClick={() => setShowImport(true)}>Importar CSV</button>
@@ -2923,15 +3017,27 @@ const erMoney = (totals, currency) => moneyCurrency(erAmount(totals, currency), 
 
 function Resultados({ role }) {
   const [expanded, setExpanded] = useState({ ingresos: true, costo: false, gastos: false, gastosFin: false });
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, tipoCambioHoy, perfilSociedad, sociedadActiva, sociedadesDisponibles } = useApp();
+  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, tipoCambioHoy, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadERInicial = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const multisociedadActiva = Boolean(empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [erData, setErData] = useState(null);
   const [tcPeriodo, setTcPeriodo] = useState(null);
-  const [scopeMode, setScopeMode] = useState(ER_SCOPE_MODE.SOCIEDAD);
-  const [scopeSociedadId, setScopeSociedadId] = useState(sociedadActiva?.id || '');
+  const [scopeMode, setScopeMode] = useState(() => (
+    multisociedadActiva && !modoVistaSociedadERInicial.permiteEscritura
+      ? ER_SCOPE_MODE.CONSOLIDADO
+      : ER_SCOPE_MODE.SOCIEDAD
+  ));
+  const [scopeSociedadId, setScopeSociedadId] = useState(() => modoVistaSociedadERInicial.sociedadIdEscritura || '');
   const supabaseMode = isSupabaseMode();
   const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const now = new Date();
@@ -2940,23 +3046,10 @@ function Resultados({ role }) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     return { v: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l: `${MESES[d.getMonth()]} ${d.getFullYear()}` };
   });
-  const multisociedadActiva = Boolean(empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
   const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
   const scopeSociedadIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
-    ? [scopeSociedadId || sociedadActiva?.id].filter(Boolean)
+    ? [scopeSociedadId].filter(Boolean)
     : sociedadesDisponibles.map(s => s.id);
-
-  useEffect(() => {
-    if (!multisociedadActiva) {
-      setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
-      setScopeSociedadId('');
-      return;
-    }
-    if (!sociedadesDisponibles.some(s => s.id === scopeSociedadId)) {
-      setScopeSociedadId(sociedadActiva?.id || sociedadesDisponibles[0]?.id || '');
-    }
-    if (!puedeComparar && scopeMode !== ER_SCOPE_MODE.SOCIEDAD) setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
-  }, [multisociedadActiva, puedeComparar, scopeMode, scopeSociedadId, sociedadActiva?.id, sociedadesDisponibles]);
 
   const canFin = role.permisos.ver_finanzas || role.permisos.todo;
   const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
@@ -3133,6 +3226,7 @@ function Resultados({ role }) {
           )}
           {multisociedadActiva && scopeMode === ER_SCOPE_MODE.SOCIEDAD && (
             <select className="select" style={{ width:190 }} value={scopeSociedadId} onChange={e => setScopeSociedadId(e.target.value)}>
+              <option value="" disabled>Seleccionar sociedad...</option>
               {sociedadesDisponibles.map(s => <option key={s.id} value={s.id}>{s.codigo ? `${s.codigo} - ` : ''}{s.nombre}</option>)}
             </select>
           )}
@@ -3293,8 +3387,22 @@ function Facturacion() {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias, centrosBeneficio, empresa,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, generarCxC, generarCxP, navigate, activeParams, searchQuery,
-    empresaConfig, role,
+    empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+
+  const modoVistaSociedadFacturacion = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadFacturacion = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadFacturacion);
+  const sociedadesIdsVistaFacturacionKey = modoVistaSociedadFacturacion.sociedadesIds.join('|');
+  const facturasVista = useMemo(
+    () => filtrarPorVistaSociedad(facturas || [], modoVistaSociedadFacturacion),
+    [facturas, modoVistaSociedadFacturacion.sinFiltro, sociedadesIdsVistaFacturacionKey],
+  );
 
   const today = new Date().toISOString().split('T')[0];
   const condicionPagoDefecto = empresaConfig?.condicion_pago_defecto || CONDICION_PAGO_DEFECTO_CXC;
@@ -4071,6 +4179,7 @@ function Facturacion() {
         const addDias30 = d => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + 15); return dt.toISOString().split('T')[0]; };
         await generarCxP({
           tipo_beneficiario: 'cliente',
+          sociedad_id: facOrigen.sociedad_id || null,
           cuenta_id: facOrigen.cuenta_id,
           concepto: `Devolución NC — ${facOrigen.numero} — ${cuentaNombre(facOrigen.cuenta_id)}`,
           factura_numero: `NC/${facOrigen.numero}`,
@@ -4322,7 +4431,7 @@ function Facturacion() {
   // ── Ficha detail view ─────────────────────────────────────────────────
   let fichaFac = null;
   if (selFac) {
-    const f = (facturas||[]).find(x => x.id === selFac);
+    const f = facturasVista.find(x => x.id === selFac);
     if (f) {
 
     const cuenta = getCuenta(f.cuenta_id);
@@ -5032,17 +5141,17 @@ function Facturacion() {
   // ── List view ─────────────────────────────────────────────────────────
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-  const facMes = (facturas||[]).filter(f => f.estado !== 'anulada' && (f.fecha_emision||'').startsWith(mesActual));
+  const facMes = facturasVista.filter(f => f.estado !== 'anulada' && (f.fecha_emision||'').startsWith(mesActual));
   const montoMesPEN = facMes.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
   const montoMesUSD = facMes.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
-  const facPendiente = (facturas||[]).filter(f => ['emitida','cobro_parcial'].includes(f.estado));
+  const facPendiente = facturasVista.filter(f => ['emitida','cobro_parcial'].includes(f.estado));
   const montoPendientePEN = facPendiente.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
   const montoPendienteUSD = facPendiente.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
 
-  const clienteOpts = [...new Map((facturas||[]).map(f => [f.cuenta_id, cuentaNombre(f.cuenta_id)])).entries()].filter(([k]) => k);
+  const clienteOpts = [...new Map(facturasVista.map(f => [f.cuenta_id, cuentaNombre(f.cuenta_id)])).entries()].filter(([k]) => k);
   const hasFilters = fCliente||fTipo||fEstado||fMoneda||fEmitDesde||fEmitHasta||fVenceDesde||fVenceHasta;
   const q = (searchQuery||'').toLowerCase();
-  const filtered = (facturas||[]).filter(f => {
+  const filtered = facturasVista.filter(f => {
     if (fCliente && f.cuenta_id !== fCliente) return false;
     if (fTipo && f.tipo_documento !== fTipo) return false;
     if (fEstado && f.estado !== fEstado) return false;
@@ -5061,7 +5170,7 @@ function Facturacion() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Facturación</h1>
-          <div className="page-sub">{(facturas||[]).length} facturas · {valsParaFacturar.length} valorizaciones listas para facturar</div>
+          <div className="page-sub">{facturasVista.length} facturas · {valsParaFacturar.length} valorizaciones listas para facturar</div>
         </div>
         <div className="row" style={{gap:10}}>
           <button className="btn btn-secondary" onClick={() => openMode('directa')}>{I.plus} Factura directa</button>
@@ -5148,6 +5257,7 @@ function Facturacion() {
             <thead>
               <tr>
                 <th>N° Factura</th>
+                {mostrarBadgeSociedadFacturacion && <th>Sociedad</th>}
                 <th>Cliente</th>
                 <th>Tipo</th>
                 <th>Valorización</th>
@@ -5169,6 +5279,7 @@ function Facturacion() {
                 return (
                   <tr key={f.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>
                     <td className="mono" style={{fontWeight:600}}>{f.numero || f.id}</td>
+                    {mostrarBadgeSociedadFacturacion && <td><SociedadBadge sociedadId={f.sociedad_id} /></td>}
                     <td style={{maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{f.cuentas?.razon_social || cuentaNombre(f.cuenta_id)}</td>
                     <td style={{fontSize:12}}>{TIPO_DOC_LABELS[f.tipo_documento] || f.tipo_documento || 'Factura'}</td>
                     <td className="mono text-muted" style={{fontSize:12}}>{val?.numero || f.valorizaciones?.numero || '—'}</td>
@@ -5223,7 +5334,7 @@ function Facturacion() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan="12" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                <tr><td colSpan={13 + (mostrarBadgeSociedadFacturacion ? 1 : 0)} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                   {q || hasFilters ? 'No se encontraron resultados' : 'No hay facturas registradas'}
                 </td></tr>
               )}
@@ -5282,7 +5393,16 @@ const calcVentaFechaVencimiento = (fecha, diasCredito) => {
 };
 
 function Ventas() {
-  const { empresa, authUser, addNotificacion, navigate, role } = useApp();
+  const { empresa, authUser, addNotificacion, navigate, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadVentas = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadVentas = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadVentas);
+  const sociedadesIdsVistaVentasKey = modoVistaSociedadVentas.sociedadesIds.join('|');
   const supabaseMode = isSupabaseMode();
   const puedeVerClientes = !supabaseMode || Boolean(role?.permisos?.todo) || Boolean(role?.permisos?.ver?.includes('cuentas'));
   const [ventas, setVentas] = useState(() => supabaseMode ? [] : (MOCK.ventas || []));
@@ -5294,6 +5414,10 @@ function Ventas() {
   const [guardando, setGuardando] = useState(false);
   const [actualizandoId, setActualizandoId] = useState(null);
   const [selVenta, setSelVenta] = useState(null);
+  const ventasVista = useMemo(
+    () => filtrarPorVistaSociedad(ventas, modoVistaSociedadVentas),
+    [ventas, modoVistaSociedadVentas.sinFiltro, sociedadesIdsVistaVentasKey],
+  );
 
   const fechaVencimientoCalc = calcVentaFechaVencimiento(form.fecha, form.dias_credito);
 
@@ -5390,7 +5514,7 @@ function Ventas() {
     }
   };
 
-  const ventaDetalle = selVenta ? ventas.find(x => x.id === selVenta) : null;
+  const ventaDetalle = selVenta ? ventasVista.find(x => x.id === selVenta) : null;
 
   const emitirComprobante = vd => {
     setSelVenta(null);
@@ -5422,18 +5546,19 @@ function Ventas() {
           <table className="tbl">
             <thead>
               <tr>
-                <th>N° Venta</th><th>Fecha</th><th>Cliente</th><th>Concepto</th><th>Condición</th><th className="num">Monto</th><th>Estado</th><th></th>
+                <th>N° Venta</th>{mostrarBadgeSociedadVentas && <th>Sociedad</th>}<th>Fecha</th><th>Cliente</th><th>Concepto</th><th>Condición</th><th className="num">Monto</th><th>Estado</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>}
-              {!loading && ventas.length === 0 && <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>}
-              {!loading && ventas.map(v => {
+              {loading && <tr><td colSpan={8 + (mostrarBadgeSociedadVentas ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>}
+              {!loading && ventasVista.length === 0 && <tr><td colSpan={8 + (mostrarBadgeSociedadVentas ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>}
+              {!loading && ventasVista.map(v => {
                 const bloqueado = ['facturada','anulada'].includes(v.estado);
                 const transiciones = ventaTransicionesValidas(v.estado);
                 return (
                   <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVenta(v.id)}>
                     <td className="mono" style={{fontWeight:600}}>{v.numero || v.id}</td>
+                    {mostrarBadgeSociedadVentas && <td><SociedadBadge sociedadId={v.sociedad_id} /></td>}
                     <td className="text-muted">{v.fecha}</td>
                     <td style={{fontWeight:600,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ventaClienteNombre(v)}</td>
                     <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.concepto}</td>
@@ -5753,7 +5878,16 @@ const CC_FONDO_FORM = {
 };
 
 function CajaChica() {
-  const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion } = useApp();
+  const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadCajaChica = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadCajaChica = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadCajaChica);
+  const sociedadesIdsVistaCajaChicaKey = modoVistaSociedadCajaChica.sociedadesIds.join('|');
   const empresaId = empresa?.id;
   const [tab, setTab] = useState('fondos');
   const [fondos, setFondos] = useState([]);
@@ -5783,10 +5917,25 @@ function CajaChica() {
 
   const usuariosEmpresa = useMemo(() => (usuarios || []).filter(u => !u.empresa_id || u.empresa_id === empresaId), [usuarios, empresaId]);
   const cuentasActivas = useMemo(() => (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(c.estado)), [cuentasBancarias]);
-  const fondoSel = fondos.find(f => f.id === fondoSelId) || null;
   const usuarioDe = id => usuariosEmpresa.find(u => u.id === id);
   const cuentaDe = id => (cuentasBancarias || []).find(c => c.id === id);
   const cecoDe = id => (centrosCosto || []).find(c => c.id === id);
+  const sociedadIdCajaDe = registro => registro?.sociedad_id
+    || cuentaDe(registro?.cuenta_bancaria_id)?.sociedad_id
+    || null;
+  const fondosVista = useMemo(
+    () => filtrarPorVistaSociedad(fondos, modoVistaSociedadCajaChica, sociedadIdCajaDe),
+    [fondos, cuentasBancarias, modoVistaSociedadCajaChica.sinFiltro, sociedadesIdsVistaCajaChicaKey],
+  );
+  const fondosPorIdCaja = useMemo(() => new Map(fondos.map(fondo => [fondo.id, fondo])), [fondos]);
+  const sociedadIdMovimientoCajaDe = movimiento => movimiento?.sociedad_id
+    || sociedadIdCajaDe(fondosPorIdCaja.get(movimiento?.fondo_id))
+    || null;
+  const movimientosVista = useMemo(
+    () => filtrarPorVistaSociedad(movimientos, modoVistaSociedadCajaChica, sociedadIdMovimientoCajaDe),
+    [movimientos, fondosPorIdCaja, cuentasBancarias, modoVistaSociedadCajaChica.sinFiltro, sociedadesIdsVistaCajaChicaKey],
+  );
+  const fondoSel = fondosVista.find(f => f.id === fondoSelId) || null;
   const esResponsable = fondo => {
     const u = usuarioDe(fondo?.responsable_id);
     return Boolean(fondo?.responsable_id && (
@@ -5859,11 +6008,11 @@ function CajaChica() {
 
   useEffect(() => { cargar(); }, [empresaId, cajaChica.length]);
 
-  const fondosActivos = fondos.filter(f => f.estado === 'activo');
+  const fondosActivos = fondosVista.filter(f => f.estado === 'activo');
   const fondosAlerta = fondosActivos.filter(f => f.requiere_reposicion);
   const saldoTotal = fondosActivos.reduce((s, f) => s + Number(f.saldo_disponible || 0), 0);
   const asignadoTotal = fondosActivos.reduce((s, f) => s + Number(f.monto_asignado || 0), 0);
-  const egresosMes = movimientos
+  const egresosMes = movimientosVista
     .filter(m => m.tipo_movimiento === 'egreso' && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7))
     .reduce((s, m) => s + Math.abs(Number(m.monto_movimiento || m.monto || 0)), 0);
 
@@ -5992,13 +6141,13 @@ function CajaChica() {
     }
   };
 
-  const movsFiltrados = movimientos.filter(m => {
+  const movsFiltrados = movimientosVista.filter(m => {
     if (fFondo && m.fondo_id !== fFondo) return false;
     if (fPeriodo && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) !== fPeriodo) return false;
     if (fCeco && (m.ceco_id || m.centro_costo_id) !== fCeco) return false;
     return true;
   });
-  const historialFondo = fondoSel ? movimientos.filter(m => m.fondo_id === fondoSel.id) : [];
+  const historialFondo = fondoSel ? movimientosVista.filter(m => m.fondo_id === fondoSel.id) : [];
 
   return (
     <>
@@ -6040,16 +6189,17 @@ function CajaChica() {
           <div className="card-head"><h3>Fondos administrados</h3><span className="badge badge-gray">{fondosActivos.length} activos</span></div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fondo</th><th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fondo</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th></tr></thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="7" className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
-                ) : fondos.length ? fondos.map(f => {
+                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0)} className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
+                ) : fondosVista.length ? fondosVista.map(f => {
                   const responsable = usuarioDe(f.responsable_id);
                   const cuenta = cuentaDe(f.cuenta_bancaria_id);
                   return (
                     <tr key={f.id} className="hover-row" onClick={() => setFondoSelId(f.id)} style={{cursor:'pointer'}}>
                       <td><strong>{f.nombre}</strong>{f.requiere_reposicion && <span className="badge badge-orange" style={{marginLeft:8}}>Reponer</span>}</td>
+                      {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdCajaDe(f)} /></td>}
                       <td className="text-muted">{responsable?.nombre || responsable?.email || 'Sin asignar'}</td>
                       <td className="text-muted">{cuenta ? `${cuenta.banco || ''} ${cuenta.nombre || ''}`.trim() : 'Sin cuenta'}</td>
                       <td className="num">{moneyCurrency(f.monto_asignado, f.moneda)}</td>
@@ -6059,7 +6209,7 @@ function CajaChica() {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="7" className="text-center text-muted" style={{padding:32}}>Sin fondos configurados.</td></tr>
+                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Sin fondos configurados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -6074,7 +6224,7 @@ function CajaChica() {
             <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
               <select className="select" style={{width:180}} value={fFondo} onChange={e=>setFFondo(e.target.value)}>
                 <option value="">Todos los fondos</option>
-                {fondos.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                {fondosVista.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
               </select>
               <input className="input" style={{width:135}} type="month" value={fPeriodo} onChange={e=>setFPeriodo(e.target.value)} />
               <select className="select" style={{width:180}} value={fCeco} onChange={e=>setFCeco(e.target.value)}>
@@ -6085,7 +6235,7 @@ function CajaChica() {
           </div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fecha</th><th>Fondo</th><th>Tipo</th><th>Concepto</th><th>CECO</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fecha</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Fondo</th><th>Tipo</th><th>Concepto</th><th>CECO</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
               <tbody>
                 {movsFiltrados.length ? movsFiltrados.map(m => {
                   const tipo = m.tipo_movimiento || 'egreso';
@@ -6093,6 +6243,7 @@ function CajaChica() {
                   return (
                     <tr key={`${tipo}_${m.id}`}>
                       <td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td>
+                      {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdMovimientoCajaDe(m)} /></td>}
                       <td>{m.fondo_nombre || fondos.find(f => f.id === m.fondo_id)?.nombre || 'Legacy sin fondo'}</td>
                       <td><span className={`badge ${tipo === 'reposicion' ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
                       <td>{m.concepto || m.descripcion}</td>
@@ -6103,7 +6254,7 @@ function CajaChica() {
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan="8" className="text-center text-muted" style={{padding:32}}>Sin movimientos para los filtros seleccionados.</td></tr>
+                  <tr><td colSpan={8 + (mostrarBadgeSociedadCajaChica ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Sin movimientos para los filtros seleccionados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -6628,7 +6779,20 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadCxP = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadCxP);
+  const sociedadesIdsVistaCxPKey = modoVistaSociedadCxP.sociedadesIds.join('|');
+  const cxpVista = useMemo(
+    () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadCxP),
+    [cxp, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
+  );
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const [erCatOpts, setErCatOpts] = useState([]);
   const [erCategorias, setErCategorias] = useState([]);
@@ -6825,12 +6989,12 @@ function CxP() {
 
   const mesesDisponibles = useMemo(() => {
     const set = new Set();
-    (cxp || []).forEach(c => {
+    cxpVista.forEach(c => {
       const fecha = c.fecha_emision || c.emision;
       if (fecha && fecha.length >= 7) set.add(fecha.substring(0, 7));
     });
     return Array.from(set).sort().reverse();
-  }, [cxp]);
+  }, [cxpVista]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const saldoDe  = c => Number(c?.saldo ?? c?.monto_total ?? c?.monto ?? 0);
@@ -6982,7 +7146,7 @@ function CxP() {
   };
 
   // ── Datos filtrados y KPIs ────────────────────────────────────────────────
-  const cxpFiltrada = (cxp || []).filter(c => {
+  const cxpFiltrada = cxpVista.filter(c => {
     if (c.estado === 'anulada') return false;
     if (tabCxP === 'tributos' && !cxpEsTributo(c)) return false;
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
@@ -6999,7 +7163,7 @@ function CxP() {
     }
     return true;
   });
-  const cxpTributos = (cxp || []).filter(cxpEsTributo);
+  const cxpTributos = cxpVista.filter(cxpEsTributo);
 
   const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c), 0);
   const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c), 0);
@@ -7282,7 +7446,7 @@ function CxP() {
 
       <div className="tabs" style={{marginBottom:16}}>
         {[
-          { id:'general', label:`General (${(cxp || []).length})` },
+          { id:'general', label:`General (${cxpVista.length})` },
           { id:'tributos', label:`Tributos (${cxpTributos.length})` },
         ].map(t => (
           <div key={t.id} className={'tab '+(tabCxP===t.id?'active':'')} onClick={() => setTabCxP(t.id)}>{t.label}</div>
@@ -7313,7 +7477,7 @@ function CxP() {
         </div>
         <div className="kpi-card">
           <div className="kpi-label">Pagadas</div>
-          <div className="kpi-value" style={{marginTop:12}}>{(cxp||[]).filter(c => c.estado === 'pagada').length}</div>
+          <div className="kpi-value" style={{marginTop:12}}>{cxpVista.filter(c => c.estado === 'pagada').length}</div>
           <div className="kpi-icon green">{I.check}</div>
         </div>
       </div>
@@ -7348,6 +7512,7 @@ function CxP() {
             <thead>
               <tr>
                 <th style={{width:12}}></th>
+                {mostrarBadgeSociedadCxP && <th>Sociedad</th>}
                 <th>{tabCxP === 'tributos' ? 'Periodo tributario' : 'Beneficiario'}</th>
                 <th>{tabCxP === 'tributos' ? 'Tipo de tributo' : 'Documento / Concepto'}</th>
                 <th>Emisión</th>
@@ -7365,6 +7530,7 @@ function CxP() {
                 return (
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
+                    {mostrarBadgeSociedadCxP && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                     <td style={{fontWeight:600}}>
                       {tabCxP === 'tributos' ? (cxpTributoPeriodo(c) || '-') : (
                         <>
@@ -7413,7 +7579,7 @@ function CxP() {
                   </tr>
                 );
               }) : (
-                <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
+                <tr><td colSpan={9 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
               )}
             </tbody>
           </table>
@@ -8789,10 +8955,20 @@ function Presupuestos() {
   const {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
-    comprasGastos, ots, usuarios, empresa, authUser,
+    comprasGastos, ots, usuarios, empresa, authUser, addToast,
     centrosCosto, centrosBeneficio, perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles,
   } = useApp();
+
+  const modoVistaSociedadPresupuesto = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const mostrarBadgeSociedadPresupuesto = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadPresupuesto);
+  const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un presupuesto.';
 
   const now = new Date();
   const [periodo, setPeriodo]       = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
@@ -8801,7 +8977,7 @@ function Presupuestos() {
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [panelDetalle, setPanelDetalle] = useState(null);
   const [panelEnviar, setPanelEnviar]   = useState(false);
-  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'', sociedad_id: sociedadActiva?.id || '' });
+  const [formPre, setFormPre]       = useState({ nombre:'', periodo, centro_costo_id:'', cebe_id:'', sociedad_id: modoVistaSociedadPresupuesto.sociedadIdEscritura || '' });
   const [formParts, setFormParts]   = useState([{ categoria:'Materiales', descripcion:'', monto_presupuestado:'' }]);
   const [aprobadores, setAprobadores] = useState([null]);
   const [comentarioApr, setComentarioApr] = useState('');
@@ -8890,6 +9066,7 @@ function Presupuestos() {
   const usuariosEmpresa = (usuarios||[]).filter(u => u.empresa_id === empresaId || !u.empresa_id);
 
   const guardarNuevo = async () => {
+    if (!modoVistaSociedadPresupuesto.permiteEscritura) { addToast(mensajeSeleccionSociedad, 'error'); return; }
     if (!formPre.nombre.trim() || !formPre.periodo.trim() || formParts.length === 0) return;
     setSaving(true);
     try {
@@ -8937,7 +9114,8 @@ function Presupuestos() {
           {presActivo?.estado === 'borrador' && (
             <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelEnviar(true)}>Enviar a aprobación</button>
           )}
-          <button className="btn btn-primary" data-local-form="true" onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:'',sociedad_id:sociedadActiva?.id||''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
+          {!modoVistaSociedadPresupuesto.permiteEscritura && <span className="text-muted" style={{fontSize:12}}>{mensajeSeleccionSociedad}</span>}
+          <button className="btn btn-primary" data-local-form="true" disabled={!modoVistaSociedadPresupuesto.permiteEscritura} title={!modoVistaSociedadPresupuesto.permiteEscritura ? mensajeSeleccionSociedad : 'Crear presupuesto'} onClick={() => { setFormPre({nombre:'',periodo,centro_costo_id:'',cebe_id:'',sociedad_id:modoVistaSociedadPresupuesto.sociedadIdEscritura||''}); setFormParts([{categoria:'Materiales',descripcion:'',monto_presupuestado:''}]); setPanelNuevo(true); }}>
             {I.plus} Nuevo presupuesto
           </button>
         </div>
@@ -8980,7 +9158,7 @@ function Presupuestos() {
               <div className="card-head">
                 <h3>Partidas presupuestales — {periodoLabel}</h3>
                 <div className="row" style={{gap:8}}>
-                  <SociedadBadge sociedadId={presActivo.sociedad_id} />
+                  {mostrarBadgeSociedadPresupuesto && <SociedadBadge sociedadId={presActivo.sociedad_id} />}
                   <span className={`badge ${BADGE_E[presActivo.estado]?.cls||''}`}>{BADGE_E[presActivo.estado]?.label||presActivo.estado}</span>
                   <span className="text-muted" style={{fontSize:12}}>{partidas.length} partidas</span>
                 </div>
@@ -9104,6 +9282,11 @@ function Presupuestos() {
               <button className="icon-btn" onClick={()=>setPanelNuevo(false)}>{I.x}</button>
             </div>
             <div className="side-panel-body">
+              {!modoVistaSociedadPresupuesto.permiteEscritura && (
+                <div style={{padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13, marginBottom:14}}>
+                  {mensajeSeleccionSociedad}
+                </div>
+              )}
               <div className="grid-2" style={{gap:12}}>
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Nombre del presupuesto <span style={{color:'var(--danger)'}}>*</span></label>
@@ -9173,7 +9356,7 @@ function Presupuestos() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button className="btn btn-secondary" onClick={()=>setPanelNuevo(false)}>Cancelar</button>
-                <button className="btn btn-primary" disabled={saving||!formPre.nombre.trim()||formParts.length===0||(empresa?.multisociedad_habilitado&&!formPre.sociedad_id)} onClick={guardarNuevo}>
+                <button className="btn btn-primary" disabled={!modoVistaSociedadPresupuesto.permiteEscritura||saving||!formPre.nombre.trim()||formParts.length===0||(empresa?.multisociedad_habilitado&&!formPre.sociedad_id)} onClick={guardarNuevo}>
                   {saving ? 'Guardando…' : `${I.check} Guardar presupuesto`}
                 </button>
               </div>

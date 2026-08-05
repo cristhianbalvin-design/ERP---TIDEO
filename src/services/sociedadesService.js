@@ -7,6 +7,14 @@ export const PERFIL_SOCIEDAD = Object.freeze({
   SOCIEDAD: 'sociedad',
 });
 
+export const SOCIEDAD_TODAS_ID = '**todas**';
+export const SOCIEDAD_TODAS = Object.freeze({
+  id: SOCIEDAD_TODAS_ID,
+  codigo: 'GRUPO',
+  nombre: 'GRUPO — Vista consolidada',
+  es_consolidada: true,
+});
+
 export function resolverSociedadUnicaId(sociedades = []) {
   return sociedades.length === 1 ? (sociedades[0]?.id || null) : null;
 }
@@ -242,7 +250,57 @@ export function filtrarRegistrosPorAlcanceSociedad(registros = [], perfil, socie
 }
 
 export function resolverSociedadActiva(sociedades = [], sociedadPreferidaId = null) {
-  return sociedades.find(sociedad => sociedad.id === sociedadPreferidaId) || sociedades[0] || null;
+  if (sociedades.length === 0) return null;
+  if (sociedades.length === 1) return sociedades[0];
+  if (!sociedadPreferidaId || sociedadPreferidaId === SOCIEDAD_TODAS_ID) return SOCIEDAD_TODAS;
+  return sociedades.find(sociedad => sociedad.id === sociedadPreferidaId) || SOCIEDAD_TODAS;
+}
+
+export function resolverFiltroSociedadesVista({
+  multisociedadHabilitado = false,
+  perfilSociedad = PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+  sociedadActiva = null,
+  sociedadesIdsAlcance = null,
+  sociedadesDisponibles = [],
+} = {}) {
+  const resolverResultado = ({ sinFiltro, sociedadesIds = [], sociedadIdEscritura = null }) => ({
+    sinFiltro,
+    sociedadesIds,
+    permiteEscritura: !multisociedadHabilitado || Boolean(sociedadIdEscritura),
+    sociedadIdEscritura,
+  });
+
+  if (!multisociedadHabilitado) return resolverResultado({ sinFiltro: true });
+  if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) {
+    return resolverResultado({ sinFiltro: false });
+  }
+
+  const sociedadActivaId = typeof sociedadActiva === 'string'
+    ? sociedadActiva
+    : sociedadActiva?.id;
+  const disponibles = [...new Set(sociedadesDisponibles.map(sociedad => sociedad?.id).filter(Boolean))];
+  const disponiblesSet = new Set(disponibles);
+  const alcanceCompleto = perfilSociedad === PERFIL_SOCIEDAD.GRUPO
+    && sociedadesIdsAlcance == null;
+  const permitidas = Array.isArray(sociedadesIdsAlcance)
+    ? [...new Set(sociedadesIdsAlcance.filter(id => disponiblesSet.has(id)))]
+    : disponibles;
+  const permitidasSet = new Set(permitidas);
+
+  if (sociedadActivaId === SOCIEDAD_TODAS_ID) {
+    return resolverResultado({ sinFiltro: alcanceCompleto, sociedadesIds: alcanceCompleto ? [] : permitidas });
+  }
+  if (!sociedadActivaId || !disponiblesSet.has(sociedadActivaId)) {
+    return resolverResultado({ sinFiltro: false });
+  }
+  if (!alcanceCompleto && !permitidasSet.has(sociedadActivaId)) {
+    return resolverResultado({ sinFiltro: false });
+  }
+  return resolverResultado({
+    sinFiltro: false,
+    sociedadesIds: [sociedadActivaId],
+    sociedadIdEscritura: sociedadActivaId,
+  });
 }
 
 export function sociedadIdParaPersistir(empresa, sociedadId) {
