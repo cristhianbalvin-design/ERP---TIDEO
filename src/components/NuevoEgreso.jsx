@@ -7,8 +7,9 @@ import { cajaChicaService } from '../services/cajaChicaService.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
-import { SociedadFormField } from './SociedadFormField.jsx';
+import { SociedadFormField, SociedadReadOnlyField } from './SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
+import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -244,6 +245,16 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase())),
     sociedadIdEscrituraEgreso,
   );
+  const otDestino = (ots || []).find(o => o.id === form.ot_vinc_id);
+  const cecoDestino = (centrosCosto || []).find(c => c.id === form.centro_costo_id);
+  const destinoSociedadEgreso = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [
+      { seleccionado: Boolean(form.ot_vinc_id), sociedadId: otDestino?.sociedad_id || null, label: `La OT ${otDestino?.numero || otDestino?.codigo || form.ot_vinc_id || ''}`.trim() },
+      { seleccionado: Boolean(form.centro_costo_id), sociedadId: cecoDestino?.sociedad_id || null, label: `El CECO ${cecoDestino?.codigo || form.centro_costo_id || ''}`.trim() },
+    ],
+    mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino del egreso.',
+  });
 
   const esCapitalizacion = !!tipoSel?.es_capitalizacion;
 
@@ -438,6 +449,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
         />
       </div>
+      <SociedadReadOnlyField {...destinoSociedadEgreso} />
 
       {/* Fecha del gasto */}
       <div className="input-group">
@@ -848,6 +860,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
     if (!form.centro_costo_id) { setErrCeco(true); setPaso(2); return; }
+    if (destinoSociedadEgreso.conflictMessage) { alert(destinoSociedadEgreso.conflictMessage); setPaso(2); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
     if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {

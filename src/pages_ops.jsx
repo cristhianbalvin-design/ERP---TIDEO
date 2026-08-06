@@ -10,6 +10,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { maestrosService } from './services/maestrosService.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import {
   rrhhService,
@@ -1650,6 +1651,17 @@ function OT({ role }) {
     || cebeHeredado?.sociedad_id
     || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id)?.sociedad_id
     || null;
+  const cecoNuevaOT = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id);
+  const cebeNuevaOT = cebeHeredado || (centrosBeneficio || []).find(c => c.id === formNuevaOT.centro_beneficio_id);
+  const destinoNuevaOT = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [
+      { seleccionado: Boolean(formNuevaOT.centro_costo_id), sociedadId: cecoNuevaOT?.sociedad_id || null, label: `El CECO ${cecoNuevaOT?.codigo || formNuevaOT.centro_costo_id || ''}`.trim() },
+      { seleccionado: Boolean(formNuevaOT.os_cliente_id), sociedadId: osSeleccionada?.sociedad_id || cebeHeredado?.sociedad_id || null, label: `La OS Cliente ${osSeleccionada?.numero || formNuevaOT.os_cliente_id || ''}`.trim() },
+      { seleccionado: Boolean(formNuevaOT.centro_beneficio_id), sociedadId: cebeNuevaOT?.sociedad_id || null, label: `El CEBE ${cebeNuevaOT?.codigo || formNuevaOT.centro_beneficio_id || ''}`.trim() },
+    ],
+    mensajeSinOrigen: 'Selecciona el origen de la OT para resolver su sociedad destino.',
+  });
 
   const hcReferencia = (() => {
     if (!osSeleccionada?.cotizacion_id) return null;
@@ -1678,6 +1690,7 @@ function OT({ role }) {
 
   const submitNuevaOT = async () => {
     if (savingNuevaOT) return;
+    if (destinoNuevaOT.conflictMessage) { setErrorNuevaOT(destinoNuevaOT.conflictMessage); return; }
     if (!formNuevaOT.centro_costo_id) { setErrorNuevaOT('Selecciona un CECO antes de continuar.'); return; }
     if (debeTenerOSCliente && !formNuevaOT.os_cliente_id) {
       setErrorNuevaOT('Selecciona la OS Cliente vinculada.'); return;
@@ -4838,7 +4851,7 @@ function OT({ role }) {
                     </select>
                   )}
                 </div>
-                <SociedadReadOnlyField sociedadId={sociedadNuevaOTId} />
+                <SociedadReadOnlyField sociedadId={sociedadNuevaOTId} conflictMessage={destinoNuevaOT.conflictMessage} emptyMessage={destinoNuevaOT.emptyMessage} />
               </div>
 
               <div className="eyebrow" style={{marginBottom:12}}>Detalle del trabajo</div>
@@ -6335,6 +6348,16 @@ function OrdenesCompra() {
   const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s, ordenesCompra, procesosCompra));
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
+  const otDestinoOC = (ots || []).find(o => o.id === form.ot_id);
+  const cecoDestinoOC = (centrosCosto || []).find(c => c.id === form.centro_costo_id);
+  const destinoOC = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [
+      { seleccionado: Boolean(form.ot_id), sociedadId: otDestinoOC?.sociedad_id || null, label: `La OT ${otDestinoOC?.numero || form.ot_id || ''}`.trim() },
+      { seleccionado: Boolean(form.centro_costo_id), sociedadId: cecoDestinoOC?.sociedad_id || null, label: `El CECO ${cecoDestinoOC?.codigo || form.centro_costo_id || ''}`.trim() },
+    ],
+    mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino de la OC.',
+  });
 
   useEffect(() => {
     if (!panel || form.proveedor_id || !proveedoresOC.length) return;
@@ -6362,6 +6385,7 @@ function OrdenesCompra() {
   };
 
   const crear = async (emitir=true) => {
+    if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
     if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addToast('Selecciona una sociedad antes de continuar.'); return; }
     const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
@@ -6431,7 +6455,7 @@ function OrdenesCompra() {
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
 }
@@ -6527,7 +6551,7 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
   );
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centrosCosto = [], materiales = [], empresaId, onClose, onCrear }) {
+function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const lineas = form.items?.length ? form.items : [{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:0 }];
   const materialKey = lineas.map(i => i.material_id || '').join('|');
@@ -6597,6 +6621,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
       <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
+      <SociedadReadOnlyField {...destinoSociedad} style={{gridColumn:'1/-1'}} />
       <div className="input-group"><label>Fecha entrega esperada</label><input className="input" type="date" value={form.fecha_entrega_esperada} onChange={e=>setForm(v=>({...v,fecha_entrega_esperada:e.target.value}))}/></div>
       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Descripcion</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
     </div>
@@ -7081,7 +7106,13 @@ function OrdenesServicio() {
   const provs = proveedores.filter(p => (p.estado === 'homologado' || p.estado === 'observado') && ['Servicios','Transporte','Mixto'].includes(p.categoria));
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const otsEscrituraOSInterna = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadOSInterna.sociedadIdEscritura);
-  const crear = async () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addNotificacion('Selecciona una sociedad antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; await crearOrdenServicioCtx(os); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
+  const otDestinoOSI = (ots || []).find(o => o.id === form.ot_id);
+  const cecoDestinoOSI = cecos.find(c => c.id === form.centro_costo_id);
+  const destinoOSI = resolverSociedadDestino({ sociedades:sociedadesDisponibles, origenes:[
+    { seleccionado:Boolean(form.ot_id), sociedadId:otDestinoOSI?.sociedad_id || null, label:`La OT ${otDestinoOSI?.numero || form.ot_id || ''}`.trim() },
+    { seleccionado:Boolean(form.centro_costo_id), sociedadId:cecoDestinoOSI?.sociedad_id || null, label:`El CECO ${cecoDestinoOSI?.codigo || form.centro_costo_id || ''}`.trim() },
+  ], mensajeSinOrigen:'Selecciona una OT o CECO para resolver la sociedad destino de la OSI.' });
+  const crear = async () => { if (destinoOSI.conflictMessage) { addNotificacion(destinoOSI.conflictMessage); return; } if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addNotificacion('Selecciona una sociedad antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; await crearOrdenServicioCtx(os); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
   return <>
     <div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div>
     <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas</div><div className="kpi-value">{ordenesServicio.length}</div></div><div className="kpi-card"><div className="kpi-label">En ejecucion</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='en_ejecucion').length}</div></div><div className="kpi-card"><div className="kpi-label">Pendiente conformidad</div><div className="kpi-value">{ordenesServicio.filter(o=>o.estado==='pendiente_conformidad').length}</div></div><div className="kpi-card"><div className="kpi-label">Valor total</div><div className="kpi-value">{money(ordenesServicio.reduce((s,o)=>s+(o.total||0),0))}</div></div></div>
@@ -7094,6 +7125,7 @@ function OrdenesServicio() {
       <div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div>
       <div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div>
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id=>setForm(v=>({...v,sociedad_id}))}/>
+      <SociedadReadOnlyField {...destinoOSI} style={{gridColumn:'1/-1'}} />
       <div className="input-group"><label>Total</label><input className="input" type="number" value={form.total} onChange={e=>setForm(v=>({...v,total:e.target.value}))}/></div>
       <div className="input-group"><label>Responsable validacion</label><input className="input" value={form.responsable_validacion} onChange={e=>setForm(v=>({...v,responsable_validacion:e.target.value}))}/></div>
     </div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" onClick={crear}>Emitir OS</button></div></div></div></>}
@@ -7384,8 +7416,30 @@ function Recepciones() {
     ordenesCompra, ordenesServicio, recepciones, entradasOcPendientes, proveedores, cxp,
     registrarRecepcionConCxP, empresa, empresaConfig, authUser, materiales,
     devolucionesProveedor, crearDevolucionCtx, enviarDevolucionCtx,
-    aceptarDevolucionCtx, anularDevolucionCtx, role,
+    aceptarDevolucionCtx, anularDevolucionCtx, role, perfilSociedad,
+    sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    recargarEntradasOcPendientes,
   } = useApp();
+  const modoVistaSociedadRecepciones = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const filtroSociedadesRecepciones = {
+    sinFiltro: modoVistaSociedadRecepciones.sinFiltro,
+    sociedadesIds: modoVistaSociedadRecepciones.sociedadesIds,
+  };
+  const sociedadesRecepcionesSet = new Set(modoVistaSociedadRecepciones.sociedadesIds);
+  const filtrarPorVistaSociedadRecepciones = registros => modoVistaSociedadRecepciones.sinFiltro
+    ? (registros || [])
+    : (registros || []).filter(row => row.sociedad_id && sociedadesRecepcionesSet.has(row.sociedad_id));
+  const ordenesCompraVistaRecepciones = filtrarPorVistaSociedadRecepciones(ordenesCompra);
+  const ordenesServicioVistaRecepciones = filtrarPorVistaSociedadRecepciones(ordenesServicio);
+  const recepcionesVista = filtrarPorVistaSociedadRecepciones(recepciones);
+  const entradasOcPendientesVistaRecepciones = filtrarPorVistaSociedadRecepciones(entradasOcPendientes);
+  const filtroSociedadesRecepcionesKey = `${filtroSociedadesRecepciones.sinFiltro ? 'sin_filtro' : 'acotado'}:${filtroSociedadesRecepciones.sociedadesIds.join('|')}`;
   const [panel, setPanel] = useState(false);
   const [detalleRec, setDetalleRec] = useState(null);
   const [modalDevOpen, setModalDevOpen] = useState(false);
@@ -7412,6 +7466,11 @@ function Recepciones() {
   const [highlightedItemIdx, setHighlightedItemIdx] = useState(null);
   const [scanMsg, setScanMsg] = useState('');
 
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    recargarEntradasOcPendientes?.(filtroSociedadesRecepciones);
+  }, [filtroSociedadesRecepcionesKey]);
+
   const cerrarPanel = () => {
     setPanel(false); setOrigen(''); setObs('');
     setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]);
@@ -7427,15 +7486,15 @@ function Recepciones() {
   const origenInfo = r => {
     const ocId = r.orden_compra_id || r.oc_id;
     const osId = r.orden_servicio_id || r.os_id;
-    const oc = ordenesCompra.find(o => o.id === ocId);
-    const os = ordenesServicio.find(o => o.id === osId);
+    const oc = ordenesCompraVistaRecepciones.find(o => o.id === ocId);
+    const os = ordenesServicioVistaRecepciones.find(o => o.id === osId);
     return { codigo: oc?.codigo || os?.codigo || '-', proveedor_id: oc?.proveedor_id || os?.proveedor_id || r.proveedor_id, descripcion: oc?.descripcion || os?.descripcion || '-' };
   };
   const origenes = [
-    ...ordenesCompra.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
-    ...ordenesServicio.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
+    ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
+    ...ordenesServicioVistaRecepciones.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
   ];
-  const rows = recepciones.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
+  const rows = recepcionesVista.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
   const toleranciaPctRecepcion = Number(empresaConfig?.tolerancia_precio_compras ?? 5);
   const toleranciaRecepcion = toleranciaPctRecepcion / 100;
   const ocItemKey = (item, idx) => `${item.id || item.material_id || item.codigo || item.descripcion || 'item'}_${idx}`;
@@ -7499,7 +7558,7 @@ function Recepciones() {
   const ocSeleccionada = (() => {
     const [tipo, id] = (origen || '').split(':');
     if (tipo !== 'oc' || !id) return null;
-    return ordenesCompra.find(o => o.id === id) || null;
+    return ordenesCompraVistaRecepciones.find(o => o.id === id) || null;
   })();
 
   useEffect(() => {
@@ -7532,8 +7591,8 @@ function Recepciones() {
 
   const entradasFisicasOC = useMemo(() => {
     if (!ocSeleccionada) return [];
-    return (entradasOcPendientes || []).filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(ocSeleccionada.id));
-  }, [entradasOcPendientes, ocSeleccionada]);
+    return entradasOcPendientesVistaRecepciones.filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(ocSeleccionada.id));
+  }, [entradasOcPendientesVistaRecepciones, ocSeleccionada]);
 
   const cantidadRecepcionNumero = (item, idx) => {
     const porIdx = entradasFisicasOC.filter(e => e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined && Number(e.orden_compra_item_idx) === Number(idx));
@@ -7627,8 +7686,8 @@ function Recepciones() {
       </div>
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">Pendientes</div><div className="kpi-value">{origenes.length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Recepciones</div><div className="kpi-value">{recepciones.length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Observadas</div><div className="kpi-value">{recepciones.filter(r => r.estado === 'observada').length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Recepciones</div><div className="kpi-value">{recepcionesVista.length}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Observadas</div><div className="kpi-value">{recepcionesVista.filter(r => r.estado === 'observada').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">CxP abiertas</div><div className="kpi-value">{cxp.filter(c => c.estado !== 'pagada').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Devoluciones activas</div><div className="kpi-value">{devolucionesProveedor.filter(d => !['anulada','nota_credito_recibida'].includes(d.estado)).length}</div></div>
       </div>
@@ -7821,8 +7880,8 @@ function Recepciones() {
       {detalleRec && !modalDevOpen && (
         <PanelDetalleRecepcion
           recepcion={detalleRec}
-          ordenesCompra={ordenesCompra}
-          ordenesServicio={ordenesServicio}
+          ordenesCompra={ordenesCompraVistaRecepciones}
+          ordenesServicio={ordenesServicioVistaRecepciones}
           proveedores={proveedores}
           devolucionesProveedor={devolucionesProveedor}
           canDev={canDev}
@@ -8163,6 +8222,12 @@ function Compras() {
     (centrosCosto || []).filter(c => c.estado === 'activo'),
     modoVistaSociedadCompras.sociedadIdEscritura,
   );
+  const cecoDestinoGasto = (centrosCosto || []).find(c => c.id === gastoForm.centro_costo_id);
+  const destinoGastoAntiguo = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [{ seleccionado:Boolean(gastoForm.centro_costo_id), sociedadId:cecoDestinoGasto?.sociedad_id || null, label:`El CECO ${cecoDestinoGasto?.codigo || gastoForm.centro_costo_id || ''}`.trim() }],
+    mensajeSinOrigen:'Selecciona un CECO para resolver la sociedad destino del gasto.',
+  });
   const puedeVerAnalisis = role?.permisos?.todo || (Array.isArray(role?.permisos?.ver) && (role.permisos.ver.includes('compras_gastos') || role.permisos.ver.includes('ordenes_compra')));
   const ocsSource = ordenesCompra.length ? ordenesCompra : MOCK.ordenesCompra;
   const gastosSource = (isSupabaseConfigured() && comprasGastos.length) ? comprasGastos : MOCK.comprasGastos;
@@ -8484,6 +8549,7 @@ function Compras() {
               </select>
               {errCecoGasto && <div style={{color:'var(--danger, #ef4444)', fontSize:12, marginTop:4}}>El CECO es obligatorio para registrar un gasto.</div>}
             </div>
+            <SociedadReadOnlyField {...destinoGastoAntiguo} />
             {!esActivoFijo && (
               <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'12px 14px'}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>Estado del pago</div>

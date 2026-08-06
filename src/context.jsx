@@ -8159,26 +8159,26 @@ export function AppProvider({ children }) {
   };
 
   // ─── Acciones WMS ────────────────────────────────────────────────────────────
-  const recargarInventario = async () => {
+  const recargarInventario = async (filtroSociedades = null) => {
     if (!empresa?.id || !isSupabaseConfigured()) return;
-    const inv = await getStockCompleto(empresa.id);
+    const inv = await getStockCompleto(empresa.id, filtroSociedades);
     if (inv) setInventario(inv);
   };
 
-  const recargarEntradasOcPendientes = async () => {
+  const recargarEntradasOcPendientes = async (filtroSociedades = null) => {
     if (!empresa?.id || !isSupabaseConfigured()) return entradasOcPendientes;
-    const data = await listarEntradasOcPendientesValorizacion(empresa.id);
+    const data = await listarEntradasOcPendientesValorizacion(empresa.id, null, filtroSociedades);
     setEntradasOcPendientes(data || []);
     return data || [];
   };
 
-  const registrarEntradaManualCtx = async (form) => {
+  const registrarEntradaManualCtx = async (form, filtroSociedades = null) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (form?.motivo === 'oc_pendiente_factura') {
       if (isSupabaseConfigured()) {
         const res = await registrarEntradaOcPendienteFactura(empresa.id, form, authUser?.id);
-        await recargarInventario();
-        await recargarEntradasOcPendientes();
+        await recargarInventario(filtroSociedades);
+        await recargarEntradasOcPendientes(filtroSociedades);
         return res;
       }
       const entradasMock = (form.lineas || [])
@@ -8223,7 +8223,7 @@ export function AppProvider({ children }) {
     }
     if (isSupabaseConfigured()) {
       const res = await registrarEntrada(empresa.id, form, authUser?.id);
-      await recargarInventario();
+      await recargarInventario(filtroSociedades);
       return res;
     }
     // Mock
@@ -8239,7 +8239,7 @@ export function AppProvider({ children }) {
     return { ok: true };
   };
 
-  const registrarTransferenciaCtx = async (form) => {
+  const registrarTransferenciaCtx = async (form, filtroSociedades = null) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
       const entreSociedades = form.sociedad_origen_id
@@ -8248,17 +8248,17 @@ export function AppProvider({ children }) {
       const res = entreSociedades
         ? await registrarTransferenciaIntercompania(empresa.id, form, authUser?.id)
         : await registrarTransferencia(empresa.id, form, authUser?.id);
-      await recargarInventario();
+      await recargarInventario(filtroSociedades);
       return res;
     }
     return { ok: true };
   };
 
-  const registrarAjusteCtx = async (form) => {
+  const registrarAjusteCtx = async (form, filtroSociedades = null) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
       const res = await registrarAjuste(empresa.id, form, authUser?.id);
-      await recargarInventario();
+      await recargarInventario(filtroSociedades);
       return res;
     }
     return { ok: true };
@@ -8272,9 +8272,9 @@ export function AppProvider({ children }) {
     }
   };
 
-  const getKardexMaterialCtx = async (materialId, almacenId) => {
+  const getKardexMaterialCtx = async (materialId, almacenId, filtroSociedades = null) => {
     if (!empresa?.id || !isSupabaseConfigured()) return [];
-    return getKardex(empresa.id, materialId, almacenId);
+    return getKardex(empresa.id, materialId, almacenId, 50, filtroSociedades);
   };
 
   const iniciarConteoCtx = async (form) => {
@@ -8320,9 +8320,9 @@ export function AppProvider({ children }) {
     return conteo;
   };
 
-  const recargarConteosInventarioCtx = async () => {
+  const recargarConteosInventarioCtx = async (filtroSociedades = null) => {
     if (!empresa?.id || !isSupabaseConfigured()) return inventarioConteos;
-    const data = await listarConteos(empresa.id);
+    const data = await listarConteos(empresa.id, 50, filtroSociedades);
     setInventarioConteos(data || []);
     return data || [];
   };
@@ -8339,12 +8339,12 @@ export function AppProvider({ children }) {
     return data;
   };
 
-  const cerrarConteoCtx = async (conteoId, items) => {
+  const cerrarConteoCtx = async (conteoId, items, filtroSociedades = null) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
       const res = await cerrarConteo(empresa.id, conteoId, items, authUser?.id);
-      await recargarInventario();
-      await recargarConteosInventarioCtx();
+      await recargarInventario(filtroSociedades);
+      await recargarConteosInventarioCtx(filtroSociedades);
       return res;
     }
     const itemsConDif = (items || []).map(it => ({ ...it, diferencia: Number(it.fisico || 0) - Number(it.teorico || 0) }));
@@ -8355,9 +8355,16 @@ export function AppProvider({ children }) {
   const getAnaliticaInventarioCtx = async (filtros) => {
     if (!empresa?.id) return { abc: [], rotacion: [], stockMuerto: [], meta: { movimientosPeriodo: 0 } };
     if (isSupabaseConfigured()) return getAnaliticaInventario(empresa.id, filtros);
-    const stockMuerto = inventario
+    const filtroSociedades = filtros?.filtroSociedades;
+    const sociedadesPermitidas = new Set(filtroSociedades?.sociedadesIds || []);
+    const inventarioAnalitica = !filtroSociedades || filtroSociedades.sinFiltro
+      ? inventario
+      : inventario.filter(i => i.sociedad_id && sociedadesPermitidas.has(i.sociedad_id));
+    const stockMuerto = inventarioAnalitica
       .filter(i => !filtros?.almacen_id || i.almacen_id === filtros.almacen_id)
       .map(i => ({
+        key: `${i.sociedad_id || 'sin_sociedad'}::${i.material_id || 'sin_material'}::${i.almacen_id || 'sin_almacen'}`,
+        sociedad_id: i.sociedad_id || null,
         material_id: i.material_id,
         almacen_id: i.almacen_id,
         sku: i.sku,

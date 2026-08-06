@@ -42,8 +42,9 @@ import {
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
-import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
+import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -1856,6 +1857,7 @@ function Tesoreria() {
   const sociedadesIdsVistaTesoreriaKey = modoVistaSociedadTesoreria.sociedadesIds.join('|');
   const empresaId = empresa?.id;
   const SIN_VINCULAR = '__sin_vincular';
+  const mensajeSeleccionSociedadCuenta = 'Selecciona una sociedad concreta en el selector superior para crear una cuenta bancaria.';
 
   const hoy = new Date().toISOString().slice(0, 7);
   const cuentasBancariasVista = useMemo(
@@ -2285,6 +2287,7 @@ function Tesoreria() {
   const setCuentaBancariaField = field => e => setFormCuentaBancaria(prev => ({ ...prev, [field]: e.target.value }));
 
   const abrirNuevaCuentaBancaria = () => {
+    if (!modoVistaSociedadTesoreria.permiteEscritura) return;
     setFormCuentaBancaria(cuentaBancariaFormVacio);
     setPanelCuentaBancaria(true);
   };
@@ -2296,6 +2299,7 @@ function Tesoreria() {
 
   const guardarNuevaCuentaBancaria = async e => {
     e.preventDefault();
+    if (!modoVistaSociedadTesoreria.permiteEscritura) { alert(mensajeSeleccionSociedadCuenta); return; }
     if (!formCuentaBancaria.nombre.trim() || !formCuentaBancaria.banco.trim() || savingCuentaBancaria) return;
     if (empresa?.multisociedad_habilitado && !formCuentaBancaria.sociedad_id) {
       alert('Selecciona una sociedad para la cuenta bancaria.');
@@ -2561,6 +2565,7 @@ function Tesoreria() {
       </div>
 
       <div style={{fontSize:11, color:'var(--muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, margin:'16px 0 8px'}}>Cuentas bancarias</div>
+      {!modoVistaSociedadTesoreria.permiteEscritura && <div className="alert alert-warning" style={{marginBottom:12}}>{mensajeSeleccionSociedadCuenta}</div>}
       <div style={accountGridStyle}>
         {saldoPorCuenta.map(cb => {
           const saldoInicialCuenta = Number(cb.saldo_inicial || 0);
@@ -2611,7 +2616,7 @@ function Tesoreria() {
             </div>
           );
         })}
-        <button type="button" onClick={abrirNuevaCuentaBancaria} style={{...accountCardStyle, border:'1.5px dashed var(--border-subtle)', background:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, color:'var(--muted)', minHeight:154}}>
+        <button type="button" onClick={abrirNuevaCuentaBancaria} disabled={!modoVistaSociedadTesoreria.permiteEscritura} title={!modoVistaSociedadTesoreria.permiteEscritura ? mensajeSeleccionSociedadCuenta : 'Agregar cuenta'} style={{...accountCardStyle, border:'1.5px dashed var(--border-subtle)', background:'transparent', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, color:'var(--muted)', minHeight:154}}>
           <span style={{width:22, height:22, display:'inline-flex'}}>{I.plus}</span>
           <span style={{fontSize:13}}>Agregar cuenta</span>
         </button>
@@ -2986,6 +2991,7 @@ function Tesoreria() {
               <button className="icon-btn" onClick={cerrarNuevaCuentaBancaria}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarNuevaCuentaBancaria} data-local-form="true">
+              {!modoVistaSociedadTesoreria.permiteEscritura && <div className="alert alert-warning">{mensajeSeleccionSociedadCuenta}</div>}
               <div className="grid-2" style={{gap:12}}>
                 <div className="input-group"><label>Nombre / Alias *</label><input className="input" value={formCuentaBancaria.nombre} onChange={setCuentaBancariaField('nombre')} placeholder="Interbank USD principal" required /></div>
                 <div className="input-group"><label>Banco *</label><input className="input" value={formCuentaBancaria.banco} onChange={setCuentaBancariaField('banco')} placeholder="Interbank" required /></div>
@@ -2998,7 +3004,7 @@ function Tesoreria() {
               </div>
               <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:18}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarNuevaCuentaBancaria}>Cancelar</button>
-                <button className="btn btn-primary" type="submit" disabled={savingCuentaBancaria}>{I.plus} {savingCuentaBancaria ? 'Guardando...' : 'Agregar cuenta'}</button>
+                <button className="btn btn-primary" type="submit" disabled={savingCuentaBancaria || !modoVistaSociedadTesoreria.permiteEscritura}>{I.plus} {savingCuentaBancaria ? 'Guardando...' : 'Agregar cuenta'}</button>
               </div>
             </form>
           </div>
@@ -3598,6 +3604,19 @@ function Facturacion() {
   const getCuenta = id => (cuentas || []).find(c => c.id === id);
   const getOs = id => (osClientes || []).find(o => o.id === id);
   const getVal = id => (valorizaciones || []).find(v => v.id === id);
+  const valorizacionOrigenFactura = mode === 'val' ? getVal(valSel) : null;
+  const osOrigenFactura = getOs(valorizacionOrigenFactura?.os_cliente_id || osSel);
+  const destinoFactura = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: mode === 'val'
+      ? [
+          { seleccionado: Boolean(valSel), sociedadId: valorizacionOrigenFactura?.sociedad_id || null, label: `La valorización ${valorizacionOrigenFactura?.numero || valSel || ''}`.trim() },
+          { seleccionado: Boolean(valorizacionOrigenFactura?.os_cliente_id), sociedadId: osOrigenFactura?.sociedad_id || null, label: `La OS Cliente ${osOrigenFactura?.numero || valorizacionOrigenFactura?.os_cliente_id || ''}`.trim() },
+        ]
+      : [{ seleccionado: Boolean(osSel), sociedadId: osOrigenFactura?.sociedad_id || null, label: `La OS Cliente ${osOrigenFactura?.numero || osSel || ''}`.trim() }],
+    mensajeSinOrigen: 'La factura directa no tiene OS Cliente; selecciona una sociedad concreta antes de emitirla.',
+  });
+  const mensajeFacturaDirecta = 'Selecciona una sociedad concreta en el selector superior para emitir una factura directa sin OS Cliente.';
   const cebeVigenteParaFecha = (cebe, fecha) => Boolean(cebe)
     && cebe.estado === 'activo'
     && (!cebe.fecha_inicio || String(fecha || '').slice(0, 10) >= String(cebe.fecha_inicio).slice(0, 10))
@@ -3958,6 +3977,8 @@ function Facturacion() {
       : cuentaSel;
     if (!cuentaId) { alert('Debe seleccionar un cliente.'); return; }
     if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
+    if (mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura) { alert(mensajeFacturaDirecta); return; }
+    if (destinoFactura.conflictMessage) { alert(destinoFactura.conflictMessage); return; }
     if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Debe seleccionar una sociedad para emitir la factura.'); return; }
     const centroBeneficio = (centrosBeneficio || []).find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
@@ -4884,7 +4905,7 @@ function Facturacion() {
           </div>
           <div className="row" style={{gap:10}}>
             <button className="btn btn-secondary" onClick={() => setMode(null)} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleGuardar} disabled={saving || (mode === 'val' && !valSel) || (!cuentaSel && mode === 'directa') || (excedeOsSaldo && !confirmarExcesoFac)}>
+            <button className="btn btn-primary" onClick={handleGuardar} disabled={saving || (mode === 'val' && !valSel) || (!cuentaSel && mode === 'directa') || (mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura) || Boolean(destinoFactura.conflictMessage) || (excedeOsSaldo && !confirmarExcesoFac)} title={mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura ? mensajeFacturaDirecta : destinoFactura.conflictMessage || undefined}>
               {saving ? 'Emitiendo...' : <>{I.check} Emitir factura</>}
             </button>
           </div>
@@ -4971,6 +4992,8 @@ function Facturacion() {
                   <span>Moneda: <strong>{valSrc.moneda || 'PEN'}</strong></span>
                 </div>
               )}
+              {(mode === 'val' || osSel) && <SociedadReadOnlyField {...destinoFactura} style={{marginTop:16}} />}
+              {mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura && <div className="alert alert-warning" style={{marginTop:16}}>{mensajeFacturaDirecta}</div>}
               <div className="input-group" style={{marginTop:16}}>
                 <label>CEBE <span style={{color:'var(--danger)'}}>*</span></label>
                 <select className="select" value={form.centro_beneficio_id} onChange={e => handleFormChange('centro_beneficio_id', e.target.value)}>
@@ -7146,6 +7169,21 @@ function CxP() {
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
   const esTributoForm = tabCxP === 'tributos' || motivoCxP === 'tributo' || formCrear.tipo_comprobante === 'Tributo';
   const esDividendoForm = formCrear.tipo_beneficiario === DIVIDENDO_TIPO;
+  const esRheForm = formCrear.tipo_comprobante === 'RHE';
+  const esViaticosForm = motivoCxP === 'viaticos_reembolso';
+  const otOrigenCxPId = esViaticosForm ? viaticosOtId : esRheForm ? rheOtId : '';
+  const otOrigenCxP = (ots || []).find(ot => ot.id === otOrigenCxPId);
+  const cecoOrigenCxP = (centrosCosto || []).find(ceco => ceco.id === cxpCentroCostoId);
+  const destinoCxP = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [
+      { seleccionado: Boolean(otOrigenCxPId), sociedadId: otOrigenCxP?.sociedad_id || null, label: `La OT ${otOrigenCxP?.numero || otOrigenCxPId || ''}`.trim() },
+      { seleccionado: Boolean(cxpCentroCostoId), sociedadId: cecoOrigenCxP?.sociedad_id || null, label: `El CECO ${cecoOrigenCxP?.codigo || cxpCentroCostoId || ''}`.trim() },
+    ],
+    mensajeSinOrigen: 'Esta CxP no tiene OT ni CECO y quedará sin sociedad.',
+  });
+  const cxpRequiereOrigenEnConsolidado = esTributoForm || esDividendoForm || esRheForm || esViaticosForm;
+  const mensajeOrigenCxP = 'Selecciona una sociedad concreta en el selector superior para crear esta CxP sin OT ni CECO.';
   const tributoConcepto = `Tributo: ${TRIBUTO_LABEL[tributoTipo] || tributoTipo} | Periodo: ${tributoPeriodo || '-'}${tributoFormulario ? ` | Formulario: ${tributoFormulario}` : ''}`;
   const dividendoConcepto = `Distribucion de utilidades - ${periodoUtilidades || new Date().getFullYear()}`;
 
@@ -7256,6 +7294,8 @@ function CxP() {
     const esTributo = esTributoForm;
     const esDividendo = esDividendoForm;
     const esRheInterno = esRhe && rheTipoEmisor === 'interno';
+    if (!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId) { addNotificacion(mensajeOrigenCxP); return; }
+    if (destinoCxP.conflictMessage) { addNotificacion(destinoCxP.conflictMessage); return; }
     const montoTotal = esRhe ? (esRheInterno ? rheMontoNetoInterno : rheMontoNeto) : Number(formCrear.monto_total);
     if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || montoTotal <= 0) {
       addNotificacion('Completa fecha de emisión, vencimiento y monto.');
@@ -7299,7 +7339,7 @@ function CxP() {
         proveedor_id:      (esViaticos || esTributo || esDividendo || esRheInterno) ? null : (formCrear.proveedor_id || null),
         tipo_beneficiario: esDividendo ? DIVIDENDO_TIPO : esViaticos ? 'personal' : esTributo ? 'colectivo' : esRheInterno ? 'personal' : (formCrear.tipo_beneficiario || 'proveedor'),
         personal_id:       esViaticos ? viaticosPersonalId : esRheInterno ? rheColaboradorId : null,
-        ot_vinc_id:        (esViaticos && viaticosOtId) ? viaticosOtId : null,
+        ot_vinc_id:        otOrigenCxPId || null,
         tipo_comprobante:  esTributo ? 'Tributo' : esDividendo ? 'distribucion_utilidades' : formCrear.tipo_comprobante,
         factura_numero:    esTributo ? (tributoFormulario || null) : esRhe ? (rheNumeroDoc || null) : (formCrear.factura_numero || null),
         concepto:          esTributo ? tributoConcepto : esDividendo ? dividendoConcepto : (formCrear.concepto || (esRhe ? `RHE - ${rheNombre}` : esViaticos ? `Viaticos - ${personal?.nombre || viaticosPersonalId}` : null)),
@@ -8270,6 +8310,8 @@ function CxP() {
                     ))}
                   </select>
                 </div>
+                {(otOrigenCxPId || cxpCentroCostoId || cxpRequiereOrigenEnConsolidado) && <SociedadReadOnlyField {...destinoCxP} />}
+                {!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId && <div className="alert alert-warning">{mensajeOrigenCxP}</div>}
               </div>
               {!esTributoForm && !esDividendoForm && (
                 <label style={{
@@ -8314,7 +8356,7 @@ function CxP() {
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
                 <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc(''); setRheTipoEmisor(''); setRheColaboradorId(''); setRheTrabajoFacturable(true); setRheOtId(''); setRheRucAviso(null); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
+                <button type="submit" className="btn btn-primary" disabled={guardando || (!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId) || Boolean(destinoCxP.conflictMessage)} title={!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId ? mensajeOrigenCxP : destinoCxP.conflictMessage || undefined}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>
           </div>

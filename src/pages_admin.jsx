@@ -8,7 +8,7 @@ import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
-import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
+import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import {
   actualizarSociedad,
   crearSociedad,
@@ -1623,6 +1623,7 @@ function CecoCebePanel({ onClose }) {
     && !modoVistaSociedadCentros.permiteEscritura
     && (modoVistaSociedadCentros.sinFiltro || modoVistaSociedadCentros.sociedadesIds.length > 0)
   );
+  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear o importar CEBEs.';
   const sociedadesIdsVistaCentrosKey = modoVistaSociedadCentros.sociedadesIds.join('|');
   const centrosCostoVista = useMemo(() => {
     if (modoVistaSociedadCentros.sinFiltro) return centrosCosto || [];
@@ -1702,17 +1703,15 @@ function CecoCebePanel({ onClose }) {
     if (!cecoForm.codigo.trim()) return setCecoError('El código del CECO es obligatorio.');
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
     if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
-    if (empresa?.multisociedad_habilitado && !cecoForm.sociedad_id) return setCecoError('La sociedad es obligatoria.');
     const cebeSeleccionado = (centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id);
     if (empresa?.multisociedad_habilitado && !cebeSeleccionado?.sociedad_id) return setCecoError('El CEBE seleccionado no tiene sociedad asignada. Corrige el CEBE antes de guardar el CECO.');
-    if (empresa?.multisociedad_habilitado && cebeSeleccionado.sociedad_id !== cecoForm.sociedad_id) return setCecoError('La sociedad del CECO debe coincidir con la sociedad del CEBE padre.');
     if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
     const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
     if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
     setCecoSaving(true); setCecoError('');
     try {
       const resp = usuariosActivos.find(u => u.id === cecoForm.responsable_id);
-      const datos = { ...cecoForm, responsable_nombre: resp?.nombre || '', fecha_inicio: cecoForm.fecha_inicio || null, fecha_fin: cecoForm.fecha_fin || null, presupuesto_mensual: cecoForm.presupuesto_mensual !== '' ? cecoForm.presupuesto_mensual : null, cebe_id: cecoForm.cebe_id || null };
+      const datos = { ...cecoForm, sociedad_id: empresa?.multisociedad_habilitado ? cebeSeleccionado?.sociedad_id || null : null, responsable_nombre: resp?.nombre || '', fecha_inicio: cecoForm.fecha_inicio || null, fecha_fin: cecoForm.fecha_fin || null, presupuesto_mensual: cecoForm.presupuesto_mensual !== '' ? cecoForm.presupuesto_mensual : null, cebe_id: cecoForm.cebe_id || null };
       if (cecoEditId) await actualizarCentroCosto(cecoEditId, datos);
       else await crearCentroCosto(datos);
       addNotificacion?.(`CECO ${cecoEditId ? 'actualizado' : 'creado'} correctamente.`);
@@ -1734,6 +1733,7 @@ function CecoCebePanel({ onClose }) {
   };
   const guardarCebe = async e => {
     e.preventDefault();
+    if (!cebeEditId && !modoVistaSociedadCentros.permiteEscritura) return setCebeError(mensajeSeleccionSociedadCebe);
     if (!cebeForm.codigo.trim()) return setCebeError('El código del CEBE es obligatorio.');
     if (!cebeForm.nombre.trim()) return setCebeError('El nombre es obligatorio.');
     if (empresa?.multisociedad_habilitado && !cebeForm.sociedad_id) return setCebeError('La sociedad es obligatoria.');
@@ -1890,7 +1890,10 @@ function CecoCebePanel({ onClose }) {
                     <label>Presupuesto mensual</label>
                     <input className="input" type="number" min="0" value={cecoForm.presupuesto_mensual} onChange={e=>setCecoForm(p=>({...p,presupuesto_mensual:e.target.value}))} placeholder="0.00"/>
                   </div>
-                  <SociedadFormField value={cecoForm.sociedad_id} onChange={sociedad_id => setCecoForm(prev => ({ ...prev, sociedad_id }))} />
+                  <SociedadReadOnlyField
+                    sociedadId={(centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id)?.sociedad_id || null}
+                    emptyMessage={cecoForm.cebe_id ? 'El CEBE padre no tiene sociedad. El CECO quedará sin sociedad.' : 'Selecciona un CEBE padre para resolver la sociedad destino del CECO.'}
+                  />
                   {['proyecto','temporal'].includes(cecoForm.tipo) && <>
                     <div className="input-group">
                       <label>Fecha inicio</label>
@@ -1977,7 +1980,7 @@ function CecoCebePanel({ onClose }) {
           {tab === 'cebe' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
-              <button className="btn btn-secondary" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
+              <button className="btn btn-secondary" disabled={!modoVistaSociedadCentros.permiteEscritura} title={!modoVistaSociedadCentros.permiteEscritura ? mensajeSeleccionSociedadCebe : 'Importar CEBEs'} onClick={() => { if (!modoVistaSociedadCentros.permiteEscritura) return; setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
               <button className="btn btn-secondary" onClick={() => { const data=centrosBeneficioVista.map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
@@ -1986,6 +1989,7 @@ function CecoCebePanel({ onClose }) {
               <div style={{ fontWeight:600, fontSize:13, color:'var(--cyan)', marginBottom:14 }}>{cebeEditId ? 'Editar CEBE' : 'Nuevo CEBE'}</div>
               {cebeError && <div className="alert alert-danger" style={{ marginBottom:12, fontSize:13 }}>{cebeError}</div>}
               <form onSubmit={guardarCebe}>
+                {!cebeEditId && !modoVistaSociedadCentros.permiteEscritura && <div className="alert alert-warning" style={{marginBottom:12}}>{mensajeSeleccionSociedadCebe}</div>}
                 <div className="grid-2" style={{ gap:12, marginBottom:12 }}>
                   <div className="input-group">
                     <label>Código * <span style={{ fontSize:11, fontWeight:400, color:'var(--fg-subtle)' }}>· Lo define la empresa</span></label>
@@ -2044,7 +2048,7 @@ function CecoCebePanel({ onClose }) {
                 </div>
                 <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
                   {cebeEditId && <button type="button" className="btn btn-secondary" onClick={resetCebeForm}>Cancelar</button>}
-                  <button className="btn btn-primary" type="submit" disabled={cebeSaving}>{cebeSaving ? 'Guardando...' : cebeEditId ? 'Actualizar CEBE' : '+ Agregar CEBE'}</button>
+                  <button className="btn btn-primary" type="submit" disabled={cebeSaving || (!cebeEditId && !modoVistaSociedadCentros.permiteEscritura)} title={!cebeEditId && !modoVistaSociedadCentros.permiteEscritura ? mensajeSeleccionSociedadCebe : undefined}>{cebeSaving ? 'Guardando...' : cebeEditId ? 'Actualizar CEBE' : '+ Agregar CEBE'}</button>
                 </div>
               </form>
             </div>
@@ -2199,7 +2203,7 @@ function CecoCebePanel({ onClose }) {
                 {cebeImportStep === 3 && (
                   <div>
                     <p style={{ marginBottom:16, fontSize:13 }}>Se insertarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs nuevos</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} rechazados no se sobrescribirán ni se enviarán a la base.</p>
-                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
+                    <button className="btn btn-primary" onClick={async()=>{ if (!modoVistaSociedadCentros.permiteEscritura) { setCebeError(mensajeSeleccionSociedadCebe); setCebeModalImport(false); return; } const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
                   </div>
                 )}
               </div>
