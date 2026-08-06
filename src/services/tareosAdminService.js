@@ -53,15 +53,16 @@ export async function cargarOTsAdminDelDia(empresaId, personalId) {
   });
 }
 
-export async function cargarCecosActivos(empresaId) {
+export async function cargarCecosActivos(empresaId, sociedadId = null) {
   if (!isSupabaseMode()) return [];
   const client = await sb();
-  const { data, error } = await client
+  let query = client
     .from('centros_costo')
     .select('id, nombre, codigo')
     .eq('empresa_id', empresaId)
-    .eq('estado', 'activo')
-    .order('nombre');
+    .eq('estado', 'activo');
+  if (sociedadId) query = query.eq('sociedad_id', sociedadId);
+  const { data, error } = await query.order('nombre');
   if (error) throw error;
   return data || [];
 }

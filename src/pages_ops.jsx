@@ -53,6 +53,12 @@ import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUni
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 
+const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
+  sociedadIdEscritura
+    ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
+    : opciones
+);
+
 // Operations: OT, Partes, Valorization & Cuentas
 const symOf = m => String(m || 'PEN').trim().toUpperCase() === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
@@ -1589,8 +1595,17 @@ function OT({ role }) {
     }
     return next;
   });
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const sociedadIdEscrituraOT = modoVistaSociedadOT.sociedadIdEscritura;
+  const osClientesEscritura = filtrarOpcionesPorSociedadEscritura(osClientes || [], sociedadIdEscrituraOT);
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    sociedadIdEscrituraOT,
+  );
+  const cebesActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+    sociedadIdEscrituraOT,
+  );
+  const inventarioEscritura = filtrarOpcionesPorSociedadEscritura(inventario || [], sociedadIdEscrituraOT);
   const normalizarEstadoOT = value => String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
   const esPersonaActivaOT = p => {
@@ -1629,7 +1644,7 @@ function OT({ role }) {
 
   const debeTenerOSCliente = tiposConOSObligatoria.includes(formNuevaOT.tipo);
   const puedeTenerOSCliente = permiteOSCliente(formNuevaOT.tipo);
-  const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientes.find(o => o.id === formNuevaOT.os_cliente_id) : null;
+  const osSeleccionada = puedeTenerOSCliente && formNuevaOT.os_cliente_id ? osClientesEscritura.find(o => o.id === formNuevaOT.os_cliente_id) : null;
   const cebeHeredado = osSeleccionada ? (centrosBeneficio || []).find(c => c.id === osSeleccionada.centro_beneficio_id) : null;
   const sociedadNuevaOTId = (centrosCosto || []).find(c => c.id === formNuevaOT.centro_costo_id)?.sociedad_id
     || cebeHeredado?.sociedad_id
@@ -4045,7 +4060,7 @@ function OT({ role }) {
                                                           }));
                                                         }}>
                                                         <option value="">Material...</option>
-                                                        {(inventario || []).map(inv => (
+                                                        {inventarioEscritura.map(inv => (
                                                           <option key={inv.id} value={inv.id}>{inv.sku} — {inv.nombre}</option>
                                                         ))}
                                                       </select>
@@ -4792,7 +4807,7 @@ function OT({ role }) {
                     <label>OS Cliente {debeTenerOSCliente && <span style={{color:'var(--danger)'}}>*</span>}</label>
                     <select className="select" value={formNuevaOT.os_cliente_id} onChange={e => updNuevaOT('os_cliente_id', e.target.value)}>
                       <option value="">{debeTenerOSCliente ? 'Seleccionar OS Cliente...' : 'Sin OS Cliente vinculada'}</option>
-                      {osClientes.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
+                      {osClientesEscritura.filter(o => !['cerrada','anulada'].includes(o.estado)).map(o => (
                         <option key={o.id} value={o.id}>{o.numero} — {cuentas.find(c => c.id === o.cuenta_id)?.razon_social || o.cuenta_id}</option>
                       ))}
                     </select>
@@ -6298,7 +6313,16 @@ function CotizacionesCompras() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
+  const modoVistaSociedadOC = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const otsEscrituraOC = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadOC.sociedadIdEscritura);
+  const centrosCostoEscrituraOC = filtrarOpcionesPorSociedadEscritura(centrosCosto || [], modoVistaSociedadOC.sociedadIdEscritura);
   const [tab, setTab] = useState('todas');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
@@ -6407,7 +6431,7 @@ function OrdenesCompra() {
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={ots} centrosCosto={centrosCosto} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} solpes={solpesDisponibles} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} onClose={()=>setPanel(false)} onCrear={crear}/>}
     </>
   );
 }
@@ -7042,13 +7066,21 @@ function TransitoOCPanel({ orden, transitos = [], transportistas = [], empresa, 
 }
 
 function OrdenesServicio() {
-  const { ordenesServicio, proveedores, ots, empresa, addNotificacion, navigate, centrosCosto, crearOrdenServicioCtx } = useApp();
+  const { ordenesServicio, proveedores, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, navigate, centrosCosto, crearOrdenServicioCtx } = useApp();
+  const modoVistaSociedadOSInterna = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const [panel, setPanel] = useState(false);
   const [tab, setTab] = useState('todas');
   const [form, setForm] = useState({ proveedor_id:'prv_003', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', total:800, fecha_inicio:'2025-04-30', fecha_fin:'2025-04-30', responsable_validacion:'Roberto Quispe' });
   const list = ordenesServicio.filter(o => tab === 'todas' || o.estado === tab);
   const provs = proveedores.filter(p => (p.estado === 'homologado' || p.estado === 'observado') && ['Servicios','Transporte','Mixto'].includes(p.categoria));
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const otsEscrituraOSInterna = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadOSInterna.sociedadIdEscritura);
   const crear = async () => { if (!form.centro_costo_id) { addNotificacion('Este campo es obligatorio. Selecciona un CECO antes de continuar.'); return; } if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addNotificacion('Selecciona una sociedad antes de continuar.'); return; } const p=proveedorById(proveedores,form.proveedor_id); const os={id:`os_${Date.now()}`,empresa_id:empresa.id,sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null,codigo:`OS-2025-${String(ordenesServicio.length+13).padStart(4,'0')}`,proveedor_id:form.proveedor_id,ot_id:form.ot_id,centro_costo_id:form.centro_costo_id,descripcion:form.descripcion||'Servicio tercerizado',alcance:form.descripcion||'Servicio tercerizado',entregables:'Evidencia del servicio',criterios_conformidad:'Conforme a alcance',total:Number(form.total)||0,moneda:'PEN',condicion_pago:p.condicion_pago||'Contado',fecha_emision:new Date().toISOString().slice(0,10),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,responsable_validacion:form.responsable_validacion,estado:'emitida',notas:''}; await crearOrdenServicioCtx(os); addNotificacion(`${os.codigo} emitida.`); setPanel(false); };
   return <>
     <div className="page-header"><div><h1 className="page-title">Ordenes de Servicio</h1><div className="page-sub">Servicios tercerizados, conformidad y cierre</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setPanel(true)}>{I.plus} Nueva OS</button></div>
@@ -7057,7 +7089,7 @@ function OrdenesServicio() {
     <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>OS</th><th>Proveedor</th><th>Servicio</th><th>Monto</th><th>OT</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Validador</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{const p=proveedorById(proveedores,o.proveedor_id);return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong></td><td>{o.descripcion}</td><td>{money(o.total)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_inicio}</td><td>{o.fecha_fin}</td><td>{o.responsable_validacion}</td><td><button className="btn btn-sm btn-secondary" onClick={()=>navigate('recepciones',{osId:o.id})}>Conformidad</button></td></tr>})}</tbody></table></div></div>
     {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de servicio</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OS</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proveedor</label><select className="select" value={form.proveedor_id} onChange={e=>setForm(v=>({...v,proveedor_id:e.target.value}))}>{provs.map(p=><option key={p.id} value={p.id}>{p.razon_social}</option>)}</select></div>
-      <div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div>
+      <div className="input-group"><label>OT</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{otsEscrituraOSInterna.map(o=><option key={o.id} value={o.id}>{o.numero||o.id}</option>)}</select></div>
       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Servicio / alcance</label><textarea className="input" rows="4" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
       <div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e=>setForm(v=>({...v,fecha_inicio:e.target.value}))}/></div>
       <div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e=>setForm(v=>({...v,fecha_fin:e.target.value}))}/></div>
@@ -8105,7 +8137,14 @@ function TabAnalisisGasto({ ocsSource, gastosSource, provSource }) {
 }
 
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto, role } = useApp();
+  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadCompras = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const [sel, setSel] = useState(null);
   const [activeTab, setActiveTab] = useState('Compras en Campo');
   const [showGastoForm, setShowGastoForm] = useState(false);
@@ -8120,7 +8159,10 @@ function Compras() {
   const [activoVidaUtil, setActivoVidaUtil] = useState('');
   const comprasRows = comprasGastos.length ? comprasGastos : MOCK.compras;
   const activosFijos = comprasGastos.filter(g => g.es_activo_fijo);
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadCompras.sociedadIdEscritura,
+  );
   const puedeVerAnalisis = role?.permisos?.todo || (Array.isArray(role?.permisos?.ver) && (role.permisos.ver.includes('compras_gastos') || role.permisos.ver.includes('ordenes_compra')));
   const ocsSource = ordenesCompra.length ? ordenesCompra : MOCK.ordenesCompra;
   const gastosSource = (isSupabaseConfigured() && comprasGastos.length) ? comprasGastos : MOCK.comprasGastos;
@@ -8497,11 +8539,21 @@ function Compras() {
 }
 
 function Backlog() {
-  const { backlog, setBacklog, cuentas, convertirBacklogAOT, addNotificacion, empresa, searchQuery, centrosCosto } = useApp();
+  const { backlog, setBacklog, cuentas, convertirBacklogAOT, addNotificacion, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], searchQuery, centrosCosto } = useApp();
+  const modoVistaSociedadBacklog = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const [view, setView] = useState('kanban');
   const [modalConvertir, setModalConvertir] = useState(null);
   const [cecoSeleccionado, setCecoSeleccionado] = useState('');
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadBacklog.sociedadIdEscritura,
+  );
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
 
   const confirmarConvertir = () => {
@@ -10221,7 +10273,14 @@ const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', so
 const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadSOLPE = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const newItem = () => ({ id: `itm_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, material_id: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(SOLPE_FORM_INIT);
@@ -10231,7 +10290,11 @@ function SOLPE() {
   const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
 
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id || '—';
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const otsEscrituraSOLPE = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadSOLPE.sociedadIdEscritura);
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadSOLPE.sociedadIdEscritura,
+  );
 
   const query = searchQuery.toLowerCase();
   const filteredSolpes = solpes.filter(s =>
@@ -10595,7 +10658,7 @@ function SOLPE() {
               <label className="form-label">OT asociada <span className="text-muted" style={{fontSize:11}}>(opcional)</span></label>
               <select className="select" value={form.ot_id} onChange={e => set('ot_id', e.target.value)}>
                 <option value="">Sin OT</option>
-                {(ots || []).filter(o => o.estado !== 'cerrada' && o.estado !== 'cancelada').map(o => <option key={o.id} value={o.id}>{o.numero || o.id}</option>)}
+                {otsEscrituraSOLPE.filter(o => o.estado !== 'cerrada' && o.estado !== 'cancelada').map(o => <option key={o.id} value={o.id}>{o.numero || o.id}</option>)}
               </select>
             </div>
             <div className="form-group">
@@ -19406,7 +19469,10 @@ function RRHH_Operativo() {
   */
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadPersonal.sociedadIdEscritura,
+  );
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
@@ -20140,7 +20206,10 @@ function RRHH_Operativo() {
     const docsContractuales = docsPersona
       .filter(d => esDocContratoLocal(d) || esDocAdendaLocal(d))
       .sort((a, b) => String(b.fecha_emision || b.creado_en || b.created_at || '').localeCompare(String(a.fecha_emision || a.creado_en || a.created_at || '')));
-    const contratosValidados = docsContractuales.filter(d => esDocContratoLocal(d) && d.estado_validacion === 'aprobado');
+    const contratosValidados = filtrarOpcionesPorSociedadEscritura(
+      docsContractuales.filter(d => esDocContratoLocal(d) && d.estado_validacion === 'aprobado'),
+      modoVistaSociedadPersonal.sociedadIdEscritura,
+    );
     const condicionesContrato = (() => {
       if (!contratoDoc) return null;
       const cond = { ...(contratoDoc.condiciones_laborales || {}) };
@@ -22572,8 +22641,15 @@ export function ComprasGastos() {
     comprasGastos, setComprasGastos,
     centrosCosto, proveedores, ots,
     crearGasto, generarCxP,
-    empresa,
+    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+  const modoVistaSociedadComprasGastos = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
 
   const [tab, setTab] = useState('todos');
   const [filtroCeco, setFiltroCeco] = useState('');
@@ -22589,6 +22665,14 @@ export function ComprasGastos() {
   const [confirmando, setConfirmando] = useState(false);
 
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecosEscrituraComprasGastos = filtrarOpcionesPorSociedadEscritura(
+    cecosActivos,
+    modoVistaSociedadComprasGastos.sociedadIdEscritura,
+  );
+  const otsEscrituraComprasGastos = filtrarOpcionesPorSociedadEscritura(
+    ots || [],
+    modoVistaSociedadComprasGastos.sociedadIdEscritura,
+  );
 
   const setF = (k, v) => { setForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCeco(false); };
 
@@ -22813,7 +22897,7 @@ export function ComprasGastos() {
                 <label className="form-label">CECO <span style={{color:'var(--danger)'}}>*</span></label>
                 <select className={'select' + (errCeco ? ' input-error' : '')} value={form.centro_costo_id} onChange={e => setF('centro_costo_id', e.target.value)}>
                   <option value="">Seleccionar CECO...</option>
-                  {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  {cecosEscrituraComprasGastos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
                 {errCeco && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>El CECO es obligatorio para guardar.</div>}
               </div>
@@ -22837,7 +22921,7 @@ export function ComprasGastos() {
                   <label className="form-label">OT vinculada</label>
                   <select className="select" value={form.ot_vinc_id} onChange={e => setF('ot_vinc_id', e.target.value)}>
                     <option value="">Ninguna</option>
-                    {(ots || []).filter(o => o.estado !== 'cerrada').map(o => <option key={o.id} value={o.id}>{o.codigo || o.id}</option>)}
+                    {otsEscrituraComprasGastos.filter(o => o.estado !== 'cerrada').map(o => <option key={o.id} value={o.id}>{o.codigo || o.id}</option>)}
                   </select>
                 </div>
               </div>

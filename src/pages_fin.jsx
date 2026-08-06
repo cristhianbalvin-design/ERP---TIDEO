@@ -59,6 +59,11 @@ const filtrarPorVistaSociedad = (registros = [], modoVista, sociedadIdDe = regis
     return sociedadId && permitidas.has(sociedadId);
   });
 };
+const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
+  sociedadIdEscritura
+    ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
+    : opciones
+);
 const mostrarBadgeEnVistaSociedad = (empresa, modoVista) => Boolean(
   empresa?.multisociedad_habilitado
   && !modoVista.permiteEscritura
@@ -267,7 +272,10 @@ function CxC() {
   const [formCobro, setFormCobro] = useState({ monto:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', notas:'' });
   const [montoError, setMontoError] = useState('');
   const [savingCobro, setSavingCobro] = useState(false);
-  const cuentasBancariasActivas = (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado');
+  const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
+    (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado'),
+    modoVistaSociedadCxC.sociedadIdEscritura,
+  );
 
   const [panelGestion, setPanelGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
@@ -1900,6 +1908,31 @@ function Tesoreria() {
     [movimientosBanco, cuentasBancariasPorId, cxcTodosPorId, cxpTodosPorId, facturasTodasPorId, modoVistaSociedadTesoreria.sinFiltro, sociedadesIdsVistaTesoreriaKey],
   );
   const cuentasActivas = useMemo(() => cuentasBancariasVista.filter(c => c.estado === 'activo'), [cuentasBancariasVista]);
+  const cuentasBancariasEscrituraTesoreria = useMemo(
+    () => filtrarOpcionesPorSociedadEscritura(
+      cuentasBancarias || [],
+      modoVistaSociedadTesoreria.sociedadIdEscritura,
+    ),
+    [cuentasBancarias, modoVistaSociedadTesoreria.sociedadIdEscritura],
+  );
+  const cuentasActivasEscrituraTesoreria = useMemo(
+    () => cuentasBancariasEscrituraTesoreria.filter(c => c.estado === 'activo'),
+    [cuentasBancariasEscrituraTesoreria],
+  );
+  const cxcEscrituraTesoreria = useMemo(
+    () => filtrarOpcionesPorSociedadEscritura(
+      cxc || [],
+      modoVistaSociedadTesoreria.sociedadIdEscritura,
+    ),
+    [cxc, modoVistaSociedadTesoreria.sociedadIdEscritura],
+  );
+  const cxpEscrituraTesoreria = useMemo(
+    () => filtrarOpcionesPorSociedadEscritura(
+      cxp || [],
+      modoVistaSociedadTesoreria.sociedadIdEscritura,
+    ),
+    [cxp, modoVistaSociedadTesoreria.sociedadIdEscritura],
+  );
   const cuentaResumenActiva = useMemo(
     () => cuentasActivas.find(c => c.id === resumenCuenta) || null,
     [cuentasActivas, resumenCuenta],
@@ -2138,7 +2171,7 @@ function Tesoreria() {
     const moneda = movSel.moneda || 'PEN';
     const pct2 = monto * 0.02;
     if (movSel.tipo === 'credito') {
-      return cxcVistaTesoreria.filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => {
+      return cxcEscrituraTesoreria.filter(c => saldoCxc(c) > 0 && (c.moneda || 'PEN') === moneda).map(c => {
         const retencionCxCMatch = Number(c.monto_retencion || 0);
         const montoEsperado = retencionCxCMatch > 0
           ? Math.max(0, saldoCxc(c))
@@ -2152,14 +2185,14 @@ function Tesoreria() {
         };
       }).sort((a, b) => a.diff - b.diff);
     }
-    return cxpVistaTesoreria.filter(p => saldoCxp(p) > 0 && (p.moneda || 'PEN') === moneda).map(p => ({
+    return cxpEscrituraTesoreria.filter(p => saldoCxp(p) > 0 && (p.moneda || 'PEN') === moneda).map(p => ({
       tipo: 'cxp', id: p.id,
       label: `${p.factura_numero || p.id} — ${p.proveedores?.razon_social || 'Proveedor'}`,
       monto: saldoCxp(p),
       diff: Math.abs(saldoCxp(p) - monto),
       sugerido: Math.abs(saldoCxp(p) - monto) <= pct2,
     })).sort((a, b) => a.diff - b.diff);
-  }, [movSel, cxcVistaTesoreria, cxpVistaTesoreria, cuentas]);
+  }, [movSel, cxcEscrituraTesoreria, cxpEscrituraTesoreria, cuentas]);
 
   const sugeridos = candidatos.filter(c => c.sugerido);
   const cuentaBancoMovSel = useMemo(
@@ -2173,13 +2206,13 @@ function Tesoreria() {
   const monedaSistemaMatch = useMemo(() => {
     if (!candidatoSeleccionado) return movSel?.moneda || 'PEN';
     if (candidatoSeleccionado.tipo === 'cxc') {
-      const row = cxcVistaTesoreria.find(c => c.id === candidatoSeleccionado.id);
+      const row = cxcEscrituraTesoreria.find(c => c.id === candidatoSeleccionado.id);
       const factura = facturasVistaTesoreria.find(f => f.id === row?.factura_id);
       return row?.moneda || factura?.moneda || movSel?.moneda || 'PEN';
     }
-    const row = cxpVistaTesoreria.find(p => p.id === candidatoSeleccionado.id);
+    const row = cxpEscrituraTesoreria.find(p => p.id === candidatoSeleccionado.id);
     return row?.moneda || movSel?.moneda || 'PEN';
-  }, [candidatoSeleccionado, cxcVistaTesoreria, cxpVistaTesoreria, facturasVistaTesoreria, movSel]);
+  }, [candidatoSeleccionado, cxcEscrituraTesoreria, cxpEscrituraTesoreria, facturasVistaTesoreria, movSel]);
   const requiereTcMatch = Boolean(cuentaBancoMovSel && candidatoSeleccionado && monedaSistemaMatch !== cuentaBancoMovSel.moneda);
   const tcPreviewMatch = requiereTcMatch
     ? (monedaSistemaMatch === 'PEN' && cuentaBancoMovSel.moneda === 'USD'
@@ -2646,7 +2679,7 @@ function Tesoreria() {
                               onBlur={() => cuentaMov && setEditandoCuentaMovId(null)}
                             >
                               {cuentaMov ? <option value="">Sin cuenta</option> : <option value="">Asignar cuenta</option>}
-                              {cuentasActivas.map(cuenta => (
+                              {cuentasActivasEscrituraTesoreria.map(cuenta => (
                                 <option key={cuenta.id} value={cuenta.id}>{cuentaOptionLabel(cuenta)}</option>
                               ))}
                             </select>
@@ -2972,8 +3005,8 @@ function Tesoreria() {
         </>
       )}
 
-      {panelManual && <ManualMovimientoPanel cuentasBancarias={cuentasBancarias} onClose={() => setPanelManual(false)} onGuardar={registrarMovimientoManual} />}
-      {showImport && <ImportarExtractoModal cuentasBancarias={cuentasBancarias} onClose={() => setShowImport(false)} />}
+      {panelManual && <ManualMovimientoPanel cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setPanelManual(false)} onGuardar={registrarMovimientoManual} />}
+      {showImport && <ImportarExtractoModal cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setShowImport(false)} />}
     </>
   );
 }
@@ -3569,8 +3602,11 @@ function Facturacion() {
     && cebe.estado === 'activo'
     && (!cebe.fecha_inicio || String(fecha || '').slice(0, 10) >= String(cebe.fecha_inicio).slice(0, 10))
     && (!cebe.fecha_fin || String(fecha || '').slice(0, 10) <= String(cebe.fecha_fin).slice(0, 10));
-  const cebesVigentes = (centrosBeneficio || []).filter(cebe =>
-    (!empresa?.id || cebe.empresa_id === empresa.id) && cebeVigenteParaFecha(cebe, form.fecha_emision)
+  const cebesVigentes = filtrarOpcionesPorSociedadEscritura(
+    (centrosBeneficio || []).filter(cebe =>
+      (!empresa?.id || cebe.empresa_id === empresa.id) && cebeVigenteParaFecha(cebe, form.fecha_emision)
+    ),
+    modoVistaSociedadFacturacion.sociedadIdEscritura,
   );
   const cuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || '—'; };
   const rucCliente = id => getCuenta(id)?.ruc || '—';
@@ -3590,7 +3626,10 @@ function Facturacion() {
       .map(f => f.valorizacion_id)
       .filter(Boolean)
   ), [facturas]);
-  const valsParaFacturar = (valorizaciones||[]).filter(v => v.estado === 'aprobada' && !valFacturadas.has(v.id));
+  const valsParaFacturar = filtrarOpcionesPorSociedadEscritura(
+    (valorizaciones||[]).filter(v => v.estado === 'aprobada' && !valFacturadas.has(v.id)),
+    modoVistaSociedadFacturacion.sociedadIdEscritura,
+  );
 
   // ── Partidas calc ─────────────────────────────────────────────────────
   const esBoleta = form.tipo_documento === 'boleta';
@@ -4825,7 +4864,7 @@ function Facturacion() {
   if (mode) {
     const valSrc = mode === 'val' ? getVal(valSel) : null;
     const osSrc = getOs(valSrc?.os_cliente_id || osSel);
-    const osesDelCliente = cuentaSel ? osClientes.filter(os => (
+    const osesDelCliente = cuentaSel ? filtrarOpcionesPorSociedadEscritura(osClientes || [], modoVistaSociedadFacturacion.sociedadIdEscritura).filter(os => (
       os.cuenta_id === cuentaSel
       && ['activa', 'activo', 'en_ejecucion'].includes(os.estado)
       && Number(os.saldo_por_facturar || 0) > 0
@@ -5917,6 +5956,13 @@ function CajaChica() {
 
   const usuariosEmpresa = useMemo(() => (usuarios || []).filter(u => !u.empresa_id || u.empresa_id === empresaId), [usuarios, empresaId]);
   const cuentasActivas = useMemo(() => (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(c.estado)), [cuentasBancarias]);
+  const cuentasActivasEscrituraCajaChica = useMemo(
+    () => filtrarOpcionesPorSociedadEscritura(
+      cuentasActivas,
+      modoVistaSociedadCajaChica.sociedadIdEscritura,
+    ),
+    [cuentasActivas, modoVistaSociedadCajaChica.sociedadIdEscritura],
+  );
   const usuarioDe = id => usuariosEmpresa.find(u => u.id === id);
   const cuentaDe = id => (cuentasBancarias || []).find(c => c.id === id);
   const cecoDe = id => (centrosCosto || []).find(c => c.id === id);
@@ -6345,7 +6391,7 @@ function CajaChica() {
                 <div className="input-group"><label>Monto minimo</label><input className="input" type="number" min="0" step="0.01" value={formFondo.monto_minimo} onChange={e=>setFormFondo(p=>({...p,monto_minimo:e.target.value}))}/></div>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <div className="input-group"><label>Cuenta origen</label><select className="select" value={formFondo.cuenta_bancaria_id} onChange={e=>setFormFondo(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Sin cuenta -</option>{cuentasActivas.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Cuenta origen</label><select className="select" value={formFondo.cuenta_bancaria_id} onChange={e=>setFormFondo(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Sin cuenta -</option>{cuentasActivasEscrituraCajaChica.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>
                 <div className="input-group"><label>Moneda</label><select className="select" value={formFondo.moneda} onChange={e=>setFormFondo(p=>({...p,moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
               </div>
               <div className="input-group"><label>Fecha apertura</label><input className="input" type="date" value={formFondo.fecha_apertura} onChange={e=>setFormFondo(p=>({...p,fecha_apertura:e.target.value}))}/></div>
@@ -6793,7 +6839,14 @@ function CxP() {
     () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadCxP),
     [cxp, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
   );
-  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadCxP.sociedadIdEscritura,
+  );
+  const otsEscrituraCxP = filtrarOpcionesPorSociedadEscritura(
+    ots || [],
+    modoVistaSociedadCxP.sociedadIdEscritura,
+  );
   const [erCatOpts, setErCatOpts] = useState([]);
   const [erCategorias, setErCategorias] = useState([]);
   useEffect(() => {
@@ -7842,7 +7895,7 @@ function CxP() {
                     <label>OT vinculada (opcional)</label>
                     <select className="select" value={viaticosOtId} onChange={e => setViaticosOtId(e.target.value)}>
                       <option value="">Sin OT</option>
-                      {(ots||[]).filter(o => o.estado !== 'anulada').map(o => (
+                      {otsEscrituraCxP.filter(o => o.estado !== 'anulada').map(o => (
                         <option key={o.id} value={o.id}>{o.numero || o.id} — {o.nombre || o.descripcion || ''}</option>
                       ))}
                     </select>
@@ -8049,7 +8102,7 @@ function CxP() {
                         <label>Legacy RHE OT</label>
                         <select className="select" value={rheOtId} onChange={e => setRheOtId(e.target.value)}>
                           <option value="">Sin OT</option>
-                          {(ots||[]).filter(o => o.estado !== 'anulada').map(o => (
+                          {otsEscrituraCxP.filter(o => o.estado !== 'anulada').map(o => (
                             <option key={o.id} value={o.id}>{o.numero || o.id} — {o.nombre || o.descripcion || ''}</option>
                           ))}
                         </select>
@@ -8339,8 +8392,17 @@ function ActivosFijos() {
   const {
     activos = [], comprasGastos = [], centrosCosto = [],
     crearActivoCtx, actualizarActivoCtx, bajaActivoCtx, importarActivosCtx,
-    crearGasto, addNotificacion,
+    crearGasto, addNotificacion, empresa, perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+
+  const modoVistaSociedadActivos = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
 
   const today = new Date().toISOString().slice(0, 10);
   const [tab, setTab] = useState('maestro');
@@ -8365,7 +8427,10 @@ function ActivosFijos() {
   const [formDocs, setFormDocs] = useState([]);
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
-  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadActivos.sociedadIdEscritura,
+  );
   const cecoNombre = id => {
     const c = (centrosCosto || []).find(x => x.id === id);
     return c ? `${c.codigo || ''} ${c.nombre}`.trim() : (id || '-');
@@ -9305,14 +9370,20 @@ function Presupuestos() {
                   <label>CECO <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={formPre.centro_costo_id} onChange={e=>setFormPre(p=>({...p,centro_costo_id:e.target.value}))}>
                     <option value="">— Todos —</option>
-                    {(centrosCosto||[]).filter(c=>c.empresa_id===empresaId && (!formPre.sociedad_id || c.sociedad_id===formPre.sociedad_id)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    {filtrarOpcionesPorSociedadEscritura(
+                      (centrosCosto||[]).filter(c=>c.empresa_id===empresaId),
+                      modoVistaSociedadPresupuesto.sociedadIdEscritura,
+                    ).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
                 <div className="input-group">
                   <label>CEBE <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <select className="select" value={formPre.cebe_id} onChange={e=>setFormPre(p=>({...p,cebe_id:e.target.value}))}>
                     <option value="">— Todos —</option>
-                    {(centrosBeneficio||[]).filter(c=>c.empresa_id===empresaId && (!formPre.sociedad_id || c.sociedad_id===formPre.sociedad_id)).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    {filtrarOpcionesPorSociedadEscritura(
+                      (centrosBeneficio||[]).filter(c=>c.empresa_id===empresaId),
+                      modoVistaSociedadPresupuesto.sociedadIdEscritura,
+                    ).map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
               </div>

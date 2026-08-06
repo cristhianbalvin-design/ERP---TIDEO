@@ -8,6 +8,13 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
 import { SociedadFormField } from './SociedadFormField.jsx';
+import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
+
+const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
+  sociedadIdEscritura
+    ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
+    : opciones
+);
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
@@ -155,9 +162,18 @@ function loadDraft() {
 export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null }) {
   const {
     empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     setComprasGastos, setCajaChica, setCxp, setCxpPagos, setMovimientosTesoreria,
     addNotificacion,
   } = useApp();
+  const modoVistaSociedadEgreso = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const sociedadIdEscrituraEgreso = modoVistaSociedadEgreso.sociedadIdEscritura;
 
   // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar
   const gastoId = useMemo(
@@ -215,10 +231,19 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (k === 'cuenta_bancaria_id' || k === 'metodo_pago' || k === 'ya_pagado') setErrCuentaPago(false);
   };
 
-  const cecos       = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const otsActivas  = (ots || []).filter(o => !['cerrada', 'anulada'].includes(o.estado));
+  const cecos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    sociedadIdEscrituraEgreso,
+  );
+  const otsActivas = filtrarOpcionesPorSociedadEscritura(
+    (ots || []).filter(o => !['cerrada', 'anulada'].includes(o.estado)),
+    sociedadIdEscrituraEgreso,
+  );
   const provsActivos = (proveedores || []).filter(p => p.estado !== 'inactivo');
-  const cuentasBancariasActivas = (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase()));
+  const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
+    (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase())),
+    sociedadIdEscrituraEgreso,
+  );
 
   const esCapitalizacion = !!tipoSel?.es_capitalizacion;
 

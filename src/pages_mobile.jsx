@@ -7,6 +7,7 @@ import { rrhhService } from './services/rrhhService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
+import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
@@ -2636,9 +2637,19 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 }
 
 function ComprasView({ screen, setScreen }) {
-  const { authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto, empresa } = useApp();
+  const {
+    authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto, empresa,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+  } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const fileInputRef = useRef(null);
+  const modoVistaSociedadCompras = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
 
   const [paso, setPaso] = useState('inicio');
   const [fotoUrl, setFotoUrl] = useState('');
@@ -2652,8 +2663,12 @@ function ComprasView({ screen, setScreen }) {
 
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
   const ESTADOS_CERRADOS = ['cerrada','cerrada_tecnica','anulada','valorizada','facturada','cerrado_conforme'];
-  const otsActivas = (ots || []).filter(o => !ESTADOS_CERRADOS.includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id));
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const otsActivas = (ots || [])
+    .filter(o => !ESTADOS_CERRADOS.includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id))
+    .filter(o => !modoVistaSociedadCompras.sociedadIdEscritura || o.sociedad_id === modoVistaSociedadCompras.sociedadIdEscritura);
+  const cecosActivos = (centrosCosto || [])
+    .filter(c => c.estado === 'activo')
+    .filter(c => !modoVistaSociedadCompras.sociedadIdEscritura || c.sociedad_id === modoVistaSociedadCompras.sociedadIdEscritura);
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
@@ -4042,8 +4057,18 @@ function SolicitudesMovilView() {
 // Vista mobile — Perfil Administrativo: "Mi registro del día"
 // ─────────────────────────────────────────────────────────────────────────────
 function AdministrativoView({ screen, setScreen }) {
-  const { empresa, personalAdmin, authUser, centrosCosto, ots, addNotificacion } = useApp();
+  const {
+    empresa, personalAdmin, authUser, centrosCosto, ots, addNotificacion,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+  } = useApp();
   const hoy = new Date().toISOString().slice(0, 10);
+  const modoVistaSociedadTareoAdmin = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
 
   // Colaborador actual
   const personalActual = useMemo(() => {
@@ -4077,13 +4102,13 @@ function AdministrativoView({ screen, setScreen }) {
     Promise.all([
       tareosAdminService.cargarOTsAdminDelDia(empresa.id, personalActual.id),
       tareosAdminService.cargarTareos(empresa.id, { personalId: personalActual.id, fecha: hoy }),
-      tareosAdminService.cargarCecosActivos(empresa.id),
+      tareosAdminService.cargarCecosActivos(empresa.id, modoVistaSociedadTareoAdmin.sociedadIdEscritura),
     ]).then(([otsRes, tareosRes, cecosRes]) => {
       setOtsAsignadas(otsRes);
       setTareosDia(tareosRes);
       setCecos(cecosRes);
     }).catch(() => {}).finally(() => setLoading(false));
-  }, [empresa?.id, personalActual?.id]);
+  }, [empresa?.id, personalActual?.id, modoVistaSociedadTareoAdmin.sociedadIdEscritura]);
 
   const tareoDeOT = (otId) => tareosDia.find(t => t.ot_id === otId && t.tipo === 'ot');
 
