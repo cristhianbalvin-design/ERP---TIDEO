@@ -1661,7 +1661,9 @@ function CecoCebePanel({ onClose }) {
   const [cebeImportStep, setCebeImportStep] = useState(1);
 
   const usuariosActivos = (usuarios || []).filter(u => u.estado !== 'inactivo');
-  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const cebesActivos = (centrosBeneficio || [])
+    .filter(c => c.estado === 'activo')
+    .filter(c => !modoVistaSociedadCentros.sociedadIdEscritura || c.sociedad_id === modoVistaSociedadCentros.sociedadIdEscritura);
   const estadosOtCerrados = new Set(['pendiente_cierre', 'pendiente cierre', 'cerrada', 'cerrado', 'cerrada_tecnica', 'cerrado_tecnico', 'valorizada', 'valorizado', 'facturada', 'facturado', 'anulada', 'anulado', 'cancelada', 'cancelado']);
   const otsActivasPorCeco = cecoId => (ots || []).filter(o => o.centro_costo_id === cecoId && !estadosOtCerrados.has(String(o.estado || '').toLowerCase()));
   const confirmarInactivacionCeco = ceco => {
@@ -3966,7 +3968,21 @@ function Maestros() {
     posiciones = [], posicionesUsuarios = [], usuarios = [],
     addNotificacion, materiales = []
   } = useApp();
-  const { centrosCosto, centrosBeneficio } = useApp();
+  const {
+    centrosCosto, centrosBeneficio, empresa, perfilSociedad, sociedadesIdsAlcance,
+    sociedadActiva, sociedadesDisponibles = [],
+  } = useApp();
+  const modoVistaSociedadMaestros = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const centrosCostoEscrituraMaestros = (centrosCosto || []).filter(c => (
+    !modoVistaSociedadMaestros.sociedadIdEscritura
+    || c.sociedad_id === modoVistaSociedadMaestros.sociedadIdEscritura
+  ));
   const [sel, setSel] = useState(null);
   const [checkedIds, setCheckedIds] = useState([]);
   useEffect(() => { setCheckedIds([]); }, [sel]);
@@ -4778,7 +4794,7 @@ function Maestros() {
               <label>Centro de Costo</label>
               <select className="select" value={nuevo.ceco_id} onChange={e=>setNuevo(v=>({...v,ceco_id:e.target.value}))}>
                 <option value="">Sin CECO asignado</option>
-                {(centrosCosto || []).map(c => <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>)}
+                {centrosCostoEscrituraMaestros.map(c => <option key={c.id} value={c.id}>{c.codigo} · {c.nombre}</option>)}
               </select>
             </div>
             <div className="input-group" style={{gridColumn:'span 2'}}>
@@ -8973,6 +8989,10 @@ function RRHHAdmin() {
   const turnosOptions = (turnos || []).filter(t => t.estado !== 'inactivo');
   const defaultTurnoId = turnosOptions[0]?.id || '';
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecosActivosEscritura = cecosActivos.filter(c => (
+    !modoVistaSociedadPersonalAdmin.sociedadIdEscritura
+    || c.sociedad_id === modoVistaSociedadPersonalAdmin.sociedadIdEscritura
+  ));
   const vacacionesSugeridas = String(diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general'));
   const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
@@ -9503,6 +9523,10 @@ function RRHHAdmin() {
       .filter(d => esDocContratoLocal(d) || esDocAdendaLocal(d))
       .sort((a, b) => String(b.fecha_emision || b.creado_en || b.created_at || '').localeCompare(String(a.fecha_emision || a.creado_en || a.created_at || '')));
     const contratosValidados = docsContractuales.filter(d => esDocContratoLocal(d) && d.estado_validacion === 'aprobado');
+    const contratosValidadosEscritura = contratosValidados.filter(d => (
+      !modoVistaSociedadPersonalAdmin.sociedadIdEscritura
+      || d.sociedad_id === modoVistaSociedadPersonalAdmin.sociedadIdEscritura
+    ));
     const condicionesContrato = (() => {
       if (!contratoDoc) return null;
       const cond = { ...(contratoDoc.condiciones_laborales || {}) };
@@ -10989,7 +11013,7 @@ function RRHHAdmin() {
                                 </div>
                               )}
                               {rrhhAdminEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && <>
-                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId || ''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision || 'Sin emisión'} · vence {d.fecha_vencimiento || 'sin vencimiento'}</option>)}</select></div>
+                                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId || ''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidadosEscritura.map(d=><option key={d.id} value={d.id}>{d.fecha_emision || 'Sin emisión'} · vence {d.fecha_vencimiento || 'sin vencimiento'}</option>)}</select></div>
                                 <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12, flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(inlineUploadForm[k])} onChange={e=>setInlineUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
                                 <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={inlineUploadForm.fechaVigenciaCambio || ''} onChange={e=>setInlineUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
                               </>}
@@ -11168,7 +11192,7 @@ function RRHHAdmin() {
                               <SociedadFormField label="Sociedad empleadora" value={docUploadForm.sociedadId} onChange={sociedadId=>setDocUploadForm(f=>({...f,sociedadId}))} />
                             )}
                             {docUploadEsAdendaAdmin && <>
-                              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
+                              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={docUploadForm.contratoReferenciaId||''} onChange={e=>setDocUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidadosEscritura.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
                               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Qué cambió</label><div className="row" style={{gap:12,flexWrap:'wrap'}}>{[['cambioCargo','Cargo'],['cambioRemuneracion','Remuneración'],['cambioModalidad','Modalidad'],['cambioSede','Sede'],['cambioOtro','Otro']].map(([k,l])=><label key={k} className="row" style={{gap:6}}><input type="checkbox" checked={Boolean(docUploadForm[k])} onChange={e=>setDocUploadForm(f=>({...f,[k]:e.target.checked}))}/>{l}</label>)}</div></div>
                               <div className="input-group"><label>Vigencia del cambio</label><input className="input" type="date" value={docUploadForm.fechaVigenciaCambio||''} onChange={e=>setDocUploadForm(f=>({...f,fechaVigenciaCambio:e.target.value}))}/></div>
                             </>}
@@ -12056,7 +12080,7 @@ function RRHHAdmin() {
                 <input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : (formAlta.area || 'Se deriva de la posición')} style={{background:'var(--bg-subtle)'}}/>
               </div>
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}</select></div>
-              <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
+              <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivosEscritura.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivosEscritura.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorariosAlta ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorariosAlta} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group">
                 <label>{esHonorariosAlta ? 'Inicio del encargo *' : 'Fecha de ingreso *'}</label>

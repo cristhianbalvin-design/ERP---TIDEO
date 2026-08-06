@@ -10,6 +10,13 @@ import { maestrosService } from './services/maestrosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+
+const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
+  sociedadIdEscritura
+    ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
+    : opciones
+);
 
 function computeNextMaterialCode(subfamiliaId, grupos, familias, subfamilias, materiales, empresaId) {
   const sub = subfamilias.find(s => s.id === subfamiliaId);
@@ -3879,12 +3886,22 @@ function Actividades() {
 
 // ============ OS CLIENTE ============
 function FormCrearMultiplesOTs({ os, onCancel }) {
-  const { cotizaciones, tiposServicio, personalOperativo, personalAdmin, centrosCosto, centrosBeneficio, crearOTDesdeOS, actualizarOT, navigate, ots, hojasCosteo, inventario, tipoCambioHoy, materiales: catalogoMateriales = [] } = useApp();
+  const { cotizaciones, tiposServicio, personalOperativo, personalAdmin, centrosCosto, centrosBeneficio, crearOTDesdeOS, actualizarOT, navigate, ots, hojasCosteo, inventario, tipoCambioHoy, materiales: catalogoMateriales = [], empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadOTDesdeOS = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const hoy = new Date().toISOString().split('T')[0];
   const cotizacion = cotizaciones.find(c => c.id === os.cotizacion_id) || null;
   const tiposActivos = (tiposServicio || []).filter(t => t.estado !== 'inactivo');
   const personal = getPersonalAsignableOT(personalOperativo, personalAdmin);
-  const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const cecos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadOTDesdeOS.sociedadIdEscritura,
+  );
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
   const itemsSugeridos = cotizacion ? (cotizacion.items || []).map(i => i.servicio || i.descripcion).filter(Boolean) : [];
   const costoHoraTec = (tec) => Number(tec?.tarifa_hora ?? tec?.costo_hora_real ?? tec?.costo ?? tec?.costo_hora ?? 0);
@@ -4395,8 +4412,18 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
 }
 
 function FormCrearOT({ os, onSave, onCancel }) {
-  const { personalOperativo, personalAdmin, tiposServicio, centrosCosto, centrosBeneficio } = useApp();
-  const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
+  const { personalOperativo, personalAdmin, tiposServicio, centrosCosto, centrosBeneficio, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadOTDesdeOS = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const cecosActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosCosto || []).filter(c => c.estado === 'activo'),
+    modoVistaSociedadOTDesdeOS.sociedadIdEscritura,
+  );
   const cebeHeredado = (centrosBeneficio || []).find(c => c.id === os.centro_beneficio_id);
   const [form, setForm] = useState({
     servicio: '',
@@ -4659,7 +4686,15 @@ function OSCliente() {
     actualizarOSCliente, centrosBeneficio,
     partes, personalOperativo, personalAdmin, inventario, role,
     ordenesCompra, ordenesServicio, comprasGastos,
+    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
+  const modoVistaSociedadOSCliente = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
 
   const calcCostoRealLiveOS = (ot) => {
     const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
@@ -4783,7 +4818,10 @@ function OSCliente() {
       actualizarHitosFacturacion(os.id, [...hitos, ...nuevos]);
     };
 
-    const cotsDisponibles = cotizaciones.filter(c => c.cuenta_id === os.cuenta_id && c.estado === 'aprobada' && c.id !== os.cotizacion_id && !c.os_cliente_id);
+    const cotsDisponibles = filtrarOpcionesPorSociedadEscritura(
+      cotizaciones,
+      modoVistaSociedadOSCliente.sociedadIdEscritura,
+    ).filter(c => c.cuenta_id === os.cuenta_id && c.estado === 'aprobada' && c.id !== os.cotizacion_id && !c.os_cliente_id);
     const tabs = ['Cotizaciones', 'OTs', ...(canCost ? ['Control de Costos'] : []), 'Valorizaciones', 'Facturas', 'Historial'];
     const activeTab = activeParams.tab || 'OTs';
     const cerrada = ['cerrada', 'anulada'].includes(os.estado);
@@ -4891,7 +4929,10 @@ function OSCliente() {
                   onChange={e => actualizarOSCliente(os.id, { centro_beneficio_id: e.target.value || null })}
                 >
                   <option value="">— Sin CEBE asignado —</option>
-                  {(centrosBeneficio || []).filter(c => c.estado === 'activo').map(c => (
+                  {filtrarOpcionesPorSociedadEscritura(
+                    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+                    modoVistaSociedadOSCliente.sociedadIdEscritura,
+                  ).map(c => (
                     <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} – ` : ''}{c.nombre}</option>
                   ))}
                 </select>

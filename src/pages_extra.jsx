@@ -10,6 +10,11 @@ import { SociedadBadge, SociedadFormField } from './components/SociedadFormField
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
+const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
+  sociedadIdEscritura
+    ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
+    : opciones
+);
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
 const currencySymbol = (m = 'PEN') => {
   const code = normalizeCurrencyCode(m);
@@ -228,6 +233,7 @@ function CotizacionesInner() {
         opp={opp}
         cuenta={getCuenta(opp.cuenta_id)}
         cotizacionBase={cotBaseDeHC}
+        sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
         contactos={(contactos || []).filter(c => c.cuenta_id === opp.cuenta_id)}
         empresaConfig={empresaConfig}
         diccionarioComercial={diccionarioComercial}
@@ -248,6 +254,7 @@ function CotizacionesInner() {
         opp={opp}
         cuenta={getCuenta(cuentaId)}
         cotizacionBase={cot}
+        sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
         contactos={(contactos || []).filter(c => c.cuenta_id === cuentaId)}
         empresaConfig={empresaConfig}
         diccionarioComercial={diccionarioComercial}
@@ -332,6 +339,7 @@ function CotizacionesInner() {
             opp={oportunidades.find(o => o.id === osModal.oportunidad_id)}
             osClientes={osClientes || []}
             cuentas={cuentas}
+            sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
             onClose={() => setOsModal(null)}
             onCrearNueva={async (datos) => { await crearOSCliente(osModal.id, datos); setOsModal(null); }}
             onVincularExistente={async (osId) => { await vincularCotizacionOS(osModal.id, osId); setOsModal(null); }}
@@ -1056,11 +1064,14 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
 }
 
 // ── Editor (crear o editar borrador) ───────────────────────────────────
-function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfig, diccionarioComercial = [], onSave, onCancel }) {
+function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, contactos, empresaConfig, diccionarioComercial = [], onSave, onCancel }) {
   const { centrosBeneficio, monedasActivas, empresa } = useApp();
   const cfg     = empresaConfig || {};
   const isEdit  = !!(cotizacionBase?.id);
-  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const cebesActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+    sociedadIdEscritura,
+  );
   const contactosCuenta = contactos || [];
   const contactoPrincipalCuenta = contactosCuenta.find(c => c.principal || c.es_principal);
   const contactosOrdenados = [...contactosCuenta].sort((a, b) => {
@@ -1577,15 +1588,18 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, contactos, empresaConfi
 
 const CONDICIONES_PAGO = ['Contado', '30 días', '45 días', '60 días', '90 días', '120 días', 'Anticipado', 'Contra entrega'];
 
-function CrearOSModal({ cot, opp, osClientes, cuentas, onClose, onCrearNueva, onVincularExistente }) {
+function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, onClose, onCrearNueva, onVincularExistente }) {
   const { usuarios, centrosBeneficio } = useApp();
   const getNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
   const cuenta = (cuentas || []).find(c => c.id === cot.cuenta_id);
-  const osExistentes = (osClientes || []).filter(os =>
+  const osExistentes = filtrarOpcionesPorSociedadEscritura(osClientes || [], sociedadIdEscritura).filter(os =>
     os.cuenta_id === cot.cuenta_id && !['cerrada', 'anulada'].includes(os.estado)
   );
   const today = new Date().toISOString().split('T')[0];
-  const cebesActivos = (centrosBeneficio || []).filter(c => c.estado === 'activo');
+  const cebesActivos = filtrarOpcionesPorSociedadEscritura(
+    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+    sociedadIdEscritura,
+  );
   const cebeVinculadoCuenta = cebesActivos.find(c => c.tipo === 'cliente' && c.cuenta_id === cot.cuenta_id);
   const cebesOrdenados = [...cebesActivos].sort((a, b) => Number(b.tipo === 'cliente' && b.cuenta_id === cot.cuenta_id) - Number(a.tipo === 'cliente' && a.cuenta_id === cot.cuenta_id));
   const condPagoInicial = cot.condicion_pago || cuenta?.condicion_pago || '30 días';
@@ -1861,7 +1875,10 @@ function Valorizacion({ role }) {
 
   // OTs for editing
   const ESTADOS_VALORIZABLES = ['ejecucion', 'cerrada'];
-  const osConOts = osClientes.filter(os => ots.some(ot => ot.os_cliente_id === os.id && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)));
+  const osConOts = filtrarOpcionesPorSociedadEscritura(
+    osClientes,
+    modoVistaSociedadValorizaciones.sociedadIdEscritura,
+  ).filter(os => ots.some(ot => ot.os_cliente_id === os.id && ESTADOS_VALORIZABLES.includes(ot.estado) && conformidadOK(ot)));
 
   // ── PARTE 5: Validation helpers ───────────────────────────────────────
   // Duplicate OS+periodo in borrador/aprobada (excluding the one being edited)
@@ -3015,7 +3032,7 @@ function Valorizacion({ role }) {
 }
 
 // ─── Modal Entrada Manual ──────────────────────────────────────────────────────
-function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepciones = [], entradasOcPendientes = [], onClose, onSave }) {
+function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepciones = [], entradasOcPendientes = [], sociedadIdEscritura, onClose, onSave }) {
   // '' = auto-crear ALM-001 (cuando la empresa no tiene almacenes aún)
   const [form, setForm] = useState({ motivo: 'saldo_inicial', cantidad: '', costo_unitario: '', moneda: 'PEN', material_id: '', almacen_id: almacenes[0]?.id || '', lote: '', serie: '', vencimiento: '', nro_documento: '', observacion: '' });
   const [saving, setSaving] = useState(false);
@@ -3034,7 +3051,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
   ];
 
   const ocElegibles = useMemo(() => {
-    return (ordenesCompra || []).filter(oc =>
+    return filtrarOpcionesPorSociedadEscritura(ordenesCompra || [], sociedadIdEscritura).filter(oc =>
       ['confirmada', 'en_transito', 'emitida', 'recibida_parcial'].includes(oc.estado) &&
       (oc.items || []).some((item, idx) => {
         const recibidoRecepciones = (recepciones || [])
@@ -3052,7 +3069,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
         return Number(item.cantidad || 0) - recibidoRecepciones - recibidoAlmacen > 0;
       })
     );
-  }, [ordenesCompra, recepciones, entradasOcPendientes]);
+  }, [ordenesCompra, recepciones, entradasOcPendientes, sociedadIdEscritura]);
 
   const ocSeleccionada = ocElegibles.find(oc => oc.id === form.orden_compra_id) || null;
 
@@ -3571,7 +3588,7 @@ const pctText = (n) => `${Math.round(Number(n || 0) * 100)}%`;
 const qtyText = (n) => Number(n || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 const rotText = (n) => Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function ModalIniciarConteo({ almacenes, onClose, onStart }) {
+function ModalIniciarConteo({ almacenes, sociedadIdEscritura, onClose, onStart }) {
   const [form, setForm] = useState({ nombre: `Conteo fisico ${new Date().toLocaleDateString('es-PE')}`, tipo: 'total', almacen_id: '', zona: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -3580,7 +3597,7 @@ function ModalIniciarConteo({ almacenes, onClose, onStart }) {
     setErr('');
     if (!form.nombre.trim()) { setErr('Ingresa un nombre para el conteo'); return; }
     setSaving(true);
-    try { await onStart({ ...form, nombre: form.nombre.trim() }); onClose(); }
+    try { await onStart({ ...form, nombre: form.nombre.trim(), sociedad_id: sociedadIdEscritura || null }); onClose(); }
     catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   };
@@ -3619,7 +3636,7 @@ function ModalIniciarConteo({ almacenes, onClose, onStart }) {
   );
 }
 
-function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast, mostrarBadgeSociedad }) {
+function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast, mostrarBadgeSociedad, permiteEscritura, sociedadIdEscritura, mensajeSeleccionSociedad }) {
   const [modalInicio, setModalInicio] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [items, setItems] = useState([]);
@@ -3640,6 +3657,10 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     }));
   }, [conteoSel?.id, conteos.length, inventario.length]);
 
+  useEffect(() => {
+    if (!permiteEscritura) setModalInicio(false);
+  }, [permiteEscritura]);
+
   const contados = items.filter(it => it.fisico !== null && it.fisico !== undefined && it.fisico !== '').length;
   const total = items.length;
   const cerrado = conteoSel?.estado === 'cerrado';
@@ -3656,6 +3677,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
   };
 
   const handleStart = async (form) => {
+    if (!permiteEscritura) throw new Error(mensajeSeleccionSociedad);
     const nuevo = await iniciarConteoCtx(form);
     setSelectedId(nuevo.id);
     mostrarToast('Conteo iniciado');
@@ -3699,7 +3721,10 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     <div style={{display:'grid', gap:16}}>
       <div className="row" style={{justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
         <div><div className="eyebrow">Conteo físico</div><div style={{fontSize:18, fontWeight:800, fontFamily:'Sora'}}>Control por SKU, lote y serie</div></div>
-        <button className="btn btn-primary" onClick={() => setModalInicio(true)}>{I.play} Iniciar Conteo</button>
+        <div className="row" style={{gap:8, flexWrap:'wrap', justifyContent:'flex-end'}}>
+          {!permiteEscritura && <span className="text-muted" style={{fontSize:12}}>{mensajeSeleccionSociedad}</span>}
+          <button className="btn btn-primary" disabled={!permiteEscritura} title={!permiteEscritura ? mensajeSeleccionSociedad : 'Iniciar conteo físico'} onClick={() => setModalInicio(true)}>{I.play} Iniciar Conteo</button>
+        </div>
       </div>
 
       <div className="grid-2" style={{gap:16, alignItems:'start'}}>
@@ -3795,7 +3820,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
         </div>
       </div>
 
-      {modalInicio && <ModalIniciarConteo almacenes={almacenes} onClose={() => setModalInicio(false)} onStart={handleStart} />}
+      {modalInicio && permiteEscritura && <ModalIniciarConteo almacenes={almacenes} sociedadIdEscritura={sociedadIdEscritura} onClose={() => setModalInicio(false)} onStart={handleStart} />}
     </div>
   );
 }
@@ -3905,6 +3930,7 @@ function Inventario() {
     sociedadesIdsAlcance,
     sociedadesDisponibles,
   });
+  const mensajeSeleccionSociedadConteo = 'Selecciona una sociedad concreta en el selector superior para iniciar un conteo físico.';
   const mostrarBadgeSociedadInventario = Boolean(
     empresa?.multisociedad_habilitado
     && !modoVistaSociedadInventario.permiteEscritura
@@ -4088,6 +4114,9 @@ function Inventario() {
           recargarConteosInventarioCtx={recargarConteosInventarioCtx}
           mostrarToast={mostrarToast}
           mostrarBadgeSociedad={mostrarBadgeSociedadInventario}
+          permiteEscritura={modoVistaSociedadInventario.permiteEscritura}
+          sociedadIdEscritura={modoVistaSociedadInventario.sociedadIdEscritura}
+          mensajeSeleccionSociedad={mensajeSeleccionSociedadConteo}
         />
       )}
 
@@ -4105,6 +4134,7 @@ function Inventario() {
           ordenesCompra={ordenesCompra}
           recepciones={recepciones}
           entradasOcPendientes={entradasOcPendientes}
+          sociedadIdEscritura={modoVistaSociedadInventario.sociedadIdEscritura}
           onClose={() => setModalEntrada(false)}
           onSave={handleEntrada}
         />
