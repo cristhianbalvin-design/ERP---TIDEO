@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useApp } from '../context.jsx';
-import { resolverSociedadUnicaId } from '../services/sociedadesService.js';
+import { resolverSociedadUnicaId, SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
 
 export function SociedadFormField({ value = '', onChange, label = 'Sociedad', style }) {
   const { empresa, sociedadesDisponibles = [] } = useApp();
@@ -37,17 +37,28 @@ export function SociedadFormField({ value = '', onChange, label = 'Sociedad', st
   );
 }
 
-export function SociedadReadOnlyField({ sociedadId, label = 'Sociedad', style }) {
-  const { empresa, sociedadesDisponibles = [] } = useApp();
+export function SociedadReadOnlyField({ sociedadId, label = 'Sociedad destino', style, emptyMessage, conflictMessage }) {
+  const { empresa, sociedadesDisponibles = [], sociedadActiva } = useApp();
   if (!empresa?.multisociedad_habilitado) return null;
+  const sociedadActivaId = typeof sociedadActiva === 'string' ? sociedadActiva : sociedadActiva?.id;
+  if (sociedadActivaId !== SOCIEDAD_TODAS_ID) return null;
 
   const sociedad = sociedadesDisponibles.find(item => item.id === sociedadId);
-  const texto = sociedad
-    ? `${sociedad.codigo ? `${sociedad.codigo} - ` : ''}${sociedad.nombre}`
-    : 'Se hereda del CECO/CEBE seleccionado';
+  if (conflictMessage) {
+    return <div className="alert alert-danger" style={style} data-multisociedad-readonly="conflict">{conflictMessage}</div>;
+  }
+  if (!sociedad) {
+    return (
+      <div className="alert alert-warning" style={style} data-multisociedad-readonly="empty">
+        {emptyMessage || 'No se pudo resolver la sociedad destino. El registro quedará sin sociedad si continúas.'}
+      </div>
+    );
+  }
+
+  const texto = `${sociedad.codigo ? `${sociedad.codigo} - ` : ''}${sociedad.nombre}`;
 
   return (
-    <div className="input-group" style={style} data-multisociedad-readonly="true">
+    <div className="input-group" style={style} data-multisociedad-readonly="resolved">
       <label>{label}</label>
       <input className="input" value={texto} readOnly aria-readonly="true" />
     </div>

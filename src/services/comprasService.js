@@ -395,8 +395,8 @@ export const comprasService = {
     return registrarEntradaDesdeRecepcion(empresaId, item, referencia, usuarioId);
   },
 
-  listarEntradasOcPendientesValorizacion: async (empresaId, ordenCompraId = null) => {
-    return listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId);
+  listarEntradasOcPendientesValorizacion: async (empresaId, ordenCompraId = null, filtroSociedades = null) => {
+    return listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId, filtroSociedades);
   },
 
   ajustarValorizacionOcPendiente: async (empresaId, payload) => {

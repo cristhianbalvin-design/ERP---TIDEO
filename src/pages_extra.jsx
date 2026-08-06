@@ -6,8 +6,9 @@ import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
-import { SociedadBadge, SociedadFormField } from './components/SociedadFormField.jsx';
+import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
@@ -209,6 +210,10 @@ function CotizacionesInner() {
   if (activeParams?.active_tab === 'nueva' && activeParams?.opp) {
     const opp = getOpp(activeParams.opp);
     if (!opp) return <div className="p-4">Oportunidad no encontrada</div>;
+    if (!modoVistaSociedadCotizaciones.permiteEscritura) {
+      const mensaje = 'Selecciona una sociedad concreta en el selector superior para crear una cotización desde una oportunidad.';
+      return <div className="p-4"><div className="alert alert-warning">{mensaje}</div><button className="btn btn-secondary mt-4" onClick={() => navigate('pipeline', { panel: opp.id })}>Volver a la oportunidad</button></div>;
+    }
     const hcBase = activeParams.hc_id ? (hojasCosteo || []).find(h => h.id === activeParams.hc_id) : null;
     const itemsHC = hcBase ? construirPartidasDesdeHC(hcBase) : [];
     const subtotalHC = itemsHC.reduce((s, p) => s + toCotNumber(p.subtotal ?? (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario))), 0);
@@ -1771,6 +1776,10 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, onCl
             <label>Observaciones</label>
             <textarea className="input" rows="2" value={form.observaciones} onChange={e => upd('observaciones', e.target.value)} placeholder="Notas internas..." />
           </div>
+          <SociedadReadOnlyField
+            sociedadId={cot.sociedad_id || null}
+            emptyMessage="La cotización de origen no tiene sociedad. La OS Cliente quedará sin sociedad."
+          />
           <div className="modal-foot mt-2">
             <button type="button" className="btn btn-secondary" onClick={() => setPaso(1)}>← Volver</button>
             <button type="submit" className="btn btn-primary">{I.check} Crear OS Cliente</button>
@@ -1865,6 +1874,11 @@ function Valorizacion({ role }) {
   // OTs en ejecucion no tienen cierre técnico aún: la conformidad se gestiona externamente para avance parcial
   const conformidadOK = ot => ot.estado === 'ejecucion' || conformidadCompleta(ot.id);
   const getOs = id => osClientes.find(o => o.id === id);
+  const destinoValorizacion = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [{ seleccionado: Boolean(selOs), sociedadId: getOs(selOs)?.sociedad_id || null, label: `La OS Cliente ${getOs(selOs)?.numero || selOs || ''}`.trim() }],
+    mensajeSinOrigen: 'Selecciona una OS Cliente para resolver la sociedad destino de la valorización.',
+  });
   const monedaOs = getOs(selOs)?.moneda || 'PEN';
   const getCot = osId => (cotizaciones || []).find(c => c.id === getOs(osId)?.cotizacion_id);
   const getClienteNombre = osId => {
@@ -2403,6 +2417,7 @@ function Valorizacion({ role }) {
                     </div>
                   )}
                 </div>
+                <SociedadReadOnlyField {...destinoValorizacion} style={{gridColumn:'1/-1'}} />
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Modelo de cálculo <span style={{color:'var(--danger)'}}>*</span></label>
                   <select className="select" value={modelo} onChange={e => setModelo(e.target.value)}>
@@ -3032,7 +3047,7 @@ function Valorizacion({ role }) {
 }
 
 // ─── Modal Entrada Manual ──────────────────────────────────────────────────────
-function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepciones = [], entradasOcPendientes = [], sociedadIdEscritura, onClose, onSave }) {
+function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepciones = [], entradasOcPendientes = [], sociedadIdEscritura, permiteEscritura, sociedadesDisponibles = [], filtroSociedades, onClose, onSave }) {
   // '' = auto-crear ALM-001 (cuando la empresa no tiene almacenes aún)
   const [form, setForm] = useState({ motivo: 'saldo_inicial', cantidad: '', costo_unitario: '', moneda: 'PEN', material_id: '', almacen_id: almacenes[0]?.id || '', lote: '', serie: '', vencimiento: '', nro_documento: '', observacion: '' });
   const [saving, setSaving] = useState(false);
@@ -3041,6 +3056,13 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
   const esLlegadaOC = form.motivo === 'oc_pendiente_factura';
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const sinAlmacenes = almacenes.length === 0;
+  const sociedadesPermitidas = new Set(filtroSociedades?.sociedadesIds || []);
+  const ordenesCompraAlcance = filtroSociedades?.sinFiltro
+    ? ordenesCompra
+    : ordenesCompra.filter(oc => oc.sociedad_id && sociedadesPermitidas.has(oc.sociedad_id));
+  const entradasOcPendientesAlcance = filtroSociedades?.sinFiltro
+    ? entradasOcPendientes
+    : entradasOcPendientes.filter(entrada => entrada.sociedad_id && sociedadesPermitidas.has(entrada.sociedad_id));
 
   const MOTIVOS = [
     { value: 'saldo_inicial', label: 'Saldo Inicial / Migración' },
@@ -3051,7 +3073,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
   ];
 
   const ocElegibles = useMemo(() => {
-    return filtrarOpcionesPorSociedadEscritura(ordenesCompra || [], sociedadIdEscritura).filter(oc =>
+    return filtrarOpcionesPorSociedadEscritura(ordenesCompraAlcance || [], sociedadIdEscritura).filter(oc =>
       ['confirmada', 'en_transito', 'emitida', 'recibida_parcial'].includes(oc.estado) &&
       (oc.items || []).some((item, idx) => {
         const recibidoRecepciones = (recepciones || [])
@@ -3062,16 +3084,22 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
             );
             return sum + Number(rec?.recibido || 0);
           }, 0);
-        const recibidoAlmacen = (entradasOcPendientes || [])
+        const recibidoAlmacen = (entradasOcPendientesAlcance || [])
           .filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(oc.id))
           .filter(e => (e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined) ? Number(e.orden_compra_item_idx) === idx : (item.material_id && e.material_id === item.material_id))
           .reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
         return Number(item.cantidad || 0) - recibidoRecepciones - recibidoAlmacen > 0;
       })
     );
-  }, [ordenesCompra, recepciones, entradasOcPendientes, sociedadIdEscritura]);
+  }, [ordenesCompra, recepciones, entradasOcPendientes, sociedadIdEscritura, filtroSociedades?.sinFiltro, (filtroSociedades?.sociedadesIds || []).join('|')]);
 
   const ocSeleccionada = ocElegibles.find(oc => oc.id === form.orden_compra_id) || null;
+  const destinoEntrada = resolverSociedadDestino({
+    sociedades: sociedadesDisponibles,
+    origenes: [{ seleccionado: Boolean(form.orden_compra_id), sociedadId: ocSeleccionada?.sociedad_id || null, label: `La OC ${ocSeleccionada?.codigo || form.orden_compra_id || ''}`.trim() }],
+    mensajeSinOrigen: 'Selecciona una OC para resolver la sociedad destino de la entrada.',
+  });
+  const mensajeEntradaManual = 'Selecciona una sociedad concreta en el selector superior para registrar una entrada manual de inventario.';
 
   const lineasOc = useMemo(() => {
     if (!ocSeleccionada) return [];
@@ -3084,14 +3112,14 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
           );
           return sum + Number(rec?.recibido || 0);
         }, 0);
-      const recibidoAlmacen = (entradasOcPendientes || [])
+      const recibidoAlmacen = (entradasOcPendientesAlcance || [])
         .filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(ocSeleccionada.id))
         .filter(e => (e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined) ? Number(e.orden_compra_item_idx) === idx : (item.material_id && e.material_id === item.material_id))
         .reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
       const pendiente = Math.max(0, Number(item.cantidad || 0) - recibidoRecepciones - recibidoAlmacen);
       return { ...item, index: idx, pendiente };
     }).filter(item => item.pendiente > 0);
-  }, [ocSeleccionada, recepciones, entradasOcPendientes]);
+  }, [ocSeleccionada, recepciones, entradasOcPendientes, filtroSociedades?.sinFiltro, (filtroSociedades?.sociedadesIds || []).join('|')]);
 
   useEffect(() => {
     if (!esLlegadaOC || !ocSeleccionada) return;
@@ -3125,6 +3153,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
       finally { setSaving(false); }
       return;
     }
+    if (!permiteEscritura) { setErr(mensajeEntradaManual); return; }
     if (!form.material_id) { setErr('Selecciona un material'); return; }
     // almacen_id vacío = auto ALM-001 via resolverAlmacen; solo bloqueamos si hay lista y no se eligió
     if (!form.almacen_id && !sinAlmacenes) { setErr('Selecciona un almacén'); return; }
@@ -3164,6 +3193,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
                   {ocElegibles.map(oc => <option key={oc.id} value={oc.id}>{oc.codigo || oc.id}</option>)}
                 </select>
               </div>
+              <SociedadReadOnlyField {...destinoEntrada} />
               <div>
                 <label className="label">Almacen *</label>
                 <select className="select" value={form.almacen_id} onChange={e => setF('almacen_id', e.target.value)}>
@@ -3191,6 +3221,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
               )}
             </>
           )}
+          {!esLlegadaOC && !permiteEscritura && <div className="alert alert-warning">{mensajeEntradaManual}</div>}
           {!esLlegadaOC && <div className="grid-2" style={{gap:12}}>
             <div>
               <label className="label">Material *</label>
@@ -3242,7 +3273,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
           {err && <div className="alert alert-danger">{err}</div>}
           <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
             <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Guardando...' : <>{I.plus} Registrar Entrada</>}</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving || (!esLlegadaOC && !permiteEscritura)} title={!esLlegadaOC && !permiteEscritura ? mensajeEntradaManual : undefined}>{saving ? 'Guardando...' : <>{I.plus} Registrar Entrada</>}</button>
           </div>
         </div>
       </div>
@@ -3379,7 +3410,7 @@ function ModalAjuste({ sku, onClose, onSave }) {
 }
 
 // ─── Panel Kardex ─────────────────────────────────────────────────────────────
-function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSolpe, getKardexMaterialCtx }) {
+function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSolpe, getKardexMaterialCtx, filtroSociedades, mostrarSociedad }) {
   const [kardex, setKardex] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('kardex');
@@ -3388,10 +3419,10 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
   useEffect(() => {
     if (!isSupabaseConfigured()) { setLoading(false); return; }
     setLoading(true);
-    getKardexMaterialCtx(sku.material_id, sku.almacen_id)
+    getKardexMaterialCtx(sku.material_id, sku.almacen_id, filtroSociedades)
       .then(data => { setKardex(data || []); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [sku.material_id, sku.almacen_id]);
+  }, [sku.material_id, sku.almacen_id, filtroSociedades?.sinFiltro, (filtroSociedades?.sociedadesIds || []).join('|')]);
 
   const fmtFecha = (ts) => {
     if (!ts) return '—';
@@ -3467,11 +3498,12 @@ function PanelKardex({ sku, almacenes, onClose, onTransferencia, onAjuste, onSol
             ) : (
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Motivo</th><th>Ref.</th><th>Cant.</th><th>Costo U.</th><th>Saldo</th></tr></thead>
+                  <thead><tr><th>Fecha</th>{mostrarSociedad && <th>Sociedad</th>}<th>Tipo</th><th>Motivo</th><th>Ref.</th><th>Cant.</th><th>Costo U.</th><th>Saldo</th></tr></thead>
                   <tbody>
                     {kardex.map(k => (
                       <tr key={k.id} style={{opacity: k.anulado ? 0.4 : 1}}>
                         <td className="text-muted" style={{whiteSpace:'nowrap'}}>{fmtFecha(k.created_at)}</td>
+                        {mostrarSociedad && <td><SociedadBadge sociedadId={k.sociedad_id} /></td>}
                         <td><span className={`badge ${badgeTipo(k.tipo)}`}>{labelTipo(k.tipo, k.motivo)}</span></td>
                         <td style={{fontSize:12,color:'var(--fg-muted)'}}>{k.motivo || '—'}</td>
                         <td className="mono" style={{fontSize:11}}>{k.referencia_id ? k.referencia_id.slice(0,12) + '...' : '—'}</td>
@@ -3636,7 +3668,7 @@ function ModalIniciarConteo({ almacenes, sociedadIdEscritura, onClose, onStart }
   );
 }
 
-function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast, mostrarBadgeSociedad, permiteEscritura, sociedadIdEscritura, mensajeSeleccionSociedad }) {
+function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, mostrarToast, mostrarBadgeSociedad, permiteEscritura, sociedadIdEscritura, mensajeSeleccionSociedad, filtroSociedades }) {
   const [modalInicio, setModalInicio] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [items, setItems] = useState([]);
@@ -3701,7 +3733,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     try {
       await guardarAvanceConteoCtx(conteoSel.id, items);
       mostrarToast('Avance guardado');
-      await recargarConteosInventarioCtx?.();
+      await recargarConteosInventarioCtx?.(filtroSociedades);
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   };
@@ -3711,7 +3743,7 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
     setErr('');
     setSaving(true);
     try {
-      await cerrarConteoCtx(conteoSel.id, items.map(it => ({ ...it, fisico: Number(it.fisico || 0) })));
+      await cerrarConteoCtx(conteoSel.id, items.map(it => ({ ...it, fisico: Number(it.fisico || 0) })), filtroSociedades);
       mostrarToast('Conteo cerrado y ajustes generados');
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }
@@ -3842,7 +3874,7 @@ function ParetoChart({ rows }) {
   );
 }
 
-function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
+function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx, filtroSociedades, mostrarSociedad }) {
   const [periodo, setPeriodo] = useState('trimestre');
   const [almacenId, setAlmacenId] = useState('');
   const [dias, setDias] = useState(90);
@@ -3855,12 +3887,12 @@ function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
     let alive = true;
     setLoading(true);
     setErr('');
-    getAnaliticaInventarioCtx({ periodo, almacen_id: almacenId, dias_sin_actividad: dias })
+    getAnaliticaInventarioCtx({ periodo, almacen_id: almacenId, dias_sin_actividad: dias, filtroSociedades })
       .then(res => { if (alive) setData(res || { abc: [], rotacion: [], stockMuerto: [], meta: {} }); })
       .catch(e => { if (alive) setErr(e.message); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [periodo, almacenId, dias]);
+  }, [periodo, almacenId, dias, filtroSociedades?.sinFiltro, (filtroSociedades?.sociedadesIds || []).join('|')]);
 
   const meta = data.meta || {};
   return (
@@ -3896,23 +3928,23 @@ function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
           <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>Calculando analítica...</div>
         ) : tab === 'abc' ? (
           data.abc.length === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No hay salidas en el período seleccionado. El ABC necesita movimientos de salida para clasificar artículos.</div> : <>
-            <ParetoChart rows={data.abc} />
+            {!mostrarSociedad && <ParetoChart rows={data.abc} />}
             <div className="table-wrap" style={{marginTop:16}}>
-              <table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th className="num">Valor salidas</th><th className="num">% total</th><th className="num">% acum.</th><th>ABC</th></tr></thead><tbody>
-                {data.abc.map(r => <tr key={r.material_id}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td className="num">{money(r.valor_salidas)}</td><td className="num">{pctText(r.pct_total)}</td><td className="num">{pctText(r.pct_acumulado)}</td><td><span className={`badge ${r.clase === 'A' ? 'badge-green' : r.clase === 'B' ? 'badge-orange' : 'badge-gray'}`}>{r.clase}</span></td></tr>)}
+              <table className="tbl"><thead><tr>{mostrarSociedad && <th>Sociedad</th>}<th>SKU</th><th>Descripción</th><th className="num">Valor salidas</th><th className="num">% total</th><th className="num">% acum.</th><th>ABC</th></tr></thead><tbody>
+                {data.abc.map(r => <tr key={r.key || `${r.sociedad_id || 'sin'}-${r.material_id}`}>{mostrarSociedad && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}<td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td className="num">{money(r.valor_salidas)}</td><td className="num">{pctText(r.pct_total)}</td><td className="num">{pctText(r.pct_acumulado)}</td><td><span className={`badge ${r.clase === 'A' ? 'badge-green' : r.clase === 'B' ? 'badge-orange' : 'badge-gray'}`}>{r.clase}</span></td></tr>)}
               </tbody></table>
             </div>
           </>
         ) : tab === 'rotacion' ? (
           data.rotacion.length === 0 || Number(meta.movimientosPeriodo || 0) === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No hay movimientos suficientes para calcular rotación en el período.</div> : (
-            <div className="table-wrap"><table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Salidas</th><th className="num">Stock prom.</th><th className="num">Rotación</th></tr></thead><tbody>
-              {data.rotacion.map(r => <tr key={r.key}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre || r.material_id}</td><td>{r.almacen || '—'}</td><td className="num">{qtyText(r.salidas_periodo)}</td><td className="num">{qtyText(r.stock_promedio)}</td><td className="num" style={{fontWeight:700}}>{rotText(r.rotacion)}</td></tr>)}
+            <div className="table-wrap"><table className="tbl"><thead><tr>{mostrarSociedad && <th>Sociedad</th>}<th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Salidas</th><th className="num">Stock prom.</th><th className="num">Rotación</th></tr></thead><tbody>
+              {data.rotacion.map(r => <tr key={r.key}>{mostrarSociedad && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}<td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre || r.material_id}</td><td>{r.almacen || '—'}</td><td className="num">{qtyText(r.salidas_periodo)}</td><td className="num">{qtyText(r.stock_promedio)}</td><td className="num" style={{fontWeight:700}}>{rotText(r.rotacion)}</td></tr>)}
             </tbody></table></div>
           )
         ) : (
           data.stockMuerto.length === 0 ? <div style={{textAlign:'center', padding:44, color:'var(--fg-muted)'}}>No se detectó stock sin salidas para el umbral seleccionado.</div> : (
-            <div className="table-wrap"><table className="tbl"><thead><tr><th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Stock</th><th>Última salida</th><th className="num">Días sin actividad</th><th className="num">Valor inmovilizado</th></tr></thead><tbody>
-              {data.stockMuerto.map(r => <tr key={`${r.material_id}-${r.almacen_id}`}><td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td>{r.almacen}</td><td className="num">{qtyText(r.stock_actual)}</td><td>{r.ultima_salida ? fmtDateShort(r.ultima_salida) : 'Sin salidas registradas'}</td><td className="num">{r.dias_sin_actividad == null ? `>${dias}` : r.dias_sin_actividad}</td><td className="num" style={{fontWeight:700}}>{money(r.valor_inmovilizado)}</td></tr>)}
+            <div className="table-wrap"><table className="tbl"><thead><tr>{mostrarSociedad && <th>Sociedad</th>}<th>SKU</th><th>Descripción</th><th>Almacén</th><th className="num">Stock</th><th>Última salida</th><th className="num">Días sin actividad</th><th className="num">Valor inmovilizado</th></tr></thead><tbody>
+              {data.stockMuerto.map(r => <tr key={`${r.sociedad_id || 'sin'}-${r.material_id}-${r.almacen_id}`}>{mostrarSociedad && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}<td className="mono" style={{fontWeight:700}}>{r.sku}</td><td>{r.nombre}</td><td>{r.almacen}</td><td className="num">{qtyText(r.stock_actual)}</td><td>{r.ultima_salida ? fmtDateShort(r.ultima_salida) : 'Sin salidas registradas'}</td><td className="num">{r.dias_sin_actividad == null ? `>${dias}` : r.dias_sin_actividad}</td><td className="num" style={{fontWeight:700}}>{money(r.valor_inmovilizado)}</td></tr>)}
             </tbody></table></div>
           )
         )}
@@ -3922,7 +3954,7 @@ function AnaliticaInventarioTab({ almacenes, getAnaliticaInventarioCtx }) {
 }
 
 function Inventario() {
-  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], ordenesCompra = [], recepciones = [], entradasOcPendientes = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
+  const { inventario, inventarioConteos = [], almacenes, materiales: catalogoMateriales = [], ordenesCompra = [], recepciones = [], entradasOcPendientes = [], searchQuery, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx, getKardexMaterialCtx, crearSOLPE, recargarInventario, recargarEntradasOcPendientes, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles } = useApp();
   const modoVistaSociedadInventario = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -3937,6 +3969,10 @@ function Inventario() {
     && (modoVistaSociedadInventario.sinFiltro || modoVistaSociedadInventario.sociedadesIds.length > 0)
   );
   const sociedadesIdsVistaInventarioKey = modoVistaSociedadInventario.sociedadesIds.join('|');
+  const filtroSociedadesInventario = {
+    sinFiltro: modoVistaSociedadInventario.sinFiltro,
+    sociedadesIds: modoVistaSociedadInventario.sociedadesIds,
+  };
   const inventarioVista = useMemo(() => {
     if (modoVistaSociedadInventario.sinFiltro) return inventario;
     const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
@@ -3947,6 +3983,16 @@ function Inventario() {
     const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
     return inventarioConteos.filter(conteo => conteo.sociedad_id && permitidas.has(conteo.sociedad_id));
   }, [inventarioConteos, modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
+  const ordenesCompraVista = useMemo(() => {
+    if (modoVistaSociedadInventario.sinFiltro) return ordenesCompra;
+    const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
+    return ordenesCompra.filter(oc => oc.sociedad_id && permitidas.has(oc.sociedad_id));
+  }, [ordenesCompra, modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
+  const entradasOcPendientesVista = useMemo(() => {
+    if (modoVistaSociedadInventario.sinFiltro) return entradasOcPendientes;
+    const permitidas = new Set(modoVistaSociedadInventario.sociedadesIds);
+    return entradasOcPendientes.filter(entrada => entrada.sociedad_id && permitidas.has(entrada.sociedad_id));
+  }, [entradasOcPendientes, modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
   const [selSku, setSelSku] = useState(null);
   const [modalEntrada, setModalEntrada] = useState(false);
   const [modalTransf, setModalTransf] = useState(false);
@@ -3960,8 +4006,12 @@ function Inventario() {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     setCargando(true);
-    Promise.all([recargarInventario?.(), recargarConteosInventarioCtx?.()]).finally(() => setCargando(false));
-  }, []);
+    Promise.all([
+      recargarInventario?.(filtroSociedadesInventario),
+      recargarEntradasOcPendientes?.(filtroSociedadesInventario),
+      recargarConteosInventarioCtx?.(filtroSociedadesInventario),
+    ]).finally(() => setCargando(false));
+  }, [modoVistaSociedadInventario.sinFiltro, sociedadesIdsVistaInventarioKey]);
 
   const query = searchQuery.toLowerCase();
   const filteredInv = inventarioVista.filter(i =>
@@ -3981,18 +4031,18 @@ function Inventario() {
   }).length;
 
   const handleEntrada = async (form) => {
-    await registrarEntradaManualCtx(form);
+    await registrarEntradaManualCtx(form, filtroSociedadesInventario);
     mostrarToast('Entrada registrada correctamente');
   };
 
   const handleTransferencia = async (form) => {
-    await registrarTransferenciaCtx(form);
+    await registrarTransferenciaCtx(form, filtroSociedadesInventario);
     mostrarToast('Transferencia registrada');
     setSelSku(null);
   };
 
   const handleAjuste = async (form) => {
-    await registrarAjusteCtx(form);
+    await registrarAjusteCtx(form, filtroSociedadesInventario);
     mostrarToast('Ajuste registrado');
     setSelSku(null);
   };
@@ -4036,7 +4086,7 @@ function Inventario() {
         <div className="row" style={{gap:8}}>
           {cargando && <span style={{fontSize:12,color:'var(--fg-muted)',alignSelf:'center'}}>Actualizando...</span>}
           {mainTab === 'stock' && <button className="btn btn-primary" onClick={() => setModalEntrada(true)}>{I.plus} Registrar Entrada</button>}
-          {mainTab === 'conteo' && <button className="btn btn-secondary" onClick={() => recargarConteosInventarioCtx?.()}>{I.refresh} Actualizar</button>}
+          {mainTab === 'conteo' && <button className="btn btn-secondary" onClick={() => recargarConteosInventarioCtx?.(filtroSociedadesInventario)}>{I.refresh} Actualizar</button>}
         </div>
       </div>
 
@@ -4117,6 +4167,7 @@ function Inventario() {
           permiteEscritura={modoVistaSociedadInventario.permiteEscritura}
           sociedadIdEscritura={modoVistaSociedadInventario.sociedadIdEscritura}
           mensajeSeleccionSociedad={mensajeSeleccionSociedadConteo}
+          filtroSociedades={filtroSociedadesInventario}
         />
       )}
 
@@ -4124,6 +4175,8 @@ function Inventario() {
         <AnaliticaInventarioTab
           almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
           getAnaliticaInventarioCtx={getAnaliticaInventarioCtx}
+          filtroSociedades={filtroSociedadesInventario}
+          mostrarSociedad={mostrarBadgeSociedadInventario}
         />
       )}
 
@@ -4131,10 +4184,13 @@ function Inventario() {
         <ModalEntradaManual
           materiales={catalogoMateriales.filter(m => m.estado !== 'inactivo')}
           almacenes={almacenes.filter(a => !a.estado || a.estado === 'activo')}
-          ordenesCompra={ordenesCompra}
+          ordenesCompra={ordenesCompraVista}
           recepciones={recepciones}
-          entradasOcPendientes={entradasOcPendientes}
+          entradasOcPendientes={entradasOcPendientesVista}
           sociedadIdEscritura={modoVistaSociedadInventario.sociedadIdEscritura}
+          permiteEscritura={modoVistaSociedadInventario.permiteEscritura}
+          sociedadesDisponibles={sociedadesDisponibles}
+          filtroSociedades={filtroSociedadesInventario}
           onClose={() => setModalEntrada(false)}
           onSave={handleEntrada}
         />
@@ -4149,6 +4205,8 @@ function Inventario() {
           onAjuste={() => setModalAjuste(true)}
           onSolpe={handleSolpe}
           getKardexMaterialCtx={getKardexMaterialCtx}
+          filtroSociedades={filtroSociedadesInventario}
+          mostrarSociedad={mostrarBadgeSociedadInventario}
         />
       )}
 

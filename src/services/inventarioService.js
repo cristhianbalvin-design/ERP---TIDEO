@@ -5,6 +5,17 @@ const mkId = (prefix) => {
   return `${prefix}_${String(r).replace(/-/g, '').slice(0, 18)}`;
 };
 
+const normalizarFiltroSociedades = filtro => {
+  if (!filtro || filtro.sinFiltro) return { sinFiltro: true, sociedadesIds: [], sinResultados: false };
+  const sociedadesIds = [...new Set((filtro.sociedadesIds || []).filter(Boolean))];
+  return { sinFiltro: false, sociedadesIds, sinResultados: sociedadesIds.length === 0 };
+};
+
+const aplicarFiltroSociedades = (query, filtro) => {
+  const normalizado = normalizarFiltroSociedades(filtro);
+  return normalizado.sinFiltro ? query : query.in('sociedad_id', normalizado.sociedadesIds);
+};
+
 // ─── Costo promedio ponderado ──────────────────────────────────────────────────
 // Separable: este es el costeo por defecto. Una capa 3 puede inyectar otro.
 function calcularNuevoCostoPromedio(stockActual, costoActual, cantidadNueva, costoNuevo) {
@@ -445,14 +456,16 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
   return data;
 }
 
-export async function listarConteos(empresaId, limit = 50) {
+export async function listarConteos(empresaId, limit = 50, filtroSociedades = null) {
   if (!empresaId) return [];
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase.from('inventario_conteos')
+  let q = supabase.from('inventario_conteos')
     .select('*')
     .eq('empresa_id', empresaId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .order('created_at', { ascending: false });
+  q = aplicarFiltroSociedades(q, filtroSociedades).limit(limit);
+  const { data, error } = await q;
   if (error) {
     console.error('listarConteos:', error);
     return [];
@@ -549,7 +562,7 @@ const diasEntre = (a, b = new Date()) => {
   return Math.max(0, Math.floor((b - new Date(a)) / 86400000));
 };
 
-const materialAlmacenKey = (row) => `${row.material_id || 'sin_material'}::${row.almacen_id || 'sin_almacen'}`;
+const materialAlmacenKey = (row) => `${row.sociedad_id || 'sin_sociedad'}::${row.material_id || 'sin_material'}::${row.almacen_id || 'sin_almacen'}`;
 
 function normalizarMovimientoInventario(row) {
   const cantidad = Number(row.cantidad || 0);
@@ -568,32 +581,36 @@ function normalizarMovimientoInventario(row) {
   };
 }
 
-export async function getAnaliticaInventario(empresaId, { periodo = 'trimestre', almacen_id = '', dias_sin_actividad = 90 } = {}) {
+export async function getAnaliticaInventario(empresaId, { periodo = 'trimestre', almacen_id = '', dias_sin_actividad = 90, filtroSociedades = null } = {}) {
   if (!empresaId) return { abc: [], rotacion: [], stockMuerto: [], meta: { movimientosPeriodo: 0 } };
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return { abc: [], rotacion: [], stockMuerto: [], meta: { movimientosPeriodo: 0 } };
   const supabase = await getSupabaseClient();
   const { desde, hasta } = rangoPeriodoInventario(periodo);
 
   let kardexQ = supabase.from('kardex')
-    .select('id, empresa_id, material_id, almacen_id, tipo, motivo, cantidad, costo_unitario, costo_total, created_at, anulado, materiales(id, codigo, descripcion, unidad, familia, costo_promedio), almacenes(id, codigo, nombre)')
+    .select('id, empresa_id, sociedad_id, material_id, almacen_id, tipo, motivo, cantidad, costo_unitario, costo_total, created_at, anulado, materiales(id, codigo, descripcion, unidad, familia, costo_promedio), almacenes(id, codigo, nombre)')
     .eq('empresa_id', empresaId)
     .eq('anulado', false)
     .gte('created_at', desde.toISOString())
     .lte('created_at', hasta.toISOString());
   if (almacen_id) kardexQ = kardexQ.eq('almacen_id', almacen_id);
+  kardexQ = aplicarFiltroSociedades(kardexQ, filtroSociedades);
 
   let stockQ = supabase.from('stock')
-    .select('id, empresa_id, material_id, almacen_id, fisico, disponible, lote, serie, updated_at, materiales(id, codigo, descripcion, unidad, familia, costo_promedio), almacenes(id, codigo, nombre)')
+    .select('id, empresa_id, sociedad_id, material_id, almacen_id, fisico, disponible, lote, serie, updated_at, materiales(id, codigo, descripcion, unidad, familia, costo_promedio), almacenes(id, codigo, nombre)')
     .eq('empresa_id', empresaId);
   if (almacen_id) stockQ = stockQ.eq('almacen_id', almacen_id);
+  stockQ = aplicarFiltroSociedades(stockQ, filtroSociedades);
 
   let historicoSalidasQ = supabase.from('kardex')
-    .select('id, material_id, almacen_id, tipo, created_at')
+    .select('id, sociedad_id, material_id, almacen_id, tipo, created_at')
     .eq('empresa_id', empresaId)
     .eq('anulado', false)
     .in('tipo', ['salida', 'transferencia_salida'])
     .order('created_at', { ascending: false })
     .limit(5000);
   if (almacen_id) historicoSalidasQ = historicoSalidasQ.eq('almacen_id', almacen_id);
+  historicoSalidasQ = aplicarFiltroSociedades(historicoSalidasQ, filtroSociedades);
 
   const [movRes, stockRes, salidasRes] = await Promise.all([kardexQ, stockQ, historicoSalidasQ]);
   if (movRes.error) throw movRes.error;
@@ -607,31 +624,42 @@ export async function getAnaliticaInventario(empresaId, { periodo = 'trimestre',
 
   const abcMap = new Map();
   for (const mov of salidas) {
-    const key = mov.material_id;
-    if (!key) continue;
-    const current = abcMap.get(key) || { material_id: mov.material_id, sku: mov.sku, nombre: mov.nombre, categoria: mov.categoria, unidad: mov.unidad, valor_salidas: 0, cantidad_salidas: 0 };
+    if (!mov.material_id) continue;
+    const key = `${mov.sociedad_id || 'sin_sociedad'}::${mov.material_id}`;
+    const current = abcMap.get(key) || { key, sociedad_id: mov.sociedad_id || null, material_id: mov.material_id, sku: mov.sku, nombre: mov.nombre, categoria: mov.categoria, unidad: mov.unidad, valor_salidas: 0, cantidad_salidas: 0 };
     current.valor_salidas += mov.costo_total;
     current.cantidad_salidas += mov.cantidad;
     abcMap.set(key, current);
   }
-  const abcBase = [...abcMap.values()].sort((a, b) => b.valor_salidas - a.valor_salidas);
-  const totalSalidasValor = abcBase.reduce((s, r) => s + r.valor_salidas, 0);
-  let acumulado = 0;
-  const abc = abcBase.map((row, index) => {
-    acumulado += row.valor_salidas;
-    const pctRank = abcBase.length ? (index + 1) / abcBase.length : 1;
-    return {
-      ...row,
-      pct_total: totalSalidasValor ? row.valor_salidas / totalSalidasValor : 0,
-      pct_acumulado: totalSalidasValor ? acumulado / totalSalidasValor : 0,
-      clase: pctRank <= 0.2 ? 'A' : pctRank <= 0.5 ? 'B' : 'C',
-    };
+  const abcPorSociedad = new Map();
+  for (const row of abcMap.values()) {
+    const keySociedad = row.sociedad_id || 'sin_sociedad';
+    const grupo = abcPorSociedad.get(keySociedad) || [];
+    grupo.push(row);
+    abcPorSociedad.set(keySociedad, grupo);
+  }
+  const abc = [...abcPorSociedad.values()].flatMap(grupo => {
+    const ordenado = grupo.sort((a, b) => b.valor_salidas - a.valor_salidas);
+    const totalSociedad = ordenado.reduce((s, r) => s + r.valor_salidas, 0);
+    let acumuladoSociedad = 0;
+    return ordenado.map((row, index) => {
+      acumuladoSociedad += row.valor_salidas;
+      const pctRank = ordenado.length ? (index + 1) / ordenado.length : 1;
+      return {
+        ...row,
+        pct_total: totalSociedad ? row.valor_salidas / totalSociedad : 0,
+        pct_acumulado: totalSociedad ? acumuladoSociedad / totalSociedad : 0,
+        clase: pctRank <= 0.2 ? 'A' : pctRank <= 0.5 ? 'B' : 'C',
+      };
+    });
   });
+  const totalSalidasValor = abc.reduce((s, r) => s + r.valor_salidas, 0);
 
   const stockActualMap = new Map();
   for (const row of stocks) {
     const key = materialAlmacenKey(row);
     const current = stockActualMap.get(key) || {
+      sociedad_id: row.sociedad_id || null,
       material_id: row.material_id,
       almacen_id: row.almacen_id,
       sku: row.materiales?.codigo || row.material_id,
@@ -649,14 +677,14 @@ export async function getAnaliticaInventario(empresaId, { periodo = 'trimestre',
   const movimientosPorKey = new Map();
   for (const mov of movimientos) {
     const key = materialAlmacenKey(mov);
-    const current = movimientosPorKey.get(key) || { salidas: 0, entradas: 0 };
+    const current = movimientosPorKey.get(key) || { sociedad_id: mov.sociedad_id || null, material_id: mov.material_id, almacen_id: mov.almacen_id, sku: mov.sku, nombre: mov.nombre, categoria: mov.categoria, unidad: mov.unidad, almacen: mov.almacen, salidas: 0, entradas: 0 };
     if (mov.tipo === 'salida' || mov.tipo === 'transferencia_salida') current.salidas += mov.cantidad;
     if (mov.tipo === 'entrada' || mov.tipo === 'transferencia_entrada') current.entradas += mov.cantidad;
     movimientosPorKey.set(key, current);
   }
   const rotacionKeys = new Set([...stockActualMap.keys(), ...movimientosPorKey.keys()]);
   const rotacion = [...rotacionKeys].map(key => {
-    const stock = stockActualMap.get(key) || {};
+    const stock = stockActualMap.get(key) || movimientosPorKey.get(key) || {};
     const movs = movimientosPorKey.get(key) || { salidas: 0, entradas: 0 };
     const stockFinal = Number(stock.stock_actual || 0);
     const stockInicialEstimado = Math.max(0, stockFinal - movs.entradas + movs.salidas);
@@ -712,19 +740,21 @@ export async function getAnaliticaInventario(empresaId, { periodo = 'trimestre',
   };
 }
 
-export async function getKardex(empresaId, materialId, almacenId, limit = 50) {
+export async function getKardex(empresaId, materialId, almacenId, limit = 50, filtroSociedades = null) {
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
   let q = supabase.from('kardex').select('*')
-    .eq('empresa_id', empresaId).eq('material_id', materialId).eq('anulado', false)
-    .order('created_at', { ascending: false }).limit(limit);
+    .eq('empresa_id', empresaId).eq('material_id', materialId).eq('anulado', false);
   if (almacenId) q = q.eq('almacen_id', almacenId);
+  q = aplicarFiltroSociedades(q, filtroSociedades).order('created_at', { ascending: false }).limit(limit);
   const { data, error } = await q;
   if (error) { console.error('getKardex:', error); return []; }
   return data || [];
 }
 
-export async function getStockCompleto(empresaId) {
+export async function getStockCompleto(empresaId, filtroSociedades = null) {
   if (!empresaId) return [];
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
 
   // Try full select (requires migration 009). Fall back to base columns if not yet applied.
@@ -732,10 +762,14 @@ export async function getStockCompleto(empresaId) {
   const fullSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, costo_promedio_usd, stock_minimo, stock_maximo, punto_reorden, stock_seguridad, tipo_control, codigo_barras), almacenes(id, codigo, nombre)`;
   const baseSelect = `*, materiales(id, codigo, descripcion, unidad, familia, costo_promedio, stock_minimo, stock_seguridad), almacenes(id, codigo, nombre)`;
 
-  const full = await supabase.from('stock').select(fullSelect).eq('empresa_id', empresaId).order('updated_at', { ascending: false });
+  let fullQuery = supabase.from('stock').select(fullSelect).eq('empresa_id', empresaId);
+  fullQuery = aplicarFiltroSociedades(fullQuery, filtroSociedades).order('updated_at', { ascending: false });
+  const full = await fullQuery;
   if (full.error) {
     console.warn('getStockCompleto: columnas WMS no encontradas, usando select base (aplicar migración 009):', full.error.message);
-    const base = await supabase.from('stock').select(baseSelect).eq('empresa_id', empresaId).order('updated_at', { ascending: false });
+    let baseQuery = supabase.from('stock').select(baseSelect).eq('empresa_id', empresaId);
+    baseQuery = aplicarFiltroSociedades(baseQuery, filtroSociedades).order('updated_at', { ascending: false });
+    const base = await baseQuery;
     if (base.error) { console.error('getStockCompleto:', base.error); return []; }
     data = base.data;
   } else {
@@ -773,11 +807,14 @@ export async function getStockCompleto(empresaId) {
   }));
 }
 
-export async function getMaterialesBajoReorden(empresaId) {
+export async function getMaterialesBajoReorden(empresaId, filtroSociedades = null) {
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
-  const { data } = await supabase.from('stock')
+  let q = supabase.from('stock')
     .select('*, materiales(codigo, descripcion, unidad, punto_reorden, stock_minimo, stock_seguridad), almacenes(nombre)')
     .eq('empresa_id', empresaId);
+  q = aplicarFiltroSociedades(q, filtroSociedades);
+  const { data } = await q;
   return (data || []).filter(s => {
     const puntoReorden = Number(s.materiales?.punto_reorden ?? s.materiales?.stock_minimo ?? 0);
     const stockSeguridad = Number(s.materiales?.stock_seguridad ?? 0);
@@ -786,15 +823,19 @@ export async function getMaterialesBajoReorden(empresaId) {
   });
 }
 
-export async function getStockEnTransito(empresaId) {
+export async function getStockEnTransito(empresaId, filtroSociedades = null) {
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
-  const { data } = await supabase.from('ordenes_compra')
-    .select('id, codigo, proveedor_id, items, moneda, fecha_entrega_esperada')
+  let q = supabase.from('ordenes_compra')
+    .select('id, sociedad_id, codigo, proveedor_id, items, moneda, fecha_entrega_esperada')
     .eq('empresa_id', empresaId)
     .in('estado', ['emitida', 'aprobada', 'en_proceso']);
+  q = aplicarFiltroSociedades(q, filtroSociedades);
+  const { data } = await q;
   return (data || []).flatMap(oc =>
     (oc.items || []).map(item => ({
       oc_id: oc.id,
+      sociedad_id: oc.sociedad_id || null,
       oc_codigo: oc.codigo,
       descripcion: item.descripcion,
       cantidad_pedida: item.cantidad,
@@ -915,16 +956,18 @@ export async function registrarEntradaOcPendienteFactura(empresaId, { orden_comp
   return entradas;
 }
 
-export async function listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId = null) {
+export async function listarEntradasOcPendientesValorizacion(empresaId, ordenCompraId = null, filtroSociedades = null) {
   if (!empresaId) return [];
+  if (normalizarFiltroSociedades(filtroSociedades).sinResultados) return [];
   const supabase = await getSupabaseClient();
   let q = supabase.from('kardex')
-    .select('id, empresa_id, material_id, almacen_id, tipo, motivo, cantidad, costo_unitario, costo_total, moneda, referencia_tipo, referencia_id, orden_compra_id, orden_compra_item_idx, valorizacion_estado, precio_unitario_provisional, precio_unitario_real, recepcion_id, anulado, created_at')
+    .select('id, empresa_id, sociedad_id, material_id, almacen_id, tipo, motivo, cantidad, costo_unitario, costo_total, moneda, referencia_tipo, referencia_id, orden_compra_id, orden_compra_item_idx, valorizacion_estado, precio_unitario_provisional, precio_unitario_real, recepcion_id, anulado, created_at')
     .eq('empresa_id', empresaId)
     .eq('anulado', false)
     .eq('valorizacion_estado', 'pendiente_factura')
     .order('created_at', { ascending: false });
   if (ordenCompraId) q = q.eq('orden_compra_id', ordenCompraId);
+  q = aplicarFiltroSociedades(q, filtroSociedades);
   const { data, error } = await q;
   if (error) {
     if (error.message?.includes('column') || error.code === 'PGRST204') return [];

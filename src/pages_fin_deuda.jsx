@@ -3,6 +3,7 @@ import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { formatCurrencyTotals, formatMoney, sumByCurrency } from './lib/currency.js';
 import { SociedadFormField } from './components/SociedadFormField.jsx';
+import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import {
   buildEgresoTesoreria,
   buildDebtSummary,
@@ -94,7 +95,9 @@ function PagoModal({ data, onClose, onConfirm, isSubmitting, error }) {
 }
 
 export function FinanciamientoDeuda() {
-  const { financiamientos, setFinanciamientos, setComprasGastos, setMovimientosTesoreria, empresa, activeParams, navigate, addNotificacion } = useApp();
+  const { financiamientos, setFinanciamientos, setComprasGastos, setMovimientosTesoreria, empresa, activeParams, navigate, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedad = resolverFiltroSociedadesVista({ multisociedadHabilitado: empresa?.multisociedad_habilitado, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles });
+  const mensajeSeleccionSociedad = 'Selecciona una sociedad concreta en el selector superior para crear un financiamiento.';
   const [tab, setTab] = useState('todos');
   const [detalleTab, setDetalleTab] = useState('resumen');
   const [nuevoOpen, setNuevoOpen] = useState(false);
@@ -120,6 +123,7 @@ export function FinanciamientoDeuda() {
 
   const guardarFinanciamiento = async e => {
     e.preventDefault();
+    if (!modoVistaSociedad.permiteEscritura) { setErrorNuevoFinanciamiento(mensajeSeleccionSociedad); return; }
     const formEl = e.target;
     if (!formEl.checkValidity()) {
       formEl.reportValidity();
@@ -244,7 +248,8 @@ export function FinanciamientoDeuda() {
 
   return (
     <>
-      <div className="page-header"><div><h1 className="page-title">Financiamiento y Deuda</h1><div className="page-sub">Prestamos recibidos por la empresa, lineas de credito y obligaciones financieras</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>setNuevoOpen(true)}>{I.plus} Nuevo financiamiento</button></div>
+      <div className="page-header"><div><h1 className="page-title">Financiamiento y Deuda</h1><div className="page-sub">Prestamos recibidos por la empresa, lineas de credito y obligaciones financieras</div></div><button className="btn btn-primary" data-local-form="true" disabled={!modoVistaSociedad.permiteEscritura} title={!modoVistaSociedad.permiteEscritura ? mensajeSeleccionSociedad : 'Nuevo financiamiento'} onClick={()=>{ if (modoVistaSociedad.permiteEscritura) setNuevoOpen(true); }}>{I.plus} Nuevo financiamiento</button></div>
+      {!modoVistaSociedad.permiteEscritura && <div className="alert alert-warning" style={{marginBottom:16}}>{mensajeSeleccionSociedad}</div>}
       <div style={{ background:'rgba(26,43,74,0.08)', borderLeft:'3px solid var(--orange)', borderRadius:'6px', padding:'10px 16px', marginBottom:'20px', fontSize:'13px', color:'var(--slate)' }}>Los prestamos registrados aqui son <strong>obligaciones de la empresa</strong>. Los importes se muestran por moneda; no se mezclan PEN y USD sin tipo de cambio.</div>
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(5,1fr)'}}><div className="kpi-card"><div className="kpi-label">Deuda total vigente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Cuotas este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(cuotasMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Intereses este mes</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(interesesMesPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Capital pendiente</div><div className="kpi-value" style={{fontSize:20}}>{moneyByCurrency(deudaTotalPorMoneda)}</div></div><div className="kpi-card"><div className="kpi-label">Prestamos activos</div><div className="kpi-value" style={{fontSize:22}}>{activos.length}</div></div></div>
       <div className="tabs"><div className={'tab '+(tab==='todos'?'active':'')} onClick={()=>setTab('todos')}>Todos los prestamos</div><div className={'tab '+(tab==='vigentes'?'active':'')} onClick={()=>setTab('vigentes')}>Vigentes</div><div className={'tab '+(tab==='cancelados'?'active':'')} onClick={()=>setTab('cancelados')}>Cancelados</div><div className={'tab '+(tab==='reporte'?'active':'')} onClick={()=>setTab('reporte')}>Reporte de deuda</div></div>
