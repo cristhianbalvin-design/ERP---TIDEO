@@ -1623,7 +1623,7 @@ function CecoCebePanel({ onClose }) {
     && !modoVistaSociedadCentros.permiteEscritura
     && (modoVistaSociedadCentros.sinFiltro || modoVistaSociedadCentros.sociedadesIds.length > 0)
   );
-  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear o importar CEBEs.';
+  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear CEBEs manualmente.';
   const sociedadesIdsVistaCentrosKey = modoVistaSociedadCentros.sociedadesIds.join('|');
   const centrosCostoVista = useMemo(() => {
     if (modoVistaSociedadCentros.sinFiltro) return centrosCosto || [];
@@ -1980,7 +1980,7 @@ function CecoCebePanel({ onClose }) {
           {tab === 'cebe' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
-              <button className="btn btn-secondary" disabled={!modoVistaSociedadCentros.permiteEscritura} title={!modoVistaSociedadCentros.permiteEscritura ? mensajeSeleccionSociedadCebe : 'Importar CEBEs'} onClick={() => { if (!modoVistaSociedadCentros.permiteEscritura) return; setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
+              <button className="btn btn-secondary" title="Importar CEBEs con sociedad informada por fila" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
               <button className="btn btn-secondary" onClick={() => { const data=centrosBeneficioVista.map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
@@ -2175,7 +2175,7 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es opcional.</p>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es obligatoria en tenants con multisociedad y se ignora cuando multisociedad no está habilitada.</p>
                     <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CEBEs'); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}
@@ -2203,7 +2203,7 @@ function CecoCebePanel({ onClose }) {
                 {cebeImportStep === 3 && (
                   <div>
                     <p style={{ marginBottom:16, fontSize:13 }}>Se insertarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs nuevos</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} rechazados no se sobrescribirán ni se enviarán a la base.</p>
-                    <button className="btn btn-primary" onClick={async()=>{ if (!modoVistaSociedadCentros.permiteEscritura) { setCebeError(mensajeSeleccionSociedadCebe); setCebeModalImport(false); return; } const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
+                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
                   </div>
                 )}
               </div>

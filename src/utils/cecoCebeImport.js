@@ -295,10 +295,14 @@ export const validarFilasImportacionCebe = (rows, catalogos = {}) => {
 
     const sociedadReferencia = row?.sociedad ?? row?.sociedad_id;
     const sociedadResult = resolverSociedad(catalogos.sociedades, sociedadReferencia);
-    if (catalogos.multisociedadHabilitado && String(sociedadReferencia ?? '').trim() && !sociedadResult.sociedad) {
-      errores.push(sociedadResult.ambigua
-        ? `Sociedad ambigua: "${String(sociedadReferencia).trim()}" coincide con más de una sociedad activa.`
-        : `Sociedad inexistente o inactiva: "${String(sociedadReferencia).trim()}".`);
+    if (catalogos.multisociedadHabilitado) {
+      if (!String(sociedadReferencia ?? '').trim()) {
+        errores.push('Sociedad obligatoria: se requiere para importar un CEBE en un tenant con multisociedad.');
+      } else if (!sociedadResult.sociedad) {
+        errores.push(sociedadResult.ambigua
+          ? `Sociedad ambigua: "${String(sociedadReferencia).trim()}" coincide con más de una sociedad activa.`
+          : `Sociedad inexistente o inactiva: "${String(sociedadReferencia).trim()}".`);
+      }
     }
 
     const cargoRaw = String(row?.cargo_financiero_dbs ?? '').trim();
