@@ -27,6 +27,13 @@ const normalizeCandidato = (c = {}) => ({
 
 const normalizeCandidatura = (c = {}) => ({
   ...c,
+  candidato: c.candidato ? {
+    ...c.candidato,
+    nombre: c.postulante_nombre || c.candidato.nombre,
+    telefono: c.postulante_telefono || c.candidato.telefono,
+    email: c.postulante_email || c.candidato.email,
+    cv_url: c.cv_url || c.candidato.cv_url,
+  } : c.candidato,
   etapa: c.etapa || 'postulado',
   fuente: c.fuente || 'interno',
   notas_evaluacion: c.notas_evaluacion || c.notas || '',
@@ -93,7 +100,31 @@ export const reclutamientoService = {
       .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(normalizeCandidatura);
+
+    const rows = data || [];
+    const pathsByBucket = new Map();
+    for (const row of rows) {
+      if (!row.cv_bucket || !row.cv_path) continue;
+      const paths = pathsByBucket.get(row.cv_bucket) || new Set();
+      paths.add(row.cv_path);
+      pathsByBucket.set(row.cv_bucket, paths);
+    }
+
+    const signedUrls = new Map();
+    await Promise.all([...pathsByBucket.entries()].map(async ([bucket, pathSet]) => {
+      const paths = [...pathSet];
+      const { data: signed } = await supabase.storage.from(bucket).createSignedUrls(paths, 600);
+      for (const item of signed || []) {
+        if (item?.path && item?.signedUrl) signedUrls.set(`${bucket}|${item.path}`, item.signedUrl);
+      }
+    }));
+
+    return rows.map(row => normalizeCandidatura({
+      ...row,
+      cv_url: row.cv_bucket && row.cv_path
+        ? signedUrls.get(`${row.cv_bucket}|${row.cv_path}`) || null
+        : row.cv_url,
+    }));
   },
 
   async crearCandidatoYCandidatura(empresaId, payload) {
@@ -179,43 +210,48 @@ export const reclutamientoService = {
   },
 
   async getPublicVacante(token) {
+    if (!String(token || '').trim()) return null;
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('rrhh_vacantes')
-      .select('id, empresa_id, cargo, area, sede, descripcion, posiciones, posiciones_cubiertas, estado, public_token')
-      .eq('public_token', token)
+      .rpc('obtener_vacante_publica', { p_public_token: String(token).trim() })
       .maybeSingle();
     if (error) throw error;
     return data ? normalizeVacante(data) : null;
   },
 
-  async crearPostulacionPublica(vacante, payload) {
-    if (!vacante?.id || vacante.estado !== 'abierta') throw new Error('La vacante ya no recibe postulaciones.');
+  async crearPostulacionPublica(publicToken, payload) {
+    const token = String(publicToken || '').trim();
+    if (!token) throw new Error('La vacante ya no recibe postulaciones.');
+    if (!payload.file) throw new Error('Adjunta tu CV.');
     if (payload.file && payload.file.size > 5 * 1024 * 1024) throw new Error('El CV no debe superar 5 MB.');
     if (payload.file && !['application/pdf', 'image/jpeg', 'image/png'].includes(payload.file.type)) throw new Error('Solo se aceptan PDF o imagen.');
     const supabase = await getSupabaseClient();
-    let cvPath = null;
-    let cvUrl = null;
-    if (payload.file) {
-      cvPath = `${vacante.empresa_id}/reclutamiento/${vacante.id}/${Date.now()}_${payload.file.name.replace(/[^\w.-]/g, '_')}`;
-      const { error: uploadError } = await supabase.storage.from('documentos-privados').upload(cvPath, payload.file, { contentType: payload.file.type, upsert: false });
-      if (uploadError) throw new Error(uploadError.message || 'Error subiendo el archivo CV.');
-      const { data: signed } = await supabase.storage.from('documentos-privados').createSignedUrl(cvPath, 600);
-      cvUrl = signed?.signedUrl || null;
+
+    const { data: uploadGrant, error: functionError } = await supabase.functions.invoke('crear-upload-cv-publico', {
+      body: { public_token: token },
+    });
+    if (functionError || !uploadGrant?.ticket_id || !uploadGrant?.path || !uploadGrant?.upload_token) {
+      throw new Error(uploadGrant?.error || functionError?.message || 'No se pudo preparar la subida del CV.');
     }
-    
+
+    const bucket = uploadGrant.bucket || 'reclutamiento-cv';
+    const { error: uploadError } = await supabase.storage.from(bucket).uploadToSignedUrl(
+      uploadGrant.path,
+      uploadGrant.upload_token,
+      payload.file,
+      { contentType: payload.file.type },
+    );
+    if (uploadError) throw new Error(uploadError.message || 'Error subiendo el archivo CV.');
+
     const { data, error } = await supabase.rpc('registrar_postulacion_publica', {
-      p_empresa_id: vacante.empresa_id,
-      p_vacante_id: vacante.id,
+      p_public_token: token,
+      p_upload_ticket_id: uploadGrant.ticket_id,
       p_nombre: payload.nombre,
       p_dni: payload.dni,
       p_telefono: payload.telefono || null,
       p_email: payload.email || null,
-      p_cv_url: cvUrl,
-      p_cv_path: cvPath,
-      p_fuente: 'portal_publico'
     });
-    
+
     if (error) throw new Error(error.message || 'No se pudo registrar la postulacion.');
     return data;
   },
