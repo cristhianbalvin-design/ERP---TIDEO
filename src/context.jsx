@@ -41,7 +41,8 @@ import { geofencingService } from './services/geofencingService.js';
 import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
-import { resolverSociedadContratoVigente } from './services/nominaSociedadService.js';
+import { resolverSociedadContratoVigente, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
   prepararDesvinculacionMovimientoCuenta,
@@ -9747,12 +9748,33 @@ export function AppProvider({ children }) {
   const crearConstanciaPortalCtx = async (payload) => {
     const emitidaDirecta = Boolean(empresaConfig?.portal_constancia_emision_directa);
     const emitidaEn = emitidaDirecta ? new Date().toISOString() : null;
-    const html = emitidaDirecta ? plantillaConstanciaHtml({ empresa, ficha: payload.ficha, proposito: payload.proposito, emitidaEn }) : null;
+    const sociedadId = emitidaDirecta
+      ? resolverSociedadDocumentoLaboral({
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+          documentos: personalDocumentos,
+          tiposDocumento,
+          sociedades: sociedadesDisponibles,
+          personalId: payload.personal_id,
+          fecha: emitidaEn.slice(0, 10),
+        })
+      : null;
+    const sociedad = sociedadId
+      ? sociedadesDisponibles.find(item => item.id === sociedadId) || null
+      : null;
+    const emisor = sociedadId
+      ? resolverIdentidadEmisora({
+          empresaConfig,
+          sociedad,
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+        })
+      : null;
+    const html = emitidaDirecta ? plantillaConstanciaHtml({ empresa, emisor, ficha: payload.ficha, proposito: payload.proposito, emitidaEn }) : null;
     const documentoHash = html ? await sha256Text(html) : null;
     const base = {
       empresa_id: empresa?.id || payload.empresa_id || 'emp_001',
       personal_id: payload.personal_id,
       personal_tipo: payload.personal_tipo,
+      sociedad_id: sociedadId,
       proposito: payload.proposito || '',
       estado: emitidaDirecta ? 'emitida' : 'solicitada',
       plantilla_html: html,
@@ -9775,13 +9797,34 @@ export function AppProvider({ children }) {
     const ficha = [...personalOperativo, ...personalAdmin].find(p => p.id === row.personal_id) || {};
     const emitida = decision === 'emitida' || decision === 'aprobada';
     const emitidaEn = emitida ? new Date().toISOString() : null;
-    const html = emitida ? plantillaConstanciaHtml({ empresa, ficha, proposito: row.proposito, emitidaEn }) : row.plantilla_html;
+    const sociedadId = emitida
+      ? resolverSociedadDocumentoLaboral({
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+          documentos: personalDocumentos,
+          tiposDocumento,
+          sociedades: sociedadesDisponibles,
+          personalId: row.personal_id,
+          fecha: emitidaEn.slice(0, 10),
+        })
+      : (row.sociedad_id || null);
+    const sociedad = sociedadId
+      ? sociedadesDisponibles.find(item => item.id === sociedadId) || null
+      : null;
+    const emisor = sociedadId
+      ? resolverIdentidadEmisora({
+          empresaConfig,
+          sociedad,
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+        })
+      : null;
+    const html = emitida ? plantillaConstanciaHtml({ empresa, emisor, ficha, proposito: row.proposito, emitidaEn }) : row.plantilla_html;
     const patch = {
       estado: emitida ? 'emitida' : 'rechazada',
       comentario_resolucion: comentario || null,
       resuelto_por: authUser?.id || null,
       resuelto_en: new Date().toISOString(),
       emitida_en: emitidaEn,
+      sociedad_id: sociedadId,
       plantilla_html: html,
       documento_hash: emitida ? await sha256Text(html) : row.documento_hash,
     };

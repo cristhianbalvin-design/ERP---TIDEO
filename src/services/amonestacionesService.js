@@ -70,6 +70,7 @@ export async function cargarAmonestaciones(empresaId, personalId = null) {
 export async function registrarAmonestacion(empresaId, datos) {
   const {
     personal_id, personal_tipo, personal_nombre,
+    sociedad_id = null,
     tipo, motivo, descripcion, fecha,
     dias_suspension = null, fecha_inicio_suspension = null, fecha_fin_suspension = null,
     evidencia_url = null,
@@ -90,6 +91,7 @@ export async function registrarAmonestacion(empresaId, datos) {
     const nueva = {
       id: genId(), empresa_id: empresaId,
       personal_id, personal_tipo, personal_nombre,
+      sociedad_id,
       tipo, motivo: motivo.trim(), descripcion: descripcion?.trim() || null, fecha,
       dias_suspension: tipo === 'suspension' ? dias_suspension : null,
       fecha_inicio_suspension: tipo === 'suspension' ? fecha_inicio_suspension : null,
@@ -109,6 +111,7 @@ export async function registrarAmonestacion(empresaId, datos) {
   const row = {
     id: genId(), empresa_id: empresaId,
     personal_id, personal_tipo, personal_nombre,
+    sociedad_id,
     tipo, motivo: motivo.trim(), descripcion: descripcion?.trim() || null, fecha,
     dias_suspension: tipo === 'suspension' ? dias_suspension : null,
     fecha_inicio_suspension: tipo === 'suspension' ? fecha_inicio_suspension : null,

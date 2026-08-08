@@ -16,7 +16,8 @@ import {
   listarSociedadesAdministracion,
   resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
-import { resolverPersonalConContratosVigentes } from './services/nominaSociedadService.js';
+import { resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -11370,9 +11371,18 @@ function RRHHAdmin() {
               setAmonError('');
               setAmonSaving(true);
               try {
+                const sociedadId = resolverSociedadDocumentoLaboral({
+                  multisociedadHabilitado: empresa?.multisociedad_habilitado,
+                  documentos: personalDocumentos,
+                  tiposDocumento,
+                  sociedades: sociedadesDisponibles,
+                  personalId: persona.id,
+                  fecha: amonForm.fecha,
+                });
                 const nueva = await amonestacionesService.registrarAmonestacion(empresa.id, {
                   personal_id: persona.id, personal_tipo: 'administrativo',
                   personal_nombre: persona.nombre,
+                  sociedad_id: sociedadId,
                   tipo: amonForm.tipo, motivo: amonForm.motivo,
                   descripcion: amonForm.descripcion, fecha: amonForm.fecha,
                   dias_suspension: amonForm.tipo === 'suspension' ? Number(amonForm.dias_suspension) : null,
@@ -11411,10 +11421,18 @@ function RRHHAdmin() {
 
             const descargarAmonestacion = async (amonestacion) => {
               try {
+                const sociedad = amonestacion.sociedad_id
+                  ? sociedadesDisponibles.find(item => item.id === amonestacion.sociedad_id) || null
+                  : null;
+                const emisor = resolverIdentidadEmisora({
+                  empresaConfig,
+                  sociedad,
+                  multisociedadHabilitado: empresa?.multisociedad_habilitado,
+                });
                 const { pdf } = await import('@react-pdf/renderer');
                 const { AmonestacionPDF } = await import('./pages_pdf.jsx');
                 const blob = await pdf(
-                  <AmonestacionPDF amonestacion={amonestacion} empresa={empresa} persona={persona} />
+                  <AmonestacionPDF amonestacion={amonestacion} empresa={empresa} persona={persona} emisor={emisor} />
                 ).toBlob();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
