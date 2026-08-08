@@ -884,9 +884,8 @@ function PapCheckBox({ checked }) {
   );
 }
 
-export function PapeletaMovimientoPDF({ solicitud, empresa, historial = [] }) {
-  const cfg = empresa?.configuracion || {};
-
+export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [] }) {
+  const cfg = emisor || {};
   const aprobJefe = historial.find(h => h.estado_hasta === 'aprobada_jefe');
   const confirmRrhh = historial.find(h => h.estado_hasta === 'confirmada_rrhh');
 
@@ -1065,9 +1064,8 @@ const amonStyles = StyleSheet.create({
   badgeSuspension: { color: '#4b5563' },
 });
 
-export function AmonestacionPDF({ amonestacion, empresa, persona }) {
-  const cfg = empresa?.configuracion || {};
-
+export function AmonestacionPDF({ amonestacion, empresa, persona, emisor = {} }) {
+  const cfg = emisor || {};
   const tipoLabel = {
     verbal: 'AMONESTACIÓN VERBAL',
     escrita: 'AMONESTACIÓN ESCRITA',

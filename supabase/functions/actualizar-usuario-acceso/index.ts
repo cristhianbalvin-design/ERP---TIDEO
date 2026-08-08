@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import { normalizeGrantedSocietyScope, type GrantedSocietyScope } from "../_shared/sociedadScope.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -126,6 +127,7 @@ const saveFunctionalAssignments = async (
     jefeUserId: string | null;
     posicionId: string | null;
     extras: unknown;
+    societyScope: GrantedSocietyScope;
   },
 ) => {
   const now = new Date().toISOString();
@@ -136,8 +138,13 @@ const saveFunctionalAssignments = async (
     categoria: String(params.principalRole.categoria || "otro"),
     nivel_jerarquico: String(params.principalRole.nivel_jerarquico || "operativo"),
     jefe_user_id: params.jefeUserId,
-    alcance_tipo: "tenant",
-    alcance_id: null,
+    ...(params.societyScope.provided
+      ? {
+        alcance_tipo: params.societyScope.alcanceTipo,
+        alcance_id: null,
+        sociedades_ids: params.societyScope.sociedadesIds,
+      }
+      : {}),
     principal: true,
     activo: true,
     fecha_fin: null,
@@ -166,6 +173,8 @@ const saveFunctionalAssignments = async (
       p_categoria: baseRow.categoria,
       p_nivel_jerarquico: baseRow.nivel_jerarquico,
       p_posicion_id: params.posicionId,
+      p_alcance_tipo: params.societyScope.provided ? params.societyScope.alcanceTipo : null,
+      p_sociedades_ids: params.societyScope.provided ? params.societyScope.sociedadesIds : null,
     });
     if (posicionRpcError) throw posicionRpcError;
   } else if (existingPrincipal?.id) {
@@ -358,7 +367,7 @@ serve(async (req) => {
 
   const { data: targetEmpresa, error: targetEmpresaError } = await adminClient
     .from("empresas")
-    .select("id, es_plataforma")
+    .select("id, es_plataforma, multisociedad_habilitado")
     .eq("id", empresaId)
     .maybeSingle();
   if (targetEmpresaError) return jsonResponse({ success: false, error: targetEmpresaError.message }, 500);
@@ -389,6 +398,23 @@ serve(async (req) => {
 
   if (!canManage) {
     return jsonResponse({ success: false, error: "No tienes permiso para editar usuarios en este tenant." }, 403);
+  }
+
+  let societyScope: GrantedSocietyScope;
+  try {
+    societyScope = await normalizeGrantedSocietyScope({
+      adminClient,
+      payload,
+      empresaId,
+      callerId: caller.id,
+      callerIsPlatformSuperadmin,
+      multisociedadHabilitado: targetEmpresa.multisociedad_habilitado === true,
+      defaultToAllWhenMissing: false,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo validar el alcance societario.";
+    const status = /fuera de tu alcance|no puedes conceder/i.test(message) ? 403 : 400;
+    return jsonResponse({ success: false, error: message }, status);
   }
 
   const { data: currentMembership, error: currentMembershipError } = await adminClient
@@ -523,6 +549,7 @@ serve(async (req) => {
       jefeUserId,
       posicionId,
       extras: asignacionesPayload,
+      societyScope,
     });
   } catch (error) {
     return jsonResponse({ success: false, error: "[asignaciones] " + (error instanceof Error ? error.message : "Error desconocido") }, 500);

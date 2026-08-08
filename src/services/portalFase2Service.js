@@ -14,15 +14,17 @@ export async function sha256Text(value) {
   return `mock_${Math.abs(hash)}`;
 }
 
-export function plantillaConstanciaHtml({ empresa = {}, ficha = {}, proposito = '', emitidaEn = new Date().toISOString() }) {
+export function plantillaConstanciaHtml({ empresa = {}, emisor = null, ficha = {}, proposito = '', emitidaEn = new Date().toISOString() }) {
   const nombre = ficha.nombre || 'Trabajador';
   const cargo = ficha.cargo || ficha.area || 'Colaborador';
   const ingreso = ficha.fecha_ingreso || 'fecha no registrada';
+  const nombreEmpresa = emisor?.razon_social || empresa.nombre || 'la empresa';
   return `
     <section style="font-family:Arial,sans-serif;max-width:760px;margin:0 auto;padding:42px;color:#111827">
+      ${emisor?.logo_url ? `<img src="${emisor.logo_url}" alt="${nombreEmpresa}" style="display:block;max-width:180px;max-height:72px;object-fit:contain;margin-bottom:24px"/>` : ''}
       <h1 style="text-align:center;font-size:22px;letter-spacing:.08em">CONSTANCIA DE TRABAJO</h1>
       <p style="line-height:1.7;margin-top:32px">
-        Por medio de la presente, <strong>${empresa.nombre || 'la empresa'}</strong> deja constancia de que
+        Por medio de la presente, <strong>${nombreEmpresa}</strong>${emisor?.ruc ? `, identificada con RUC <strong>${emisor.ruc}</strong>` : ''}, deja constancia de que
         <strong>${nombre}</strong>, identificado con documento <strong>${ficha.documento || ficha.dni || '-'}</strong>,
         labora en nuestra organizacion desempeñando el cargo de <strong>${cargo}</strong> desde el
         <strong>${ingreso}</strong>.
@@ -31,9 +33,11 @@ export function plantillaConstanciaHtml({ empresa = {}, ficha = {}, proposito = 
       <p style="line-height:1.7">Se expide para los fines que el interesado estime conveniente.</p>
       <p style="margin-top:42px">Emitido el ${emitidaEn.slice(0, 10)}.</p>
       <div style="margin-top:70px;text-align:center">
+        ${emisor?.firma_url ? `<img src="${emisor.firma_url}" alt="Firma" style="display:block;max-width:160px;max-height:64px;object-fit:contain;margin:0 auto 8px"/>` : ''}
         <div style="border-top:1px solid #111827;width:260px;margin:0 auto 8px"></div>
         <strong>Recursos Humanos</strong><br/>
-        <span>${empresa.nombre || ''}</span>
+        <span>${nombreEmpresa}</span>
+        ${emisor?.direccion ? `<br/><span style="font-size:12px;color:#4b5563">${emisor.direccion}</span>` : ''}
       </div>
     </section>
   `;

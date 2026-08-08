@@ -193,6 +193,37 @@ export function resolverSociedadContratoVigente({
   };
 }
 
+export function resolverSociedadDocumentoLaboral({
+  multisociedadHabilitado = false,
+  documentos = [],
+  tiposDocumento = [],
+  sociedades = [],
+  personalId,
+  fecha,
+} = {}) {
+  if (!multisociedadHabilitado) return null;
+  if (!fecha) {
+    throw new Error('La fecha del documento es obligatoria para resolver la sociedad del contrato vigente.');
+  }
+
+  const resolucion = resolverSociedadContratoVigente({
+    documentos,
+    tiposDocumento,
+    sociedades,
+    personalId,
+    fecha,
+  });
+
+  if (resolucion.conflicto) {
+    throw new Error(`El trabajador tiene contratos vigentes en sociedades distintas: ${resolucion.nombres.join(', ')}. Resuelve manualmente el conflicto contractual antes de emitir el documento.`);
+  }
+  if (!resolucion.sociedadId) {
+    throw new Error(`El trabajador no tiene contrato vigente en ninguna sociedad para la fecha ${fecha}. Regulariza su contrato antes de emitir el documento.`);
+  }
+
+  return resolucion.sociedadId;
+}
+
 export function aplicarContratoATrabajador(persona, contrato) {
   const condiciones = contrato?.condiciones_laborales || {};
   const remuneracion = Number(condiciones.remuneracion_base);

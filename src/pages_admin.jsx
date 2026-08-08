@@ -16,7 +16,8 @@ import {
   listarSociedadesAdministracion,
   resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
-import { resolverPersonalConContratosVigentes } from './services/nominaSociedadService.js';
+import { resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
@@ -356,6 +357,7 @@ function Roles() {
                 {l:'Puede anular documentos emitidos', k:'anular_documentos'},
                 {l:'Acceso a vistas de campo móviles', k:'acceso_campo'},
                 {l:'Ver información financiera (CxC, CxP, tesorería)', k:'ver_finanzas'},
+                {l:'Ver vista consolidada del grupo de sociedades', k:'ver_consolidado_grupo'},
               ].map(x=>(
                 <div key={x.k} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
                   <div style={{fontSize:13}}>{x.l}</div>
@@ -524,7 +526,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
   const [resetError, setResetError] = useState('');
@@ -536,7 +538,8 @@ function Usuarios() {
     setResetting(u);
   };
   const [creando, setCreando] = useState(false);
-  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
+  const alcanceFormInicial = { alcance_tipo: 'grupo', alcance_modo: 'todas', sociedades_ids: [] };
+  const [nuevoForm, setNuevoForm] = useState({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], ...alcanceFormInicial, campo: false, campoModulos: [] });
   const [mostrarPasswordNuevo, setMostrarPasswordNuevo] = useState(false);
   const [guardandoNuevo, setGuardandoNuevo] = useState(false);
   const [nuevoError, setNuevoError] = useState('');
@@ -656,15 +659,89 @@ function Usuarios() {
     }
     return { disabled: false, tooltip: '' };
   };
-  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', posicion_id: '', asignaciones: [], campo: false, campoModulos: [], estado: 'Activo' });
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol: '', jefe_user_id: '', posicion_id: '', asignaciones: [], ...alcanceFormInicial, campo: false, campoModulos: [], estado: 'Activo' });
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  const [sociedadesGestion, setSociedadesGestion] = useState([]);
+  const [sociedadesGestionError, setSociedadesGestionError] = useState('');
+  const [alcanceInicialEdit, setAlcanceInicialEdit] = useState(null);
+  const [confirmacionAlcance, setConfirmacionAlcance] = useState(null);
   const [filtroTenant, setFiltroTenant] = useState('');
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const normalizarEmail = (value) => String(value || '').trim().toLowerCase();
   const nuevoEmailNormalizado = normalizarEmail(nuevoForm.email);
   const nuevoEmailExistente = Boolean(nuevoEmailNormalizado) && usuarios.some(u => normalizarEmail(u.email) === nuevoEmailNormalizado);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!empresa?.multisociedad_habilitado || !empresa?.id) {
+      setSociedadesGestion([]);
+      setSociedadesGestionError('');
+      return () => { mounted = false; };
+    }
+    listarSociedadesAdministracion(empresa.id)
+      .then(rows => {
+        if (!mounted) return;
+        setSociedadesGestion(rows || []);
+        setSociedadesGestionError('');
+      })
+      .catch(error => {
+        if (!mounted) return;
+        setSociedadesGestion([]);
+        setSociedadesGestionError(error?.message || 'No se pudieron cargar las sociedades.');
+      });
+    return () => { mounted = false; };
+  }, [empresa?.id, empresa?.multisociedad_habilitado]);
+
+  const resolverAlcanceEfectivoUsuario = (asignaciones = []) => {
+    const activas = asignaciones.filter(item => item?.activo !== false);
+    const grupos = activas.filter(item => item.alcance_tipo === 'grupo');
+    if (grupos.length) {
+      if (grupos.some(item => item.sociedades_ids == null)) return null;
+      return [...new Set(grupos.flatMap(item => item.sociedades_ids || []).filter(Boolean))];
+    }
+    const sociedades = activas.filter(item => item.alcance_tipo === 'sociedad');
+    if (sociedades.length) {
+      return [...new Set(sociedades.flatMap(item => item.sociedades_ids || []).filter(Boolean))];
+    }
+    return null;
+  };
+
+  const normalizarAlcanceForm = (form) => {
+    if (!empresa?.multisociedad_habilitado) return {};
+    const ids = [...new Set((form.sociedades_ids || []).filter(Boolean))];
+    if (form.alcance_modo === 'especificas' && ids.length === 0) {
+      throw new Error('Selecciona al menos una sociedad para usar un alcance especifico.');
+    }
+    if (form.alcance_modo === 'todas') {
+      return {
+        alcance_tipo: 'grupo',
+        sociedades_ids: Array.isArray(sociedadesIdsAlcance) ? [...sociedadesIdsAlcance] : null,
+      };
+    }
+    return { alcance_tipo: 'grupo', sociedades_ids: ids };
+  };
+
+  const sociedadesParaComparar = () => [...new Set(sociedadesGestion.map(item => item.id).filter(Boolean))];
+  const calcularCambioAlcance = (anterior, siguiente) => {
+    const universo = sociedadesParaComparar();
+    const antes = anterior == null ? universo : anterior;
+    const despues = siguiente == null ? universo : siguiente;
+    const antesSet = new Set(antes);
+    const despuesSet = new Set(despues);
+    return {
+      conserva: universo.filter(id => antesSet.has(id) && despuesSet.has(id)),
+      pierde: universo.filter(id => antesSet.has(id) && !despuesSet.has(id)),
+      gana: universo.filter(id => !antesSet.has(id) && despuesSet.has(id)),
+      reduce: anterior == null ? siguiente != null : anterior.some(id => !despuesSet.has(id)),
+    };
+  };
+
+  const nombreSociedad = (id) => {
+    const sociedad = sociedadesGestion.find(item => item.id === id);
+    return sociedad ? `${sociedad.nombre}${sociedad.activa === false ? ' (inactiva)' : ''}` : `${id} (no disponible)`;
+  };
 
   const handleReset = async () => {
     if (!resetting) return;
@@ -689,10 +766,12 @@ function Usuarios() {
     setNuevoError('');
     setGuardandoNuevo(true);
     try {
-      await crearUsuarioConAcceso(nuevoForm);
+      const alcance = normalizarAlcanceForm(nuevoForm);
+      const { alcance_tipo: _alcanceTipo, alcance_modo: _alcanceModo, sociedades_ids: _sociedadesIds, ...datosUsuario } = nuevoForm;
+      await crearUsuarioConAcceso({ ...datosUsuario, ...alcance });
       setCreando(false);
       setMostrarPasswordNuevo(false);
-      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], campo: false, campoModulos: [] });
+      setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], ...alcanceFormInicial, campo: false, campoModulos: [] });
     } catch (error) {
       const message = error?.message || 'No se pudo crear el usuario.';
       if (normalizarEmail(message).includes('contrasena temporal es obligatoria')) {
@@ -706,8 +785,11 @@ function Usuarios() {
   };
 
   const abrirEditarUsuario = (usuario) => {
+    const alcanceEfectivo = resolverAlcanceEfectivoUsuario(usuario.asignaciones || []);
     setEditError('');
+    setConfirmacionAlcance(null);
     setEditando(usuario);
+    setAlcanceInicialEdit(alcanceEfectivo == null ? null : [...alcanceEfectivo]);
     setFichaUsuario({ loading: true, error: '', ...estadoFichaDesdeListas(usuario.email) });
     setEditForm({
       nombre: usuario.nombre || '',
@@ -715,6 +797,9 @@ function Usuarios() {
       rol: usuario.rol || '',
       jefe_user_id: usuario.jefe_user_id || '',
       posicion_id: getPrimaryPosicion(usuario)?.posicion_id || '',
+      alcance_tipo: 'grupo',
+      alcance_modo: alcanceEfectivo == null ? 'todas' : 'especificas',
+      sociedades_ids: alcanceEfectivo == null ? [] : alcanceEfectivo,
       asignaciones: (usuario.asignaciones || [])
         .filter(a => !a.principal)
         .map(a => ({
@@ -730,8 +815,7 @@ function Usuarios() {
     consultarFichaUsuario({ email: usuario.email || '', empresaId: usuario.empresa_id || empresa?.id, userId: usuario.id });
   };
 
-  const handleEditarUsuario = async (e) => {
-    e.preventDefault();
+  const guardarEdicionUsuario = async (alcance) => {
     if (!editando) return;
     setEditError('');
     setGuardandoEdit(true);
@@ -739,17 +823,41 @@ function Usuarios() {
       const campoModulos = editForm.campo
         ? editForm.campoModulos.filter(mod => !getRestriccionModulo(mod).disabled)
         : [];
+      const { alcance_tipo: _alcanceTipo, alcance_modo: _alcanceModo, sociedades_ids: _sociedadesIds, ...datosUsuario } = editForm;
       await actualizarUsuarioAcceso(editando.id, {
-        ...editForm,
+        ...datosUsuario,
+        ...alcance,
         empresa_id: editando.empresa_id,
         campoModulos,
       });
       setEditando(null);
+      setConfirmacionAlcance(null);
     } catch (error) {
       setEditError(error?.message || 'No se pudo actualizar el usuario.');
     } finally {
       setGuardandoEdit(false);
     }
+  };
+
+  const handleEditarUsuario = async (e) => {
+    e.preventDefault();
+    if (!editando) return;
+    setEditError('');
+    let alcance;
+    try {
+      alcance = normalizarAlcanceForm(editForm);
+    } catch (error) {
+      setEditError(error?.message || 'El alcance societario no es valido.');
+      return;
+    }
+    const cambio = empresa?.multisociedad_habilitado
+      ? calcularCambioAlcance(alcanceInicialEdit, alcance.sociedades_ids)
+      : { reduce: false, conserva: [], pierde: [], gana: [] };
+    if (cambio.reduce) {
+      setConfirmacionAlcance({ alcance, ...cambio });
+      return;
+    }
+    await guardarEdicionUsuario(alcance);
   };
 
   useEffect(() => {
@@ -839,6 +947,86 @@ function Usuarios() {
       </div>
     </details>
   );
+
+  const renderAlcanceSocietario = ({ form, setForm, esEdicion = false }) => {
+    if (!empresa?.multisociedad_habilitado) return null;
+    const conocidas = new Set(sociedadesGestion.map(item => item.id));
+    const faltantes = (form.sociedades_ids || [])
+      .filter(id => !conocidas.has(id))
+      .map(id => ({ id, nombre: id, activa: false, noDisponible: true }));
+    const opciones = [...sociedadesGestion, ...faltantes];
+    const siguientePreview = form.alcance_modo === 'todas'
+      ? (Array.isArray(sociedadesIdsAlcance) ? sociedadesIdsAlcance : null)
+      : (form.sociedades_ids || []);
+    const cambioPreview = esEdicion
+      ? calcularCambioAlcance(alcanceInicialEdit, siguientePreview)
+      : null;
+    return (
+      <div className="input-group" data-alcance-societario="true">
+        <label>Acceso a sociedades</label>
+        <div className="col" style={{gap:8}}>
+          <label className="row" style={{gap:8, fontSize:13, padding:'9px 10px', border:'1px solid var(--border)', borderRadius:8}}>
+            <input
+              type="radio"
+              name={`alcance-societario-${editando ? 'edit' : 'new'}`}
+              checked={form.alcance_modo === 'todas'}
+              onChange={() => setForm(prev => ({ ...prev, alcance_tipo:'grupo', alcance_modo:'todas' }))}
+            />
+            <span><strong>Todas las sociedades</strong><br/><span className="text-muted" style={{fontSize:11}}>Acceso al grupo completo que el administrador puede conceder.</span></span>
+          </label>
+          <label className="row" style={{gap:8, fontSize:13, padding:'9px 10px', border:'1px solid var(--border)', borderRadius:8}}>
+            <input
+              type="radio"
+              name={`alcance-societario-${editando ? 'edit' : 'new'}`}
+              checked={form.alcance_modo === 'especificas'}
+              onChange={() => setForm(prev => ({ ...prev, alcance_tipo:'grupo', alcance_modo:'especificas' }))}
+            />
+            <span><strong>Sociedades especificas</strong><br/><span className="text-muted" style={{fontSize:11}}>Solo las sociedades seleccionadas.</span></span>
+          </label>
+          {form.alcance_modo === 'especificas' && (
+            <div className="col" style={{gap:6, padding:'4px 2px'}}>
+              {sociedadesGestionError && <div className="alert alert-danger" style={{margin:0}}>{sociedadesGestionError}</div>}
+              {!sociedadesGestionError && opciones.length === 0 && <div className="text-muted" style={{fontSize:12}}>No hay sociedades disponibles para asignar.</div>}
+              {opciones.map(sociedad => {
+                const checked = (form.sociedades_ids || []).includes(sociedad.id);
+                return (
+                  <label key={sociedad.id} className="row" style={{gap:8, fontSize:13, padding:'7px 9px', border:'1px solid var(--border)', borderRadius:7}}>
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={checked}
+                      onChange={e => setForm(prev => ({
+                        ...prev,
+                        sociedades_ids: e.target.checked
+                          ? [...new Set([...(prev.sociedades_ids || []), sociedad.id])]
+                          : (prev.sociedades_ids || []).filter(id => id !== sociedad.id),
+                      }))}
+                    />
+                    <span style={{flex:1}}>{sociedad.codigo ? `${sociedad.codigo} - ` : ''}{sociedad.nombre}</span>
+                    {sociedad.activa === false && <span className="badge badge-gray">Inactiva</span>}
+                    {sociedad.noDisponible && <span className="badge badge-orange">No disponible</span>}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <div className="alert alert-warning" style={{margin:0, fontSize:12}}>
+            Al reducir este acceso, el usuario deja de ver y operar inmediatamente los registros de las sociedades excluidas en todas las pantallas protegidas.
+          </div>
+          {cambioPreview && (
+            <div style={{border:'1px solid var(--border)', borderRadius:8, padding:10, fontSize:12}}>
+              <strong>Resumen del cambio</strong>
+              <div className="col" style={{gap:5, marginTop:7}}>
+                <div><span className="text-muted">Conserva:</span> {cambioPreview.conserva.length ? cambioPreview.conserva.map(nombreSociedad).join(', ') : 'ninguna'}</div>
+                <div><span className="text-muted">Pierde:</span> {cambioPreview.pierde.length ? cambioPreview.pierde.map(nombreSociedad).join(', ') : 'ninguna'}</div>
+                <div><span className="text-muted">Gana:</span> {cambioPreview.gana.length ? cambioPreview.gana.map(nombreSociedad).join(', ') : 'ninguna'}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (!rolesOpciones.length) return;
@@ -1043,6 +1231,7 @@ function Usuarios() {
                 onCrearPosicion={crearPosicion}
                 currentUserId={editando?.id}
               />
+              {renderAlcanceSocietario({ form: editForm, setForm: setEditForm, esEdicion: true })}
               {renderAsignacionesAvanzadas({
                 items: editForm.asignaciones,
                 setItems: next => setEditForm(p => ({ ...p, asignaciones: next })),
@@ -1140,6 +1329,49 @@ function Usuarios() {
         </div>
       )}
 
+      {editando && confirmacionAlcance && (
+        <div className="modal-backdrop" style={{zIndex:1200}}>
+          <div className="modal" style={{maxWidth:560}}>
+            <div className="modal-head">
+              <h2>Confirmar reduccion de acceso</h2>
+              <button className="icon-btn" onClick={() => setConfirmacionAlcance(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{gap:14}}>
+              <div className="alert alert-warning" style={{margin:0}}>
+                Esta modificacion restringira inmediatamente el acceso de <strong>{editando.nombre}</strong> en las politicas societarias del sistema.
+              </div>
+              {editando.id === authUser?.id && (
+                <div className="alert alert-danger" style={{margin:0}}>
+                  Estas modificando tu propio alcance. Al confirmar, puedes perder acceso inmediato a informacion y operaciones que administras actualmente.
+                </div>
+              )}
+              <div className="grid-3" style={{gap:10}}>
+                {[
+                  ['Conserva', confirmacionAlcance.conserva, 'badge-green'],
+                  ['Pierde', confirmacionAlcance.pierde, 'badge-red'],
+                  ['Gana', confirmacionAlcance.gana, 'badge-cyan'],
+                ].map(([titulo, ids, badgeClass]) => (
+                  <div key={titulo} style={{border:'1px solid var(--border)', borderRadius:8, padding:10}}>
+                    <div style={{fontWeight:700, fontSize:12, marginBottom:7}}>{titulo}</div>
+                    <div className="col" style={{gap:5}}>
+                      {ids.length === 0
+                        ? <span className="text-muted" style={{fontSize:11}}>Ninguna</span>
+                        : ids.map(id => <span key={id} className={`badge ${badgeClass}`} style={{whiteSpace:'normal'}}>{nombreSociedad(id)}</span>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-foot">
+                <button type="button" className="btn btn-secondary" onClick={() => setConfirmacionAlcance(null)} disabled={guardandoEdit}>Volver</button>
+                <button type="button" className="btn btn-danger" onClick={() => guardarEdicionUsuario(confirmacionAlcance.alcance)} disabled={guardandoEdit}>
+                  {guardandoEdit ? 'Guardando...' : 'Confirmar y restringir acceso'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {creando && (
         <div className="modal-backdrop">
           <div className="modal" style={{maxWidth:480}}>
@@ -1217,6 +1449,7 @@ function Usuarios() {
                 usuarios={usuarios}
                 onCrearPosicion={crearPosicion}
               />
+              {renderAlcanceSocietario({ form: nuevoForm, setForm: setNuevoForm })}
               {renderAsignacionesAvanzadas({
                 items: nuevoForm.asignaciones,
                 setItems: next => setNuevoForm(p => ({ ...p, asignaciones: next })),
@@ -1279,7 +1512,7 @@ function Tenants() {
   const [formNuevo, setFormNuevo] = useState({
     nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
     admin_email: '', admin_nombre: '',
-    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '', direccion_fiscal: '' },
   });
 
   const abrirEditar = (t) => {
@@ -1322,7 +1555,7 @@ function Tenants() {
       setFormNuevo({
         nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
         admin_email: '', admin_nombre: '',
-        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '', direccion_fiscal: '' },
       });
     } catch (e) {
       addNotificacion(`Error al crear tenant: ${e.message}`);
@@ -1491,6 +1724,10 @@ function Tenants() {
                   <label>Código de sociedad</label>
                   <input className="input" value={formNuevo.sociedad.codigo} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, codigo: generarCodigoSociedadBase(e.target.value) } }))} placeholder="Se genera desde la razón social"/>
                 </div>
+                <div className="input-group">
+                  <label>Dirección fiscal</label>
+                  <input className="input" value={formNuevo.sociedad.direccion_fiscal} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, direccion_fiscal: e.target.value } }))} placeholder="Si se omite, se hereda de la configuración del tenant"/>
+                </div>
               </div>
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
@@ -1623,7 +1860,7 @@ function CecoCebePanel({ onClose }) {
     && !modoVistaSociedadCentros.permiteEscritura
     && (modoVistaSociedadCentros.sinFiltro || modoVistaSociedadCentros.sociedadesIds.length > 0)
   );
-  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear o importar CEBEs.';
+  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear CEBEs manualmente.';
   const sociedadesIdsVistaCentrosKey = modoVistaSociedadCentros.sociedadesIds.join('|');
   const centrosCostoVista = useMemo(() => {
     if (modoVistaSociedadCentros.sinFiltro) return centrosCosto || [];
@@ -1980,7 +2217,7 @@ function CecoCebePanel({ onClose }) {
           {tab === 'cebe' && (<>
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cebes.xlsx`} download="plantilla_cebes.xlsx">{I.download} Descargar plantilla</a>
-              <button className="btn btn-secondary" disabled={!modoVistaSociedadCentros.permiteEscritura} title={!modoVistaSociedadCentros.permiteEscritura ? mensajeSeleccionSociedadCebe : 'Importar CEBEs'} onClick={() => { if (!modoVistaSociedadCentros.permiteEscritura) return; setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
+              <button className="btn btn-secondary" title="Importar CEBEs con sociedad informada por fila" onClick={() => { setCebeModalImport(true); setCebeImportRows([]); setCebeImportStep(1); }}>{I.download} Importar Excel</button>
               <button className="btn btn-secondary" onClick={() => { const data=centrosBeneficioVista.map(c=>({...c,cliente_asociado:(cuentas||[]).find(x=>x.id===c.cuenta_id)?.nombre_comercial||'',responsable:c.responsable_nombre||'',sociedad:(sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo||''})); exportXlsx(data, ['codigo','nombre','tipo','cargo_financiero_dbs','modelo_negocio','cliente_asociado','responsable','sociedad','meta_ingresos','fecha_inicio','fecha_fin','descripcion','estado'], 'cebes.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
@@ -2175,7 +2412,7 @@ function CecoCebePanel({ onClose }) {
               <div className="modal-body">
                 {cebeImportStep === 1 && (
                   <div>
-                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es opcional.</p>
+                    <p className="text-muted" style={{ marginBottom:12, fontSize:13 }}>Sube un Excel (.xlsx) con hoja <code>CEBEs</code> y columnas: <code>codigo, nombre, tipo, cargo_financiero_dbs, modelo_negocio, cliente_asociado, responsable, sociedad, estado</code>. <code>sociedad</code> es obligatoria en tenants con multisociedad y se ignora cuando multisociedad no está habilitada.</p>
                     <input type="file" accept=".xlsx,.xls" onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const rows = await parseXlsx(f, 'CEBEs'); setCebeImportRows(validarCebeImport(rows)); setCebeImportStep(2); }}/>
                   </div>
                 )}
@@ -2203,7 +2440,7 @@ function CecoCebePanel({ onClose }) {
                 {cebeImportStep === 3 && (
                   <div>
                     <p style={{ marginBottom:16, fontSize:13 }}>Se insertarán <strong>{cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs nuevos</strong>. Los {cebeImportRows.filter(r=>r._errores.length>0).length} rechazados no se sobrescribirán ni se enviarán a la base.</p>
-                    <button className="btn btn-primary" onClick={async()=>{ if (!modoVistaSociedadCentros.permiteEscritura) { setCebeError(mensajeSeleccionSociedadCebe); setCebeModalImport(false); return; } const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
+                    <button className="btn btn-primary" onClick={async()=>{ const v=cebeImportRows.filter(r=>r._errores.length===0).map(({_errores,_advertencias,_fila,...r})=>({...r,estado:r.estado||'activo'})); const resultado=await importarCentrosBeneficio(v); addNotificacion?.(`${resultado?.insertados?.length || 0} CEBEs importados; ${resultado?.rechazados?.length || 0} rechazados.`); setCebeModalImport(false); }}>Importar {cebeImportRows.filter(r=>r._errores.length===0).length} CEBEs</button>
                   </div>
                 )}
               </div>
@@ -11366,9 +11603,18 @@ function RRHHAdmin() {
               setAmonError('');
               setAmonSaving(true);
               try {
+                const sociedadId = resolverSociedadDocumentoLaboral({
+                  multisociedadHabilitado: empresa?.multisociedad_habilitado,
+                  documentos: personalDocumentos,
+                  tiposDocumento,
+                  sociedades: sociedadesDisponibles,
+                  personalId: persona.id,
+                  fecha: amonForm.fecha,
+                });
                 const nueva = await amonestacionesService.registrarAmonestacion(empresa.id, {
                   personal_id: persona.id, personal_tipo: 'administrativo',
                   personal_nombre: persona.nombre,
+                  sociedad_id: sociedadId,
                   tipo: amonForm.tipo, motivo: amonForm.motivo,
                   descripcion: amonForm.descripcion, fecha: amonForm.fecha,
                   dias_suspension: amonForm.tipo === 'suspension' ? Number(amonForm.dias_suspension) : null,
@@ -11407,10 +11653,18 @@ function RRHHAdmin() {
 
             const descargarAmonestacion = async (amonestacion) => {
               try {
+                const sociedad = amonestacion.sociedad_id
+                  ? sociedadesDisponibles.find(item => item.id === amonestacion.sociedad_id) || null
+                  : null;
+                const emisor = resolverIdentidadEmisora({
+                  empresaConfig,
+                  sociedad,
+                  multisociedadHabilitado: empresa?.multisociedad_habilitado,
+                });
                 const { pdf } = await import('@react-pdf/renderer');
                 const { AmonestacionPDF } = await import('./pages_pdf.jsx');
                 const blob = await pdf(
-                  <AmonestacionPDF amonestacion={amonestacion} empresa={empresa} persona={persona} />
+                  <AmonestacionPDF amonestacion={amonestacion} empresa={empresa} persona={persona} emisor={emisor} />
                 ).toBlob();
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');

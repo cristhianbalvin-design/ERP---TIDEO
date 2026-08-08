@@ -9,6 +9,7 @@ import { SmartTextField } from './components/SmartTextField.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
+import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
@@ -285,7 +286,14 @@ function CotizacionesInner() {
           token = crypto.randomUUID();
           actualizarCotizacion(cot.id, { token_aceptacion: token, token_activo: true });
         }
-        const cfg = empresaConfig || {};
+        const sociedadCotizacion = cot.sociedad_id
+          ? sociedadesDisponibles.find(sociedad => sociedad.id === cot.sociedad_id) || null
+          : null;
+        const cfg = resolverIdentidadEmisora({
+          empresaConfig,
+          sociedad: sociedadCotizacion,
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+        });
         const [logoDataUrl, firmaDataUrl, QRCode] = await Promise.all([
           pdfAssetSource({ url: cfg.logo_url, path: cfg.logo_path }),
           pdfAssetSource({ url: cfg.firma_url, path: cfg.firma_path }),

@@ -33,7 +33,8 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
-import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes } from './services/nominaSociedadService.js';
+import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
@@ -18014,16 +18015,13 @@ function Nomina() {
   const sociedadPeriodo = periodo?.sociedad_id
     ? sociedadesDisponibles.find(sociedad => sociedad.id === periodo.sociedad_id) || null
     : null;
-  const emisorBoleta = sociedadPeriodo
-    ? {
-        nombre: sociedadPeriodo.nombre,
-        razon_social: sociedadPeriodo.razon_social || sociedadPeriodo.nombre,
-        ruc: sociedadPeriodo.ruc,
-        direccion_fiscal: sociedadPeriodo.direccion_fiscal,
-        logo_url: sociedadPeriodo.logo_url,
-        firma_url: sociedadPeriodo.firma_url,
-      }
-    : { ...empresaConfig, ...empresa, nombre: empresa?.nombre || empresa?.nombre_comercial };
+  const emisorBoleta = resolverIdentidadEmisora({
+    empresaConfig: sociedadPeriodo
+      ? empresaConfig
+      : { ...empresaConfig, ...empresa, nombre: empresa?.nombre || empresa?.nombre_comercial },
+    sociedad: sociedadPeriodo,
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+  });
 
   const descargarBoletaPdf = async () => {
     if (!boleta) return;
@@ -18619,7 +18617,13 @@ function DatosBancariosSection({ cuentas = [], onChange, readOnly = false }) {
 }
 
 function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId, role, addNotificacion }) {
-  const { empresa } = useApp();
+  const {
+    empresa,
+    empresaConfig = {},
+    personalDocumentos = [],
+    tiposDocumento = [],
+    sociedadesDisponibles = [],
+  } = useApp();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const formBase = { tipo:'verbal', motivo:'', descripcion:'', fecha:new Date().toISOString().split('T')[0], dias_suspension:'', fecha_inicio_suspension:'', fecha_fin_suspension:'', evidencia_url:'', impactar_asistencia:true };
@@ -18645,8 +18649,17 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
     setErr('');
     setSaving(true);
     try {
+      const sociedadId = resolverSociedadDocumentoLaboral({
+        multisociedadHabilitado: empresa?.multisociedad_habilitado,
+        documentos: personalDocumentos,
+        tiposDocumento,
+        sociedades: sociedadesDisponibles,
+        personalId,
+        fecha: form.fecha,
+      });
       const nueva = await amonestacionesService.registrarAmonestacion(empresaId, {
         personal_id: personalId, personal_tipo: personalTipo, personal_nombre: personalNombre,
+        sociedad_id: sociedadId,
         tipo: form.tipo, motivo: form.motivo, descripcion: form.descripcion, fecha: form.fecha,
         dias_suspension: form.tipo === 'suspension' ? Number(form.dias_suspension) : null,
         fecha_inicio_suspension: form.tipo === 'suspension' ? form.fecha_inicio_suspension : null,
@@ -18673,6 +18686,14 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
 
   const descargarAmonestacion = async (amonestacion) => {
     try {
+      const sociedad = amonestacion.sociedad_id
+        ? sociedadesDisponibles.find(item => item.id === amonestacion.sociedad_id) || null
+        : null;
+      const emisor = resolverIdentidadEmisora({
+        empresaConfig,
+        sociedad,
+        multisociedadHabilitado: empresa?.multisociedad_habilitado,
+      });
       const { pdf } = await import('@react-pdf/renderer');
       const { AmonestacionPDF } = await import('./pages_pdf.jsx');
       const blob = await pdf(
@@ -18680,6 +18701,7 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
           amonestacion={amonestacion} 
           empresa={empresa} 
           persona={{ nombre: personalNombre }} 
+          emisor={emisor}
         />
       ).toBlob();
       const url = URL.createObjectURL(blob);
@@ -23092,7 +23114,18 @@ export function ComprasGastos() {
 }
 
 export function SolicitudesRrhh() {
-  const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
+  const {
+    empresa,
+    empresaConfig = {},
+    role,
+    personalOperativo,
+    personalAdmin,
+    authUser,
+    addNotificacion,
+    personalDocumentos = [],
+    tiposDocumento = [],
+    sociedadesDisponibles = [],
+  } = useApp();
   const [tab, setTab] = useState('mis');
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -23251,6 +23284,10 @@ export function SolicitudesRrhh() {
           tipo: sol?.tipo, diasHabiles: sol?.dias_habiles,
           diasLicenciaEmpresa: config.dias_licencia_empresa,
           confirmadoPor: usuario, comentario: accionComentario, usuario,
+          multisociedadHabilitado: empresa?.multisociedad_habilitado,
+          documentos: personalDocumentos,
+          tiposDocumento,
+          sociedades: sociedadesDisponibles,
         });
       } else if (accionTipo === 'rechazar_rrhh') {
         updated = await solicitudesRrhhService.rechazarRrhh(accionSolId, empresa.id, accionComentario, usuario);
@@ -23556,11 +23593,19 @@ export function SolicitudesRrhh() {
 
   const descargarPapeleta = async (sol) => {
     try {
+      const sociedad = sol.sociedad_id
+        ? sociedadesDisponibles.find(item => item.id === sol.sociedad_id) || null
+        : null;
+      const emisor = resolverIdentidadEmisora({
+        empresaConfig,
+        sociedad,
+        multisociedadHabilitado: empresa?.multisociedad_habilitado,
+      });
       const hist = await solicitudesRrhhService.cargarHistorial(sol.id);
       const { pdf } = await import('@react-pdf/renderer');
       const { PapeletaMovimientoPDF } = await import('./pages_pdf.jsx');
       const blob = await pdf(
-        <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} historial={hist} />
+        <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} emisor={emisor} historial={hist} />
       ).toBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

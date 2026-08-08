@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { getDataMode } from '../lib/dataMode.js';
-import { resolverSociedadContratoVigente } from './nominaSociedadService.js';
+import { resolverSociedadDocumentoLaboral } from './nominaSociedadService.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -291,7 +291,7 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
   const isMock = getDataMode() !== 'supabase';
   const supabase = isMock ? null : await getSupabaseClient();
   let solicitud = isMock ? mockSolicitudes.find(s => s.id === solicitudId) : null;
-  let multisociedadHabilitado = false;
+  let multisociedadHabilitado = isMock ? Boolean(opts.multisociedadHabilitado) : false;
   if (!isMock) {
     const [{ data: solicitudDb, error: solicitudError }, { data: empresaDb, error: empresaError }] = await Promise.all([
       supabase.from('solicitudes_rrhh').select('*').eq('id', solicitudId).eq('empresa_id', empresaId).single(),
@@ -308,40 +308,40 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
   const clasifPago = opts.clasificacion_pago || solicitud?.clasificacion_pago || null;
   const impacto = calcularImpactoNomina(tipo, dias, diasLicEmpresa, clasifPago);
 
+  let sociedadId = null;
+  if (multisociedadHabilitado) {
+    let documentos = opts.documentos || [];
+    let tipos = opts.tiposDocumento || [];
+    let sociedades = opts.sociedades || [];
+    if (!isMock) {
+      const [{ data: documentosDb, error: documentosError }, { data: tiposDb, error: tiposError }, { data: sociedadesDb, error: sociedadesError }] = await Promise.all([
+        supabase.from('personal_documentos').select('*').eq('empresa_id', empresaId).eq('personal_id', solicitud.personal_id),
+        supabase.from('tipos_documento_empresa').select('*').eq('empresa_id', empresaId),
+        supabase.from('sociedades').select('id,codigo,nombre,activa').eq('empresa_id', empresaId).eq('activa', true),
+      ]);
+      if (documentosError) throw documentosError;
+      if (tiposError) throw tiposError;
+      if (sociedadesError) throw sociedadesError;
+      documentos = documentosDb || [];
+      tipos = tiposDb || [];
+      sociedades = sociedadesDb || [];
+    }
+    sociedadId = resolverSociedadDocumentoLaboral({
+      multisociedadHabilitado,
+      documentos,
+      tiposDocumento: tipos,
+      sociedades,
+      personalId: solicitud.personal_id,
+      fecha: solicitud.fecha_inicio,
+    });
+  }
+
   // Asignar correlativo PM si aún no tiene uno
   let numero_correlativo = solicitud?.numero_correlativo || null;
   if (!numero_correlativo) {
     if (isMock) {
       numero_correlativo = mockCorrelativoPM(empresaId);
     } else {
-      let sociedadId = null;
-      if (multisociedadHabilitado) {
-        if (!solicitud.fecha_inicio) {
-          throw new Error('La fecha de inicio de la solicitud es obligatoria para derivar la sociedad del contrato vigente.');
-        }
-        const [{ data: documentos, error: documentosError }, { data: tipos, error: tiposError }, { data: sociedades, error: sociedadesError }] = await Promise.all([
-          supabase.from('personal_documentos').select('*').eq('empresa_id', empresaId).eq('personal_id', solicitud.personal_id),
-          supabase.from('tipos_documento_empresa').select('*').eq('empresa_id', empresaId),
-          supabase.from('sociedades').select('id,codigo,nombre,activa').eq('empresa_id', empresaId).eq('activa', true),
-        ]);
-        if (documentosError) throw documentosError;
-        if (tiposError) throw tiposError;
-        if (sociedadesError) throw sociedadesError;
-        const resolucion = resolverSociedadContratoVigente({
-          documentos: documentos || [],
-          tiposDocumento: tipos || [],
-          sociedades: sociedades || [],
-          personalId: solicitud.personal_id,
-          fecha: solicitud.fecha_inicio,
-        });
-        if (resolucion.conflicto) {
-          throw new Error(`El colaborador tiene contratos vigentes en sociedades distintas: ${resolucion.nombres.join(', ')}. Resuelve manualmente la sociedad antes de continuar.`);
-        }
-        if (!resolucion.sociedadId) {
-          throw new Error('El colaborador no tiene un contrato societario vigente para la fecha de inicio de la solicitud. Resuelve el contrato antes de continuar.');
-        }
-        sociedadId = resolucion.sociedadId;
-      }
       numero_correlativo = await siguienteCorrelativoPM(supabase, empresaId, sociedadId);
     }
   }
@@ -352,6 +352,7 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
     confirmado_por: opts.confirmadoPor || null,
     comentario_rrhh: opts.comentario || null,
     numero_correlativo,
+    sociedad_id: sociedadId,
     _usuario: opts.usuario,
   });
 }
