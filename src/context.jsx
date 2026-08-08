@@ -170,6 +170,7 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
   const verFinanzas = esSuperadmin || permisosRows.some(p => p.puede_ver_finanzas);
   const verCostos = esSuperadmin || permisosRows.some(p => p.puede_ver_costos);
   const puedeAprobar = esSuperadmin || permisosRows.some(p => p.puede_aprobar);
+  const verConsolidadoGrupo = esAdmin || permisosRows.some(p => p.permisos_extra?.ver_consolidado_grupo === true);
   return {
     nombre: rol?.nombre || 'Usuario',
     color: esSuperadmin ? 'navy' : esAdmin ? 'purple' : 'cyan',
@@ -188,6 +189,7 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
       ver_costos: verCostos,
       aprobar_descuentos: puedeAprobar,
       ver_agenda_equipo: esAdmin,
+      ver_consolidado_grupo: verConsolidadoGrupo,
       acceso_campo,
       campo_modulos: Array.isArray(campo_modulos) ? campo_modulos : [],
     },
@@ -220,6 +222,11 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
         ver_costos: pRows.some(p => p.puede_ver_costos),
         ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
         ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
+        ver_consolidado_grupo: Boolean(
+          r.es_admin_empresa
+          || r.es_superadmin
+          || pRows.some(p => p.permisos_extra?.ver_consolidado_grupo === true)
+        ),
       },
     };
   }
@@ -1297,11 +1304,14 @@ export function AppProvider({ children }) {
     return () => { mounted = false; };
   }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
 
-  const cargarSociedadesDeEmpresa = async (empresaResuelta) => {
+  const cargarSociedadesDeEmpresa = async (empresaResuelta, permitirConsolidadoOverride = null) => {
     const requestId = ++sociedadLoadRequestRef.current;
     const storageKey = `last_sociedad_id_${empresaResuelta?.id || ''}`;
     let sociedadPreferidaId = null;
     try { sociedadPreferidaId = empresaResuelta?.id ? localStorage.getItem(storageKey) : null; } catch {}
+    const permitirConsolidado = permitirConsolidadoOverride ?? Boolean(
+      role?.permisos?.todo || role?.permisos?.ver_consolidado_grupo
+    );
 
     try {
       const contexto = await cargarContextoSociedades({
@@ -1310,10 +1320,16 @@ export function AppProvider({ children }) {
         sociedadPreferidaId,
       });
       if (requestId !== sociedadLoadRequestRef.current) return;
+      const sociedadInicial = !permitirConsolidado && contexto.sociedadActiva?.id === SOCIEDAD_TODAS_ID
+        ? (contexto.sociedadesDisponibles[0] || null)
+        : contexto.sociedadActiva;
       setPerfilSociedad(contexto.perfilSociedad);
       setSociedadesIdsAlcance(contexto.sociedadesIdsAlcance);
-      setSociedadActiva(contexto.sociedadActiva);
+      setSociedadActiva(sociedadInicial);
       setSociedadesDisponibles(contexto.sociedadesDisponibles);
+      if (!permitirConsolidado && empresaResuelta?.id && sociedadInicial?.id) {
+        try { localStorage.setItem(storageKey, sociedadInicial.id); } catch {}
+      }
     } catch (error) {
       if (requestId !== sociedadLoadRequestRef.current) return;
       console.error('[SOCIEDADES context]', error?.message || error, error);
@@ -1331,6 +1347,8 @@ export function AppProvider({ children }) {
   const seleccionarSociedad = sociedadId => {
     if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return;
     const esVistaConsolidada = sociedadId === SOCIEDAD_TODAS_ID;
+    const puedeConsolidar = Boolean(role?.permisos?.todo || role?.permisos?.ver_consolidado_grupo);
+    if (esVistaConsolidada && !puedeConsolidar) return;
     if (!esVistaConsolidada && !sociedadesDisponibles.some(sociedad => sociedad.id === sociedadId)) return;
     const siguiente = resolverSociedadActiva(sociedadesDisponibles, sociedadId);
     if (!siguiente) return;
@@ -1358,7 +1376,16 @@ export function AppProvider({ children }) {
         campo_modulos: mem.campo_modulos || [],
         permisos_rows: permisosRows || [],
       });
-      await cargarSociedadesDeEmpresa(empresaResuelta);
+      const roleResuelto = buildRoleDePermisos(
+        mem.rol,
+        permisosRows || [],
+        mem.acceso_campo,
+        mem.campo_modulos || []
+      );
+      await cargarSociedadesDeEmpresa(
+        empresaResuelta,
+        Boolean(roleResuelto.permisos?.todo || roleResuelto.permisos?.ver_consolidado_grupo)
+      );
     } catch (_err) {
       setMembresiaActiva(null);
       setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
@@ -1557,6 +1584,16 @@ export function AppProvider({ children }) {
   const role = (isSupabaseConfigured() && membresiaActiva)
     ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
+  const puedeVerConsolidadoGrupo = Boolean(role?.permisos?.todo || role?.permisos?.ver_consolidado_grupo);
+
+  useEffect(() => {
+    if (puedeVerConsolidadoGrupo || sociedadActiva?.id !== SOCIEDAD_TODAS_ID) return;
+    const sociedadConcreta = sociedadesDisponibles[0] || null;
+    setSociedadActiva(sociedadConcreta);
+    if (empresa?.id && sociedadConcreta?.id) {
+      try { localStorage.setItem(`last_sociedad_id_${empresa.id}`, sociedadConcreta.id); } catch {}
+    }
+  }, [puedeVerConsolidadoGrupo, sociedadActiva?.id, sociedadesDisponibles, empresa?.id]);
   const condicionPagoFallbackCxC = empresaConfig?.condicion_pago_defecto || CONDICION_PAGO_DEFECTO_CXC;
   const mensajeFallbackCondicionPagoCxC = condicionPagoFallbackCxC === CONDICION_PAGO_DEFECTO_CXC
     ? 'Cliente sin condición de pago configurada. Se aplicó 30 días por defecto.'
@@ -4250,7 +4287,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, posicion_id = null, asignaciones = [], campo = false, campoModulos = [] }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, posicion_id = null, asignaciones = [], alcance_tipo, sociedades_ids, campo = false, campoModulos = [] }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -4272,6 +4309,7 @@ export function AppProvider({ children }) {
           jefe_user_id: jefe_user_id || null,
           posicion_id: posicion_id || null,
           asignaciones,
+          ...(alcance_tipo ? { alcance_tipo, sociedades_ids: sociedades_ids ?? null } : {}),
           empresa_id: empresa.id,
         },
         }),
@@ -4410,6 +4448,10 @@ export function AppProvider({ children }) {
         jefe_user_id: nextUser.jefe_user_id || null,
         posicion_id: nextUser.posicion_id || null,
         asignaciones: nextUser.asignaciones || [],
+        ...(nextUser.alcance_tipo ? {
+          alcance_tipo: nextUser.alcance_tipo,
+          sociedades_ids: nextUser.sociedades_ids ?? null,
+        } : {}),
         acceso_campo: Boolean(nextUser.campo),
         perfil_campo: nextUser.campoPerfil,
         campo_modulos: campoModulos,
@@ -9380,17 +9422,7 @@ export function AppProvider({ children }) {
         es_admin_empresa: Boolean(source.es_admin_empresa),
         activo: true,
       }).then(() => {
-        const permisos = MOCK.pantallasPermisos.map(p => ({
-          pantalla: p.key,
-          puede_ver: Boolean(source.permisos?.ver === true || source.permisos?.ver?.includes?.(p.key)),
-          puede_crear: Boolean(source.permisos?.crear === true || source.permisos?.crear?.includes?.(p.key)),
-          puede_editar: Boolean(source.permisos?.editar === true || source.permisos?.editar?.includes?.(p.key)),
-          puede_anular: Boolean(source.permisos?.anular === true || source.permisos?.anular?.includes?.(p.key)),
-          puede_aprobar: Boolean(source.permisos?.aprobar === true || source.permisos?.aprobar?.includes?.(p.key)),
-          puede_exportar: Boolean(source.permisos?.exportar === true || source.permisos?.exportar?.includes?.(p.key)),
-          puede_ver_costos: Boolean(source.permisos?.ver_costos),
-          puede_ver_finanzas: Boolean(source.permisos?.ver_finanzas),
-        }));
+        const permisos = buildPermisosPayload(source.permisos || {});
         return rolesService.actualizarPermisos(newId, permisos);
       }).catch(error => {
         addNotificacion(`No se pudo guardar el rol en Supabase: ${error.message}`, 'error');
@@ -9406,18 +9438,34 @@ export function AppProvider({ children }) {
     return current === true || permisos?.todo;
   };
 
-  const buildPermisosPayload = (permisos = {}) => MOCK.pantallasPermisos.map(p => ({
-    pantalla: p.key,
-    puede_ver: permisoPantallaActivo(permisos, 'ver', p.key),
-    puede_crear: permisoPantallaActivo(permisos, 'crear', p.key),
-    puede_editar: permisoPantallaActivo(permisos, 'editar', p.key),
-    puede_anular: permisoPantallaActivo(permisos, 'anular', p.key),
-    puede_aprobar: permisoPantallaActivo(permisos, 'aprobar', p.key),
-    puede_exportar: permisoPantallaActivo(permisos, 'exportar', p.key),
-    puede_ver_costos: Boolean(permisos.ver_costos || permisos.todo),
-    puede_ver_finanzas: Boolean(permisos.ver_finanzas || permisos.todo),
-    permisos_extra: { puede_ver_precios: Boolean(permisos.ver_precios || permisos.todo) },
-  }));
+  const buildPermisosPayload = (permisos = {}) => [
+    ...MOCK.pantallasPermisos.map(p => ({
+      pantalla: p.key,
+      puede_ver: permisoPantallaActivo(permisos, 'ver', p.key),
+      puede_crear: permisoPantallaActivo(permisos, 'crear', p.key),
+      puede_editar: permisoPantallaActivo(permisos, 'editar', p.key),
+      puede_anular: permisoPantallaActivo(permisos, 'anular', p.key),
+      puede_aprobar: permisoPantallaActivo(permisos, 'aprobar', p.key),
+      puede_exportar: permisoPantallaActivo(permisos, 'exportar', p.key),
+      puede_ver_costos: Boolean(permisos.ver_costos || permisos.todo),
+      puede_ver_finanzas: Boolean(permisos.ver_finanzas || permisos.todo),
+      permisos_extra: { puede_ver_precios: Boolean(permisos.ver_precios || permisos.todo) },
+    })),
+    {
+      pantalla: '__especiales__',
+      puede_ver: false,
+      puede_crear: false,
+      puede_editar: false,
+      puede_anular: false,
+      puede_aprobar: false,
+      puede_exportar: false,
+      puede_ver_costos: false,
+      puede_ver_finanzas: false,
+      permisos_extra: {
+        ver_consolidado_grupo: Boolean(permisos.ver_consolidado_grupo || permisos.todo),
+      },
+    },
+  ];
 
   const actualizarPermisosRol = (rolId, pantalla, key, value) => {
     const PER_SCREEN = ['ver', 'crear', 'editar', 'anular', 'aprobar', 'exportar'];
@@ -9448,6 +9496,12 @@ export function AppProvider({ children }) {
     }
     const payload = buildPermisosPayload(rol.permisos);
     await rolesService.actualizarPermisos(rolId, payload);
+    if (membresiaActiva?.rol_id === rolId) {
+      setMembresiaActiva(prev => prev ? {
+        ...prev,
+        permisos_rows: payload.map(row => ({ ...row, rol_id: rolId })),
+      } : prev);
+    }
     await cargarRolesAcceso();
     addNotificacion(`Permisos de "${rol.nombre}" guardados.`);
     return true;
@@ -9490,17 +9544,7 @@ export function AppProvider({ children }) {
           es_admin_empresa: false,
           activo: true,
         });
-        await rolesService.actualizarPermisos(newId, MOCK.pantallasPermisos.map(p => ({
-          pantalla: p.key,
-          puede_ver: false,
-          puede_crear: false,
-          puede_editar: false,
-          puede_anular: false,
-          puede_aprobar: false,
-          puede_exportar: false,
-          puede_ver_costos: false,
-          puede_ver_finanzas: false,
-        })));
+        await rolesService.actualizarPermisos(newId, buildPermisosPayload({ ver: [] }));
         await cargarRolesAcceso();
       } catch (error) {
         setRolesCtx(prev => { const next = { ...prev }; delete next[newId]; return next; });

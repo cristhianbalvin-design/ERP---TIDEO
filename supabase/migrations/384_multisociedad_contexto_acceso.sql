@@ -38,7 +38,7 @@ alter table public.usuarios_asignaciones
   add column if not exists sociedades_ids uuid[] default null;
 
 comment on column public.usuarios_asignaciones.sociedades_ids is
-  'Sociedades permitidas cuando alcance_tipo=sociedad. NULL conserva el comportamiento previo.';
+  'Sociedades permitidas cuando alcance_tipo=grupo o sociedad. En grupo, NULL significa alcance irrestricto; un array limita a esas sociedades.';
 
 -- Nombre confirmado previamente contra produccion:
 -- usuarios_asignaciones_alcance_tipo_check.

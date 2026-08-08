@@ -417,7 +417,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
   );
 }
 
-export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, isMobile }) {
+export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, puedeVerConsolidado, isMobile }) {
   const [open, setOpen] = useState(false);
 
   if (perfilSociedad === PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD) return null;
@@ -469,7 +469,7 @@ export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDis
             <div style={{padding:'14px 12px', fontSize:12, color:'var(--fg-subtle)'}}>No hay sociedades activas configuradas.</div>
           ) : (
             <div style={{maxHeight:260, overflowY:'auto'}}>
-              {sociedadesDisponibles.length >= 2 && (
+              {puedeVerConsolidado && sociedadesDisponibles.length >= 2 && (
                 <div
                   className={'dropdown-item ' + (esVistaConsolidada ? 'active' : '')}
                   onClick={() => { seleccionarSociedad(SOCIEDAD_TODAS_ID); setOpen(false); }}
@@ -529,6 +529,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     perfilSociedad,
     sociedadesDisponibles,
   });
+  const puedeVerConsolidado = Boolean(role?.permisos?.todo || role?.permisos?.ver_consolidado_grupo);
   const unreadCount = notificaciones.filter(n => !n.read).length;
 
   const avatarText = isSupabase && authUser?.email
@@ -655,6 +656,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           sociedadActiva={sociedadActiva}
           sociedadesDisponibles={sociedadesDisponibles}
           seleccionarSociedad={seleccionarSociedad}
+          puedeVerConsolidado={puedeVerConsolidado}
           isMobile={isMobile}
         />
       )}
