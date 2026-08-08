@@ -1279,7 +1279,7 @@ function Tenants() {
   const [formNuevo, setFormNuevo] = useState({
     nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
     admin_email: '', admin_nombre: '',
-    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+    sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '', direccion_fiscal: '' },
   });
 
   const abrirEditar = (t) => {
@@ -1322,7 +1322,7 @@ function Tenants() {
       setFormNuevo({
         nombre_grupo: '', pais: 'PE', moneda_base: 'PEN', estado: 'activa',
         admin_email: '', admin_nombre: '',
-        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '' },
+        sociedad: { razon_social: '', nombre: '', ruc: '', codigo: '', direccion_fiscal: '' },
       });
     } catch (e) {
       addNotificacion(`Error al crear tenant: ${e.message}`);
@@ -1490,6 +1490,10 @@ function Tenants() {
                 <div className="input-group">
                   <label>Código de sociedad</label>
                   <input className="input" value={formNuevo.sociedad.codigo} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, codigo: generarCodigoSociedadBase(e.target.value) } }))} placeholder="Se genera desde la razón social"/>
+                </div>
+                <div className="input-group">
+                  <label>Dirección fiscal</label>
+                  <input className="input" value={formNuevo.sociedad.direccion_fiscal} onChange={e => setFormNuevo(f => ({ ...f, sociedad: { ...f.sociedad, direccion_fiscal: e.target.value } }))} placeholder="Si se omite, se hereda de la configuración del tenant"/>
                 </div>
               </div>
             </div>

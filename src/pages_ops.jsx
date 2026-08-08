@@ -18019,9 +18019,9 @@ function Nomina() {
         nombre: sociedadPeriodo.nombre,
         razon_social: sociedadPeriodo.razon_social || sociedadPeriodo.nombre,
         ruc: sociedadPeriodo.ruc,
-        direccion_fiscal: sociedadPeriodo.direccion_fiscal,
-        logo_url: sociedadPeriodo.logo_url,
-        firma_url: sociedadPeriodo.firma_url,
+        direccion_fiscal: sociedadPeriodo.direccion_fiscal || empresaConfig?.direccion || null,
+        logo_url: sociedadPeriodo.logo_url || empresaConfig?.logo_url || null,
+        firma_url: sociedadPeriodo.firma_url || empresaConfig?.firma_url || null,
       }
     : { ...empresaConfig, ...empresa, nombre: empresa?.nombre || empresa?.nombre_comercial };
 
