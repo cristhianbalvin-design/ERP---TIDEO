@@ -466,7 +466,7 @@ export function PostulacionPublica({ token }) {
     try {
       if (!vacante || vacante.estado !== 'abierta') throw new Error('Esta vacante ya no recibe postulaciones.');
       const resultado = isSupabaseConfigured()
-        ? await reclutamientoService.crearPostulacionPublica(vacante, form)
+        ? await reclutamientoService.crearPostulacionPublica(token, form)
         : null;
       setSentMessage(resultado?.ya_existia
         ? 'Tu postulacion ya habia sido recibida. RRHH revisara tu informacion.'
