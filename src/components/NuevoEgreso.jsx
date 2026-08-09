@@ -10,6 +10,7 @@ import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaServic
 import { SociedadFormField, SociedadReadOnlyField } from './SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
+import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -873,6 +874,15 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     setGuardando(true);
     let gastoPersistidoSupabase = false;
     try {
+      const sb = isSupabaseConfigured() ? await getSupabaseClient() : null;
+      const sociedadOperacionId = sb
+        ? (await validarSociedadActivaParaEscritura(
+            sb,
+            empresa.id,
+            form.sociedad_id,
+            'Selecciona una sociedad para registrar el egreso.',
+          )).sociedadId
+        : (empresa?.multisociedad_habilitado ? form.sociedad_id : null);
       const monto     = parseFloat(form.monto) || 0;
       const categoria = tipoSel?.categoria_er || 'Administrativos';
       const tcVal     = form.moneda !== 'PEN' && tc
@@ -889,7 +899,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       const gastoBase = {
         id:                 gastoId,
         empresa_id:         empresa.id,
-        sociedad_id:        empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+        sociedad_id:        sociedadOperacionId,
         tipo:               'gasto',
         descripcion:        form.concepto.trim(),
         categoria,
@@ -921,15 +931,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         } : {}),
       };
 
-      if (isSupabaseConfigured()) {
-        const sb = await getSupabaseClient();
+      if (sb) {
         // Payload con solo columnas que existen en el schema de compras_gastos.
         // gastoBase puede tener campos extra para el estado local (categoria_er, etc.)
         // pero enviarlos a Supabase provoca que el loop de retry se agote silenciosamente.
         const gastoPayload = {
           id:               gastoId,
           empresa_id:       empresa.id,
-          sociedad_id:      empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+          sociedad_id:      sociedadOperacionId,
           tipo:             'gasto',
           descripcion:      form.concepto.trim(),
           categoria,
@@ -953,20 +962,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             activo_estado:  'activo',
           } : {}),
         };
-        let gp = { ...gastoPayload };
-        let ok = false;
-        for (let i = 0; i < 8; i++) {
-          const { error } = await sb.from('compras_gastos').insert([gp]).select().single();
-          if (!error) { ok = true; break; }
-          const col = error.message?.match(/column "([^"]+)" of relation/)?.[1]
-            || error.message?.match(/'([^']+)' column/)?.[1];
-          if (!col || !(col in gp)) throw error;
-          delete gp[col];
-        }
-        if (!ok) {
-          const { error } = await sb.from('compras_gastos').insert([gp]).select().single();
-          if (error) throw error;
-        }
+        await finanzasService.insertarCompraGasto(gastoPayload);
         gastoPersistidoSupabase = true;
       }
       setComprasGastos(prev => [gastoBase, ...prev]);
@@ -979,7 +975,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const ccRecord = {
           id:                ccId,
           empresa_id:        empresa.id,
-          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+          sociedad_id:       sociedadOperacionId,
           fecha:             form.fecha,
           concepto:          form.concepto.trim(),
           monto,
@@ -997,7 +993,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           creado_por:        authUser?.id || null,
           creado_en:         new Date().toISOString(),
         };
-        if (isSupabaseConfigured()) {
+        if (sb) {
           await cajaChicaService.registrarEgresoFondo(ccRecord).catch(err =>
             console.warn('[NuevoEgreso] caja_chica insert:', err?.message),
           );
@@ -1014,13 +1010,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpId = `cxp_${Math.random().toString(36).slice(2, 14)}`;
         const pagoId = `cxpp_${Math.random().toString(36).slice(2, 14)}`;
         const movId = `tes_${Math.random().toString(36).slice(2, 14)}`;
-        const sbTc = isSupabaseConfigured() ? await getSupabaseClient() : null;
-        const tcPago = await getTipoCambioPorFecha(fechaPago, sbTc).catch(() => tc);
+        const tcPago = await getTipoCambioPorFecha(fechaPago, sb).catch(() => tc);
         const cuentaNombre = cuentaPago.alias || cuentaPago.nombre || cuentaPago.banco || cuentaPago.id;
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+          sociedad_id:       sociedadOperacionId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1047,7 +1042,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const pagoRecord = {
           id:                pagoId,
           empresa_id:        empresa.id,
-          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+          sociedad_id:       sociedadOperacionId,
           cxp_id:            cxpId,
           fecha_pago:        fechaPago,
           monto,
@@ -1081,7 +1076,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         };
 
         let saved = null;
-        if (isSupabaseConfigured()) {
+        if (sb) {
           saved = await finanzasService.registrarGastoPagadoAutomatico({
             cxp: cxpRecord,
             pago: pagoRecord,
@@ -1104,7 +1099,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+          sociedad_id:       sociedadOperacionId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1127,7 +1122,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           saldo:             monto,
           created_at:        new Date().toISOString(),
         };
-        if (isSupabaseConfigured()) {
+        if (sb) {
           await finanzasService.generarCxP(cxpRecord).catch(err =>
             console.warn('[NuevoEgreso] cxp insert:', err?.message),
           );
@@ -1148,7 +1143,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         } catch (_) {}
       }
       setComprasGastos(prev => prev.filter(g => g.id !== gastoId));
-      addNotificacion('Error al guardar el egreso. Intente nuevamente.');
+      addNotificacion(err?.message || 'Error al guardar el egreso. Intente nuevamente.');
     } finally {
       setGuardando(false);
     }

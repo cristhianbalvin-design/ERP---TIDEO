@@ -1,5 +1,9 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { normalizarCodigoImportacion } from '../utils/cecoCebeImport.js';
+import {
+  obtenerEstadoMultisociedad,
+  validarSociedadActivaParaEscritura,
+} from './sociedadEscrituraService.js';
 
 const makeId = (prefix) => {
   const randomPart = globalThis.crypto?.randomUUID?.()
@@ -11,6 +15,38 @@ const pick = (source, keys) => keys.reduce((acc, key) => {
   if (source[key] !== undefined) acc[key] = source[key];
   return acc;
 }, {});
+
+const validarFilasSocietariasMaestro = async ({ supabase, empresaId, filas, entidad }) => {
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+  if (!multisociedadHabilitado) {
+    return (filas || []).map(fila => ({ ...fila, sociedad_id: null }));
+  }
+
+  const filaSinSociedad = (filas || []).find(fila => !fila?.sociedad_id);
+  if (filaSinSociedad) {
+    const referencia = filaSinSociedad?.codigo ? ` "${filaSinSociedad.codigo}"` : '';
+    throw new Error(`La sociedad es obligatoria para importar el ${entidad}${referencia}.`);
+  }
+
+  const sociedadesIds = [...new Set((filas || []).map(fila => fila.sociedad_id))];
+  if (!sociedadesIds.length) return [];
+
+  const { data: sociedades, error } = await supabase
+    .from('sociedades')
+    .select('id')
+    .eq('empresa_id', empresaId)
+    .eq('activa', true)
+    .in('id', sociedadesIds);
+  if (error) throw error;
+
+  const sociedadesValidas = new Set((sociedades || []).map(sociedad => sociedad.id));
+  const sociedadInvalida = sociedadesIds.find(sociedadId => !sociedadesValidas.has(sociedadId));
+  if (sociedadInvalida) {
+    throw new Error('La sociedad indicada no pertenece al tenant o está inactiva.');
+  }
+
+  return (filas || []).map(fila => ({ ...fila, sociedad_id: fila.sociedad_id }));
+};
 
 export const importarMaestroSinSobrescribir = async ({
   supabase,
@@ -352,10 +388,17 @@ export const maestrosService = {
   },
   crearCentroBeneficio: async (empresaId, cebe) => {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      empresaId,
+      cebe?.sociedad_id,
+      'La sociedad es obligatoria para crear el CEBE.',
+    );
     const payload = {
       id: cebe.id || makeId('cebe'),
       empresa_id: empresaId,
       ...pick(cebe, ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      sociedad_id: sociedadId,
     };
     const { data, error } = await supabase.from('centros_beneficio').insert([payload]).select().single();
     if (error) throw error;
@@ -369,11 +412,17 @@ export const maestrosService = {
   },
   importarCentrosBeneficio: async (empresaId, cebes) => {
     const supabase = await getSupabaseClient();
+    const filasValidadas = await validarFilasSocietariasMaestro({
+      supabase,
+      empresaId,
+      filas: cebes,
+      entidad: 'CEBE',
+    });
     return importarMaestroSinSobrescribir({
       supabase,
       tabla: 'centros_beneficio',
       empresaId,
-      filas: cebes,
+      filas: filasValidadas,
       prefijoId: 'cebe',
       campos: ['codigo', 'nombre', 'tipo', 'cargo_financiero_dbs', 'modelo_negocio', 'responsable_id', 'responsable_nombre', 'cuenta_id', 'sociedad_id', 'meta_ingresos', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
     });
@@ -387,10 +436,17 @@ export const maestrosService = {
   },
   crearCentroCosto: async (empresaId, ceco) => {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      empresaId,
+      ceco?.sociedad_id,
+      'La sociedad es obligatoria para crear el CECO.',
+    );
     const payload = {
       id: ceco.id || makeId('ceco'),
       empresa_id: empresaId,
       ...pick(ceco, ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sociedad_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado']),
+      sociedad_id: sociedadId,
     };
     const { data, error } = await supabase.from('centros_costo').insert([payload]).select().single();
     if (error) throw error;
@@ -404,11 +460,17 @@ export const maestrosService = {
   },
   importarCentrosCosto: async (empresaId, cecos) => {
     const supabase = await getSupabaseClient();
+    const filasValidadas = await validarFilasSocietariasMaestro({
+      supabase,
+      empresaId,
+      filas: cecos,
+      entidad: 'CECO',
+    });
     return importarMaestroSinSobrescribir({
       supabase,
       tabla: 'centros_costo',
       empresaId,
-      filas: cecos,
+      filas: filasValidadas,
       prefijoId: 'ceco',
       campos: ['codigo', 'nombre', 'tipo', 'responsable_id', 'responsable_nombre', 'cebe_id', 'sociedad_id', 'sede_padre', 'especialidad', 'presupuesto_mensual', 'fecha_inicio', 'fecha_fin', 'descripcion', 'estado'],
     });

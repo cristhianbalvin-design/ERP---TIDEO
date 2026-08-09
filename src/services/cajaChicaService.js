@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const genId = prefix => `${prefix}_${Math.random().toString(36).slice(2, 14)}`;
 
@@ -173,7 +174,13 @@ export const cajaChicaService = {
   async registrarEgresoFondo(payload) {
     if (!payload?.fondo_id) throw new Error('Seleccione un fondo de caja chica.');
     const supabase = await getSupabaseClient();
-    return insertWithFallback(supabase, 'caja_chica', payload);
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      payload?.empresa_id,
+      payload?.sociedad_id,
+      'La sociedad es obligatoria para registrar el egreso de caja chica.',
+    );
+    return insertWithFallback(supabase, 'caja_chica', { ...payload, sociedad_id: sociedadId });
   },
 
   async solicitarRendicion(payload) {
