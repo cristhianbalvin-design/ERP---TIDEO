@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { getDataMode } from '../lib/dataMode.js';
+import { resolverSociedadLaboralParaEscritura } from './sociedadEscrituraService.js';
 
 const genId = () => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -108,10 +109,16 @@ export async function registrarAmonestacion(empresaId, datos) {
   }
 
   const supabase = await getSupabaseClient();
+  const sociedadId = await resolverSociedadLaboralParaEscritura(
+    supabase,
+    empresaId,
+    personal_id,
+    fecha,
+  );
   const row = {
     id: genId(), empresa_id: empresaId,
     personal_id, personal_tipo, personal_nombre,
-    sociedad_id,
+    sociedad_id: sociedadId,
     tipo, motivo: motivo.trim(), descripcion: descripcion?.trim() || null, fecha,
     dias_suspension: tipo === 'suspension' ? dias_suspension : null,
     fecha_inicio_suspension: tipo === 'suspension' ? fecha_inicio_suspension : null,

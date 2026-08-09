@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { resolverSociedadLaboralParaEscritura } from './sociedadEscrituraService.js';
 
 const jsonStable = value => JSON.stringify(value ?? null, Object.keys(value || {}).sort());
 
@@ -97,12 +98,74 @@ export const portalFase2Service = {
     return updateReturning('portal_datos_solicitudes', id, { ...patch, resuelto_en: new Date().toISOString() });
   },
 
-  crearConstancia(empresaId, payload) {
-    return insertReturning('portal_constancias_trabajo', { ...payload, empresa_id: empresaId });
+  async resolverSociedadConstancia(empresaId, personalId, fecha) {
+    const supabase = await getSupabaseClient();
+    return resolverSociedadLaboralParaEscritura(supabase, empresaId, personalId, fecha);
   },
 
-  resolverConstancia(id, patch) {
-    return updateReturning('portal_constancias_trabajo', id, { ...patch, resuelto_en: new Date().toISOString() });
+  async crearConstancia(empresaId, payload) {
+    const supabase = await getSupabaseClient();
+    const createdAt = new Date().toISOString();
+    const sociedadId = await resolverSociedadLaboralParaEscritura(
+      supabase,
+      empresaId,
+      payload.personal_id,
+      createdAt.slice(0, 10),
+    );
+    const {
+      empresa_id: _empresaId,
+      sociedad_id: _sociedadId,
+      created_at: _createdAt,
+      ...campos
+    } = payload;
+    const { data, error } = await supabase
+      .from('portal_constancias_trabajo')
+      .insert({ ...campos, empresa_id: empresaId, sociedad_id: sociedadId, created_at: createdAt })
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  async resolverConstancia(id, patch) {
+    const supabase = await getSupabaseClient();
+    const { data: constancia, error: constanciaError } = await supabase
+      .from('portal_constancias_trabajo')
+      .select('id,empresa_id,personal_id,sociedad_id')
+      .eq('id', id)
+      .single();
+    if (constanciaError) throw constanciaError;
+
+    const emitida = patch.estado === 'emitida';
+    const emitidaEn = emitida ? (patch.emitida_en || new Date().toISOString()) : null;
+    const sociedadId = emitida
+      ? await resolverSociedadLaboralParaEscritura(
+          supabase,
+          constancia.empresa_id,
+          constancia.personal_id,
+          emitidaEn.slice(0, 10),
+        )
+      : constancia.sociedad_id;
+    const {
+      empresa_id: _empresaId,
+      personal_id: _personalId,
+      sociedad_id: _sociedadId,
+      created_at: _createdAt,
+      ...campos
+    } = patch;
+    const { data, error } = await supabase
+      .from('portal_constancias_trabajo')
+      .update({
+        ...campos,
+        emitida_en: emitidaEn,
+        sociedad_id: sociedadId,
+        resuelto_en: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return data;
   },
 
   registrarAcuseBoleta(empresaId, payload) {
