@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { registrarMovimiento, anularMovimiento } from './inventarioService.js';
+import { obtenerEstadoMultisociedad, validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -60,7 +61,7 @@ async function siguienteCorrelativo(supabase, empresaId, tipoDocumento, serie = 
 }
 
 // ─── Validar campos obligatorios SUNAT ────────────────────────────────────────
-export function validarGuiaParaEmitir(guia) {
+export function validarGuiaParaEmitir(guia, multisociedadHabilitado = false) {
   const faltantes = [];
   for (const campo of CAMPOS_OBLIGATORIOS_GR.comunes) {
     if (!guia[campo] && guia[campo] !== 0) faltantes.push(campo);
@@ -72,7 +73,111 @@ export function validarGuiaParaEmitir(guia) {
     if (!guia[campo]) faltantes.push(campo);
   }
   if (!guia.lineas?.length && !guia.items?.length) faltantes.push('lineas (al menos 1 ítem)');
+  if (multisociedadHabilitado && !guia.sociedad_origen_id) faltantes.push('sociedad_origen_id');
   return faltantes;
+}
+
+async function validarStockOrigenGuia(supabase, empresaId, almacenId, sociedadId, lineas) {
+  if (!almacenId) throw new Error('Selecciona el almacén origen de la guía.');
+  if (!lineas.length || lineas.some(linea => !linea.material_id)) {
+    throw new Error('Cada línea del traslado debe estar vinculada a un material para validar su stock societario.');
+  }
+
+  const materialIds = [...new Set(lineas.map(linea => linea.material_id))];
+  const { data: stocks, error } = await supabase
+    .from('stock')
+    .select('material_id,lote,serie,disponible')
+    .eq('empresa_id', empresaId)
+    .eq('almacen_id', almacenId)
+    .eq('sociedad_id', sociedadId)
+    .in('material_id', materialIds);
+  if (error) throw error;
+
+  for (const linea of lineas) {
+    const candidatos = (stocks || []).filter(stock =>
+      stock.material_id === linea.material_id
+      && (!linea.lote || stock.lote === linea.lote)
+      && (!linea.serie || stock.serie === linea.serie)
+    );
+    const disponible = candidatos.reduce((total, stock) => total + Number(stock.disponible || 0), 0);
+    if (disponible < Number(linea.cantidad || 0)) {
+      throw new Error(`El stock origen de ${linea.descripcion || linea.material_id} no pertenece a la sociedad o es insuficiente.`);
+    }
+  }
+}
+
+async function resolverSociedadesGuia(supabase, empresaId, form, lineas) {
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+  if (!multisociedadHabilitado) {
+    return {
+      sociedadOrigenId: form.sociedad_origen_id || null,
+      sociedadDestinoId: form.sociedad_destino_id || null,
+    };
+  }
+
+  let sociedadOrigenId = null;
+  let sociedadDestinoId = form.sociedad_destino_id || null;
+  const tipoOrigen = form.tipo_origen || 'traslado_interno';
+
+  if (tipoOrigen === 'despacho_venta' && form.orden_venta_id) {
+    const { data: ov, error } = await supabase
+      .from('ordenes_venta')
+      .select('id,sociedad_id')
+      .eq('id', form.orden_venta_id)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!ov) throw new Error('La Orden de Venta vinculada no pertenece al tenant.');
+    if (form.sociedad_origen_id && form.sociedad_origen_id !== ov.sociedad_id) {
+      throw new Error('La sociedad informada no coincide con la Orden de Venta vinculada.');
+    }
+    sociedadOrigenId = ov.sociedad_id;
+  } else if (tipoOrigen === 'despacho_servicio') {
+    if (!form.ot_id) throw new Error('Selecciona una OT real para el despacho de servicio.');
+    const { data: ot, error: otError } = await supabase
+      .from('ordenes_trabajo')
+      .select('id')
+      .eq('id', form.ot_id)
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+    if (otError) throw otError;
+    if (!ot) throw new Error('La OT seleccionada no pertenece al tenant.');
+    const { data: sociedadOt, error: sociedadOtError } = await supabase.rpc('obtener_sociedad_de_ot', { p_ot_id: ot.id });
+    if (sociedadOtError) throw sociedadOtError;
+    if (form.sociedad_origen_id && form.sociedad_origen_id !== sociedadOt) {
+      throw new Error('La sociedad informada no coincide con la sociedad derivada de la OT.');
+    }
+    sociedadOrigenId = sociedadOt || null;
+  } else {
+    sociedadOrigenId = form.sociedad_origen_id || null;
+  }
+
+  sociedadOrigenId = (await validarSociedadActivaParaEscritura(
+    supabase,
+    empresaId,
+    sociedadOrigenId,
+    tipoOrigen === 'despacho_servicio'
+      ? 'La OT seleccionada no tiene sociedad derivable.'
+      : 'Selecciona una sociedad concreta para la guía.',
+  )).sociedadId;
+
+  if (tipoOrigen === 'traslado_interno') {
+    sociedadDestinoId = sociedadOrigenId;
+    await validarStockOrigenGuia(supabase, empresaId, form.almacen_origen_id, sociedadOrigenId, lineas);
+  } else if (tipoOrigen === 'transferencia_intercompania') {
+    sociedadDestinoId = (await validarSociedadActivaParaEscritura(
+      supabase, empresaId, sociedadDestinoId, 'Selecciona la sociedad destino de la transferencia intercompañía.',
+    )).sociedadId;
+    if (sociedadDestinoId === sociedadOrigenId) {
+      throw new Error('La transferencia intercompañía requiere sociedades diferentes.');
+    }
+  } else if (sociedadDestinoId) {
+    sociedadDestinoId = (await validarSociedadActivaParaEscritura(
+      supabase, empresaId, sociedadDestinoId, 'La sociedad destino no es válida.',
+    )).sociedadId;
+  }
+
+  return { sociedadOrigenId, sociedadDestinoId };
 }
 
 // ─── CRUD Guías ───────────────────────────────────────────────────────────────
@@ -118,10 +223,10 @@ export async function crearGuia(empresaId, form, usuarioId) {
   const supabase = await getSupabaseClient();
 
   const serie = form.serie || 'T001';
-  const { numero, numero_completo } = await siguienteCorrelativo(supabase, empresaId, 'guia_remision', serie, form.sociedad_origen_id || null);
-
   const guiaId = mkId('gr');
   const { lineas: lineasForm = [], ...guiaDatos } = form;
+  const { sociedadOrigenId, sociedadDestinoId } = await resolverSociedadesGuia(supabase, empresaId, guiaDatos, lineasForm);
+  const { numero, numero_completo } = await siguienteCorrelativo(supabase, empresaId, 'guia_remision', serie, sociedadOrigenId);
 
   const { data: guia, error } = await supabase.from('guias_remision').insert({
     id: guiaId,
@@ -137,8 +242,8 @@ export async function crearGuia(empresaId, form, usuarioId) {
     orden_venta_id: guiaDatos.orden_venta_id || null,
     ot_id: guiaDatos.ot_id || null,
     almacen_origen_id: guiaDatos.almacen_origen_id || null,
-    sociedad_origen_id: guiaDatos.sociedad_origen_id || null,
-    sociedad_destino_id: guiaDatos.sociedad_destino_id || null,
+    sociedad_origen_id: sociedadOrigenId,
+    sociedad_destino_id: sociedadDestinoId,
     partida_direccion: guiaDatos.partida_direccion || '',
     partida_ubigeo: guiaDatos.partida_ubigeo || null,
     llegada_direccion: guiaDatos.llegada_direccion || '',
@@ -241,7 +346,9 @@ export async function emitirGuia(guiaId, usuarioId) {
   const guia = await getGuia(guiaId);
   if (guia.estado !== 'borrador') throw new Error(`La guía ya está en estado "${guia.estado}"`);
 
-  const faltantes = validarGuiaParaEmitir(guia);
+  const supabase = await getSupabaseClient();
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, guia.empresa_id);
+  const faltantes = validarGuiaParaEmitir(guia, multisociedadHabilitado);
   if (faltantes.length) {
     throw new Error(`Faltan campos obligatorios SUNAT: ${faltantes.join(', ')}`);
   }
@@ -263,6 +370,12 @@ export async function confirmarEntrega(guiaId, usuarioId) {
   const guia = await getGuia(guiaId);
   if (!['emitida', 'en_transito'].includes(guia.estado)) {
     throw new Error(`No se puede confirmar entrega en estado "${guia.estado}"`);
+  }
+  const supabase = await getSupabaseClient();
+  if (await obtenerEstadoMultisociedad(supabase, guia.empresa_id)) {
+    await validarSociedadActivaParaEscritura(
+      supabase, guia.empresa_id, guia.sociedad_origen_id, 'La guía no tiene sociedad origen y no puede afectar inventario.',
+    );
   }
 
   const kardexIds = [];

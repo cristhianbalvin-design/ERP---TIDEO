@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -25,6 +26,39 @@ function calcularNuevoCostoPromedio(stockActual, costoActual, cantidadNueva, cos
   const totalCant = stockActual + cantidadNueva;
   if (totalCant === 0) return 0;
   return (totalAntes + totalNuevo) / totalCant;
+}
+
+async function resolverSociedadDesdeOrigenInventario(supabase, empresaId, movimiento) {
+  let sociedadDerivada = null;
+
+  if (movimiento.orden_compra_id) {
+    const { data, error } = await supabase.from('ordenes_compra')
+      .select('sociedad_id').eq('id', movimiento.orden_compra_id).eq('empresa_id', empresaId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('La Orden de Compra origen no pertenece al tenant.');
+    sociedadDerivada = data.sociedad_id || null;
+  } else if (movimiento.referencia_tipo === 'guia_remision' && movimiento.referencia_id) {
+    const { data, error } = await supabase.from('guias_remision')
+      .select('sociedad_origen_id').eq('id', movimiento.referencia_id).eq('empresa_id', empresaId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('La guía origen no pertenece al tenant.');
+    sociedadDerivada = data.sociedad_origen_id || null;
+  } else if (['ot', 'orden_trabajo'].includes(movimiento.referencia_tipo) && movimiento.referencia_id) {
+    const { data, error } = await supabase.rpc('obtener_sociedad_de_ot', { p_ot_id: movimiento.referencia_id });
+    if (error) throw error;
+    sociedadDerivada = data || null;
+  } else if (movimiento.referencia_tipo === 'orden_venta' && movimiento.referencia_id) {
+    const { data, error } = await supabase.from('ordenes_venta')
+      .select('sociedad_id').eq('id', movimiento.referencia_id).eq('empresa_id', empresaId).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('La Orden de Venta origen no pertenece al tenant.');
+    sociedadDerivada = data.sociedad_id || null;
+  }
+
+  if (movimiento.sociedad_id && sociedadDerivada && movimiento.sociedad_id !== sociedadDerivada) {
+    throw new Error('La sociedad del movimiento no coincide con su documento de origen.');
+  }
+  return sociedadDerivada || movimiento.sociedad_id || null;
 }
 
 // ─── Resolución de almacén ────────────────────────────────────────────────────
@@ -77,12 +111,21 @@ export async function registrarMovimiento(empresaId, {
   if (!empresaId || !material_id || !almacen_id || !cantidad || cantidad <= 0) {
     throw new Error('Faltan datos obligatorios: empresa, material, almacén y cantidad > 0');
   }
+  const sociedadOrigenId = await resolverSociedadDesdeOrigenInventario(supabase, empresaId, {
+    sociedad_id, referencia_tipo, referencia_id, orden_compra_id,
+  });
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase,
+    empresaId,
+    sociedadOrigenId,
+    'La sociedad del movimiento de inventario es obligatoria.',
+  );
 
   // 1. Leer stock actual
   let stockQuery = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
     .is('lote', lote).is('serie', serie);
-  stockQuery = sociedad_id ? stockQuery.eq('sociedad_id', sociedad_id) : stockQuery.is('sociedad_id', null);
+  stockQuery = sociedadOperacionId ? stockQuery.eq('sociedad_id', sociedadOperacionId) : stockQuery.is('sociedad_id', null);
   const { data: stockRow } = await stockQuery.maybeSingle();
 
   const stockFisico = Number(stockRow?.fisico ?? stockRow?.disponible ?? 0);
@@ -130,7 +173,7 @@ export async function registrarMovimiento(empresaId, {
     empresa_id: empresaId,
     material_id,
     almacen_id,
-    sociedad_id,
+    sociedad_id: sociedadOperacionId,
     tipo,
     motivo: motivo || tipo,
     cantidad,
@@ -181,7 +224,7 @@ export async function registrarMovimiento(empresaId, {
       empresa_id: empresaId,
       material_id,
       almacen_id,
-      sociedad_id,
+      sociedad_id: sociedadOperacionId,
       fisico: nuevoFisico,
       disponible: nuevoDisponible,
       reservado: 0,
@@ -349,10 +392,13 @@ export async function registrarAjuste(empresaId, form, usuarioId) {
 // Reduce disponible sin tocar físico. El consumo posterior convierte la reserva en salida.
 export async function reservarStock(empresaId, material_id, almacen_id, cantidad, otId, sociedadId = null) {
   const supabase = await getSupabaseClient();
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase, empresaId, sociedadId, 'La sociedad de la reserva de stock es obligatoria.',
+  );
   let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
     .is('lote', null).is('serie', null);
-  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  query = sociedadOperacionId ? query.eq('sociedad_id', sociedadOperacionId) : query.is('sociedad_id', null);
   const { data: stockRow } = await query.maybeSingle();
 
   if (!stockRow) throw new Error('No hay stock de este material en el almacén indicado');
@@ -371,10 +417,13 @@ export async function reservarStock(empresaId, material_id, almacen_id, cantidad
 
 export async function liberarReserva(empresaId, material_id, almacen_id, cantidad, sociedadId = null) {
   const supabase = await getSupabaseClient();
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase, empresaId, sociedadId, 'La sociedad de la reserva de stock es obligatoria.',
+  );
   let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
     .is('lote', null).is('serie', null);
-  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+  query = sociedadOperacionId ? query.eq('sociedad_id', sociedadOperacionId) : query.is('sociedad_id', null);
   const { data: stockRow } = await query.maybeSingle();
   if (!stockRow) return;
   const liberado = Math.min(cantidad, Number(stockRow.reservado));
@@ -418,6 +467,9 @@ export async function anularMovimiento(kardexId, motivo, usuarioId) {
 // ─── Conteo físico ────────────────────────────────────────────────────────────
 export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen_id, zona, sociedad_id = null }, usuarioId) {
   const supabase = await getSupabaseClient();
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase, empresaId, sociedad_id, 'La sociedad del conteo físico es obligatoria.',
+  );
   const count = await supabase.from('inventario_conteos').select('id', { count: 'exact' }).eq('empresa_id', empresaId);
   const n = (count.count || 0) + 1;
   const codigo = `CNT-${new Date().getFullYear()}-${String(n).padStart(4, '0')}`;
@@ -427,7 +479,7 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
     .select('material_id, almacen_id, fisico, lote, serie, vencimiento, materiales(id, codigo, descripcion, unidad, familia, tipo_control), almacenes(id, codigo, nombre)')
     .eq('empresa_id', empresaId);
   if (almacen_id) q = q.eq('almacen_id', almacen_id);
-  q = sociedad_id ? q.eq('sociedad_id', sociedad_id) : q.is('sociedad_id', null);
+  q = sociedadOperacionId ? q.eq('sociedad_id', sociedadOperacionId) : q.is('sociedad_id', null);
   const { data: stocks } = await q;
 
   const items = (stocks || []).map(s => ({
@@ -448,7 +500,7 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
   }));
 
   const { data, error } = await supabase.from('inventario_conteos').insert({
-    id: mkId('cnt'), empresa_id: empresaId, sociedad_id, codigo, nombre, tipo, almacen_id: almacen_id || null,
+    id: mkId('cnt'), empresa_id: empresaId, sociedad_id: sociedadOperacionId, codigo, nombre, tipo, almacen_id: almacen_id || null,
     zona: zona || null, estado: 'en_proceso', items, ajustes_generados: false,
     creado_por: usuarioId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }).select().single();
@@ -1030,6 +1082,18 @@ export async function ajustarValorizacionOcPendiente(empresaId, { orden_compra_i
 }
 
 export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId, sociedadId = null) {
+  const { data: ot, error: otError } = await supabase.from('ordenes_trabajo')
+    .select('id').eq('id', otId).eq('empresa_id', empresaId).maybeSingle();
+  if (otError) throw otError;
+  if (!ot) throw new Error('La OT de consumo no pertenece al tenant.');
+  const { data: sociedadOt, error: sociedadOtError } = await supabase.rpc('obtener_sociedad_de_ot', { p_ot_id: otId });
+  if (sociedadOtError) throw sociedadOtError;
+  if (sociedadId && sociedadOt && sociedadId !== sociedadOt) {
+    throw new Error('La sociedad del consumo no coincide con la sociedad derivada de la OT.');
+  }
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase, empresaId, sociedadOt || sociedadId, 'La OT debe tener una sociedad derivable para consumir inventario.',
+  );
   for (const item of itemsADescontar) {
     if (!item.material_id) continue;
     try {
@@ -1039,7 +1103,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
 
       let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
         .eq('empresa_id', empresaId).eq('material_id', item.material_id);
-      stockQ = sociedadId ? stockQ.eq('sociedad_id', sociedadId) : stockQ.is('sociedad_id', null);
+      stockQ = sociedadOperacionId ? stockQ.eq('sociedad_id', sociedadOperacionId) : stockQ.is('sociedad_id', null);
       if (item.lote != null) stockQ = stockQ.eq('lote', item.lote);
       if (item.serie != null) stockQ = stockQ.eq('serie', item.serie);
       const { data: stocks } = await stockQ;
@@ -1051,7 +1115,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
       await supabase.from('kardex').insert({
         id: mkId('kdx'),
         empresa_id: empresaId,
-        sociedad_id: sociedadId,
+        sociedad_id: sociedadOperacionId,
         material_id: item.material_id,
         almacen_id: item.almacen_id || stock.almacen_id || null,
         tipo: 'salida',

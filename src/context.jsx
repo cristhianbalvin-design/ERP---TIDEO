@@ -2559,6 +2559,9 @@ export function AppProvider({ children }) {
   const aprobarHojaCosteo = async (hcId) => {
     const hc = hojasCosteo.find(h => h.id === hcId);
     if (!hc) return;
+    if (empresa?.multisociedad_habilitado && !hc.sociedad_id) {
+      throw new Error('La Hoja de Costeo no tiene sociedad. Corrígela antes de aprobarla.');
+    }
     const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
     const monedaHC = oppDeHC?.moneda || hc.moneda || empresa?.moneda || 'PEN';
     if (isSupabaseConfigured()) {
@@ -2585,7 +2588,7 @@ export function AppProvider({ children }) {
         sociedad_id: hc.sociedad_id || null,
       };
       try {
-        const result = await crmPersist(sb => hc.sociedad_id
+        const result = await crmPersist(sb => empresa?.multisociedad_habilitado
           ? aprobarHojaCosteoSociedadRpc(sb, empresa.id, hcId, cotBase)
           : aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
         const cotFinal = { ...cotBase, ...(result?.data?.cotizacion || {}), items: cotBase.items };
@@ -3720,31 +3723,29 @@ export function AppProvider({ children }) {
     opsSync(sb => sb.from('solpe_interna').update({ estado: 'aprobada', aprobada_por: authUser?.id || null, aprobada_at: new Date().toISOString() }).eq('id', solpeId));
   };
 
-  const resolverSociedadOperacion = (registro = {}) => {
+  const resolverSociedadOperacion = (registro = {}, { exigirSociedad = false } = {}) => {
     if (!empresa?.multisociedad_habilitado) return null;
     const otId = registro.ot_vinc_id || registro.ot_id || null;
     const ot = otId ? (ots || []).find(item => item.id === otId) : null;
     if (otId && !ot?.sociedad_id) {
       throw new Error('La OT vinculada no tiene sociedad asignada. Corrige la OT antes de registrar el gasto.');
     }
-    if (ot?.sociedad_id) {
-      if (registro.sociedad_id && registro.sociedad_id !== ot.sociedad_id) {
-        throw new Error('La sociedad informada no coincide con la sociedad de la OT vinculada.');
-      }
-      return ot.sociedad_id;
-    }
     const cecoId = registro.centro_costo_id || registro.ceco_id || null;
     const ceco = cecoId ? (centrosCosto || []).find(item => item.id === cecoId) : null;
     if (cecoId && !ceco?.sociedad_id) {
       throw new Error('El CECO seleccionado no tiene sociedad asignada. Corrige el CECO antes de registrar el gasto.');
     }
-    if (ceco?.sociedad_id) {
-      if (registro.sociedad_id && registro.sociedad_id !== ceco.sociedad_id) {
-        throw new Error('La sociedad informada no coincide con la sociedad del CECO seleccionado.');
-      }
-      return ceco.sociedad_id;
+    if (ot?.sociedad_id && ceco?.sociedad_id && ot.sociedad_id !== ceco.sociedad_id) {
+      throw new Error('La OT y el CECO seleccionados pertenecen a sociedades distintas.');
     }
-    return registro.sociedad_id || null;
+    const sociedadDerivada = ot?.sociedad_id || ceco?.sociedad_id || registro.sociedad_id || null;
+    if (registro.sociedad_id && sociedadDerivada !== registro.sociedad_id) {
+      throw new Error('La sociedad informada no coincide con la sociedad del documento de origen.');
+    }
+    if (exigirSociedad && !sociedadDerivada) {
+      throw new Error('Selecciona una OT, un CECO o una sociedad concreta antes de registrar la operación.');
+    }
+    return sociedadDerivada;
   };
 
   const compraGastoPayload = (gasto) => ({
@@ -6095,7 +6096,7 @@ export function AppProvider({ children }) {
 
   const generarCxP = async (datos = {}) => {
     const { no_devengar_er, ...datosDb } = datos || {};
-    const sociedadId = resolverSociedadOperacion(datosDb);
+    const sociedadId = resolverSociedadOperacion(datosDb, { exigirSociedad: true });
     let cuentaPagar = {
       id: generateId('cxp'),
       empresa_id: empresa.id,

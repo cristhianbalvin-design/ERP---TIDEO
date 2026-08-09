@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { obtenerEstadoMultisociedad, validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const BUCKET = 'documentos-privados';
 // Signed URLs para documentos privados: 10 minutos (600s).
@@ -258,6 +259,12 @@ export async function subirDocumento({
   sociedadId,
 }) {
   const supabase = await getSupabaseClient();
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+  const sociedadOperacionId = multisociedadHabilitado
+    ? (await validarSociedadActivaParaEscritura(
+        supabase, empresaId, sociedadId, 'Selecciona la sociedad empleadora antes de subir el documento.',
+      )).sociedadId
+    : null;
 
   // 1. Subir archivo al bucket
   const ext = file.name.split('.').pop();
@@ -281,10 +288,10 @@ export async function subirDocumento({
   const config = configs.find(c => c.tipo_doc === tipoDoc);
   const isRenovable = config ? config.renovable : false;
 
-  let rpcName = sociedadId ? 'subir_documento_personal_sociedad' : 'subir_documento_personal';
+  let rpcName = multisociedadHabilitado ? 'subir_documento_personal_sociedad' : 'subir_documento_personal';
   let rpcParams = {
     p_empresa_id:        empresaId,
-    ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
+    ...(multisociedadHabilitado ? { p_sociedad_id: sociedadOperacionId } : {}),
     p_personal_id:       personalId,
     p_personal_tipo:     personalTipo,
     p_tipo_doc:          tipoDoc,
@@ -307,7 +314,7 @@ export async function subirDocumento({
     p_motivo_override:   motivoOverride || null,
   };
 
-  if (isRenovable && !sociedadId) {
+  if (isRenovable && !multisociedadHabilitado) {
     rpcName = 'subir_version_documento';
     rpcParams.p_periodo_grupo_id = periodoGrupoId || null;
   }
@@ -317,7 +324,7 @@ export async function subirDocumento({
 
   if (rpcError) throw rpcError;
   // subir_version_documento retorna un UUID; subir_documento_personal retorna la fila completa.
-  return normalizar(isRenovable && !sociedadId ? { id: data } : data);
+  return normalizar(rpcName === 'subir_version_documento' ? { id: data } : data);
 }
 
 export async function renovarDocumento({
@@ -339,6 +346,9 @@ export async function renovarDocumento({
   contratoPeriodoId,
 }) {
   const supabase = await getSupabaseClient();
+  if (await obtenerEstadoMultisociedad(supabase, empresaId)) {
+    throw new Error('La renovación documental legacy no está disponible en tenants multisociedad. Usa una carga con sociedad empleadora.');
+  }
 
   const ext = file.name.split('.').pop();
   const storagePath = `${empresaId}/personal/${personalTipo}/${personalId}/${tipoDoc}_${Date.now()}.${ext}`;
@@ -458,6 +468,12 @@ export async function nuevoContrato({
   sociedadId,
 }) {
   const supabase = await getSupabaseClient();
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+  const sociedadOperacionId = multisociedadHabilitado
+    ? (await validarSociedadActivaParaEscritura(
+        supabase, empresaId, sociedadId, 'Selecciona la sociedad empleadora para el nuevo período contractual.',
+      )).sociedadId
+    : null;
 
   let archivoUrl = null;
   let nombreArchivo = null;
@@ -477,10 +493,10 @@ export async function nuevoContrato({
     nombreArchivo = file.name;
   }
 
-  const rpc = sociedadId ? 'nuevo_contrato_periodo_sociedad' : 'nuevo_contrato_periodo';
+  const rpc = multisociedadHabilitado ? 'nuevo_contrato_periodo_sociedad' : 'nuevo_contrato_periodo';
   const { data, error } = await supabase.rpc(rpc, {
     p_empresa_id:            empresaId,
-    ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
+    ...(multisociedadHabilitado ? { p_sociedad_id: sociedadOperacionId } : {}),
     p_personal_id:           personalId,
     p_personal_tipo:         personalTipo,
     p_tipo_doc:              tipoDoc,

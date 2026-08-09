@@ -1,4 +1,5 @@
 import { isSupabaseMode } from '../lib/dataMode.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const normalizarCuenta = c => ({
   ...c,
@@ -505,6 +506,9 @@ export async function vincularCotizacionAOS(supabase, cotId, osId) {
 }
 
 export async function persistirHojaCosteo(supabase, empresaId, hc) {
+  const { sociedadId } = await validarSociedadActivaParaEscritura(
+    supabase, empresaId, hc.sociedad_id, 'Selecciona una sociedad para crear la Hoja de Costeo.',
+  );
   const row = {
     id: hc.id,
     empresa_id: empresaId,
@@ -531,7 +535,7 @@ export async function persistirHojaCosteo(supabase, empresaId, hc) {
     precio_sugerido_sin_igv: hc.precio_sugerido_sin_igv || 0,
     precio_sugerido_total: hc.precio_sugerido_total || 0,
     moneda: hc.moneda || 'PEN',
-    sociedad_id: hc.sociedad_id || null,
+    sociedad_id: sociedadId,
   };
   return supabase.from('hojas_costeo').insert(row);
 }
