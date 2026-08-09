@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 export const CONDICION_PAGO_DEFECTO_CXC = '30 días';
 
@@ -633,9 +634,15 @@ export const finanzasService = {
 
   async crearCuentaBancaria(payload) {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      payload?.empresa_id,
+      payload?.sociedad_id,
+      'La sociedad es obligatoria para crear la cuenta bancaria.',
+    );
     const { data, error } = await supabase
       .from('cuentas_bancarias')
-      .insert(payload)
+      .insert({ ...payload, sociedad_id: sociedadId })
       .select()
       .single();
     if (error) throw error;
@@ -803,8 +810,14 @@ export const finanzasService = {
 
   async generarCxP(payload) {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      payload?.empresa_id,
+      payload?.sociedad_id,
+      'La sociedad es obligatoria para crear la cuenta por pagar.',
+    );
     const insert = async (p) => supabase.from('cxp').insert(p).select().single();
-    let p = { ...payload };
+    let p = { ...payload, sociedad_id: sociedadId };
     for (let i = 0; i < 8; i++) {
       const { data, error } = await insert(p);
       if (!error) return data;
@@ -866,7 +879,20 @@ export const finanzasService = {
 
   async registrarGastoPagadoAutomatico({ cxp, pago, movimiento, gastoId }) {
     const supabase = await getSupabaseClient();
-    const payload = { cxp, pago, movimiento, gasto_id: gastoId || cxp?.gasto_id || movimiento?.gasto_id || null };
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      cxp?.empresa_id,
+      cxp?.sociedad_id,
+      'La sociedad es obligatoria para registrar el gasto pagado.',
+    );
+    const cxpValidada = { ...cxp, sociedad_id: sociedadId };
+    const pagoValidado = { ...pago, sociedad_id: sociedadId };
+    const payload = {
+      cxp: cxpValidada,
+      pago: pagoValidado,
+      movimiento,
+      gasto_id: gastoId || cxp?.gasto_id || movimiento?.gasto_id || null,
+    };
 
     try {
       const { data, error } = await supabase.rpc('registrar_gasto_pagado_auto', { p_payload: payload });
@@ -878,9 +904,9 @@ export const finanzasService = {
 
     const creados = { cxp: null, pago: null, movimiento: null };
     try {
-      const cxpGuardada = await insertOneTolerante(supabase, 'cxp', cxp);
+      const cxpGuardada = await insertOneTolerante(supabase, 'cxp', cxpValidada);
       creados.cxp = cxpGuardada;
-      const pagoGuardado = await insertOneTolerante(supabase, 'cxp_pagos', pago);
+      const pagoGuardado = await insertOneTolerante(supabase, 'cxp_pagos', pagoValidado);
       creados.pago = pagoGuardado;
       const movNormalizado = await normalizarMovimientoTesoreriaCobro(supabase, movimiento);
       const movGuardado = await insertOneTolerante(supabase, 'movimientos_tesoreria', movNormalizado);
@@ -1019,13 +1045,33 @@ export const finanzasService = {
 
   async insertarCajaChica(payload) {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      payload?.empresa_id,
+      payload?.sociedad_id,
+      'La sociedad es obligatoria para registrar el egreso de caja chica.',
+    );
     const { data, error } = await supabase
       .from('caja_chica')
-      .insert(payload)
+      .insert({ ...payload, sociedad_id: sociedadId })
       .select()
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async insertarCompraGasto(payload) {
+    const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      payload?.empresa_id,
+      payload?.sociedad_id,
+      'La sociedad es obligatoria para registrar el gasto.',
+    );
+    return insertOneTolerante(supabase, 'compras_gastos', {
+      ...payload,
+      sociedad_id: sociedadId,
+    });
   },
 
   async anularCajaChica(id, anuladoPor) {

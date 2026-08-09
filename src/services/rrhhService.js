@@ -1,5 +1,6 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { esRemunerativoPorSubTipo } from './nominaService.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const generateTextId = (prefix) => {
   const uuid = globalThis.crypto?.randomUUID?.();
@@ -992,8 +993,19 @@ export const rrhhService = {
   },
   crearPeriodoNomina: async (empresaId, periodo) => {
     const supabase = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      supabase,
+      empresaId,
+      periodo?.sociedad_id,
+      'La sociedad es obligatoria para crear el periodo de nómina.',
+    );
     // id, fecha_inicio y fecha_fin son NOT NULL sin default en la tabla periodos_nomina.
-    const payload = { id: `pnm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, ...periodo, empresa_id: empresaId };
+    const payload = {
+      id: `pnm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ...periodo,
+      empresa_id: empresaId,
+      sociedad_id: sociedadId,
+    };
     const { data, error } = await supabase
       .from('periodos_nomina').insert([payload]).select().single();
     if (error) {

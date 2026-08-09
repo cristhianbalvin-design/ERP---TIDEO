@@ -1361,26 +1361,40 @@ export function AppProvider({ children }) {
   const cargarMembresiaCompleta = async (mem) => {
     try {
       const supabase = await getSupabaseClient();
-      const { data: permisosRows } = await supabase
-        .from('permisos_roles')
-        .select('*')
-        .eq('rol_id', mem.rol_id);
-      const empresaResuelta = mem.empresa ? normalizarEmpresaSupabase(mem.empresa) : null;
+      const [{ data: permisosRows, error: permisosError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
+        supabase
+          .from('permisos_roles')
+          .select('*')
+          .eq('rol_id', mem.rol_id),
+        supabase
+          .from('empresas')
+          .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado')
+          .eq('id', mem.empresa_id)
+          .single(),
+      ]);
+      if (permisosError) throw permisosError;
+      if (empresaError) throw empresaError;
+
+      const membresiaFresca = { ...mem, empresa: empresaFresca };
+      const empresaResuelta = normalizarEmpresaSupabase(empresaFresca);
+      setTodasMembresias(prev => prev.map(item => (
+        item.empresa_id === mem.empresa_id ? { ...item, empresa: empresaFresca } : item
+      )));
       if (empresaResuelta) setEmpresa(empresaResuelta);
       setMembresiaActiva({
-        empresa: mem.empresa,
-        rol: mem.rol,
-        rol_id: mem.rol_id,
-        acceso_campo: mem.acceso_campo,
-        perfil_campo: mem.perfil_campo,
-        campo_modulos: mem.campo_modulos || [],
+        empresa: membresiaFresca.empresa,
+        rol: membresiaFresca.rol,
+        rol_id: membresiaFresca.rol_id,
+        acceso_campo: membresiaFresca.acceso_campo,
+        perfil_campo: membresiaFresca.perfil_campo,
+        campo_modulos: membresiaFresca.campo_modulos || [],
         permisos_rows: permisosRows || [],
       });
       const roleResuelto = buildRoleDePermisos(
-        mem.rol,
+        membresiaFresca.rol,
         permisosRows || [],
-        mem.acceso_campo,
-        mem.campo_modulos || []
+        membresiaFresca.acceso_campo,
+        membresiaFresca.campo_modulos || []
       );
       await cargarSociedadesDeEmpresa(
         empresaResuelta,
@@ -3772,25 +3786,9 @@ export function AppProvider({ children }) {
     ...((gasto.ot_vinc_id || gasto.ot_id) ? { ot_vinc_id: gasto.ot_vinc_id || gasto.ot_id } : {}),
   });
 
-  const removeMissingColumnFromPayload = (payload, error) => {
-    const col = error?.message?.match(/column "([^"]+)" of relation/)?.[1]
-      || error?.message?.match(/'([^']+)' column/)?.[1];
-    if (!col || !(col in payload)) return false;
-    delete payload[col];
-    return true;
-  };
-
-  const insertarCompraGastoSeguro = async (sb, gasto) => {
-    const payload = compraGastoPayload(gasto);
-    for (let i = 0; i < 8; i++) {
-      const { data, error } = await sb.from('compras_gastos').insert([payload]).select().single();
-      if (!error) return data;
-      if (!removeMissingColumnFromPayload(payload, error)) throw error;
-    }
-    const { data, error } = await sb.from('compras_gastos').insert([payload]).select().single();
-    if (error) throw error;
-    return data;
-  };
+  const insertarCompraGastoSeguro = async (_sb, gasto) => (
+    finanzasService.insertarCompraGasto(compraGastoPayload(gasto))
+  );
 
   const crearGasto = (datos, options = {}) => {
     const { notificar = true, persistir = true } = options;
@@ -6199,7 +6197,7 @@ export function AppProvider({ children }) {
         const gastoGuardado = await finanzasService.registrarMovimientoTesoreria(movimiento).catch(() => null);
         await finanzasService.insertarCajaChica({ ...cc, gasto_id: gastoId }).catch(() => null);
       });
-      opsSync(sb => sb.from('compras_gastos').insert([{
+      finSync(() => finanzasService.insertarCompraGasto({
         id: gasto.id,
         empresa_id: empresa.id,
         tipo: gasto.tipo,
@@ -6213,7 +6211,7 @@ export function AppProvider({ children }) {
         estado_pago: 'pagado',
         centro_costo_id: gasto.centro_costo_id || null,
         sociedad_id: gasto.sociedad_id || null,
-      }]));
+      }));
     }
     addNotificacion(`Egreso de caja chica registrado: S/ ${Number(datos.monto).toFixed(2)}`);
     return cc;
