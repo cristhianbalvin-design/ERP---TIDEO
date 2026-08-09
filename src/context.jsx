@@ -9792,14 +9792,20 @@ export function AppProvider({ children }) {
     const emitidaDirecta = Boolean(empresaConfig?.portal_constancia_emision_directa);
     const emitidaEn = emitidaDirecta ? new Date().toISOString() : null;
     const sociedadId = emitidaDirecta
-      ? resolverSociedadDocumentoLaboral({
-          multisociedadHabilitado: empresa?.multisociedad_habilitado,
-          documentos: personalDocumentos,
-          tiposDocumento,
-          sociedades: sociedadesDisponibles,
-          personalId: payload.personal_id,
-          fecha: emitidaEn.slice(0, 10),
-        })
+      ? (isSupabaseConfigured() && empresa?.id
+          ? await portalFase2Service.resolverSociedadConstancia(
+              empresa.id,
+              payload.personal_id,
+              emitidaEn.slice(0, 10),
+            )
+          : resolverSociedadDocumentoLaboral({
+              multisociedadHabilitado: empresa?.multisociedad_habilitado,
+              documentos: personalDocumentos,
+              tiposDocumento,
+              sociedades: sociedadesDisponibles,
+              personalId: payload.personal_id,
+              fecha: emitidaEn.slice(0, 10),
+            }))
       : null;
     const sociedad = sociedadId
       ? sociedadesDisponibles.find(item => item.id === sociedadId) || null
@@ -9841,14 +9847,20 @@ export function AppProvider({ children }) {
     const emitida = decision === 'emitida' || decision === 'aprobada';
     const emitidaEn = emitida ? new Date().toISOString() : null;
     const sociedadId = emitida
-      ? resolverSociedadDocumentoLaboral({
-          multisociedadHabilitado: empresa?.multisociedad_habilitado,
-          documentos: personalDocumentos,
-          tiposDocumento,
-          sociedades: sociedadesDisponibles,
-          personalId: row.personal_id,
-          fecha: emitidaEn.slice(0, 10),
-        })
+      ? (isSupabaseConfigured() && empresa?.id
+          ? await portalFase2Service.resolverSociedadConstancia(
+              empresa.id,
+              row.personal_id,
+              emitidaEn.slice(0, 10),
+            )
+          : resolverSociedadDocumentoLaboral({
+              multisociedadHabilitado: empresa?.multisociedad_habilitado,
+              documentos: personalDocumentos,
+              tiposDocumento,
+              sociedades: sociedadesDisponibles,
+              personalId: row.personal_id,
+              fecha: emitidaEn.slice(0, 10),
+            }))
       : (row.sociedad_id || null);
     const sociedad = sociedadId
       ? sociedadesDisponibles.find(item => item.id === sociedadId) || null

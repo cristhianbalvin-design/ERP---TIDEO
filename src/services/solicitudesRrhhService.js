@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { getDataMode } from '../lib/dataMode.js';
 import { resolverSociedadDocumentoLaboral } from './nominaSociedadService.js';
+import { resolverSociedadLaboralParaEscritura } from './sociedadEscrituraService.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -221,6 +222,12 @@ export async function crearSolicitud(empresaId, payload) {
   }
 
   const supabase = await getSupabaseClient();
+  const sociedadId = await resolverSociedadLaboralParaEscritura(
+    supabase,
+    empresaId,
+    personal_id,
+    fecha_inicio,
+  );
   // Usar insert directo para soportar los nuevos campos sin modificar la RPC
   const { data, error } = await supabase
     .from('solicitudes_rrhh')
@@ -237,6 +244,7 @@ export async function crearSolicitud(empresaId, payload) {
       unidad: unidad || 'dias',
       cantidad_horas: cantidad_horas || null,
       registrado_desde,
+      sociedad_id: sociedadId,
     })
     .select()
     .single();
@@ -308,32 +316,29 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
   const clasifPago = opts.clasificacion_pago || solicitud?.clasificacion_pago || null;
   const impacto = calcularImpactoNomina(tipo, dias, diasLicEmpresa, clasifPago);
 
-  let sociedadId = null;
+  let sociedadId = multisociedadHabilitado ? (solicitud?.sociedad_id || null) : null;
   if (multisociedadHabilitado) {
-    let documentos = opts.documentos || [];
-    let tipos = opts.tiposDocumento || [];
-    let sociedades = opts.sociedades || [];
-    if (!isMock) {
-      const [{ data: documentosDb, error: documentosError }, { data: tiposDb, error: tiposError }, { data: sociedadesDb, error: sociedadesError }] = await Promise.all([
-        supabase.from('personal_documentos').select('*').eq('empresa_id', empresaId).eq('personal_id', solicitud.personal_id),
-        supabase.from('tipos_documento_empresa').select('*').eq('empresa_id', empresaId),
-        supabase.from('sociedades').select('id,codigo,nombre,activa').eq('empresa_id', empresaId).eq('activa', true),
-      ]);
-      if (documentosError) throw documentosError;
-      if (tiposError) throw tiposError;
-      if (sociedadesError) throw sociedadesError;
-      documentos = documentosDb || [];
-      tipos = tiposDb || [];
-      sociedades = sociedadesDb || [];
+    if (!sociedadId) {
+      throw new Error('La solicitud no tiene sociedad persistida. Regulariza su identidad societaria antes de confirmarla en RRHH.');
     }
-    sociedadId = resolverSociedadDocumentoLaboral({
-      multisociedadHabilitado,
-      documentos,
-      tiposDocumento: tipos,
-      sociedades,
-      personalId: solicitud.personal_id,
-      fecha: solicitud.fecha_inicio,
-    });
+    const sociedadDerivada = isMock
+      ? resolverSociedadDocumentoLaboral({
+          multisociedadHabilitado: true,
+          documentos: opts.documentos || [],
+          tiposDocumento: opts.tiposDocumento || [],
+          sociedades: opts.sociedades || [],
+          personalId: solicitud.personal_id,
+          fecha: solicitud.fecha_inicio,
+        })
+      : await resolverSociedadLaboralParaEscritura(
+          supabase,
+          empresaId,
+          solicitud.personal_id,
+          solicitud.fecha_inicio,
+        );
+    if (sociedadDerivada !== sociedadId) {
+      throw new Error('La sociedad persistida en la solicitud ya no coincide con el contrato vigente. Revisa el contrato antes de confirmar.');
+    }
   }
 
   // Asignar correlativo PM si aún no tiene uno
@@ -352,7 +357,6 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
     confirmado_por: opts.confirmadoPor || null,
     comentario_rrhh: opts.comentario || null,
     numero_correlativo,
-    sociedad_id: sociedadId,
     _usuario: opts.usuario,
   });
 }
