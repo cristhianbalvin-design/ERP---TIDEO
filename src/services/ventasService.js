@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { reservarStock, liberarReserva } from './inventarioService.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -123,15 +124,21 @@ export async function crearOrdenVenta(empresaId, form, usuarioId) {
 
   const { lineas: lineasForm = [], ...ovDatos } = form;
   if (!lineasForm.length) throw new Error('La OV debe tener al menos un ítem');
+  const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
+    supabase,
+    empresaId,
+    ovDatos.sociedad_id,
+    'Selecciona una sociedad concreta para crear la Orden de Venta.',
+  );
 
-  const numero = await siguienteNumeroOV(supabase, empresaId, ovDatos.sociedad_id || null);
+  const numero = await siguienteNumeroOV(supabase, empresaId, sociedadOperacionId);
   const totales = calcularTotalesOV(lineasForm, ovDatos.moneda);
 
   const ovId = mkId('ov');
   const { data: ov, error } = await supabase.from('ordenes_venta').insert({
     id: ovId,
     empresa_id: empresaId,
-    sociedad_id: ovDatos.sociedad_id || null,
+    sociedad_id: sociedadOperacionId,
     numero,
     cuenta_id: ovDatos.cuenta_id || null,
     cliente_nombre: ovDatos.cliente_nombre || '',
@@ -194,7 +201,7 @@ export async function confirmarOrdenVenta(ovId, usuarioId) {
   for (const l of lineas || []) {
     if (!l.material_id) continue;
     try {
-      await reservarStock(ov.empresa_id, l.material_id, ov.almacen_despacho_id, Number(l.cantidad), ovId);
+      await reservarStock(ov.empresa_id, l.material_id, ov.almacen_despacho_id, Number(l.cantidad), ovId, ov.sociedad_id);
     } catch (err) {
       erroresReserva.push(`${l.descripcion}: ${err.message}`);
     }
@@ -272,7 +279,7 @@ export async function anularOrdenVenta(ovId, motivo, usuarioId) {
       if (!l.material_id) continue;
       const pendiente = Number(l.cantidad) - Number(l.cantidad_despachada || 0);
       if (pendiente > 0) {
-        await liberarReserva(ov.empresa_id, l.material_id, ov.almacen_despacho_id, pendiente).catch(() => {});
+        await liberarReserva(ov.empresa_id, l.material_id, ov.almacen_despacho_id, pendiente, ov.sociedad_id).catch(() => {});
       }
     }
   }

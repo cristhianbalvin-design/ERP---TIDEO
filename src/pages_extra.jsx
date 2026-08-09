@@ -3156,7 +3156,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
       const lineas = (form.lineas || []).filter(l => Number(l.cantidad_recibida || 0) > 0);
       if (!lineas.length) { setErr('Ingresa al menos una cantidad fisica recibida'); return; }
       setSaving(true);
-      try { await onSave({ ...form, lineas, proveedor_id: ocSeleccionada?.proveedor_id || null, moneda: ocSeleccionada?.moneda || 'PEN' }); onClose(); }
+      try { await onSave({ ...form, lineas, proveedor_id: ocSeleccionada?.proveedor_id || null, moneda: ocSeleccionada?.moneda || 'PEN', sociedad_id: ocSeleccionada?.sociedad_id || null }); onClose(); }
       catch (e) { setErr(e.message); }
       finally { setSaving(false); }
       return;
@@ -3175,7 +3175,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
     if (mat?.tipo_control === 'lote' && !form.lote) { setErr('Este artículo requiere número de lote'); return; }
     if (mat?.tipo_control === 'serie' && !form.serie) { setErr('Este artículo requiere número de serie'); return; }
     setSaving(true);
-    try { await onSave(form); onClose(); }
+    try { await onSave({ ...form, sociedad_id: sociedadIdEscritura || null }); onClose(); }
     catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   };
@@ -3303,7 +3303,7 @@ function ModalTransferencia({ sku, almacenes, onClose, onSave }) {
     if (!form.cantidad || Number(form.cantidad) <= 0) { setErr('Cantidad debe ser mayor a cero'); return; }
     if (Number(form.cantidad) > sku.disponible) { setErr(`Stock disponible insuficiente (${sku.disponible} ${sku.unidad})`); return; }
     setSaving(true);
-    try { await onSave({ ...form, material_id: sku.material_id, lote: sku.lote, serie: sku.serie }); onClose(); }
+    try { await onSave({ ...form, material_id: sku.material_id, lote: sku.lote, serie: sku.serie, sociedad_origen_id: sku.sociedad_id || null, sociedad_destino_id: sku.sociedad_id || null }); onClose(); }
     catch (e) { setErr(e.message); }
     finally { setSaving(false); }
   };
@@ -3374,7 +3374,7 @@ function ModalAjuste({ sku, onClose, onSave }) {
     if (!form.observacion.trim()) { setErr('Ingresa un motivo/observación'); return; }
     setSaving(true);
     try {
-      await onSave({ material_id: sku.material_id, almacen_id: sku.almacen_id, cantidad_teorica: sku.fisico ?? sku.disponible, cantidad_fisica: Number(form.cantidad_fisica), motivo: form.motivo, observacion: form.observacion, lote: sku.lote, serie: sku.serie });
+      await onSave({ material_id: sku.material_id, almacen_id: sku.almacen_id, cantidad_teorica: sku.fisico ?? sku.disponible, cantidad_fisica: Number(form.cantidad_fisica), motivo: form.motivo, observacion: form.observacion, lote: sku.lote, serie: sku.serie, sociedad_id: sku.sociedad_id || null });
       onClose();
     } catch (e) { setErr(e.message); }
     finally { setSaving(false); }

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 export const presupuestosService = {
   async getPresupuestos(empresaId) {
@@ -36,9 +37,12 @@ export const presupuestosService = {
 
   async crearPresupuesto(payload) {
     const sb = await getSupabaseClient();
+    const { sociedadId } = await validarSociedadActivaParaEscritura(
+      sb, payload?.empresa_id, payload?.sociedad_id, 'Selecciona una sociedad para crear el presupuesto.',
+    );
     const { data, error } = await sb
       .from('presupuestos')
-      .insert(payload)
+      .insert({ ...payload, sociedad_id: sociedadId })
       .select()
       .single();
     if (error) throw error;

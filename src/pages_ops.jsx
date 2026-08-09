@@ -9328,25 +9328,35 @@ const GR_FORM_INIT = {
   transportista_id: '', transportista_ruc: '', transportista_razon_social: '', transportista_nro_mtc: '',
   vehiculo_id: '', vehiculo_placa: '', vehiculo_cert_habilitacion: '',
   conductor_id: '', conductor_nombre: '', conductor_dni: '', conductor_brevete: '',
-  orden_venta_id: '', ot_id: '', almacen_origen_id: '',
+  orden_venta_id: '', ot_id: '', almacen_origen_id: '', sociedad_origen_id: '', sociedad_destino_id: '',
   lineas: [],
 };
 const OV_FORM_INIT = {
   cliente_nombre: '', cliente_ruc_dni: '', cliente_direccion: '',
   moneda: 'PEN', condicion_pago: '30_dias',
   fecha_emision: new Date().toISOString().slice(0,10), fecha_entrega: '',
-  almacen_despacho_id: '', observaciones: '', lineas: [],
+  almacen_despacho_id: '', sociedad_id: '', observaciones: '', lineas: [],
 };
 const TRANS_FORM_INIT = { ruc: '', razon_social: '', nombre_comercial: '', tipo_operador: 'tercero', nro_mtc: '', direccion: '', telefono: '', email: '' };
 
 function Remision() {
   const {
-    guiasRemision, ordenesVenta, transportistas, catalogoVenta, almacenes,
+    guiasRemision, ordenesVenta, transportistas, catalogoVenta, almacenes, ots,
     crearGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx,
     crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
     crearOVCtx, confirmarOVCtx, anularOVCtx,
-    searchQuery, addToast,
+    searchQuery, addToast, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles,
   } = useApp();
+  const modoVistaSociedadRemision = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
+  const sociedadIdEscrituraRemision = modoVistaSociedadRemision.sociedadIdEscritura;
+  const ordenesVentaGuia = filtrarOpcionesPorSociedadEscritura(ordenesVenta || [], sociedadIdEscrituraRemision);
+  const otsGuia = filtrarOpcionesPorSociedadEscritura(ots || [], sociedadIdEscrituraRemision);
 
   const [tab, setTab] = useState('guias');
   const [filtroEstadoGR, setFiltroEstadoGR] = useState('');
@@ -9450,6 +9460,7 @@ function Remision() {
       destinatario_razon_social: ov.cliente_nombre || '',
       llegada_direccion: ov.cliente_direccion || '',
       almacen_origen_id: ov.almacen_despacho_id || '',
+      sociedad_origen_id: ov.sociedad_id || '',
       lineas: (ov.lineas || []).map(l => ({
         id: `tmp_${Date.now()}_${l.id}`,
         descripcion: l.descripcion,
@@ -9468,9 +9479,29 @@ function Remision() {
 
   const guardarGuia = async (emitir = false) => {
     if (!grForm.lineas.length) { setErrores(['Agrega al menos un ítem a la guía']); return; }
+    const ovOrigen = (ordenesVenta || []).find(ov => ov.id === grForm.orden_venta_id);
+    const otOrigen = (ots || []).find(ot => ot.id === grForm.ot_id);
+    let sociedadOrigenId = null;
+    if (empresa?.multisociedad_habilitado) {
+      if (grForm.tipo_origen === 'despacho_venta') {
+        sociedadOrigenId = ovOrigen?.sociedad_id || sociedadIdEscrituraRemision;
+        if (!sociedadOrigenId) { setErrores(['Vincula una OV con sociedad o selecciona una sociedad concreta en el selector superior.']); return; }
+      } else if (grForm.tipo_origen === 'despacho_servicio') {
+        sociedadOrigenId = otOrigen?.sociedad_id || null;
+        if (!grForm.ot_id) { setErrores(['Selecciona la OT asociada.']); return; }
+        if (!sociedadOrigenId) { setErrores(['La OT seleccionada no tiene sociedad derivable.']); return; }
+      } else {
+        sociedadOrigenId = sociedadIdEscrituraRemision;
+        if (!sociedadOrigenId) { setErrores(['Selecciona una sociedad concreta en el selector superior.']); return; }
+      }
+    }
     setSubmitting(true); setErrores([]);
     try {
-      const data = await crearGuiaCtx(grForm);
+      const data = await crearGuiaCtx({
+        ...grForm,
+        sociedad_origen_id: sociedadOrigenId,
+        sociedad_destino_id: grForm.tipo_origen === 'traslado_interno' ? sociedadOrigenId : (grForm.sociedad_destino_id || null),
+      });
       if (emitir && data?.id) {
         try { await emitirGuiaCtx(data.id); } catch (e) { addToast?.('Guía creada pero no emitida: ' + e.message, 'warning'); }
       }
@@ -9506,9 +9537,13 @@ function Remision() {
   const guardarOV = async () => {
     if (!ovForm.cliente_nombre) { setErrores(['El cliente es obligatorio']); return; }
     if (!ovForm.lineas.length) { setErrores(['Agrega al menos un ítem']); return; }
+    if (empresa?.multisociedad_habilitado && !modoVistaSociedadRemision.permiteEscritura) {
+      setErrores(['Selecciona una sociedad concreta en el selector superior para crear la Orden de Venta.']);
+      return;
+    }
     setSubmitting(true); setErrores([]);
     try {
-      await crearOVCtx(ovForm);
+      await crearOVCtx({ ...ovForm, sociedad_id: sociedadIdEscrituraRemision || null });
       setModalOV(null); setOvForm(OV_FORM_INIT);
     } catch (e) { setErrores([e.message]); }
     finally { setSubmitting(false); }
@@ -9568,8 +9603,8 @@ function Remision() {
           <div className="page-sub">Guías de remisión, despachos y órdenes de venta de bienes</div>
         </div>
         <div style={{display:'flex',gap:8}}>
-          {tab === 'guias' && <button className="btn btn-primary" onClick={() => { setModalGuia('nueva'); setGrForm(GR_FORM_INIT); setWizardStep(1); setErrores([]); }}>{I.plus} Nueva Guía</button>}
-          {tab === 'ov'    && <button className="btn btn-primary" onClick={() => { setModalOV('nueva'); setOvForm(OV_FORM_INIT); setErrores([]); }}>{I.plus} Nueva OV</button>}
+          {tab === 'guias' && <button className="btn btn-primary" onClick={() => { setModalGuia('nueva'); setGrForm({ ...GR_FORM_INIT, sociedad_origen_id: sociedadIdEscrituraRemision || '' }); setWizardStep(1); setErrores([]); }}>{I.plus} Nueva Guía</button>}
+          {tab === 'ov'    && <button className="btn btn-primary" disabled={empresa?.multisociedad_habilitado && !modoVistaSociedadRemision.permiteEscritura} title={empresa?.multisociedad_habilitado && !modoVistaSociedadRemision.permiteEscritura ? 'Selecciona una sociedad concreta en el selector superior.' : 'Nueva Orden de Venta'} onClick={() => { setModalOV('nueva'); setOvForm({ ...OV_FORM_INIT, sociedad_id: sociedadIdEscrituraRemision || '' }); setErrores([]); }}>{I.plus} Nueva OV</button>}
           {tab === 'trans' && <button className="btn btn-primary" onClick={() => { setModalTrans('nuevo'); setTransForm(TRANS_FORM_INIT); setErrores([]); setSubTab('lista'); }}>{I.plus} Nuevo Transportista</button>}
         </div>
       </div>
@@ -9727,12 +9762,12 @@ function Remision() {
                       ))}
                     </div>
                   </div>
-                  {grForm.tipo_origen === 'despacho_venta' && (ordenesVenta || []).filter(o => ['pendiente','confirmada'].includes(o.estado)).length > 0 && (
+                  {grForm.tipo_origen === 'despacho_venta' && ordenesVentaGuia.filter(o => ['pendiente','confirmada'].includes(o.estado)).length > 0 && (
                     <div style={{marginBottom:12}}>
                       <label className="form-label">Vincular a una Orden de Venta (opcional)</label>
                       <select className="input" value={grForm.orden_venta_id} onChange={e => { setGr('orden_venta_id', e.target.value); if (e.target.value) agregarDesdeOV(e.target.value); }}>
                         <option value="">— Sin vincular —</option>
-                        {(ordenesVenta || []).filter(o => ['pendiente','confirmada'].includes(o.estado)).map(o => (
+                        {ordenesVentaGuia.filter(o => ['pendiente','confirmada'].includes(o.estado)).map(o => (
                           <option key={o.id} value={o.id}>{o.numero} — {o.cliente_nombre} — S/ {Number(o.total || 0).toFixed(2)}</option>
                         ))}
                       </select>
@@ -9740,8 +9775,16 @@ function Remision() {
                   )}
                   {grForm.tipo_origen === 'despacho_servicio' && (
                     <div style={{marginBottom:12}}>
-                      <label className="form-label">N° de OT asociada</label>
-                      <input className="input" value={grForm.ot_id} onChange={e => setGr('ot_id', e.target.value)} placeholder="OT-26-0001" />
+                      <label className="form-label">OT asociada *</label>
+                      <select className="input" value={grForm.ot_id} onChange={e => {
+                        const ot = (ots || []).find(item => item.id === e.target.value);
+                        setGrForm(prev => ({ ...prev, ot_id: e.target.value, sociedad_origen_id: ot?.sociedad_id || '' }));
+                      }}>
+                        <option value="">— Seleccionar OT —</option>
+                        {otsGuia.map(ot => (
+                          <option key={ot.id} value={ot.id}>{ot.numero || ot.codigo || ot.id}</option>
+                        ))}
+                      </select>
                     </div>
                   )}
                   <button className="btn btn-primary" style={{marginTop:16}} onClick={() => setWizardStep(2)}>Continuar →</button>
@@ -9866,6 +9909,29 @@ function Remision() {
                           ))}
                         </tbody>
                       </table>
+                    )}
+                    {(catalogoVenta || []).length > 0 && (
+                      <div style={{marginBottom:8}}>
+                        <label className="form-label">Vincular material del catálogo</label>
+                        <select className="input" onChange={e => {
+                          const item = (catalogoVenta || []).find(catalogo => catalogo.id === e.target.value);
+                          if (item) {
+                            setGrLinea(prev => ({
+                              ...prev,
+                              descripcion: item.descripcion,
+                              codigo: item.codigo || '',
+                              unidad: item.unidad || 'NIU',
+                              material_id: item.material_id || null,
+                            }));
+                          }
+                          e.target.value = '';
+                        }}>
+                          <option value="">— Seleccionar material —</option>
+                          {(catalogoVenta || []).filter(item => item.activo !== false && item.material_id).map(item => (
+                            <option key={item.id} value={item.id}>{item.codigo} — {item.descripcion}</option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                     <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
                       <div><label className="form-label">Descripción *</label><input className="input" value={grLinea.descripcion} onChange={e => setGrLinea(p => ({...p, descripcion: e.target.value}))} /></div>

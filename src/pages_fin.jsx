@@ -7294,8 +7294,12 @@ function CxP() {
     const esTributo = esTributoForm;
     const esDividendo = esDividendoForm;
     const esRheInterno = esRhe && rheTipoEmisor === 'interno';
-    if (!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId) { addNotificacion(mensajeOrigenCxP); return; }
+    if (empresa?.multisociedad_habilitado && !modoVistaSociedadCxP.permiteEscritura && !otOrigenCxPId && !cxpCentroCostoId) { addNotificacion(mensajeOrigenCxP); return; }
     if (destinoCxP.conflictMessage) { addNotificacion(destinoCxP.conflictMessage); return; }
+    if (empresa?.multisociedad_habilitado && (otOrigenCxPId || cxpCentroCostoId) && !destinoCxP.sociedadId) {
+      addNotificacion(destinoCxP.emptyMessage || 'El documento de origen no tiene sociedad.');
+      return;
+    }
     const montoTotal = esRhe ? (esRheInterno ? rheMontoNetoInterno : rheMontoNeto) : Number(formCrear.monto_total);
     if (!formCrear.fecha_emision || !formCrear.fecha_vencimiento || montoTotal <= 0) {
       addNotificacion('Completa fecha de emisión, vencimiento y monto.');
@@ -7348,6 +7352,7 @@ function CxP() {
         monto_total:       montoTotal,
         monto_pagado:      0,
         saldo:             montoTotal,
+        sociedad_id:       destinoCxP.sociedadId || modoVistaSociedadCxP.sociedadIdEscritura || null,
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
         origen:            esTributo ? 'tributos' : esDividendo ? 'dividendos' : esRhe ? 'rhe_externo' : esViaticos ? 'viaticos' : 'manual',
@@ -8310,8 +8315,8 @@ function CxP() {
                     ))}
                   </select>
                 </div>
-                {(otOrigenCxPId || cxpCentroCostoId || cxpRequiereOrigenEnConsolidado) && <SociedadReadOnlyField {...destinoCxP} />}
-                {!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId && <div className="alert alert-warning">{mensajeOrigenCxP}</div>}
+                {(empresa?.multisociedad_habilitado || otOrigenCxPId || cxpCentroCostoId || cxpRequiereOrigenEnConsolidado) && <SociedadReadOnlyField {...destinoCxP} />}
+                {empresa?.multisociedad_habilitado && !modoVistaSociedadCxP.permiteEscritura && !otOrigenCxPId && !cxpCentroCostoId && <div className="alert alert-warning">{mensajeOrigenCxP}</div>}
               </div>
               {!esTributoForm && !esDividendoForm && (
                 <label style={{
@@ -8356,7 +8361,7 @@ function CxP() {
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end'}}>
                 <button type="button" className="btn btn-secondary" onClick={() => { setPanelCrear(false); setArchivoCrearUrl(''); setFormCrear(FORM_VACIO); setRheRuc(''); setRheNombre(''); setRheMontoBruto(''); setRheNumeroDoc(''); setRheTipoEmisor(''); setRheColaboradorId(''); setRheTrabajoFacturable(true); setRheOtId(''); setRheRucAviso(null); setCxpCategoriaEr(''); setCxpCentroCostoId(''); }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={guardando || (!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId) || Boolean(destinoCxP.conflictMessage)} title={!modoVistaSociedadCxP.permiteEscritura && cxpRequiereOrigenEnConsolidado && !otOrigenCxPId && !cxpCentroCostoId ? mensajeOrigenCxP : destinoCxP.conflictMessage || undefined}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
+                <button type="submit" className="btn btn-primary" disabled={guardando || (empresa?.multisociedad_habilitado && !modoVistaSociedadCxP.permiteEscritura && !otOrigenCxPId && !cxpCentroCostoId) || Boolean(destinoCxP.conflictMessage) || (empresa?.multisociedad_habilitado && Boolean(otOrigenCxPId || cxpCentroCostoId) && !destinoCxP.sociedadId)} title={empresa?.multisociedad_habilitado && !modoVistaSociedadCxP.permiteEscritura && !otOrigenCxPId && !cxpCentroCostoId ? mensajeOrigenCxP : destinoCxP.conflictMessage || destinoCxP.emptyMessage || undefined}>{guardando ? 'Guardando...' : 'Registrar CxP'}</button>
               </div>
             </form>
           </div>

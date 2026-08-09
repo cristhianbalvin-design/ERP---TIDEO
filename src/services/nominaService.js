@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { obtenerEstadoMultisociedad, validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 // Clasificación remunerativo/no-remunerativo por sub_tipo de ingresos_extraordinarios.
 // 'otro' es remunerativo por defecto (presunción general de la ley laboral peruana:
@@ -212,12 +213,18 @@ export const nominaService = {
   guardarDetalle: async (empresaId, periodoId, filas, sociedadId = null) => {
     if (!filas.length) return 0;
     const supabase = await getSupabaseClient();
-    const rpc = sociedadId ? 'guardar_nomina_detalle_periodo_sociedad' : 'guardar_nomina_detalle_periodo';
+    const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+    const sociedadValidada = multisociedadHabilitado
+      ? (await validarSociedadActivaParaEscritura(
+          supabase, empresaId, sociedadId, 'El período de nómina debe tener una sociedad.',
+        )).sociedadId
+      : null;
+    const rpc = multisociedadHabilitado ? 'guardar_nomina_detalle_periodo_sociedad' : 'guardar_nomina_detalle_periodo';
     const params = {
       p_empresa_id: empresaId,
       p_periodo_id: periodoId,
       p_filas: filas,
-      ...(sociedadId ? { p_sociedad_id: sociedadId } : {}),
+      ...(multisociedadHabilitado ? { p_sociedad_id: sociedadValidada } : {}),
     };
     const { data, error } = await supabase.rpc(rpc, params);
     if (error) throw error;
