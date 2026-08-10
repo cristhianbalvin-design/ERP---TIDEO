@@ -3110,9 +3110,11 @@ function Resultados({ role }) {
     base: MOCK.estadoResultados,
     comprasGastos: cgFiltrado,
     ots: otsFiltradas,
+    centrosCosto,
+    centrosBeneficio,
     empresa,
     periodo,
-  }), [cgFiltrado, otsFiltradas, empresa, periodo]);
+  }), [cgFiltrado, otsFiltradas, centrosCosto, centrosBeneficio, empresa, periodo]);
 
   useEffect(() => {
     if (!supabaseMode || !canFin) {
