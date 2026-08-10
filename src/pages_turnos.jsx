@@ -106,7 +106,10 @@ export function TurnosHorarios() {
 
   const abrirNuevo = () => {
     setEditandoId(null);
-    setForm(formBase);
+    const nums = (turnos || []).map(t => { const m = (t.codigo || t.id || '').match(/(\d+)$/); return m ? parseInt(m[1], 10) : 0; });
+    const next = (nums.length ? Math.max(...nums) : 0) + 1;
+    const propCode = `tur_${String(next).padStart(3, '0')}`;
+    setForm({ ...formBase, codigo: propCode });
     setSaveError('');
     setPanel(true);
   };
@@ -114,6 +117,7 @@ export function TurnosHorarios() {
   const abrirEditar = (t) => {
     setEditandoId(t.id);
     setForm({
+      codigo: t.codigo || '',
       nombre: t.nombre || '',
       hora_entrada: t.hora_entrada || '08:00',
       hora_salida: t.hora_salida || '17:00',
@@ -139,12 +143,6 @@ export function TurnosHorarios() {
     setSaving(true);
     setSaveError('');
     const horas = Math.floor((timeToMinutes(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutes(form.hora_entrada) - Number(form.refrigerio_minutos)) / 60);
-    const generarCodigo = () => {
-      const nums = (turnos || []).map(t => { const m = (t.codigo || t.id || '').match(/(\d+)$/); return m ? parseInt(m[1], 10) : 0; });
-      const next = (nums.length ? Math.max(...nums) : 0) + 1;
-      return `tur_${String(next).padStart(3, '0')}`;
-    };
-    
     // Find the first active day to set as fallback defaults, if not dias_variables
     let fallbackEntrada = form.hora_entrada;
     let fallbackSalida = form.hora_salida;
@@ -164,7 +162,7 @@ export function TurnosHorarios() {
        }
     }
     
-    const payload = { ...form, hora_entrada: fallbackEntrada, hora_salida: fallbackSalida, tolerancia_minutos: Number(fallbackTol), refrigerio_minutos: Number(fallbackRef), cruza_medianoche: fallbackCruza, codigo: editandoId ? ((turnos||[]).find(t=>t.id===editandoId)?.codigo || generarCodigo()) : generarCodigo(), horas_efectivas: horas, requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
+    const payload = { ...form, hora_entrada: fallbackEntrada, hora_salida: fallbackSalida, tolerancia_minutos: Number(fallbackTol), refrigerio_minutos: Number(fallbackRef), cruza_medianoche: fallbackCruza, codigo: form.codigo, horas_efectivas: horas, requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
     try {
       if (editandoId) {
         const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);
@@ -242,7 +240,10 @@ export function TurnosHorarios() {
           </div>
           <form className="side-panel-body" onSubmit={guardar}>
             {saveError && <div className="alert alert-danger" style={{marginBottom:14}}>{saveError}</div>}
-            <div className="input-group"><label>Nombre del turno *</label><input className="input" required value={form.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Turno Mañana" autoFocus/></div>
+            <div style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:14}}>
+              <div className="input-group"><label>Código *</label><input className="input" required value={form.codigo || ''} onChange={e=>upd('codigo',e.target.value)} placeholder="Ej: tur_001"/></div>
+              <div className="input-group"><label>Nombre del turno *</label><input className="input" required value={form.nombre} onChange={e=>upd('nombre',e.target.value)} placeholder="Ej: Turno Mañana" autoFocus/></div>
+            </div>
 
             <div style={{marginTop:16}}>
               <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,marginBottom:10}}>

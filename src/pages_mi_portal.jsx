@@ -994,7 +994,7 @@ export function MiPortal() {
               </div>
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Tipo</th><th>Fechas</th><th>Días hábiles</th><th>Estado</th></tr></thead>
+                  <thead><tr><th>Tipo</th><th>Fechas</th><th>Días calendario</th><th>Estado</th></tr></thead>
                   <tbody>
                     {data.solicitudes.map(s => <tr key={s.id}>
                       <td style={{ fontWeight: 600 }}>{s.tipo}</td>

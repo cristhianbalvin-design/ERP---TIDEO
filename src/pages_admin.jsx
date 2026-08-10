@@ -27,10 +27,15 @@ import { VARIABLES_COMERCIALES } from './lib/textoComercial.js';
 import { maestrosService } from './services/maestrosService.js';
 import {
   CEBE_TIPOS_IMPORTACION,
+  CEBE_TIPOS_FINITOS,
+  CARGOS_FINANCIEROS_DBS,
   CECO_TIPOS_IMPORTACION,
+  NATURALEZAS_ECONOMICAS_CECO,
+  validarSociedadFormularioCentro,
   validarFilasImportacionCebe,
   validarFilasImportacionCeco,
 } from './utils/cecoCebeImport.js';
+import { resolverSociedadInicialFormularioCentro } from './utils/centrosSociedadForm.js';
 import { importarMaterialesMasivo } from './services/materialService.js';
 import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/estadoResultadosService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
@@ -1839,12 +1844,38 @@ function Stub({title, description}) {
 }
 
 // ============ CECO / CEBE ============
+const NotaContextual = ({ children }) => <small className="text-muted" style={{ display:'block', marginTop:5, lineHeight:1.35 }}>{children}</small>;
+
+const formatearFechaPeru = value => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '—';
+};
+
+const serialExcelDesdeIso = value => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const [, year, month, day] = match.map(Number);
+  const fecha = new Date(Date.UTC(year, month - 1, day));
+  if (fecha.getUTCFullYear() !== year || fecha.getUTCMonth() !== month - 1 || fecha.getUTCDate() !== day) return null;
+  return (fecha.getTime() - Date.UTC(1899, 11, 30)) / 86400000;
+};
+
+function SociedadCentroField({ esMultisociedad, permiteEscritura, sociedades = [], value, onChange }) {
+  if (!esMultisociedad) return null;
+  if (permiteEscritura) {
+    const sociedad = sociedades.find(item => item.id === value);
+    const texto = sociedad ? `${sociedad.codigo ? `${sociedad.codigo} — ` : ''}${sociedad.nombre}` : '';
+    return <div className="input-group"><label>Sociedad</label><input className="input" value={texto} readOnly aria-readonly="true"/><NotaContextual>Este centro pertenecerá a esta persona jurídica de forma permanente y sus costos se registrarán en su contabilidad.</NotaContextual></div>;
+  }
+  return <><SociedadFormField value={value} onChange={onChange}/><NotaContextual>Este centro pertenecerá a esta persona jurídica de forma permanente y sus costos se registrarán en su contabilidad.</NotaContextual></>;
+}
+
 function CecoCebePanel({ onClose }) {
   const {
     centrosCosto, centrosBeneficio, cuentas, usuarios, empresa, ots, sedes, especialidades,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
-    crearCentroCosto, actualizarCentroCosto, importarCentrosCosto,
-    crearCentroBeneficio, actualizarCentroBeneficio, importarCentrosBeneficio,
+    crearCentroCosto, actualizarCentroCosto, eliminarCentroCosto, importarCentrosCosto,
+    crearCentroBeneficio, actualizarCentroBeneficio, eliminarCentroBeneficio, importarCentrosBeneficio,
     addNotificacion
   } = useApp();
 
@@ -1860,7 +1891,7 @@ function CecoCebePanel({ onClose }) {
     && !modoVistaSociedadCentros.permiteEscritura
     && (modoVistaSociedadCentros.sinFiltro || modoVistaSociedadCentros.sociedadesIds.length > 0)
   );
-  const mensajeSeleccionSociedadCebe = 'Selecciona una sociedad concreta en el selector superior para crear CEBEs manualmente.';
+  const esMultisociedadCentros = Boolean(empresa?.multisociedad_habilitado);
   const sociedadesIdsVistaCentrosKey = modoVistaSociedadCentros.sociedadesIds.join('|');
   const centrosCostoVista = useMemo(() => {
     if (modoVistaSociedadCentros.sinFiltro) return centrosCosto || [];
@@ -1875,7 +1906,12 @@ function CecoCebePanel({ onClose }) {
 
   const [tab, setTab] = useState('ceco');
 
-  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', responsable_id:'', cebe_id:'', sociedad_id:'', presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const sociedadFormularioInicial = resolverSociedadInicialFormularioCentro({
+    multisociedadHabilitado: esMultisociedadCentros,
+    permiteEscritura: modoVistaSociedadCentros.permiteEscritura,
+    sociedadIdEscritura: modoVistaSociedadCentros.sociedadIdEscritura,
+  });
+  const cecoBase = { codigo:'', nombre:'', tipo:'area_funcional', naturaleza_economica:'', responsable_id:'', cebe_id:'', sociedad_id:sociedadFormularioInicial, presupuesto_mensual:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cecoForm, setCecoForm] = useState(cecoBase);
   const [cecoEditId, setCecoEditId] = useState(null);
   const [cecoSaving, setCecoSaving] = useState(false);
@@ -1886,8 +1922,9 @@ function CecoCebePanel({ onClose }) {
   const [cecoModalImport, setCecoModalImport] = useState(false);
   const [cecoImportRows, setCecoImportRows] = useState([]);
   const [cecoImportStep, setCecoImportStep] = useState(1);
+  const [centroEliminando, setCentroEliminando] = useState('');
 
-  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', responsable_id:'', cuenta_id:'', sociedad_id:'', meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
+  const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', cargo_financiero_dbs:'', responsable_id:'', cuenta_id:'', sociedad_id:sociedadFormularioInicial, meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cebeForm, setCebeForm] = useState(cebeBase);
   const [cebeEditId, setCebeEditId] = useState(null);
   const [cebeSaving, setCebeSaving] = useState(false);
@@ -1899,9 +1936,9 @@ function CecoCebePanel({ onClose }) {
   const [cebeImportStep, setCebeImportStep] = useState(1);
 
   const usuariosActivos = (usuarios || []).filter(u => u.estado !== 'inactivo');
-  const cebesActivos = (centrosBeneficio || [])
+  const cebesActivosParaCeco = (centrosBeneficio || [])
     .filter(c => c.estado === 'activo')
-    .filter(c => !modoVistaSociedadCentros.sociedadIdEscritura || c.sociedad_id === modoVistaSociedadCentros.sociedadIdEscritura);
+    .filter(c => !esMultisociedadCentros || (cecoForm.sociedad_id && c.sociedad_id === cecoForm.sociedad_id));
   const estadosOtCerrados = new Set(['pendiente_cierre', 'pendiente cierre', 'cerrada', 'cerrado', 'cerrada_tecnica', 'cerrado_tecnico', 'valorizada', 'valorizado', 'facturada', 'facturado', 'anulada', 'anulado', 'cancelada', 'cancelado']);
   const otsActivasPorCeco = cecoId => (ots || []).filter(o => o.centro_costo_id === cecoId && !estadosOtCerrados.has(String(o.estado || '').toLowerCase()));
   const confirmarInactivacionCeco = ceco => {
@@ -1917,6 +1954,56 @@ function CecoCebePanel({ onClose }) {
     addNotificacion?.('CECO inactivado.');
   };
 
+  const abrirParaExpirar = (catalogo, centro) => {
+    const fechaFin = new Date().toISOString().slice(0, 10);
+    if (catalogo === 'centro_costo') {
+      editarCeco(centro);
+      setCecoForm(prev => ({ ...prev, fecha_fin: prev.fecha_fin || fechaFin }));
+    } else {
+      editarCebe(centro);
+      setCebeForm(prev => ({ ...prev, fecha_fin: prev.fecha_fin || fechaFin }));
+    }
+  };
+
+  const intentarEliminarCentro = async (catalogo, centro) => {
+    const clave = `${catalogo}:${centro.id}`;
+    setCentroEliminando(clave);
+    try {
+      let detalle = { referencias: [], total_referencias: 0, cecos_hijos: 0 };
+      if (isSupabaseConfigured()) {
+        const supabase = await getSupabaseClient();
+        const { data, error } = await supabase.rpc('contar_referencias_centro', {
+          p_catalogo: catalogo,
+          p_centro_id: centro.id,
+        });
+        if (error) throw error;
+        detalle = data || detalle;
+      }
+      const referencias = Array.isArray(detalle.referencias) ? detalle.referencias : [];
+      const hijos = Number(detalle.cecos_hijos || 0);
+      const total = Number(detalle.total_referencias || 0) + hijos;
+      if (total > 0) {
+        const modulos = [
+          ...referencias.map(item => `${item.modulo}: ${item.cantidad}`),
+          ...(hijos ? [`Centros de costo hijos: ${hijos}`] : []),
+        ];
+        const abrir = window.confirm(`No se puede eliminar "${centro.nombre}" porque tiene ${total} referencia(s).\n\n${modulos.join('\n')}\n\nPara conservar la trazabilidad, asígnale una fecha de fin para expirarlo. ¿Abrir el formulario para hacerlo?`);
+        if (abrir) abrirParaExpirar(catalogo, centro);
+        return;
+      }
+      const confirmado = window.confirm(`La eliminación de "${centro.nombre}" es permanente e irreversible. Su código quedará disponible para reutilizarse.\n\n¿Confirmas eliminarlo definitivamente?`);
+      if (!confirmado) return;
+      if (catalogo === 'centro_costo') await eliminarCentroCosto(centro.id);
+      else await eliminarCentroBeneficio(centro.id);
+      addNotificacion?.(`${catalogo === 'centro_costo' ? 'CECO' : 'CEBE'} eliminado permanentemente.`);
+    } catch (err) {
+      const mensaje = err?.message || 'No se pudo verificar las referencias del centro.';
+      if (catalogo === 'centro_costo') setCecoError(mensaje); else setCebeError(mensaje);
+    } finally {
+      setCentroEliminando('');
+    }
+  };
+
   const CECO_TIPOS = CECO_TIPOS_IMPORTACION;
   const CEBE_TIPOS = CEBE_TIPOS_IMPORTACION;
   const labelTipo = t => ({
@@ -1927,28 +2014,69 @@ function CecoCebePanel({ onClose }) {
     linea_servicio: 'Línea de servicio',
     cliente: 'Cliente',
     producto: 'Producto',
+    estructural: 'Estructural / corporativo',
   }[t] || t);
+
+  const notasTipoCebe = {
+    linea_servicio: 'Agrupa ingresos y costos de una línea de negocio recurrente. Se factura contra él.',
+    cliente: 'Mide la rentabilidad de un cliente específico.',
+    proyecto: 'Centro finito; exige fecha de fin.',
+    producto: 'Mide la rentabilidad de un producto o familia.',
+    temporal: 'Centro finito de corta duración; exige fecha de fin.',
+    estructural: 'No genera ingresos. Absorbe gastos de administración y estructura. No se factura contra él y no participa del margen por línea de negocio.',
+  };
+  const notasTipoCeco = {
+    area_funcional: 'Centro permanente asociado a un área de la organización.',
+    proyecto: 'Centro finito ligado a un proyecto.',
+    temporal: 'Centro finito de corta duración.',
+  };
+  const notasNaturalezaCeco = {
+    productivo: 'Ejecuta directamente el servicio que se factura. Su costo es costo de ventas.',
+    apoyo: 'Da soporte a los centros productivos sin facturar directamente.',
+    estructural: 'Existe independientemente del nivel de actividad comercial. Su costo es gasto administrativo.',
+  };
+  useEffect(() => {
+    const sociedad_id = resolverSociedadInicialFormularioCentro({
+      multisociedadHabilitado: esMultisociedadCentros,
+      permiteEscritura: modoVistaSociedadCentros.permiteEscritura,
+      sociedadIdEscritura: modoVistaSociedadCentros.sociedadIdEscritura,
+    });
+    if (!cecoEditId) {
+      setCecoForm(prev => prev.sociedad_id === sociedad_id
+        ? prev
+        : { ...prev, sociedad_id, cebe_id: '' });
+    }
+    if (!cebeEditId) {
+      setCebeForm(prev => prev.sociedad_id === sociedad_id
+        ? prev
+        : { ...prev, sociedad_id });
+    }
+  }, [cecoEditId, cebeEditId, esMultisociedadCentros, modoVistaSociedadCentros.permiteEscritura, modoVistaSociedadCentros.sociedadIdEscritura]);
 
   // ---- CECO ----
   const resetCecoForm = () => { setCecoForm(cecoBase); setCecoEditId(null); setCecoError(''); };
   const editarCeco = c => {
-    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', sociedad_id:c.sociedad_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCecoForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'area_funcional', naturaleza_economica:c.naturaleza_economica||'', responsable_id:c.responsable_id||'', cebe_id:c.cebe_id||'', sociedad_id:c.sociedad_id||'', presupuesto_mensual:c.presupuesto_mensual||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCecoEditId(c.id); setCecoError('');
   };
   const guardarCeco = async e => {
     e.preventDefault();
     if (!cecoForm.codigo.trim()) return setCecoError('El código del CECO es obligatorio.');
     if (!cecoForm.nombre.trim()) return setCecoError('El nombre es obligatorio.');
-    if (!cecoForm.cebe_id) return setCecoError('El CEBE padre es obligatorio.');
+    const errorSociedadCeco = validarSociedadFormularioCentro({
+      multisociedadHabilitado: esMultisociedadCentros,
+      sociedadId: cecoForm.sociedad_id,
+    });
+    if (errorSociedadCeco) return setCecoError(errorSociedadCeco);
     const cebeSeleccionado = (centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id);
-    if (empresa?.multisociedad_habilitado && !cebeSeleccionado?.sociedad_id) return setCecoError('El CEBE seleccionado no tiene sociedad asignada. Corrige el CEBE antes de guardar el CECO.');
-    if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso. Elige uno diferente.');
+    if (cebeSeleccionado && esMultisociedadCentros && cebeSeleccionado.sociedad_id !== cecoForm.sociedad_id) return setCecoError('El CEBE padre debe pertenecer a la sociedad seleccionada.');
+    if ((centrosCosto||[]).some(c => c.codigo === cecoForm.codigo.trim() && c.sociedad_id === (esMultisociedadCentros ? cecoForm.sociedad_id : null) && c.id !== cecoEditId)) return setCecoError('Este código ya está en uso para esta sociedad. Elige uno diferente.');
     const cecoActual = (centrosCosto || []).find(c => c.id === cecoEditId);
     if (cecoEditId && cecoActual?.estado !== 'inactivo' && cecoForm.estado === 'inactivo' && !confirmarInactivacionCeco(cecoActual)) return;
     setCecoSaving(true); setCecoError('');
     try {
       const resp = usuariosActivos.find(u => u.id === cecoForm.responsable_id);
-      const datos = { ...cecoForm, sociedad_id: empresa?.multisociedad_habilitado ? cebeSeleccionado?.sociedad_id || null : null, responsable_nombre: resp?.nombre || '', fecha_inicio: cecoForm.fecha_inicio || null, fecha_fin: cecoForm.fecha_fin || null, presupuesto_mensual: cecoForm.presupuesto_mensual !== '' ? cecoForm.presupuesto_mensual : null, cebe_id: cecoForm.cebe_id || null };
+      const datos = { ...cecoForm, sociedad_id: esMultisociedadCentros ? cecoForm.sociedad_id : null, responsable_nombre: resp?.nombre || '', fecha_inicio: cecoForm.fecha_inicio || null, fecha_fin: cecoForm.fecha_fin || null, presupuesto_mensual: cecoForm.presupuesto_mensual !== '' ? cecoForm.presupuesto_mensual : null, cebe_id: cecoForm.cebe_id || null };
       if (cecoEditId) await actualizarCentroCosto(cecoEditId, datos);
       else await crearCentroCosto(datos);
       addNotificacion?.(`CECO ${cecoEditId ? 'actualizado' : 'creado'} correctamente.`);
@@ -1965,20 +2093,25 @@ function CecoCebePanel({ onClose }) {
   // ---- CEBE ----
   const resetCebeForm = () => { setCebeForm(cebeBase); setCebeEditId(null); setCebeError(''); };
   const editarCebe = c => {
-    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', sociedad_id:c.sociedad_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
+    setCebeForm({ codigo:c.codigo||'', nombre:c.nombre||'', tipo:c.tipo||'linea_servicio', cargo_financiero_dbs:c.cargo_financiero_dbs||'', responsable_id:c.responsable_id||'', cuenta_id:c.cuenta_id||'', sociedad_id:c.sociedad_id||'', meta_ingresos:c.meta_ingresos||'', fecha_inicio:c.fecha_inicio||'', fecha_fin:c.fecha_fin||'', descripcion:c.descripcion||'', estado:c.estado||'activo' });
     setCebeEditId(c.id); setCebeError('');
   };
   const guardarCebe = async e => {
     e.preventDefault();
-    if (!cebeEditId && !modoVistaSociedadCentros.permiteEscritura) return setCebeError(mensajeSeleccionSociedadCebe);
     if (!cebeForm.codigo.trim()) return setCebeError('El código del CEBE es obligatorio.');
     if (!cebeForm.nombre.trim()) return setCebeError('El nombre es obligatorio.');
-    if (empresa?.multisociedad_habilitado && !cebeForm.sociedad_id) return setCebeError('La sociedad es obligatoria.');
-    if ((centrosBeneficio||[]).some(c => c.codigo === cebeForm.codigo.trim() && c.id !== cebeEditId)) return setCebeError('Este código ya está en uso. Elige uno diferente.');
+    if (CEBE_TIPOS_FINITOS.includes(cebeForm.tipo) && !cebeForm.fecha_fin) return setCebeError(`Fecha de fin obligatoria para tipo ${cebeForm.tipo}.`);
+    const errorSociedadCebe = validarSociedadFormularioCentro({
+      multisociedadHabilitado: esMultisociedadCentros,
+      sociedadId: cebeForm.sociedad_id,
+    });
+    if (errorSociedadCebe) return setCebeError(errorSociedadCebe);
+    if ((centrosBeneficio||[]).some(c => c.codigo === cebeForm.codigo.trim() && c.sociedad_id === (esMultisociedadCentros ? cebeForm.sociedad_id : null) && c.id !== cebeEditId)) return setCebeError('Este código ya está en uso para esta sociedad. Elige uno diferente.');
     setCebeSaving(true); setCebeError('');
     try {
       const resp = usuariosActivos.find(u => u.id === cebeForm.responsable_id);
-      const datos = { ...cebeForm, responsable_nombre: resp?.nombre || '', fecha_inicio: cebeForm.fecha_inicio || null, fecha_fin: cebeForm.fecha_fin || null, meta_ingresos: cebeForm.meta_ingresos !== '' ? cebeForm.meta_ingresos : null, cuenta_id: cebeForm.cuenta_id || null };
+      const esEstructural = cebeForm.tipo === 'estructural';
+      const datos = { ...cebeForm, cargo_financiero_dbs: esEstructural ? null : (cebeForm.cargo_financiero_dbs || null), responsable_nombre: resp?.nombre || '', fecha_inicio: cebeForm.fecha_inicio || null, fecha_fin: cebeForm.fecha_fin || null, meta_ingresos: esEstructural ? 0 : (cebeForm.meta_ingresos !== '' ? cebeForm.meta_ingresos : null), cuenta_id: cebeForm.cuenta_id || null };
       if (cebeEditId) await actualizarCentroBeneficio(cebeEditId, datos);
       else await crearCentroBeneficio(datos);
       addNotificacion?.(`CEBE ${cebeEditId ? 'actualizado' : 'creado'} correctamente.`);
@@ -2042,6 +2175,14 @@ function CecoCebePanel({ onClose }) {
   };
   const exportXlsx = (data, headers, filename) => {
     const ws = XLSX.utils.json_to_sheet(data.map(r => Object.fromEntries(headers.map(h => [h, r[h] ?? '']))), { header: headers });
+    headers.forEach((header, columnIndex) => {
+      if (!['fecha_inicio', 'fecha_fin'].includes(header)) return;
+      data.forEach((row, rowIndex) => {
+        const serial = serialExcelDesdeIso(row?.[header]);
+        if (serial === null) return;
+        ws[XLSX.utils.encode_cell({ c: columnIndex, r: rowIndex + 1 })] = { t: 'n', v: serial, z: 'dd/mm/yyyy' };
+      });
+    });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Datos');
     XLSX.writeFile(wb, filename);
@@ -2050,10 +2191,13 @@ function CecoCebePanel({ onClose }) {
     const r = new FileReader();
     r.onload = ev => {
       try {
-        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
         const ws = wb.Sheets[sheetName];
         if (!ws) throw new Error(`El archivo no contiene la hoja "${sheetName}".`);
-        resolve(XLSX.utils.sheet_to_json(ws, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' }));
+        const filas = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true });
+        resolve(filas.filter(fila => Object.entries(fila).some(([campo, valor]) => (
+          !['fecha_inicio', 'fecha_fin'].includes(campo) && String(valor ?? '').trim() !== ''
+        ))));
       } catch(e) { reject(e); }
     };
     r.onerror = reject;
@@ -2086,7 +2230,7 @@ function CecoCebePanel({ onClose }) {
             <div className="row" style={{ gap:10, marginBottom:18 }}>
               <a className="btn btn-secondary" href={`${import.meta.env.BASE_URL}plantillas/plantilla_cecos.xlsx`} download="plantilla_cecos.xlsx">{I.download} Descargar plantilla</a>
               <button className="btn btn-secondary" onClick={() => { setCecoModalImport(true); setCecoImportRows([]); setCecoImportStep(1); }}>{I.download} Importar Excel</button>
-              <button className="btn btn-secondary" onClick={() => { const data = centrosCostoVista.map(c => ({ ...c, especialidad: (especialidades||[]).find(e=>e.id===c.especialidad)?.codigo || '', responsable: c.responsable_nombre || '', cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.codigo || '', sede_padre: (sedes||[]).find(s=>s.id===c.sede_padre)?.codigo || '' })); exportXlsx(data, ['codigo','nombre','tipo','especialidad','responsable','cebe_padre','sede_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
+              <button className="btn btn-secondary" onClick={() => { const data = centrosCostoVista.map(c => ({ ...c, sociedad: (sociedadesDisponibles||[]).find(s=>s.id===c.sociedad_id)?.codigo || '', especialidad: (especialidades||[]).find(e=>e.id===c.especialidad)?.codigo || '', responsable: c.responsable_nombre || '', cebe_padre: (centrosBeneficio||[]).find(b=>b.id===c.cebe_id)?.codigo || '', sede_padre: (sedes||[]).find(s=>s.id===c.sede_padre)?.codigo || '' })); exportXlsx(data, ['codigo','nombre','sociedad','tipo','naturaleza_economica','especialidad','responsable','cebe_padre','sede_padre','presupuesto_mensual','fecha_inicio','fecha_fin','descripcion','estado'], 'cecos.xlsx'); }}>{I.download} Exportar Excel</button>
               <span className="badge badge-cyan">Validación de duplicados activa</span>
             </div>
 
@@ -2095,6 +2239,7 @@ function CecoCebePanel({ onClose }) {
               {cecoError && <div className="alert alert-danger" style={{ marginBottom:12, fontSize:13 }}>{cecoError}</div>}
               <form onSubmit={guardarCeco}>
                 <div className="grid-2" style={{ gap:12, marginBottom:12 }}>
+                  <SociedadCentroField esMultisociedad={esMultisociedadCentros} permiteEscritura={modoVistaSociedadCentros.permiteEscritura} sociedades={sociedadesDisponibles} value={cecoForm.sociedad_id} onChange={sociedad_id => setCecoForm(prev => ({ ...prev, sociedad_id, cebe_id: prev.sociedad_id === sociedad_id ? prev.cebe_id : '' }))}/>
                   <div className="input-group">
                     <label>Código * <span style={{ fontSize:11, fontWeight:400, color:'var(--fg-subtle)' }}>· Lo define la empresa</span></label>
                     <input className="input" value={cecoForm.codigo} onChange={e=>setCecoForm(p=>({...p,codigo:e.target.value}))} placeholder="Ej: CC-OPS-01" disabled={!!cecoEditId}/>
@@ -2108,6 +2253,15 @@ function CecoCebePanel({ onClose }) {
                     <select className="select" value={cecoForm.tipo} onChange={e=>setCecoForm(p=>({...p,tipo:e.target.value}))}>
                       {CECO_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
                     </select>
+                    <NotaContextual>{notasTipoCeco[cecoForm.tipo]}</NotaContextual>
+                  </div>
+                  <div className="input-group">
+                    <label>Naturaleza económica</label>
+                    <select className="select" value={cecoForm.naturaleza_economica} onChange={e=>setCecoForm(p=>({...p,naturaleza_economica:e.target.value}))}>
+                      <option value="">— Pendiente de clasificar —</option>
+                      {NATURALEZAS_ECONOMICAS_CECO.map(n=><option key={n} value={n}>{n[0].toUpperCase()}{n.slice(1)}</option>)}
+                    </select>
+                    {cecoForm.naturaleza_economica && <NotaContextual>{notasNaturalezaCeco[cecoForm.naturaleza_economica]}</NotaContextual>}
                   </div>
                   <div className="input-group">
                     <label>Responsable</label>
@@ -2117,30 +2271,25 @@ function CecoCebePanel({ onClose }) {
                     </select>
                   </div>
                   <div className="input-group">
-                    <label>CEBE padre *</label>
-                    <select className="select" value={cecoForm.cebe_id} onChange={e=>setCecoForm(p=>({...p,cebe_id:e.target.value}))}>
+                    <label>CEBE padre</label>
+                    <select className="select" value={cecoForm.cebe_id} disabled={esMultisociedadCentros && !cecoForm.sociedad_id} onChange={e=>setCecoForm(p=>({...p,cebe_id:e.target.value}))}>
                       <option value="">— Seleccionar CEBE —</option>
-                      {cebesActivos.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
+                      {cebesActivosParaCeco.map(c=><option key={c.id} value={c.id}>{c.codigo} — {c.nombre}</option>)}
                     </select>
                   </div>
                   <div className="input-group">
                     <label>Presupuesto mensual</label>
                     <input className="input" type="number" min="0" value={cecoForm.presupuesto_mensual} onChange={e=>setCecoForm(p=>({...p,presupuesto_mensual:e.target.value}))} placeholder="0.00"/>
                   </div>
-                  <SociedadReadOnlyField
-                    sociedadId={(centrosBeneficio || []).find(c => c.id === cecoForm.cebe_id)?.sociedad_id || null}
-                    emptyMessage={cecoForm.cebe_id ? 'El CEBE padre no tiene sociedad. El CECO quedará sin sociedad.' : 'Selecciona un CEBE padre para resolver la sociedad destino del CECO.'}
-                  />
-                  {['proyecto','temporal'].includes(cecoForm.tipo) && <>
-                    <div className="input-group">
-                      <label>Fecha inicio</label>
-                      <input className="input" type="date" value={cecoForm.fecha_inicio} onChange={e=>setCecoForm(p=>({...p,fecha_inicio:e.target.value}))}/>
-                    </div>
-                    <div className="input-group">
-                      <label>Fecha fin</label>
-                      <input className="input" type="date" value={cecoForm.fecha_fin} onChange={e=>setCecoForm(p=>({...p,fecha_fin:e.target.value}))}/>
-                    </div>
-                  </>}
+                  <div className="input-group">
+                    <label>Fecha inicio</label>
+                    <input className="input" type="date" value={cecoForm.fecha_inicio} onChange={e=>setCecoForm(p=>({...p,fecha_inicio:e.target.value}))}/>
+                  </div>
+                  <div className="input-group">
+                    <label>Fecha fin</label>
+                    <input className="input" type="date" value={cecoForm.fecha_fin} onChange={e=>setCecoForm(p=>({...p,fecha_fin:e.target.value}))}/>
+                    <small className="text-muted">Para dejar de usar un CECO, registra su fecha de fin; no se elimina ni se inactiva sin preservar el histórico.</small>
+                  </div>
                   <div className="input-group" style={{ gridColumn:'1/-1' }}>
                     <label>Descripción</label>
                     <input className="input" value={cecoForm.descripcion} onChange={e=>setCecoForm(p=>({...p,descripcion:e.target.value}))} placeholder="Opcional"/>
@@ -2180,10 +2329,10 @@ function CecoCebePanel({ onClose }) {
             <div className="card">
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Vigencia</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cecosFiltrados.length === 0
-                      ? <tr><td colSpan={8 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CECOs con los filtros seleccionados.</td></tr>
+                      ? <tr><td colSpan={9 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CECOs con los filtros seleccionados.</td></tr>
                       : cecosFiltrados.map(c => {
                           const cebePadre = (centrosBeneficio||[]).find(b=>b.id===c.cebe_id);
                           const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
@@ -2196,11 +2345,13 @@ function CecoCebePanel({ onClose }) {
                               <td className="text-muted" style={{ fontSize:12 }}>{cebePadre ? `${cebePadre.codigo} — ${cebePadre.nombre}` : '—'}</td>
                               <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
                               <td className="mono text-muted" style={{ fontSize:12 }}>{c.presupuesto_mensual ? `S/ ${Number(c.presupuesto_mensual).toLocaleString('es-PE')}` : '—'}</td>
+                              <td className="text-muted" style={{ fontSize:12 }}>{formatearFechaPeru(c.fecha_inicio)} — {formatearFechaPeru(c.fecha_fin)}</td>
                               <td><span className={`badge ${c.estado==='activo'?'badge-green':'badge-gray'}`}>{c.estado}</span></td>
                               <td>
                                 <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
                                   <button className="icon-btn" title="Editar" onClick={()=>editarCeco(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
                                   <button className="icon-btn" title="Inactivar" onClick={() => inactivarCeco(c)} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                  <button className="btn btn-danger btn-sm" title="Eliminar permanentemente" disabled={centroEliminando === `centro_costo:${c.id}`} onClick={() => intentarEliminarCentro('centro_costo', c)}>{centroEliminando === `centro_costo:${c.id}` ? 'Verificando...' : 'Eliminar'}</button>
                                 </div>
                               </td>
                             </tr>
@@ -2226,8 +2377,8 @@ function CecoCebePanel({ onClose }) {
               <div style={{ fontWeight:600, fontSize:13, color:'var(--cyan)', marginBottom:14 }}>{cebeEditId ? 'Editar CEBE' : 'Nuevo CEBE'}</div>
               {cebeError && <div className="alert alert-danger" style={{ marginBottom:12, fontSize:13 }}>{cebeError}</div>}
               <form onSubmit={guardarCebe}>
-                {!cebeEditId && !modoVistaSociedadCentros.permiteEscritura && <div className="alert alert-warning" style={{marginBottom:12}}>{mensajeSeleccionSociedadCebe}</div>}
                 <div className="grid-2" style={{ gap:12, marginBottom:12 }}>
+                  <SociedadCentroField esMultisociedad={esMultisociedadCentros} permiteEscritura={modoVistaSociedadCentros.permiteEscritura} sociedades={sociedadesDisponibles} value={cebeForm.sociedad_id} onChange={sociedad_id => setCebeForm(prev => ({ ...prev, sociedad_id }))}/>
                   <div className="input-group">
                     <label>Código * <span style={{ fontSize:11, fontWeight:400, color:'var(--fg-subtle)' }}>· Lo define la empresa</span></label>
                     <input className="input" value={cebeForm.codigo} onChange={e=>setCebeForm(p=>({...p,codigo:e.target.value}))} placeholder="Ej: CEBE-001" disabled={!!cebeEditId}/>
@@ -2238,9 +2389,18 @@ function CecoCebePanel({ onClose }) {
                   </div>
                   <div className="input-group">
                     <label>Tipo *</label>
-                    <select className="select" value={cebeForm.tipo} onChange={e=>setCebeForm(p=>({...p,tipo:e.target.value}))}>
+                    <select className="select" value={cebeForm.tipo} onChange={e=>setCebeForm(p => e.target.value === 'estructural' ? ({...p, tipo:e.target.value, cargo_financiero_dbs:'', meta_ingresos:'0'}) : ({...p, tipo:e.target.value}))}>
                       {CEBE_TIPOS.map(t=><option key={t} value={t}>{labelTipo(t)}</option>)}
                     </select>
+                    <NotaContextual>{notasTipoCebe[cebeForm.tipo]}</NotaContextual>
+                  </div>
+                  <div className="input-group">
+                    <label>Cargo financiero DBS</label>
+                    <select className="select" value={cebeForm.cargo_financiero_dbs} disabled={cebeForm.tipo === 'estructural'} onChange={e=>setCebeForm(p=>({...p,cargo_financiero_dbs:e.target.value}))}>
+                      <option value="">— Sin cargo —</option>
+                      {CARGOS_FINANCIEROS_DBS.map(cargo=><option key={cargo} value={cargo}>{cargo.replaceAll('_', ' ')}</option>)}
+                    </select>
+                    <NotaContextual>Determina si el trabajo asociado es facturable al cliente o asumido por la empresa. Debe quedar vacío para los centros estructurales.</NotaContextual>
                   </div>
                   <div className="input-group">
                     <label>Responsable</label>
@@ -2260,16 +2420,15 @@ function CecoCebePanel({ onClose }) {
                   )}
                   <div className="input-group">
                     <label>Meta de ingresos</label>
-                    <input className="input" type="number" min="0" value={cebeForm.meta_ingresos} onChange={e=>setCebeForm(p=>({...p,meta_ingresos:e.target.value}))} placeholder="0.00"/>
+                    <input className="input" type="number" min="0" value={cebeForm.tipo === 'estructural' ? '0' : cebeForm.meta_ingresos} disabled={cebeForm.tipo === 'estructural'} onChange={e=>setCebeForm(p=>({...p,meta_ingresos:e.target.value}))} placeholder="0.00"/>
                   </div>
-                  <SociedadFormField value={cebeForm.sociedad_id} onChange={sociedad_id => setCebeForm(prev => ({ ...prev, sociedad_id }))} />
                   <div className="input-group">
                     <label>Fecha inicio</label>
                     <input className="input" type="date" value={cebeForm.fecha_inicio} onChange={e=>setCebeForm(p=>({...p,fecha_inicio:e.target.value}))}/>
                   </div>
                   <div className="input-group">
-                    <label>Fecha fin</label>
-                    <input className="input" type="date" value={cebeForm.fecha_fin} onChange={e=>setCebeForm(p=>({...p,fecha_fin:e.target.value}))}/>
+                    <label>Fecha fin {CEBE_TIPOS_FINITOS.includes(cebeForm.tipo) && '*'}</label>
+                    <input className="input" type="date" required={CEBE_TIPOS_FINITOS.includes(cebeForm.tipo)} value={cebeForm.fecha_fin} onChange={e=>setCebeForm(p=>({...p,fecha_fin:e.target.value}))}/>
                   </div>
                   <div className="input-group" style={{ gridColumn:'1/-1' }}>
                     <label>Descripción</label>
@@ -2285,7 +2444,7 @@ function CecoCebePanel({ onClose }) {
                 </div>
                 <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
                   {cebeEditId && <button type="button" className="btn btn-secondary" onClick={resetCebeForm}>Cancelar</button>}
-                  <button className="btn btn-primary" type="submit" disabled={cebeSaving || (!cebeEditId && !modoVistaSociedadCentros.permiteEscritura)} title={!cebeEditId && !modoVistaSociedadCentros.permiteEscritura ? mensajeSeleccionSociedadCebe : undefined}>{cebeSaving ? 'Guardando...' : cebeEditId ? 'Actualizar CEBE' : '+ Agregar CEBE'}</button>
+                  <button className="btn btn-primary" type="submit" disabled={cebeSaving}>{cebeSaving ? 'Guardando...' : cebeEditId ? 'Actualizar CEBE' : '+ Agregar CEBE'}</button>
                 </div>
               </form>
             </div>
@@ -2306,10 +2465,10 @@ function CecoCebePanel({ onClose }) {
             <div className="card">
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+                  <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Vigencia</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cebesFiltrados.length === 0
-                      ? <tr><td colSpan={8 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CEBEs con los filtros seleccionados.</td></tr>
+                      ? <tr><td colSpan={9 + (mostrarBadgeSociedadCentros ? 1 : 0)} className="text-center text-muted" style={{ padding:'32px 0' }}>No hay CEBEs con los filtros seleccionados.</td></tr>
                       : cebesFiltrados.map(c => {
                           const resp = usuariosActivos.find(u=>u.id===c.responsable_id);
                           const cecosCount = centrosCostoVista.filter(cc=>cc.cebe_id===c.id).length;
@@ -2322,11 +2481,13 @@ function CecoCebePanel({ onClose }) {
                               <td className="text-muted" style={{ fontSize:12 }}>{resp?.nombre || c.responsable_nombre || '—'}</td>
                               <td className="mono text-muted" style={{ fontSize:12 }}>{c.meta_ingresos ? `S/ ${Number(c.meta_ingresos).toLocaleString('es-PE')}` : '—'}</td>
                               <td><span className="badge badge-gray" style={{ fontSize:11 }}>{cecosCount} CECOs</span></td>
+                              <td className="text-muted" style={{ fontSize:12 }}>{formatearFechaPeru(c.fecha_inicio)} — {formatearFechaPeru(c.fecha_fin)}</td>
                               <td><span className={`badge ${c.estado==='activo'?'badge-green':'badge-gray'}`}>{c.estado}</span></td>
                               <td>
                                 <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
                                   <button className="icon-btn" title="Editar" onClick={()=>editarCebe(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
                                   <button className="icon-btn" title="Inactivar" onClick={async()=>{ if(window.confirm(`¿Inactivar "${c.nombre}"?`)) { await actualizarCentroBeneficio(c.id,{...c,estado:'inactivo'}); addNotificacion?.('CEBE inactivado.'); }}} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                  <button className="btn btn-danger btn-sm" title="Eliminar permanentemente" disabled={centroEliminando === `centro_beneficio:${c.id}`} onClick={() => intentarEliminarCentro('centro_beneficio', c)}>{centroEliminando === `centro_beneficio:${c.id}` ? 'Verificando...' : 'Eliminar'}</button>
                                 </div>
                               </td>
                             </tr>
@@ -4784,7 +4945,7 @@ function Maestros() {
     setFormSaving(true);
     setFormError('');
     const base = {
-      codigo: editandoId ? nuevo.codigo : autoCode(sel.id, selectedRows.length),
+      codigo: editandoId ? nuevo.codigo : (nuevo.codigo ?? autoCode(sel.id, selectedRows.length)),
       nombre: nuevo.nombre || 'Nuevo valor',
       estado: nuevo.estado
     };
@@ -4803,7 +4964,7 @@ function Maestros() {
         else await crearEspecialidad(item);
       } else if (sel.id === 'mst_niveles_jerarquicos') {
         const item = {
-          codigo: editandoId ? nuevo.codigo : slugifyNivel(nuevo.nombre),
+          codigo: editandoId ? nuevo.codigo : (nuevo.codigo ?? slugifyNivel(nuevo.nombre)),
           nombre: nuevo.nombre || 'Nuevo valor',
           alcance: nuevo.alcance || 'propio',
           orden: parseInt(nuevo.orden) || 100,
@@ -4901,8 +5062,8 @@ function Maestros() {
 
   const CodPreview = ({ id, len }) => (
     <div className="input-group">
-      <label>Código <span style={{fontSize:10, color:'var(--fg-subtle)', fontWeight:400}}>· Auto-generado</span></label>
-      <input className="input" readOnly value={autoCode(id, len)} style={{color:'var(--fg-muted)', cursor:'default', background:'var(--bg-subtle)'}}/>
+      <label>Código *</label>
+      <input className="input" required value={nuevo.codigo ?? autoCode(id, len)} onChange={e=>setNuevo(v=>({...v,codigo:e.target.value}))} style={{background:'var(--bg-subtle)'}} placeholder="Ej: COD-001"/>
     </div>
   );
 
@@ -5145,8 +5306,8 @@ function Maestros() {
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
           <div className="input-group">
-            <label>Código <span style={{fontSize:10, color:'var(--fg-subtle)', fontWeight:400}}>· Auto-generado del nombre</span></label>
-            <input className="input" readOnly value={editandoId ? nuevo.codigo : slugifyNivel(nuevo.nombre)} style={{color:'var(--fg-muted)', cursor:'default', background:'var(--bg-subtle)'}}/>
+            <label>Código *</label>
+            <input className="input" required value={nuevo.codigo ?? (editandoId ? nuevo.codigo : slugifyNivel(nuevo.nombre))} onChange={e=>setNuevo(v=>({...v,codigo:e.target.value}))} style={{background:'var(--bg-subtle)'}}/>
           </div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Practicante" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
