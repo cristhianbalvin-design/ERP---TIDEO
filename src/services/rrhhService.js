@@ -938,6 +938,12 @@ export const rrhhService = {
     if (error) throw error;
     return normalizarAsistencia(data);
   },
+  registrarMarcacionRPC: async (params) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_marcacion_asistencia', params);
+    if (error) throw error;
+    return data;
+  },
 
   // ─── Ciclos Mineros ───────────────────────────────────────────
   getCiclosMineros: async (empresaId, personalId = null) => {

@@ -171,10 +171,18 @@ export async function syncGeoQueue({ onSynced } = {}) {
   let synced = 0;
   for (const item of queue) {
     try {
-      const { empresaId, registro, updateId } = item.payload;
-      const saved = updateId
-        ? await rrhhService.actualizarAsistencia(updateId, { ...registro, offline_sincronizado_en: new Date().toISOString() })
-        : await rrhhService.registrarAsistencia(empresaId, { ...registro, offline_sincronizado_en: new Date().toISOString() });
+      const { empresaId, registro, updateId, rpcParams } = item.payload;
+      let saved;
+      if (rpcParams) {
+        // Nueva lógica vía RPC
+        rpcParams.p_metadata = { ...rpcParams.p_metadata, offline_sincronizado_en: new Date().toISOString() };
+        saved = await rrhhService.registrarMarcacionRPC(rpcParams);
+      } else {
+        // Lógica legacy para elementos antiguos en cola
+        saved = updateId
+          ? await rrhhService.actualizarAsistencia(updateId, { ...registro, offline_sincronizado_en: new Date().toISOString() })
+          : await rrhhService.registrarAsistencia(empresaId, { ...registro, offline_sincronizado_en: new Date().toISOString() });
+      }
       synced += 1;
       onSynced?.(saved, item);
     } catch {
