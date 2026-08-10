@@ -3881,7 +3881,7 @@ function SolicitudesMovilView() {
                 onChange={e => setForm(f => ({...f, fecha_fin: e.target.value}))}/>
             </div>
             <div style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:8, fontSize:14, fontWeight:600, marginBottom:12}}>
-              Días hábiles: {diasHabiles}
+              Días calendario: {diasHabiles}
               {excedeSaldo && <span style={{color:'var(--red)', fontWeight:400, fontSize:12, display:'block', marginTop:2}}>Supera tu saldo disponible ({saldoVac.saldo} días)</span>}
             </div>
             <div className="row" style={{gap:10, marginTop:8}}>
@@ -3932,7 +3932,7 @@ function SolicitudesMovilView() {
               <div style={{fontSize:13, lineHeight:1.7}}>
                 <div><strong>Desde:</strong> {form.fecha_inicio}</div>
                 <div><strong>Hasta:</strong> {form.fecha_fin}</div>
-                <div><strong>Días hábiles:</strong> {diasHabiles}</div>
+                <div><strong>Días calendario:</strong> {diasHabiles}</div>
                 <div style={{marginTop:8, color:'var(--fg-muted)'}}>{form.motivo}</div>
               </div>
             </div>

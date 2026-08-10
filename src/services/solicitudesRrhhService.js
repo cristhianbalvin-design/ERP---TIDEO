@@ -11,8 +11,7 @@ function diasHabilesLocal(inicio, fin) {
   let count = 0;
   const cur = new Date(start);
   while (cur <= end) {
-    const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count;
