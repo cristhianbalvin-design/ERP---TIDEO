@@ -2642,9 +2642,69 @@ function MaterialesMaestro({ onClose }) {
     const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','und','1','activo','Almacén Central','Estante A-3','','25.50'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
     ws['!cols'] = headers.map((h,i) => ({ wch: i < 6 ? 12 : i === 7 ? 30 : 16 }));
+    
+    const instrucciones = [
+      ['INSTRUCCIONES PARA LLENAR LA PLANTILLA'],
+      [''],
+      ['1. Cod Grupo, Cod Familia, Cod Sub-Familia:', 'Deben ser códigos cortos y únicos (ej: GRP01, FAM01). Son obligatorios.'],
+      ['2. Grupo, Familia, Sub-Familia:', 'Nombres descriptivos de la jerarquía (ej: Herramientas, Herramientas Manuales). Obligatorios.'],
+      ['3. Codigo:', 'Dejar en blanco para que el sistema lo autogenere, o colocar un código único personalizado.'],
+      ['4. Descripcion:', 'Nombre completo del material (ej: Llave francesa 10"). Obligatorio.'],
+      ['5. UM:', 'Unidad de medida (ej: und, kg, m). Obligatorio.'],
+      ['6. Estado:', 'Colocar "activo" o "inactivo". Por defecto es "activo".'],
+      ['7. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
+      [''],
+      ['Ejemplo válido:'],
+      headers,
+      ejemplo
+    ];
+    const wsInstrucciones = XLSX.utils.aoa_to_sheet(instrucciones);
+    wsInstrucciones['!cols'] = [{ wch: 35 }, { wch: 80 }];
+
     const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsInstrucciones, 'Instrucciones');
     XLSX.utils.book_append_sheet(wb, ws, 'Materiales');
     XLSX.writeFile(wb, 'plantilla_materiales.xlsx');
+  };
+
+  const exportarMaterialesExcel = () => {
+    if (!materiales || materiales.length === 0) {
+      alert('No hay materiales para exportar.');
+      return;
+    }
+    const data = materiales.map(m => {
+      const g = materialGrupos.find(x => x.id === m.grupo_id);
+      const f = materialFamilias.find(x => x.id === m.familia_id);
+      const s = materialSubfamilias.find(x => x.id === m.subfamilia_id);
+      const a = almacenes.find(x => x.id === m.almacen_id);
+      return {
+        'Cod Grupo': g ? g.codigo : '',
+        'Grupo': g ? g.nombre : '',
+        'Cod Familia': f ? f.codigo : '',
+        'Familia': f ? f.nombre : '',
+        'Cod Sub-Familia': s ? s.codigo : '',
+        'Sub-Familia': s ? s.nombre : '',
+        'Codigo': m.codigo || '',
+        'Descripcion': m.descripcion || '',
+        'Nro Parte': m.nro_parte || '',
+        'UM': m.unidad || '',
+        'Unidades Contenidas': m.unidades_contenidas || 1,
+        'Estado': m.estado || 'activo',
+        'Almacen': a ? a.nombre : '',
+        'Ubicacion': m.ubicacion || '',
+        'Observacion': m.observacion || '',
+        'P.U. S/': m.precio_unitario || 0,
+        'Stock Minimo': m.stock_minimo || 0,
+        'Punto Reorden': m.punto_reorden || 0,
+        'Stock Maximo': m.stock_maximo || 0,
+        'Stock Seguridad': m.stock_seguridad || 0
+      };
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Materiales_Export');
+    XLSX.writeFile(wb, 'catalogo_materiales.xlsx');
   };
 
   // ─── Jerarquía CRUD ───────────────────────────────────────────────────────
@@ -2710,6 +2770,7 @@ function MaterialesMaestro({ onClose }) {
                   <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
                 </label>
                 <button className="btn btn-secondary" onClick={descargarPlantillaMateriales}>{I.download} Descargar plantilla</button>
+                <button className="btn btn-secondary" onClick={exportarMaterialesExcel}>{I.download} Exportar Excel</button>
                 {resultImport && (
                   <div style={{ fontSize: 12, background: resultImport.errores?.length ? 'var(--danger-lt)' : 'var(--success-lt)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 12px' }}>
                     <strong>Resultado importación:</strong> {resultImport.creados} creados · {resultImport.actualizados} actualizados
