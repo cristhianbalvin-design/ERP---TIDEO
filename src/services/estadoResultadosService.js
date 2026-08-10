@@ -192,6 +192,35 @@ const resolverCategoriaEr = (erConfig = [], label, { hasOt = false } = {}) => {
   return resolverCategoriaPorTipoSistema(erConfig, inferTipoSistema(label), { hasOt });
 };
 
+// La naturaleza solo reasigna gastos operativos/directos. Ingresos y gastos
+// financieros conservan su clasificación explícita para no distorsionar margen
+// bruto ni resultado financiero.
+const NATURALEZA_ER_SECCION = Object.freeze({
+  productivo: 'costo_ventas',
+  apoyo: 'gastos_operativos',
+  estructural: 'gastos_operativos',
+});
+
+const seccionProtegidaPorClasificacion = seccion => (
+  seccion === 'gastos_financieros' || seccion === 'ingresos'
+);
+
+const seccionPorNaturaleza = naturaleza => NATURALEZA_ER_SECCION[norm(naturaleza)] || null;
+
+export const resolverSeccionGasto = ({ entry = null, naturaleza = null, fallback = 'gastos_operativos', incompatibleConOt = false } = {}) => {
+  if (seccionProtegidaPorClasificacion(entry?.seccion)) return entry.seccion;
+  const seccionNaturaleza = seccionPorNaturaleza(naturaleza);
+  if (seccionNaturaleza) return seccionNaturaleza;
+  // Una categoría "sin_ot" no puede desaparecer si se usó con una OT: se
+  // conserva su etiqueta, pero se registra como gasto operativo por defecto.
+  if (incompatibleConOt) return fallback;
+  return entry?.seccion || fallback;
+};
+
+const naturalezaByCeco = centrosCosto => new Map(
+  (centrosCosto || []).map(ceco => [ceco.id, ceco.naturaleza_economica || null])
+);
+
 const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion', 'tributos', 'dividendos']);
 const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
 
@@ -269,6 +298,13 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
   const result = emptyResult(periodo);
   const empresaId = empresa?.id;
   const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  const naturalezaCeco = naturalezaByCeco(centrosCosto);
+  const localBlockForSection = section => ({
+    ingresos: result.er.ingresos,
+    costo_ventas: result.er.costoVentas,
+    gastos_operativos: result.er.gastosOp,
+    gastos_financieros: result.er.gastosFin,
+  }[section] || result.er.gastosOp);
   const sociedadOt = ot => {
     const ceco = centrosCosto.find(c => c.id === ot?.centro_costo_id);
     const cebe = centrosBeneficio.find(c => c.id === ot?.centro_beneficio_id);
@@ -306,13 +342,21 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
       !g.es_activo_fijo &&
       inferTipoSistema(g.categoria) !== 'gastos_financieros'
     )
-    .forEach(g => addToBlock(result.er.gastosOp, g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN'));
+    .forEach(g => {
+      const blockKey = resolverSeccionGasto({ naturaleza: naturalezaCeco.get(g.centro_costo_id) });
+      addToBlock(localBlockForSection(blockKey), g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN');
+    });
 
-  const moReal = ots
+  ots
     .filter(o => isInPeriod(o.fecha_fin || o.fecha_inicio || o.fecha_programada, periodo)
       && matchesSociedad(o.sociedad_id || sociedadOt(o), scopeSociedades))
-    .reduce((s, o) => s + amount(o.costo_real), 0);
-  if (moReal > 0) addToBlock(result.er.costoVentas, 'Mano de obra directa', moReal, 'PEN');
+    .forEach(o => {
+      const blockKey = resolverSeccionGasto({
+        naturaleza: naturalezaCeco.get(o.centro_costo_id),
+        fallback: 'costo_ventas',
+      });
+      addToBlock(localBlockForSection(blockKey), 'Mano de obra directa', o.costo_real, 'PEN');
+    });
 
   const intereses = comprasGastos.filter(g =>
     (!empresaId || !g.empresa_id || g.empresa_id === empresaId) &&
@@ -370,26 +414,31 @@ async function loadCostosOt(supabase, empresaId, sociedadIds = null) {
       || c.ordenes_trabajo?.fecha_programada
       || c.calculado_at?.slice?.(0, 10),
   }));
-  if (!sociedadIds) return rows;
-
   const cecoIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_costo_id).filter(Boolean))];
   const cebeIds = [...new Set(rows.map(c => c.ordenes_trabajo?.centro_beneficio_id).filter(Boolean))];
   const [cecosR, cebesR] = await Promise.all([
     cecoIds.length
-      ? supabase.from('centros_costo').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cecoIds)
+      ? supabase.from('centros_costo').select('id, sociedad_id, naturaleza_economica').eq('empresa_id', empresaId).in('id', cecoIds)
       : Promise.resolve({ data: [], error: null }),
-    cebeIds.length
+    sociedadIds && cebeIds.length
       ? supabase.from('centros_beneficio').select('id, sociedad_id').eq('empresa_id', empresaId).in('id', cebeIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (cecosR.error) throw cecosR.error;
   if (cebesR.error) throw cebesR.error;
   const sociedadCeco = new Map((cecosR.data || []).map(c => [c.id, c.sociedad_id]));
+  const naturalezaCeco = naturalezaByCeco(cecosR.data);
   const sociedadCebe = new Map((cebesR.data || []).map(c => [c.id, c.sociedad_id]));
-  rows = rows.filter(c => sociedadIds.includes(
-    sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id)
-      || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id)
-  ));
+  rows = rows.map(c => ({
+    ...c,
+    naturaleza_economica: naturalezaCeco.get(c.ordenes_trabajo?.centro_costo_id) || null,
+  }));
+  if (sociedadIds) {
+    rows = rows.filter(c => sociedadIds.includes(
+      sociedadCeco.get(c.ordenes_trabajo?.centro_costo_id)
+        || sociedadCebe.get(c.ordenes_trabajo?.centro_beneficio_id)
+    ));
+  }
   return rows;
 }
 
@@ -490,7 +539,7 @@ async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null) {
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('caja_chica')
-    .select('id, fecha, monto, moneda, categoria, gasto_id, estado, sociedad_id')
+    .select('id, fecha, monto, moneda, categoria, ceco_id, gasto_id, estado, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next)
@@ -500,6 +549,18 @@ async function loadCajaChica(supabase, empresaId, periodo, sociedadIds = null) {
   if (error) throw error;
   // Excluir registros con gasto_id para no duplicar lo que ya recoge loadComprasGastos.
   return (data || []).filter(r => r.gasto_id == null);
+}
+
+async function loadNaturalezasCeco(supabase, empresaId, cecoIds = []) {
+  const ids = [...new Set((cecoIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const { data, error } = await supabase
+    .from('centros_costo')
+    .select('id, naturaleza_economica')
+    .eq('empresa_id', empresaId)
+    .in('id', ids);
+  if (error) throw error;
+  return naturalezaByCeco(data);
 }
 
 // Fallback cuando el tenant no tiene filas en er_categorias (tenant nuevo sin configurar).
@@ -549,12 +610,20 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     loadCajaChica(supabase, empresaId, periodo, scopeSociedades),
     cargarConfiguracionER(empresaId),
   ]);
+  const naturalezaCeco = await loadNaturalezasCeco(supabase, empresaId, [
+    ...comprasGastos.map(g => g.centro_costo_id),
+    ...cxpDevengos.map(cxp => cxp.centro_costo_id),
+    ...detalleNomina.map(n => n.centro_costo_id),
+    ...cajaChica.map(r => r.ceco_id),
+  ]);
 
   const sectionToBlock = {
+    ingresos:           result.er.ingresos,
     costo_ventas:      result.er.costoVentas,
     gastos_operativos: result.er.gastosOp,
     gastos_financieros: result.er.gastosFin,
   };
+  const blockForSection = section => sectionToBlock[section] || result.er.gastosOp;
   const labelByTipo = (tipoSistema, fallback, hasOt = true) =>
     resolverCategoriaPorTipoSistema(erConfig, tipoSistema, { hasOt })?.nombre || fallback;
 
@@ -568,11 +637,15 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     .filter(c => !effectiveCecoIds || matchesIds(c.ordenes_trabajo?.centro_costo_id, effectiveCecoIds))
     .filter(c => !cebeIds?.length || intersectsIds(c.ordenes_trabajo?.centro_beneficio_id, cebeIds))
     .forEach(c => {
-      addToBlock(result.er.costoVentas, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda);
-      addToBlock(result.er.costoVentas, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda);
-      addToBlock(result.er.costoVentas, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda);
-      addToBlock(result.er.costoVentas, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda);
-      addToBlock(result.er.costoVentas, 'Otros costos directos', c.otros, c.moneda);
+      const block = blockForSection(resolverSeccionGasto({
+        naturaleza: c.naturaleza_economica,
+        fallback: 'costo_ventas',
+      }));
+      addToBlock(block, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda);
+      addToBlock(block, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda);
+      addToBlock(block, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda);
+      addToBlock(block, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda);
+      addToBlock(block, 'Otros costos directos', c.otros, c.moneda);
     });
 
   const comprasGastosParaEr = detalleNomina.length
@@ -583,13 +656,16 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     const hasOt = g.ot_vinc_id != null;
     const entry = resolverCategoriaEr(erConfig, g.categoria, { hasOt });
     if (entry) {
-      const block = sectionToBlock[entry.seccion] || result.er.gastosOp;
+      const incompatibleConOt = entry.regla_ot === 'sin_ot' && hasOt;
+      const block = blockForSection(resolverSeccionGasto({
+        entry,
+        naturaleza: naturalezaCeco.get(g.centro_costo_id),
+        incompatibleConOt,
+      }));
       if (entry.regla_ot === 'con_ot') {
         addToBlock(block, entry.nombre, g.monto, g.moneda);
       } else if (entry.regla_ot === 'sin_ot') {
-        if (g.ot_vinc_id == null) {
-          addToBlock(block, entry.nombre, g.monto, g.moneda);
-        }
+        addToBlock(block, entry.nombre, g.monto, g.moneda);
       } else {
         addToBlock(block, entry.nombre, g.monto, g.moneda);
       }
@@ -617,23 +693,34 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     // Corrección 6: CxP con label Gastos financieros (via categoria_er) va a gastosFin, no gastosOp.
     const hasOt = cxp.ot_vinc_id != null;
     const entry = resolverCategoriaEr(erConfig, label, { hasOt });
-    const block = entry ? (sectionToBlock[entry.seccion] || result.er.gastosOp) : result.er.gastosOp;
+    const block = blockForSection(resolverSeccionGasto({
+      entry,
+      naturaleza: naturalezaCeco.get(cxp.centro_costo_id),
+    }));
     addToBlock(block, entry?.nombre || label, cxpDevengoAmount(cxp), cxp.moneda);
   });
 
   detalleNomina.forEach(n => {
-    addToBlock(result.er.gastosOp, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda);
+    const block = blockForSection(resolverSeccionGasto({
+      naturaleza: naturalezaCeco.get(n.centro_costo_id),
+    }));
+    addToBlock(block, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda);
     addToBlock(
-      result.er.gastosOp,
+      block,
       labelByTipo('cargas_sociales', 'Cargas sociales', false),
       amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones),
       n.moneda
     );
   });
 
-  // Corrección 1: egresos de caja_chica sin gasto_id van a Gastos Operativos.
+  // Egresos de caja chica sin gasto_id: su CECO participa de la misma regla.
   cajaChica.forEach(r => {
-    addToBlock(result.er.gastosOp, r.categoria || 'Caja chica', r.monto, r.moneda);
+    const entry = resolverCategoriaEr(erConfig, r.categoria, { hasOt: false });
+    const block = blockForSection(resolverSeccionGasto({
+      entry,
+      naturaleza: naturalezaCeco.get(r.ceco_id),
+    }));
+    addToBlock(block, entry?.nombre || r.categoria || 'Caja chica', r.monto, r.moneda);
   });
 
   pagosFinancieros.forEach(p => {
