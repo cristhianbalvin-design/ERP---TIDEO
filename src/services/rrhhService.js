@@ -910,6 +910,21 @@ export const rrhhService = {
     if (error) { console.error('Error fetching asistencia:', error); return []; }
     return (data || []).map(normalizarAsistencia);
   },
+  getMarcaciones: async (empresaId, trabajadorId, fecha) => {
+    if (!empresaId || !trabajadorId || !fecha) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('asistencia_marcaciones')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('trabajador_id', trabajadorId)
+      .eq('fecha', fecha)
+      .eq('resultado', 'aprobado')
+      .in('tipo_marca', ['refrigerio_salida', 'refrigerio_retorno'])
+      .order('marcado_en', { ascending: true });
+    if (error) { console.error('Error fetching marcaciones:', error); return []; }
+    return data || [];
+  },
   registrarAsistencia: async (empresaId, registro) => {
     const supabase = await getSupabaseClient();
     const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro);

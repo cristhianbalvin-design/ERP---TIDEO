@@ -210,6 +210,8 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
   const rolesObj = {};
   for (const r of rolesData || []) {
     const pRows = (permisosData || []).filter(p => p.rol_id === r.id);
+    const especialesExtra = pRows.find(p => p.pantalla === '__especiales__')?.permisos_extra || {};
+    const esAdminRol = Boolean(r.es_admin_empresa || r.es_superadmin);
     rolesObj[r.id] = {
       ...r,
       permisos: {
@@ -222,11 +224,12 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
         ver_costos: pRows.some(p => p.puede_ver_costos),
         ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
         ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
-        ver_consolidado_grupo: Boolean(
-          r.es_admin_empresa
-          || r.es_superadmin
-          || pRows.some(p => p.permisos_extra?.ver_consolidado_grupo === true)
-        ),
+        ver_consolidado_grupo: Boolean(esAdminRol || especialesExtra.ver_consolidado_grupo === true),
+        aprobar_descuentos: Boolean(esAdminRol || especialesExtra.aprobar_descuentos === true),
+        anular_documentos: Boolean(esAdminRol || especialesExtra.anular_documentos === true),
+        acceso_campo: Boolean(esAdminRol || especialesExtra.acceso_campo === true),
+        monto_max_compras: especialesExtra.monto_max_compras ?? 0,
+        perfil_campo: especialesExtra.perfil_campo ?? null,
       },
     };
   }
@@ -9462,6 +9465,11 @@ export function AppProvider({ children }) {
       puede_ver_finanzas: false,
       permisos_extra: {
         ver_consolidado_grupo: Boolean(permisos.ver_consolidado_grupo || permisos.todo),
+        aprobar_descuentos: Boolean(permisos.aprobar_descuentos || permisos.todo),
+        anular_documentos: Boolean(permisos.anular_documentos || permisos.todo),
+        acceso_campo: Boolean(permisos.acceso_campo || permisos.todo),
+        monto_max_compras: Number(permisos.monto_max_compras) || 0,
+        perfil_campo: permisos.perfil_campo || null,
       },
     },
   ];

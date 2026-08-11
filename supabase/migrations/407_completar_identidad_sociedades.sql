@@ -1,155 +1,64 @@
--- Materializa la identidad heredable al crear una sociedad y completa
--- exclusivamente los campos nulos de las sociedades existentes.
+BLOQUE SEG-2b — ENDURECER POSTULACIÓN PÚBLICA
 
-create or replace function public.heredar_identidad_sociedad()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_config public.empresa_config%rowtype;
-begin
-  select *
-    into v_config
-  from public.empresa_config
-  where empresa_id = new.empresa_id;
+CONTEXTO
+registrar_postulacion_publica es una de las cinco RPC legítimamente públicas,
+pero tiene dos defectos explotables:
 
-  new.direccion_fiscal := coalesce(new.direccion_fiscal, nullif(btrim(v_config.direccion), ''));
-  new.logo_url := coalesce(new.logo_url, nullif(btrim(v_config.logo_url), ''));
-  new.firma_url := coalesce(new.firma_url, nullif(btrim(v_config.firma_url), ''));
-  new.regimen_laboral := coalesce(
-    new.regimen_laboral,
-    nullif(btrim(v_config.regimen_laboral_empresa), ''),
-    'general'
-  );
-  new.pct_quincena_1 := coalesce(new.pct_quincena_1, v_config.pct_quincena_1, 50);
+1. NO VALIDA public_token. El frontend resuelve la vacante por token antes de
+   mostrar el formulario, pero la RPC recibe empresa_id y vacante_id y confía en
+   ellos. Quien conozca ambos puede postular sin token, saltándose el enlace.
 
-  return new;
-end;
-$$;
+2. SOBRESCRIBE el perfil de candidatos existentes. Ante un DNI ya registrado
+   ejecuta un UPDATE de nombre, telefono, email, cv_url y cv_path. Un tercero
+   puede alterar los datos de contacto y el CV de cualquier candidato del que
+   conozca el DNI.
 
-drop trigger if exists trg_sociedades_heredar_identidad on public.sociedades;
-create trigger trg_sociedades_heredar_identidad
-  before insert on public.sociedades
-  for each row execute function public.heredar_identidad_sociedad();
+3. HALLAZGO ADICIONAL — subida de CV sin validación. Existe una política de
+   Storage que permite a anon escribir en documentos-privados bajo
+   '%/reclutamiento/%':
+     WITH CHECK (bucket_id = 'documentos-privados'
+                 AND name LIKE '%/reclutamiento/%')
+   La carga ocurre ANTES de llamar a la RPC, así que validar el token dentro de
+   la función no protege la subida. Cualquiera puede llenar el bucket privado
+   con archivos arbitrarios, sin postular siquiera.
 
-create or replace function public.preparar_multisociedad_empresa()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_total_sociedades integer;
-  v_sociedades_activas integer;
-  v_nombre_sociedad text;
-  v_codigo_sociedad text;
-  v_config public.empresa_config%rowtype;
-begin
-  if new.multisociedad_habilitado = true
-     and (tg_op = 'INSERT' or old.multisociedad_habilitado is distinct from true) then
-    select count(*), count(*) filter (where activa = true)
-      into v_total_sociedades, v_sociedades_activas
-    from public.sociedades
-    where empresa_id = new.id;
+FASE 1 — DIAGNÓSTICO (solo lectura, reportar y detenerse)
 
-    if tg_op = 'UPDATE' and v_total_sociedades = 0 then
-      v_nombre_sociedad := coalesce(
-        nullif(trim(new.nombre_comercial), ''),
-        nullif(trim(new.razon_social), ''),
-        new.id
-      );
-      v_codigo_sociedad := public.generar_codigo_sociedad_unico(new.id, v_nombre_sociedad);
+1. Confirmar la definición literal actual de registrar_postulacion_publica y de
+   la política de Storage citada.
 
-      select *
-        into v_config
-      from public.empresa_config
-      where empresa_id = new.id;
+2. Reportar cómo el frontend construye la ruta del archivo al subir el CV: si
+   incluye empresa_id, vacante_id o algún identificador derivable del token.
 
-      insert into public.sociedades (
-        empresa_id,
-        codigo,
-        nombre,
-        razon_social,
-        ruc,
-        activa,
-        es_principal,
-        direccion_fiscal,
-        logo_url,
-        firma_url,
-        regimen_laboral,
-        pct_quincena_1
-      ) values (
-        new.id,
-        v_codigo_sociedad,
-        v_nombre_sociedad,
-        new.razon_social,
-        new.ruc,
-        true,
-        true,
-        nullif(btrim(v_config.direccion), ''),
-        nullif(btrim(v_config.logo_url), ''),
-        nullif(btrim(v_config.firma_url), ''),
-        coalesce(nullif(btrim(v_config.regimen_laboral_empresa), ''), 'general'),
-        coalesce(v_config.pct_quincena_1, 50)
-      );
-      v_sociedades_activas := 1;
-    end if;
+3. Reportar cuántos objetos existen hoy en ese bucket bajo la ruta de
+   reclutamiento, y si hay huérfanos: archivos sin candidatura asociada.
 
-    if tg_op = 'UPDATE' and v_sociedades_activas = 0 then
-      raise exception 'No se puede activar multisociedad: el tenant debe tener al menos una sociedad activa.';
-    end if;
-  end if;
+4. Evaluar las opciones para la subida del CV y reportar la recomendación:
+     a) Edge Function que valide el token y devuelva una URL firmada de subida
+     b) Restringir la política de Storage con una condición sobre la ruta que
+        incluya el token, si es verificable desde la política
+     c) Permitir la subida pero limpiar huérfanos periódicamente
+   Considerar cuál es implementable sin romper el flujo actual del postulante.
 
-  if new.multisociedad_habilitado = true
-     and new.estado in ('activa', 'demo')
-     and not exists (
-       select 1 from public.sociedades
-       where empresa_id = new.id and activa = true
-     ) then
-    raise exception 'No se puede activar el tenant: debe tener al menos una sociedad activa.';
-  end if;
+5. Confirmar si la candidatura es idempotente hoy: qué ocurre si el mismo
+   candidato postula dos veces a la misma vacante.
 
-  return new;
-end;
-$$;
+FASE 2 — IMPLEMENTACIÓN (solo tras aprobación)
 
-with identidad_heredada as (
-  select
-    s.id,
-    coalesce(s.direccion_fiscal, nullif(btrim(ec.direccion), '')) as direccion_fiscal,
-    coalesce(s.logo_url, nullif(btrim(ec.logo_url), '')) as logo_url,
-    coalesce(s.firma_url, nullif(btrim(ec.firma_url), '')) as firma_url,
-    coalesce(
-      s.regimen_laboral,
-      nullif(btrim(ec.regimen_laboral_empresa), ''),
-      'general'
-    ) as regimen_laboral,
-    coalesce(s.pct_quincena_1, ec.pct_quincena_1, 50) as pct_quincena_1
-  from public.sociedades s
-  join public.empresas e on e.id = s.empresa_id
-  left join public.empresa_config ec on ec.empresa_id = e.id
-)
-update public.sociedades s
-set direccion_fiscal = h.direccion_fiscal,
-    logo_url = h.logo_url,
-    firma_url = h.firma_url,
-    regimen_laboral = h.regimen_laboral,
-    pct_quincena_1 = h.pct_quincena_1,
-    updated_at = now()
-from identidad_heredada h
-where h.id = s.id
-  and row(
-    s.direccion_fiscal,
-    s.logo_url,
-    s.firma_url,
-    s.regimen_laboral,
-    s.pct_quincena_1
-  ) is distinct from row(
-    h.direccion_fiscal,
-    h.logo_url,
-    h.firma_url,
-    h.regimen_laboral,
-    h.pct_quincena_1
-  );
+  A. La RPC recibe p_public_token y resuelve la vacante EXCLUSIVAMENTE por él.
+     empresa_id y vacante_id se derivan de esa fila; no se confía en los
+     suministrados por el llamador. La vacante debe estar abierta.
+
+  B. Ante un DNI existente, reutilizar el candidato pero NO sobrescribir su
+     perfil ni su CV desde la ruta pública. Los datos nuevos pueden guardarse
+     asociados a la candidatura, no al candidato maestro.
+
+  C. Candidatura idempotente por (vacante_id, candidato_id): postular dos veces
+     no debe duplicar ni sobrescribir el historial.
+
+  D. Subida del CV, según lo decidido en la Fase 1.
+
+  E. El frontend transmite el token, que ya tiene resuelto.
+
+RESTRICCIONES
+- La

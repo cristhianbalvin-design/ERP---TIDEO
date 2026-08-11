@@ -286,6 +286,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const [showConsent, setShowConsent] = useState(false);
   const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
   const [aviso, setAviso] = useState('');
+  const [marcacionesHoy, setMarcacionesHoy] = useState([]);
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
@@ -328,16 +329,22 @@ function AsistenciaMobileView({ screen, setScreen }) {
     if (!trabajadorId || !empresa?.id) { setVerificandoHoy(false); return; }
     let cancelled = false;
     setVerificandoHoy(true);
-    rrhhService.getAsistencia(empresa.id, today, today)
-      .then(rows => {
-        if (cancelled) return;
-        setRegistrosAsistencia(prev => {
-          const idsFrescos = new Set(rows.map(r => r.id));
-          return [...rows, ...prev.filter(r => !idsFrescos.has(r.id))];
-        });
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setVerificandoHoy(false); });
+    
+    Promise.all([
+      rrhhService.getAsistencia(empresa.id, today, today),
+      rrhhService.getMarcaciones(empresa.id, trabajadorId, today)
+    ])
+    .then(([rows, marcas]) => {
+      if (cancelled) return;
+      setRegistrosAsistencia(prev => {
+        const idsFrescos = new Set(rows.map(r => r.id));
+        return [...rows, ...prev.filter(r => !idsFrescos.has(r.id))];
+      });
+      setMarcacionesHoy(marcas || []);
+    })
+    .catch(() => {})
+    .finally(() => { if (!cancelled) setVerificandoHoy(false); });
+    
     return () => { cancelled = true; };
   }, [trabajadorId, empresa?.id, today]);
 

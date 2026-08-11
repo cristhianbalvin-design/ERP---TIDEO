@@ -1923,6 +1923,34 @@ function CecoCebePanel({ onClose }) {
   const [cecoImportRows, setCecoImportRows] = useState([]);
   const [cecoImportStep, setCecoImportStep] = useState(1);
   const [centroEliminando, setCentroEliminando] = useState('');
+  const columnasCeco = [
+    { key:'codigo', label:'Código' }, { key:'nombre', label:'Nombre' },
+    { key:'sociedad', label:'Sociedad' }, { key:'tipo', label:'Tipo' },
+    { key:'cebe_padre', label:'CEBE padre' }, { key:'responsable', label:'Responsable' },
+    { key:'presupuesto', label:'Presupuesto' }, { key:'vigencia', label:'Vigencia' },
+    { key:'estado', label:'Estado' },
+  ];
+  const columnasCebe = [
+    { key:'codigo', label:'Código' }, { key:'nombre', label:'Nombre' },
+    { key:'sociedad', label:'Sociedad' }, { key:'tipo', label:'Tipo' },
+    { key:'responsable', label:'Responsable' }, { key:'meta_ingresos', label:'Meta de ingresos' },
+    { key:'cecos', label:'CECOs' }, { key:'vigencia', label:'Vigencia' },
+    { key:'estado', label:'Estado' },
+  ];
+  const [columnasCecoVisibles, setColumnasCecoVisibles] = useState(columnasCeco.map(c => c.key));
+  const [columnasCebeVisibles, setColumnasCebeVisibles] = useState(columnasCebe.map(c => c.key));
+  const estilosColumnasCeco = columnasCeco
+    .filter(col => col.key !== 'sociedad' || mostrarBadgeSociedadCentros)
+    .map((col, index) => columnasCecoVisibles.includes(col.key)
+      ? ''
+      : `.tabla-ceco th:nth-child(${index + 1}), .tabla-ceco td:nth-child(${index + 1}) { display: none; }`)
+    .join('');
+  const estilosColumnasCebe = columnasCebe
+    .filter(col => col.key !== 'sociedad' || mostrarBadgeSociedadCentros)
+    .map((col, index) => columnasCebeVisibles.includes(col.key)
+      ? ''
+      : `.tabla-cebe th:nth-child(${index + 1}), .tabla-cebe td:nth-child(${index + 1}) { display: none; }`)
+    .join('');
 
   const cebeBase = { codigo:'', nombre:'', tipo:'linea_servicio', cargo_financiero_dbs:'', responsable_id:'', cuenta_id:'', sociedad_id:sociedadFormularioInicial, meta_ingresos:'', fecha_inicio:'', fecha_fin:'', descripcion:'', estado:'activo' };
   const [cebeForm, setCebeForm] = useState(cebeBase);
@@ -1950,8 +1978,29 @@ function CecoCebePanel({ onClose }) {
   };
   const inactivarCeco = async ceco => {
     if (!confirmarInactivacionCeco(ceco)) return;
-    await actualizarCentroCosto(ceco.id, { ...ceco, estado: 'inactivo' });
-    addNotificacion?.('CECO inactivado.');
+    try {
+      await actualizarCentroCosto(ceco.id, { ...ceco, estado: 'inactivo' });
+      addNotificacion?.('CECO inactivado.');
+    } catch (err) {
+      setCecoError(err?.message || 'No se pudo inactivar el CECO.');
+    }
+  };
+  const activarCeco = async ceco => {
+    try {
+      await actualizarCentroCosto(ceco.id, { ...ceco, estado: 'activo' });
+      addNotificacion?.('CECO activado.');
+    } catch (err) {
+      setCecoError(err?.message || 'No se pudo activar el CECO.');
+    }
+  };
+  const cambiarEstadoCebe = async (cebe, estado) => {
+    if (estado === 'inactivo' && !window.confirm(`¿Inactivar "${cebe.nombre}"?`)) return;
+    try {
+      await actualizarCentroBeneficio(cebe.id, { ...cebe, estado });
+      addNotificacion?.(`CEBE ${estado === 'activo' ? 'activado' : 'inactivado'}.`);
+    } catch (err) {
+      setCebeError(err?.message || `No se pudo ${estado === 'activo' ? 'activar' : 'inactivar'} el CEBE.`);
+    }
   };
 
   const abrirParaExpirar = (catalogo, centro) => {
@@ -2323,12 +2372,14 @@ function CecoCebePanel({ onClose }) {
                 <option value="activo">Activo</option>
                 <option value="inactivo">Inactivo</option>
               </select>
+              <ColumnFilter columns={columnasCeco.filter(col => col.key !== 'sociedad' || mostrarBadgeSociedadCentros)} visibleCols={columnasCecoVisibles} onChange={setColumnasCecoVisibles} />
               <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{cecosFiltrados.length} registros</span>
             </div>
 
             <div className="card">
               <div className="table-wrap">
-                <table className="tbl">
+                <style>{estilosColumnasCeco}</style>
+                <table className="tbl tabla-ceco">
                   <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>CEBE padre</th><th>Responsable</th><th>Presupuesto</th><th>Vigencia</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cecosFiltrados.length === 0
@@ -2350,7 +2401,9 @@ function CecoCebePanel({ onClose }) {
                               <td>
                                 <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
                                   <button className="icon-btn" title="Editar" onClick={()=>editarCeco(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
-                                  <button className="icon-btn" title="Inactivar" onClick={() => inactivarCeco(c)} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                  {c.estado === 'activo'
+                                    ? <button className="btn btn-secondary btn-sm" title="Inactivar CECO" onClick={() => inactivarCeco(c)}>{I.power} Inactivar</button>
+                                    : <button className="btn btn-primary btn-sm" title="Activar CECO" onClick={() => activarCeco(c)}>{I.check} Activar</button>}
                                   <button className="btn btn-danger btn-sm" title="Eliminar permanentemente" disabled={centroEliminando === `centro_costo:${c.id}`} onClick={() => intentarEliminarCentro('centro_costo', c)}>{centroEliminando === `centro_costo:${c.id}` ? 'Verificando...' : 'Eliminar'}</button>
                                 </div>
                               </td>
@@ -2459,12 +2512,14 @@ function CecoCebePanel({ onClose }) {
                 <option value="activo">Activo</option>
                 <option value="inactivo">Inactivo</option>
               </select>
+              <ColumnFilter columns={columnasCebe.filter(col => col.key !== 'sociedad' || mostrarBadgeSociedadCentros)} visibleCols={columnasCebeVisibles} onChange={setColumnasCebeVisibles} />
               <span className="text-muted" style={{ fontSize:12, marginLeft:'auto' }}>{cebesFiltrados.length} registros</span>
             </div>
 
             <div className="card">
               <div className="table-wrap">
-                <table className="tbl">
+                <style>{estilosColumnasCebe}</style>
+                <table className="tbl tabla-cebe">
                   <thead><tr><th>Código</th><th>Nombre</th>{mostrarBadgeSociedadCentros && <th>Sociedad</th>}<th>Tipo</th><th>Responsable</th><th>Meta ingresos</th><th>CECOs</th><th>Vigencia</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
                   <tbody>
                     {cebesFiltrados.length === 0
@@ -2486,7 +2541,9 @@ function CecoCebePanel({ onClose }) {
                               <td>
                                 <div className="row" style={{ justifyContent:'flex-end', gap:4 }}>
                                   <button className="icon-btn" title="Editar" onClick={()=>editarCebe(c)} style={{ color:'var(--cyan)' }}>{I.edit}</button>
-                                  <button className="icon-btn" title="Inactivar" onClick={async()=>{ if(window.confirm(`¿Inactivar "${c.nombre}"?`)) { await actualizarCentroBeneficio(c.id,{...c,estado:'inactivo'}); addNotificacion?.('CEBE inactivado.'); }}} style={{ color:'var(--fg-muted)' }}>{I.trash}</button>
+                                  {c.estado === 'activo'
+                                    ? <button className="btn btn-secondary btn-sm" title="Inactivar CEBE" onClick={() => cambiarEstadoCebe(c, 'inactivo')}>{I.power} Inactivar</button>
+                                    : <button className="btn btn-primary btn-sm" title="Activar CEBE" onClick={() => cambiarEstadoCebe(c, 'activo')}>{I.check} Activar</button>}
                                   <button className="btn btn-danger btn-sm" title="Eliminar permanentemente" disabled={centroEliminando === `centro_beneficio:${c.id}`} onClick={() => intentarEliminarCentro('centro_beneficio', c)}>{centroEliminando === `centro_beneficio:${c.id}` ? 'Verificando...' : 'Eliminar'}</button>
                                 </div>
                               </td>
