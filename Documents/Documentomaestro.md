@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 02/08/2026
+### Arquitectura Multitenant SaaS · Última actualización: 10/08/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 02/08/2026
+## 3. Estado de desarrollo — 10/08/2026
 
 ### 3.1 Resumen de progreso
 
@@ -356,6 +356,16 @@ TIDEO (Superadmin)
 - Superadmin TIDEO: cada acceso a un tenant queda en log de auditoría. 2FA obligatorio.
 - Selector de empresa en login si el usuario pertenece a más de una.
 
+### 4.4 Arquitectura Multisociedad
+
+La plataforma implementa un nivel adicional de aislamiento denominado **Multisociedad**, diseñado para grupos empresariales que operan bajo un mismo tenant (`empresa_id`) pero con múltiples razones sociales distintas.
+
+- **Invariante de sociedad obligatoria:** Todas las tablas transaccionales tienen la columna `sociedad_id` (uuid). La restricción de obligatoriedad (no ser `NULL`) solo aplica cuando el tenant tiene habilitada la arquitectura multisociedad, existiendo además excepciones legítimas para registros históricos creados antes de su instalación.
+- **Frontera RLS:** El aislamiento se garantiza a nivel de base de datos usando Row Level Security y la función `usuario_alcance_sociedades()`. Si el usuario tiene acceso global (NULL), ve todo el tenant; si tiene asignaciones específicas, solo ve los registros de sus sociedades.
+- **Cobertura RLS (Lectura y Escritura):** Cubre toda la cadena comercial (Cuentas, Leads, Cotizaciones, OS, OT, Valorizaciones, Facturas), inventarios, finanzas, nómina y RRHH (amonestaciones, constancias, solicitudes). *Excepciones conocidas:* (1) tablas de registro histórico puro (ej. logs) o catalogadas que son transversales al tenant, y (2) dos tablas del esquema que tienen RLS habilitado sin ninguna política definida (hallazgo pendiente de evaluación).
+- **Identidad emisora y Propagación:** Las entidades heredan irrompiblemente la sociedad. Ejemplo: `Hoja Costeo -> OS -> OT -> Valorización -> Factura`. Es imposible modificar la sociedad una vez instanciada la cadena.
+- **Validación estricta de cruce:** El sistema previene el cruce de datos (ej. un empleado de Sociedad A no puede registrar horas en un Centro de Costo de Sociedad B, y un CECO no puede agruparse bajo un CEBE de distinta sociedad).
+
 ---
 
 ## 5. Arquitectura de entidades — reglas de diseño
@@ -644,7 +654,9 @@ Configurar turnos y horarios
          ↓
     Asignar turno a cada trabajador
          ↓
-    Registrar asistencia diaria (validación de Vigencia Efectiva bloquea ingresos si el contrato no ampara la fecha)\n    [AUTO] Solicitudes de RRHH aprobadas (vacaciones, licencias con goce) impactan directamente la asistencia y cubren los huecos
+    Registrar asistencia diaria (validación de Vigencia Efectiva bloquea ingresos si el contrato no ampara la fecha)
+    [AUTO] Solicitudes de RRHH aprobadas (vacaciones, licencias con goce) impactan directamente la asistencia y cubren los huecos
+    [RPC] Las marcaciones individuales móviles o de kiosko se procesan centralizadamente vía RPC para consolidar el día y resolver turnos.
          ↓
     Al cierre del período:
     Calcular nómina:
@@ -681,6 +693,7 @@ Registrar préstamo recibido (banco / tercero / leasing)
 ### 7.5 Flujo de campo (PWA)
 
 **Técnico:** OTs del día con dirección → Iniciar OT (GPS automático) → Parte diario en 4 pasos → Fotos → Avance → Reportar restricción.
+**Asistencia:** Marcación GPS (entrada/salida/refrigerio) delegada al 100% al RPC `registrar_marcacion_asistencia`. Si no hay internet, la marcación se encola en `syncGeoQueue` y se envía automáticamente al restablecerse la conexión, respetando reglas de precedencia.
 
 **Comprador:** Foto de factura → IA extrae datos → Confirmar → Vincular a OT → Queda "pendiente revisión backoffice".
 
@@ -1509,6 +1522,28 @@ Instalable desde el browser. Rutas mobile-first. Acceso a cámara. Sincronizaci�
 
 **F2 pendiente:** confirmación de traslado y aprobación SOLPE móvil. La subida estructurada de comprobantes desde móvil debe alinearse con `FileUpload`/`adjuntos`; SSOMA y escaneo de código de barras ya están implementados.
 
+### 8.38 Centros de Costo y de Beneficio
+
+Módulo fundamental para la arquitectura de control presupuestal y Estado de Resultados consolidado.
+
+**Centros de Costo (CECO):**
+- **Propósito:** Agrupar y medir gastos/costos operativos. Responde a la pregunta "¿Dónde se gasta el dinero?".
+- **Ejes de clasificación:**
+  - `naturaleza_economica`: Puede ser `directo` (costos imputables a OTs/proyectos) o `indirecto` (gastos administrativos o generales).
+  - `tipo` y `tipo_original`: Se soporta `linea_servicio`, `proyecto`, `producto`, `general`, etc. El `tipo_original` se captura en la creación y se mantiene inmutable por trigger (`aa_centros_costo_proteger_tipo_original`) como auditoría, aunque el `tipo` operativo varíe.
+
+**Centros de Beneficio (CEBE):**
+- **Propósito:** Agrupar ingresos y medir rentabilidad. Responde a la pregunta "¿Qué unidad de negocio genera los ingresos?".
+- **Tratamiento de centros estructurales:** Existen tipos operativos (`cliente`, `proyecto`) y el tipo `estructural`. Un CEBE `estructural` no puede tener metas de ingresos (`meta_ingresos = 0` o NULL) ni estar vinculado a un cargo financiero, asumiendo su rol puramente organizativo (`validar_reglas_tipo_centro_beneficio`). El campo `es_facturable` se deriva automáticamente (`true` si es facturable, `false` si es estructural/temporal).
+
+**Dimensión Societaria y Relación CECO-CEBE:**
+- **Unicidad:** La clave lógica de ambos catálogos no es por tenant, sino por sociedad (`empresa_id, codigo, sociedad_id`).
+- **Coherencia Societaria:** La asignación de un CECO a un CEBE padre es opcional, pero si se realiza, el trigger `aa_centros_costo_validar_cebe_sociedad` impone una barrera infranqueable: el CECO y el CEBE deben pertenecer obligatoriamente a la misma sociedad. No existen relaciones trans-sociedad.
+- **Participación en ER:** Los CECOs acumulan gastos contra el presupuesto, mientras que los CEBEs agrupan ingresos; el Estado de Resultados consolidado se arma cruzando gastos societarios contra los CEBEs relacionados.
+
+**Eliminación y Vigencia:**
+- Los centros no pueden eliminarse ciegamente si tienen transacciones (OTs, SOLPEs, compras). La eliminación segura invoca a la función `contar_referencias_centro()` para rechazar el borrado en caso de integridad referencial.
+
 ---
 
 ## 9. Modelo de datos multitenant
@@ -1573,7 +1608,7 @@ superadmin_accesos (log append-only cross-tenant), auditoria
 
 **IA:** ia_logs.
 
-**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, tipos_contrato, almacenes/almacenes_depositos (según módulo), centros_costo, centros_beneficio, sedes, industrias, proyectos, monedas_impuestos_unidades, empresa_config (+agente_retencion).
+**Maestros:** servicios, familias_servicios, tarifarios, materiales (+codigo_barras, grupo_id, familia_id, subfamilia_id, nro_parte, unidades_contenidas, almacen_id, ubicacion, observacion, precio_unitario), material_grupos, material_familias, material_subfamilias, especialidades_tecnicas, tipos_servicio_interno, tipos_contrato, almacenes/almacenes_depositos (según módulo), centros_costo (+sociedad_id, naturaleza_economica, tipo_original, inmutabilidad garantizada por trigger), centros_beneficio (+sociedad_id, tipo ∈ {estructural, etc.}, cargo_financiero_dbs, es_facturable), sedes, industrias, proyectos, monedas_impuestos_unidades, empresa_config (+agente_retencion).
 
 ### 9.4 Infraestructura de Storage
 
