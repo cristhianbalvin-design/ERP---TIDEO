@@ -1,0 +1,216 @@
+
+DECLARE
+  v_turno text; v_mar_id text; v_reg record; v_t record;
+  v_ent time; v_sal time; v_tz text;
+  v_real int; v_abiertos int; v_fuera int;
+  v_aplicado int; v_refri_estado text;
+  v_calc record; v_prio smallint; v_reg_id text;
+  m jsonb; es_sal boolean; es_refri boolean;
+  v_rechazo text; v_hora_local time;
+BEGIN
+  IF NOT public.usuario_tiene_empresa(p_empresa_id) THEN
+    RAISE EXCEPTION 'sin acceso a la empresa %', p_empresa_id;
+  END IF;
+
+  SELECT COALESCE(zona_horaria, 'America/Lima') INTO v_tz
+    FROM public.empresa_config WHERE empresa_id = p_empresa_id;
+  v_tz := COALESCE(v_tz, 'America/Lima');
+
+  m := COALESCE(p_metadata, '{}'::jsonb);
+  es_sal   := (p_tipo_marca = 'salida');
+  es_refri := (p_tipo_marca IN ('refrigerio_salida','refrigerio_retorno'));
+
+  v_turno := COALESCE(p_turno_id, public.resolver_turno_vigente(
+               p_empresa_id, p_trabajador_id, p_trabajador_tipo, p_fecha));
+
+  SELECT * INTO v_t FROM public.resolver_turno_dia(v_turno, p_fecha);
+
+  -- â”€â”€ Validaciones de refrigerio: el hecho se registra, la consecuencia no â”€â”€
+  v_rechazo := NULL;
+  IF es_refri THEN
+    v_hora_local := (p_marcado_en AT TIME ZONE v_tz)::time;
+
+    IF v_turno IS NULL OR NOT FOUND THEN
+      v_rechazo := 'sin_turno';
+    ELSIF COALESCE(v_t.modo_refrigerio, 'declarado') = 'declarado' THEN
+      v_rechazo := 'turno_no_mide_refrigerio';
+    ELSIF NOT (p_origen = ANY (
+                 SELECT unnest(refrigerio_origenes_permitidos)
+                   FROM public.turnos WHERE id = v_turno)) THEN
+      v_rechazo := 'origen_no_permitido';
+    ELSIF v_t.ventana_inicio IS NOT NULL
+      AND (v_hora_local < v_t.ventana_inicio OR v_hora_local > v_t.ventana_fin) THEN
+      v_rechazo := 'fuera_de_ventana';
+    ELSIF p_secuencia > v_t.pares_esperados THEN
+      v_rechazo := 'excede_pares_esperados';
+    END IF;
+  END IF;
+
+  INSERT INTO public.asistencia_marcaciones
+    (id, empresa_id, trabajador_id, trabajador_tipo, fecha, tipo_marca, secuencia,
+     marcado_en, origen_marcacion, turno_id, registrado_por, observacion,
+     resultado, metadata)
+  VALUES
+    ('mar_' || gen_random_uuid()::text, p_empresa_id, p_trabajador_id, p_trabajador_tipo,
+     p_fecha, p_tipo_marca, p_secuencia, p_marcado_en, p_origen, v_turno,
+     p_registrado_por, p_observacion,
+     CASE WHEN v_rechazo IS NULL THEN 'aprobado' ELSE 'rechazado' END,
+     CASE WHEN v_rechazo IS NULL THEN m
+          ELSE m || jsonb_build_object('motivo_rechazo', v_rechazo) END)
+  RETURNING id INTO v_mar_id;
+
+  IF v_rechazo IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'marcacion_id', v_mar_id, 'turno_id', v_turno,
+      'consolidado', false, 'resultado', 'rechazado',
+      'motivo', v_rechazo, 'zona_horaria', v_tz);
+  END IF;
+
+  SELECT (MIN(marcado_en) FILTER (WHERE tipo_marca = 'entrada') AT TIME ZONE v_tz)::time,
+         (MAX(marcado_en) FILTER (WHERE tipo_marca = 'salida')  AT TIME ZONE v_tz)::time
+    INTO v_ent, v_sal
+    FROM public.asistencia_marcaciones
+   WHERE empresa_id = p_empresa_id AND trabajador_id = p_trabajador_id
+     AND fecha = p_fecha AND resultado = 'aprobado';
+
+  WITH s AS (
+    SELECT secuencia, marcado_en FROM public.asistencia_marcaciones
+     WHERE empresa_id = p_empresa_id AND trabajador_id = p_trabajador_id
+       AND fecha = p_fecha AND resultado = 'aprobado' AND tipo_marca = 'refrigerio_salida'
+  ), r AS (
+    SELECT secuencia, marcado_en FROM public.asistencia_marcaciones
+     WHERE empresa_id = p_empresa_id AND trabajador_id = p_trabajador_id
+       AND fecha = p_fecha AND resultado = 'aprobado' AND tipo_marca = 'refrigerio_retorno'
+  )
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (r.marcado_en - s.marcado_en))/60)::int, 0),
+         COUNT(*) FILTER (WHERE r.marcado_en IS NULL)::int,
+         0
+    INTO v_real, v_abiertos, v_fuera
+    FROM s LEFT JOIN r USING (secuencia);
+
+  IF v_t.modo_refrigerio IS NULL OR v_t.modo_refrigerio = 'declarado' THEN
+    v_aplicado := NULL; v_refri_estado := 'no_aplica';
+  ELSIF v_abiertos > 0 THEN
+    v_aplicado := NULL; v_refri_estado := 'incompleto';
+  ELSIF v_real = 0 THEN
+    v_aplicado := NULL; v_refri_estado := 'no_aplica';
+  ELSIF v_real > v_t.minutos_refrigerio + v_t.refri_tolerancia THEN
+    v_aplicado := CASE WHEN v_t.refri_exceso = 'descontar' THEN v_real
+                       ELSE v_t.minutos_refrigerio END;
+    v_refri_estado := 'excedido';
+  ELSE
+    v_aplicado := GREATEST(v_real, v_t.minutos_refrigerio);
+    v_refri_estado := 'completo';
+  END IF;
+
+  IF v_t.modo_refrigerio = 'medido_informativo' THEN v_aplicado := NULL; END IF;
+
+  SELECT * INTO v_calc FROM public.calcular_jornada_asistencia(
+    v_ent, v_sal, v_turno, p_fecha, v_aplicado);
+
+  v_prio := public.origen_prioridad_asistencia(p_origen);
+  SELECT id, origen_registro, COALESCE(origen_prioridad, 0) AS prio
+    INTO v_reg
+    FROM public.registros_asistencia
+   WHERE empresa_id = p_empresa_id AND trabajador_id = p_trabajador_id
+     AND fecha = p_fecha AND COALESCE(estado,'') <> 'anulado';
+
+  IF FOUND AND v_reg.prio > v_prio THEN
+    RETURN jsonb_build_object(
+      'marcacion_id', v_mar_id, 'registro_id', v_reg.id, 'turno_id', v_turno,
+      'consolidado', false, 'motivo', 'precedencia_menor',
+      'origen_vigente', v_reg.origen_registro);
+  END IF;
+
+  INSERT INTO public.registros_asistencia AS ra
+    (id, empresa_id, trabajador_id, trabajador_tipo, turno_id, fecha,
+     hora_entrada, hora_salida, horas_trabajadas_min, tardanza_min, tardanza_minutos,
+     horas_extra_min, horas_extra_pagables_min, estado, origen_registro, origen_prioridad,
+     minutos_refrigerio_real, minutos_refrigerio_aplicado, refrigerio_tomado_minutos,
+     refrigerio_estado, calculo_version,
+     latitud, longitud, latitud_salida, longitud_salida,
+     ubicacion_entrada, ubicacion_salida,
+     geofence_entrada_estado, geofence_salida_estado,
+     geocerca_entrada_id, geocerca_salida_id,
+     distancia_entrada_m, distancia_salida_m,
+     precision_entrada_m, precision_salida_m,
+     ubicacion_fix_entrada_at, ubicacion_fix_salida_at,
+     ubicacion_enviado_at, ubicacion_motivo, ubicacion_simulada, offline_marcacion)
+  VALUES
+    ('asis_' || gen_random_uuid()::text, p_empresa_id, p_trabajador_id, p_trabajador_tipo,
+     v_turno, p_fecha, v_ent, v_sal, v_calc.horas_trabajadas_min, v_calc.tardanza_min,
+     v_calc.tardanza_min, v_calc.horas_extra_min, v_calc.horas_extra_pagables_min,
+     v_calc.estado, p_origen, v_prio, v_real, v_calc.refrigerio_aplicado_min,
+     COALESCE(v_calc.refrigerio_aplicado_min, 0), v_refri_estado, 2,
+     CASE WHEN NOT es_sal AND NOT es_refri THEN m->>'latitud'  END,
+     CASE WHEN NOT es_sal AND NOT es_refri THEN m->>'longitud' END,
+     CASE WHEN es_sal THEN m->>'latitud'  END,
+     CASE WHEN es_sal THEN m->>'longitud' END,
+     m->'ubicacion_entrada', m->'ubicacion_salida',
+     m->>'geofence_entrada_estado', m->>'geofence_salida_estado',
+     m->>'geocerca_entrada_id', m->>'geocerca_salida_id',
+     (m->>'distancia_entrada_m')::numeric, (m->>'distancia_salida_m')::numeric,
+     (m->>'precision_entrada_m')::numeric, (m->>'precision_salida_m')::numeric,
+     (m->>'ubicacion_fix_entrada_at')::timestamptz,
+     (m->>'ubicacion_fix_salida_at')::timestamptz,
+     (m->>'ubicacion_enviado_at')::timestamptz,
+     m->>'ubicacion_motivo',
+     COALESCE((m->>'ubicacion_simulada')::boolean, false),
+     COALESCE((m->>'offline_marcacion')::boolean, false))
+  ON CONFLICT (empresa_id, trabajador_id, fecha)
+    WHERE COALESCE(estado,'') <> 'anulado'
+  DO UPDATE SET
+     turno_id = EXCLUDED.turno_id,
+     hora_entrada = COALESCE(EXCLUDED.hora_entrada, ra.hora_entrada),
+     hora_salida  = COALESCE(EXCLUDED.hora_salida,  ra.hora_salida),
+     horas_trabajadas_min = EXCLUDED.horas_trabajadas_min,
+     tardanza_min = EXCLUDED.tardanza_min,
+     tardanza_minutos = EXCLUDED.tardanza_minutos,
+     horas_extra_min = EXCLUDED.horas_extra_min,
+     horas_extra_pagables_min = EXCLUDED.horas_extra_pagables_min,
+     estado = EXCLUDED.estado,
+     minutos_refrigerio_real = EXCLUDED.minutos_refrigerio_real,
+     minutos_refrigerio_aplicado = EXCLUDED.minutos_refrigerio_aplicado,
+     refrigerio_tomado_minutos = EXCLUDED.refrigerio_tomado_minutos,
+     refrigerio_estado = EXCLUDED.refrigerio_estado,
+     calculo_version = 2,
+     latitud          = COALESCE(EXCLUDED.latitud,          ra.latitud),
+     longitud         = COALESCE(EXCLUDED.longitud,         ra.longitud),
+     latitud_salida   = COALESCE(EXCLUDED.latitud_salida,   ra.latitud_salida),
+     longitud_salida  = COALESCE(EXCLUDED.longitud_salida,  ra.longitud_salida),
+     ubicacion_entrada = COALESCE(EXCLUDED.ubicacion_entrada, ra.ubicacion_entrada),
+     ubicacion_salida  = COALESCE(EXCLUDED.ubicacion_salida,  ra.ubicacion_salida),
+     geofence_entrada_estado = COALESCE(EXCLUDED.geofence_entrada_estado, ra.geofence_entrada_estado),
+     geofence_salida_estado  = COALESCE(EXCLUDED.geofence_salida_estado,  ra.geofence_salida_estado),
+     geocerca_entrada_id = COALESCE(EXCLUDED.geocerca_entrada_id, ra.geocerca_entrada_id),
+     geocerca_salida_id  = COALESCE(EXCLUDED.geocerca_salida_id,  ra.geocerca_salida_id),
+     distancia_entrada_m = COALESCE(EXCLUDED.distancia_entrada_m, ra.distancia_entrada_m),
+     distancia_salida_m  = COALESCE(EXCLUDED.distancia_salida_m,  ra.distancia_salida_m),
+     precision_entrada_m = COALESCE(EXCLUDED.precision_entrada_m, ra.precision_entrada_m),
+     precision_salida_m  = COALESCE(EXCLUDED.precision_salida_m,  ra.precision_salida_m),
+     ubicacion_fix_entrada_at = COALESCE(EXCLUDED.ubicacion_fix_entrada_at, ra.ubicacion_fix_entrada_at),
+     ubicacion_fix_salida_at  = COALESCE(EXCLUDED.ubicacion_fix_salida_at,  ra.ubicacion_fix_salida_at),
+     ubicacion_enviado_at = COALESCE(EXCLUDED.ubicacion_enviado_at, ra.ubicacion_enviado_at),
+     ubicacion_motivo     = COALESCE(EXCLUDED.ubicacion_motivo,     ra.ubicacion_motivo),
+     ubicacion_simulada   = ra.ubicacion_simulada OR EXCLUDED.ubicacion_simulada,
+     offline_marcacion    = ra.offline_marcacion  OR EXCLUDED.offline_marcacion,
+     sobrescrito_por    = CASE WHEN ra.origen_registro <> EXCLUDED.origen_registro
+                               THEN p_registrado_por END,
+     sobrescrito_origen = CASE WHEN ra.origen_registro <> EXCLUDED.origen_registro
+                               THEN ra.origen_registro END,
+     sobrescrito_en     = CASE WHEN ra.origen_registro <> EXCLUDED.origen_registro
+                               THEN now() END,
+     origen_registro  = EXCLUDED.origen_registro,
+     origen_prioridad = EXCLUDED.origen_prioridad,
+     updated_at = now()
+  RETURNING ra.id INTO v_reg_id;
+
+  RETURN jsonb_build_object(
+    'marcacion_id', v_mar_id, 'registro_id', v_reg_id, 'turno_id', v_turno,
+    'consolidado', true, 'resultado', 'aprobado', 'zona_horaria', v_tz,
+    'estado', v_calc.estado, 'horas_trabajadas_min', v_calc.horas_trabajadas_min,
+    'tardanza_min', v_calc.tardanza_min,
+    'horas_extra_min', v_calc.horas_extra_min,
+    'horas_extra_pagables_min', v_calc.horas_extra_pagables_min,
+    'refrigerio_real_min', v_real, 'refrigerio_estado', v_refri_estado);
+END; 

@@ -147,7 +147,7 @@ const normalizarTurno = (t = {}) => ({
 });
 
 const toTurnoRow = (empresaId, turno = {}) => {
-  return {
+  const row = {
     empresa_id: empresaId,
     codigo: turno.codigo || null,
     nombre: turno.nombre,
@@ -163,6 +163,18 @@ const toTurnoRow = (empresaId, turno = {}) => {
     requiere_autorizacion_he: turno.requiere_autorizacion_he ?? null,
     descripcion: turno.descripcion || null,
   };
+
+  if ('modo_refrigerio' in turno) row.modo_refrigerio = turno.modo_refrigerio;
+  if ('refrigerio_pares_esperados' in turno) row.refrigerio_pares_esperados = Number(turno.refrigerio_pares_esperados);
+  if ('refrigerio_ventana_inicio' in turno) row.refrigerio_ventana_inicio = turno.refrigerio_ventana_inicio || null;
+  if ('refrigerio_ventana_fin' in turno) row.refrigerio_ventana_fin = turno.refrigerio_ventana_fin || null;
+  if ('refrigerio_tolerancia_minutos' in turno) row.refrigerio_tolerancia_minutos = Number(turno.refrigerio_tolerancia_minutos);
+  if ('refrigerio_tratamiento_exceso' in turno) row.refrigerio_tratamiento_exceso = turno.refrigerio_tratamiento_exceso;
+  if ('refrigerio_tratamiento_defecto' in turno) row.refrigerio_tratamiento_defecto = turno.refrigerio_tratamiento_defecto;
+  if ('refrigerio_origenes_permitidos' in turno) row.refrigerio_origenes_permitidos = Array.isArray(turno.refrigerio_origenes_permitidos) ? turno.refrigerio_origenes_permitidos : [];
+  if ('umbral_minutos_he' in turno) row.umbral_minutos_he = Number(turno.umbral_minutos_he);
+
+  return row;
 };
 
 const normalizarAsistencia = (r = {}) => {
@@ -897,6 +909,21 @@ export const rrhhService = {
     const { data, error } = await query.order('fecha', { ascending: false });
     if (error) { console.error('Error fetching asistencia:', error); return []; }
     return (data || []).map(normalizarAsistencia);
+  },
+  getMarcaciones: async (empresaId, trabajadorId, fecha) => {
+    if (!empresaId || !trabajadorId || !fecha) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('asistencia_marcaciones')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('trabajador_id', trabajadorId)
+      .eq('fecha', fecha)
+      .eq('resultado', 'aprobado')
+      .in('tipo_marca', ['refrigerio_salida', 'refrigerio_retorno'])
+      .order('marcado_en', { ascending: true });
+    if (error) { console.error('Error fetching marcaciones:', error); return []; }
+    return data || [];
   },
   registrarAsistencia: async (empresaId, registro) => {
     const supabase = await getSupabaseClient();
