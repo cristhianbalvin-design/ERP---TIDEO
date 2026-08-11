@@ -289,6 +289,9 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const [showConsent, setShowConsent] = useState(false);
   const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
   const [aviso, setAviso] = useState('');
+  const [marcacionesHoy, setMarcacionesHoy] = useState([]);
+  const [modo, setModo] = useState('entrada');
+  const [verificandoHoy, setVerificandoHoy] = useState(true);
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
@@ -320,15 +323,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const nextRefrigerioSeq = refrigerioAbierto ? refrigerioAbiertoIndex + 1 : periodosRefrigerio.length + 1;
 
   
-  // Estado local para gobernar el flujo: entrada -> salida -> completado
-  const [modo, setModo] = useState('entrada');
-  // Evita que el boton quede en "Entrada" (valor inicial) mientras se confirma
-  // el estado real de hoy. registrosAsistencia en contexto se llena con TODO el
-  // historial de la empresa (sin filtro de fecha); en tenants con miles de
-  // registros esa carga puede tardar y dejar una ventana donde el boton muestra
-  // un estado desactualizado. Esta verificacion es liviana (solo trae "hoy") y
-  // no depende de que termine la carga completa.
-  const [verificandoHoy, setVerificandoHoy] = useState(true);
+
 
   useEffect(() => {
     if (!trabajadorId) {
@@ -423,15 +418,15 @@ function AsistenciaMobileView({ screen, setScreen }) {
     if (verificandoHoy) return;
     setAviso('');
     if (necesitaConsentimiento) { setShowConsent(true); return; }
-    setLoading(true); setGeoEstado('Obteniendo ubicaci?n...');
+    setLoading(true); setGeoEstado('Obteniendo ubicación...');
     
     let lat = null, lng = null, accuracy = null, fixAt = null;
     if (geoActivo && navigator.geolocation) {
       try {
         const pos = await new Promise((resolve, reject) => { navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }); });
         lat = pos.coords.latitude; lng = pos.coords.longitude; accuracy = Math.round(pos.coords.accuracy || 0); fixAt = new Date(pos.timestamp || Date.now()).toISOString();
-      } catch (error) { addNotificacion('No se pudo obtener la ubicaci?n exacta. Aseg?rate de dar permisos.'); }
-    } else { addNotificacion('Geolocalizaci?n no soportada en este dispositivo.'); }
+      } catch (error) { addNotificacion('No se pudo obtener la ubicación exacta. Asegúrate de dar permisos.'); }
+    } else { addNotificacion('Geolocalización no soportada en este dispositivo.'); }
 
     const fix = lat != null && lng != null ? { lat, lng, precision_m: accuracy, fix_at: fixAt || new Date().toISOString(), enviado_at: new Date().toISOString(), simulated: false, fuente: 'navigator.geolocation' } : null;
     const motivo = fix ? null : (geoActivo ? 'gps_no_disponible' : 'geofencing_inactivo');
@@ -441,16 +436,16 @@ function AsistenciaMobileView({ screen, setScreen }) {
     }
     const geoLocal = evaluarGeofenceLocal({ trabajador: trabajadorActual, geocercas, asignaciones: geocercaAsignaciones, fix: fix || { motivo }, fecha: today, config: geoCfg });
     if (geoLocal.estado === 'rechazable') {
-      const msg = Fuera de perimetro ( m). Politica estricta activa.;
+      const msg = `Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`;
       addNotificacion(msg); setAviso(msg); setLoading(false); setGeoEstado(''); return;
     }
 
     const ahora = new Date();
-    const horaActual = ${String(ahora.getHours()).padStart(2,'0')}:;
+    const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
     const tipoMarca = refrigerioAbierto ? 'refrigerio_retorno' : 'refrigerio_salida';
     
     const metadata = {
-      latitud: lat, longitud: lng, ubicacion: fix, geofence_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado, geocerca_id: geoLocal.geocerca_id || null, distancia_m: geoLocal.distancia_m ?? null, precision_m: fix?.precision_m ?? null, ubicacion_fix_at: fix?.fix_at || null, ubicacion_enviado_at: fix?.enviado_at || new Date().toISOString(), ubicacion_motivo: motivo || null, ubicacion_simulada: Boolean(fix?.simulated), offline_marcacion: !navigator.onLine, notas: 'Marcaci?n m?vil (Modo Campo)'
+      latitud: lat, longitud: lng, ubicacion: fix, geofence_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado, geocerca_id: geoLocal.geocerca_id || null, distancia_m: geoLocal.distancia_m ?? null, precision_m: fix?.precision_m ?? null, ubicacion_fix_at: fix?.fix_at || null, ubicacion_enviado_at: fix?.enviado_at || new Date().toISOString(), ubicacion_motivo: motivo || null, ubicacion_simulada: Boolean(fix?.simulated), offline_marcacion: !navigator.onLine, notas: 'Marcación móvil (Modo Campo)'
     };
 
     const rpcParams = {
@@ -464,18 +459,18 @@ function AsistenciaMobileView({ screen, setScreen }) {
       if (data.resultado === 'rechazado') {
         const motivosMap = {
           sin_turno: 'No tienes un turno asignado hoy.',
-          turno_no_mide_refrigerio: 'Tu turno no admite marcaci?n de refrigerio.',
-          origen_no_permitido: 'No tienes permitido marcar refrigerio desde la aplicaci?n m?vil.',
-          fuera_de_ventana: 'Est?s fuera del horario permitido para tomar refrigerio.',
+          turno_no_mide_refrigerio: 'Tu turno no admite marcación de refrigerio.',
+          origen_no_permitido: 'No tienes permitido marcar refrigerio desde la aplicación móvil.',
+          fuera_de_ventana: 'Estás fuera del horario permitido para tomar refrigerio.',
           excede_pares_esperados: 'Ya has tomado todos los refrigerios permitidos por hoy.'
         };
-        const msg = motivosMap[data.motivo] || Marca rechazada: ;
+        const msg = motivosMap[data.motivo] || `Marca rechazada: ${data.motivo || 'sin detalle'}.`;
         addNotificacion(msg); setAviso(msg);
       } else if (data.consolidado === false) {
-        addNotificacion(Tu marca se registr?, pero no actualiz? la jornada actual debido a una marca de mayor prioridad ().);
-        setAviso(Precedencia menor: no sobrescribi? marca previa.);
+        addNotificacion(`Tu refrigerio se registró, pero no actualizó la jornada actual debido a una marca de mayor prioridad (${data.origen_vigente}).`);
+        setAviso(`Precedencia menor: no sobrescribió marca previa de ${data.origen_vigente}.`);
       } else {
-        addNotificacion(Refrigerio () registrado a las );
+        addNotificacion(`Refrigerio (${tipoMarca === 'refrigerio_retorno' ? 'retorno' : 'salida'}) registrado a las ${horaActual}.`);
       }
       
       // Fetch fresh data
@@ -489,7 +484,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       });
       setMarcacionesHoy(marcas || []);
     } catch (e) {
-      const msg = Error BD (Refrigerio): ;
+      const msg = `Error BD (Refrigerio): ${e.message || JSON.stringify(e)}`;
       addNotificacion(msg); setAviso(msg);
     }
     
@@ -625,7 +620,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       }
     } else if (modo === 'salida') {
       if (refrigerioAbierto) {
-        if (!window.confirm('Tienes un periodo de refrigerio sin cerrar. ?Est?s seguro de marcar tu salida del d?a?')) {
+        if (!window.confirm('Tienes un periodo de refrigerio sin cerrar. ¿Estás seguro de marcar tu salida del día?')) {
           return;
         }
       }
