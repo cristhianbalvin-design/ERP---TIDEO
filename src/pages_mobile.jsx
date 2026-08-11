@@ -466,16 +466,8 @@ function AsistenciaMobileView({ screen, setScreen }) {
     const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
     
     if (modo === 'entrada') {
-      const nuevoRegistro = {
-        empresa_id: empresa?.id || 'emp_001',
-        trabajador_id: trabajadorId,
-        trabajador_tipo: trabajadorActual.trabajador_tipo,
-        fecha: today,
-        turno_id: turnoIdPersistible,
-        hora_entrada: horaActual,
-        hora_salida: null,
-        latitud: lat,
-        longitud: lng,
+      const metadata = {
+        latitud: lat, longitud: lng,
         ubicacion_entrada: fix,
         geofence_entrada_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado,
         geocerca_entrada_id: geoLocal.geocerca_id || null,
@@ -486,26 +478,48 @@ function AsistenciaMobileView({ screen, setScreen }) {
         ubicacion_motivo: motivo || null,
         ubicacion_simulada: Boolean(fix?.simulated),
         offline_marcacion: !navigator.onLine,
-        refrigerio_tomado_minutos: 0,
-        estado: 'incompleto',
-        es_falta: false,
-        justificada: false,
-        origen_registro: 'mobile_pwa',
         notas: 'Marcación móvil (Modo Campo)'
+      };
+
+      const rpcParams = {
+        p_empresa_id: empresa?.id || 'emp_001',
+        p_trabajador_id: trabajadorId,
+        p_trabajador_tipo: trabajadorActual.trabajador_tipo || 'operativo',
+        p_fecha: today,
+        p_tipo_marca: 'entrada',
+        p_origen: 'mobile_pwa',
+        p_metadata: metadata
+      };
+
+      // Representación local para actualizar la UI inmediatamente
+      const local = {
+        empresa_id: rpcParams.p_empresa_id, trabajador_id: trabajadorId, fecha: today,
+        turno_id: turnoIdPersistible, hora_entrada: horaActual, hora_salida: null,
+        estado: 'incompleto', origen_registro: 'mobile_pwa', ...metadata
       };
       
       try {
         if (!navigator.onLine) throw new Error('offline');
-        const data = await rrhhService.registrarAsistencia(empresa?.id || 'emp_001', nuevoRegistro);
-        setRegistrosAsistencia(prev => [data, ...prev]);
-        addNotificacion(`Entrada registrada a las ${horaActual}`);
+        const data = await rrhhService.registrarMarcacionRPC(rpcParams);
+        
+        if (data.consolidado === false) {
+           addNotificacion(`Tu entrada se registró, pero no actualizó la jornada actual debido a una marca de mayor prioridad (${data.origen_vigente}).`);
+           setAviso(`Precedencia menor: no sobrescribió marca previa de ${data.origen_vigente}.`);
+        } else {
+           addNotificacion(`Entrada registrada a las ${horaActual}`);
+        }
+        
+        const uiRegistro = { ...local, id: data.registro_id, estado: data.estado || 'incompleto' };
+        setRegistrosAsistencia(prev => [uiRegistro, ...prev]);
         setModo('salida');
       } catch (e) {
-        const local = {...nuevoRegistro, id: `asis_off_${Date.now()}`, offline_marcacion: true};
+        local.id = `asis_off_${Date.now()}`;
+        local.offline_marcacion = true;
         if (!navigator.onLine || e.message === 'offline') {
-          enqueueGeoMark({ empresaId: empresa?.id || 'emp_001', registro: local });
+          rpcParams.p_metadata.offline_marcacion = true;
+          enqueueGeoMark({ empresaId: rpcParams.p_empresa_id, rpcParams, registro: local });
           setOfflinePendientes(getGeoQueue().length);
-          addNotificacion(`Entrada guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
+          addNotificacion(`Entrada guardada offline a las ${horaActual}. Se sincronizará al recuperar señal.`);
           setRegistrosAsistencia(prev => [local, ...prev]);
           setModo('salida');
         } else {
@@ -517,12 +531,8 @@ function AsistenciaMobileView({ screen, setScreen }) {
     } else if (modo === 'salida') {
       const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
       if (abierto) {
-        const cambios = {
-          ...abierto,
-          hora_salida: horaActual,
-          estado: 'completo',
-          latitud_salida: lat,
-          longitud_salida: lng,
+        const metadata = {
+          latitud_salida: lat, longitud_salida: lng,
           ubicacion_salida: fix,
           geofence_salida_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado,
           geocerca_salida_id: geoLocal.geocerca_id || null,
@@ -533,33 +543,52 @@ function AsistenciaMobileView({ screen, setScreen }) {
           ubicacion_motivo: motivo || abierto.ubicacion_motivo || null,
           ubicacion_simulada: Boolean(fix?.simulated || abierto.ubicacion_simulada),
           offline_marcacion: Boolean(abierto.offline_marcacion || !navigator.onLine),
-          origen_registro: 'mobile_pwa',
+          notas: 'Marcación móvil (Modo Campo)'
         };
+
+        const rpcParams = {
+          p_empresa_id: empresa?.id || 'emp_001',
+          p_trabajador_id: trabajadorId,
+          p_trabajador_tipo: trabajadorActual.trabajador_tipo || 'operativo',
+          p_fecha: today,
+          p_tipo_marca: 'salida',
+          p_origen: 'mobile_pwa',
+          p_metadata: metadata
+        };
+        
+        const updatedLocal = { ...abierto, hora_salida: horaActual, estado: 'completo', ...metadata };
+
         try {
           if (!navigator.onLine) throw new Error('offline');
-          if (abierto.id) {
-             const data = await rrhhService.actualizarAsistencia(abierto.id, cambios);
-             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? data : r));
+          const data = await rrhhService.registrarMarcacionRPC(rpcParams);
+          
+          if (data.consolidado === false) {
+             addNotificacion(`Tu salida se registró, pero no actualizó la jornada actual debido a una marca de mayor prioridad (${data.origen_vigente}).`);
+             setAviso(`Precedencia menor: no sobrescribió marca previa de ${data.origen_vigente}.`);
           } else {
-             const updated = { ...abierto, ...cambios };
-             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+             addNotificacion(`Salida registrada a las ${horaActual}`);
           }
-          addNotificacion(`Salida registrada a las ${horaActual}`);
+          
+          updatedLocal.id = data.registro_id;
+          updatedLocal.estado = data.estado || 'completo';
+          setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updatedLocal : r));
           setModo('completado');
         } catch (e) {
-          const updated = { ...abierto, ...cambios };
           if (!navigator.onLine || e.message === 'offline') {
+            rpcParams.p_metadata.offline_marcacion = true;
+            updatedLocal.offline_marcacion = true;
             const queue = getGeoQueue();
             const idx = queue.findIndex(item => item.payload?.registro?.id === abierto.id || item.payload?.registro?.trabajador_id === abierto.trabajador_id && item.payload?.registro?.fecha === abierto.fecha);
             if (idx >= 0) {
-              queue[idx].payload.registro = updated;
+              queue[idx].payload.rpcParams = rpcParams;
+              queue[idx].payload.registro = updatedLocal;
               setGeoQueue(queue);
             } else {
-              enqueueGeoMark({ empresaId: empresa?.id || 'emp_001', registro: updated, updateId: abierto.id?.startsWith?.('asis_off_') ? null : abierto.id });
+              enqueueGeoMark({ empresaId: rpcParams.p_empresa_id, rpcParams, registro: updatedLocal, updateId: abierto.id?.startsWith?.('asis_off_') ? null : abierto.id });
             }
             setOfflinePendientes(getGeoQueue().length);
-            addNotificacion(`Salida guardada offline a las ${horaActual}. Se sincronizara al recuperar senal.`);
-            setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updated : r));
+            addNotificacion(`Salida guardada offline a las ${horaActual}. Se sincronizará al recuperar señal.`);
+            setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updatedLocal : r));
             setModo('completado');
           } else {
             const msg = `Error BD (Salida): ${e.message || JSON.stringify(e)}`;
