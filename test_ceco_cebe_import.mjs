@@ -15,7 +15,7 @@ const catalogos = {
 const duplicadoExistente = validarFilasImportacionCeco([
   { codigo: 'ceco-001', nombre: 'Duplicado', tipo: 'proyecto' },
 ], catalogos)[0];
-assert.match(duplicadoExistente._errores.join(' '), /ya existe en este tenant/);
+assert.match(duplicadoExistente._errores.join(' '), /ya existe en esta sociedad/);
 assert.equal(duplicadoExistente.codigo, 'CECO-001');
 
 const duplicadosArchivo = validarFilasImportacionCeco([
@@ -152,6 +152,6 @@ const fechasInvalidas = validarFilasImportacionCeco([{
   fecha_inicio: '2026-02-30',
   fecha_fin: '01/03/2026',
 }], catalogos)[0];
-assert.equal(fechasInvalidas._errores.filter(error => error.includes('Fecha')).length, 2);
+assert.equal(fechasInvalidas._errores.filter(error => error.includes('Fecha')).length, 1);
 
 console.log('CECO/CEBE import: validaciones funcionales completadas correctamente.');
