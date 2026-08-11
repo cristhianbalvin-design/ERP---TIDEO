@@ -171,7 +171,7 @@ export function TurnosHorarios() {
     }
     
     if ((form.refrigerio_ventana_inicio && !form.refrigerio_ventana_fin) || (!form.refrigerio_ventana_inicio && form.refrigerio_ventana_fin)) {
-      setSaveError('La ventana horaria de refrigerio debe tener inicio y fin, o ambas vac?as.');
+      setSaveError('La ventana horaria de refrigerio debe tener inicio y fin, o ambas vacías.');
       setSaving(false);
       return;
     }
