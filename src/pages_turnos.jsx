@@ -68,7 +68,7 @@ export function TurnosHorarios() {
   const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '', detalle_dias: DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: ['lun','mar','mie','jue','vie'].includes(d), hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, refrigerio_minutos:60 }}), {}) };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '', modo_refrigerio: 'declarado', refrigerio_pares_esperados: 1, refrigerio_ventana_inicio: '', refrigerio_ventana_fin: '', refrigerio_tolerancia_minutos: 0, refrigerio_tratamiento_exceso: 'alertar', refrigerio_tratamiento_defecto: 'ignorar', refrigerio_origenes_permitidos: ['kiosco', 'backoffice'], detalle_dias: DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: ['lun','mar','mie','jue','vie'].includes(d), hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, refrigerio_minutos:60 }}), {}) };
   const [form, setForm] = useState(formBase);
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -129,6 +129,14 @@ export function TurnosHorarios() {
       descripcion: t.descripcion || '',
       estado: t.estado || 'activo',
       requiere_autorizacion_he: t.requiere_autorizacion_he === true ? 'true' : t.requiere_autorizacion_he === false ? 'false' : '',
+      modo_refrigerio: t.modo_refrigerio || 'declarado',
+      refrigerio_pares_esperados: t.refrigerio_pares_esperados ?? 1,
+      refrigerio_ventana_inicio: t.refrigerio_ventana_inicio || '',
+      refrigerio_ventana_fin: t.refrigerio_ventana_fin || '',
+      refrigerio_tolerancia_minutos: t.refrigerio_tolerancia_minutos ?? 0,
+      refrigerio_tratamiento_exceso: t.refrigerio_tratamiento_exceso || 'alertar',
+      refrigerio_tratamiento_defecto: t.refrigerio_tratamiento_defecto || 'ignorar',
+      refrigerio_origenes_permitidos: t.refrigerio_origenes_permitidos || ['kiosco', 'backoffice'],
       detalle_dias: t.detalle_dias || DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: (t.dias_laborables||['lun','mar','mie','jue','vie']).includes(d), hora_entrada: t.hora_entrada || '08:00', hora_salida: t.hora_salida || '17:00', tolerancia_minutos: t.tolerancia_minutos ?? 10, cruza_medianoche: t.cruza_medianoche || false, refrigerio_minutos: t.refrigerio_minutos ?? 60 }}), {})
     });
     setSaveError('');
@@ -162,7 +170,27 @@ export function TurnosHorarios() {
        }
     }
     
-    const payload = { ...form, hora_entrada: fallbackEntrada, hora_salida: fallbackSalida, tolerancia_minutos: Number(fallbackTol), refrigerio_minutos: Number(fallbackRef), cruza_medianoche: fallbackCruza, codigo: form.codigo, horas_efectivas: horas, requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null };
+    if ((form.refrigerio_ventana_inicio && !form.refrigerio_ventana_fin) || (!form.refrigerio_ventana_inicio && form.refrigerio_ventana_fin)) {
+      setSaveError('La ventana horaria de refrigerio debe tener inicio y fin, o ambas vac?as.');
+      setSaving(false);
+      return;
+    }
+
+    const payload = { 
+      ...form, 
+      hora_entrada: fallbackEntrada, 
+      hora_salida: fallbackSalida, 
+      tolerancia_minutos: Number(fallbackTol), 
+      refrigerio_minutos: Number(fallbackRef), 
+      cruza_medianoche: fallbackCruza, 
+      codigo: form.codigo, 
+      horas_efectivas: horas, 
+      requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null,
+      refrigerio_pares_esperados: Number(form.refrigerio_pares_esperados),
+      refrigerio_ventana_inicio: form.refrigerio_ventana_inicio || null,
+      refrigerio_ventana_fin: form.refrigerio_ventana_fin || null,
+      refrigerio_tolerancia_minutos: Number(form.refrigerio_tolerancia_minutos)
+    };
     try {
       if (editandoId) {
         const actualizado = await rrhhService.actualizarTurno(empresa.id, editandoId, payload);
@@ -217,7 +245,11 @@ export function TurnosHorarios() {
                 <td className="num"><strong>{calcTotalHorasEfectivas(t)}</strong></td>
                 <td className="num">{t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.tolerancia_minutos !== t.tolerancia_minutos) ? 'Var.' : t.tolerancia_minutos} {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.tolerancia_minutos !== t.tolerancia_minutos) ? '' : 'min'}</td>
                 <td>{diasLabel(t)}</td>
-                <td className="num">{t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? 'Var.' : t.refrigerio_minutos} {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? '' : 'min'}</td>
+                <td className="num">
+                  {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? 'Var.' : t.refrigerio_minutos} {t.detalle_dias && !t.dias_variables && Object.values(t.detalle_dias).some(x=>x.activo && x.refrigerio_minutos !== t.refrigerio_minutos) ? '' : 'min'}
+                  {t.modo_refrigerio === 'medido_informativo' && <div className="text-muted" style={{fontSize: 10, lineHeight: 1, marginTop: 2}}>Medido (inf.)</div>}
+                  {t.modo_refrigerio === 'medido_efectivo' && <div className="text-muted" style={{fontSize: 10, lineHeight: 1, marginTop: 2}}>Medido (efec.)</div>}
+                </td>
                 <td><span className={`badge badge-${t.estado==='activo'?'green':'gray'}`}>{t.estado}</span></td>
                 <td style={{textAlign:'right'}}>
                   <div style={{display:'flex',gap:4,justifyContent:'flex-end'}}>
@@ -348,6 +380,85 @@ export function TurnosHorarios() {
                 <option value="true">Sí, requiere autorización</option>
                 <option value="false">No, cálculo automático</option>
               </select>
+            </div>
+
+            <div className="input-group" style={{marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)'}}>
+              <label style={{fontSize: 14, color: 'var(--fg)', marginBottom: 12}}>Política de Refrigerio</label>
+              
+              <label style={{fontSize: 12, marginBottom: 4, display: 'block', fontWeight: 600}}>Modo de refrigerio</label>
+              <select className="select" value={form.modo_refrigerio} onChange={e => upd('modo_refrigerio', e.target.value)}>
+                <option value="declarado">Declarado (El trabajador no marca; se descuenta el valor base)</option>
+                <option value="medido_informativo">Medido informativo (Se marca, pero no afecta horas efectivas)</option>
+                <option value="medido_efectivo">Medido efectivo (Se marca y el tiempo real afecta las horas efectivas)</option>
+              </select>
+              <div className="text-muted" style={{fontSize: 11, marginTop: 4, marginBottom: 12}}>
+                Define si el trabajador debe registrar el inicio y fin de su refrigerio.
+              </div>
+
+              {form.modo_refrigerio !== 'declarado' && (
+                <div style={{background: 'var(--bg-panel)', padding: 12, borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 14, border: '1px solid var(--border)'}}>
+                  
+                  <div className="input-group">
+                    <label>Pares de refrigerio esperados por jornada</label>
+                    <input className="input" type="number" min="0" max="3" value={form.refrigerio_pares_esperados} onChange={e => upd('refrigerio_pares_esperados', e.target.value)} style={{width: 80}} />
+                    <div className="text-muted" style={{fontSize: 11, marginTop: 4}}>Cuántas veces se espera que el trabajador salga a refrigerio en un día.</div>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Ventana horaria permitida (Opcional)</label>
+                    <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+                      <input className="input" type="time" value={form.refrigerio_ventana_inicio || ''} onChange={e => upd('refrigerio_ventana_inicio', e.target.value)} style={{width: 120}} />
+                      <span className="text-muted">a</span>
+                      <input className="input" type="time" value={form.refrigerio_ventana_fin || ''} onChange={e => upd('refrigerio_ventana_fin', e.target.value)} style={{width: 120}} />
+                    </div>
+                    <div className="text-muted" style={{fontSize: 11, marginTop: 4}}>Rango de horas dentro de la jornada donde es válido tomar el refrigerio. Ambas deben llenarse o quedar vacías.</div>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Tolerancia de exceso (Minutos)</label>
+                    <input className="input" type="number" min="0" value={form.refrigerio_tolerancia_minutos} onChange={e => upd('refrigerio_tolerancia_minutos', e.target.value)} style={{width: 80}} />
+                    <div className="text-muted" style={{fontSize: 11, marginTop: 4}}>Minutos de gracia sobre el tiempo declarado antes de considerarlo una falta.</div>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Tratamiento si excede el tiempo (+ tolerancia)</label>
+                    <select className="select" value={form.refrigerio_tratamiento_exceso} onChange={e => upd('refrigerio_tratamiento_exceso', e.target.value)}>
+                      <option value="ignorar">Ignorar (No hacer nada)</option>
+                      <option value="alertar">Alertar en reportes</option>
+                      <option value="descontar">Descontar (Afecta el cálculo de jornada)</option>
+                    </select>
+                    <div className="text-muted" style={{fontSize: 11, marginTop: 4}}>Qué sucede si el trabajador demora más del tiempo permitido.</div>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Tratamiento de defecto (Si toma menos tiempo)</label>
+                    <select className="select" value={form.refrigerio_tratamiento_defecto} onChange={e => upd('refrigerio_tratamiento_defecto', e.target.value)}>
+                      <option value="ignorar">Ignorar (No hacer nada)</option>
+                      <option value="alertar">Alertar en reportes</option>
+                    </select>
+                    <div className="text-muted" style={{fontSize: 11, marginTop: 4}}>Qué sucede si toma menos tiempo del pactado. <strong>Nota: El tiempo no tomado nunca se acredita como horas trabajadas.</strong></div>
+                  </div>
+
+                  <div className="input-group">
+                    <label>Orígenes de marcación de refrigerio permitidos</label>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4, background: 'var(--bg-body)', padding: 10, borderRadius: 6}}>
+                      {['mobile_pwa', 'kiosco', 'backoffice', 'biometrico_importacion', 'manual_minero', 'ciclo_minero'].map(origen => (
+                        <label key={origen} style={{display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer'}}>
+                          <input type="checkbox" checked={form.refrigerio_origenes_permitidos.includes(origen)} onChange={e => {
+                            if (e.target.checked) {
+                              upd('refrigerio_origenes_permitidos', [...form.refrigerio_origenes_permitidos, origen]);
+                            } else {
+                              upd('refrigerio_origenes_permitidos', form.refrigerio_origenes_permitidos.filter(x => x !== origen));
+                            }
+                          }}/>
+                          <span style={{fontFamily: 'monospace', color: 'var(--cyan)'}}>{origen}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
 
             <div className="row" style={{justifyContent:'flex-end',gap:10,marginTop:24}}>
