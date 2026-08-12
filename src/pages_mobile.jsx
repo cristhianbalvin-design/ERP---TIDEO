@@ -493,6 +493,11 @@ function AsistenciaMobileView({ screen, setScreen }) {
 
   const manejarMarcacion = async () => {
     if (modo === 'completado' || verificandoHoy) return;
+    if (modo === 'salida' && refrigerioAbierto) {
+      if (!window.confirm('Tienes un periodo de refrigerio sin cerrar. ¿Estás seguro de marcar tu salida del día?')) {
+        return;
+      }
+    }
     setAviso('');
     if (!trabajadorId) {
       const msg = 'No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.';
@@ -619,11 +624,6 @@ function AsistenciaMobileView({ screen, setScreen }) {
         }
       }
     } else if (modo === 'salida') {
-      if (refrigerioAbierto) {
-        if (!window.confirm('Tienes un periodo de refrigerio sin cerrar. ¿Estás seguro de marcar tu salida del día?')) {
-          return;
-        }
-      }
       const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
       if (abierto) {
         const metadata = {
@@ -756,7 +756,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
             onClick={manejarMarcacionRefrigerio}
             disabled={loading}
             className="hover-raise"
-            style={{padding: '12px 24px', borderRadius: 20, background: refrigerioAbierto ? 'var(--orange)' : 'var(--blue)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, boxShadow: refrigerioAbierto ? '0 4px 12px rgba(249,115,22,0.3)' : '0 4px 12px rgba(59,130,246,0.3)', cursor: 'pointer', transition: 'all 0.2s', opacity: loading ? 0.7 : 1}}
+            style={{padding: '12px 24px', borderRadius: 20, background: refrigerioAbierto ? 'var(--orange)' : 'var(--navy)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, boxShadow: refrigerioAbierto ? 'var(--shadow-md)' : 'var(--shadow-md)', cursor: 'pointer', transition: 'all 0.2s', opacity: loading ? 0.7 : 1}}
           >
             {loading ? <span>Procesando...</span> : (refrigerioAbierto ? 'Regresar de refrigerio' : 'Salir a refrigerio')}
           </button>

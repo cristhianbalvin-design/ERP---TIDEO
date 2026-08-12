@@ -185,7 +185,11 @@ export async function syncGeoQueue({ onSynced } = {}) {
       }
       synced += 1;
       onSynced?.(saved, item);
-    } catch {
+    } catch (err) {
+      console.error('[syncGeoQueue] Error sincronizando marcacion offline:', {
+        error: err?.message || err,
+        itemPayload: item.payload
+      });
       remaining.push(item);
     }
   }
