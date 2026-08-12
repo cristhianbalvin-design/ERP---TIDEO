@@ -50,6 +50,7 @@ import {
 } from './services/tesoreriaService.js';
 import {
   getMateriales, crearMaterial as svcCrearMaterial, actualizarMaterial as svcActualizarMaterial, eliminarMaterial as svcEliminarMaterial,
+  getFabricantes, crearFabricante as svcCrearFabricante, actualizarFabricante as svcActualizarFabricante,
   getMaterialGrupos, crearMaterialGrupo as svcCrearGrupo, actualizarMaterialGrupo as svcActualizarGrupo, eliminarMaterialGrupo as svcEliminarGrupo,
   getMaterialFamilias, crearMaterialFamilia as svcCrearFamilia, actualizarMaterialFamilia as svcActualizarFamilia, eliminarMaterialFamilia as svcEliminarFamilia,
   getMaterialSubfamilias, crearMaterialSubfamilia as svcCrearSubfamilia, actualizarMaterialSubfamilia as svcActualizarSubfamilia, eliminarMaterialSubfamilia as svcEliminarSubfamilia,
@@ -427,6 +428,7 @@ export function AppProvider({ children }) {
   const [materialFamilias, setMaterialFamilias] = useState([]);
   const [materialSubfamilias, setMaterialSubfamilias] = useState([]);
   const [materiales, setMateriales] = useState([]);
+  const [fabricantes, setFabricantes] = useState([]);
   const [activos, setActivos] = useState([]);
 
   // Módulo Transporte y Guías (Fase 4)
@@ -1052,17 +1054,19 @@ export function AppProvider({ children }) {
         } catch (_err) { /* tabla WMS pendiente */ }
 
         try {
-          const [mg, mf, ms, mat] = await Promise.all([
+          const [mg, mf, ms, mat, fab] = await Promise.all([
             getMaterialGrupos(empresa.id),
             getMaterialFamilias(empresa.id),
             getMaterialSubfamilias(empresa.id),
             getMateriales(empresa.id),
+            getFabricantes(empresa.id),
           ]);
           if (mounted) {
             setMaterialGrupos(mg || []);
             setMaterialFamilias(mf || []);
             setMaterialSubfamilias(ms || []);
             setMateriales(mat || []);
+            setFabricantes(fab || []);
           }
         } catch (_err) { /* tabla aún no existe */ }
 
@@ -7299,14 +7303,35 @@ export function AppProvider({ children }) {
   // ─── Materiales ─────────────────────────────────────────────────────────────
   const recargarMateriales = async () => {
     if (!empresa?.id) return;
-    const [mg, mf, ms, mat] = await Promise.all([
+    const [mg, mf, ms, mat, fab] = await Promise.all([
       getMaterialGrupos(empresa.id), getMaterialFamilias(empresa.id),
-      getMaterialSubfamilias(empresa.id), getMateriales(empresa.id),
+      getMaterialSubfamilias(empresa.id), getMateriales(empresa.id), getFabricantes(empresa.id),
     ]);
     setMaterialGrupos(mg || []);
     setMaterialFamilias(mf || []);
     setMaterialSubfamilias(ms || []);
     setMateriales(mat || []);
+    setFabricantes(fab || []);
+  };
+
+  const crearFabricanteCtx = async (datos) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      const data = await svcCrearFabricante(empresa.id, datos);
+      setFabricantes(prev => [...prev, data]);
+      return data;
+    }
+    const nuevo = { ...datos, id: generateId('fab'), empresa_id: empresa?.id, codigo: datos.codigo || `FAB-${Date.now()}`, estado: datos.estado || 'activo' };
+    setFabricantes(prev => [...prev, nuevo]);
+    return nuevo;
+  };
+  const actualizarFabricanteCtx = async (id, datos) => {
+    if (isSupabaseConfigured()) {
+      const actual = await svcActualizarFabricante(id, datos);
+      setFabricantes(prev => prev.map(f => f.id === id ? actual : f));
+      return actual;
+    }
+    setFabricantes(prev => prev.map(f => f.id === id ? { ...f, ...datos } : f));
+    return datos;
   };
 
   const crearMatGrupo = async (datos) => {
@@ -10207,6 +10232,7 @@ export function AppProvider({ children }) {
     centrosCosto, setCentrosCosto, crearCentroCosto, actualizarCentroCosto, eliminarCentroCosto, importarCentrosCosto,
     centrosBeneficio, setCentrosBeneficio, crearCentroBeneficio, actualizarCentroBeneficio, eliminarCentroBeneficio, importarCentrosBeneficio,
     materialGrupos, materialFamilias, materialSubfamilias, materiales, setMateriales,
+    fabricantes, setFabricantes, crearFabricanteCtx, actualizarFabricanteCtx,
     crearMatGrupo, actualizarMatGrupo, eliminarMatGrupo,
     crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
     crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,

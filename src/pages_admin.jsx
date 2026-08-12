@@ -36,7 +36,7 @@ import {
   validarFilasImportacionCeco,
 } from './utils/cecoCebeImport.js';
 import { resolverSociedadInicialFormularioCentro } from './utils/centrosSociedadForm.js';
-import { importarMaterialesMasivo } from './services/materialService.js';
+import { importarMaterialesMasivo, findOrCreateFabricante, guardarMaterialNumerosParte, guardarFabricanteNumeroParteOriginal, normalizarTextoMatching } from './services/materialService.js';
 import { ER_TIPO_SISTEMA_LABELS, ER_TIPO_SISTEMA_OPTIONS } from './services/estadoResultadosService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
@@ -2694,7 +2694,7 @@ function MaterialesMaestro({ onClose }) {
     crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
     crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,
     crearMaterialCtx, actualizarMaterialCtx, eliminarMaterialCtx, recargarMateriales,
-    almacenes,
+    almacenes, fabricantes, setFabricantes,
   } = useApp();
 
   const [tab, setTab] = useState('catalogo');
@@ -2702,6 +2702,8 @@ function MaterialesMaestro({ onClose }) {
   const [editandoId, setEditandoId] = useState(null);
   const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, stock_minimo: 0, punto_reorden: 0, stock_maximo: 0, stock_seguridad: 0, estado: 'activo' };
   const [formMat, setFormMat] = useState(matBase);
+  const [parteOriginal, setParteOriginal] = useState({ id: '', fabricante_id: '', fabricante_nombre: '' });
+  const [partesAlternativos, setPartesAlternativos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState('');
   const [importando, setImportando] = useState(false);
@@ -2747,7 +2749,9 @@ function MaterialesMaestro({ onClose }) {
     if (filtros.estado && m.estado !== filtros.estado) return false;
     if (filtros.texto) {
       const q = filtros.texto.toLowerCase();
-      if (!m.codigo?.toLowerCase().includes(q) && !m.descripcion?.toLowerCase().includes(q)) return false;
+      const numerosParte = m.material_numeros_parte || [];
+      if (!m.codigo?.toLowerCase().includes(q) && !m.descripcion?.toLowerCase().includes(q)
+        && !numerosParte.some(n => n.activo !== false && n.numero_parte?.toLowerCase().includes(q))) return false;
     }
     return true;
   });
@@ -2764,10 +2768,38 @@ function MaterialesMaestro({ onClose }) {
   const editarMaterial = (m) => {
     setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, stock_minimo: m.stock_minimo ?? 0, punto_reorden: m.punto_reorden ?? 0, stock_maximo: m.stock_maximo ?? 0, stock_seguridad: m.stock_seguridad ?? 0, estado: m.estado || 'activo' });
     setEditandoId(m.id);
+    const original = (m.material_numeros_parte || []).find(p => p.tipo === 'original');
+    setParteOriginal({ id: original?.id || '', fabricante_id: original?.fabricante_id || '', fabricante_nombre: original?.fabricantes?.nombre || '' });
+    setPartesAlternativos((m.material_numeros_parte || [])
+      .filter(p => p.tipo === 'alternativo')
+      .sort((a, b) => Number(a.orden) - Number(b.orden))
+      .map(p => ({ id: p.id, numero_parte: p.numero_parte || '', fabricante_id: p.fabricante_id || '', fabricante_nombre: p.fabricantes?.nombre || '', notas: p.notas || '', activo: p.activo !== false })));
     setFormErr('');
   };
 
-  const resetFormMat = () => { setFormMat(matBase); setEditandoId(null); setFormErr(''); };
+  const resetFormMat = () => { setFormMat(matBase); setParteOriginal({ id: '', fabricante_id: '', fabricante_nombre: '' }); setPartesAlternativos([]); setEditandoId(null); setFormErr(''); };
+
+  const actualizarParteAlternativo = (index, cambios) => setPartesAlternativos(prev => prev.map((parte, i) => i === index ? { ...parte, ...cambios } : parte));
+  const resolverFabricanteParte = async (parte) => {
+    const nombre = String(parte.fabricante_nombre || '').trim();
+    if (!nombre) return { ...parte, fabricante_id: null };
+    const existente = fabricantes.find(f => normalizarTextoMatching(f.nombre) === normalizarTextoMatching(nombre));
+    const fabricante = existente || await findOrCreateFabricante(empresa.id, nombre, fabricantes);
+    if (!existente) setFabricantes(prev => prev.some(f => f.id === fabricante.id) ? prev : [...prev, fabricante]);
+    return { ...parte, fabricante_id: fabricante.id, fabricante_nombre: fabricante.nombre };
+  };
+  const crearFabricanteParte = async (index) => {
+    try {
+      const parte = await resolverFabricanteParte(partesAlternativos[index]);
+      actualizarParteAlternativo(index, parte);
+    } catch (err) { setFormErr(err.message || 'No se pudo crear el fabricante.'); }
+  };
+  const crearFabricanteOriginal = async () => {
+    try {
+      const parte = await resolverFabricanteParte(parteOriginal);
+      setParteOriginal(parte);
+    } catch (err) { setFormErr(err.message || 'No se pudo crear el fabricante.'); }
+  };
 
   const guardarMaterial = async (e) => {
     e.preventDefault();
@@ -2776,13 +2808,20 @@ function MaterialesMaestro({ onClose }) {
     setSaving(true); setFormErr('');
     try {
       const codigo = editandoId ? undefined : (codigoAuto || undefined);
+      const original = await resolverFabricanteParte(parteOriginal);
+      const alternativos = await Promise.all(partesAlternativos.map(resolverFabricanteParte));
       if (editandoId) {
         await actualizarMaterialCtx(editandoId, formMat);
+        await guardarMaterialNumerosParte(empresa.id, editandoId, alternativos);
+        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, editandoId, original.fabricante_id, original.id);
         addNotificacion('Material actualizado.');
       } else {
-        await crearMaterialCtx({ ...formMat, codigo });
+        const creado = await crearMaterialCtx({ ...formMat, codigo });
+        await guardarMaterialNumerosParte(empresa.id, creado.id, alternativos);
+        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, creado.id, original.fabricante_id, original.id);
         addNotificacion('Material creado.');
       }
+      await recargarMateriales();
       resetFormMat();
     } catch (err) { setFormErr(err.message || 'Error al guardar.'); } finally { setSaving(false); }
   };
@@ -2813,6 +2852,8 @@ function MaterialesMaestro({ onClose }) {
       const wb = XLSX.read(buf, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const encabezados = Object.keys(rows[0] || {});
+      const tieneAlternativos = [1, 2, 3, 4].some(n => encabezados.includes(`Nro Parte Alternativo ${n}`) || encabezados.includes(`nro_parte_alternativo_${n}`));
       // Columnas esperadas: Cod Grupo, Grupo, Cod Familia, Familia, Cod Sub-Familia, Sub-Familia, Correlativo, Codigo, Descripcion, Nro Parte, UM, Unidades Contenidas, Estado, Almacen, Ubicacion, Observacion, P.U. S/
       const filas = rows.map(r => ({
         cod_grupo: String(r['Cod Grupo'] ?? r['cod_grupo'] ?? '').trim(),
@@ -2831,6 +2872,12 @@ function MaterialesMaestro({ onClose }) {
         ubicacion: String(r['Ubicacion'] ?? r['ubicacion'] ?? '').trim(),
         observacion: String(r['Observacion'] ?? r['observacion'] ?? '').trim(),
         precio_unitario: Number(r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
+        alternativos_proporcionados: tieneAlternativos,
+        alternativos: [1, 2, 3, 4].map(n => ({
+          numero_parte: String(r[`Nro Parte Alternativo ${n}`] ?? r[`nro_parte_alternativo_${n}`] ?? '').trim(),
+          fabricante_nombre: String(r[`Fabricante Alternativo ${n}`] ?? r[`fabricante_alternativo_${n}`] ?? '').trim(),
+          notas: String(r[`Notas Alternativo ${n}`] ?? r[`notas_alternativo_${n}`] ?? '').trim(),
+        })),
       })).filter(f => {
         if (!f.cod_grupo || !f.cod_familia || !f.cod_subfamilia) return false;
         if (!f.descripcion) return false;
@@ -2857,6 +2904,7 @@ function MaterialesMaestro({ onClose }) {
 
   const descargarPlantillaMateriales = () => {
     const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','P.U. S/'];
+    headers.push(...[1,2,3,4].flatMap(n => [`Nro Parte Alternativo ${n}`, `Fabricante Alternativo ${n}`, `Notas Alternativo ${n}`]));
     const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','und','1','activo','Almacén Central','Estante A-3','','25.50'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
     ws['!cols'] = headers.map((h,i) => ({ wch: i < 6 ? 12 : i === 7 ? 30 : 16 }));
@@ -2870,7 +2918,8 @@ function MaterialesMaestro({ onClose }) {
       ['4. Descripcion:', 'Nombre completo del material (ej: Llave francesa 10"). Obligatorio.'],
       ['5. UM:', 'Unidad de medida (ej: und, kg, m). Obligatorio.'],
       ['6. Estado:', 'Colocar "activo" o "inactivo". Por defecto es "activo".'],
-      ['7. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
+      ['7. Números alternativos:', 'Las tres columnas de cada alternativo son opcionales. Registra hasta 4 equivalencias; el fabricante se busca normalizado o se crea automáticamente.'],
+      ['8. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
       [''],
       ['Ejemplo válido:'],
       headers,
@@ -2915,7 +2964,11 @@ function MaterialesMaestro({ onClose }) {
         'Stock Minimo': m.stock_minimo || 0,
         'Punto Reorden': m.punto_reorden || 0,
         'Stock Maximo': m.stock_maximo || 0,
-        'Stock Seguridad': m.stock_seguridad || 0
+        'Stock Seguridad': m.stock_seguridad || 0,
+        ...Object.fromEntries([1,2,3,4].flatMap(n => {
+          const parte = (m.material_numeros_parte || []).find(p => p.tipo === 'alternativo' && Number(p.orden) === n);
+          return [[`Nro Parte Alternativo ${n}`, parte?.numero_parte || ''], [`Fabricante Alternativo ${n}`, parte?.fabricantes?.nombre || ''], [`Notas Alternativo ${n}`, parte?.notas || '']];
+        }))
       };
     });
     
@@ -3066,6 +3119,54 @@ function MaterialesMaestro({ onClose }) {
                   <div className="input-group">
                     <label>Nro Parte</label>
                     <input className="input" value={formMat.nro_parte} onChange={e => setFormMat(p => ({ ...p, nro_parte: e.target.value }))} placeholder="Código del fabricante" />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div>
+                        <strong style={{ fontSize: 13 }}>Números de parte</strong>
+                        <div className="text-muted" style={{ fontSize: 11 }}>El original se edita en el campo “Nro Parte” de arriba. Registra hasta cuatro equivalentes.</div>
+                      </div>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={partesAlternativos.length >= 4} onClick={() => setPartesAlternativos(prev => [...prev, { numero_parte: '', fabricante_id: '', fabricante_nombre: '', notas: '', activo: true }])}>{I.plus} Alternativo</button>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                      <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                        <label>Original heredado</label>
+                        <input className="input" readOnly value={formMat.nro_parte || 'Sin número original'} style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)' }} />
+                      </div>
+                      <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                        <label>Fabricante original</label>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <input className="input" list="fabricantes-material" disabled={!String(formMat.nro_parte || '').trim()} value={parteOriginal.fabricante_nombre} onChange={e => setParteOriginal(p => ({ ...p, fabricante_nombre: e.target.value, fabricante_id: '' }))} placeholder={formMat.nro_parte ? 'Buscar o crear fabricante' : 'Ingresa primero el Nro Parte'} />
+                          {parteOriginal.fabricante_nombre && !fabricantes.some(f => normalizarTextoMatching(f.nombre) === normalizarTextoMatching(parteOriginal.fabricante_nombre)) && <button type="button" className="btn btn-secondary btn-sm" title="Crear fabricante" onClick={crearFabricanteOriginal}>Crear</button>}
+                        </div>
+                      </div>
+                    </div>
+                    <datalist id="fabricantes-material">
+                      {fabricantes.filter(f => f.estado !== 'inactivo').map(f => <option key={f.id} value={f.nombre}>{f.codigo}</option>)}
+                    </datalist>
+                    {partesAlternativos.map((parte, index) => {
+                      const existeFabricante = fabricantes.some(f => normalizarTextoMatching(f.nombre) === normalizarTextoMatching(parte.fabricante_nombre));
+                      return (
+                        <div key={parte.id || index} style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr 1.2fr auto', gap: 8, alignItems: 'end', marginTop: 8, padding: 8, background: 'var(--bg-subtle)', borderRadius: 6 }}>
+                          <div className="input-group">
+                            <label>Alternativo {index + 1}</label>
+                            <input className="input" value={parte.numero_parte} onChange={e => actualizarParteAlternativo(index, { numero_parte: e.target.value })} placeholder="Número de parte" />
+                          </div>
+                          <div className="input-group">
+                            <label>Fabricante</label>
+                            <input className="input" list="fabricantes-material" value={parte.fabricante_nombre} onChange={e => actualizarParteAlternativo(index, { fabricante_nombre: e.target.value, fabricante_id: '' })} placeholder="Buscar o crear fabricante" />
+                          </div>
+                          <div className="input-group">
+                            <label>Notas</label>
+                            <input className="input" value={parte.notas} onChange={e => actualizarParteAlternativo(index, { notas: e.target.value })} placeholder="Opcional" />
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, paddingBottom: 1 }}>
+                            {parte.fabricante_nombre && !existeFabricante && <button type="button" className="btn btn-secondary btn-sm" title="Crear fabricante" onClick={() => crearFabricanteParte(index)}>Crear</button>}
+                            <button type="button" className="icon-btn" title="Quitar número alternativo" onClick={() => setPartesAlternativos(prev => prev.filter((_, i) => i !== index))} style={{ color: 'var(--danger)' }}>{I.trash}</button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="input-group">
                     <label>Unidades contenidas</label>
@@ -4486,7 +4587,7 @@ function Maestros() {
     tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
     posiciones = [], posicionesUsuarios = [], usuarios = [],
-    addNotificacion, materiales = []
+    addNotificacion, materiales = [], fabricantes = [], crearFabricanteCtx, actualizarFabricanteCtx
   } = useApp();
   const {
     centrosCosto, centrosBeneficio, empresa, perfilSociedad, sociedadesIdsAlcance,
@@ -4546,6 +4647,7 @@ function Maestros() {
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
+    { id: 'mst_fabricantes', tabla: 'Fabricantes' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
   const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
@@ -4572,6 +4674,7 @@ function Maestros() {
     if (sel.id === 'mst_niveles_jerarquicos') return nivelesJerarquicos;
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
     if (sel.id === 'mst_almacenes') return almacenes;
+    if (sel.id === 'mst_fabricantes') return fabricantes;
     if (sel.id === 'mst_sedes') return sedes;
     if (sel.id === 'mst_industrias') return industrias;
     if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
@@ -4966,7 +5069,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
+    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_fabricantes:'FAB', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -5038,6 +5141,11 @@ function Maestros() {
         const item = { ...base, tipo: nuevo.tipo || 'Central', responsable: nuevo.responsable || '', direccion: nuevo.direccion || '' };
         if (editandoId) await actualizarAlmacen(editandoId, item);
         else await crearAlmacen(item);
+      } else if (sel.id === 'mst_fabricantes') {
+        const item = { ...base, nombre: String(nuevo.nombre || '').trim(), estado: nuevo.estado || 'activo' };
+        if (!item.nombre) throw new Error('Completa el nombre del fabricante.');
+        if (editandoId) await actualizarFabricanteCtx(editandoId, item);
+        else await crearFabricanteCtx(item);
       } else if (sel.id === 'mst_sedes') {
         const nuevoTipo = nuevo.tipo || 'oficina';
         if (editandoId) {
@@ -5117,7 +5225,9 @@ function Maestros() {
     mst_requisitos_cargo: 'Define qué documentos requiere cada cargo. El sistema usará esta configuración para calcular el cumplimiento documental del personal.',
   };
 
-  const CodPreview = ({ id, len }) => (
+  // No usar un componente declarado dentro de Maestros: su identidad cambiaba en
+  // cada setNuevo y React desmontaba el input de código, perdiendo el foco.
+  const renderCodPreview = (id, len) => (
     <div className="input-group">
       <label>Código *</label>
       <input className="input" required value={nuevo.codigo ?? autoCode(id, len)} onChange={e=>setNuevo(v=>({...v,codigo:e.target.value}))} style={{background:'var(--bg-subtle)'}} placeholder="Ej: COD-001"/>
@@ -5258,6 +5368,7 @@ function Maestros() {
       case 'mst_impuestos': arr = monedasImpuestosUnidades || []; break;
       case 'mst_tipos_servicio': arr = tiposServicio || []; break;
       case 'mst_almacenes': arr = almacenes || []; break;
+      case 'mst_fabricantes': arr = fabricantes || []; break;
       case 'mst_tipos_contrato': arr = tiposContrato || []; break;
     }
     
@@ -5300,7 +5411,7 @@ function Maestros() {
       return (
         <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
           <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-            <CodPreview id={sel.id} len={formLen}/>
+            {renderCodPreview(sel.id, formLen)}
             <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la unidad *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Operaciones" autoFocus/></div>
             <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
             <div className="input-group" style={{gridColumn:'span 2'}}>
@@ -5331,7 +5442,7 @@ function Maestros() {
     if (sel?.id === 'mst_cargos') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
+          {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del cargo *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Analista de Calidad" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo de personal *</label><select className="select" value={nuevo.tipo_cargo} onChange={e=>setNuevo(v=>({...v,tipo_cargo:e.target.value}))}><option value="">Seleccionar...</option><option value="Administrativo">Administrativo</option><option value="Operativo">Operativo</option><option value="Ambos">Ambos</option></select></div>
@@ -5350,7 +5461,7 @@ function Maestros() {
     if (sel?.id === 'mst_especialidades') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
+          {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Electricista industrial" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Área</label><select className="select" value={nuevo.area} onChange={e=>setNuevo(v=>({...v,area:e.target.value}))}><option value="">Seleccionar...</option>{(areasEmpresa||[]).map(a=><option key={a.id} value={a.nombre}>{a.nombre}</option>)}</select></div>
@@ -5383,7 +5494,7 @@ function Maestros() {
     if (sel?.id === 'mst_tipos_servicio') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
+          {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Mantenimiento predictivo" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Clasificación</label><select className="select" value={nuevo.clasificacion} onChange={e=>setNuevo(v=>({...v,clasificacion:e.target.value}))}><option value="">Seleccionar...</option>{['Preventivo','Correctivo','Proyecto','Emergencia','Garantía','Interno'].map(c=><option key={c}>{c}</option>)}</select></div>
@@ -5395,7 +5506,7 @@ function Maestros() {
     if (sel?.id === 'mst_almacenes') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
+          {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del almacén</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Almacén Sede Sur" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo</label><select className="select" value={nuevo.tipo} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="">Seleccionar...</option>{['Central','Sede','Móvil','Tránsito'].map(t=><option key={t}>{t}</option>)}</select></div>
@@ -5405,10 +5516,21 @@ function Maestros() {
         </div>
       </form>
     );
+    if (sel?.id === 'mst_fabricantes') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          {renderCodPreview(sel.id, formLen)}
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del fabricante *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Fabricante de referencia" autoFocus/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="text-muted" style={{gridColumn:'1 / -1', fontSize:12}}>El nombre se normaliza al guardar para evitar duplicados por mayúsculas, tildes o espacios.</div>
+          <FormActions label="fabricante" />
+        </div>
+      </form>
+    );
     if (sel?.id === 'mst_sedes') return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          <CodPreview id={sel.id} len={formLen}/>
+          {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre de la sede *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Sede Norte, Planta Central" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
           <div className="input-group"><label>Tipo de sede</label><select className="select" value={nuevo.tipo || 'oficina'} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="oficina">Oficina administrativa</option><option value="unidad_minera">Unidad minera</option></select></div>
@@ -5443,7 +5565,7 @@ function Maestros() {
     return (
       <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
         <div className="grid-4" style={{gap:12}}>
-          <CodPreview id={sel?.id||''} len={formLen}/>
+          {renderCodPreview(sel?.id || '', formLen)}
           <div className="input-group"><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option><option>bloqueado</option></select></div>
           <FormActions label="industria" />
@@ -5747,6 +5869,27 @@ function Maestros() {
             <td>{r.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
             <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
+    if (sel?.id === 'mst_fabricantes') return (
+      <table className="tbl">
+        <thead><tr><th>Código</th><th>Fabricante</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{selectedRows.map((r, i) => (
+          <tr key={`${r.codigo}-${i}`} style={{background: editandoId === r.id ? 'var(--bg-subtle)' : 'transparent'}}>
+            <td className="mono">{r.codigo}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td><span className={'badge '+(r.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}>
+              <button className="btn btn-ghost" style={{fontSize:11, padding:'2px 8px', marginRight:6}} onClick={async () => {
+                try {
+                  await actualizarFabricanteCtx(r.id, { codigo: r.codigo, nombre: r.nombre, estado: r.estado === 'activo' ? 'inactivo' : 'activo' });
+                  addNotificacion?.(`Fabricante ${r.estado === 'activo' ? 'desactivado' : 'activado'}.`);
+                } catch (err) { setFormError(err?.message || 'No se pudo actualizar el fabricante.'); }
+              }}>{r.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
+              <button className="icon-btn" title="Editar" onClick={() => editarRegistro(r)} style={{color:'var(--cyan)'}}>{I.edit}</button>
+            </td>
           </tr>
         ))}</tbody>
       </table>

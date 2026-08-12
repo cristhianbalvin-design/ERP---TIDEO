@@ -7,6 +7,111 @@ const makeId = (prefix) => {
 
 const pick = (src, keys) => keys.reduce((a, k) => { if (src[k] !== undefined) a[k] = src[k]; return a; }, {});
 
+// Misma semántica que public.normalizar_texto_matching: evita duplicados por
+// mayúsculas, tildes o espacios al buscar/crear fabricantes desde la UI e importación.
+export const normalizarTextoMatching = (value) => String(value ?? '')
+  .trim()
+  .toLocaleUpperCase('es-PE')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ');
+
+export const getFabricantes = async (empresaId) => {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.from('fabricantes')
+    .select('*').eq('empresa_id', empresaId).order('nombre_normalizado');
+  if (error) throw error;
+  return data || [];
+};
+
+export const crearFabricante = async (empresaId, fabricante) => {
+  const supabase = await getSupabaseClient();
+  const nombre = String(fabricante?.nombre || '').trim();
+  if (!nombre) throw new Error('El nombre del fabricante es obligatorio.');
+  const { data, error } = await supabase.from('fabricantes').insert([{
+    id: makeId('fab'), empresa_id: empresaId, codigo: fabricante?.codigo || '',
+    nombre, estado: fabricante?.estado || 'activo',
+  }]).select().single();
+  if (error) throw error;
+  return data;
+};
+
+export const actualizarFabricante = async (id, fabricante) => {
+  const supabase = await getSupabaseClient();
+  const nombre = String(fabricante?.nombre || '').trim();
+  if (!nombre) throw new Error('El nombre del fabricante es obligatorio.');
+  // El trigger preparar_fabricante recalcula nombre_normalizado y aplica la
+  // unicidad por tenant al persistir cualquier cambio de nombre.
+  const { data, error } = await supabase.from('fabricantes')
+    .update(pick({ ...fabricante, nombre }, ['codigo', 'nombre', 'estado']))
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+};
+
+export const findOrCreateFabricante = async (empresaId, nombre, fabricantes = []) => {
+  const normalizado = normalizarTextoMatching(nombre);
+  if (!normalizado) return null;
+  const existente = fabricantes.find(f => normalizarTextoMatching(f.nombre) === normalizado);
+  if (existente) return existente;
+  try {
+    return await crearFabricante(empresaId, { nombre: String(nombre).trim(), estado: 'activo' });
+  } catch (error) {
+    // La restricción normalizada también cubre dos altas simultáneas.
+    if (error?.code !== '23505') throw error;
+    const supabase = await getSupabaseClient();
+    const { data, error: findError } = await supabase.from('fabricantes')
+      .select('*').eq('empresa_id', empresaId).eq('nombre_normalizado', normalizado).maybeSingle();
+    if (findError) throw findError;
+    if (data) return data;
+    throw error;
+  }
+};
+
+export const guardarMaterialNumerosParte = async (empresaId, materialId, alternativos = []) => {
+  const filas = (alternativos || [])
+    .map(row => ({
+      numero_parte: String(row?.numero_parte || '').trim(),
+      fabricante_id: row?.fabricante_id || null,
+      notas: String(row?.notas || '').trim() || null,
+      activo: row?.activo !== false,
+    }))
+    .filter(row => row.numero_parte);
+  if (filas.length > 4) throw new Error('Se permiten como máximo 4 números de parte alternativos.');
+  if (new Set(filas.map(row => row.numero_parte)).size !== filas.length) {
+    throw new Error('No se puede repetir un número de parte en el mismo material.');
+  }
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.rpc('reemplazar_material_numeros_alternativos', {
+    p_empresa_id: empresaId,
+    p_material_id: materialId,
+    p_alternativos: filas,
+  });
+  if (error) throw error;
+};
+
+// Actualiza únicamente el fabricante de la fila original. La validación de
+// empresa material/fabricante se conserva en trg_validar_material_numero_parte.
+export const guardarFabricanteNumeroParteOriginal = async (empresaId, materialId, fabricanteId = null, numeroParteId = null) => {
+  const supabase = await getSupabaseClient();
+  let query = supabase.from('material_numeros_parte')
+    .update({ fabricante_id: fabricanteId || null })
+    .eq('material_id', materialId).eq('tipo', 'original');
+  // La ficha ya conoce el ID de la fila original al editar; usarlo hace que el
+  // PATCH se dirija a la fila exacta que se mostró al usuario.
+  if (numeroParteId) query = query.eq('id', numeroParteId);
+  const { data, error } = await query.select('id, fabricante_id').maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    throw new Error('No se encontró la fila del número de parte original para actualizar el fabricante.');
+  }
+  if ((data.fabricante_id || null) !== (fabricanteId || null)) {
+    throw new Error('El fabricante original no se pudo confirmar después de guardar.');
+  }
+  return data;
+};
+
 // ─── Grupos ───────────────────────────────────────────────────────────────────
 export const getMaterialGrupos = async (empresaId) => {
   if (!empresaId) return [];
@@ -122,7 +227,7 @@ export const getMateriales = async (empresaId) => {
   let from = 0;
   while (true) {
     const { data, error } = await supabase
-      .from('materiales').select('*')
+      .from('materiales').select('*, material_numeros_parte(*, fabricantes(id, codigo, nombre, estado))')
       .eq('empresa_id', empresaId).order('codigo')
       .range(from, from + PAGE - 1);
     if (error) { console.error('getMateriales:', error); return []; }
@@ -149,6 +254,7 @@ export const crearMaterial = async (empresaId, mat) => {
     id: makeId('mat'),
     empresa_id: empresaId,
     ...pick(mat, MAT_FIELDS),
+    almacen_id: mat.almacen_id || null,
   };
   const { data, error } = await supabase.from('materiales').insert([payload]).select().single();
   if (error) throw error;
@@ -157,8 +263,9 @@ export const crearMaterial = async (empresaId, mat) => {
 
 export const actualizarMaterial = async (id, mat) => {
   const supabase = await getSupabaseClient();
+  const payload = { ...pick(mat, MAT_FIELDS), almacen_id: mat.almacen_id || null };
   const { data, error } = await supabase.from('materiales')
-    .update(pick(mat, MAT_FIELDS)).eq('id', id).select().single();
+    .update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;
 };
@@ -304,15 +411,16 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
   const normText = (value) => String(value ?? '').trim();
   const keyText = (value) => normText(value).toLowerCase();
 
-  const [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes] = await Promise.all([
+  const [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes, fabricantesRes] = await Promise.all([
     supabase.from('material_grupos').select('*').eq('empresa_id', empresaId),
     supabase.from('material_familias').select('*').eq('empresa_id', empresaId),
     supabase.from('material_subfamilias').select('*').eq('empresa_id', empresaId),
     supabase.from('almacenes').select('id,nombre').eq('empresa_id', empresaId),
     supabase.from('materiales').select('id,codigo').eq('empresa_id', empresaId),
+    supabase.from('fabricantes').select('*').eq('empresa_id', empresaId),
   ]);
 
-  const firstError = [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes].find(r => r.error)?.error;
+  const firstError = [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes, fabricantesRes].find(r => r.error)?.error;
   if (firstError) throw firstError;
 
   const gruposByCode = new Map((gruposRes.data || []).map(g => [normSegment(g.codigo), g]));
@@ -320,6 +428,30 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
   const subfamiliasByFamilyCode = new Map((subfamiliasRes.data || []).map(s => [`${s.familia_id}|${normSegment(s.codigo)}`, s]));
   const almacenesByName = new Map((almacenesRes.data || []).map(a => [keyText(a.nombre), a]));
   const materialesByCode = new Map((materialesRes.data || []).filter(m => m.codigo).map(m => [normText(m.codigo), m]));
+  const fabricantesByNombre = new Map((fabricantesRes.data || []).map(f => [normalizarTextoMatching(f.nombre), f]));
+
+  const alternativosDeFila = (fila) => {
+    if (Array.isArray(fila.alternativos)) return fila.alternativos;
+    return [1, 2, 3, 4].map(orden => ({
+      numero_parte: fila[`nro_parte_alternativo_${orden}`] ?? fila[`numero_parte_alternativo_${orden}`] ?? '',
+      fabricante_nombre: fila[`fabricante_alternativo_${orden}`] ?? fila[`fabricante_${orden}`] ?? '',
+      notas: fila[`notas_alternativo_${orden}`] ?? '',
+    }));
+  };
+  const incluyeAlternativos = (fila) => fila.alternativos_proporcionados === true
+    || (fila.alternativos_proporcionados !== false && Array.isArray(fila.alternativos))
+    || [1, 2, 3, 4].some(orden => Object.prototype.hasOwnProperty.call(fila, `nro_parte_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `numero_parte_alternativo_${orden}`));
+  const resolverFabricante = async (nombre) => {
+    const nombreLimpio = normText(nombre);
+    if (!nombreLimpio) return null;
+    const key = normalizarTextoMatching(nombreLimpio);
+    const existente = fabricantesByNombre.get(key);
+    if (existente) return existente;
+    const creado = await findOrCreateFabricante(empresaId, nombreLimpio, Array.from(fabricantesByNombre.values()));
+    fabricantesByNombre.set(key, creado);
+    return creado;
+  };
 
   const gruposPendientes = new Map();
   filas.forEach(fila => {
@@ -410,17 +542,38 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
         estado: fila.estado || 'activo',
       };
 
+      let materialId;
       if (existente) {
         const { data, error } = await supabase.from('materiales').update(payload).eq('id', existente.id).select('id,codigo').single();
         if (error) throw error;
         if (codigo) materialesByCode.set(codigo, data || existente);
+        materialId = data?.id || existente.id;
         actualizados.push(codigo);
       } else {
         const newId = makeId('mat');
         const { data, error } = await supabase.from('materiales').insert([{ id: newId, ...payload }]).select('id,codigo').single();
         if (error) throw error;
         if (codigo) materialesByCode.set(codigo, data || { id: newId, codigo });
+        materialId = data?.id || newId;
         creados.push(codigo || newId);
+      }
+
+      // Las columnas alternas son opcionales: si no existen en el archivo, no se
+      // modifican equivalencias ya registradas en el material.
+      if (incluyeAlternativos(fila)) {
+        const alternativos = [];
+        for (const row of alternativosDeFila(fila)) {
+          const numero_parte = normText(row?.numero_parte);
+          if (!numero_parte) continue;
+          const fabricante = await resolverFabricante(row?.fabricante_nombre || row?.fabricante || '');
+          alternativos.push({
+            numero_parte,
+            fabricante_id: fabricante?.id || null,
+            notas: normText(row?.notas) || null,
+            activo: row?.activo !== false,
+          });
+        }
+        await guardarMaterialNumerosParte(empresaId, materialId, alternativos);
       }
     } catch (err) {
       errores.push({ fila: fila.descripcion || fila.codigo, error: err.message });

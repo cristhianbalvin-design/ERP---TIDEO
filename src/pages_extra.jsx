@@ -3235,7 +3235,7 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
               <label className="label">Material *</label>
               <select className="select" value={form.material_id} onChange={e => setF('material_id', e.target.value)}>
                 <option value="">— Seleccionar —</option>
-                {materiales.map(m => <option key={m.id} value={m.id}>{m.codigo} · {m.descripcion}</option>)}
+                {materiales.map(m => <option key={m.id} value={m.id}>{[m.codigo, m.descripcion, ...(m.material_numeros_parte || []).filter(p => p.activo !== false).map(p => p.numero_parte)].filter(Boolean).join(' · ')}</option>)}
               </select>
             </div>
             <div>
