@@ -64,6 +64,16 @@ const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura 
 // Operations: OT, Partes, Valorization & Cuentas
 const symOf = m => String(m || 'PEN').trim().toUpperCase() === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
+const textoBusquedaMaterial = (material = {}) => [
+  material.codigo,
+  material.descripcion || material.nombre,
+  ...(material.material_numeros_parte || []).filter(p => p.activo !== false).map(p => p.numero_parte),
+].filter(Boolean).join(' ');
+const etiquetaMaterial = (material = {}) => [
+  material.codigo,
+  material.descripcion || material.nombre,
+  ...(material.material_numeros_parte || []).filter(p => p.activo !== false).map(p => p.numero_parte),
+].filter(Boolean).join(' · ');
 
 const HAB_DOC_LABEL = {
   vigente: 'Vigente',
@@ -3333,7 +3343,7 @@ function OT({ role }) {
                             {parteFormOT.materiales_lineas.map((m, idx) => {
                               const cat = (catalogoMateriales || []).find(x => x.id === m.mat_id);
                               const filtrados = m.query
-                                ? (catalogoMateriales || []).filter(x => `${x.codigo} ${x.descripcion}`.toLowerCase().includes(m.query.toLowerCase())).slice(0, 8)
+                                ? (catalogoMateriales || []).filter(x => textoBusquedaMaterial(x).toLowerCase().includes(m.query.toLowerCase())).slice(0, 8)
                                 : [];
                               const updLine = (patch) => setParteFormOT(s => ({ ...s, materiales_lineas: s.materiales_lineas.map((x, i) => i === idx ? {...x, ...patch} : x) }));
                               const tipoControl = m.mat_id ? ((inventario || []).find(i => i.material_id === m.mat_id)?.tipo_control || 'sin_control') : 'sin_control';
@@ -6637,7 +6647,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
             : '';
           return <div key={idx} className="card" style={{padding:12}}>
             <div className="grid-2" style={{gap:10}}>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Material</label>{form.origen_compra === 'directa' ? <SearchSelect value={item.material_id || ''} placeholder="Seleccionar material..." options={(materiales || []).map(m => ({ id: m.id, label: `${m.codigo ? m.codigo + ' - ' : ''}${m.descripcion || m.nombre}${m.nro_parte ? ' · ' + m.nro_parte : ''}` }))} onChange={id => { const nextMat = (materiales || []).find(m => m.id === id); setLinea(idx, { material_id: id, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}/> : <select className="select" value={item.material_id || ''} onChange={e => { const nextMat = (materiales || []).find(m => m.id === e.target.value); setLinea(idx, { material_id: e.target.value, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}><option value="">Seleccionar material...</option>{(materiales || []).map(m => <option key={m.id} value={m.id}>{m.codigo ? `${m.codigo} - ` : ''}{m.descripcion || m.nombre}</option>)}</select>}</div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Material</label>{form.origen_compra === 'directa' ? <SearchSelect value={item.material_id || ''} placeholder="Seleccionar material..." options={(materiales || []).map(m => ({ id: m.id, label: etiquetaMaterial(m) }))} onChange={id => { const nextMat = (materiales || []).find(m => m.id === id); setLinea(idx, { material_id: id, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}/> : <select className="select" value={item.material_id || ''} onChange={e => { const nextMat = (materiales || []).find(m => m.id === e.target.value); setLinea(idx, { material_id: e.target.value, codigo: nextMat?.codigo || '', descripcion: nextMat?.descripcion || item.descripcion, unidad: nextMat?.unidad || item.unidad || 'Und' }); }}><option value="">Seleccionar material...</option>{(materiales || []).map(m => <option key={m.id} value={m.id}>{etiquetaMaterial(m)}</option>)}</select>}</div>
               <div className="input-group"><label>Descripcion</label><input className="input" value={item.descripcion || mat?.descripcion || ''} onChange={e=>setLinea(idx, { descripcion:e.target.value })}/></div>
               <div className="input-group"><label>Unidad</label><input className="input" value={item.unidad || mat?.unidad || ''} onChange={e=>setLinea(idx, { unidad:e.target.value })}/></div>
               <div className="input-group"><label>Cantidad</label><input className="input" type="number" min="0" step="0.01" value={item.cantidad} onChange={e=>setLinea(idx, { cantidad:e.target.value })}/></div>
@@ -10740,7 +10750,7 @@ function SOLPE() {
                         value={item.material_id}
                         placeholder="— Seleccionar del catálogo —"
                         staticOption={{ id: '__manual__', label: '✏ Ingresar manualmente' }}
-                        options={(materiales || []).map(m => ({ id: m.id, label: `${m.codigo ? m.codigo + ' – ' : ''}${m.descripcion || m.nombre}${m.nro_parte ? ' · ' + m.nro_parte : ''}` }))}
+                        options={(materiales || []).map(m => ({ id: m.id, label: etiquetaMaterial(m) }))}
                         onChange={id => {
                           const mat = (materiales || []).find(m => m.id === id);
                           setItems(p => p.map((x, i) => i === idx ? { ...x, material_id: id, descripcion: mat ? (mat.descripcion || mat.nombre || '') : x.descripcion, unidad: mat?.unidad || x.unidad } : x));
