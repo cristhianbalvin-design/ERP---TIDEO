@@ -289,6 +289,9 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const [showConsent, setShowConsent] = useState(false);
   const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
   const [aviso, setAviso] = useState('');
+  const [marcacionesHoy, setMarcacionesHoy] = useState([]);
+  const [modo, setModo] = useState('entrada');
+  const [verificandoHoy, setVerificandoHoy] = useState(true);
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
@@ -301,16 +304,30 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const geoActivo = Boolean(geoCfg.asistencia_movil_ubicacion_habilitada);
   const consentimientoActual = ubicacionConsentimientos.find(c => c.personal_id === trabajadorId && c.version === GEO_CONSENT_VERSION);
   const necesitaConsentimiento = geoActivo && Boolean(geoCfg.asistencia_movil_consentimiento_requerido) && !consentimientoActual;
+
+  const turno = turnos?.find(t => t.id === turnoIdPersistible) || {};
+  const refrigerioHabilitado = (turno.modo_refrigerio === 'medido_informativo' || turno.modo_refrigerio === 'medido_efectivo') && 
+                               (turno.refrigerio_origenes_permitidos || []).includes('mobile_pwa');
+  const showRefrigerio = modo === 'salida' && refrigerioHabilitado;
+
+  const periodosRefrigerio = [];
+  marcacionesHoy.forEach(m => {
+    if (m.tipo_marca === 'refrigerio_salida') {
+      periodosRefrigerio[m.secuencia - 1] = { ...periodosRefrigerio[m.secuencia - 1], salida: m };
+    } else if (m.tipo_marca === 'refrigerio_retorno') {
+      periodosRefrigerio[m.secuencia - 1] = { ...periodosRefrigerio[m.secuencia - 1], retorno: m };
+    }
+  });
+  const refrigerioAbiertoIndex = periodosRefrigerio.findIndex(p => p && p.salida && !p.retorno);
+  const refrigerioAbierto = refrigerioAbiertoIndex >= 0;
+  const nextRefrigerioSeq = refrigerioAbierto ? refrigerioAbiertoIndex + 1 : periodosRefrigerio.length + 1;
+
+  const periodosCompletos = periodosRefrigerio.filter(p => p && p.salida && p.retorno).length;
+  const paresEsperados = turno.refrigerio_pares_esperados || 1;
+  const refrigerioAgotado = periodosCompletos >= paresEsperados;
+
   
-  // Estado local para gobernar el flujo: entrada -> salida -> completado
-  const [modo, setModo] = useState('entrada');
-  // Evita que el boton quede en "Entrada" (valor inicial) mientras se confirma
-  // el estado real de hoy. registrosAsistencia en contexto se llena con TODO el
-  // historial de la empresa (sin filtro de fecha); en tenants con miles de
-  // registros esa carga puede tardar y dejar una ventana donde el boton muestra
-  // un estado desactualizado. Esta verificacion es liviana (solo trae "hoy") y
-  // no depende de que termine la carga completa.
-  const [verificandoHoy, setVerificandoHoy] = useState(true);
+
 
   useEffect(() => {
     if (!trabajadorId) {
@@ -401,8 +418,90 @@ function AsistenciaMobileView({ screen, setScreen }) {
     }
   };
 
+  const manejarMarcacionRefrigerio = async () => {
+    if (verificandoHoy) return;
+    setAviso('');
+    if (necesitaConsentimiento) { setShowConsent(true); return; }
+    setLoading(true); setGeoEstado('Obteniendo ubicación...');
+    
+    let lat = null, lng = null, accuracy = null, fixAt = null;
+    if (geoActivo && navigator.geolocation) {
+      try {
+        const pos = await new Promise((resolve, reject) => { navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }); });
+        lat = pos.coords.latitude; lng = pos.coords.longitude; accuracy = Math.round(pos.coords.accuracy || 0); fixAt = new Date(pos.timestamp || Date.now()).toISOString();
+      } catch (error) { addNotificacion('No se pudo obtener la ubicación exacta. Asegúrate de dar permisos.'); }
+    } else { addNotificacion('Geolocalización no soportada en este dispositivo.'); }
+
+    const fix = lat != null && lng != null ? { lat, lng, precision_m: accuracy, fix_at: fixAt || new Date().toISOString(), enviado_at: new Date().toISOString(), simulated: false, fuente: 'navigator.geolocation' } : null;
+    const motivo = fix ? null : (geoActivo ? 'gps_no_disponible' : 'geofencing_inactivo');
+    if (!fix && geoActivo && !geoCfg.geofencing_permitir_sin_gps) {
+      const msg = 'No se pudo marcar: la politica exige ubicacion GPS.';
+      addNotificacion(msg); setAviso(msg); setLoading(false); setGeoEstado(''); return;
+    }
+    const geoLocal = evaluarGeofenceLocal({ trabajador: trabajadorActual, geocercas, asignaciones: geocercaAsignaciones, fix: fix || { motivo }, fecha: today, config: geoCfg });
+    if (geoLocal.estado === 'rechazable') {
+      const msg = `Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`;
+      addNotificacion(msg); setAviso(msg); setLoading(false); setGeoEstado(''); return;
+    }
+
+    const ahora = new Date();
+    const horaActual = `${String(ahora.getHours()).padStart(2,'0')}:${String(ahora.getMinutes()).padStart(2,'0')}`;
+    const tipoMarca = refrigerioAbierto ? 'refrigerio_retorno' : 'refrigerio_salida';
+    
+    const metadata = {
+      latitud: lat, longitud: lng, ubicacion: fix, geofence_estado: geoLocal.estado === 'rechazable' ? 'fuera' : geoLocal.estado, geocerca_id: geoLocal.geocerca_id || null, distancia_m: geoLocal.distancia_m ?? null, precision_m: fix?.precision_m ?? null, ubicacion_fix_at: fix?.fix_at || null, ubicacion_enviado_at: fix?.enviado_at || new Date().toISOString(), ubicacion_motivo: motivo || null, ubicacion_simulada: Boolean(fix?.simulated), offline_marcacion: !navigator.onLine, notas: 'Marcación móvil (Modo Campo)'
+    };
+
+    const rpcParams = {
+      p_empresa_id: empresa?.id || 'emp_001', p_trabajador_id: trabajadorId, p_trabajador_tipo: trabajadorActual.trabajador_tipo || 'operativo', p_fecha: today, p_tipo_marca: tipoMarca, p_secuencia: nextRefrigerioSeq, p_origen: 'mobile_pwa', p_metadata: metadata
+    };
+
+    try {
+      if (!navigator.onLine) throw new Error('offline');
+      const data = await rrhhService.registrarMarcacionRPC(rpcParams);
+      
+      if (data.resultado === 'rechazado') {
+        const motivosMap = {
+          sin_turno: 'No tienes un turno asignado hoy.',
+          turno_no_mide_refrigerio: 'Tu turno no admite marcación de refrigerio.',
+          origen_no_permitido: 'No tienes permitido marcar refrigerio desde la aplicación móvil.',
+          fuera_de_ventana: 'Estás fuera del horario permitido para tomar refrigerio.',
+          excede_pares_esperados: 'Ya has tomado todos los refrigerios permitidos por hoy.'
+        };
+        const msg = motivosMap[data.motivo] || `Marca rechazada: ${data.motivo || 'sin detalle'}.`;
+        addNotificacion(msg); setAviso(msg);
+      } else if (data.consolidado === false) {
+        addNotificacion(`Tu refrigerio se registró, pero no actualizó la jornada actual debido a una marca de mayor prioridad (${data.origen_vigente}).`);
+        setAviso(`Precedencia menor: no sobrescribió marca previa de ${data.origen_vigente}.`);
+      } else {
+        addNotificacion(`Refrigerio (${tipoMarca === 'refrigerio_retorno' ? 'retorno' : 'salida'}) registrado a las ${horaActual}.`);
+      }
+      
+      // Fetch fresh data
+      const [rows, marcas] = await Promise.all([
+        rrhhService.getAsistencia(empresa.id, today, today),
+        rrhhService.getMarcaciones(empresa.id, trabajadorId, today)
+      ]);
+      setRegistrosAsistencia(prev => {
+        const idsFrescos = new Set(rows.map(r => r.id));
+        return [...rows, ...prev.filter(r => !idsFrescos.has(r.id))];
+      });
+      setMarcacionesHoy(marcas || []);
+    } catch (e) {
+      const msg = `Error BD (Refrigerio): ${e.message || JSON.stringify(e)}`;
+      addNotificacion(msg); setAviso(msg);
+    }
+    
+    setLoading(false); setGeoEstado('');
+  };
+
   const manejarMarcacion = async () => {
     if (modo === 'completado' || verificandoHoy) return;
+    if (modo === 'salida' && refrigerioAbierto) {
+      if (!window.confirm('Tienes un periodo de refrigerio sin cerrar. ¿Estás seguro de marcar tu salida del día?')) {
+        return;
+      }
+    }
     setAviso('');
     if (!trabajadorId) {
       const msg = 'No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.';
@@ -655,6 +754,28 @@ function AsistenciaMobileView({ screen, setScreen }) {
         </>}
       </div>
       
+      {showRefrigerio && !verificandoHoy && (
+        <div style={{marginBottom: 30}}>
+          {refrigerioAgotado ? (
+            <div style={{padding: '12px 24px', borderRadius: 20, background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '2px dashed var(--border)', fontSize: 15, fontWeight: 600, textAlign: 'center'}}>
+              {paresEsperados > 1 ? `Refrigerio completado (${periodosCompletos} de ${paresEsperados})` : 'Refrigerio completado'}
+            </div>
+          ) : (
+            <button
+              onClick={manejarMarcacionRefrigerio}
+              disabled={loading}
+              className="hover-raise"
+              style={{padding: '12px 24px', borderRadius: 20, background: refrigerioAbierto ? 'var(--orange)' : 'var(--navy)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, boxShadow: 'var(--shadow-md)', cursor: 'pointer', transition: 'all 0.2s', opacity: loading ? 0.7 : 1, width: '100%'}}
+            >
+              {loading ? <span>Procesando...</span> : (refrigerioAbierto 
+                  ? (paresEsperados > 1 ? `Regresar de refrigerio (periodo ${periodosCompletos + 1} de ${paresEsperados})` : 'Regresar de refrigerio') 
+                  : (paresEsperados > 1 ? `Salir a refrigerio (periodo ${periodosCompletos + 1} de ${paresEsperados})` : 'Salir a refrigerio')
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
       {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
       {aviso && !loading && <div className="alert alert-warning" style={{width:'100%', marginBottom:14}}>{aviso}</div>}
       {geoActivo && !loading && (
@@ -683,6 +804,20 @@ function AsistenciaMobileView({ screen, setScreen }) {
             </div>
             <div className="text-muted" style={{fontSize:14, marginBottom:4}}>Entrada: <strong style={{color:'var(--fg)'}}>{r.hora_entrada || '--:--'}</strong></div>
             <div className="text-muted" style={{fontSize:14, marginBottom:10}}>Salida: <strong style={{color:'var(--fg)'}}>{r.hora_salida || '--:--'}</strong></div>
+            {periodosRefrigerio.length > 0 && (
+              <div style={{marginTop: 8, marginBottom: 12, padding: 8, background: 'var(--bg)', borderRadius: 8}}>
+                <div style={{fontSize: 12, fontWeight: 700, marginBottom: 4, color: 'var(--fg-muted)'}}>Refrigerios Registrados</div>
+                {periodosRefrigerio.filter(Boolean).map((p, i) => (
+                  <div key={i} style={{fontSize: 13, display: 'flex', justifyContent: 'space-between', marginBottom: 4}}>
+                    <span>Periodo {p.salida.secuencia}:</span>
+                    <strong style={{color: 'var(--fg)'}}>
+                      {new Date(p.salida.marcado_en).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - 
+                      {p.retorno ? new Date(p.retorno.marcado_en).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : <span style={{color: 'var(--orange)'}}> En curso</span>}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            )}
             {(r.geofence_entrada_estado || r.geofence_salida_estado) && <div className="row" style={{gap:6, marginBottom:8}}>
               {r.geofence_entrada_estado && <span className={'badge ' + (r.geofence_entrada_estado === 'dentro' ? 'badge-green' : r.geofence_entrada_estado === 'fuera' ? 'badge-orange' : 'badge-gray')}>Entrada {r.geofence_entrada_estado}</span>}
               {r.geofence_salida_estado && <span className={'badge ' + (r.geofence_salida_estado === 'dentro' ? 'badge-green' : r.geofence_salida_estado === 'fuera' ? 'badge-orange' : 'badge-gray')}>Salida {r.geofence_salida_estado}</span>}
