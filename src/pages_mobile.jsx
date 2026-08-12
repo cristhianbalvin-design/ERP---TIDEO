@@ -322,6 +322,10 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const refrigerioAbierto = refrigerioAbiertoIndex >= 0;
   const nextRefrigerioSeq = refrigerioAbierto ? refrigerioAbiertoIndex + 1 : periodosRefrigerio.length + 1;
 
+  const periodosCompletos = periodosRefrigerio.filter(p => p && p.salida && p.retorno).length;
+  const paresEsperados = turno.refrigerio_pares_esperados || 1;
+  const refrigerioAgotado = periodosCompletos >= paresEsperados;
+
   
 
 
@@ -752,14 +756,23 @@ function AsistenciaMobileView({ screen, setScreen }) {
       
       {showRefrigerio && !verificandoHoy && (
         <div style={{marginBottom: 30}}>
-          <button
-            onClick={manejarMarcacionRefrigerio}
-            disabled={loading}
-            className="hover-raise"
-            style={{padding: '12px 24px', borderRadius: 20, background: refrigerioAbierto ? 'var(--orange)' : 'var(--navy)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, boxShadow: refrigerioAbierto ? 'var(--shadow-md)' : 'var(--shadow-md)', cursor: 'pointer', transition: 'all 0.2s', opacity: loading ? 0.7 : 1}}
-          >
-            {loading ? <span>Procesando...</span> : (refrigerioAbierto ? 'Regresar de refrigerio' : 'Salir a refrigerio')}
-          </button>
+          {refrigerioAgotado ? (
+            <div style={{padding: '12px 24px', borderRadius: 20, background: 'var(--bg-subtle)', color: 'var(--fg-muted)', border: '2px dashed var(--border)', fontSize: 15, fontWeight: 600, textAlign: 'center'}}>
+              {paresEsperados > 1 ? `Refrigerio completado (${periodosCompletos} de ${paresEsperados})` : 'Refrigerio completado'}
+            </div>
+          ) : (
+            <button
+              onClick={manejarMarcacionRefrigerio}
+              disabled={loading}
+              className="hover-raise"
+              style={{padding: '12px 24px', borderRadius: 20, background: refrigerioAbierto ? 'var(--orange)' : 'var(--navy)', color: 'white', border: 'none', fontSize: 16, fontWeight: 700, boxShadow: 'var(--shadow-md)', cursor: 'pointer', transition: 'all 0.2s', opacity: loading ? 0.7 : 1, width: '100%'}}
+            >
+              {loading ? <span>Procesando...</span> : (refrigerioAbierto 
+                  ? (paresEsperados > 1 ? `Regresar de refrigerio (periodo ${periodosCompletos + 1} de ${paresEsperados})` : 'Regresar de refrigerio') 
+                  : (paresEsperados > 1 ? `Salir a refrigerio (periodo ${periodosCompletos + 1} de ${paresEsperados})` : 'Salir a refrigerio')
+              )}
+            </button>
+          )}
         </div>
       )}
 
