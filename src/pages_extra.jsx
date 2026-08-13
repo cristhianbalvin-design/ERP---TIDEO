@@ -17,6 +17,16 @@ const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura)
     ? opciones.filter(opcion => opcion?.sociedad_id === sociedadIdEscritura)
     : opciones
 );
+const textoBusquedaMaterialInventario = (material = {}) => [
+  material.codigo,
+  material.descripcion || material.nombre,
+  ...(material.material_numeros_parte || []).filter(parte => parte.activo !== false).map(parte => parte.numero_parte),
+].filter(Boolean).join(' ');
+const etiquetaMaterialInventario = (material = {}) => [
+  material.codigo,
+  material.descripcion || material.nombre,
+  ...(material.material_numeros_parte || []).filter(parte => parte.activo !== false).map(parte => parte.numero_parte),
+].filter(Boolean).join(' · ');
 const normalizeCurrencyCode = (m = 'PEN') => String(m || 'PEN').trim().toUpperCase();
 const currencySymbol = (m = 'PEN') => {
   const code = normalizeCurrencyCode(m);
@@ -3060,10 +3070,28 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
   const [form, setForm] = useState({ motivo: 'saldo_inicial', cantidad: '', costo_unitario: '', moneda: 'PEN', material_id: '', almacen_id: almacenes[0]?.id || '', lote: '', serie: '', vencimiento: '', nro_documento: '', observacion: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [materialQuery, setMaterialQuery] = useState('');
+  const [materialMenuOpen, setMaterialMenuOpen] = useState(false);
+  const materialSelectorRef = useRef(null);
   const mat = materiales.find(m => m.id === form.material_id);
   const esLlegadaOC = form.motivo === 'oc_pendiente_factura';
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const sinAlmacenes = almacenes.length === 0;
+  const materialesFiltrados = useMemo(() => {
+    const query = materialQuery.trim().toLocaleLowerCase('es-PE');
+    const opciones = query
+      ? materiales.filter(material => textoBusquedaMaterialInventario(material).toLocaleLowerCase('es-PE').includes(query))
+      : materiales;
+    return opciones.slice(0, 50);
+  }, [materiales, materialQuery]);
+
+  useEffect(() => {
+    const cerrarAlHacerClickFuera = (event) => {
+      if (!materialSelectorRef.current?.contains(event.target)) setMaterialMenuOpen(false);
+    };
+    document.addEventListener('mousedown', cerrarAlHacerClickFuera);
+    return () => document.removeEventListener('mousedown', cerrarAlHacerClickFuera);
+  }, []);
   const sociedadesPermitidas = new Set(filtroSociedades?.sociedadesIds || []);
   const ordenesCompraAlcance = filtroSociedades?.sinFiltro
     ? ordenesCompra
@@ -3233,10 +3261,41 @@ function ModalEntradaManual({ materiales, almacenes, ordenesCompra = [], recepci
           {!esLlegadaOC && <div className="grid-2" style={{gap:12}}>
             <div>
               <label className="label">Material *</label>
-              <select className="select" value={form.material_id} onChange={e => setF('material_id', e.target.value)}>
-                <option value="">— Seleccionar —</option>
-                {materiales.map(m => <option key={m.id} value={m.id}>{m.codigo} · {m.descripcion}</option>)}
-              </select>
+              <div ref={materialSelectorRef} style={{position:'relative'}}>
+                <input
+                  className="input"
+                  value={form.material_id ? etiquetaMaterialInventario(mat) : materialQuery}
+                  placeholder="Buscar por código, descripción o Nro. Parte..."
+                  autoComplete="off"
+                  onFocus={() => setMaterialMenuOpen(true)}
+                  onChange={e => {
+                    setF('material_id', '');
+                    setMaterialQuery(e.target.value);
+                    setMaterialMenuOpen(true);
+                  }}
+                />
+                {materialMenuOpen && (
+                  <div className="autocomplete-menu autocomplete-menu-inline" style={{maxHeight:240, zIndex:20}}>
+                    {materialesFiltrados.map(material => (
+                      <div
+                        key={material.id}
+                        className="autocomplete-option"
+                        onMouseDown={e => {
+                          e.preventDefault();
+                          setF('material_id', material.id);
+                          setMaterialQuery('');
+                          setMaterialMenuOpen(false);
+                        }}
+                      >
+                        <div className="autocomplete-option-title"><span className="mono autocomplete-code">{material.codigo}</span>{material.descripcion || material.nombre}</div>
+                        <div className="autocomplete-option-meta">{(material.material_numeros_parte || []).filter(parte => parte.activo !== false).map(parte => parte.numero_parte).filter(Boolean).join(' · ') || material.unidad || 'Sin número de parte'}</div>
+                      </div>
+                    ))}
+                    {!materialesFiltrados.length && <div className="autocomplete-option text-muted">No se encontraron materiales.</div>}
+                    {!materialQuery.trim() && materiales.length > materialesFiltrados.length && <div className="autocomplete-option text-muted">Escribe para filtrar entre {materiales.length} materiales.</div>}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="label">Almacén *</label>

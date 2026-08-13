@@ -542,15 +542,37 @@ serve(async (req) => {
 
   let asignaciones: Record<string, unknown>[] = [];
   try {
-    asignaciones = await saveFunctionalAssignments(adminClient, {
-      empresaId,
-      userId,
-      principalRole: roleRow,
-      jefeUserId,
-      posicionId,
-      extras: asignacionesPayload,
-      societyScope,
-    });
+    if (estadoMembership === "activo") {
+      asignaciones = await saveFunctionalAssignments(adminClient, {
+        empresaId,
+        userId,
+        principalRole: roleRow,
+        jefeUserId,
+        posicionId,
+        extras: asignacionesPayload,
+        societyScope,
+      });
+    } else {
+      // Un usuario sin acceso activo no puede seguir ocupando una posición. Se conserva la
+      // posición y su jerarquía, pero se cierra su ocupación para que quede vacante.
+      const today = new Date().toISOString().slice(0, 10);
+      const now = new Date().toISOString();
+      const { error: closeAssignmentsError } = await adminClient
+        .from("usuarios_asignaciones")
+        .update({ activo: false, fecha_fin: today, updated_at: now })
+        .eq("empresa_id", empresaId)
+        .eq("user_id", userId)
+        .eq("activo", true);
+      if (closeAssignmentsError) throw closeAssignmentsError;
+
+      const { error: releasePositionError } = await adminClient
+        .from("posiciones_usuarios")
+        .update({ fecha_fin: today, updated_at: now })
+        .eq("empresa_id", empresaId)
+        .eq("user_id", userId)
+        .is("fecha_fin", null);
+      if (releasePositionError) throw releasePositionError;
+    }
   } catch (error) {
     return jsonResponse({ success: false, error: "[asignaciones] " + (error instanceof Error ? error.message : "Error desconocido") }, 500);
   }

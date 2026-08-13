@@ -71,7 +71,11 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
 
   const q = query.trim().toLowerCase();
   const resultados = q.length >= 2
-    ? materiales.filter(m => m.estado !== 'inactivo' && (m.codigo?.toLowerCase().includes(q) || m.descripcion?.toLowerCase().includes(q) || m.nro_parte?.toLowerCase().includes(q))).slice(0, 12)
+    ? materiales.filter(m => m.estado !== 'inactivo' && (
+      m.codigo?.toLowerCase().includes(q)
+      || m.descripcion?.toLowerCase().includes(q)
+      || (m.material_numeros_parte || []).some(p => p.activo !== false && p.numero_parte?.toLowerCase().includes(q))
+    )).slice(0, 12)
     : [];
   const showOptions = open && q.length >= 2;
   const optionsStyle = inlineOptions

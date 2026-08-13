@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
+import { getTipoCambioPorFecha } from './tipoCambioService.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -18,16 +19,6 @@ const aplicarFiltroSociedades = (query, filtro) => {
 };
 
 // ─── Costo promedio ponderado ──────────────────────────────────────────────────
-// Separable: este es el costeo por defecto. Una capa 3 puede inyectar otro.
-function calcularNuevoCostoPromedio(stockActual, costoActual, cantidadNueva, costoNuevo) {
-  if (cantidadNueva <= 0) return costoActual;
-  const totalAntes = stockActual * costoActual;
-  const totalNuevo = cantidadNueva * costoNuevo;
-  const totalCant = stockActual + cantidadNueva;
-  if (totalCant === 0) return 0;
-  return (totalAntes + totalNuevo) / totalCant;
-}
-
 async function resolverSociedadDesdeOrigenInventario(supabase, empresaId, movimiento) {
   let sociedadDerivada = null;
 
@@ -78,6 +69,24 @@ async function resolverAlmacen(supabase, empresaId, almacenId, almacenCodigo) {
   return data;
 }
 
+async function verificarTipoCambioParaValorizacion(supabase, moneda, tipo, skipCostoPromedio) {
+  const esEntradaConCosto = !skipCostoPromedio && ['entrada', 'transferencia_entrada'].includes(tipo);
+  const monedaNormalizada = String(moneda || 'PEN').trim().toUpperCase();
+  if (!esEntradaConCosto || monedaNormalizada === 'PEN') return;
+  if (monedaNormalizada !== 'USD') {
+    throw new Error(`Moneda ${monedaNormalizada} no soportada para valorización de inventario. Usa PEN o USD.`);
+  }
+
+  // Reutiliza el mecanismo financiero: tasa exacta del día o la última anterior.
+  // La RPC vuelve a leer esa misma tasa y hace la conversión de forma atómica.
+  const fechaMovimiento = new Date().toISOString().slice(0, 10);
+  const tc = await getTipoCambioPorFecha(fechaMovimiento, supabase);
+  const fechaTasa = String(tc?.fecha || '').slice(0, 10);
+  if (!tc?.usd || Number(tc.usd) <= 0 || !fechaTasa || fechaTasa > fechaMovimiento) {
+    throw new Error('No existe tipo de cambio PEN/USD para la fecha del movimiento ni una tasa anterior. Registra el tipo de cambio antes de continuar.');
+  }
+}
+
 // ─── Registrar movimiento (motor de bajo nivel) ────────────────────────────────
 // Regla: inmutable. Correcciones = movimiento inverso o ajuste con motivo.
 // Actualiza: kardex, stock (fisico/disponible/reservado), costo_promedio del material.
@@ -121,129 +130,62 @@ export async function registrarMovimiento(empresaId, {
     'La sociedad del movimiento de inventario es obligatoria.',
   );
 
-  // 1. Leer stock actual
-  let stockQuery = supabase.from('stock').select('*')
-    .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
-    .is('lote', lote).is('serie', serie);
-  stockQuery = sociedadOperacionId ? stockQuery.eq('sociedad_id', sociedadOperacionId) : stockQuery.is('sociedad_id', null);
-  const { data: stockRow } = await stockQuery.maybeSingle();
+  await verificarTipoCambioParaValorizacion(supabase, moneda, tipo, skipCostoPromedio);
 
-  const stockFisico = Number(stockRow?.fisico ?? stockRow?.disponible ?? 0);
-  const stockDisponible = Number(stockRow?.disponible ?? 0);
-  const stockReservado = Number(stockRow?.reservado ?? 0);
+  const esEntradaConCosto = !skipCostoPromedio && ['entrada', 'transferencia_entrada'].includes(tipo);
+  const monedaNormalizada = String(moneda || 'PEN').trim().toUpperCase();
+  // En USD, el importe ingresado es el valor original. La RPC lo convierte a
+  // PEN antes de ponderar y conserva esta copia en las columnas USD de kardex.
+  const costoUnitarioUsdParaRpc = esEntradaConCosto && monedaNormalizada === 'USD'
+    ? Number(costo_unitario) || 0
+    : Number(costo_unitario_usd) || 0;
 
-  // 2. Validar disponibilidad en salidas
-  const esSalida = tipo === 'salida' || tipo === 'transferencia_salida';
-  if (esSalida && cantidad > stockDisponible) {
-    throw new Error(`Stock insuficiente. Disponible: ${stockDisponible}, solicitado: ${cantidad}`);
-  }
-
-  // 3. Calcular nuevo costo promedio (solo en entradas)
-  let material = null;
-  let nuevoCostoPromedio = costo_unitario;
-  if (!skipCostoPromedio) {
-    const { data: mat } = await supabase.from('materiales').select('costo_promedio').eq('id', material_id).maybeSingle();
-    material = mat;
-    if (mat && (tipo === 'entrada' || tipo === 'transferencia_entrada')) {
-      nuevoCostoPromedio = calcularNuevoCostoPromedio(stockFisico, Number(mat.costo_promedio ?? 0), cantidad, costo_unitario);
-    } else if (mat) {
-      nuevoCostoPromedio = Number(mat.costo_promedio ?? 0);
-      costo_unitario = nuevoCostoPromedio; // salidas al promedio vigente
-    }
-  }
-
-  // 4. Calcular nuevo saldo
-  let nuevoFisico, nuevoDisponible;
-  if (tipo === 'entrada' || tipo === 'transferencia_entrada') {
-    nuevoFisico = stockFisico + cantidad;
-    nuevoDisponible = stockDisponible + cantidad;
-  } else if (esSalida) {
-    nuevoFisico = Math.max(0, stockFisico - cantidad);
-    nuevoDisponible = Math.max(0, stockDisponible - cantidad);
-  } else {
-    // ajuste: cantidad puede ser positiva o negativa pero se pasa como delta
-    nuevoFisico = Math.max(0, stockFisico + cantidad);
-    nuevoDisponible = Math.max(0, stockDisponible + cantidad);
-  }
-
-  // 5. Insertar kardex
   const kardexId = mkId('kdx');
-  const kardexRow = {
-    id: kardexId,
-    empresa_id: empresaId,
-    material_id,
-    almacen_id,
-    sociedad_id: sociedadOperacionId,
-    tipo,
-    motivo: motivo || tipo,
-    cantidad,
-    costo_unitario: Number(costo_unitario) || 0,
-    costo_total: (Number(costo_unitario) || 0) * cantidad,
-    costo_unitario_usd: Number(costo_unitario_usd) || 0,
-    costo_total_usd: (Number(costo_unitario_usd) || 0) * cantidad,
-    moneda,
-    lote,
-    serie,
-    vencimiento,
-    saldo_cantidad: nuevoFisico,
-    referencia_tipo,
-    referencia_id,
-    nro_documento,
-    proveedor_id,
-    observacion,
-    created_by: usuario_id || null,
-    anulado: false,
-  };
-  if (valorizacion_estado) kardexRow.valorizacion_estado = valorizacion_estado;
-  if (orden_compra_id) kardexRow.orden_compra_id = orden_compra_id;
-  if (orden_compra_item_idx !== null && orden_compra_item_idx !== undefined) kardexRow.orden_compra_item_idx = orden_compra_item_idx;
-  if (precio_unitario_provisional !== null && precio_unitario_provisional !== undefined) kardexRow.precio_unitario_provisional = Number(precio_unitario_provisional) || 0;
-  if (precio_unitario_real !== null && precio_unitario_real !== undefined) kardexRow.precio_unitario_real = Number(precio_unitario_real) || 0;
-  if (recepcion_id) kardexRow.recepcion_id = recepcion_id;
-
-  const { error: kdxErr } = await supabase.from('kardex').insert(kardexRow);
-  if (kdxErr) {
-    // PostgREST error when migration 009 hasn't been applied yet
-    if (kdxErr.message?.includes('column') || kdxErr.code === 'PGRST204') {
-      throw new Error('La migración 009_wms_motor.sql no ha sido aplicada en Supabase. Aplícala en el SQL Editor antes de registrar movimientos de inventario.');
+  const { data, error } = await supabase.rpc('registrar_movimiento_atomico', {
+    p_kardex_id: kardexId,
+    p_empresa_id: empresaId,
+    p_material_id: material_id,
+    p_almacen_id: almacen_id,
+    p_sociedad_id: sociedadOperacionId,
+    p_tipo: tipo,
+    p_motivo: motivo || tipo,
+    p_cantidad: Number(cantidad),
+    p_costo_unitario: Number(costo_unitario) || 0,
+    p_costo_unitario_usd: costoUnitarioUsdParaRpc,
+    p_moneda: monedaNormalizada,
+    p_lote: lote,
+    p_serie: serie,
+    p_vencimiento: vencimiento,
+    p_referencia_tipo: referencia_tipo,
+    p_referencia_id: referencia_id,
+    p_nro_documento: nro_documento,
+    p_proveedor_id: proveedor_id,
+    p_observacion: observacion,
+    p_usuario_id: usuario_id || null,
+    p_valorizacion_estado: valorizacion_estado,
+    p_orden_compra_id: orden_compra_id,
+    p_orden_compra_item_idx: orden_compra_item_idx,
+    p_precio_unitario_provisional: precio_unitario_provisional !== null && precio_unitario_provisional !== undefined ? Number(precio_unitario_provisional) || 0 : null,
+    p_precio_unitario_real: precio_unitario_real !== null && precio_unitario_real !== undefined ? Number(precio_unitario_real) || 0 : null,
+    p_recepcion_id: recepcion_id,
+    p_skip_costo_promedio: skipCostoPromedio,
+  });
+  if (error) {
+    // Hace explícita la falta de la RPC cuando el esquema aún no se actualizó.
+    if (error.code === 'PGRST202' || error.message?.includes('registrar_movimiento_atomico')) {
+      throw new Error('La migración 426_registrar_movimiento_atomico.sql no ha sido aplicada en Supabase.');
     }
-    throw kdxErr;
+    throw error;
   }
 
-  // 6. Upsert stock
-  if (stockRow) {
-    const { error: stErr } = await supabase.from('stock').update({
-      fisico: nuevoFisico,
-      disponible: nuevoDisponible,
-      reservado: stockReservado,
-      updated_at: new Date().toISOString(),
-    }).eq('id', stockRow.id);
-    if (stErr) throw stErr;
-  } else {
-    const { error: stErr } = await supabase.from('stock').insert({
-      empresa_id: empresaId,
-      material_id,
-      almacen_id,
-      sociedad_id: sociedadOperacionId,
-      fisico: nuevoFisico,
-      disponible: nuevoDisponible,
-      reservado: 0,
-      lote,
-      serie,
-      vencimiento,
-    });
-    if (stErr) throw stErr;
-  }
-
-  // 7. Actualizar costo_promedio del material (solo en entradas)
-  if (!skipCostoPromedio && (tipo === 'entrada' || tipo === 'transferencia_entrada')) {
-    await supabase.from('materiales').update({
-      costo_promedio: nuevoCostoPromedio,
-      updated_at: new Date().toISOString(),
-    }).eq('id', material_id);
-  }
-
-  return { kardex_id: kardexId, saldo: nuevoFisico, disponible: nuevoDisponible, costo_promedio: nuevoCostoPromedio };
+  const resultado = Array.isArray(data) ? data[0] : data;
+  if (!resultado) throw new Error('El motor atómico de inventario no devolvió el saldo actualizado.');
+  return {
+    kardex_id: resultado.kardex_id,
+    saldo: Number(resultado.saldo),
+    disponible: Number(resultado.disponible),
+    costo_promedio: Number(resultado.costo_promedio),
+  };
 }
 
 // ─── Entrada manual ────────────────────────────────────────────────────────────
