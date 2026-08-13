@@ -4476,7 +4476,11 @@ export function AppProvider({ children }) {
           ? mergedSavedUser
           : u
       )));
-      if (nextUser.posicion_id) await refrescarPosiciones();
+      // Al inactivar se libera la posición; refrescamos también en ese caso para que el
+      // organigrama y los selectores no conserven el ocupante anterior en memoria.
+      if (nextUser.posicion_id || String(nextUser.estado || '').trim().toLowerCase() !== 'activo') {
+        await refrescarPosiciones();
+      }
       addNotificacion(`Usuario ${mergedSavedUser.nombre || nextUser.nombre || ''} actualizado.`);
       return mergedSavedUser;
     } catch (err) {

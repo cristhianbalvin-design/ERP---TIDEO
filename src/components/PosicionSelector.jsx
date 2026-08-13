@@ -41,15 +41,21 @@ export function PosicionSelector({
   const unidadNombrePorId = useMemo(() => new Map(unidadesOrganizacionales.map(u => [u.id, u.nombre])), [unidadesOrganizacionales]);
   const cargoNombrePorId = useMemo(() => new Map(cargos.map(c => [c.id, c.nombre])), [cargos]);
   const cargoModoGestionPorId = useMemo(() => new Map(cargos.map(c => [c.id, c.modo_gestion])), [cargos]);
+  const usuariosActivosPorId = useMemo(
+    () => new Map(usuarios
+      .filter(u => String(u.estado || 'Activo').trim().toLowerCase() === 'activo')
+      .map(u => [u.id, u])),
+    [usuarios]
+  );
   const ocupantesPorPosicion = useMemo(() => {
     const map = new Map();
-    posicionesUsuarios.filter(pu => !pu.fecha_fin).forEach(pu => {
+    posicionesUsuarios.filter(pu => !pu.fecha_fin && usuariosActivosPorId.has(pu.user_id)).forEach(pu => {
       const lista = map.get(pu.posicion_id) || [];
       lista.push(pu.user_id);
       map.set(pu.posicion_id, lista);
     });
     return map;
-  }, [posicionesUsuarios]);
+  }, [posicionesUsuarios, usuariosActivosPorId]);
 
   // Una posicion de cargo individual (o sin cargo -- el default es individual) ya ocupada por
   // OTRA persona no puede seleccionarse: los cargos individuales no admiten doble ocupacion. La

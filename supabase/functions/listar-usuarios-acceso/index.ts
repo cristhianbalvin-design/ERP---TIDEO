@@ -275,8 +275,9 @@ serve(async (req) => {
 
     let membershipsQuery = adminClient
       .from("usuarios_empresas")
-      .select("user_id, empresa_id, rol_id, jefe_user_id, acceso_campo, perfil_campo, campo_modulos, estado")
-      .eq("estado", "activo");
+      // Usuarios incluye también inactivos/suspendidos: no pueden acceder ni ocupar una
+      // posición, pero deben seguir siendo consultables y filtrables en Administración.
+      .select("user_id, empresa_id, rol_id, jefe_user_id, acceso_campo, perfil_campo, campo_modulos, estado");
     if (!scopeAllEmpresas) membershipsQuery = membershipsQuery.in("empresa_id", scopeEmpresaIds);
     const { data: memberships, error: membershipsError } = await membershipsQuery;
     if (membershipsError) throw membershipsError;
@@ -332,6 +333,10 @@ serve(async (req) => {
       const profile = profilesByUserId.get(userId) || legacyByUserId.get(userId);
       const legacy = legacyByUserId.get(userId);
       const authUser = authById.get(userId);
+      // Una membresía puede sobrevivir a una cuenta/perfil eliminado. No representa a una
+      // persona administrable: se conserva en la base para auditoría, pero no se muestra
+      // como un supuesto usuario usando el UUID como nombre.
+      if (!profile && !legacy && !authUser) continue;
       const metadata = (authUser?.user_metadata || {}) as Record<string, unknown>;
       const email = profile?.email || legacy?.email || authUser?.email || "";
       const role = rolesById.get(String(membership.rol_id));

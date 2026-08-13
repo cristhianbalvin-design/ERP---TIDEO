@@ -13275,7 +13275,13 @@ function Organigrama() {
     () => usuarios.filter(u => !empresaActiva || u.empresa_id === empresaActiva),
     [usuarios, empresaActiva]
   );
-  const usuariosPorId = useMemo(() => new Map(usersDeEmpresa.map(u => [u.id, u])), [usersDeEmpresa]);
+  // La posición existe aunque no tenga ocupante. Solo un usuario activo puede ocuparla en el árbol.
+  const usuariosActivosPorId = useMemo(
+    () => new Map(usersDeEmpresa
+      .filter(u => String(u.estado || 'Activo').trim().toLowerCase() === 'activo')
+      .map(u => [u.id, u])),
+    [usersDeEmpresa]
+  );
   const posicionesDeEmpresa = useMemo(
     () => (posiciones || []).filter(p => !empresaActiva || p.empresa_id === empresaActiva),
     [posiciones, empresaActiva]
@@ -13286,8 +13292,8 @@ function Organigrama() {
     [unidadesOrganizacionales]
   );
   const ocupantesPorPosicion = useMemo(
-    () => buildOcupantesPorPosicion(posicionesUsuarios.filter(pu => posicionPorId.has(pu.posicion_id)), usuariosPorId, posicionPorId),
-    [posicionesUsuarios, posicionPorId, usuariosPorId]
+    () => buildOcupantesPorPosicion(posicionesUsuarios.filter(pu => posicionPorId.has(pu.posicion_id)), usuariosActivosPorId, posicionPorId),
+    [posicionesUsuarios, posicionPorId, usuariosActivosPorId]
   );
 
   // Conteo para el boton "Asignar cargos" -- el detalle/sugerencia vive en AsignacionCargosModal.
