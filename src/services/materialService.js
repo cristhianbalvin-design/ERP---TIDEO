@@ -16,6 +16,19 @@ export const normalizarTextoMatching = (value) => String(value ?? '')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/\s+/g, ' ');
 
+const normalizarMonedaReferencial = (value) => {
+  const moneda = String(value || 'PEN').trim().toUpperCase() || 'PEN';
+  if (!['PEN', 'USD'].includes(moneda)) throw new Error('La moneda del precio referencial debe ser PEN o USD.');
+  return moneda;
+};
+
+const normalizarPrecioReferencial = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const precio = Number(value);
+  if (!Number.isFinite(precio) || precio < 0) throw new Error('El precio referencial debe ser un número mayor o igual a cero.');
+  return precio;
+};
+
 export const getFabricantes = async (empresaId) => {
   if (!empresaId) return [];
   const supabase = await getSupabaseClient();
@@ -75,6 +88,8 @@ export const guardarMaterialNumerosParte = async (empresaId, materialId, alterna
       numero_parte: String(row?.numero_parte || '').trim(),
       fabricante_id: row?.fabricante_id || null,
       notas: String(row?.notas || '').trim() || null,
+      precio_referencial: normalizarPrecioReferencial(row?.precio_referencial),
+      moneda: normalizarMonedaReferencial(row?.moneda),
       activo: row?.activo !== false,
     }))
     .filter(row => row.numero_parte);
@@ -91,23 +106,33 @@ export const guardarMaterialNumerosParte = async (empresaId, materialId, alterna
   if (error) throw error;
 };
 
-// Actualiza únicamente el fabricante de la fila original. La validación de
+// Actualiza los atributos auxiliares de la fila original. La validación de
 // empresa material/fabricante se conserva en trg_validar_material_numero_parte.
-export const guardarFabricanteNumeroParteOriginal = async (empresaId, materialId, fabricanteId = null, numeroParteId = null) => {
+export const guardarFabricanteNumeroParteOriginal = async (empresaId, materialId, fabricanteId = null, numeroParteId = null, referencia = undefined) => {
   const supabase = await getSupabaseClient();
+  const cambios = { fabricante_id: fabricanteId || null };
+  if (referencia !== undefined) {
+    cambios.precio_referencial = normalizarPrecioReferencial(referencia?.precio_referencial);
+    cambios.moneda = normalizarMonedaReferencial(referencia?.moneda);
+  }
   let query = supabase.from('material_numeros_parte')
-    .update({ fabricante_id: fabricanteId || null })
+    .update(cambios)
     .eq('material_id', materialId).eq('tipo', 'original');
   // La ficha ya conoce el ID de la fila original al editar; usarlo hace que el
   // PATCH se dirija a la fila exacta que se mostró al usuario.
   if (numeroParteId) query = query.eq('id', numeroParteId);
-  const { data, error } = await query.select('id, fabricante_id').maybeSingle();
+  const { data, error } = await query.select('id, fabricante_id, precio_referencial, moneda').maybeSingle();
   if (error) throw error;
   if (!data) {
     throw new Error('No se encontró la fila del número de parte original para actualizar el fabricante.');
   }
   if ((data.fabricante_id || null) !== (fabricanteId || null)) {
     throw new Error('El fabricante original no se pudo confirmar después de guardar.');
+  }
+  if (referencia !== undefined
+    && (Number(data.precio_referencial ?? 0) !== Number(cambios.precio_referencial ?? 0)
+      || data.moneda !== cambios.moneda)) {
+    throw new Error('El precio referencial original no se pudo confirmar después de guardar.');
   }
   return data;
 };
@@ -436,12 +461,16 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
       numero_parte: fila[`nro_parte_alternativo_${orden}`] ?? fila[`numero_parte_alternativo_${orden}`] ?? '',
       fabricante_nombre: fila[`fabricante_alternativo_${orden}`] ?? fila[`fabricante_${orden}`] ?? '',
       notas: fila[`notas_alternativo_${orden}`] ?? '',
+      precio_referencial: fila[`precio_referencial_alternativo_${orden}`] ?? fila[`precio_alternativo_${orden}`] ?? '',
+      moneda: fila[`moneda_alternativo_${orden}`] ?? '',
     }));
   };
   const incluyeAlternativos = (fila) => fila.alternativos_proporcionados === true
     || (fila.alternativos_proporcionados !== false && Array.isArray(fila.alternativos))
     || [1, 2, 3, 4].some(orden => Object.prototype.hasOwnProperty.call(fila, `nro_parte_alternativo_${orden}`)
-      || Object.prototype.hasOwnProperty.call(fila, `numero_parte_alternativo_${orden}`));
+      || Object.prototype.hasOwnProperty.call(fila, `numero_parte_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `precio_referencial_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `moneda_alternativo_${orden}`));
   const resolverFabricante = async (nombre) => {
     const nombreLimpio = normText(nombre);
     if (!nombreLimpio) return null;
@@ -570,10 +599,24 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
             numero_parte,
             fabricante_id: fabricante?.id || null,
             notas: normText(row?.notas) || null,
+            precio_referencial: row?.precio_referencial,
+            moneda: row?.moneda || 'PEN',
             activo: row?.activo !== false,
           });
         }
         await guardarMaterialNumerosParte(empresaId, materialId, alternativos);
+      }
+
+      if (fila.original_proporcionado === true && normText(fila.nro_parte)) {
+        const original = fila.original || {};
+        const fabricante = await resolverFabricante(original.fabricante_nombre || original.fabricante || '');
+        await guardarFabricanteNumeroParteOriginal(
+          empresaId,
+          materialId,
+          fabricante?.id || null,
+          null,
+          { precio_referencial: original.precio_referencial, moneda: original.moneda || 'PEN' },
+        );
       }
     } catch (err) {
       errores.push({ fila: fila.descripcion || fila.codigo, error: err.message });

@@ -20330,6 +20330,7 @@ function RRHH_Operativo() {
     setInlineUploadForm({
       ...inlineUploadFormBase,
       _origenPrefill: origenPrefill,
+      sociedadId: req.doc?.sociedad_id || '',
       fechaEmision: req.doc?.fecha_emision || '',
       fechaVencimiento: req.doc?.fecha_vencimiento || '',
       notas: req.doc?.notas || '',
@@ -20509,7 +20510,7 @@ function RRHH_Operativo() {
           sede: sedeSelDoc?.nombre || docUploadForm.sedeFirma || p.sede,
           sede_id: docUploadForm.sedeIdFirma || p.sede_id,
           sede_nombre: sedeSelDoc?.nombre || docUploadForm.sedeFirma || p.sede,
-          area_id: docUploadForm.areaIdFirma || p.area_id || '',
+          area_id: areaSelDoc?.id || '',
           area_nombre: areaSelDoc?.nombre || docUploadForm.areaNombreFirma || p.area || '',
           regimen_jornada: docUploadForm.regimenJornadaFirma || p.regimen_jornada || 'general',
           tipo_contrato: docUploadForm.tipoContratoFirma || p.tipo_contrato || '',
@@ -21461,7 +21462,7 @@ function RRHH_Operativo() {
                   sede: sedeSel?.nombre || inlineUploadForm.sedeFirma || p.sede,
                   sede_id: inlineUploadForm.sedeIdFirma || p.sede_id,
                   sede_nombre: sedeSel?.nombre || inlineUploadForm.sedeFirma || p.sede,
-                  area_id: inlineUploadForm.areaIdFirma || p.area_id || '',
+                  area_id: areaSel?.id || '',
                   area_nombre: areaSel?.nombre || inlineUploadForm.areaNombreFirma || p.area || '',
                   regimen_jornada: inlineUploadForm.regimenJornadaFirma || p.regimen_jornada || 'general',
                   tipo_contrato: inlineUploadForm.tipoContratoFirma || p.tipo_contrato || '',
@@ -21499,6 +21500,7 @@ function RRHH_Operativo() {
                     personalId: p.id,
                     personalTipo: 'operativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,
+                    sociedadId: inlineEsContrato ? (sociedadDocumento || null) : null,
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
