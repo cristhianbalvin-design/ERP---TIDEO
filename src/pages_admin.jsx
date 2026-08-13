@@ -2694,7 +2694,7 @@ function MaterialesMaestro({ onClose }) {
     crearMatFamilia, actualizarMatFamilia, eliminarMatFamilia,
     crearMatSubfamilia, actualizarMatSubfamilia, eliminarMatSubfamilia,
     crearMaterialCtx, actualizarMaterialCtx, eliminarMaterialCtx, recargarMateriales,
-    almacenes, fabricantes, setFabricantes,
+    almacenes, fabricantes, setFabricantes, convertirMonto, tipoCambioHoy,
   } = useApp();
 
   const [tab, setTab] = useState('catalogo');
@@ -2702,7 +2702,7 @@ function MaterialesMaestro({ onClose }) {
   const [editandoId, setEditandoId] = useState(null);
   const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, stock_minimo: 0, punto_reorden: 0, stock_maximo: 0, stock_seguridad: 0, estado: 'activo' };
   const [formMat, setFormMat] = useState(matBase);
-  const [parteOriginal, setParteOriginal] = useState({ id: '', fabricante_id: '', fabricante_nombre: '' });
+  const [parteOriginal, setParteOriginal] = useState({ id: '', fabricante_id: '', fabricante_nombre: '', precio_referencial: '', moneda: 'PEN' });
   const [partesAlternativos, setPartesAlternativos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState('');
@@ -2769,15 +2769,15 @@ function MaterialesMaestro({ onClose }) {
     setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, stock_minimo: m.stock_minimo ?? 0, punto_reorden: m.punto_reorden ?? 0, stock_maximo: m.stock_maximo ?? 0, stock_seguridad: m.stock_seguridad ?? 0, estado: m.estado || 'activo' });
     setEditandoId(m.id);
     const original = (m.material_numeros_parte || []).find(p => p.tipo === 'original');
-    setParteOriginal({ id: original?.id || '', fabricante_id: original?.fabricante_id || '', fabricante_nombre: original?.fabricantes?.nombre || '' });
+    setParteOriginal({ id: original?.id || '', fabricante_id: original?.fabricante_id || '', fabricante_nombre: original?.fabricantes?.nombre || '', precio_referencial: original?.precio_referencial ?? '', moneda: original?.moneda || 'PEN' });
     setPartesAlternativos((m.material_numeros_parte || [])
       .filter(p => p.tipo === 'alternativo')
       .sort((a, b) => Number(a.orden) - Number(b.orden))
-      .map(p => ({ id: p.id, numero_parte: p.numero_parte || '', fabricante_id: p.fabricante_id || '', fabricante_nombre: p.fabricantes?.nombre || '', notas: p.notas || '', activo: p.activo !== false })));
+      .map(p => ({ id: p.id, numero_parte: p.numero_parte || '', fabricante_id: p.fabricante_id || '', fabricante_nombre: p.fabricantes?.nombre || '', notas: p.notas || '', precio_referencial: p.precio_referencial ?? '', moneda: p.moneda || 'PEN', activo: p.activo !== false })));
     setFormErr('');
   };
 
-  const resetFormMat = () => { setFormMat(matBase); setParteOriginal({ id: '', fabricante_id: '', fabricante_nombre: '' }); setPartesAlternativos([]); setEditandoId(null); setFormErr(''); };
+  const resetFormMat = () => { setFormMat(matBase); setParteOriginal({ id: '', fabricante_id: '', fabricante_nombre: '', precio_referencial: '', moneda: 'PEN' }); setPartesAlternativos([]); setEditandoId(null); setFormErr(''); };
 
   const actualizarParteAlternativo = (index, cambios) => setPartesAlternativos(prev => prev.map((parte, i) => i === index ? { ...parte, ...cambios } : parte));
   const resolverFabricanteParte = async (parte) => {
@@ -2813,12 +2813,12 @@ function MaterialesMaestro({ onClose }) {
       if (editandoId) {
         await actualizarMaterialCtx(editandoId, formMat);
         await guardarMaterialNumerosParte(empresa.id, editandoId, alternativos);
-        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, editandoId, original.fabricante_id, original.id);
+        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, editandoId, original.fabricante_id, original.id, original);
         addNotificacion('Material actualizado.');
       } else {
         const creado = await crearMaterialCtx({ ...formMat, codigo });
         await guardarMaterialNumerosParte(empresa.id, creado.id, alternativos);
-        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, creado.id, original.fabricante_id, original.id);
+        if (String(formMat.nro_parte || '').trim()) await guardarFabricanteNumeroParteOriginal(empresa.id, creado.id, original.fabricante_id, original.id, original);
         addNotificacion('Material creado.');
       }
       await recargarMateriales();
@@ -2853,7 +2853,8 @@ function MaterialesMaestro({ onClose }) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       const encabezados = Object.keys(rows[0] || {});
-      const tieneAlternativos = [1, 2, 3, 4].some(n => encabezados.includes(`Nro Parte Alternativo ${n}`) || encabezados.includes(`nro_parte_alternativo_${n}`));
+      const tieneAlternativos = [1, 2, 3, 4].some(n => encabezados.includes(`Nro Parte Alternativo ${n}`) || encabezados.includes(`nro_parte_alternativo_${n}`) || encabezados.includes(`Precio Referencial Alternativo ${n}`) || encabezados.includes(`precio_referencial_alternativo_${n}`));
+      const tieneOriginalReferencial = ['Fabricante Original', 'Precio Referencial Original', 'Moneda Original', 'fabricante_original', 'precio_referencial_original', 'moneda_original'].some(h => encabezados.includes(h));
       // Columnas esperadas: Cod Grupo, Grupo, Cod Familia, Familia, Cod Sub-Familia, Sub-Familia, Correlativo, Codigo, Descripcion, Nro Parte, UM, Unidades Contenidas, Estado, Almacen, Ubicacion, Observacion, P.U. S/
       const filas = rows.map(r => ({
         cod_grupo: String(r['Cod Grupo'] ?? r['cod_grupo'] ?? '').trim(),
@@ -2871,12 +2872,20 @@ function MaterialesMaestro({ onClose }) {
         almacen: String(r['Almacen'] ?? r['almacen'] ?? '').trim(),
         ubicacion: String(r['Ubicacion'] ?? r['ubicacion'] ?? '').trim(),
         observacion: String(r['Observacion'] ?? r['observacion'] ?? '').trim(),
-        precio_unitario: Number(r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
+         precio_unitario: Number(r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
+         original_proporcionado: tieneOriginalReferencial,
+         original: {
+           fabricante_nombre: String(r['Fabricante Original'] ?? r['fabricante_original'] ?? '').trim(),
+           precio_referencial: r['Precio Referencial Original'] ?? r['precio_referencial_original'] ?? '',
+           moneda: String(r['Moneda Original'] ?? r['moneda_original'] ?? 'PEN').trim() || 'PEN',
+         },
         alternativos_proporcionados: tieneAlternativos,
         alternativos: [1, 2, 3, 4].map(n => ({
           numero_parte: String(r[`Nro Parte Alternativo ${n}`] ?? r[`nro_parte_alternativo_${n}`] ?? '').trim(),
           fabricante_nombre: String(r[`Fabricante Alternativo ${n}`] ?? r[`fabricante_alternativo_${n}`] ?? '').trim(),
-          notas: String(r[`Notas Alternativo ${n}`] ?? r[`notas_alternativo_${n}`] ?? '').trim(),
+           notas: String(r[`Notas Alternativo ${n}`] ?? r[`notas_alternativo_${n}`] ?? '').trim(),
+           precio_referencial: r[`Precio Referencial Alternativo ${n}`] ?? r[`precio_referencial_alternativo_${n}`] ?? '',
+           moneda: String(r[`Moneda Alternativo ${n}`] ?? r[`moneda_alternativo_${n}`] ?? 'PEN').trim() || 'PEN',
         })),
       })).filter(f => {
         if (!f.cod_grupo || !f.cod_familia || !f.cod_subfamilia) return false;
@@ -2903,9 +2912,9 @@ function MaterialesMaestro({ onClose }) {
   };
 
   const descargarPlantillaMateriales = () => {
-    const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','P.U. S/'];
-    headers.push(...[1,2,3,4].flatMap(n => [`Nro Parte Alternativo ${n}`, `Fabricante Alternativo ${n}`, `Notas Alternativo ${n}`]));
-    const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','und','1','activo','Almacén Central','Estante A-3','','25.50'];
+    const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','Fabricante Original','Precio Referencial Original','Moneda Original','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','P.U. S/'];
+    headers.push(...[1,2,3,4].flatMap(n => [`Nro Parte Alternativo ${n}`, `Fabricante Alternativo ${n}`, `Notas Alternativo ${n}`, `Precio Referencial Alternativo ${n}`, `Moneda Alternativo ${n}`]));
+    const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','Fabricante OEM','25.50','PEN','und','1','activo','Almacén Central','Estante A-3','','25.50','ALT-MFR-1234','Fabricante Alternativo','Equivalente','22.00','USD'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
     ws['!cols'] = headers.map((h,i) => ({ wch: i < 6 ? 12 : i === 7 ? 30 : 16 }));
     
@@ -2918,8 +2927,9 @@ function MaterialesMaestro({ onClose }) {
       ['4. Descripcion:', 'Nombre completo del material (ej: Llave francesa 10"). Obligatorio.'],
       ['5. UM:', 'Unidad de medida (ej: und, kg, m). Obligatorio.'],
       ['6. Estado:', 'Colocar "activo" o "inactivo". Por defecto es "activo".'],
-      ['7. Números alternativos:', 'Las tres columnas de cada alternativo son opcionales. Registra hasta 4 equivalencias; el fabricante se busca normalizado o se crea automáticamente.'],
-      ['8. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
+       ['7. Precios referenciales:', 'Son independientes de P.U. S/. Cada número de parte puede tener precio y moneda PEN/USD; no cambian el precio oficial del material.'],
+       ['8. Números alternativos:', 'Las cinco columnas de cada alternativo son opcionales. Registra hasta 4 equivalencias; el fabricante se busca normalizado o se crea automáticamente.'],
+       ['9. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
       [''],
       ['Ejemplo válido:'],
       headers,
@@ -2944,6 +2954,7 @@ function MaterialesMaestro({ onClose }) {
       const f = materialFamilias.find(x => x.id === m.familia_id);
       const s = materialSubfamilias.find(x => x.id === m.subfamilia_id);
       const a = almacenes.find(x => x.id === m.almacen_id);
+      const original = (m.material_numeros_parte || []).find(p => p.tipo === 'original');
       return {
         'Cod Grupo': g ? g.codigo : '',
         'Grupo': g ? g.nombre : '',
@@ -2954,6 +2965,9 @@ function MaterialesMaestro({ onClose }) {
         'Codigo': m.codigo || '',
         'Descripcion': m.descripcion || '',
         'Nro Parte': m.nro_parte || '',
+        'Fabricante Original': original?.fabricantes?.nombre || '',
+        'Precio Referencial Original': original?.precio_referencial ?? '',
+        'Moneda Original': original?.moneda || 'PEN',
         'UM': m.unidad || '',
         'Unidades Contenidas': m.unidades_contenidas || 1,
         'Estado': m.estado || 'activo',
@@ -2967,7 +2981,7 @@ function MaterialesMaestro({ onClose }) {
         'Stock Seguridad': m.stock_seguridad || 0,
         ...Object.fromEntries([1,2,3,4].flatMap(n => {
           const parte = (m.material_numeros_parte || []).find(p => p.tipo === 'alternativo' && Number(p.orden) === n);
-          return [[`Nro Parte Alternativo ${n}`, parte?.numero_parte || ''], [`Fabricante Alternativo ${n}`, parte?.fabricantes?.nombre || ''], [`Notas Alternativo ${n}`, parte?.notas || '']];
+          return [[`Nro Parte Alternativo ${n}`, parte?.numero_parte || ''], [`Fabricante Alternativo ${n}`, parte?.fabricantes?.nombre || ''], [`Notas Alternativo ${n}`, parte?.notas || ''], [`Precio Referencial Alternativo ${n}`, parte?.precio_referencial ?? ''], [`Moneda Alternativo ${n}`, parte?.moneda || 'PEN']];
         }))
       };
     });
@@ -3126,7 +3140,7 @@ function MaterialesMaestro({ onClose }) {
                         <strong style={{ fontSize: 13 }}>Números de parte</strong>
                         <div className="text-muted" style={{ fontSize: 11 }}>El original se edita en el campo “Nro Parte” de arriba. Registra hasta cuatro equivalentes.</div>
                       </div>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={partesAlternativos.length >= 4} onClick={() => setPartesAlternativos(prev => [...prev, { numero_parte: '', fabricante_id: '', fabricante_nombre: '', notas: '', activo: true }])}>{I.plus} Alternativo</button>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={partesAlternativos.length >= 4} onClick={() => setPartesAlternativos(prev => [...prev, { numero_parte: '', fabricante_id: '', fabricante_nombre: '', notas: '', precio_referencial: '', moneda: 'PEN', activo: true }])}>{I.plus} Alternativo</button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                       <div className="input-group" style={{ gridColumn: 'span 2' }}>
@@ -3140,6 +3154,15 @@ function MaterialesMaestro({ onClose }) {
                           {parteOriginal.fabricante_nombre && !fabricantes.some(f => normalizarTextoMatching(f.nombre) === normalizarTextoMatching(parteOriginal.fabricante_nombre)) && <button type="button" className="btn btn-secondary btn-sm" title="Crear fabricante" onClick={crearFabricanteOriginal}>Crear</button>}
                         </div>
                       </div>
+                      <div className="input-group" style={{ gridColumn: 'span 2' }}>
+                        <label>Precio referencial original</label>
+                        <input className="input" type="number" min="0" step="0.0001" disabled={!String(formMat.nro_parte || '').trim()} value={parteOriginal.precio_referencial} onChange={e => setParteOriginal(p => ({ ...p, precio_referencial: e.target.value }))} placeholder="Opcional" />
+                      </div>
+                      <div className="input-group">
+                        <label>Moneda</label>
+                        <select className="select" disabled={!String(formMat.nro_parte || '').trim()} value={parteOriginal.moneda || 'PEN'} onChange={e => setParteOriginal(p => ({ ...p, moneda: e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select>
+                      </div>
+                      {parteOriginal.moneda === 'USD' && tipoCambioHoy?.usd && Number(parteOriginal.precio_referencial) > 0 && <div className="text-muted" style={{ alignSelf: 'end', paddingBottom: 8, fontSize: 11 }}>≈ S/ {convertirMonto(Number(parteOriginal.precio_referencial), 'USD', 'PEN').toFixed(2)}</div>}
                     </div>
                     <datalist id="fabricantes-material">
                       {fabricantes.filter(f => f.estado !== 'inactivo').map(f => <option key={f.id} value={f.nombre}>{f.codigo}</option>)}
@@ -3147,7 +3170,7 @@ function MaterialesMaestro({ onClose }) {
                     {partesAlternativos.map((parte, index) => {
                       const existeFabricante = fabricantes.some(f => normalizarTextoMatching(f.nombre) === normalizarTextoMatching(parte.fabricante_nombre));
                       return (
-                        <div key={parte.id || index} style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr 1.2fr auto', gap: 8, alignItems: 'end', marginTop: 8, padding: 8, background: 'var(--bg-subtle)', borderRadius: 6 }}>
+                        <div key={parte.id || index} style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.2fr 1fr .85fr .65fr auto', gap: 8, alignItems: 'end', marginTop: 8, padding: 8, background: 'var(--bg-subtle)', borderRadius: 6 }}>
                           <div className="input-group">
                             <label>Alternativo {index + 1}</label>
                             <input className="input" value={parte.numero_parte} onChange={e => actualizarParteAlternativo(index, { numero_parte: e.target.value })} placeholder="Número de parte" />
@@ -3159,6 +3182,15 @@ function MaterialesMaestro({ onClose }) {
                           <div className="input-group">
                             <label>Notas</label>
                             <input className="input" value={parte.notas} onChange={e => actualizarParteAlternativo(index, { notas: e.target.value })} placeholder="Opcional" />
+                          </div>
+                          <div className="input-group">
+                            <label>Precio ref.</label>
+                            <input className="input" type="number" min="0" step="0.0001" value={parte.precio_referencial} onChange={e => actualizarParteAlternativo(index, { precio_referencial: e.target.value })} placeholder="Opcional" />
+                            {parte.moneda === 'USD' && tipoCambioHoy?.usd && Number(parte.precio_referencial) > 0 && <div className="text-muted" style={{ fontSize: 10, marginTop: 3 }}>≈ S/ {convertirMonto(Number(parte.precio_referencial), 'USD', 'PEN').toFixed(2)}</div>}
+                          </div>
+                          <div className="input-group">
+                            <label>Moneda</label>
+                            <select className="select" value={parte.moneda || 'PEN'} onChange={e => actualizarParteAlternativo(index, { moneda: e.target.value })}><option value="PEN">PEN</option><option value="USD">USD</option></select>
                           </div>
                           <div style={{ display: 'flex', gap: 4, paddingBottom: 1 }}>
                             {parte.fabricante_nombre && !existeFabricante && <button type="button" className="btn btn-secondary btn-sm" title="Crear fabricante" onClick={() => crearFabricanteParte(index)}>Crear</button>}
@@ -10945,7 +10977,7 @@ function RRHHAdmin() {
                   sede: sedeSeleccionada?.nombre || inlineUploadForm.sedeFirma || persona.sede,
                   sede_id: inlineUploadForm.sedeIdFirma || persona.sede_id,
                   sede_nombre: sedeSeleccionada?.nombre || inlineUploadForm.sedeFirma || persona.sede,
-                  area_id: inlineUploadForm.areaIdFirma || persona.area_id || '',
+                  area_id: areaSeleccionada?.id || '',
                   area_nombre: areaSeleccionada?.nombre || inlineUploadForm.areaNombreFirma || persona.area || '',
                   regimen_jornada: inlineUploadForm.regimenJornadaFirma || persona.regimen_jornada || 'general',
                   tipo_contrato: inlineUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
@@ -10982,6 +11014,7 @@ function RRHHAdmin() {
                     personalId: persona.id,
                     personalTipo: 'administrativo',
                     tipoDoc: inlineUploadReq.tipo_documento_id,
+                    sociedadId: inlineEsContrato ? (sociedadDocumento || null) : null,
                     forzarOverride, motivoOverride,
                   });
                   addNotificacion('Documento corregido correctamente.');
@@ -11065,7 +11098,7 @@ function RRHHAdmin() {
                   sede: sedeSelDoc?.nombre || docUploadForm.sedeFirma || persona.sede,
                   sede_id: docUploadForm.sedeIdFirma || persona.sede_id,
                   sede_nombre: sedeSelDoc?.nombre || docUploadForm.sedeFirma || persona.sede,
-                  area_id: docUploadForm.areaIdFirma || persona.area_id || '',
+                  area_id: areaSelDoc?.id || '',
                   area_nombre: areaSelDoc?.nombre || docUploadForm.areaNombreFirma || persona.area || '',
                   regimen_jornada: docUploadForm.regimenJornadaFirma || persona.regimen_jornada || 'general',
                   tipo_contrato: docUploadForm.tipoContratoFirma || persona.tipo_contrato || '',
@@ -11198,6 +11231,7 @@ function RRHHAdmin() {
               setInlineUploadForm({
                 ...inlineUploadFormBase,
                 _origenPrefill: origenPrefill,
+                sociedadId: req.doc?.sociedad_id || '',
                 fechaEmision: req.doc?.fecha_emision || '',
                 fechaVencimiento: req.doc?.fecha_vencimiento || '',
                 notas: req.doc?.notas || '',

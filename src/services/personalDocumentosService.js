@@ -418,8 +418,17 @@ export async function corregirDocumento({
   esIndefinido,
   forzarOverride,
   motivoOverride,
+  sociedadId,
 }) {
   const supabase = await getSupabaseClient();
+  const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
+  // Validar antes de subir un posible archivo evita dejar archivos huérfanos
+  // si la sociedad ya no está activa o está fuera del tenant.
+  const sociedadOperacionId = multisociedadHabilitado && sociedadId
+    ? (await validarSociedadActivaParaEscritura(
+        supabase, empresaId, sociedadId, 'Selecciona una sociedad empleadora activa para corregir el contrato.',
+      )).sociedadId
+    : null;
 
   let archivoUrl = null;
   let nombreArchivo = null;
@@ -451,6 +460,9 @@ export async function corregirDocumento({
     p_es_indefinido:         typeof esIndefinido === 'boolean' ? esIndefinido : null,
     p_forzar_override:       forzarOverride || false,
     p_motivo_override:       motivoOverride || null,
+    // null conserva la sociedad existente para correcciones no contractuales
+    // y para clientes anteriores a este campo.
+    p_sociedad_id:           sociedadOperacionId,
   });
   if (error) throw error;
   return normalizar(data);
