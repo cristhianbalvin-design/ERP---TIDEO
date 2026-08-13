@@ -884,10 +884,15 @@ function PapCheckBox({ checked }) {
   );
 }
 
-export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [] }) {
+export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [], persona = null }) {
   const cfg = emisor || {};
   const aprobJefe = historial.find(h => h.estado_hasta === 'aprobada_jefe');
   const confirmRrhh = historial.find(h => h.estado_hasta === 'confirmada_rrhh');
+  // Las solicitudes históricas solo conservan el nombre. Completar desde la ficha permite
+  // mostrar los datos laborales vigentes sin requerir una migración de registros anteriores.
+  const personalDni = solicitud.personal_dni || persona?.documento || persona?.dni || '—';
+  const personalArea = solicitud.personal_area || persona?.area_nombre || persona?.area || '—';
+  const personalCargo = solicitud.personal_cargo || persona?.cargo_nombre || persona?.cargo || '—';
 
   const fechaConfirmStr = solicitud.fecha_confirmacion
     ? new Date(solicitud.fecha_confirmacion).toLocaleDateString('es-PE')
@@ -932,17 +937,17 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, histori
           </View>
           <View style={[papStyles.infoBox, { flex: 0.5 }]}>
             <Text style={papStyles.fieldLabel}>DNI</Text>
-            <Text style={papStyles.fieldVal}>{solicitud.personal_dni || '—'}</Text>
+            <Text style={papStyles.fieldVal}>{personalDni}</Text>
           </View>
           <View style={[papStyles.infoBox, { flex: 0.5 }]}>
             <Text style={papStyles.fieldLabel}>ÁREA</Text>
-            <Text style={papStyles.fieldVal}>{solicitud.personal_area || '—'}</Text>
+            <Text style={papStyles.fieldVal}>{personalArea}</Text>
           </View>
         </View>
         <View style={papStyles.row2}>
           <View style={papStyles.infoBox}>
             <Text style={papStyles.fieldLabel}>CARGO</Text>
-            <Text style={papStyles.fieldVal}>{solicitud.personal_cargo || '—'}</Text>
+            <Text style={papStyles.fieldVal}>{personalCargo}</Text>
           </View>
         </View>
 
@@ -1009,18 +1014,10 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, histori
             <Text style={papStyles.firmaFecha}>Solicitud: {solicitud.creado_en ? new Date(solicitud.creado_en).toLocaleDateString('es-PE') : '—'}</Text>
           </View>
           <View style={papStyles.firmaBox}>
-            <View style={papStyles.firmaLine} />
-            <Text style={papStyles.firmaName}>{solicitud.aprobador_nombre || aprobJefe?.usuario || '—'}</Text>
             <Text style={papStyles.firmaRole}>Jefe de área</Text>
             <Text style={papStyles.firmaFecha}>Aprobación: {fechaAprobStr}</Text>
           </View>
           <View style={papStyles.firmaBox}>
-            {cfg.firma_url
-              ? <Image src={cfg.firma_url} style={papStyles.firmaImg} />
-              : <View style={{ height: 36 }} />
-            }
-            <View style={papStyles.firmaLine} />
-            <Text style={papStyles.firmaName}>{solicitud.confirmado_por || confirmRrhh?.usuario || '—'}</Text>
             <Text style={papStyles.firmaRole}>Administrador / RRHH</Text>
             <Text style={papStyles.firmaFecha}>Confirmación: {fechaConfirmStr}</Text>
           </View>

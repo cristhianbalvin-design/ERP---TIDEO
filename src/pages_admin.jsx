@@ -2855,7 +2855,7 @@ function MaterialesMaestro({ onClose }) {
       const encabezados = Object.keys(rows[0] || {});
       const tieneAlternativos = [1, 2, 3, 4].some(n => encabezados.includes(`Nro Parte Alternativo ${n}`) || encabezados.includes(`nro_parte_alternativo_${n}`) || encabezados.includes(`Precio Referencial Alternativo ${n}`) || encabezados.includes(`precio_referencial_alternativo_${n}`));
       const tieneOriginalReferencial = ['Fabricante Original', 'Precio Referencial Original', 'Moneda Original', 'fabricante_original', 'precio_referencial_original', 'moneda_original'].some(h => encabezados.includes(h));
-      // Columnas esperadas: Cod Grupo, Grupo, Cod Familia, Familia, Cod Sub-Familia, Sub-Familia, Correlativo, Codigo, Descripcion, Nro Parte, UM, Unidades Contenidas, Estado, Almacen, Ubicacion, Observacion, P.U. S/
+      // Columnas esperadas: Cod Grupo, Grupo, Cod Familia, Familia, Cod Sub-Familia, Sub-Familia, Correlativo, Codigo, Descripcion, Nro Parte, UM, Unidades Contenidas, Estado, Almacen, Ubicacion, Observacion, Precio referencial general (PEN)
       const filas = rows.map(r => ({
         cod_grupo: String(r['Cod Grupo'] ?? r['cod_grupo'] ?? '').trim(),
         grupo: String(r['Grupo'] ?? r['grupo'] ?? '').trim(),
@@ -2872,7 +2872,7 @@ function MaterialesMaestro({ onClose }) {
         almacen: String(r['Almacen'] ?? r['almacen'] ?? '').trim(),
         ubicacion: String(r['Ubicacion'] ?? r['ubicacion'] ?? '').trim(),
         observacion: String(r['Observacion'] ?? r['observacion'] ?? '').trim(),
-         precio_unitario: Number(r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
+         precio_unitario: Number(r['Precio referencial general (PEN)'] ?? r['P.U. S/'] ?? r['precio_unitario'] ?? 0) || 0,
          original_proporcionado: tieneOriginalReferencial,
          original: {
            fabricante_nombre: String(r['Fabricante Original'] ?? r['fabricante_original'] ?? '').trim(),
@@ -2912,7 +2912,7 @@ function MaterialesMaestro({ onClose }) {
   };
 
   const descargarPlantillaMateriales = () => {
-    const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','Fabricante Original','Precio Referencial Original','Moneda Original','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','P.U. S/'];
+    const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','Fabricante Original','Precio Referencial Original','Moneda Original','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','Precio referencial general (PEN)'];
     headers.push(...[1,2,3,4].flatMap(n => [`Nro Parte Alternativo ${n}`, `Fabricante Alternativo ${n}`, `Notas Alternativo ${n}`, `Precio Referencial Alternativo ${n}`, `Moneda Alternativo ${n}`]));
     const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','Fabricante OEM','25.50','PEN','und','1','activo','Almacén Central','Estante A-3','','25.50','ALT-MFR-1234','Fabricante Alternativo','Equivalente','22.00','USD'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
@@ -2927,9 +2927,9 @@ function MaterialesMaestro({ onClose }) {
       ['4. Descripcion:', 'Nombre completo del material (ej: Llave francesa 10"). Obligatorio.'],
       ['5. UM:', 'Unidad de medida (ej: und, kg, m). Obligatorio.'],
       ['6. Estado:', 'Colocar "activo" o "inactivo". Por defecto es "activo".'],
-       ['7. Precios referenciales:', 'Son independientes de P.U. S/. Cada número de parte puede tener precio y moneda PEN/USD; no cambian el precio oficial del material.'],
+       ['7. Precios referenciales:', 'El precio referencial general (PEN) se usa como referencia inicial al presupuestar OTs. Los precios por número de parte sirven para comparar fabricantes; ninguno actualiza el costo de inventario ni se copia automáticamente a OCs.'],
        ['8. Números alternativos:', 'Las cinco columnas de cada alternativo son opcionales. Registra hasta 4 equivalencias; el fabricante se busca normalizado o se crea automáticamente.'],
-       ['9. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, P.U. S/).'],
+       ['9. Resto de campos:', 'Son opcionales (Nro Parte, Unidades Contenidas, Almacen, Ubicacion, Observacion, Precio referencial general (PEN)).'],
       [''],
       ['Ejemplo válido:'],
       headers,
@@ -2974,7 +2974,7 @@ function MaterialesMaestro({ onClose }) {
         'Almacen': a ? a.nombre : '',
         'Ubicacion': m.ubicacion || '',
         'Observacion': m.observacion || '',
-        'P.U. S/': m.precio_unitario || 0,
+        'Precio referencial general (PEN)': m.precio_unitario || 0,
         'Stock Minimo': m.stock_minimo || 0,
         'Punto Reorden': m.punto_reorden || 0,
         'Stock Maximo': m.stock_maximo || 0,
@@ -3216,8 +3216,9 @@ function MaterialesMaestro({ onClose }) {
                     <input className="input" value={formMat.ubicacion} onChange={e => setFormMat(p => ({ ...p, ubicacion: e.target.value }))} placeholder="Ej: Pasillo A, Estante 3" />
                   </div>
                   <div className="input-group">
-                    <label>Precio unitario S/</label>
+                    <label title="Precio estimado usado como referencia inicial al presupuestar Órdenes de Trabajo. No actualiza el costo de inventario ni se copia automáticamente a Órdenes de Compra.">Precio referencial general (PEN)</label>
                     <input className="input" type="number" min="0" step="0.01" value={formMat.precio_unitario} onChange={e => setFormMat(p => ({ ...p, precio_unitario: e.target.value }))} />
+                    <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>Referencia inicial para presupuestar OTs. No actualiza inventario ni se copia a OCs.</div>
                   </div>
                   <div className="input-group">
                     <label>Stock mínimo</label>
@@ -3279,7 +3280,7 @@ function MaterialesMaestro({ onClose }) {
                         <th>Descripción</th>
                         <th>Grupo / Familia / Sub-familia</th>
                         <th>UM</th>
-                        <th style={{ textAlign: 'right' }}>Precio unit.</th>
+                        <th style={{ textAlign: 'right' }} title="Referencia inicial para presupuestar Órdenes de Trabajo; no es costo de inventario ni precio de OC.">Precio ref. general</th>
                         <th>Almacén</th>
                         <th>Estado</th>
                         <th style={{ textAlign: 'right' }}>Acciones</th>

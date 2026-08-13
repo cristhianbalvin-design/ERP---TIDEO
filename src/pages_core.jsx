@@ -158,7 +158,7 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
             return (
               <div key={m.id} onMouseDown={() => seleccionar(m)} className="autocomplete-option">
                 <div className="autocomplete-option-title"><span className="mono autocomplete-code">{m.codigo}</span>{m.descripcion}</div>
-                <div className="autocomplete-option-meta">{m.unidad} · Precio ref: S/ {Number(m.precio_unitario || 0).toFixed(2)} · <span>Stock: {stock} {m.unidad}</span></div>
+                <div className="autocomplete-option-meta">{m.unidad} · Precio ref. general: S/ {Number(m.precio_unitario || 0).toFixed(2)} · <span>Stock: {stock} {m.unidad}</span></div>
               </div>
             );
           })}
@@ -227,8 +227,9 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
                   <input className="input" value={modalForm.ubicacion} onChange={e => setModalForm(p => ({ ...p, ubicacion: e.target.value }))} placeholder="Ej: Pasillo A, Estante 3" />
                 </div>
                 <div className="input-group">
-                  <label>Precio unitario S/</label>
+                  <label title="Precio estimado usado como referencia inicial al presupuestar Órdenes de Trabajo. No actualiza el costo de inventario ni se copia automáticamente a Órdenes de Compra.">Precio referencial general (PEN)</label>
                   <input className="input" type="number" min="0" step="0.01" value={modalForm.precio_unitario} onChange={e => setModalForm(p => ({ ...p, precio_unitario: e.target.value }))} />
+                  <div className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>Referencia inicial para presupuestar OTs; no actualiza inventario ni OCs.</div>
                 </div>
                 <div className="input-group">
                   <label>Estado</label>
