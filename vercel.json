@@ -1,0 +1,8 @@
+{
+  "buildCommand": "node scripts/build-deployment.mjs",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/operaciones", "destination": "/operaciones/index.html" },
+    { "source": "/operaciones/", "destination": "/operaciones/index.html" }
+  ]
+}
