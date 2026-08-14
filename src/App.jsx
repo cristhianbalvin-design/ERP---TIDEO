@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context.jsx';
 import { AuthGate } from './AuthGate.jsx';
 import { Sidebar, Header, SIDEBAR } from './shell.jsx';
+import { ApplicationWelcome } from './ApplicationWelcome.jsx';
 
 // ─── Lazy imports ─────────────────────────────────────────────────────────────
 // Cada archivo de páginas genera un chunk separado, cargado solo cuando el
@@ -267,7 +268,7 @@ function ToastContainer() {
 
 // ─── Layout principal ─────────────────────────────────────────────────────────
 
-function MainLayout() {
+function MainLayout({ onShowApplicationWelcome }) {
   const {
     active, navigate, role, roleKey, setRoleKey, isSuperadmin,
     empresa, setEmpresa, dark, setDark, mobileMode, setMobileMode,
@@ -400,7 +401,7 @@ function MainLayout() {
 
   return (
     <div className="app-shell">
-      <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin}/>
+      <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin} onBrandClick={onShowApplicationWelcome}/>
       <div className="main-col">
         <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode} openSelectorSignal={openSelectorSignal}/>
         {isSuperadmin && empresa?.es_plataforma && (
@@ -424,6 +425,13 @@ function MainLayout() {
       <ToastContainer />
     </div>
   );
+}
+
+function ApplicationEntry() {
+  const [selected, setSelected] = useState(false);
+  return selected
+    ? <MainLayout onShowApplicationWelcome={() => setSelected(false)} />
+    : <ApplicationWelcome onEnterAdministration={() => setSelected(true)} />;
 }
 
 // ─── Raíz de la app ───────────────────────────────────────────────────────────
@@ -469,7 +477,7 @@ export default function App() {
       <ErrorBoundary>
         <AppProvider>
           <AuthGate>
-            <MainLayout />
+            <ApplicationEntry />
           </AuthGate>
         </AppProvider>
       </ErrorBoundary>

@@ -98,6 +98,51 @@ const rrhhBajaProductividad = (persona, partes = [], tareos = [], periodo = rrhh
 
 // Roles builder, Usuarios, Tenants/Planes, and simple stub pages
 
+const ROLE_PERMISSION_COLUMNS = [
+  { key: 'ver', label: 'Ver' },
+  { key: 'crear', label: 'Crear' },
+  { key: 'editar', label: 'Editar' },
+  { key: 'anular', label: 'Anular' },
+  { key: 'aprobar', label: 'Aprobar' },
+  { key: 'exportar', label: 'Export' },
+  { key: 'costos', label: 'Costos' },
+  { key: 'precios', label: 'Precios' },
+  { key: 'finanzas', label: 'Finanzas' },
+];
+
+const ROLE_APPLICATIONS = [
+  { key: 'administrativa', permiso: 'app_administrativo', titulo: 'Aplicación administrativa', descripcion: 'Gestión de empresa, configuración y back office.' },
+  { key: 'operativa', permiso: 'app_operativo', titulo: 'Aplicación operativa', descripcion: 'Gestión de mantenimiento, planta y trabajo de campo.' },
+];
+
+// Criterio de clasificación: un permiso hereda la aplicación del módulo del que depende
+// cuando ese módulo ya está etiquetado. Es transversal si el dato que expone (costos,
+// información financiera, alcance societario u otro dato estructuralmente compartido)
+// resulta relevante para decisiones en ambas aplicaciones. Ante la duda, usar
+// "transversal": ocultar de más puede bloquear acceso legítimo; mostrarlo de más solo
+// agrega un permiso visible, un costo menor.
+const SPECIAL_PERMISSIONS = [
+  { key: 'aprobar_descuentos', label: 'Aprobar descuentos en cotizaciones', aplicacion: 'administrativa', control: 'toggle' },
+  { key: 'ver_costos', label: 'Ver salario y costo hora del personal', aplicacion: 'transversal', control: 'toggle' },
+  { key: 'anular_documentos', label: 'Puede anular documentos emitidos', aplicacion: 'administrativa', control: 'toggle' },
+  { key: 'acceso_campo', label: 'Acceso a vistas de campo móviles', aplicacion: 'operativa', control: 'toggle' },
+  { key: 'ver_finanzas', label: 'Ver información financiera (CxC, CxP, tesorería)', aplicacion: 'administrativa', control: 'toggle' },
+  { key: 'ver_consolidado_grupo', label: 'Ver vista consolidada del grupo de sociedades', aplicacion: 'transversal', control: 'toggle' },
+  { key: 'monto_max_compras', label: 'Monto máximo para aprobar compras', aplicacion: 'administrativa', control: 'monto' },
+  { key: 'perfil_campo', label: 'Perfil de campo', aplicacion: 'operativa', control: 'perfil' },
+];
+
+const USER_TABLE_COLUMNS = [
+  { key: 'usuario', label: 'Usuario' },
+  { key: 'email', label: 'Email' },
+  { key: 'rol', label: 'Rol' },
+  { key: 'tenant', label: 'Tenant' },
+  { key: 'campo', label: 'Campo' },
+  { key: 'estado', label: 'Estado' },
+  { key: 'ultimo_login', label: 'Último login' },
+  { key: 'acceso', label: 'Acceso' },
+];
+
 function Roles() {
   const { roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug, nivelesJerarquicos = [] } = useApp();
   const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
@@ -123,6 +168,21 @@ function Roles() {
   const [roleActionError, setRoleActionError] = useState('');
   const [guardandoPermisos, setGuardandoPermisos] = useState(false);
   const [permisosDirty, setPermisosDirty] = useState(false);
+  const [applicationView, setApplicationView] = useState(null);
+  const rolesCarouselRef = useRef(null);
+  const [rolesCarouselNav, setRolesCarouselNav] = useState({ canScroll: false, canLeft: false, canRight: false });
+  const functionalSections = useMemo(() => {
+    const sections = new Map();
+    MOCK.pantallasPermisos.filter(p => !p.solo_ver).forEach(p => {
+      const sectionKey = `${p.aplicacion}:${p.modulo}`;
+      const section = sections.get(sectionKey) || { key: sectionKey, aplicacion: p.aplicacion, modulo: p.modulo, pantallas: [] };
+      const screens = section.pantallas;
+      screens.push(p);
+      sections.set(sectionKey, section);
+    });
+    return Array.from(sections.values());
+  }, []);
+  const [expandedSections, setExpandedSections] = useState({});
 
   // Sync sel cuando se elimina un rol
   useEffect(() => {
@@ -134,6 +194,62 @@ function Roles() {
     setPermisosDirty(false);
     setRoleActionError('');
   }, [sel]);
+
+  useEffect(() => {
+    const firstActiveApplication = ROLE_APPLICATIONS.find(application => {
+      const granted = role?.permisos?.ver;
+      return Boolean(role?.permisos?.todo || granted === true || (Array.isArray(granted) && granted.includes(application.permiso)));
+    });
+    setApplicationView(firstActiveApplication?.key || null);
+  }, [sel]);
+
+  useEffect(() => {
+    const permissionIsActive = (screen, action) => {
+      if (action === 'costos') return Boolean(role?.permisos?.ver_costos || role?.permisos?.todo);
+      if (action === 'finanzas') return Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
+      if (action === 'precios') return Boolean(role?.permisos?.ver_precios || role?.permisos?.todo);
+      const assigned = role?.permisos?.[action];
+      return Array.isArray(assigned) ? assigned.includes(screen.key) : Boolean(assigned || role?.permisos?.todo);
+    };
+    setExpandedSections(Object.fromEntries(functionalSections.map(section => [
+      section.key,
+      section.pantallas.some(screen => ROLE_PERMISSION_COLUMNS.some(column => permissionIsActive(screen, column.key))),
+    ])));
+  }, [sel, functionalSections]);
+
+  const updateRolesCarouselNav = useCallback(() => {
+    const carousel = rolesCarouselRef.current;
+    if (!carousel) return;
+    const canScroll = carousel.scrollWidth > carousel.clientWidth + 1;
+    const canLeft = canScroll && carousel.scrollLeft > 1;
+    const canRight = canScroll && carousel.scrollLeft + carousel.clientWidth < carousel.scrollWidth - 1;
+    setRolesCarouselNav(previous => (
+      previous.canScroll === canScroll && previous.canLeft === canLeft && previous.canRight === canRight
+        ? previous
+        : { canScroll, canLeft, canRight }
+    ));
+  }, []);
+
+  useEffect(() => {
+    const carousel = rolesCarouselRef.current;
+    if (!carousel) return undefined;
+    updateRolesCarouselNav();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateRolesCarouselNav);
+    observer?.observe(carousel);
+    carousel.addEventListener('scroll', updateRolesCarouselNav, { passive: true });
+    window.addEventListener('resize', updateRolesCarouselNav);
+    return () => {
+      observer?.disconnect();
+      carousel.removeEventListener('scroll', updateRolesCarouselNav);
+      window.removeEventListener('resize', updateRolesCarouselNav);
+    };
+  }, [roles, rolKeys.length, updateRolesCarouselNav]);
+
+  const scrollRolesCarousel = direction => {
+    const carousel = rolesCarouselRef.current;
+    if (!carousel) return;
+    carousel.scrollBy({ left: direction * Math.max(180, carousel.clientWidth * 0.7), behavior: 'smooth' });
+  };
 
   const handleNuevoRol = async () => {
     if (!nuevoNombre.trim() || guardandoRol) return;
@@ -220,6 +336,16 @@ function Roles() {
     addNotificacion(`${reasignarUsuario.nombre} reasignado a "${roles[reasignarRolId]?.nombre || reasignarRolId}".`);
     setReasignarUsuario(null);
   };
+  const seleccionarRol = roleId => {
+    const targetRole = roles[roleId];
+    const firstActiveApplication = ROLE_APPLICATIONS.find(application => {
+      const granted = targetRole?.permisos?.ver;
+      return Boolean(targetRole?.permisos?.todo || granted === true || (Array.isArray(granted) && granted.includes(application.permiso)));
+    });
+    setSel(roleId);
+    setTab('permisos');
+    setApplicationView(firstActiveApplication?.key || null);
+  };
 
   if (!role) {
     return (
@@ -252,6 +378,41 @@ function Roles() {
     );
   };
 
+  const isPermissionActive = (screen, action) => {
+    if (action === 'costos') return Boolean(role.permisos.ver_costos || role.permisos.todo);
+    if (action === 'finanzas') return Boolean(role.permisos.ver_finanzas || role.permisos.todo);
+    if (action === 'precios') return Boolean(role.permisos.ver_precios || role.permisos.todo);
+    const assigned = role.permisos[action];
+    return Array.isArray(assigned) ? assigned.includes(screen.key) : Boolean(assigned || role.permisos.todo);
+  };
+  const permissionKey = action => ({ costos: 'ver_costos', precios: 'ver_precios', finanzas: 'ver_finanzas' }[action] || action);
+  const bulkCheckbox = (screens, action, scope) => {
+    const allActive = screens.length > 0 && screens.every(screen => isPermissionActive(screen, action));
+    return (
+      <input
+        type="checkbox"
+        className="checkbox"
+        checked={allActive}
+        disabled={Boolean(role.permisos.plataforma && action === 'ver')}
+        aria-label={`${allActive ? 'Desactivar' : 'Activar'} ${action} para ${scope}`}
+        onClick={event => event.stopPropagation()}
+        onChange={event => {
+          screens.forEach(screen => actualizarPermisosRol(sel, screen.key, permissionKey(action), event.target.checked));
+          setPermisosDirty(true);
+        }}
+      />
+    );
+  };
+  const applicationEnabled = application => isPermissionActive({ key: application.permiso }, 'ver');
+  const activeApplications = ROLE_APPLICATIONS.filter(applicationEnabled);
+  const visibleFunctionalSections = functionalSections.filter(section => activeApplications.some(application => application.key === section.aplicacion));
+  const selectedApplication = activeApplications.find(application => application.key === applicationView) || activeApplications[0] || null;
+  const applicationsInView = activeApplications.length === 2 && selectedApplication ? [selectedApplication] : activeApplications;
+  const displayedFunctionalSections = visibleFunctionalSections.filter(section => applicationsInView.some(application => application.key === section.aplicacion));
+  const applicationsWithoutScreensInView = applicationsInView.filter(application => !functionalSections.some(section => section.aplicacion === application.key));
+  const specialPermissionsInView = SPECIAL_PERMISSIONS.filter(permission => permission.aplicacion === 'transversal' || applicationsInView.some(application => application.key === permission.aplicacion));
+  const specialPermissionScope = application => application === 'transversal' ? 'Transversal' : `Aplicación ${application}`;
+
   return (
     <>
       <div className="page-header">
@@ -275,29 +436,39 @@ function Roles() {
         </div>
       )}
 
-      <div style={{display:'grid', gridTemplateColumns:'280px 1fr', gap:20}}>
-        {/* Sidebar roles */}
-        <div className="card" style={{height:'fit-content'}}>
-          <div className="card-head"><h3>Roles</h3></div>
-          <div style={{padding:8}}>
-            {Object.entries(roles).map(([k,r])=>(
-              <div key={k} onClick={()=>setSel(k)} style={{padding:'10px 12px', borderRadius:8, cursor:'pointer', background:sel===k?'var(--surface-hover)':'transparent', borderLeft:sel===k?'3px solid var(--cyan)':'3px solid transparent', position:'relative'}}>
-                <div style={{fontWeight:600, fontSize:13}}>{r.nombre}</div>
-                <div className="text-muted" style={{fontSize:11,marginTop:2}}>{r.descripcion}</div>
-                <div className="text-subtle" style={{fontSize:11,marginTop:4}}>{r.assigned_count ?? usuarios.filter(u=>u.rol===k).length} usuarios</div>
-                {sel === k && (
-                  <button className="icon-btn" style={{position:'absolute',top:8,right:4,color:'var(--danger)'}} title="Eliminar rol"
-                    onClick={e => { e.stopPropagation(); handleEliminar(); }}>{I.trash}</button>
-                )}
-              </div>
+      <div className="card" style={{marginBottom:20}}>
+        <div className="card-head"><h3>Roles</h3></div>
+        <div className="roles-carousel-shell">
+          {rolesCarouselNav.canScroll && rolesCarouselNav.canLeft && (
+            <button type="button" className="roles-carousel-nav roles-carousel-nav-left" onClick={() => scrollRolesCarousel(-1)} aria-label="Ver roles anteriores">
+              {I.chevLeft}
+            </button>
+          )}
+          <div ref={rolesCarouselRef} className="roles-carousel" onScroll={updateRolesCarouselNav}>
+            {Object.entries(roles).map(([key, item]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => seleccionarRol(key)}
+                aria-pressed={sel === key}
+                style={{flex:'0 0 auto', minWidth:150, padding:'10px 12px', borderRadius:8, border:sel === key ? '1px solid var(--cyan)' : '1px solid var(--border)', background:sel === key ? 'var(--surface-hover)' : 'var(--surface)', color:'var(--fg)', cursor:'pointer', textAlign:'left'}}
+              >
+                <strong style={{display:'block', fontSize:13}}>{item.nombre}</strong>
+                <span className="text-muted" style={{display:'block', fontSize:11, marginTop:3}}>{item.assigned_count ?? usuarios.filter(user => user.rol === key).length} usuarios</span>
+              </button>
             ))}
           </div>
+          {rolesCarouselNav.canScroll && rolesCarouselNav.canRight && (
+            <button type="button" className="roles-carousel-nav roles-carousel-nav-right" onClick={() => scrollRolesCarousel(1)} aria-label="Ver más roles">
+              {I.chevRight}
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* Panel derecho */}
-        <div className="card">
-          <div className="card-head">
-            <div className="col" style={{gap:4, flex:1}}>
+      <div className="card">
+          <div className="card-head" style={{alignItems:'flex-start', gap:16}}>
+            <div className="col" style={{gap:4, flex:1, minWidth:0}}>
               <div className="row" style={{gap:6, alignItems:'center'}}>
                 <h3 style={{margin:0}}>{role.nombre}</h3>
                 <button className="icon-btn" title="Editar rol" style={{color:'var(--cyan)'}} onClick={abrirEditarRol}>{I.edit}</button>
@@ -308,7 +479,7 @@ function Roles() {
                 <div className="text-subtle" style={{fontSize:11}}>Nivel: <strong>{role.nivel_jerarquico || 'operativo'}</strong></div>
               </div>
             </div>
-            <div className="row" style={{gap:8}}>
+            <div className="row" style={{gap:8, flex:'0 0 auto', alignSelf:'flex-start'}}>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={handleGuardarPermisos}
@@ -329,6 +500,33 @@ function Roles() {
             </div>
           </div>
 
+          <div className="card-body" style={{paddingBottom:16, borderBottom:'1px solid var(--border)'}}>
+            <div className="row" style={{justifyContent:'space-between', marginBottom:10}}>
+              <div>
+                <div className="eyebrow">Acceso a aplicaciones</div>
+                <div className="text-muted" style={{fontSize:12, marginTop:3}}>Define a qué aplicación puede ingresar este rol y qué permisos funcionales se muestran.</div>
+              </div>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(230px, 1fr))', gap:10}}>
+              {ROLE_APPLICATIONS.map(application => (
+                <label key={application.key} style={{display:'flex', gap:10, alignItems:'flex-start', padding:'12px 14px', border:'1px solid var(--border)', borderRadius:8, cursor: role.permisos.plataforma ? 'default' : 'pointer'}}>
+                  <input
+                    type="checkbox"
+                    className="checkbox"
+                    checked={applicationEnabled(application)}
+                    disabled={Boolean(role.permisos.plataforma)}
+                    onChange={event => { actualizarPermisosRol(sel, application.permiso, 'ver', event.target.checked); setPermisosDirty(true); }}
+                    aria-label={`Acceso a ${application.titulo}`}
+                  />
+                  <span>
+                    <strong style={{display:'block', fontSize:13}}>{application.titulo}</strong>
+                    <span className="text-muted" style={{display:'block', fontSize:11, marginTop:3}}>{application.descripcion}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div style={{padding:'0 20px'}}>
             <div className="tabs">
               <div className={'tab '+(tab==='permisos'?'active':'')} onClick={()=>setTab('permisos')}>Permisos por pantalla</div>
@@ -337,66 +535,159 @@ function Roles() {
             </div>
           </div>
 
+          <div style={{minHeight:680}}>
           {tab === 'permisos' && (
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr>
-                  <th>Pantalla</th>
-                  {['Ver','Crear','Editar','Anular','Aprobar','Export','Costos','Precios','Finanzas'].map(h=>(<th key={h} style={{textAlign:'center'}}>{h}</th>))}
-                </tr></thead>
-                <tbody>{MOCK.pantallasPermisos.map((p,i)=>(
-                  <tr key={i}>
-                    <td><div className="text-subtle" style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em'}}>{p.modulo}</div><strong>{p.pantalla}</strong></td>
-                    {cb(p,'ver')}{cb(p,'crear')}{cb(p,'editar')}{cb(p,'anular')}{cb(p,'aprobar')}{cb(p,'exportar')}{cb(p,'costos')}{cb(p,'precios')}{cb(p,'finanzas')}
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
+            <>
+              {activeApplications.length === 2 && (
+                <div className="card-body" style={{paddingBottom:0}}>
+                  <div className="row" style={{gap:8, alignItems:'center'}}>
+                    <span className="text-muted" style={{fontSize:12}}>Ver permisos de:</span>
+                    {activeApplications.map(application => (
+                      <button
+                        key={application.key}
+                        type="button"
+                        className={'btn btn-sm ' + (selectedApplication?.key === application.key ? 'btn-primary' : 'btn-secondary')}
+                        onClick={() => setApplicationView(application.key)}
+                        aria-pressed={selectedApplication?.key === application.key}
+                      >
+                        {application.titulo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {applicationsWithoutScreensInView.map(application => (
+                <div key={application.key} className="card-body" style={{paddingBottom:0}}>
+                  <div className="alert alert-info" style={{margin:0}}>
+                    {application.titulo} está habilitada, pero aún no tiene pantallas funcionales registradas.
+                  </div>
+                </div>
+              ))}
+
+              {displayedFunctionalSections.length > 0 ? (
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Permisos funcionales</th>
+                        {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{column.label}</th>)}
+                      </tr>
+                      <tr style={{background:'var(--surface)', position:'sticky', top:0, zIndex:1}}>
+                        <th style={{fontSize:11}}>Aplicar a todas las pantallas visibles</th>
+                        {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{bulkCheckbox(displayedFunctionalSections.flatMap(section => section.pantallas), column.key, 'todas las pantallas funcionales visibles')}</th>)}
+                      </tr>
+                    </thead>
+                    {displayedFunctionalSections.map(section => {
+                      const activeCount = section.pantallas.filter(screen => ROLE_PERMISSION_COLUMNS.some(column => isPermissionActive(screen, column.key))).length;
+                      const isExpanded = expandedSections[section.key] ?? (activeCount > 0);
+                      return (
+                        <tbody key={section.key}>
+                          <tr style={{background:'var(--surface-hover)'}}>
+                            <th style={{textAlign:'left', minWidth:260}}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedSections(current => ({ ...current, [section.key]: !isExpanded }))}
+                                aria-expanded={isExpanded}
+                                style={{display:'flex', alignItems:'center', gap:8, width:'100%', padding:0, border:0, background:'transparent', color:'var(--fg)', font:'inherit', cursor:'pointer', textAlign:'left'}}
+                              >
+                                <span aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
+                                <span>{section.modulo}</span>
+                                <span className="text-muted" style={{fontWeight:400, fontSize:11}}>{activeCount}/{section.pantallas.length} con permisos</span>
+                              </button>
+                            </th>
+                            {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{bulkCheckbox(section.pantallas, column.key, `la sección ${section.modulo}`)}</th>)}
+                          </tr>
+                          {isExpanded && section.pantallas.map(screen => (
+                            <tr key={screen.key}>
+                              <td><strong>{screen.pantalla}</strong></td>
+                              {ROLE_PERMISSION_COLUMNS.map(column => cb(screen, column.key))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      );
+                    })}
+                  </table>
+                </div>
+              ) : activeApplications.length === 0 ? (
+                <div className="card-body">
+                  <div className="text-muted" style={{fontSize:12}}>Activa una aplicación para administrar sus permisos funcionales.</div>
+                </div>
+              ) : null}
+            </>
           )}
 
           {tab === 'especiales' && (
             <div className="card-body col" style={{gap:14}}>
-              {[
-                {l:'Aprobar descuentos en cotizaciones', k:'aprobar_descuentos'},
-                {l:'Ver salario y costo hora del personal', k:'ver_costos'},
-                {l:'Puede anular documentos emitidos', k:'anular_documentos'},
-                {l:'Acceso a vistas de campo móviles', k:'acceso_campo'},
-                {l:'Ver información financiera (CxC, CxP, tesorería)', k:'ver_finanzas'},
-                {l:'Ver vista consolidada del grupo de sociedades', k:'ver_consolidado_grupo'},
-              ].map(x=>(
-                <div key={x.k} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
-                  <div style={{fontSize:13}}>{x.l}</div>
-                  <div className={'toggle '+((role.permisos[x.k]||role.permisos.todo)?'on':'')} style={{cursor:'pointer'}}
-                    onClick={()=>{ actualizarPermisosRol(sel, null, x.k, !(role.permisos[x.k]||role.permisos.todo)); setPermisosDirty(true); }}/>
+              {activeApplications.length === 2 && (
+                <div className="row" style={{gap:8, alignItems:'center'}}>
+                  <span className="text-muted" style={{fontSize:12}}>Ver permisos de:</span>
+                  {activeApplications.map(application => (
+                    <button
+                      key={application.key}
+                      type="button"
+                      className={'btn btn-sm ' + (selectedApplication?.key === application.key ? 'btn-primary' : 'btn-secondary')}
+                      onClick={() => setApplicationView(application.key)}
+                      aria-pressed={selectedApplication?.key === application.key}
+                    >
+                      {application.titulo}
+                    </button>
+                  ))}
                 </div>
-              ))}
-              <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:500}}>Monto máximo para aprobar compras</div>
-                  <div className="text-muted" style={{fontSize:11,marginTop:2}}>0 = no puede aprobar compras</div>
-                </div>
-                <input className="input" style={{width:140,textAlign:'right'}}
-                  key={sel}
-                  defaultValue={role.permisos.monto_max_compras ?? (role.permisos.plataforma ? '' : '0')}
-                  placeholder="S/ 0"
-                  onBlur={e => { actualizarPermisosRol(sel, null, 'monto_max_compras', Number(e.target.value.replace(/[^0-9]/g,'')) || 0); setPermisosDirty(true); }}/>
-              </div>
-              <div className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
-                <div style={{fontSize:13,fontWeight:500}}>Perfil de campo</div>
-                <select className="select" style={{width:180}}
-                  key={sel}
-                  value={role.permisos.perfil_campo || 'ninguno'}
-                  onChange={e => { actualizarPermisosRol(sel, null, 'perfil_campo', e.target.value === 'ninguno' ? null : e.target.value); setPermisosDirty(true); }}>
-                  <option value="ninguno">Ninguno</option>
-                  <option value="Técnico">Técnico — Partes diarios, tareas en campo</option>
-                  <option value="Vendedor">Vendedor — Pipeline, cotizaciones, comisiones</option>
-                  <option value="Compras">Compras — SOLPE, órdenes, recepciones</option>
-                  <option value="Supervisor">Supervisor — Aprobaciones y monitoreo</option>
-                  <option value="Gerencia">Gerencia — Dashboard ejecutivo</option>
-                  <option value="administrativo">Administrativo — Registro diario de horas por OT o actividad</option>
-                  <option value="Empleado">Empleado - Mi espacio y solicitudes</option>
-                </select>
-              </div>
+              )}
+
+              {specialPermissionsInView.map(permission => {
+                const scope = specialPermissionScope(permission.aplicacion);
+                if (permission.control === 'toggle') {
+                  return (
+                    <div key={permission.key} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                      <div>
+                        <div style={{fontSize:13}}>{permission.label}</div>
+                        <div className="text-subtle" style={{fontSize:11, marginTop:2}}>{scope}</div>
+                      </div>
+                      <div className={'toggle '+((role.permisos[permission.key]||role.permisos.todo)?'on':'')} style={{cursor:'pointer'}}
+                        onClick={() => { actualizarPermisosRol(sel, null, permission.key, !(role.permisos[permission.key]||role.permisos.todo)); setPermisosDirty(true); }}/>
+                    </div>
+                  );
+                }
+                if (permission.control === 'monto') {
+                  return (
+                    <div key={permission.key} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:500}}>{permission.label}</div>
+                        <div className="text-muted" style={{fontSize:11,marginTop:2}}>0 = no puede aprobar compras</div>
+                        <div className="text-subtle" style={{fontSize:11,marginTop:2}}>{scope}</div>
+                      </div>
+                      <input className="input" style={{width:140,textAlign:'right'}}
+                        key={sel}
+                        defaultValue={role.permisos.monto_max_compras ?? (role.permisos.plataforma ? '' : '0')}
+                        placeholder="S/ 0"
+                        onBlur={event => { actualizarPermisosRol(sel, null, 'monto_max_compras', Number(event.target.value.replace(/[^0-9]/g,'')) || 0); setPermisosDirty(true); }}/>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={permission.key} className="row" style={{justifyContent:'space-between',padding:12,border:'1px solid var(--border)',borderRadius:8}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:500}}>{permission.label}</div>
+                      <div className="text-subtle" style={{fontSize:11,marginTop:2}}>{scope}</div>
+                    </div>
+                    <select className="select" style={{width:180}}
+                      key={sel}
+                      value={role.permisos.perfil_campo || 'ninguno'}
+                      onChange={event => { actualizarPermisosRol(sel, null, 'perfil_campo', event.target.value === 'ninguno' ? null : event.target.value); setPermisosDirty(true); }}>
+                      <option value="ninguno">Ninguno</option>
+                      <option value="Técnico">Técnico — Partes diarios, tareas en campo</option>
+                      <option value="Vendedor">Vendedor — Pipeline, cotizaciones, comisiones</option>
+                      <option value="Compras">Compras — SOLPE, órdenes, recepciones</option>
+                      <option value="Supervisor">Supervisor — Aprobaciones y monitoreo</option>
+                      <option value="Gerencia">Gerencia — Dashboard ejecutivo</option>
+                      <option value="administrativo">Administrativo — Registro diario de horas por OT o actividad</option>
+                      <option value="Empleado">Empleado - Mi espacio y solicitudes</option>
+                    </select>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -420,8 +711,8 @@ function Roles() {
               </table>
             </div>
           )}
+          </div>
         </div>
-      </div>
 
       {/* Modal: Nuevo rol / Editar rol */}
       {modalNuevo && <>
@@ -534,6 +825,7 @@ function Usuarios() {
   const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
+  const [visibleUserColumns, setVisibleUserColumns] = useState(() => USER_TABLE_COLUMNS.map(column => column.key));
   const [resetError, setResetError] = useState('');
   const [guardandoReset, setGuardandoReset] = useState(false);
   const generarPasswordTemporal = () => Math.random().toString(36).slice(-8) + '!';
@@ -1102,11 +1394,21 @@ function Usuarios() {
             <option key={e} value={e}>{e}</option>
           ))}
         </select>
+        <ColumnFilter columns={USER_TABLE_COLUMNS} visibleCols={visibleUserColumns} onChange={setVisibleUserColumns} />
       </div>
       <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Tenant</th><th>Campo</th><th>Estado</th><th>Último login</th><th style={{textAlign:'right'}}>Acceso</th></tr></thead>
+        <div className="table-wrap users-table-wrap">
+          <table className="tbl users-table">
+            <thead><tr>
+              {visibleUserColumns.includes('usuario') && <th>Usuario</th>}
+              {visibleUserColumns.includes('email') && <th>Email</th>}
+              {visibleUserColumns.includes('rol') && <th>Rol</th>}
+              {visibleUserColumns.includes('tenant') && <th>Tenant</th>}
+              {visibleUserColumns.includes('campo') && <th>Campo</th>}
+              {visibleUserColumns.includes('estado') && <th>Estado</th>}
+              {visibleUserColumns.includes('ultimo_login') && <th>Último login</th>}
+              {visibleUserColumns.includes('acceso') && <th style={{textAlign:'right'}}>Acceso</th>}
+            </tr></thead>
             <tbody>
               {usuarios.filter(u => {
                 if (filtroTenant && u.empresa_id !== filtroTenant) return false;
@@ -1117,7 +1419,7 @@ function Usuarios() {
                 }
                 return true;
               }).length === 0 && (
-                <tr><td colSpan={8} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios que coincidan con los filtros.</td></tr>
+                <tr><td colSpan={visibleUserColumns.length} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>No hay usuarios que coincidan con los filtros.</td></tr>
               )}
               {usuarios.filter(u => {
                 if (filtroTenant && u.empresa_id !== filtroTenant) return false;
@@ -1137,20 +1439,31 @@ function Usuarios() {
               );
               return (
                 <tr key={`${u.id}_${u.empresa_id}`}>
-                  <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>
-                  <td className="text-muted">{u.email}</td>
-                  <td>
+                  {visibleUserColumns.includes('usuario') && <td><div className="row"><div className="avatar" style={{width:28,height:28,fontSize:11}}>{u.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div><strong>{u.nombre}</strong></div></td>}
+                  {visibleUserColumns.includes('email') && <td className="text-muted">{u.email}</td>}
+                  {visibleUserColumns.includes('rol') && <td>
                     <span className={'badge badge-'+r.color}>{r.nombre}</span>
                     <div className="text-muted" style={{fontSize:11, marginTop:4}}>Jefe: {jefe?.nombre || 'Sin jefe directo'}</div>
                     {u.asignaciones?.filter?.(a => !a.principal).length > 0 && (
                       <div className="text-muted" style={{fontSize:11}}>+{u.asignaciones.filter(a => !a.principal).length} asignacion(es)</div>
                     )}
-                  </td>
-                  <td className="text-muted">{getEmpresa(u.empresa_id)}</td>
-                  <td>{u.campo?<span className="badge badge-cyan">{I.mobile}{getCampoModulos(u).map(m => m === 'solicitudes' ? 'Solicitudes' : (mobileModuleOptions.find(x => x.id === m)?.label || m)).join(', ')}</span>:<span className="text-subtle">—</span>}</td>
-                  <td><span className="badge badge-green">{u.estado}</span></td>
-                  <td className="text-muted">{u.ultimo || 'Nuevo'}</td>
-                  <td style={{textAlign:'right'}}>
+                  </td>}
+                  {visibleUserColumns.includes('tenant') && <td className="text-muted">{getEmpresa(u.empresa_id)}</td>}
+                  {visibleUserColumns.includes('campo') && <td>
+                    {u.campo ? (
+                      <div className="users-field-badges">
+                        {getCampoModulos(u).map(modulo => (
+                          <span key={modulo} className="badge badge-cyan">
+                            <span className="users-field-badge-icon">{I.mobile}</span>
+                            {modulo === 'solicitudes' ? 'Solicitudes' : (mobileModuleOptions.find(x => x.id === modulo)?.label || modulo)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="text-subtle">—</span>}
+                  </td>}
+                  {visibleUserColumns.includes('estado') && <td><span className="badge badge-green">{u.estado}</span></td>}
+                  {visibleUserColumns.includes('ultimo_login') && <td className="text-muted">{u.ultimo || 'Nuevo'}</td>}
+                  {visibleUserColumns.includes('acceso') && <td style={{textAlign:'right'}}>
                     <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
                       <button className="btn btn-ghost btn-sm" title="Editar usuario" onClick={() => abrirEditarUsuario(u)}>
                         <span style={{width:16,height:16,display:'inline-flex'}}>{I.edit}</span>
@@ -1162,7 +1475,7 @@ function Usuarios() {
                         <span style={{fontSize:15}}>🗑</span>
                       </button>
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               );
             })}</tbody>
@@ -1529,6 +1842,7 @@ function Tenants() {
       moneda_base: t.moneda_base || t.moneda || 'PEN',
       estado: t.estado || 'activa',
       multisociedad_habilitado: Boolean(t.multisociedad_habilitado),
+      modulo_operativo_habilitado: Boolean(t.modulo_operativo_habilitado),
     });
     setEditando(t);
   };
@@ -1686,6 +2000,23 @@ function Tenants() {
                   {editando?.multisociedad_habilitado
                     ? 'Multisociedad ya está habilitada para este tenant.'
                     : 'Si no existen sociedades, se creará automáticamente la principal con los datos actuales del tenant.'}
+                </span>
+              </span>
+            </label>
+            <label style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:8}}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.modulo_operativo_habilitado)}
+                disabled={Boolean(editando?.modulo_operativo_habilitado)}
+                onChange={e => setForm(f => ({ ...f, modulo_operativo_habilitado: e.target.checked }))}
+                style={{marginTop:2}}
+              />
+              <span>
+                <strong style={{display:'block',fontSize:13}}>Habilitar módulo operativo</strong>
+                <span className="text-muted" style={{fontSize:11}}>
+                  {editando?.modulo_operativo_habilitado
+                    ? 'El módulo operativo ya está habilitado para este tenant.'
+                    : 'Habilita el acceso a la aplicación operativa para los usuarios autorizados de este tenant.'}
                 </span>
               </span>
             </label>

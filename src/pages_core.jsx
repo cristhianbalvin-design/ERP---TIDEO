@@ -36,8 +36,31 @@ function computeNextMaterialCode(subfamiliaId, grupos, familias, subfamilias, ma
 
 // ─── MaterialAutocomplete ─────────────────────────────────────────────────────
 // Busca en materiales (catálogo completo). Muestra stock como dato informativo.
-// onSelect({ mat_id, nombre, unidad, costo_unit })
+// onSelect({ mat_id, nombre, unidad, costo_unit, precio_original_pen, precio_promedio_alternos_pen })
 // onCreateNew(texto) → modal completo de creación
+function preciosReferencialesPartesEnPen(material, convertirMonto, tipoCambioHoy) {
+  const aPen = parte => {
+    const precio = Number(parte?.precio_referencial);
+    if (!Number.isFinite(precio) || precio <= 0) return null;
+    const moneda = String(parte?.moneda || 'PEN').trim().toUpperCase();
+    if (moneda === 'PEN') return precio;
+    if (moneda === 'USD' && tipoCambioHoy?.usd) return convertirMonto(precio, 'USD', 'PEN');
+    return null;
+  };
+  const partes = (material?.material_numeros_parte || []).filter(parte => parte?.activo !== false);
+  const original = aPen(partes.find(parte => parte?.tipo === 'original'));
+  const alternos = partes
+    .filter(parte => parte?.tipo === 'alternativo')
+    .map(aPen)
+    .filter(precio => Number.isFinite(precio) && precio > 0);
+  return {
+    original: original && original > 0 ? Math.round(original * 100) / 100 : null,
+    promedioAlternos: alternos.length
+      ? Math.round((alternos.reduce((suma, precio) => suma + precio, 0) / alternos.length) * 100) / 100
+      : null,
+  };
+}
+
 function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false }) {
   const [query, setQuery] = useState(value?.nombre || '');
   const [open, setOpen] = useState(false);
@@ -45,7 +68,7 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
   const [showModal, setShowModal] = useState(false);
   const ref = useRef(null);
   const {
-    crearMaterialCtx, empresa, addNotificacion,
+    crearMaterialCtx, empresa, addNotificacion, convertirMonto, tipoCambioHoy,
     materialGrupos = [], materialFamilias = [], materialSubfamilias = [], almacenes = [],
   } = useApp();
   const materialFormBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: '1', almacen_id: '', ubicacion: '', observacion: '', precio_unitario: '0', estado: 'activo' };
@@ -88,7 +111,16 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
     setQuery(m.descripcion);
     setOpen(false);
     const stockItem = inventario.find(i => i.material_id === m.id || i.sku === m.codigo);
-    onChange({ mat_id: m.id, nombre: m.descripcion, unidad: m.unidad || '', costo_unit: Number(m.precio_unitario) || 0, stock: Number(stockItem?.cantidad ?? stockItem?.stock ?? 0) });
+    const preciosPartes = preciosReferencialesPartesEnPen(m, convertirMonto, tipoCambioHoy);
+    onChange({
+      mat_id: m.id,
+      nombre: m.descripcion,
+      unidad: m.unidad || '',
+      costo_unit: Number(m.precio_unitario) || 0,
+      precio_original_pen: preciosPartes.original,
+      precio_promedio_alternos_pen: preciosPartes.promedioAlternos,
+      stock: Number(stockItem?.cantidad ?? stockItem?.stock ?? 0),
+    });
   };
 
   const abrirModal = (txt) => {
@@ -3933,6 +3965,10 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
 
   const seccionTotal = (det, key) => (det?.[key] || []).reduce((s, i) => s + (Number(i.subtotal) || 0), 0);
   const filaTotal = (f) => ['mano_obra', 'materiales', 'terceros', 'logistica'].reduce((s, k) => s + seccionTotal(f.est_detalle, k), 0);
+  const detallePersistible = det => ({
+    ...det,
+    materiales: (det?.materiales || []).map(({ precio_original_pen, precio_promedio_alternos_pen, ...item }) => item),
+  });
 
   const addFila = (defaults = {}) => setFilas(prev => [...prev, crearFila(defaults)]);
   const removeFila = (id) => setFilas(prev => prev.filter(f => f._id !== id));
@@ -3985,13 +4021,25 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
       return { ...f, est_detalle: { ...det, mano_obra: items } };
     }));
 
-  const updMaterialItem = (filaId, idx, { mat_id, nombre, unidad, costo_unit }) =>
+  const updMaterialItem = (filaId, idx, {
+    mat_id, nombre, unidad, costo_unit,
+    precio_original_pen = null,
+    precio_promedio_alternos_pen = null,
+  }) =>
     setFilas(prev => prev.map(f => {
       if (f._id !== filaId) return f;
       const det = f.est_detalle || { mano_obra: [], materiales: [], terceros: [], logistica: [] };
       const items = (det.materiales || []).map((it, i) => {
         if (i !== idx) return it;
-        const upd = { ...it, inv_id: mat_id, nombre, unidad, costo_unit };
+        const upd = {
+          ...it,
+          inv_id: mat_id,
+          nombre,
+          unidad,
+          costo_unit,
+          precio_original_pen,
+          precio_promedio_alternos_pen,
+        };
         upd.subtotal = Number(upd.cantidad || 0) * costo_unit;
         return upd;
       });
@@ -4041,7 +4089,8 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
         const log = seccionTotal(d, 'logistica');
         const total = mo + mat + ter + log;
         const usaTC = os.moneda === 'USD' && tipoCambioHoy?.usd && (d.mano_obra || []).some(it => it.costo_hora_pen > 0);
-        const detFinal = usaTC ? { ...d, tc_usado: { usd: tipoCambioHoy.usd, fecha: tipoCambioHoy.fecha } } : d;
+        const detalleLimpio = detallePersistible(d);
+        const detFinal = usaTC ? { ...detalleLimpio, tc_usado: { usd: tipoCambioHoy.usd, fecha: tipoCambioHoy.fecha } } : detalleLimpio;
         const otId = await crearOTDesdeOS(os.id, {
           ...datos,
           est_mo: mo || null, est_materiales: mat || null, est_terceros: ter || null, est_logistica: log || null,
@@ -4360,7 +4409,15 @@ function FormCrearMultiplesOTs({ os, onCancel }) {
                                             </td>
                                             <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.cantidad} onChange={e => updItem(fila._id, 'materiales', itemIdx, 'cantidad', e.target.value)} /></td>
                                             <td style={{ padding: '3px 4px', fontSize: 11, color: '#6b7280' }}>{item.unidad || '—'}</td>
-                                            <td style={{ padding: '3px 4px' }}><input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.costo_unit} onChange={e => updItem(fila._id, 'materiales', itemIdx, 'costo_unit', e.target.value)} /></td>
+                                            <td style={{ padding: '3px 4px' }}>
+                                              <input className="input" type="number" min="0" step="0.01" style={{ fontSize: 11, padding: '3px 5px', width: '100%', textAlign: 'right' }} value={item.costo_unit} onChange={e => updItem(fila._id, 'materiales', itemIdx, 'costo_unit', e.target.value)} />
+                                              {(Number(item.precio_original_pen) > 0 || Number(item.precio_promedio_alternos_pen) > 0) && (
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                                                  {Number(item.precio_original_pen) > 0 && <button type="button" title="Usar precio referencial del número de parte original" onClick={() => updItem(fila._id, 'materiales', itemIdx, 'costo_unit', item.precio_original_pen)} style={{ fontSize: 10, padding: '2px 5px', border: '1px solid #bfdbfe', borderRadius: 999, background: '#eff6ff', color: '#1d4ed8', cursor: 'pointer' }}>Usar original (S/ {Number(item.precio_original_pen).toFixed(2)})</button>}
+                                                  {Number(item.precio_promedio_alternos_pen) > 0 && <button type="button" title="Usar promedio de precios referenciales de números alternativos" onClick={() => updItem(fila._id, 'materiales', itemIdx, 'costo_unit', item.precio_promedio_alternos_pen)} style={{ fontSize: 10, padding: '2px 5px', border: '1px solid #bbf7d0', borderRadius: 999, background: '#f0fdf4', color: '#15803d', cursor: 'pointer' }}>Usar promedio alternos (S/ {Number(item.precio_promedio_alternos_pen).toFixed(2)})</button>}
+                                                </div>
+                                              )}
+                                            </td>
                                           </>
                                         ) : (
                                           <>
