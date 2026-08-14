@@ -38,7 +38,7 @@ export const plataformaService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('empresas')
-      .select('id, razon_social, nombre_comercial, ruc, pais, moneda_base, zona_horaria, plan_id, estado, fecha_inicio, created_at, multisociedad_habilitado')
+      .select('id, razon_social, nombre_comercial, ruc, pais, moneda_base, zona_horaria, plan_id, estado, fecha_inicio, created_at, multisociedad_habilitado, modulo_operativo_habilitado')
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];

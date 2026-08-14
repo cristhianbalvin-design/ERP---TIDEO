@@ -1002,6 +1002,8 @@ export const estadoResultados = {
   ] }
 };
 export const pantallasPermisos = [
+  { key: 'app_administrativo', modulo: 'Aplicaciones', pantalla: 'Aplicación administrativa', acciones: ['ver'], solo_ver: true },
+  { key: 'app_operativo', modulo: 'Aplicaciones', pantalla: 'Aplicación operativa', acciones: ['ver'], solo_ver: true },
   { key: 'dashboard', modulo: 'BI', pantalla: 'Dashboard General', acciones: ['ver','exportar','finanzas'] },
   { key: 'bi_comercial', modulo: 'BI', pantalla: 'BI Comercial', acciones: ['ver','exportar','precios'] },
   { key: 'bi_operativo', modulo: 'BI', pantalla: 'BI Operativo', acciones: ['ver','exportar','costos'] },
@@ -1076,7 +1078,7 @@ export const pantallasPermisos = [
   { key: 'organigrama', modulo: 'Configuracion', pantalla: 'Organigrama', acciones: ['ver','crear','editar','exportar'] },
   { key: 'servicios', modulo: 'Configuracion', pantalla: 'Catalogo Servicios', acciones: ['ver','crear','editar','exportar'] },
   { key: 'tarifarios', modulo: 'Configuracion', pantalla: 'Tarifarios', acciones: ['ver','crear','editar','exportar'] }
-];
+].map(pantalla => ({ ...pantalla, aplicacion: 'administrativa' }));
 export const servicios = [
   { id: 'SRV-001', familia: 'Mantenimiento', descripcion: 'Mantenimiento preventivo mensual', unidad: 'Servicio', costo: 3800, precio: 6200, margen: 39, estado: 'activo', facturable: true, precio_incluido: false, detalle: 'Revisión integral de equipos mecánicos y eléctricos, lubricación, ajuste de componentes críticos, limpieza de tableros y reporte de estado de equipos.', entregables: ['Informe de estado de equipos', 'Registro de actividades ejecutadas', 'Recomendaciones de mejora preventiva'] },
   { id: 'SRV-002', familia: 'Correctivo', descripcion: 'Atencion correctiva industrial', unidad: 'Hora', costo: 95, precio: 165, margen: 42, estado: 'activo', facturable: true, precio_incluido: false, detalle: 'Atención de fallas y averías en equipos industriales. Diagnóstico, reparación y puesta en marcha. Se factura por horas efectivas de trabajo en campo.', entregables: ['Diagnóstico de falla', 'Parte de trabajo ejecutado', 'Garantía de reparación 30 días'] },

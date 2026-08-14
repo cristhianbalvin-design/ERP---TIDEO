@@ -1375,7 +1375,7 @@ export function AppProvider({ children }) {
           .eq('rol_id', mem.rol_id),
         supabase
           .from('empresas')
-          .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado')
+          .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado')
           .eq('id', mem.empresa_id)
           .single(),
       ]);
@@ -1464,7 +1464,7 @@ export function AppProvider({ children }) {
         const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
 
         const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
-          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado').in('id', empresaIds),
+          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado').in('id', empresaIds),
           supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
         ]);
 
@@ -9470,18 +9470,21 @@ export function AppProvider({ children }) {
   };
 
   const buildPermisosPayload = (permisos = {}) => [
-    ...MOCK.pantallasPermisos.map(p => ({
-      pantalla: p.key,
-      puede_ver: permisoPantallaActivo(permisos, 'ver', p.key),
-      puede_crear: permisoPantallaActivo(permisos, 'crear', p.key),
-      puede_editar: permisoPantallaActivo(permisos, 'editar', p.key),
-      puede_anular: permisoPantallaActivo(permisos, 'anular', p.key),
-      puede_aprobar: permisoPantallaActivo(permisos, 'aprobar', p.key),
-      puede_exportar: permisoPantallaActivo(permisos, 'exportar', p.key),
-      puede_ver_costos: Boolean(permisos.ver_costos || permisos.todo),
-      puede_ver_finanzas: Boolean(permisos.ver_finanzas || permisos.todo),
-      permisos_extra: { puede_ver_precios: Boolean(permisos.ver_precios || permisos.todo) },
-    })),
+    ...MOCK.pantallasPermisos.map(p => {
+      const soloVer = p.solo_ver === true;
+      return {
+        pantalla: p.key,
+        puede_ver: permisoPantallaActivo(permisos, 'ver', p.key),
+        puede_crear: soloVer ? false : permisoPantallaActivo(permisos, 'crear', p.key),
+        puede_editar: soloVer ? false : permisoPantallaActivo(permisos, 'editar', p.key),
+        puede_anular: soloVer ? false : permisoPantallaActivo(permisos, 'anular', p.key),
+        puede_aprobar: soloVer ? false : permisoPantallaActivo(permisos, 'aprobar', p.key),
+        puede_exportar: soloVer ? false : permisoPantallaActivo(permisos, 'exportar', p.key),
+        puede_ver_costos: soloVer ? false : Boolean(permisos.ver_costos || permisos.todo),
+        puede_ver_finanzas: soloVer ? false : Boolean(permisos.ver_finanzas || permisos.todo),
+        permisos_extra: { puede_ver_precios: soloVer ? false : Boolean(permisos.ver_precios || permisos.todo) },
+      };
+    }),
     {
       pantalla: '__especiales__',
       puede_ver: false,

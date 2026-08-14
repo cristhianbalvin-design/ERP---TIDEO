@@ -237,7 +237,7 @@ function buildSidebarBadges(app) {
   };
 }
 
-export function Sidebar({ active, onNav, role, isSuperadmin }) {
+export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const app = useApp();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
@@ -334,7 +334,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
 
   return (
     <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '')}>
-      <div className="sidebar-logo">
+      <button
+        type="button"
+        className="sidebar-logo"
+        onClick={onBrandClick}
+        aria-label="Volver al selector de aplicaciones"
+        style={{ width: '100%', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
+      >
         <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
           <img src="/tideo-isotipo.png" alt="TIDEO" style={{width:'100%', height:'100%', objectFit:'contain'}} />
         </div>
@@ -342,7 +348,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin }) {
           <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>TIDEO</div>
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
         </div>}
-      </div>
+      </button>
       <nav className="sidebar-nav" style={{padding:'10px 12px'}}>
         {visibleGroups.map(group => {
           const isOpen = openSections.has(group.key);
@@ -513,9 +519,16 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
   const [roleOpen, setRoleOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
+  const [isCompactHeader, setIsCompactHeader] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 1180px)').matches);
   useEffect(() => {
     const media = window.matchMedia('(max-width: 640px)');
     const onChange = () => setIsMobile(media.matches);
+    media.addEventListener?.('change', onChange);
+    return () => media.removeEventListener?.('change', onChange);
+  }, []);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1180px)');
+    const onChange = () => setIsCompactHeader(media.matches);
     media.addEventListener?.('change', onChange);
     return () => media.removeEventListener?.('change', onChange);
   }, []);
@@ -569,13 +582,13 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       }));
 
   return (
-    <header className="header" style={{padding: isMobile ? '0 12px' : '0 20px', gap: isMobile ? 10 : 20}}>
-      <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isMobile ? 140 : 'none'}}>{title}</div>
+    <header className={'header' + (isCompactHeader ? ' header-compact' : '')} style={{padding: isCompactHeader ? '0 12px' : '0 20px', gap: isCompactHeader ? 10 : 20}}>
+      <div className="header-title font-display" style={{minWidth:0, flex:'0 1 auto', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth: isCompactHeader ? 140 : 'none'}}>{title}</div>
 
       <div className="header-spacer"/>
 
       {/* Commit actual — oculto en móvil */}
-      {!isMobile && (() => {
+      {!isCompactHeader && (() => {
         const match = (typeof __COMMIT_MSG__ !== 'undefined' ? __COMMIT_MSG__ : '').match(/^(\d+)\s+cambios/i);
         const commitLabel = match ? match[1] : (typeof __COMMIT_MSG__ !== 'undefined' ? __COMMIT_MSG__ : '');
         if (!commitLabel) return null;
@@ -590,7 +603,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
       })()}
 
       {/* TC tipo de cambio — oculto en móvil */}
-      {!isMobile && tipoCambioHoy?.usd && !tipoCambioHoy.cargando && (() => {
+      {!isCompactHeader && tipoCambioHoy?.usd && !tipoCambioHoy.cargando && (() => {
         const tcUSD = Math.round(1 / tipoCambioHoy.usd * 100) / 100;
         const tcEUR = tipoCambioHoy.eur ? Math.round(1 / tipoCambioHoy.eur * 100) / 100 : null;
         const esHoy = tipoCambioHoy.fecha === new Date().toISOString().split('T')[0];
@@ -613,7 +626,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
 
       {/* Botones de acción — en móvil solo notificaciones */}
       <div className="row" style={{gap:6}}>
-        {!isMobile && <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>}
+        {!isCompactHeader && <button className="icon-btn" onClick={() => setMobileMode(true)} title="Modo campo">{I.mobile}</button>}
 
         <div style={{position:'relative'}}>
           <button className="icon-btn" onClick={() => setNotiOpen(v => !v)} title="Notificaciones">
@@ -657,12 +670,12 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           sociedadesDisponibles={sociedadesDisponibles}
           seleccionarSociedad={seleccionarSociedad}
           puedeVerConsolidado={puedeVerConsolidado}
-          isMobile={isMobile}
+          isMobile={isCompactHeader}
         />
       )}
 
       {/* Separador — oculto en móvil */}
-      {!isMobile && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}
+      {!isCompactHeader && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}
 
       {/* Zona de usuario */}
       <div style={{position:'relative'}}>
@@ -672,8 +685,8 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           style={{
             display:'flex',
             alignItems:'center',
-            gap: isMobile ? 0 : 12,
-            padding: isMobile ? 2 : '4px 4px 4px 12px',
+            gap: isCompactHeader ? 0 : 12,
+            padding: isCompactHeader ? 2 : '4px 4px 4px 12px',
             borderRadius:99,
             background:'rgba(255,255,255,0.08)',
             border:'1px solid rgba(255,255,255,0.15)',
@@ -682,7 +695,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           }}
         >
           {/* Texto empresa/email — oculto en móvil */}
-          {!isMobile && (
+          {!isCompactHeader && (
             <div style={{textAlign:'right'}}>
               <div style={{fontSize:11, fontWeight:800, color:'#fff', textTransform:'uppercase', letterSpacing:'0.02em', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                 {empresa.nombre}
