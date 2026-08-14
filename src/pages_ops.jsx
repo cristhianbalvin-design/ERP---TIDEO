@@ -13666,6 +13666,10 @@ const SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA = ['vacaciones', 'permiso_con_goce', '
 const SOLICITUD_ESTADOS_APROBADOS = ['aprobada_jefe', 'confirmada_rrhh'];
 function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, solicitudesAprobadas, hastaFecha = null) {
   if (periodo?.anio == null || periodo?.mes == null) return [];
+  // Los cargos de dirección o confianza no están sujetos a fiscalización de
+  // horario. Esta auditoría es solo informativa, pero debe usar el mismo
+  // criterio que el cálculo de nómina para no generar falsos positivos.
+  if (Boolean(trabajador?.cargo_confianza)) return [];
   const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
   const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
   const pIniOriginal = new Date(periodo.anio, periodo.mes - 1, 1);
