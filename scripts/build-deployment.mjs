@@ -12,7 +12,7 @@ const run = (args, cwd = root) => {
   execFileSync('npm', args, { cwd, stdio: 'inherit' });
 };
 
-run(['run', 'build']);
+run(['run', 'build:admin']);
 run(['ci'], operationsRoot);
 run(['run', 'build'], operationsRoot);
 
