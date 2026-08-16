@@ -553,12 +553,58 @@ export const maestrosService = {
     if (error) { console.error('Error fetching servicios:', error); return []; }
     return data;
   },
+  getFamiliasServicio: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('familia_servicio')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('orden', { ascending: true })
+      .order('nombre', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+  crearFamiliaServicio: async (empresaId, familia) => {
+    const supabase = await getSupabaseClient();
+    const payload = {
+      id: familia.id || makeId('fam_srv'),
+      empresa_id: empresaId,
+      ...pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden']),
+    };
+    const { data, error } = await supabase.from('familia_servicio').insert([payload]).select().single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarFamiliaServicio: async (familiaId, familia) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('familia_servicio')
+      .update(pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden']))
+      .eq('id', familiaId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  contarServiciosActivosPorFamilia: async (empresaId, familiaId) => {
+    if (!empresaId || !familiaId) return 0;
+    const supabase = await getSupabaseClient();
+    const { count, error } = await supabase
+      .from('servicios')
+      .select('*', { count: 'exact', head: true })
+      .eq('empresa_id', empresaId)
+      .eq('familia_id', familiaId)
+      .eq('estado', 'activo');
+    if (error) throw error;
+    return count || 0;
+  },
   crearServicio: async (empresaId, servicio) => {
     const supabase = await getSupabaseClient();
     const payload = {
       id: servicio.id || makeId('srv'),
       empresa_id: empresaId,
-      ...pick(servicio, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
+      ...pick(servicio, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
     };
     const { data, error } = await supabase.from('servicios').insert([payload]).select().single();
     if (error) throw error;
@@ -566,7 +612,7 @@ export const maestrosService = {
   },
   actualizarServicio: async (servicioId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas'])).eq('id', servicioId).select().single();
+    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas'])).eq('id', servicioId).select().single();
     if (error) throw error;
     return data;
   },
@@ -580,7 +626,7 @@ export const maestrosService = {
     const payload = servicios.map(s => ({
       id: s.id || makeId('srv'),
       empresa_id: empresaId,
-      ...pick(s, ['codigo', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
+      ...pick(s, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
     }));
     const { data, error } = await supabase.from('servicios').upsert(payload, { onConflict: 'empresa_id, codigo' }).select();
     if (error) throw error;
