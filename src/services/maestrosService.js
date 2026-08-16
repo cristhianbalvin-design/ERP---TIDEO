@@ -16,6 +16,34 @@ const pick = (source, keys) => keys.reduce((acc, key) => {
   return acc;
 }, {});
 
+// Mantiene el criterio de la migracion 205: trim, espacios internos, minusculas y
+// sin diacriticos. PostgREST no permite aplicar `unaccent` en un filtro, por eso se
+// recuperan los cargos del tenant y se comparan aqui antes de cualquier insercion.
+// NFD ya convierte ñ a n; este mapa cubre caracteres que NFD no descompone.
+const UNACCENT_EQUIVALENTS = {
+  '\u00df': 'ss', '\u00e6': 'ae', '\u0153': 'oe',
+  '\u00f8': 'o', '\u0142': 'l', '\u00f0': 'd', '\u00fe': 'th',
+};
+
+export const normalizarNombreCargo = (nombre) => String(nombre || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[\u00df\u00e6\u0153\u00f8\u0142\u00f0\u00fe]/g, char => UNACCENT_EQUIVALENTS[char] || char);
+
+// Fuente unica de verdad para distinguir coincidencias activas e inactivas.
+// La prioridad de un cargo activo evita sugerir una nueva alta cuando coexisten
+// registros historicos inactivos con el mismo nombre normalizado.
+export const clasificarCoincidenciasCargo = (coincidencias = []) => {
+  const activas = coincidencias.filter(item => String(item.estado || '').toLowerCase() === 'activo');
+  const inactivas = coincidencias.filter(item => String(item.estado || '').toLowerCase() !== 'activo');
+  if (activas.length) return { estado: 'coincidencia_activa', activas };
+  if (inactivas.length) return { estado: 'coincidencia_inactiva', inactivas };
+  return null;
+};
+
 const validarFilasSocietariasMaestro = async ({ supabase, empresaId, filas, entidad }) => {
   const multisociedadHabilitado = await obtenerEstadoMultisociedad(supabase, empresaId);
   if (!multisociedadHabilitado) {
@@ -132,7 +160,30 @@ export const maestrosService = {
     if (error) { console.error('Error fetching cargos:', error); return []; }
     return data;
   },
-  crearCargo: async (empresaId, cargo) => {
+  buscarCargosCoincidentes: async (empresaId, nombre) => {
+    if (!empresaId || !String(nombre || '').trim()) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cargos_empresa')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const nombreNormalizado = normalizarNombreCargo(nombre);
+    return (data || [])
+      .filter(item => normalizarNombreCargo(item.nombre) === nombreNormalizado)
+      .sort((a, b) => {
+        const activoA = String(a.estado || '').toLowerCase() === 'activo' ? 0 : 1;
+        const activoB = String(b.estado || '').toLowerCase() === 'activo' ? 0 : 1;
+        return activoA - activoB;
+      });
+  },
+  crearCargo: async (empresaId, cargo, { permitirDuplicado = false } = {}) => {
+    const coincidencias = await maestrosService.buscarCargosCoincidentes(empresaId, cargo?.nombre);
+    const clasificacion = clasificarCoincidenciasCargo(coincidencias);
+    if (!permitirDuplicado && clasificacion) return clasificacion;
+
     const supabase = await getSupabaseClient();
     const payload = {
       id: cargo.id || makeId('car'),
@@ -141,6 +192,18 @@ export const maestrosService = {
       ...pick(cargo, ['nombre', 'tipo', 'detalle', 'estado', 'modo_gestion']),
     };
     const { data, error } = await supabase.from('cargos_empresa').insert([payload]).select().single();
+    if (error) throw error;
+    return { estado: 'creado', cargo: data };
+  },
+  reactivarCargo: async (empresaId, cargoId) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cargos_empresa')
+      .update({ estado: 'activo' })
+      .eq('id', cargoId)
+      .eq('empresa_id', empresaId)
+      .select()
+      .single();
     if (error) throw error;
     return data;
   },
