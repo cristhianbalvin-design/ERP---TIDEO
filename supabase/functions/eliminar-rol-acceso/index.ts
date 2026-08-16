@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import { assertRoleIsNotProtected, assertRolePermission } from "../_shared/rolePermissions.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -11,33 +12,6 @@ const jsonResponse = (body: unknown, status = 200) =>
     status,
     headers: { ...cors, "Content-Type": "application/json" },
   });
-
-const PLATFORM_SUPERADMIN_EMAIL = "cristhianbalvin@gmail.com";
-const normalizeEmail = (email: unknown) => String(email || "").trim().toLowerCase();
-
-const isMissingTable = (error: unknown) => {
-  const err = error as { code?: string; message?: string } | null;
-  const message = String(err?.message || "").toLowerCase();
-  return err?.code === "42P01" || err?.code === "PGRST205" || message.includes("could not find the table");
-};
-
-const fetchPlatformAdminFlag = async (
-  adminClient: ReturnType<typeof createClient>,
-  userId: string,
-  email: string | undefined | null,
-) => {
-  if (normalizeEmail(email) !== PLATFORM_SUPERADMIN_EMAIL) return false;
-  const { data, error } = await adminClient
-    .from("platform_admins")
-    .select("user_id, nivel, estado")
-    .eq("user_id", userId)
-    .eq("nivel", "superadmin")
-    .eq("estado", "activo")
-    .maybeSingle();
-  if (error && isMissingTable(error)) return false;
-  if (error) throw error;
-  return Boolean(data?.user_id);
-};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -81,49 +55,16 @@ serve(async (req) => {
 
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);
   if (!role) return jsonResponse({ success: false, error: "El rol ya no existe." }, 404);
-  if (role.es_superadmin) return jsonResponse({ success: false, error: "No puedes eliminar un rol superadmin." }, 400);
 
-  const { data: callerMemberships, error: membershipError } = await adminClient
-    .from("usuarios_empresas")
-    .select("empresa_id, rol_id, estado")
-    .eq("user_id", caller.id)
-    .eq("estado", "activo");
-
-  if (membershipError) return jsonResponse({ success: false, error: membershipError.message }, 500);
-
-  const callerRoleIds = [...new Set((callerMemberships || []).map((m) => m.rol_id).filter(Boolean))];
-  const { data: callerRoles, error: callerRolesError } = callerRoleIds.length
-    ? await adminClient.from("roles").select("id, es_admin_empresa, es_superadmin").in("id", callerRoleIds)
-    : { data: [], error: null };
-
-  if (callerRolesError) return jsonResponse({ success: false, error: callerRolesError.message }, 500);
-
-  const callerRolesById = new Map((callerRoles || []).map((callerRole) => [callerRole.id, callerRole]));
-  const callerEmpresaIds = [...new Set((callerMemberships || []).map((m) => m.empresa_id).filter(Boolean))];
-  const { data: callerEmpresasRows } = callerEmpresaIds.length
-    ? await adminClient.from("empresas").select("id, es_plataforma").in("id", callerEmpresaIds)
-    : { data: [] as { id: string; es_plataforma: boolean }[] };
-  const callerEmpresasById = new Map((callerEmpresasRows || []).map((e) => [e.id, e]));
-  let callerIsPlatformAdmin = false;
-  try {
-    callerIsPlatformAdmin = await fetchPlatformAdminFlag(adminClient, caller.id, caller.email);
-  } catch (error) {
-    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "No se pudo validar el administrador de plataforma." }, 500);
+  const rolePermission = await assertRolePermission(userClient, role.empresa_id, "anular");
+  if (!rolePermission.allowed) {
+    return jsonResponse({ success: false, error: rolePermission.error }, 403);
   }
 
-  const callerHasPlatformSuperadminMembership = (callerMemberships || []).some((membership) => {
-    const callerRole = callerRolesById.get(membership.rol_id);
-    const empresa = callerEmpresasById.get(membership.empresa_id);
-    return callerRole?.es_superadmin && empresa?.es_plataforma && normalizeEmail(caller.email) === PLATFORM_SUPERADMIN_EMAIL;
-  });
-  const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
-
-  const canManage = (callerMemberships || []).some((membership) => {
-    const callerRole = callerRolesById.get(membership.rol_id);
-    return membership.empresa_id === role.empresa_id && callerRole?.es_admin_empresa;
-  }) || callerIsPlatformSuperadmin;
-
-  if (!canManage) return jsonResponse({ success: false, error: "No tienes permiso para eliminar este rol." }, 403);
+  const protectedRole = await assertRoleIsNotProtected(userClient, rolId);
+  if (!protectedRole.allowed) {
+    return jsonResponse({ success: false, error: protectedRole.error }, 403);
+  }
 
   const { count: membershipCount, error: membershipCountError } = await adminClient
     .from("usuarios_empresas")

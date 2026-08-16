@@ -91,7 +91,7 @@ export const rolesService = {
     if (!data?.success) throw new Error(data?.error || 'No se pudo eliminar el rol.');
   },
 
-  async clonarRol(sourceRolId, newRolName, empresaId) {
+  async clonarRol(sourceRolId, newRolName, empresaId, accesoTecnico = null) {
     const supabase = await getSupabaseClient();
     
     // 1. Get source role
@@ -113,8 +113,10 @@ export const rolesService = {
         descripcion: `Copia de ${sourceRol.nombre}`,
         categoria: sourceRol.categoria || 'otro',
         nivel_jerarquico: sourceRol.nivel_jerarquico || 'operativo',
-        es_admin_empresa: sourceRol.es_admin_empresa,
-        es_superadmin: false, // Never clone superadmin status
+        ...(accesoTecnico ? {
+          es_admin_empresa: Boolean(accesoTecnico.es_admin_empresa),
+          es_superadmin: Boolean(accesoTecnico.es_superadmin),
+        } : {}),
         activo: true
       }])
       .select()
