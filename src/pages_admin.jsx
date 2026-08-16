@@ -3,7 +3,7 @@ import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import { I, money } from './icons.jsx';
-import { MOCK } from './data.js';
+import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { useApp } from './context.jsx';
 import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -144,7 +144,9 @@ const USER_TABLE_COLUMNS = [
 ];
 
 function Roles() {
-  const { roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug, nivelesJerarquicos = [] } = useApp();
+  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
+  const esSuperadminPlataforma = authUser?.superadmin_plataforma === true;
+  const puedeConfigurarPlataforma = Boolean(empresa?.id === 'emp_tideo' && empresa?.es_plataforma);
   const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
   const rolKeys = Object.keys(roles);
   const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
@@ -160,7 +162,11 @@ function Roles() {
   const [nuevoDesc, setNuevoDesc] = useState('');
   const [nuevoCategoria, setNuevoCategoria] = useState('otro');
   const [nuevoNivel, setNuevoNivel] = useState('operativo');
+  const [nuevoEsAdminEmpresa, setNuevoEsAdminEmpresa] = useState(false);
+  const [nuevoEsSuperadmin, setNuevoEsSuperadmin] = useState(false);
   const [clonarNombre, setClonarNombre] = useState('');
+  const [clonEsAdminEmpresa, setClonEsAdminEmpresa] = useState(false);
+  const [clonEsSuperadmin, setClonEsSuperadmin] = useState(false);
   const [editandoRolId, setEditandoRolId] = useState(null);
   const [guardandoRol, setGuardandoRol] = useState(false);
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
@@ -173,7 +179,10 @@ function Roles() {
   const [rolesCarouselNav, setRolesCarouselNav] = useState({ canScroll: false, canLeft: false, canRight: false });
   const functionalSections = useMemo(() => {
     const sections = new Map();
-    MOCK.pantallasPermisos.filter(p => !p.solo_ver).forEach(p => {
+    MOCK.pantallasPermisos.filter(p => (
+      !p.solo_ver
+      && (puedeConfigurarPlataforma || !PLATFORM_PERMISSION_SCREENS.has(p.key))
+    )).forEach(p => {
       const sectionKey = `${p.aplicacion}:${p.modulo}`;
       const section = sections.get(sectionKey) || { key: sectionKey, aplicacion: p.aplicacion, modulo: p.modulo, pantallas: [] };
       const screens = section.pantallas;
@@ -181,7 +190,7 @@ function Roles() {
       sections.set(sectionKey, section);
     });
     return Array.from(sections.values());
-  }, []);
+  }, [puedeConfigurarPlataforma]);
   const [expandedSections, setExpandedSections] = useState({});
 
   // Sync sel cuando se elimina un rol
@@ -253,12 +262,16 @@ function Roles() {
 
   const handleNuevoRol = async () => {
     if (!nuevoNombre.trim() || guardandoRol) return;
+    const accesoTecnico = esSuperadminPlataforma ? {
+      es_admin_empresa: nuevoEsAdminEmpresa,
+      ...(puedeConfigurarPlataforma ? { es_superadmin: nuevoEsSuperadmin } : {}),
+    } : {};
     setGuardandoRol(true);
     try {
       if (editandoRolId) {
-        await editarRol(editandoRolId, { nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
+        await editarRol(editandoRolId, { nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel, ...accesoTecnico });
       } else {
-        const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel });
+        const newId = await crearRol({ nombre: nuevoNombre.trim(), descripcion: nuevoDesc.trim(), categoria: nuevoCategoria, nivel_jerarquico: nuevoNivel, ...accesoTecnico });
         if (newId) setSel(newId);
       }
       cerrarModalNuevo();
@@ -274,6 +287,8 @@ function Roles() {
     setNuevoDesc('');
     setNuevoCategoria('otro');
     setNuevoNivel('operativo');
+    setNuevoEsAdminEmpresa(false);
+    setNuevoEsSuperadmin(false);
   };
 
   const abrirEditarRol = () => {
@@ -282,15 +297,42 @@ function Roles() {
     setNuevoDesc(role.descripcion || '');
     setNuevoCategoria(role.categoria || 'otro');
     setNuevoNivel(role.nivel_jerarquico || 'operativo');
+    setNuevoEsAdminEmpresa(Boolean(role.es_admin_empresa));
+    setNuevoEsSuperadmin(puedeConfigurarPlataforma && Boolean(role.es_superadmin));
     setModalNuevo(true);
+  };
+
+  const abrirClonarRol = () => {
+    const origenProtegido = Boolean(role?.es_admin_empresa || role?.es_superadmin);
+    if (origenProtegido && !esSuperadminPlataforma) {
+      const message = 'No puedes clonar este rol porque tiene acceso técnico protegido.';
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+      return;
+    }
+    setRoleActionError('');
+    setClonarNombre(`Copia de ${role.nombre}`);
+    setClonEsAdminEmpresa(false);
+    setClonEsSuperadmin(false);
+    setModalClonar(true);
+  };
+
+  const cerrarModalClonar = () => {
+    setModalClonar(false);
+    setClonarNombre('');
+    setClonEsAdminEmpresa(false);
+    setClonEsSuperadmin(false);
   };
 
   const handleClonar = () => {
     if (!clonarNombre.trim()) return;
-    const newId = clonarRol(sel, clonarNombre.trim());
+    const accesoTecnico = esSuperadminPlataforma ? {
+      es_admin_empresa: clonEsAdminEmpresa,
+      ...(puedeConfigurarPlataforma ? { es_superadmin: clonEsSuperadmin } : {}),
+    } : {};
+    const newId = clonarRol(sel, clonarNombre.trim(), accesoTecnico);
     if (newId) setSel(newId);
-    setModalClonar(false);
-    setClonarNombre('');
+    if (newId) cerrarModalClonar();
   };
 
   const handleEliminar = async () => {
@@ -418,8 +460,8 @@ function Roles() {
       <div className="page-header">
         <div><h1 className="page-title">Roles y Permisos</h1><div className="page-sub">{rolKeys.length} roles configurados · permisos granulares por pantalla</div></div>
         <div className="row">
-          <button className="btn btn-secondary" onClick={() => { setClonarNombre(`Copia de ${role.nombre}`); setModalClonar(true); }}>{I.copy} Clonar rol</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={() => { setEditandoRolId(null); setNuevoNombre(''); setNuevoDesc(''); setNuevoCategoria('otro'); setNuevoNivel('operativo'); setModalNuevo(true); }}>{I.plus} Nuevo rol</button>
+          <button className="btn btn-secondary" onClick={abrirClonarRol}>{I.copy} Clonar rol</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => { setEditandoRolId(null); setNuevoNombre(''); setNuevoDesc(''); setNuevoCategoria('otro'); setNuevoNivel('operativo'); setNuevoEsAdminEmpresa(false); setNuevoEsSuperadmin(false); setModalNuevo(true); }}>{I.plus} Nuevo rol</button>
         </div>
       </div>
 
@@ -740,6 +782,30 @@ function Roles() {
                 {nivelesActivos.map(n => <option key={n.codigo} value={n.codigo}>{n.nombre}</option>)}
               </select>
             </div>
+            {esSuperadminPlataforma && <div style={{borderTop:'1px solid var(--border)', paddingTop:14}}>
+              <div className="row" style={{gap:7, marginBottom:10, color:'var(--orange)'}}>
+                <span style={{width:16, height:16, display:'inline-flex'}}>{I.alert}</span>
+                <strong style={{fontSize:13}}>Acceso técnico</strong>
+              </div>
+              <label className="row" style={{gap:9, alignItems:'center', cursor:'pointer', marginBottom:10}}>
+                <input type="checkbox" className="checkbox" checked={nuevoEsAdminEmpresa} onChange={e=>setNuevoEsAdminEmpresa(e.target.checked)} />
+                <span>
+                  <strong style={{fontSize:13}}>Administrador del tenant</strong>
+                  <span className="text-muted" style={{display:'block', fontSize:11}}>Otorga administración técnica de la empresa.</span>
+                </span>
+              </label>
+              {puedeConfigurarPlataforma ? (
+                <label className="row" style={{gap:9, alignItems:'center', cursor:'pointer'}}>
+                  <input type="checkbox" className="checkbox" checked={nuevoEsSuperadmin} onChange={e=>setNuevoEsSuperadmin(e.target.checked)} />
+                  <span>
+                    <strong style={{fontSize:13}}>Superadmin de plataforma</strong>
+                    <span className="text-muted" style={{display:'block', fontSize:11}}>Otorga acceso técnico a toda la plataforma SaaS.</span>
+                  </span>
+                </label>
+              ) : (
+                <div className="text-muted" style={{fontSize:12}}>Superadmin de plataforma solo puede existir en TIDEO Plataforma.</div>
+              )}
+            </div>}
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
             <button className="btn btn-secondary" onClick={cerrarModalNuevo} disabled={guardandoRol}>Cancelar</button>
@@ -754,12 +820,33 @@ function Roles() {
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:420,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
           <h3 style={{marginBottom:8}}>Clonar rol</h3>
           <div className="text-muted" style={{fontSize:12,marginBottom:20}}>Se copiará "{role.nombre}" con todos sus permisos.</div>
+          {(role.es_admin_empresa || role.es_superadmin) && <div className="alert alert-warning" style={{marginBottom:14, fontSize:12}}>
+            El rol origen es {role.es_superadmin ? 'Superadmin de plataforma' : 'Administrador del tenant'}. El acceso técnico no se copiará automáticamente.
+          </div>}
           <div className="input-group">
             <label>Nombre del nuevo rol *</label>
             <input className="input" value={clonarNombre} onChange={e=>setClonarNombre(e.target.value)} autoFocus onKeyDown={e=>e.key==='Enter'&&handleClonar()}/>
           </div>
+          {esSuperadminPlataforma && <div style={{borderTop:'1px solid var(--border)', paddingTop:14, marginTop:14}}>
+            <div className="row" style={{gap:7, marginBottom:10, color:'var(--orange)'}}>
+              <span style={{width:16, height:16, display:'inline-flex'}}>{I.alert}</span>
+              <strong style={{fontSize:13}}>Acceso técnico</strong>
+            </div>
+            <label className="row" style={{gap:9, alignItems:'center', cursor:'pointer', marginBottom:10}}>
+              <input type="checkbox" className="checkbox" checked={clonEsAdminEmpresa} onChange={e=>setClonEsAdminEmpresa(e.target.checked)} />
+              <span style={{fontSize:13}}>Administrador del tenant</span>
+            </label>
+            {puedeConfigurarPlataforma ? (
+              <label className="row" style={{gap:9, alignItems:'center', cursor:'pointer'}}>
+                <input type="checkbox" className="checkbox" checked={clonEsSuperadmin} onChange={e=>setClonEsSuperadmin(e.target.checked)} />
+                <span style={{fontSize:13}}>Superadmin de plataforma</span>
+              </label>
+            ) : (
+              <div className="text-muted" style={{fontSize:12}}>Superadmin de plataforma solo puede existir en TIDEO Plataforma.</div>
+            )}
+          </div>}
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={()=>setModalClonar(false)}>Cancelar</button>
+            <button className="btn btn-secondary" onClick={cerrarModalClonar}>Cancelar</button>
             <button className="btn btn-primary" onClick={handleClonar} disabled={!clonarNombre.trim()}>Clonar</button>
           </div>
         </div>
@@ -4933,6 +5020,67 @@ function GestionPosicionesTab({
   );
 }
 // ============ CONFIGURACIÓN Y MAESTROS ============
+function FamiliasServicioPanel({ onClose }) {
+  const { empresa, addNotificacion } = useApp();
+  const empty = { codigo: '', nombre: '', descripcion: '', orden: 0 };
+  const [familias, setFamilias] = useState([]);
+  const [form, setForm] = useState(empty);
+  const [editId, setEditId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const cargar = async () => {
+    if (!empresa?.id) return;
+    setLoading(true);
+    try { setFamilias(await maestrosService.getFamiliasServicio(empresa.id)); }
+    catch (err) { console.error(err); setError(err?.message || 'No se pudieron cargar las familias de servicio.'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { cargar(); }, [empresa?.id]);
+  const cancelar = () => { setForm(empty); setEditId(null); setError(''); };
+  const guardar = async event => {
+    event.preventDefault();
+    const codigo = form.codigo.trim(); const nombre = form.nombre.trim();
+    if (!codigo || !nombre) { setError('Código y nombre son obligatorios.'); return; }
+    setSaving(true); setError('');
+    const payload = { codigo, nombre, descripcion: form.descripcion.trim() || null, orden: Number(form.orden) || 0 };
+    try {
+      const guardada = editId ? await maestrosService.actualizarFamiliaServicio(editId, payload) : await maestrosService.crearFamiliaServicio(empresa.id, { ...payload, activo: true });
+      setFamilias(prev => (editId ? prev.map(f => f.id === editId ? guardada : f) : [...prev, guardada]).sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0) || a.nombre.localeCompare(b.nombre, 'es')));
+      addNotificacion(editId ? 'Familia de servicio actualizada.' : 'Familia de servicio creada.'); cancelar();
+    } catch (err) { console.error(err); setError(err?.message || 'No se pudo guardar la familia. Verifica que el código sea único.'); }
+    finally { setSaving(false); }
+  };
+  const cambiarActivo = async familia => {
+    setError('');
+    try {
+      if (familia.activo) {
+        const enUso = await maestrosService.contarServiciosActivosPorFamilia(empresa.id, familia.id);
+        if (enUso > 0 && !window.confirm(`"${familia.nombre}" está asignada a ${enUso} servicio(s) activo(s). Al desactivarla no podrán seleccionarse para nuevos servicios, aunque las referencias actuales se conservarán. ¿Deseas continuar?`)) return;
+      }
+      const actualizada = await maestrosService.actualizarFamiliaServicio(familia.id, { activo: !familia.activo });
+      setFamilias(prev => prev.map(f => f.id === familia.id ? actualizada : f));
+      addNotificacion(`Familia ${actualizada.activo ? 'activada' : 'desactivada'}.`);
+    } catch (err) { console.error(err); setError(err?.message || 'No se pudo actualizar el estado de la familia.'); }
+  };
+  return <>
+    <div className="side-panel-backdrop" onClick={onClose} />
+    <div className="side-panel" style={{width:'min(880px, 96vw)'}}>
+      <div className="side-panel-head"><div><div className="eyebrow">Maestros Base</div><div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Familias de servicio</div><div className="text-muted" style={{fontSize:12, marginTop:4}}>Catálogo por tenant para clasificar el Catálogo de Servicios.</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+      <div className="side-panel-body">
+        {error && <div className="alert alert-danger" style={{marginBottom:14}}>{error}</div>}
+        <form className="card" data-local-form="true" style={{padding:16, marginBottom:18}} onSubmit={guardar}>
+          <div style={{fontWeight:600, marginBottom:12}}>{editId ? 'Editar familia' : 'Nueva familia'}</div>
+          <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Código *</label><input className="input" required value={form.codigo} onChange={e => setForm(p => ({...p, codigo:e.target.value}))} placeholder="FAM-001" /></div><div className="input-group"><label>Nombre *</label><input className="input" required value={form.nombre} onChange={e => setForm(p => ({...p, nombre:e.target.value}))} placeholder="Ej: Mantenimiento preventivo" /></div><div className="input-group"><label>Orden</label><input className="input" type="number" value={form.orden} onChange={e => setForm(p => ({...p, orden:e.target.value}))} /></div><div className="input-group"><label>Descripción</label><input className="input" value={form.descripcion} onChange={e => setForm(p => ({...p, descripcion:e.target.value}))} placeholder="Opcional" /></div></div>
+          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>{editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}<button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear familia'}</button></div>
+        </form>
+        <div className="card"><div className="card-head"><h3>Familias registradas</h3><span className="badge badge-cyan">{familias.length}</span></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Orden</th><th>Código</th><th>Nombre</th><th>Descripción</th><th>Estado</th><th></th></tr></thead><tbody>{loading ? <tr><td colSpan="6" className="text-muted" style={{padding:18}}>Cargando familias...</td></tr> : familias.length ? familias.map(f => <tr key={f.id}><td className="mono">{f.orden ?? 0}</td><td className="mono">{f.codigo}</td><td><strong>{f.nombre}</strong></td><td className="text-muted">{f.descripcion || '—'}</td><td><span className={`badge ${f.activo ? 'badge-green' : 'badge-gray'}`}>{f.activo ? 'Activo' : 'Inactivo'}</span></td><td style={{whiteSpace:'nowrap', textAlign:'right'}}><button className="btn btn-ghost btn-sm" onClick={() => { setForm({ codigo:f.codigo || '', nombre:f.nombre || '', descripcion:f.descripcion || '', orden:f.orden ?? 0 }); setEditId(f.id); setError(''); }}>{I.edit} Editar</button><button className="btn btn-ghost btn-sm" style={{marginLeft:6}} onClick={() => cambiarActivo(f)}>{f.activo ? 'Desactivar' : 'Activar'}</button></td></tr>) : <tr><td colSpan="6" className="text-muted" style={{padding:18}}>No hay familias registradas.</td></tr>}</tbody></table></div></div>
+      </div>
+    </div>
+  </>;
+}
+
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
@@ -4974,6 +5122,7 @@ function Maestros() {
   const [showCecoCebe, setShowCecoCebe] = useState(false);
   const [showRequisitos, setShowRequisitos] = useState(false);
   const [showTiposDocumento, setShowTiposDocumento] = useState(false);
+  const [showFamiliasServicio, setShowFamiliasServicio] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [fusionOrigenId, setFusionOrigenId] = useState(null);
   const [fusionDestinoId, setFusionDestinoId] = useState('');
@@ -5008,6 +5157,7 @@ function Maestros() {
     { id: 'mst_especialidades', tabla: 'Especialidades técnicas' },
     { id: 'mst_niveles_jerarquicos', tabla: 'Niveles Jerárquicos' },
     { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
+    { id: 'mst_familias_servicio', tabla: 'Familias de servicio' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
@@ -5027,6 +5177,7 @@ function Maestros() {
   const [importModal, setImportModal] = useState(false);
   const [importRows, setImportRows] = useState([]);
   const [importStep, setImportStep] = useState(1);
+  const [importSummary, setImportSummary] = useState(null);
   const [importandoUnidades, setImportandoUnidades] = useState(false);
   const getSelectedRows = () => {
     if (!sel) return [];
@@ -5406,14 +5557,38 @@ function Maestros() {
   };
 
   const doImportMaestro = async (btn) => {
+    if (importSummary) return;
     btn.disabled = true; btn.textContent = 'Importando...';
     const valid = importRows.filter(r=>r._errores.length===0).map(({_errores,...r})=>r);
-    let count = 0;
+    const resultado = [];
+    let creados = 0;
+    let reutilizados = 0;
+    let pendientesCargoInactivo = 0;
+    let fallidas = 0;
     try {
       for (let i = 0; i < valid.length; i++) {
         const r = valid[i];
         const base = { codigo: autoCode(sel.id, selectedRows.length + i), nombre: r.nombre, estado: r.estado || 'activo' };
-        if (sel.id === 'mst_cargos') await crearCargo({ ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' });
+        if (sel.id === 'mst_cargos') {
+          const cargoResultado = await crearCargo(
+            { ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' },
+            { origen: 'importacion' },
+          );
+          if (cargoResultado.resultado === 'omitido_inactivo') {
+            pendientesCargoInactivo++;
+            resultado.push({
+              ...r,
+              _estado: 'PENDIENTE: CARGO INACTIVO',
+              _errores: ['No se insertó: existe un cargo inactivo con el mismo nombre. Reactívalo o crea uno nuevo explícitamente desde Maestros Base.'],
+            });
+            continue;
+          }
+          if (cargoResultado.resultado === 'reutilizado') {
+            reutilizados++;
+            resultado.push({ ...r, _estado: 'REUTILIZADO', _errores: [] });
+            continue;
+          }
+        }
         else if (sel.id === 'mst_especialidades') await crearEspecialidad({ ...base, area: r.area || 'General', requiere_cert: (r.requiere_cert||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_tipos_servicio') await crearTipoServicio({ ...base, clasificacion: r.clasificacion || 'General', facturable: (r.facturable||'').toLowerCase()==='si' });
         else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
@@ -5422,13 +5597,25 @@ function Maestros() {
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
         else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
         else if (sel.id === 'mst_tipos_contrato') await crearTipoContrato({ codigo: (r.codigo||'').trim(), nombre: r.nombre, estado: r.estado || 'activo' });
-        count++;
+        creados++;
+        resultado.push({ ...r, _estado: 'CREADO', _errores: [] });
       }
-      addNotificacion?.(`${count} registros importados correctamente.`);
-      setImportModal(false);
     } catch(err) {
-      btn.disabled = false; btn.textContent = 'Reintentar';
-      addNotificacion?.(`Error al importar: ${err?.message || 'Error desconocido'}.`, 'error');
+      fallidas++;
+      resultado.push({ ...valid[resultado.length], _estado: 'FALLIDA', _errores: [err?.message || 'Error desconocido'] });
+      for (let i = resultado.length; i < valid.length; i++) {
+        resultado.push({ ...valid[i], _estado: 'NO PROCESADA', _errores: ['No procesada porque la importación se detuvo por un error anterior.'] });
+      }
+    } finally {
+      setImportRows(resultado);
+      setImportSummary({ creados, reutilizados, pendientesCargoInactivo, fallidas });
+      setImportStep(2);
+      addNotificacion?.(
+        pendientesCargoInactivo
+          ? `Importación terminada: ${creados} creados, ${reutilizados} reutilizados y ${pendientesCargoInactivo} pendiente(s) por cargo inactivo.`
+          : `Importación terminada: ${creados} creados y ${reutilizados} reutilizados.`,
+        pendientesCargoInactivo || fallidas ? 'error' : undefined,
+      );
     }
   };
 
@@ -5481,7 +5668,7 @@ function Maestros() {
       } else if (sel.id === 'mst_cargos') {
         const item = { ...base, tipo: nuevo.tipo_cargo || 'Administrativo', detalle: nuevo.detalle || 'Pendiente de completar', modo_gestion: nuevo.modo_gestion || 'individual' };
         if (editandoId) await actualizarCargo(editandoId, item);
-        else await crearCargo(item);
+        else if (!await crearCargo(item)) return;
       } else if (sel.id === 'mst_especialidades') {
         const item = { ...base, area: nuevo.area || 'General', requiere_cert: nuevo.requiere_cert };
         if (editandoId) await actualizarEspecialidad(editandoId, item);
@@ -5717,6 +5904,7 @@ function Maestros() {
       if (c === 0 && b === 0) return emptyEl;
       return `${c} CECOs · ${b} CEBEs`;
     }
+    if (mId === 'mst_familias_servicio') return 'Catálogo por tenant';
     
     let arr = [];
     switch (mId) {
@@ -6341,7 +6529,7 @@ function Maestros() {
               <div className="maestro-card-title">{m.tabla}</div>
               <div className="maestro-card-meta">{getMaestroMetaText(m.id)}</div>
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else { setSel(m); resetForm(); } }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
@@ -6353,6 +6541,8 @@ function Maestros() {
       {showRequisitos && <RequisitosPorCargo onClose={() => setShowRequisitos(false)} onGoToTiposDoc={() => { setShowRequisitos(false); setShowTiposDocumento(true); }} />}
 
       {showTiposDocumento && <TiposDocumentoPanel onClose={() => setShowTiposDocumento(false)} onGoToRequisitos={() => { setShowTiposDocumento(false); setShowRequisitos(true); }} />}
+
+      {showFamiliasServicio && <FamiliasServicioPanel onClose={() => setShowFamiliasServicio(false)} />}
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
 
@@ -6399,6 +6589,7 @@ function Maestros() {
                     e.target.value = '';
                     try {
                       const parsed = await parseMstXlsx(f);
+                      setImportSummary(null);
                       setImportRows(validarImportMaestro(parsed));
                       setImportStep(2);
                     } catch (error) {
@@ -6433,26 +6624,41 @@ function Maestros() {
               )}
               {importStep === 2 && !esImportacionUnidades && (
                 <div>
+                  {importSummary && (
+                    <div className={importSummary.pendientesCargoInactivo || importSummary.fallidas ? 'alert alert-danger' : 'alert alert-success'} style={{ marginBottom: 12, fontSize: 12 }}>
+                      <strong>Resultado de la importación:</strong> {importSummary.creados} creados, {importSummary.reutilizados} reutilizados
+                      {importSummary.pendientesCargoInactivo ? ` y ${importSummary.pendientesCargoInactivo} pendiente(s) por cargo inactivo.` : '.'}
+                      {importSummary.pendientesCargoInactivo ? ' Las filas pendientes no se insertaron; resuélvelas explícitamente desde Maestros Base.' : ''}
+                    </div>
+                  )}
                   <p style={{marginBottom:12, fontSize:13}}>
                     <strong>{importRows.length} filas</strong> · {importRows.filter(r=>r._errores.length===0).length} válidas · {importRows.filter(r=>r._errores.length>0).length} con errores
                   </p>
                   <div style={{maxHeight:280, overflow:'auto'}}>
                     <table className="tbl">
                       <thead><tr><th>Fila</th><th>Nombre</th><th>Estado</th><th>Errores</th></tr></thead>
-                      <tbody>{importRows.map((r,i) => (
-                        <tr key={i} style={{background: r._errores.length>0 ? 'rgba(239,68,68,0.05)' : 'transparent'}}>
+                      <tbody>{importRows.map((r,i) => {
+                        const estado = r._estado || (r._errores.length === 0 ? 'OK' : 'ERROR');
+                        const esError = r._errores.length > 0;
+                        return (
+                        <tr key={i} style={{background: esError ? 'rgba(239,68,68,0.05)' : 'transparent'}}>
                           <td className="mono text-muted">{i+2}</td>
                           <td>{r.nombre}</td>
-                          <td>{r._errores.length===0 ? <span className="badge badge-green">OK</span> : <span className="badge badge-red">Error</span>}</td>
+                          <td>{esError ? <span className="badge badge-red">{estado}</span> : <span className="badge badge-green">{estado}</span>}</td>
                           <td style={{fontSize:11, color:'var(--danger)'}}>{r._errores.join(' · ')}</td>
                         </tr>
-                      ))}</tbody>
+                        );
+                      })}</tbody>
                     </table>
                   </div>
-                  <div style={{display:'flex', gap:10, marginTop:16}}>
+                  {!importSummary && <div style={{display:'flex', gap:10, marginTop:16}}>
                     <button className="btn btn-secondary" onClick={()=>setImportStep(1)}>← Volver</button>
                     <button className="btn btn-primary" disabled={!importRows.some(r=>r._errores.length===0)} onClick={()=>setImportStep(3)}>Confirmar importación →</button>
-                  </div>
+                  </div>}
+                  {importSummary && <div style={{display:'flex', gap:10, marginTop:16, justifyContent:'flex-end'}}>
+                    <button className="btn btn-secondary" onClick={() => { setImportSummary(null); setImportRows([]); setImportStep(1); }}>Importar otro archivo</button>
+                    <button className="btn btn-primary" onClick={() => setImportModal(false)}>Cerrar</button>
+                  </div>}
                 </div>
               )}
               {importStep === 3 && esImportacionUnidades && (
@@ -6500,7 +6706,7 @@ function Maestros() {
                     {I.trash} Eliminar seleccionados ({checkedIds.length})
                   </button>
                 )}
-                <button className="btn btn-secondary" onClick={() => { setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
+                <button className="btn btn-secondary" onClick={() => { setImportSummary(null); setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
                 {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>}
                 <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
                 {sel.id === 'mst_tipos_documento' && (
@@ -6531,6 +6737,8 @@ function Maestros() {
 function Servicios() {
   const { role, addNotificacion, empresa } = useApp();
   const [servicios, setServicios] = useState([]);
+  const [familiasServicio, setFamiliasServicio] = useState([]);
+  const [familiasLoading, setFamiliasLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [panelAbierto, setPanelAbierto] = useState(false);
   const [editando, setEditando] = useState(null);
@@ -6549,17 +6757,34 @@ function Servicios() {
     });
   }, [empresa?.id]);
 
+  useEffect(() => {
+    if (!empresa?.id) return;
+    setFamiliasLoading(true);
+    maestrosService.getFamiliasServicio(empresa.id)
+      .then(data => setFamiliasServicio(data || []))
+      .catch(err => {
+        console.error(err);
+        addNotificacion('Error cargando familias de servicio.', 'error');
+      })
+      .finally(() => setFamiliasLoading(false));
+  }, [empresa?.id]);
+
   const [modalImportar, setModalImportar] = useState(false);
-  const [tabImport, setTabImport] = useState('subir');
   const [importRows, setImportRows] = useState([]);
+  const [importSummary, setImportSummary] = useState(null);
 
   const formBase = { 
-    codigo: '', familia: '', descripcion: '', unidad: 'Servicio', 
+    codigo: '', familia_id: '', familia: '', descripcion: '', unidad: 'Servicio',
     moneda: 'PEN', costo: '', precio: '', estado: 'activo', facturable: true, 
     precio_incluido: false, detalle: '', entregables: [], notas_internas: '' 
   };
   const [form, setForm] = useState(formBase);
   const [nuevoEntregable, setNuevoEntregable] = useState('');
+  const familiaRapidaBase = { codigo: '', nombre: '', descripcion: '', orden: 0 };
+  const [creandoFamiliaRapida, setCreandoFamiliaRapida] = useState(false);
+  const [familiaRapida, setFamiliaRapida] = useState(familiaRapidaBase);
+  const [familiaRapidaError, setFamiliaRapidaError] = useState('');
+  const [guardandoFamiliaRapida, setGuardandoFamiliaRapida] = useState(false);
 
   const margenCalc = (c, p) => {
     const pc = Number(p), cc = Number(c);
@@ -6579,6 +6804,9 @@ function Servicios() {
     setNuevoEntregable(''); 
     setEditando(null); 
     setFormError('');
+    setCreandoFamiliaRapida(false);
+    setFamiliaRapida(familiaRapidaBase);
+    setFamiliaRapidaError('');
     setPanelAbierto(true); 
   };
   
@@ -6586,6 +6814,7 @@ function Servicios() {
     setForm({ 
       id: s.id,
       codigo: s.codigo || s.id || '',
+      familia_id: s.familia_id || '',
       familia: s.familia || 'Mantenimiento', 
       descripcion: s.descripcion || '', 
       unidad: s.unidad || 'Servicio', 
@@ -6602,12 +6831,64 @@ function Servicios() {
     setNuevoEntregable('');
     setEditando(s);
     setFormError('');
+    setCreandoFamiliaRapida(false);
+    setFamiliaRapida(familiaRapidaBase);
+    setFamiliaRapidaError('');
     setPanelAbierto(true);
   };
   
   const cerrar = () => { setPanelAbierto(false); setEditando(null); };
 
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
+
+  const familiasActivas = familiasServicio.filter(f => f.activo !== false);
+  const normalizarNombreFamilia = value => String(value || '').trim().toLocaleLowerCase('es-PE');
+  const seleccionarFamilia = (familiaId) => {
+    if (familiaId === '__nueva__') {
+      setCreandoFamiliaRapida(true);
+      setFamiliaRapida(familiaRapidaBase);
+      setFamiliaRapidaError('');
+      return;
+    }
+    const familia = familiasActivas.find(item => item.id === familiaId);
+    setForm(prev => ({
+      ...prev,
+      familia_id: familiaId || '',
+      familia: familia?.nombre || prev.familia,
+    }));
+    setCreandoFamiliaRapida(false);
+    setFamiliaRapidaError('');
+  };
+
+  const guardarFamiliaRapida = async () => {
+    const codigo = familiaRapida.codigo.trim();
+    const nombre = familiaRapida.nombre.trim();
+    if (!codigo || !nombre) {
+      setFamiliaRapidaError('Código y nombre son obligatorios.');
+      return;
+    }
+    setGuardandoFamiliaRapida(true);
+    setFamiliaRapidaError('');
+    try {
+      const creada = await maestrosService.crearFamiliaServicio(empresa.id, {
+        codigo,
+        nombre,
+        descripcion: familiaRapida.descripcion.trim() || null,
+        orden: Number(familiaRapida.orden) || 0,
+        activo: true,
+      });
+      setFamiliasServicio(prev => [...prev, creada].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0) || a.nombre.localeCompare(b.nombre, 'es')));
+      setForm(prev => ({ ...prev, familia_id: creada.id, familia: creada.nombre }));
+      setCreandoFamiliaRapida(false);
+      setFamiliaRapida(familiaRapidaBase);
+      addNotificacion('Familia creada y seleccionada.');
+    } catch (err) {
+      console.error(err);
+      setFamiliaRapidaError(err?.message || 'No se pudo crear la familia. Revisa que el código sea único.');
+    } finally {
+      setGuardandoFamiliaRapida(false);
+    }
+  };
 
   const agregarEntregable = () => {
     const txt = nuevoEntregable.trim();
@@ -6628,19 +6909,21 @@ function Servicios() {
       }
     }
     
-    if (form.facturable && !form.precio_incluido && Number(form.precio) <= 0) {
-      return setFormError('Si el servicio es facturable, el precio de referencia debe ser mayor a 0 (o estar incluido).');
+    const costo = form.costo === '' || form.costo == null ? null : Number(form.costo);
+    const precio = form.precio === '' || form.precio == null ? null : Number(form.precio);
+    if ((costo != null && !Number.isFinite(costo)) || (precio != null && !Number.isFinite(precio))) {
+      return setFormError('Costo y precio de referencia deben ser valores numéricos válidos.');
     }
 
-    const margen = margenCalc(form.costo, form.precio);
+    const margen = margenCalc(costo, precio);
     
     try {
       if (editando) {
-        const payload = { ...form, costo: Number(form.costo), precio: Number(form.precio), margen };
+        const payload = { ...form, familia_id: form.familia_id || null, costo, precio, margen };
         const saved = await maestrosService.actualizarServicio(editando.id, payload);
         setServicios(prev => prev.map(s => s.id === editando.id ? saved : s));
       } else {
-        const payload = { ...form, costo: Number(form.costo), precio: Number(form.precio), margen };
+        const payload = { ...form, familia_id: form.familia_id || null, costo, precio, margen };
         delete payload.id;
         const saved = await maestrosService.crearServicio(empresa.id, payload);
         setServicios(prev => [...prev, saved]);
@@ -6667,47 +6950,104 @@ function Servicios() {
   };
 
   const descargarPlantilla = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "codigo,nombre,familia,unidad,costo_ref,precio_ref,facturable,estado,entregables\n"
-      + "SRV-999,Mantenimiento Preventivo,Mantenimiento,Servicio,100,150,si,activo,Revision general|Cambio aceite\n";
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "plantilla_servicios.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const headers = ['codigo', 'nombre', 'familia', 'unidad', 'moneda', 'costo_ref', 'precio_ref', 'facturable', 'estado', 'entregables', 'notas_internas'];
+    const instrucciones = [
+      ['Plantilla de carga masiva de servicios'],
+      ['No modifiques los nombres de columna de la hoja "Plantilla".'],
+      [],
+      ['Columna', 'Descripción', 'Obligatorio'],
+      ['codigo', 'Código único por empresa.', 'Sí'],
+      ['nombre', 'Nombre o descripción del servicio.', 'Sí'],
+      ['familia', 'Nombre de una familia existente en Maestros Base. Se busca sin distinguir mayúsculas y con trim; si no coincide, se conserva el texto pero el servicio queda sin familia normalizada y se reporta una advertencia.', 'No'],
+      ['unidad', 'Texto libre; por ejemplo: Servicio, Hora, Día o Proyecto.', 'No'],
+      ['moneda', 'PEN o USD. Si se deja vacío se usa PEN.', 'No'],
+      ['costo_ref', 'Costo de referencia. Déjalo vacío cuando varíe por proyecto.', 'No'],
+      ['precio_ref', 'Precio de referencia. Puede quedar vacío aun si el servicio es facturable; se puede definir después en Hoja de Costeo o Cotización.', 'No'],
+      ['facturable', 'Sí o No. Si se deja vacío se interpreta como Sí.', 'No'],
+      ['estado', 'Activo o Inactivo. Si se deja vacío se usa Activo.', 'No'],
+      ['entregables', 'Lista de entregables separados por punto y coma (;).', 'No'],
+      ['notas_internas', 'Notas internas opcionales para ventas o cotizaciones.', 'No'],
+    ];
+    const ejemplos = [
+      ['SRV-001', 'Mantenimiento preventivo mensual de excavadora', 'Mantenimiento Preventivo', 'Servicio', 'PEN', 850, 1200, 'Sí', 'Activo', 'Informe técnico;Checklist firmado', ''],
+      ['SRV-002', 'Reparación de falla hidráulica en cargador frontal', 'Mantenimiento Correctivo', 'Hora', 'PEN', '', '', 'Sí', 'Activo', 'Informe de diagnóstico', ''],
+      ['SRV-003', 'Análisis de vibración en motor diésel', 'Mantenimiento Predictivo', 'Visita', 'PEN', 320, 480, 'Sí', 'Activo', 'Reporte de análisis', ''],
+      ['SRV-004', 'Overhaul de transmisión de volquete', 'Overhaul', 'Proyecto', 'PEN', '', '', 'Sí', 'Activo', 'Componente reconstruido;Garantía 6 meses', ''],
+      ['SRV-005', 'Alquiler de retroexcavadora con operador', 'Alquiler de Equipos', 'Día', 'PEN', 950, 1400, 'Sí', 'Activo', '', ''],
+      ['SRV-006', 'Suministro de filtros y lubricantes', 'Suministro de Repuestos', 'Servicio', 'PEN', '', '', 'Sí', 'Activo', 'Guía de remisión', ''],
+      ['SRV-007', 'Inspección técnica anual de grúa', 'Inspección Técnica', 'Visita', 'PEN', 450, 650, 'Sí', 'Activo', 'Certificado de inspección', ''],
+      ['SRV-008', 'Instalación de sistema GPS en flota', 'Instalación y Puesta en Marcha', 'Proyecto', 'PEN', 2500, 3800, 'Sí', 'Activo', 'Manual de usuario;Capacitación básica', ''],
+      ['SRV-009', 'Fabricación de estructura metálica para tolva', 'Soldadura y Fabricación', 'Proyecto', 'PEN', '', '', 'Sí', 'Activo', 'Plano as-built', ''],
+      ['SRV-010', 'Atención de emergencia fuera de horario', 'Emergencia', 'Hora', 'PEN', 180, 280, 'Sí', 'Activo', '', ''],
+      ['SRV-011', 'Traslado de maquinaria pesada entre obras', 'Transporte', 'Servicio', 'PEN', '', '', 'Sí', 'Activo', 'Guía de transporte', ''],
+      ['SRV-012', 'Capacitación en operación segura de montacargas', 'Capacitación', 'Servicio', 'PEN', 600, 900, 'Sí', 'Activo', 'Certificado de capacitación', ''],
+      ['SRV-013', 'Diagnóstico de flota y plan de mantenimiento', 'Consultoría Técnica', 'Proyecto', 'PEN', 1800, 2700, 'Sí', 'Activo', 'Informe con recomendaciones', ''],
+      ['SRV-014', 'Auditoría de seguridad en planta', 'HSE', 'Visita', 'PEN', 700, 1050, 'Sí', 'Activo', 'Informe de hallazgos', ''],
+      ['SRV-015', 'Supervisión técnica de montaje de equipo', 'Supervisión', 'Día', 'PEN', 500, 750, 'Sí', 'Activo', 'Reporte diario', ''],
+      ['SRV-016', 'Servicio no clasificado (uso general)', 'General', 'Servicio', 'PEN', '', '', 'No', 'Activo', '', ''],
+    ];
+    const libro = XLSX.utils.book_new();
+    const hojaInstrucciones = XLSX.utils.aoa_to_sheet(instrucciones);
+    const hojaPlantilla = XLSX.utils.aoa_to_sheet([headers]);
+    const hojaEjemplo = XLSX.utils.aoa_to_sheet([headers, ...ejemplos]);
+    hojaInstrucciones['!cols'] = [{ wch: 18 }, { wch: 105 }, { wch: 14 }];
+    hojaPlantilla['!cols'] = [14, 46, 30, 16, 12, 16, 16, 14, 14, 42, 42].map(wch => ({ wch }));
+    hojaEjemplo['!cols'] = hojaPlantilla['!cols'];
+    hojaPlantilla['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}1` };
+    hojaEjemplo['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}${ejemplos.length + 1}` };
+    XLSX.utils.book_append_sheet(libro, hojaInstrucciones, 'Instrucciones');
+    XLSX.utils.book_append_sheet(libro, hojaPlantilla, 'Plantilla');
+    XLSX.utils.book_append_sheet(libro, hojaEjemplo, 'Ejemplo');
+    XLSX.writeFile(libro, 'plantilla_carga_servicios.xlsx');
   };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (familiasLoading) {
+      addNotificacion('Espera a que se carguen las familias antes de importar.', 'info');
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const text = evt.target.result;
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-      if (lines.length < 2) return;
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const libro = XLSX.read(evt.target.result, { type: 'array' });
+      const nombreHoja = libro.SheetNames.includes('Plantilla') ? 'Plantilla' : libro.SheetNames[0];
+      const hoja = libro.Sheets[nombreHoja];
+      const filas = XLSX.utils.sheet_to_json(hoja, { defval: '', raw: false });
+      if (!filas.length) return;
       const rowsParsed = [];
-      for(let i=1; i<lines.length; i++){
-        const cols = lines[i].split(',').map(c => c.trim());
-        const row = {};
-        headers.forEach((h, j) => { row[h] = cols[j] || ''; });
+      for (const [index, fila] of filas.entries()) {
+        const row = Object.fromEntries(Object.entries(fila).map(([key, value]) => [key.trim().toLowerCase(), value]));
         
         const errors = [];
         if (!row.codigo) errors.push('Código vacío');
         else if (servicios.some(s => s.codigo === row.codigo) || rowsParsed.some(r => r.codigo === row.codigo)) errors.push('Código duplicado');
         if (!row.nombre) errors.push('Nombre vacío');
         
-        const facturable = row.facturable?.toLowerCase() !== 'no';
-        const precio = Number(row.precio_ref) || 0;
-        if (facturable && precio <= 0) errors.push('Precio requerido si es facturable');
+        const facturable = String(row.facturable || '').toLowerCase() !== 'no';
+        const familiaTexto = String(row.familia || 'General').trim() || 'General';
+        const coincidencias = familiasServicio.filter(f => normalizarNombreFamilia(f.nombre) === normalizarNombreFamilia(familiaTexto));
+        const advertencias = coincidencias.length === 1
+          ? []
+          : [coincidencias.length > 1
+            ? `Familia "${familiaTexto}" es ambigua (${coincidencias.length} coincidencias); se importará sin familia normalizada.`
+            : `Familia "${familiaTexto}" no existe en Maestros Base; se importará sin familia normalizada.`];
         
-        rowsParsed.push({ ...row, facturable, _errores: errors });
+        rowsParsed.push({
+          ...row,
+          familia: familiaTexto,
+          familia_id: coincidencias.length === 1 ? coincidencias[0].id : null,
+          facturable,
+          _fila: index + 2,
+          _errores: errors,
+          _advertencias: advertencias,
+        });
       }
+      setImportSummary(null);
       setImportRows(rowsParsed);
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -6717,15 +7057,17 @@ function Servicios() {
     const nuevos = validRows.map(r => ({
       codigo: r.codigo,
       descripcion: r.nombre,
+      familia_id: r.familia_id || null,
       familia: r.familia || 'General',
       unidad: r.unidad || 'Servicio',
       moneda: r.moneda && String(r.moneda).toUpperCase() === 'USD' ? 'USD' : 'PEN',
-      costo: Number(r.costo_ref) || 0,
-      precio: Number(r.precio_ref) || 0,
+      costo: r.costo_ref === '' || r.costo_ref == null ? null : Number(r.costo_ref),
+      precio: r.precio_ref === '' || r.precio_ref == null ? null : Number(r.precio_ref),
       facturable: r.facturable,
       estado: r.estado === 'inactivo' ? 'inactivo' : 'activo',
       margen: margenCalc(r.costo_ref, r.precio_ref),
-      entregables: r.entregables ? r.entregables.split('|').filter(Boolean) : []
+      entregables: r.entregables ? String(r.entregables).split(';').map(entregable => entregable.trim()).filter(Boolean) : [],
+      notas_internas: r.notas_internas || '',
     }));
     
     try {
@@ -6733,9 +7075,9 @@ function Servicios() {
       await maestrosService.importarServiciosMasivo(empresa.id, nuevos);
       const data = await maestrosService.getServicios(empresa.id);
       setServicios(data || []);
-      addNotificacion(`Se importaron ${nuevos.length} servicios exitosamente.`);
-      setModalImportar(false);
-      setImportRows([]);
+      const advertencias = validRows.flatMap(r => r._advertencias?.map(mensaje => ({ fila: r._fila, codigo: r.codigo, mensaje })) || []);
+      setImportSummary({ importados: nuevos.length, advertencias });
+      addNotificacion(`Se importaron ${nuevos.length} servicios exitosamente.${advertencias.length ? ` ${advertencias.length} requieren revisar su familia.` : ''}`);
     } catch (err) {
       console.error(err);
       addNotificacion('Error durante la importación masiva.', 'error');
@@ -6743,9 +7085,6 @@ function Servicios() {
       setLoading(false);
     }
   };
-
-  const familiasMst = ['Mantenimiento', 'Implementación', 'Supervisión', 'Suministro', 'Consultoría', 'General'];
-  const familiasOpciones = [...new Set([...familiasMst, ...servicios.map(s => s.familia).filter(Boolean)])].sort();
 
   return (
     <>
@@ -6755,7 +7094,7 @@ function Servicios() {
           <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
         </div>
         <div className="row">
-          <button className="btn btn-secondary" onClick={() => { setModalImportar(true); setTabImport('subir'); setImportRows([]); }}>{I.download} Carga masiva</button>
+          <button className="btn btn-secondary" onClick={() => { setModalImportar(true); setImportRows([]); setImportSummary(null); }}>{I.download} Carga masiva</button>
           <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
         </div>
       </div>
@@ -6790,8 +7129,8 @@ function Servicios() {
                     {s.entregables?.length > 0 && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>· <span className="badge badge-gray">{s.entregables.length} entregables</span></span>}
                   </td>
                   <td>{s.unidad}</td>
-                  {verCostos && <td className="mono text-muted">{money(s.costo, s.moneda === 'USD' ? '$' : 'S/')}</td>}
-                  {verPrecios && <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : money(s.precio, s.moneda === 'USD' ? '$' : 'S/')}</td>}
+                  {verCostos && <td className="mono text-muted">{s.costo == null ? 'Sin estimar' : money(s.costo, s.moneda === 'USD' ? '$' : 'S/')}</td>}
+                  {verPrecios && <td className="mono" style={{fontWeight:600}}>{s.precio_incluido ? <span className="badge badge-gray">Incluido</span> : (s.precio == null ? 'Sin estimar' : money(s.precio, s.moneda === 'USD' ? '$' : 'S/'))}</td>}
                   {(verCostos || verPrecios) && <td><span className="badge badge-cyan">{s.margen}%</span></td>}
                   <td>{s.facturable ? <span className="badge badge-green">Sí</span> : <span className="badge badge-gray">No</span>}</td>
                   <td><span className={`badge ${s.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{s.estado}</span></td>
@@ -6827,11 +7166,27 @@ function Servicios() {
               </div>
               <div className="input-group">
                 <label>Familia / Categoría</label>
-                <input className="input" list="familias-list" value={form.familia} onChange={e => upd('familia', e.target.value)} placeholder="Selecciona o escribe..." />
-                <datalist id="familias-list">
-                  {familiasOpciones.map(f => <option key={f} value={f} />)}
-                </datalist>
+                <select className="select" value={form.familia_id} onChange={e => seleccionarFamilia(e.target.value)} disabled={familiasLoading}>
+                  <option value="">{familiasLoading ? 'Cargando familias...' : 'Seleccionar familia...'}</option>
+                  {familiasActivas.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                  <option value="__nueva__">+ Nueva familia...</option>
+                </select>
+                {!form.familia_id && form.familia && !creandoFamiliaRapida && <div className="text-muted" style={{fontSize:11, marginTop:5}}>Familia histórica: {form.familia}. Selecciona una familia normalizada.</div>}
               </div>
+              {creandoFamiliaRapida && <div className="card" style={{gridColumn:'1/-1', padding:14, background:'var(--bg-subtle)'}}>
+                <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Nueva familia</div>
+                {familiaRapidaError && <div className="alert alert-danger" style={{marginBottom:10}}>{familiaRapidaError}</div>}
+                <div className="grid-2" style={{gap:10}}>
+                  <div className="input-group"><label>Código *</label><input className="input" value={familiaRapida.codigo} onChange={e => setFamiliaRapida(prev => ({...prev, codigo:e.target.value}))} placeholder="FAM-017" /></div>
+                  <div className="input-group"><label>Nombre *</label><input className="input" value={familiaRapida.nombre} onChange={e => setFamiliaRapida(prev => ({...prev, nombre:e.target.value}))} placeholder="Ej: Servicios especializados" /></div>
+                  <div className="input-group"><label>Orden</label><input className="input" type="number" value={familiaRapida.orden} onChange={e => setFamiliaRapida(prev => ({...prev, orden:e.target.value}))} /></div>
+                  <div className="input-group"><label>Descripción</label><input className="input" value={familiaRapida.descripcion} onChange={e => setFamiliaRapida(prev => ({...prev, descripcion:e.target.value}))} placeholder="Opcional" /></div>
+                </div>
+                <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setCreandoFamiliaRapida(false); setFamiliaRapidaError(''); }}>Cancelar</button>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={guardandoFamiliaRapida} onClick={guardarFamiliaRapida}>{guardandoFamiliaRapida ? 'Creando...' : 'Crear y seleccionar'}</button>
+                </div>
+              </div>}
               <div className="input-group" style={{gridColumn:'1/-1'}}>
                 <label>Descripción (nombre del servicio) *</label>
                 <input className="input" value={form.descripcion} onChange={e => upd('descripcion', e.target.value)} placeholder="Ej: Mantenimiento preventivo mensual" autoFocus />
@@ -6864,11 +7219,11 @@ function Servicios() {
                   </div>
                   <div className="input-group">
                     <label>Costo de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
-                    <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="0.00" disabled={!verCostos || form.precio_incluido} />
+                    <input className="input" type="number" min="0" step="0.01" value={form.costo} onChange={e => upd('costo', e.target.value)} placeholder="Sin estimar" disabled={!verCostos || form.precio_incluido} />
                   </div>
                   <div className="input-group">
                     <label>Precio de referencia ({form.moneda === 'USD' ? '$' : 'S/'})</label>
-                    <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="0.00" disabled={!verPrecios || form.precio_incluido} />
+                    <input className="input" type="number" min="0" step="0.01" value={form.precio} onChange={e => upd('precio', e.target.value)} placeholder="Sin estimar" disabled={!verPrecios || form.precio_incluido} />
                   </div>
                   {!form.precio_incluido && (Number(form.costo) > 0 || Number(form.precio) > 0) && (
                     <div className="input-group" style={{gridColumn:'1/-1', display:'flex', flexDirection:'row', alignItems:'center', gap:10}}>
@@ -6925,29 +7280,18 @@ function Servicios() {
               <button className="icon-btn" onClick={() => setModalImportar(false)}>{I.x}</button>
             </div>
             
-            <div style={{padding:'0 24px'}}>
-              <div className="tabs">
-                <div className={'tab '+(tabImport==='subir'?'active':'')} onClick={()=>setTabImport('subir')}>Subir archivo</div>
-                <div className={'tab '+(tabImport==='plantilla'?'active':'')} onClick={()=>setTabImport('plantilla')}>Descargar plantilla</div>
-              </div>
-            </div>
-
             <div className="side-panel-body" style={{padding:'24px', maxHeight:'calc(100vh - 140px)', overflowY:'auto'}}>
-              {tabImport === 'plantilla' ? (
-                <div className="col" style={{gap:16, alignItems:'center', padding:'40px 20px', textAlign:'center'}}>
-                  <div style={{fontSize:48}}>📄</div>
-                  <h3 style={{margin:0}}>Plantilla CSV de Servicios</h3>
-                  <p className="text-muted" style={{maxWidth:400}}>Descarga este archivo como guía. No modifiques los nombres de las columnas en la primera fila para asegurar una correcta importación.</p>
-                  <button className="btn btn-primary" onClick={descargarPlantilla}>{I.download} Descargar plantilla CSV</button>
-                </div>
-              ) : (
-                <div className="col" style={{gap:20}}>
+              <div className="row" style={{gap:10, marginBottom:20}}>
+                <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
+                <button className="btn btn-primary" disabled={familiasLoading} onClick={() => document.getElementById('servicios-xlsx-upload').click()}>{familiasLoading ? 'Cargando familias...' : '⬆️ Subir archivo'}</button>
+                <input id="servicios-xlsx-upload" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{display:'none'}} onChange={handleFileUpload} />
+              </div>
+              <div className="col" style={{gap:20}}>
                   {!importRows.length ? (
-                    <div style={{border:'2px dashed var(--border)', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer'}} onClick={() => document.getElementById('csv-upload').click()}>
+                    <div style={{border:'2px dashed var(--border)', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer'}} onClick={() => document.getElementById('servicios-xlsx-upload').click()}>
                       <div style={{fontSize:40, marginBottom:16, color:'var(--fg-muted)'}}>⬆️</div>
-                      <h4 style={{margin:0}}>Selecciona un archivo CSV</h4>
-                      <p className="text-muted" style={{marginTop:8, fontSize:13}}>Los archivos XLSX deben guardarse primero como CSV (delimitado por comas).</p>
-                      <input id="csv-upload" type="file" accept=".csv" style={{display:'none'}} onChange={handleFileUpload} />
+                      <h4 style={{margin:0}}>Selecciona un archivo Excel (.xlsx)</h4>
+                      <p className="text-muted" style={{marginTop:8, fontSize:13}}>Usa la hoja "Plantilla" y conserva los nombres de columna.</p>
                     </div>
                   ) : (
                     <>
@@ -6955,7 +7299,7 @@ function Servicios() {
                         <div>
                           <strong>{importRows.length} filas analizadas</strong>
                           <div className="text-muted" style={{fontSize:12}}>
-                            {importRows.filter(r => r._errores.length===0).length} válidas, {importRows.filter(r => r._errores.length>0).length} con errores
+                            {importRows.filter(r => r._errores.length===0).length} válidas, {importRows.filter(r => r._errores.length>0).length} con errores, {importRows.filter(r => r._advertencias?.length).length} con advertencias de familia
                           </div>
                         </div>
                         <button className="btn btn-secondary btn-sm" onClick={() => setImportRows([])}>Subir otro archivo</button>
@@ -6975,6 +7319,7 @@ function Servicios() {
                               <th>Estado</th>
                               <th>Entregables</th>
                               <th>Errores</th>
+                              <th>Advertencias</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -6997,20 +7342,27 @@ function Servicios() {
                                     <span style={{color:'var(--green)', fontSize:12}}>OK</span>
                                   )}
                                 </td>
+                                <td>{r._advertencias?.length ? <span style={{color:'var(--orange)', fontSize:12}}>{r._advertencias.join(' ')}</span> : <span className="text-muted">—</span>}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
+                      {importSummary && <div className="alert alert-success" style={{marginTop:14}}>
+                        <strong>{importSummary.importados} servicios importados.</strong>
+                        {importSummary.advertencias.length > 0 ? <>
+                          <div style={{marginTop:8}}>Los siguientes servicios conservaron el texto original, pero quedaron con <code>familia_id = NULL</code>:</div>
+                          <ul style={{margin:'8px 0 0 18px'}}>{importSummary.advertencias.map((a, i) => <li key={`${a.fila}-${i}`}>Fila {a.fila} ({a.codigo}): {a.mensaje}</li>)}</ul>
+                        </> : <div style={{marginTop:8}}>Todas las familias se normalizaron correctamente.</div>}
+                      </div>}
                       <div className="row" style={{justifyContent:'flex-end'}}>
-                        <button className="btn btn-primary" onClick={ejecutarImportacion} disabled={!importRows.some(r => r._errores.length===0)}>
+                        <button className="btn btn-primary" onClick={ejecutarImportacion} disabled={Boolean(importSummary) || !importRows.some(r => r._errores.length===0)}>
                           Importar {importRows.filter(r => r._errores.length===0).length} filas válidas
                         </button>
                       </div>
                     </>
                   )}
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </>
@@ -13105,7 +13457,7 @@ function RRHHAdmin() {
                 </select>
                 {formAlta.cargo_id==='__nuevo__' && <div style={{display:'flex',gap:6,marginTop:6}}>
                   <input className="input" value={nuevoCargoTextoAdmin} onChange={e=>setNuevoCargoTextoAdmin(e.target.value)} placeholder="Nombre del nuevo cargo" autoFocus/>
-                  <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoAdmin.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoAdmin.trim(),tipo:'Administrativo',estado:'activo'});setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoAdmin('');}}>Crear</button>
+                  <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoAdmin.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoAdmin.trim(),tipo:'Administrativo',estado:'activo'});if(!c)return;setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoAdmin('');}}>Crear</button>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
                 </div>}
               </div>

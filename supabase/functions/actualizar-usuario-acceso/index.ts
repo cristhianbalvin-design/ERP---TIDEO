@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import { assertRoleAssignment, assertUserPermission } from "../_shared/rolePermissions.ts";
 import { normalizeGrantedSocietyScope, type GrantedSocietyScope } from "../_shared/sociedadScope.ts";
 
 const cors = {
@@ -351,6 +352,11 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "Usuario, empresa, nombre, email y rol son obligatorios." }, 400);
   }
 
+  const userPermission = await assertUserPermission(userClient, empresaId, "editar");
+  if (!userPermission.allowed) {
+    return jsonResponse({ success: false, error: userPermission.error }, 403);
+  }
+
   const { data: memberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
     .select("empresa_id, estado, roles!inner(id, empresa_id, es_admin_empresa, es_superadmin)")
@@ -391,15 +397,6 @@ serve(async (req) => {
   });
   const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
 
-  const canManage = callerIsPlatformSuperadmin || (memberships || []).some((membership) => {
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
-    return membership.empresa_id === empresaId && role?.es_admin_empresa;
-  });
-
-  if (!canManage) {
-    return jsonResponse({ success: false, error: "No tienes permiso para editar usuarios en este tenant." }, 403);
-  }
-
   let societyScope: GrantedSocietyScope;
   try {
     societyScope = await normalizeGrantedSocietyScope({
@@ -437,6 +434,14 @@ serve(async (req) => {
   if (roleRow.empresa_id !== empresaId) {
     return jsonResponse({ success: false, error: "El rol seleccionado no pertenece a este tenant." }, 400);
   }
+
+  if (currentMembership?.rol_id !== roleRow.id) {
+    const roleAssignment = await assertRoleAssignment(userClient, empresaId, roleRow.id, "editar");
+    if (!roleAssignment.allowed) {
+      return jsonResponse({ success: false, error: roleAssignment.error }, 403);
+    }
+  }
+
   if (roleRow.es_superadmin && !(callerIsPlatformSuperadmin && targetEmpresa.es_plataforma && email === PLATFORM_SUPERADMIN_EMAIL)) {
     return jsonResponse({ success: false, error: "El rol Superadmin TIDEO solo corresponde al usuario de plataforma autorizado." }, 403);
   }

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { MOCK } from './data.js';
+import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
@@ -10,7 +10,8 @@ import {
   finanzasService,
   resolverCondicionPagoCxC,
 } from './services/finanzasService.js';
-import { maestrosService } from './services/maestrosService.js';
+import { clasificarCoincidenciasCargo, maestrosService, normalizarNombreCargo } from './services/maestrosService.js';
+import { CargoCreationDialog } from './components/CargoCreationDialog.jsx';
 import { comprasService, devolucionesService } from './services/comprasService.js';
 import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { registrarTransferenciaIntercompania } from './services/transferenciasIntercompaniaService.js';
@@ -413,6 +414,8 @@ export function AppProvider({ children }) {
   // Maestros Base Data
   const [areasEmpresa, setAreasEmpresa] = useState([]);
   const [cargos, setCargos] = useState([]);
+  const [cargoCreationRequest, setCargoCreationRequest] = useState(null);
+  const [cargoCreationSaving, setCargoCreationSaving] = useState(false);
   const [tiposContrato, setTiposContrato] = useState([]);
   const [tiposDocumento, setTiposDocumento] = useState(useSupabase ? [] : (MOCK.tiposDocumento || []));
   const [requisitosCargo, setRequisitosCargo] = useState(useSupabase ? [] : (MOCK.requisitosCargo || []));
@@ -6966,15 +6969,90 @@ export function AppProvider({ children }) {
     setTiposContrato(prev => prev.filter(a => a.id !== id));
   };
 
-  const crearCargo = async (cargo) => {
+  const guardarCargoNuevo = async (cargo, { permitirDuplicado = false } = {}) => {
     if (isSupabaseConfigured() && empresa?.id) {
-      const data = await maestrosService.crearCargo(empresa.id, cargo);
-      setCargos(prev => [data, ...prev]);
-      return data;
-    } else {
-      const nuevo = { ...cargo, id: generateId('car'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
-      setCargos(prev => [nuevo, ...prev]);
-      return nuevo;
+      const resultado = await maestrosService.crearCargo(empresa.id, cargo, { permitirDuplicado });
+      if (resultado.estado === 'creado') setCargos(prev => [resultado.cargo, ...prev]);
+      return resultado;
+    }
+
+    const coincidencias = cargos.filter(item => (
+      normalizarNombreCargo(item.nombre) === normalizarNombreCargo(cargo?.nombre)
+    ));
+    const clasificacion = clasificarCoincidenciasCargo(coincidencias);
+    if (!permitirDuplicado && clasificacion) return clasificacion;
+
+    const nuevo = { ...cargo, id: generateId('car'), empresa_id: empresa?.id, created_at: new Date().toISOString() };
+    setCargos(prev => [nuevo, ...prev]);
+    return { estado: 'creado', cargo: nuevo };
+  };
+
+  const crearCargo = async (cargo, { origen = 'interactivo' } = {}) => {
+    const resultado = await guardarCargoNuevo(cargo);
+    if (resultado.estado === 'creado') {
+      return origen === 'importacion' ? { resultado: 'creado', cargo: resultado.cargo } : resultado.cargo;
+    }
+
+    if (origen === 'importacion') {
+      // La importacion de Maestros Base no abre un dialogo por fila. Si hay uno activo
+      // se reutiliza; si solo existen inactivos, la fila de CARGO no se inserta y se
+      // devuelve como pendiente prioritario para una decision manual posterior.
+      if (resultado.estado === 'coincidencia_activa') return { resultado: 'reutilizado', cargo: resultado.activas[0] };
+      return { resultado: 'omitido_inactivo', inactivas: resultado.inactivas };
+    }
+
+    return new Promise(resolve => {
+      setCargoCreationRequest({
+        id: generateId('cargo-create-request'),
+        empresaId: empresa?.id,
+        cargo,
+        nombre: String(cargo?.nombre || '').trim(),
+        activas: resultado.activas || [],
+        inactivas: resultado.inactivas || [],
+        resolve,
+      });
+    });
+  };
+
+  const cancelarCreacionCargo = () => {
+    if (cargoCreationSaving || !cargoCreationRequest) return;
+    cargoCreationRequest.resolve(null);
+    setCargoCreationRequest(null);
+  };
+
+  const resolverCreacionCargo = async ({ accion, cargoId }) => {
+    const solicitud = cargoCreationRequest;
+    if (!solicitud || cargoCreationSaving) return;
+    setCargoCreationSaving(true);
+    try {
+      let cargoResuelto = null;
+      if (accion === 'reutilizar') {
+        cargoResuelto = solicitud.activas.find(item => item.id === cargoId) || null;
+      } else if (accion === 'reactivar') {
+        if (isSupabaseConfigured() && solicitud.empresaId) {
+          cargoResuelto = await maestrosService.reactivarCargo(solicitud.empresaId, cargoId);
+          setCargos(prev => prev.map(item => item.id === cargoResuelto.id ? cargoResuelto : item));
+        } else {
+          setCargos(prev => prev.map(item => {
+            if (item.id !== cargoId) return item;
+            cargoResuelto = { ...item, estado: 'activo' };
+            return cargoResuelto;
+          }));
+        }
+        addNotificacion('Cargo reactivado. Verifica en Organigrama si tiene posiciones activas antes de asignarlo.');
+      } else if (accion === 'crear_duplicado') {
+        const resultado = await guardarCargoNuevo(solicitud.cargo, { permitirDuplicado: true });
+        cargoResuelto = resultado.cargo;
+      }
+
+      if (!cargoResuelto) throw new Error('No se pudo resolver el cargo seleccionado.');
+      solicitud.resolve(cargoResuelto);
+      setCargoCreationRequest(null);
+    } catch (error) {
+      console.error('Error al resolver coincidencia de cargo:', error);
+      addNotificacion(`No se pudo resolver la coincidencia del cargo: ${error?.message || 'Error desconocido'}`);
+    } finally {
+      setCargoCreationSaving(false);
     }
   };
   const actualizarCargo = async (id, datos) => {
@@ -9433,13 +9511,25 @@ export function AppProvider({ children }) {
     addNotificacion('Cuadrilla eliminada');
   };
 
-  const clonarRol = (rolId, nuevoNombre) => {
+  const clonarRol = (rolId, nuevoNombre, accesoTecnico = {}) => {
     const source = rolesCtx[rolId];
     if (!source) { addNotificacion('Rol origen no encontrado.', 'error'); return; }
+    const origenProtegido = Boolean(source.es_admin_empresa || source.es_superadmin);
+    if (origenProtegido && !esSuperadminPlataforma) {
+      addNotificacion('No puedes clonar un rol con acceso técnico protegido.', 'error');
+      return null;
+    }
+    const banderasTecnicas = esSuperadminPlataforma ? {
+      es_admin_empresa: Boolean(accesoTecnico.es_admin_empresa),
+      es_superadmin: Boolean(accesoTecnico.es_superadmin && empresa?.id === 'emp_tideo' && empresa?.es_plataforma),
+    } : {
+      es_admin_empresa: false,
+      es_superadmin: false,
+    };
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
       : `rol_${Math.random().toString(36).slice(2, 7)}`;
-    const nuevo = { ...source, nombre: nuevoNombre, descripcion: `Copia de ${source.nombre}` };
+    const nuevo = { ...source, ...banderasTecnicas, nombre: nuevoNombre, descripcion: `Copia de ${source.nombre}` };
     setRolesCtx(prev => ({ ...prev, [newId]: nuevo }));
     if (isSupabaseConfigured() && empresa?.id) {
       rolesService.crearRol({
@@ -9449,8 +9539,7 @@ export function AppProvider({ children }) {
         descripcion: `Copia de ${source.nombre}`,
         categoria: source.categoria || 'otro',
         nivel_jerarquico: source.nivel_jerarquico || 'operativo',
-        es_superadmin: false,
-        es_admin_empresa: Boolean(source.es_admin_empresa),
+        ...(esSuperadminPlataforma ? banderasTecnicas : {}),
         activo: true,
       }).then(() => {
         const permisos = buildPermisosPayload(source.permisos || {});
@@ -9469,8 +9558,12 @@ export function AppProvider({ children }) {
     return current === true || permisos?.todo;
   };
 
+  const puedeConfigurarPlataforma = Boolean(empresa?.id === 'emp_tideo' && empresa?.es_plataforma);
+
   const buildPermisosPayload = (permisos = {}) => [
-    ...MOCK.pantallasPermisos.map(p => {
+    ...MOCK.pantallasPermisos
+      .filter(p => puedeConfigurarPlataforma || !PLATFORM_PERMISSION_SCREENS.has(p.key))
+      .map(p => {
       const soloVer = p.solo_ver === true;
       return {
         pantalla: p.key,
@@ -9569,7 +9662,11 @@ export function AppProvider({ children }) {
     const newId = isSupabaseConfigured() && empresa?.id
       ? `rol_${empresa.id}_${Math.random().toString(36).slice(2, 7)}`
       : `rol_${Math.random().toString(36).slice(2, 7)}`;
-    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', categoria: rolData.categoria || 'otro', nivel_jerarquico: rolData.nivel_jerarquico || 'operativo', color: 'blue', permisos: { ver: [] } } }));
+    const banderasTecnicas = esSuperadminPlataforma ? {
+      es_admin_empresa: Boolean(rolData.es_admin_empresa),
+      es_superadmin: Boolean(rolData.es_superadmin && empresa?.id === 'emp_tideo' && empresa?.es_plataforma),
+    } : {};
+    setRolesCtx(prev => ({ ...prev, [newId]: { nombre: rolData.nombre, descripcion: rolData.descripcion || '', categoria: rolData.categoria || 'otro', nivel_jerarquico: rolData.nivel_jerarquico || 'operativo', color: 'blue', permisos: { ver: [] }, ...banderasTecnicas } }));
     if (isSupabaseConfigured() && empresa?.id) {
       try {
         await rolesService.crearRol({
@@ -9579,8 +9676,7 @@ export function AppProvider({ children }) {
           descripcion: rolData.descripcion || '',
           categoria: rolData.categoria || 'otro',
           nivel_jerarquico: rolData.nivel_jerarquico || 'operativo',
-          es_superadmin: false,
-          es_admin_empresa: false,
+          ...banderasTecnicas,
           activo: true,
         });
         await rolesService.actualizarPermisos(newId, buildPermisosPayload({ ver: [] }));
@@ -9615,9 +9711,40 @@ export function AppProvider({ children }) {
   };
 
   const editarRol = (rolId, datos) => {
-    setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...datos } }));
+    const rolActual = rolesCtx[rolId];
+    const intentaEditarAccesoTecnico = (
+      Object.prototype.hasOwnProperty.call(datos, 'es_admin_empresa')
+      || Object.prototype.hasOwnProperty.call(datos, 'es_superadmin')
+    );
+    let datosActualizados = datos;
+
+    if (intentaEditarAccesoTecnico) {
+      const { es_admin_empresa, es_superadmin, ...datosSinAccesoTecnico } = datos;
+      if (!esSuperadminPlataforma) {
+        datosActualizados = datosSinAccesoTecnico;
+      } else {
+        const empresaDelRolId = rolActual?.empresa_id || empresa?.id;
+        const empresaDelRol = empresaDelRolId === empresa?.id
+          ? empresa
+          : (empresasPlataforma || []).find(item => item.id === empresaDelRolId);
+        const puedeSerSuperadmin = Boolean(
+          empresaDelRol?.id === 'emp_tideo' && empresaDelRol?.es_plataforma
+        );
+        datosActualizados = {
+          ...datosSinAccesoTecnico,
+          ...(Object.prototype.hasOwnProperty.call(datos, 'es_admin_empresa')
+            ? { es_admin_empresa: Boolean(es_admin_empresa) }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(datos, 'es_superadmin')
+            ? { es_superadmin: Boolean(es_superadmin && puedeSerSuperadmin) }
+            : {}),
+        };
+      }
+    }
+
+    setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...datosActualizados } }));
     if (isSupabaseConfigured()) {
-      rolesService.actualizarRol(rolId, datos).catch(error => {
+      rolesService.actualizarRol(rolId, datosActualizados).catch(error => {
         addNotificacion(`No se pudo actualizar el rol en Supabase: ${error.message}`, 'error');
       });
     }
@@ -10386,6 +10513,12 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={contextValue}>
       {children}
+      <CargoCreationDialog
+        solicitud={cargoCreationRequest}
+        guardando={cargoCreationSaving}
+        onResolver={resolverCreacionCargo}
+        onCancelar={cancelarCreacionCargo}
+      />
     </AppContext.Provider>
   );
 }

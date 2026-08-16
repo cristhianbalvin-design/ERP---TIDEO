@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "@supabase/supabase-js";
+import { assertRoleAssignment, assertUserPermission } from "../_shared/rolePermissions.ts";
 import { normalizeGrantedSocietyScope, type GrantedSocietyScope } from "../_shared/sociedadScope.ts";
 
 const cors = {
@@ -302,6 +303,11 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "Nombre, email, empresa y rol son obligatorios." }, 400);
   }
 
+  const userPermission = await assertUserPermission(userClient, empresaId, "crear");
+  if (!userPermission.allowed) {
+    return jsonResponse({ success: false, error: userPermission.error }, 403);
+  }
+
   const { data: memberships, error: membershipError } = await adminClient
     .from("usuarios_empresas")
     .select("empresa_id, estado, roles!inner(id, empresa_id, es_admin_empresa, es_superadmin)")
@@ -343,15 +349,6 @@ serve(async (req) => {
     return role?.es_superadmin && empresa?.es_plataforma && normalizeEmail(caller.email) === PLATFORM_SUPERADMIN_EMAIL;
   });
   const callerIsPlatformSuperadmin = callerIsPlatformAdmin || callerHasPlatformSuperadminMembership;
-
-  const canManage = callerIsPlatformSuperadmin || (memberships || []).some((membership) => {
-    const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
-    return membership.empresa_id === empresaId && role?.es_admin_empresa;
-  });
-
-  if (!canManage) {
-    return jsonResponse({ success: false, error: "No tienes permiso para crear usuarios en este tenant." }, 403);
-  }
 
   let societyScope: GrantedSocietyScope;
   try {
@@ -395,6 +392,11 @@ serve(async (req) => {
 
   if (roleError) return jsonResponse({ success: false, error: roleError.message }, 500);
   if (!roleRow?.id) return jsonResponse({ success: false, error: "El rol seleccionado no existe para este tenant." }, 400);
+
+  const roleAssignment = await assertRoleAssignment(userClient, empresaId, roleRow.id, "crear");
+  if (!roleAssignment.allowed) {
+    return jsonResponse({ success: false, error: roleAssignment.error }, 403);
+  }
 
   if (roleRow.es_superadmin) {
     return jsonResponse({ success: false, error: "El rol Superadmin TIDEO no se asigna desde gestion de usuarios." }, 403);

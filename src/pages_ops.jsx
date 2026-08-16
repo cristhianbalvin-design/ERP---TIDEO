@@ -22569,7 +22569,7 @@ function RRHH_Operativo() {
                 </select>
                 {formAlta.cargo_id==='__nuevo__' && <div style={{display:'flex',gap:6,marginTop:6}}>
                   <input className="input" value={nuevoCargoTextoOp} onChange={e=>setNuevoCargoTextoOp(e.target.value)} placeholder="Nombre del nuevo cargo" autoFocus/>
-                  <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoOp.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoOp.trim(),tipo:'Operativo',estado:'activo'});setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoOp('');}}>Crear</button>
+                  <button type="button" className="btn btn-sm" disabled={!nuevoCargoTextoOp.trim()} onClick={async()=>{const c=await crearCargo({nombre:nuevoCargoTextoOp.trim(),tipo:'Operativo',estado:'activo'});if(!c)return;setFormAlta(v=>({...v,cargo_id:c.id,cargo:c.nombre}));setNuevoCargoTextoOp('');}}>Crear</button>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setFormAlta(v=>({...v,cargo_id:''}))}>×</button>
                 </div>}
               </div>
