@@ -277,7 +277,7 @@ export const PedidosVenta = ({ onNav, setCurrentPV }) => {
           <option value="todos">Todos los tipos</option>
           <option value="contrato">Contrato</option>
           <option value="esporadico">Esporádico</option>
-          <option value="interno">Interno Zahory</option>
+          <option value="interno">Interno plataforma</option>
         </select>
         <input
           className="input"
@@ -512,7 +512,7 @@ export const CrearPedidoPage = ({ onNav }) => {
                 className={`toggle-pill ${form.es_interno ? 'active cyan' : ''}`}
                 onClick={() => setForm(f => ({ ...f, es_interno: true, tipo_cliente: 'interno' }))}
               >
-                Uso interno Zahory
+                Uso interno de plataforma
               </button>
             </div>
 
@@ -716,7 +716,7 @@ export const CrearPedidoPage = ({ onNav }) => {
                 <div className="field">
                   <label>Tipo de transporte</label>
                   <select className="select" value={form.tipo_transporte} onChange={e => setForm(f => ({ ...f, tipo_transporte: e.target.value }))}>
-                    <option value="propio">Transporte propio Zahory</option>
+                    <option value="propio">Transporte propio de plataforma</option>
                     <option value="tercero">Transporte tercerizado</option>
                     <option value="cliente">Transporte del cliente</option>
                   </select>
@@ -746,7 +746,7 @@ export const CrearPedidoPage = ({ onNav }) => {
           <div className="card">
             <div className="card-header"><h3>Resumen del pedido</h3></div>
             <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <MetaRow label="Cliente" value={form.es_interno ? 'Interno Zahory' : form.cliente_nombre || '—'}/>
+              <MetaRow label="Cliente" value={form.es_interno ? 'Interno plataforma' : form.cliente_nombre || '—'}/>
               <MetaRow label="Tipo" value={form.tipo_cliente === 'contrato' ? 'Con contrato' : form.tipo_cliente === 'interno' ? 'Interno' : 'Esporádico'}/>
               <MetaRow label="Entrega" value={form.tipo_entrega === 'retiro_taller' ? 'Retiro en taller' : `Despacho → ${form.destino || '—'}`}/>
               <MetaRow label="Fecha comprometida" value={form.fecha_entrega}/>
@@ -854,7 +854,7 @@ export const DetallePedidoPage = ({ onNav, pvId }) => {
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           <MetaRow label="Cliente" value={pv.cliente_nombre}/>
-          <MetaRow label="Tipo cliente" value={pv.tipo_cliente === 'contrato' ? 'Contrato' : pv.tipo_cliente === 'interno' ? 'Interno Zahory' : 'Esporádico'}/>
+          <MetaRow label="Tipo cliente" value={pv.tipo_cliente === 'contrato' ? 'Contrato' : pv.tipo_cliente === 'interno' ? 'Interno plataforma' : 'Esporádico'}/>
           <MetaRow label="Fecha pedido" value={pv.fecha_pedido}/>
           <MetaRow label="Entrega comprometida" value={
             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -107,7 +107,7 @@ const ContratoPdfPreview = ({ contrato, onClose }) => {
           </div>
           <div style={{ flex:1 }}>
             <div style={{ fontFamily:'sans-serif', fontWeight:900, fontSize:18, color:'var(--navy)', letterSpacing:-.5 }}>
-              DIFESMAQ
+              Empresa Operadora
             </div>
             <div style={{ fontFamily:'sans-serif', fontSize:11, color:'#666', marginTop:1 }}>
               Servicios de Mantenimiento y Alquiler de Equipos Mineros
@@ -131,7 +131,7 @@ const ContratoPdfPreview = ({ contrato, onClose }) => {
 
         {/* I — Partes Intervinientes */}
         <Section title="I. PARTES INTERVINIENTES">
-          <Row label="ARRENDADOR" val="DIFESMAQ — RUC 20512345678"/>
+          <Row label="ARRENDADOR" val="Empresa Operadora — RUC 20512345678"/>
           <Row label="Representante Legal" val="Ing. Carlos Mendoza Torres — DNI 08765432"/>
           <Row label="ARRENDATARIO" val={contrato.cliente}/>
           <Row label="Representante" val={contrato.representanteCliente}/>
@@ -164,7 +164,7 @@ const ContratoPdfPreview = ({ contrato, onClose }) => {
         <Section title="IV. FIRMAS Y CONFORMIDAD">
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:40, marginTop:8 }}>
             {[
-              { rol:'POR EL ARRENDADOR', nombre:'DIFESMAQ', rep:contrato.representanteZahory },
+              { rol:'POR EL ARRENDADOR', nombre:'Empresa Operadora', rep:contrato.representanteZahory },
               { rol:'POR EL ARRENDATARIO', nombre:contrato.cliente, rep:contrato.representanteCliente },
             ].map(f => (
               <div key={f.rol} style={{ textAlign:'center' }}>
@@ -184,7 +184,7 @@ const ContratoPdfPreview = ({ contrato, onClose }) => {
           fontSize:10.5, color:'#999',
           fontFamily:'sans-serif', display:'flex', justifyContent:'space-between',
         }}>
-          <span>Documento generado por DIFESMAQ ERP · {new Date().toLocaleDateString('es-PE')}</span>
+          <span>Documento generado por ERP Operativo · {new Date().toLocaleDateString('es-PE')}</span>
           <span>Pág. 1 de 1</span>
         </div>
       </div>
@@ -377,12 +377,12 @@ const CC_OPTIONS = [
   { value: 'PROD-MAE', label: 'PROD-MAE — Producción / Maestranza'   },
   { value: 'TRA-COM',  label: 'TRA-COM — Transporte Comercial'       },
 ];
-const PROPIETARIO_OPTIONS = ['Zahory', 'Cliente'];
+const PROPIETARIO_OPTIONS = ['Empresa Operadora', 'Cliente'];
 
 const FLOTA_FORM_INIT = {
   codigo: '', categoria: '', marca: '', modelo: '', serie: '',
   horometro: '', ubicacion: '', estadoComercial: 'disponible',
-  centro_costo: '', propietario: 'Zahory',
+  centro_costo: '', propietario: 'Empresa Operadora',
   pm_intervalo_horas: '', pm_ultimo_horometro: '',
 };
 
@@ -568,8 +568,8 @@ export const FlotaRentalPage = ({ onNav }) => {
                   <span style={{ background: CC_COLORS[eq.centro_costo]?.bg, color: CC_COLORS[eq.centro_costo]?.color, fontSize:'9px', fontFamily:'monospace', padding:'2px 7px', borderRadius:'8px', fontWeight:600, letterSpacing:'0.05em' }}>
                     {eq.centro_costo}
                   </span>
-                  <span style={{ background: eq.propietario === 'Zahory' ? 'rgba(34,197,94,0.10)' : 'rgba(59,130,246,0.10)', color: eq.propietario === 'Zahory' ? '#22c55e' : '#3b82f6', fontSize:'9px', fontFamily:'monospace', padding:'2px 7px', borderRadius:'8px', fontWeight:600, marginLeft:'4px' }}>
-                    {eq.propietario === 'Zahory' ? 'Propio' : 'Cliente'}
+                  <span style={{ background: eq.propietario === 'Empresa Operadora' ? 'rgba(34,197,94,0.10)' : 'rgba(59,130,246,0.10)', color: eq.propietario === 'Empresa Operadora' ? '#22c55e' : '#3b82f6', fontSize:'9px', fontFamily:'monospace', padding:'2px 7px', borderRadius:'8px', fontWeight:600, marginLeft:'4px' }}>
+                    {eq.propietario === 'Empresa Operadora' ? 'Propio' : 'Cliente'}
                   </span>
                 </div>
 
@@ -2006,13 +2006,13 @@ export const DespachosRentalPage = ({ onNav }) => {
         <div style={{ background:'#fff', width:794, margin:'24px auto', padding:40, color:'#000', fontFamily:'Arial, sans-serif', fontSize:11, lineHeight:1.4 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'2px solid #000', paddingBottom:12, marginBottom:12 }}>
             <div>
-              <div style={{ fontSize:16, fontWeight:700 }}>DIFESMAQ S.A.C.</div>
+              <div style={{ fontSize:16, fontWeight:700 }}>Empresa Operadora S.A.C.</div>
               <div style={{ fontSize:9, color:'#555', marginTop:2 }}>RUC: 20601829101</div>
               <div style={{ fontSize:9, color:'#555' }}>Cal. Teófilo Castillo Mza. 7 Lote 29 H.U. Macropolis Etapa 2 - Zona Lurín - Lima</div>
             </div>
             <div style={{ textAlign:'right', fontSize:9 }}>
               <div>Tel: (01) 234-5678 · Cel: +51 999 888 777</div>
-              <div>contacto@difesmaq.com.pe · www.difesmaq.com.pe</div>
+              <div>contacto@empresa-demo.pe · www.empresa-demo.pe</div>
             </div>
           </div>
           <div style={{ textAlign:'center', fontSize:14, fontWeight:700, letterSpacing:2, marginBottom:12, border:'1px solid #000', padding:'6px 0' }}>
@@ -2078,11 +2078,11 @@ export const DespachosRentalPage = ({ onNav }) => {
             mediante nuestro representante especialista, el Téc. <strong>{a.tecnico_nombre}</strong>.
           </p>
           <p style={{ fontSize:10, marginBottom:6 }}>El equipo ya antes descrito, se presenta en estado operativo y sin desperfectos.</p>
-          <p style={{ fontSize:10, marginBottom:6 }}>DIFESMAQ S.A.C. y el cliente se comprometen a no modificar la maquinaria sin previa autorización expresa y por escrito de DIFESMAQ S.A.C., reservándose el derecho de dar por terminado el contrato en caso de incumplimiento de dicha cláusula.</p>
-          <p style={{ fontSize:10, marginBottom:16 }}>Solo el personal señalado por DIFESMAQ S.A.C., o un representante debidamente autorizado por la empresa, podrá autorizar mantenimientos y reparaciones sobre la maquinaria descrita en el presente documento.</p>
+          <p style={{ fontSize:10, marginBottom:6 }}>La empresa operadora y el cliente se comprometen a no modificar la maquinaria sin previa autorización expresa y por escrito de la empresa operadora, reservándose el derecho de dar por terminado el contrato en caso de incumplimiento de dicha cláusula.</p>
+          <p style={{ fontSize:10, marginBottom:16 }}>Solo el personal señalado por la empresa operadora, o un representante debidamente autorizado, podrá autorizar mantenimientos y reparaciones sobre la maquinaria descrita en el presente documento.</p>
           <div style={{ display:'flex', gap:16, marginTop:20 }}>
             {[
-              { titulo:'Representante DIFESMAQ S.A.C.', nombre: a.tecnico_nombre, dni: a.tecnico_dni, empresa: null },
+              { titulo:'Representante empresa operadora', nombre: a.tecnico_nombre, dni: a.tecnico_dni, empresa: null },
               { titulo:'Representante del Cliente',      nombre: a.rep_cliente_nombre || '___________________________', dni: a.rep_cliente_dni, empresa: a.rep_cliente_empresa, sello: true },
               ...(a.supervisor_nombre ? [{ titulo:'Supervisor de Mantenimiento', nombre: a.supervisor_nombre, dni: null, empresa: null }] : []),
             ].map((f, i) => (
@@ -2098,7 +2098,7 @@ export const DespachosRentalPage = ({ onNav }) => {
             ))}
           </div>
           <div style={{ borderTop:'1px solid #ccc', marginTop:20, paddingTop:8, fontSize:9, color:'#666', textAlign:'center' }}>
-            Tel: (01) 234-5678 · Cel: +51 999 888 777 · contacto@difesmaq.com.pe · www.difesmaq.com.pe
+            Tel: (01) 234-5678 · Cel: +51 999 888 777 · contacto@empresa-demo.pe · www.empresa-demo.pe
           </div>
         </div>
       </div>
@@ -2146,7 +2146,7 @@ export const DespachosRentalPage = ({ onNav }) => {
             </div>
             <div className="card-body">
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:16 }}>
-                {[['N° Acta',a.numero],['Fecha',a.fecha],['Técnico DIFESMAQ',a.tecnico_nombre],['DNI técnico',a.tecnico_dni||'—'],['Cliente',a.cliente_nombre||a.rep_cliente_empresa],['Contrato',a.contrato_id],['Equipo ID',a.equipo_id],['Horómetro',`${a.horometro} hrs`],['Modelo completo',a.equipo_modelo],['N° Serie equipo',a.equipo_serie||'—'],['N° Serie motor',a.motor_serie||'—'],['Backlog generado',a.backlog_generado?'Sí':'No']].map(([lbl,val]) => (
+                {[['N° Acta',a.numero],['Fecha',a.fecha],['Técnico responsable',a.tecnico_nombre],['DNI técnico',a.tecnico_dni||'—'],['Cliente',a.cliente_nombre||a.rep_cliente_empresa],['Contrato',a.contrato_id],['Equipo ID',a.equipo_id],['Horómetro',`${a.horometro} hrs`],['Modelo completo',a.equipo_modelo],['N° Serie equipo',a.equipo_serie||'—'],['N° Serie motor',a.motor_serie||'—'],['Backlog generado',a.backlog_generado?'Sí':'No']].map(([lbl,val]) => (
                   <div key={lbl}>
                     <div style={{ fontSize:10, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.6px' }}>{lbl}</div>
                     <div style={{ fontSize:13, fontWeight:600, marginTop:2 }}>{val||'—'}</div>
@@ -4137,7 +4137,7 @@ export const LiquidacionRentalPage = ({ onNav, setCurrentOT }) => {
                               </span>
                               {!esRecuperable && (
                                 <span style={{ display:'block', fontSize:9.5, color:'#ef4444', marginTop:2 }}>
-                                  Absorbido por Zahory
+                                  Absorbido por la plataforma
                                 </span>
                               )}
                             </td>
@@ -4164,7 +4164,7 @@ export const LiquidacionRentalPage = ({ onNav, setCurrentOT }) => {
                     </div>
                     {[
                       { label:'Costos recuperables (cargo cliente)', val: liq.costo_ots_recuperable, color:'#22c55e' },
-                      { label:'Costos absorbidos por Zahory',        val: liq.costo_ots_interno,     color:'#ef4444' },
+                      { label:'Costos absorbidos por la plataforma', val: liq.costo_ots_interno,     color:'#ef4444' },
                       { label:'Total costos del período',            val: (liq.costo_ots_recuperable || 0) + (liq.costo_ots_interno || 0), color:'#1f2937', bold:true },
                     ].map((r, i) => (
                       <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'7px 0', borderBottom: i < 2 ? '1px solid var(--card-border)' : 'none', fontSize:13 }}>

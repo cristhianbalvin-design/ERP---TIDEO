@@ -24,7 +24,7 @@ export const EquiposPage = () => {
       'FLO-ALQ':  { bg:'rgba(245,158,11,0.12)',  color:'#f59e0b',
                     desc:'Flota & Alquileres — costo recuperable' },
       'OPS-INT':  { bg:'rgba(100,116,139,0.12)', color:'#94a3b8',
-                    desc:'Operaciones Internas — costo absorbido por Zahory' },
+                    desc:'Operaciones internas — costo absorbido por la plataforma' },
       'PROD-MAE': { bg:'rgba(139,92,246,0.12)',  color:'#8b5cf6',
                     desc:'Producción / Maestranza' },
       'TRA-COM':  { bg:'rgba(59,130,246,0.12)',  color:'#3b82f6',
@@ -55,8 +55,8 @@ export const EquiposPage = () => {
                .reduce((sum, ot) => sum + (ot.costo_real || 0), 0) || 0;
   }
 
-  const propBadge = (p) => p === 'DIFESMAQ'
-    ? <span className="badge navy"><span className="dot"/>DIFESMAQ</span>
+  const propBadge = (p) => p === 'Empresa Operadora'
+    ? <span className="badge navy"><span className="dot"/>Empresa operadora</span>
     : <span className="badge cyan"><span className="dot"/>Cliente</span>;
 
   return (
@@ -175,7 +175,7 @@ export const EquiposPage = () => {
         <select className="select"><option>Proyecto: Todos</option></select>
         <select className="select">
           <option>Propietario: Todos</option>
-          <option>DIFESMAQ</option>
+          <option>Empresa Operadora</option>
           <option>Cliente</option>
         </select>
         <select className="select"><option>Estado: Todos</option></select>
@@ -324,7 +324,7 @@ export const EquiposPage = () => {
                 {selected.estadoOp === 'Acondicionamiento' && (
                   <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--cyan-soft)', borderRadius: 6, fontSize: 12, color: 'var(--navy)', border: '1px solid var(--cyan)' }}>
                     <strong>OT de Acondicionamiento activa:</strong> OT-2026-054 · Ingreso facturable = $0.<br/>
-                    El costo acumulado es la inversión de puesta en operación del activo propio DIFESMAQ.
+                    El costo acumulado es la inversión de puesta en operación del activo propio de la empresa operadora.
                   </div>
                 )}
               </div>
@@ -486,7 +486,7 @@ export const EquiposPage = () => {
                 {/* Nota sobre costos no recuperables */}
                 {selected.historial_ots?.some(ot => ot.cargo !== 'Cliente_Contrato') && (
                   <div style={{ marginTop:'16px', fontSize:'11px', color:'#64748b', borderTop:'1px solid #1e2d47', paddingTop:'12px' }}>
-                    ⚠ Los costos en ámbar corresponden a OTs con cargo Interno Zahory o Garantía — no son recuperables del cliente.
+                    ⚠ Los costos en ámbar corresponden a OTs con cargo interno o Garantía — no son recuperables del cliente.
                   </div>
                 )}
               </div>

@@ -14,7 +14,7 @@ const OF_STATES = {
   lista_entrega: { label: 'Lista para entrega', badge: 'green' },
   entregada: { label: 'Entregada', badge: 'green' },
   cerrada: { label: 'Cerrada', badge: 'green' },
-  garantia_zahory: { label: 'Garantia Zahory', badge: 'purple' },
+  garantia_zahory: { label: 'Garantía interna', badge: 'purple' },
 };
 
 const OT_STATES = {
@@ -1117,9 +1117,9 @@ export const CrearOFPage = ({ onNav }) => {
   ];
 
   const BOM_ORIGEN_OPTIONS = [
-    { id: 'stock_propio', label: 'Stock propio', badge: 'green', hint: 'Descuenta inventario Zahory al consumir.' },
+    { id: 'stock_propio', label: 'Stock propio', badge: 'green', hint: 'Descuenta inventario propio al consumir.' },
     { id: 'proveedor', label: 'Proveedor / tercero', badge: 'orange', hint: 'Genera compra, servicio externo o seguimiento de proveedor.' },
-    { id: 'material_cliente', label: 'Material cliente', badge: 'purple', hint: 'Lo aporta el cliente; no descuenta stock Zahory.' },
+    { id: 'material_cliente', label: 'Material cliente', badge: 'purple', hint: 'Lo aporta el cliente; no descuenta stock propio.' },
   ];
 
   const getBomOrigin = (item) => item.origen || (item.material_cliente ? 'material_cliente' : 'stock_propio');
@@ -1196,7 +1196,7 @@ export const CrearOFPage = ({ onNav }) => {
       badge: 'Flujo recomendado',
       badgeKind: 'cyan',
       title: 'El cliente describe el problema',
-      desc: 'Ingenieria Zahory realiza el diagnostico tecnico, define la secuencia de OTs, el BOM y el Plan de Control de Calidad. Es el flujo operativo estandar usado por Doe Run Peru.',
+      desc: 'El equipo de ingeniería realiza el diagnóstico técnico, define la secuencia de OTs, el BOM y el Plan de Control de Calidad. Es el flujo operativo estándar recomendado.',
     },
     {
       id: 'specs',
@@ -1204,7 +1204,7 @@ export const CrearOFPage = ({ onNav }) => {
       badge: 'Alternativo',
       badgeKind: 'slate',
       title: 'El cliente trae especificaciones',
-      desc: 'La OF parte desde planos tecnicos, memorias de calculo o requerimientos propios del cliente. Zahory ejecuta segun esas especificaciones sin diagnostico previo.',
+      desc: 'La OF parte desde planos técnicos, memorias de cálculo o requerimientos propios del cliente. La empresa ejecuta según esas especificaciones sin diagnóstico previo.',
     },
   ];
 
@@ -2784,7 +2784,7 @@ export const GarantiasPage = () => {
         <Kpi label="Garantias activas" value={garantias.filter(g => g.estado === 'activa').length} sub="Componentes cubiertos" />
         <Kpi label="Vencen 15 dias" value={garantias.filter(g => g.dias_restantes >= 0 && g.dias_restantes <= 15).length} sub="Alerta amarilla" tone="red" />
         <Kpi label="Reclamos" value={reclamos.length} sub="En evaluacion o convertidos a OF" />
-        <Kpi label="Costo garantia mes" value={fmtMoney(2380)} sub="No facturable Zahory" />
+        <Kpi label="Costo garantía mes" value={fmtMoney(2380)} sub="No facturable interno" />
       </CardGrid>
       <div className="card" style={{ marginTop: 16 }}>
         <SectionTitle title="Listado de garantias" />

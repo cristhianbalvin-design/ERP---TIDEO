@@ -49,6 +49,7 @@ import {
 } from '../pages/RepuestosVentaPages.jsx';
 import { CatalogoPage } from '../pages/pages2_v2.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
+import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 
 export const businessLinesRouteIds = new Set([
   'dashboard-rental', 'flota', 'contratos-rental', 'checkout', 'liquidacion',
@@ -148,7 +149,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'catalogo': return <CatalogoPage onNav={onNavigate} />;
     case 'repuestos-cotizaciones': return <CotizacionesVenta setCurrent={onNavigate} />;
     case 'repuestos-ordenes': return <OrdenesVenta setCurrent={onNavigate} />;
-    case 'repuestos-despachos': return <GuiasDespachos />;
+    case 'repuestos-despachos': return <AdministrativeAppLinkPage title="Guías y Despachos" adminRoute="remision" />;
     default: return null;
   }
 }

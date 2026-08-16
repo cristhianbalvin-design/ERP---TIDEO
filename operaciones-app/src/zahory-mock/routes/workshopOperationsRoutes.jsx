@@ -14,6 +14,7 @@ import { ReporteMinaPage, ParteTallerPage } from '../pages/pages3.jsx';
 import { SchedulerDespacho } from '../pages/TransportePages.jsx';
 import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
+import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 import {
   HSEDashboard,
   PermisosTrabajoHSE,
@@ -46,7 +47,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'mina':
     case 'mis-reportes': return <HistorialMinaPage onNav={onNavigate} />;
     case 'nuevo-reporte': return <ReporteMinaPage onNav={onNavigate} />;
-    case 'cierre-conformidad': return <CierreConformidad />;
+    case 'cierre-conformidad': return <AdministrativeAppLinkPage title="Cierre y Conformidad" adminRoute="cierre" />;
     case 'scheduler-despacho': return <SchedulerDespacho setCurrent={onNavigate} />;
 
     case 'hse-dashboard': return <HSEDashboard setCurrent={onNavigate} />;
@@ -56,7 +57,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'analisis-riesgo-ats': return <AnalisisRiesgoATS />;
     case 'protocolo-loto': return <ProtocoloLOTO />;
 
-    case 'backlog': return <BacklogPage onNav={onNavigate} />;
+    case 'backlog': return <AdministrativeAppLinkPage title="Backlog Operativo" adminRoute="backlog" />;
     case 'sos-telemetria':
     case 'analisis-sos': return <AnalisisSOS setCurrent={onNavigate} />;
     case 'confiabilidad': return <KPIsConfiabilidad />;

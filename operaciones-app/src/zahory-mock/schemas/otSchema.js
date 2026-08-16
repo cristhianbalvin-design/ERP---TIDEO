@@ -10,7 +10,7 @@ export const LINEA_NEGOCIO_LABELS = {
   maestranza_fab:      'Maestranza y Fab.',
   transporte_comercial:'Transporte Comercial',
   venta_repuestos:     'Venta de Repuestos',
-  interno_zahory:      'Interno Zahory',
+  interno_zahory:      'Interno plataforma',
 };
 
 export const ESPECIALIDADES = [

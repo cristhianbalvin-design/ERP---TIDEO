@@ -283,7 +283,7 @@ export const MonitorViajes = ({ onNav }) => {
       <div className="page-header">
         <div>
           <h1>Monitor de Viajes</h1>
-          <div className="sub">Control de órdenes de viaje · Taller DIFESMAQ ↔ minas y sedes</div>
+          <div className="sub">Control de órdenes de viaje · Taller Central ↔ minas y sedes</div>
         </div>
         <div className="spacer"/>
         <button className="btn btn-secondary"><Icon name="download" size={13}/> Exportar</button>
@@ -577,7 +577,7 @@ export const CrearOVPage = ({ onNav }) => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div>
             <label className="form-label">Origen</label>
-            <input className="form-control" value={form.origen} onChange={e => set('origen', e.target.value)} placeholder="Ej. Taller DIFESMAQ - Lurin, Lima"/>
+            <input className="form-control" value={form.origen} onChange={e => set('origen', e.target.value)} placeholder="Ej. Taller Central - Lurín, Lima"/>
           </div>
           <div>
             <label className="form-label">Destino</label>
@@ -639,7 +639,7 @@ export const CrearOVPage = ({ onNav }) => {
               )}
             </div>
             <div>
-              <label className="form-label">Conductor Zahory</label>
+              <label className="form-label">Conductor asignado</label>
               <input
                 className="form-control"
                 value={form.conductor || (unidades.find(u => u.id === form.unidad_id)?.conductor_default || '')}

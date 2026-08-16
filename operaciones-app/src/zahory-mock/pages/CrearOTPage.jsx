@@ -43,7 +43,7 @@ const TIPO_TRABAJO = [
 
 const TIPO_CARGO = [
   ['Cliente_Contrato', 'Cliente / Contrato — facturable al cliente'],
-  ['Interno_Zahory',   'Interno Zahory — costo absorbido por Zahory'],
+  ['Interno_Zahory',   'Interno plataforma — costo absorbido por la plataforma'],
   ['Garantia_Fabrica', 'Garantía Fábrica — recuperable del fabricante'],
   ['Reclamo_Rework',   'Reclamo / Rework — retrabajo no facturable'],
 ];
@@ -200,7 +200,7 @@ const getBannerImpacto = (cargo) => {
                desc: 'El costo de esta OT se recupera en la liquidación mensual del contrato.' };
     case 'Interno_Zahory':
       return { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚠', color: '#f59e0b',
-               title: 'No Facturable — costo absorbido por Zahory',
+               title: 'No facturable — costo absorbido por la plataforma',
                desc: 'Este costo se registra como gasto operativo interno. No se factura al cliente.' };
     case 'Garantia_Fabrica':
       return { bg: 'rgba(139,92,246,0.08)', border: '#8b5cf6', icon: '→', color: '#8b5cf6',
@@ -208,7 +208,7 @@ const getBannerImpacto = (cargo) => {
                desc: 'El costo es gestionado como reclamo de garantía con el fabricante del equipo.' };
     case 'Reclamo_Rework':
       return { bg: 'rgba(239,68,68,0.08)', border: '#ef4444', icon: '✗', color: '#ef4444',
-               title: 'No Facturable — retrabajo propio de Zahory',
+               title: 'No facturable — retrabajo propio de la plataforma',
                desc: 'Trabajo correctivo por defecto de ejecución previo. El motivo es obligatorio.' };
     default: return null;
   }
@@ -561,7 +561,7 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
 
 const CC_DESC = {
   'FLO-ALQ':  'Flota & Alquileres — costo recuperable del cliente',
-  'OPS-INT':  'Operaciones Internas — costo absorbido por Zahory',
+  'OPS-INT':  'Operaciones internas — costo absorbido por la plataforma',
   'PROD-MAE': 'Producción / Maestranza — costo de fabricación',
   'PROD-SOL': 'Producción / Soldadura — costo de fabricación',
 };
@@ -635,7 +635,7 @@ export const CrearOTPage = ({ onNav }) => {
   }, [form.clienteId, objetoCostoTipo]);
   const contrato = useMemo(() => D.contratos.find(c => c.id === form.contratoId), [form.contratoId]);
   const equiposFiltrados = useMemo(() => {
-    if (objetoCostoTipo === 'equipo_interno') return D.equipos.filter(e => e.propietario === 'Zahory');
+    if (objetoCostoTipo === 'equipo_interno') return D.equipos.filter(e => e.propietario === 'Empresa Operadora');
     if (!contrato) return [];
     return D.equipos.filter(e => contrato.equiposScope?.includes(e.cod));
   }, [contrato, objetoCostoTipo]);
@@ -862,7 +862,7 @@ export const CrearOTPage = ({ onNav }) => {
                     {[
                       { key: 'contrato',       label: 'Contrato de alquiler',  desc: 'OT bajo un contrato activo de rental' },
                       { key: 'os_cliente',     label: 'OS Cliente',            desc: 'OT bajo una orden de servicio puntual' },
-                      { key: 'equipo_interno', label: 'Equipo interno Zahory', desc: 'OT interna sin contrato — overhaul, preparación' },
+                      { key: 'equipo_interno', label: 'Equipo interno de plataforma', desc: 'OT interna sin contrato — overhaul, preparación' },
                     ].map(opt => (
                       <button key={opt.key} type="button"
                         onClick={() => changeObjetoCostoTipo(opt.key)}
@@ -884,7 +884,7 @@ export const CrearOTPage = ({ onNav }) => {
                 {/* Cascada según tipo objeto */}
                 {objetoCostoTipo === 'equipo_interno' ? (
                   <div className="ot-form-field" style={{ marginBottom: 12 }}>
-                    <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de Zahory) *</div>
+                    <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de la plataforma) *</div>
                     <select className="input" value={form.equipo}
                       onChange={e => handleEquipoChange(e.target.value)}
                       style={{ marginTop: 4, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>

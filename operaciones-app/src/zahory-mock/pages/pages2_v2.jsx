@@ -15,7 +15,7 @@ const TRABAJO_CFG = {
 // ── Columna 3: Clasificación (tipo_cargo) — badge filled, rework destructivo
 const CARGO_CFG = {
   Cliente_Contrato: { label: 'Cliente / Contrato', cls: 'badge cyan'    },
-  Interno_Zahory:    { label: 'Interno Zahory',     cls: 'badge slate'   },
+  Interno_Zahory:    { label: 'Interno plataforma', cls: 'badge slate'   },
   Garantia_Fabrica: { label: 'Garantía Fábrica',   cls: 'badge orange'  },
   Reclamo_Rework:   { label: '⚠ Reclamo / Rework', cls: 'badge-destructive' },
 };
@@ -1592,12 +1592,12 @@ export const UsuariosPage = () => {
   const togglePerm = (k) => setPerms({ ...perms, [k]: !perms[k] });
 
   const users = [
-    { nombre: "A. Castro",     email: "acastro@zahorysac.com",         rol: "Gerente",       roloColor: "cyan", ctx: "Todos",          estado: "Activo" },
-    { nombre: "Pajuelo E.",    email: "e.pajuelo@zahorysac.com",       rol: "Técnico Mina",  roloColor: "slate", ctx: "Buenaventura",  estado: "Activo" },
-    { nombre: "Miranda B.",    email: "s.miranda@zahorysac.com",       rol: "Técnico Mina",  roloColor: "slate", ctx: "Pepas de Oro",  estado: "Activo" },
-    { nombre: "García Q.",     email: "r.garcia@zahorysac.com",        rol: "Supervisor",    roloColor: "purple", ctx: "Buenaventura", estado: "Activo" },
-    { nombre: "Torres M.",     email: "m.torres@zahorysac.com",        rol: "Técnico Mina",  roloColor: "slate", ctx: "Antapaccay",    estado: "Activo" },
-    { nombre: "López V.",      email: "c.lopez@zahorysac.com",         rol: "Técnico Taller",roloColor: "slate", ctx: "Carapongo",    estado: "Inactivo" },
+    { nombre: "A. Castro",     email: "acastro@empresa-demo.pe",       rol: "Gerente",       roloColor: "cyan", ctx: "Todos",          estado: "Activo" },
+    { nombre: "Pajuelo E.",    email: "e.pajuelo@empresa-demo.pe",     rol: "Técnico Mina",  roloColor: "slate", ctx: "Buenaventura",  estado: "Activo" },
+    { nombre: "Miranda B.",    email: "s.miranda@empresa-demo.pe",     rol: "Técnico Mina",  roloColor: "slate", ctx: "Pepas de Oro",  estado: "Activo" },
+    { nombre: "García Q.",     email: "r.garcia@empresa-demo.pe",      rol: "Supervisor",    roloColor: "purple", ctx: "Buenaventura", estado: "Activo" },
+    { nombre: "Torres M.",     email: "t.torres@empresa-demo.pe",      rol: "Técnico Mina",  roloColor: "slate", ctx: "Antapaccay",    estado: "Activo" },
+    { nombre: "López V.",      email: "l.lopez@empresa-demo.pe",       rol: "Técnico Taller",roloColor: "slate", ctx: "Carapongo",    estado: "Inactivo" },
   ];
 
   const ToggleSwitch = ({ on, onClick }) => (

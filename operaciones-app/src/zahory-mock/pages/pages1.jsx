@@ -830,7 +830,7 @@ const CostosContent = ({ onNav, setCurrentOT }) => {
 
   const cargoLabel = (cargo) => ({
     Cliente_Contrato: "Cliente / Contrato",
-    Interno_Zahory:   "Interno Zahory",
+    Interno_Zahory:   "Interno plataforma",
     Garantia_Fabrica: "Garantia Fabrica",
     Reclamo_Rework: "Reclamo Rework",
   }[cargo] || cargo || "Sin cargo");
@@ -936,7 +936,7 @@ const CostosContent = ({ onNav, setCurrentOT }) => {
           <select className="select" value={cargoFilter} onChange={e => setCargoFilter(e.target.value)} style={{ minWidth: 190 }}>
             <option value="Todos">Todos</option>
             <option value="Cliente_Contrato">Cliente / Contrato</option>
-            <option value="Interno_Zahory">Interno Zahory</option>
+            <option value="Interno_Zahory">Interno plataforma</option>
             <option value="Garantia_Fabrica">Garantia Fabrica</option>
             <option value="Reclamo_Rework">Reclamo Rework</option>
           </select>
