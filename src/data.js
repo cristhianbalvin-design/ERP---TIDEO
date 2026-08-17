@@ -1131,7 +1131,7 @@ export const maestros = [
   { id: 'mst_especialidades', tabla: 'Especialidades técnicas', valores: 8, actualizado: 'hoy' },
   { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras', valores: 186, actualizado: 'hoy' },
   { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades', valores: 21, actualizado: 'hace 1 mes' },
-  { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno', valores: 6, actualizado: 'hace 3 dias' },
+  { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas', valores: 6, actualizado: 'hace 3 dias' },
   { id: 'mst_almacenes', tabla: 'Almacenes y depósitos', valores: 4, actualizado: 'hoy' }
 ];
 export const industrias = [];

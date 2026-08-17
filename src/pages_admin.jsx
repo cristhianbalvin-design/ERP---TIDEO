@@ -5099,7 +5099,7 @@ function Maestros() {
     tiposDocumento = [], crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
     requisitosCargo = [], upsertRequisitoCargo, eliminarRequisitoCargo,
     posiciones = [], posicionesUsuarios = [], usuarios = [],
-    addNotificacion, materiales = [], fabricantes = [], crearFabricanteCtx, actualizarFabricanteCtx
+    addNotificacion, materiales = [], fabricantes = [], crearFabricanteCtx, actualizarFabricanteCtx, role
   } = useApp();
   const {
     centrosCosto, centrosBeneficio, empresa, perfilSociedad, sociedadesIdsAlcance,
@@ -5159,11 +5159,18 @@ function Maestros() {
     { id: 'mst_materiales', tabla: 'Materiales e insumos con codigo de barras' },
     { id: 'mst_familias_servicio', tabla: 'Familias de servicio' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
-    { id: 'mst_tipos_servicio', tabla: 'Tipos de servicio interno' },
+    { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas' },
+    { id: 'mst_catalogo_servicios', tabla: 'Catálogo Servicios', permiso: 'servicios' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
+  const puedeVerMaestros = Boolean(role?.permisos?.todo || role?.permisos?.ver?.includes('maestros'));
+  const maestrosCatalogosVisibles = maestrosCatalogos.filter(m => (
+    puedeVerMaestros
+      ? !m.permiso || role?.permisos?.todo || role?.permisos?.ver?.includes(m.permiso)
+      : Boolean(m.permiso && role?.permisos?.ver?.includes(m.permiso))
+  ));
   const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', clasificacion_id:'', familia_id:'', especialidad_id:'', tiempo_estimado_horas:'', requiere_certificacion:false, nivel_riesgo:'', requiere_permiso_especial:false, herramientas_requeridas:'', requiere_repuestos:false, frecuencia_sugerida:'', unidad_medida:'', costo_estandar_hora:'', orden_sugerido:0, facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
   const [rows, setRows] = useState({
     mst_clientes: [],
@@ -5177,15 +5184,38 @@ function Maestros() {
   const [importModal, setImportModal] = useState(false);
   const [importRows, setImportRows] = useState([]);
   const [importStep, setImportStep] = useState(1);
+  const tiposServicioImportInputRef = React.useRef(null);
   const [importSummary, setImportSummary] = useState(null);
   const [importandoUnidades, setImportandoUnidades] = useState(false);
   const [clasificacionesServicioInterno, setClasificacionesServicioInterno] = useState([]);
   const [familiasServicioInterno, setFamiliasServicioInterno] = useState([]);
+  const [catalogosTipoServicioLoading, setCatalogosTipoServicioLoading] = useState(false);
+  const [catalogosTipoServicioError, setCatalogosTipoServicioError] = useState('');
   const [seccionesTipoServicio, setSeccionesTipoServicio] = useState({ planificacion:false, hse:false, recursos:false });
   useEffect(() => {
-    maestrosService.getClasificacionesServicioInterno().then(setClasificacionesServicioInterno).catch(err => console.error('clasificaciones servicio interno:', err));
-    maestrosService.getFamiliasServicioInterno().then(setFamiliasServicioInterno).catch(err => console.error('familias servicio interno:', err));
-  }, []);
+    if (sel?.id !== 'mst_tipos_servicio') return;
+    let cancelled = false;
+    setCatalogosTipoServicioLoading(true);
+    setCatalogosTipoServicioError('');
+    Promise.all([
+      maestrosService.getClasificacionesServicioInterno(),
+      maestrosService.getFamiliasServicioInterno(),
+    ]).then(([clasificaciones, familias]) => {
+      if (cancelled) return;
+      setClasificacionesServicioInterno(clasificaciones);
+      setFamiliasServicioInterno(familias);
+      if (clasificaciones.length === 0 || familias.length === 0) {
+        setCatalogosTipoServicioError('Los catálogos globales no devolvieron opciones activas. Verifica sus políticas RLS de lectura para usuarios autenticados.');
+      }
+    }).catch(err => {
+      if (cancelled) return;
+      console.error('Catálogos globales de actividades operativas:', err);
+      setCatalogosTipoServicioError('No se pudieron cargar Clasificación y Familia técnica. Revisa los permisos de lectura de los catálogos globales.');
+    }).finally(() => {
+      if (!cancelled) setCatalogosTipoServicioLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [sel?.id]);
   const getSelectedRows = () => {
     if (!sel) return [];
     if (sel.id === 'mst_unidades_organizacionales') return unidadesOrganizacionales;
@@ -5290,10 +5320,18 @@ function Maestros() {
       hint: 'Requiere certificacion: si / no',
     },
     mst_tipos_servicio: {
-      sheetName: 'Tipos de Servicio', filename: 'tipos_servicio.xlsx',
-      headers: ['Codigo','Nombre','Clasificacion','Familia','Tiempo estimado horas','Nivel riesgo','Requiere permiso especial','Herramientas requeridas','Requiere repuestos','Frecuencia sugerida','Unidad medida','Costo estandar hora','Orden sugerido','Estado'],
-      fields:  ['codigo','nombre','clasificacion','familia','tiempo_estimado_horas','nivel_riesgo','requiere_permiso_especial','herramientas_requeridas','requiere_repuestos','frecuencia_sugerida','unidad_medida','costo_estandar_hora','orden_sugerido','estado'],
-      ejemplo: ['TSI-001','Mantenimiento preventivo','Preventivo','Mecánico','8','Medio','no','Juego de llaves','si','Mensual','Hora','0','1','activo'],
+      sheetName: 'Actividades Operativas', filename: 'actividades_operativas.xlsx',
+      headers: ['codigo','nombre','clasificacion','familia','tiempo_estimado_horas','requiere_certificacion','nivel_riesgo','requiere_permiso_especial','herramientas_requeridas','requiere_repuestos','frecuencia_sugerida','unidad_medida','costo_estandar_hora','orden_sugerido'],
+      fields:  ['codigo','nombre','clasificacion','familia','tiempo_estimado_horas','requiere_certificacion','nivel_riesgo','requiere_permiso_especial','herramientas_requeridas','requiere_repuestos','frecuencia_sugerida','unidad_medida','costo_estandar_hora','orden_sugerido'],
+      aliases: {
+        codigo: ['Codigo'], nombre: ['Nombre'], clasificacion: ['Clasificacion'], familia: ['Familia'],
+        tiempo_estimado_horas: ['Tiempo estimado horas'], requiere_certificacion: ['Requiere certificacion'],
+        nivel_riesgo: ['Nivel riesgo'], requiere_permiso_especial: ['Requiere permiso especial'],
+        herramientas_requeridas: ['Herramientas requeridas'], requiere_repuestos: ['Requiere repuestos'],
+        frecuencia_sugerida: ['Frecuencia sugerida'], unidad_medida: ['Unidad medida'],
+        costo_estandar_hora: ['Costo estandar hora'], orden_sugerido: ['Orden sugerido'],
+      },
+      ejemplo: ['ACT-001','Cambio de aceite y filtros motor','Preventivo','Mecánico','2','No','Bajo','No','Llave de filtros;Bomba de extracción','Sí','Cada 250 horas','Hora','45','1'],
       hint: 'Clasificación y Familia se resuelven contra los maestros globales; una no coincidencia se importa con ID vacío y advertencia.',
     },
     mst_almacenes: {
@@ -5344,12 +5382,14 @@ function Maestros() {
     const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return [];
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    const ws = wb.Sheets[wb.SheetNames.includes('Plantilla') ? 'Plantilla' : wb.SheetNames[0]];
     const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
     return rawRows.map(r => {
       const row = {};
       cfg.headers.forEach((h, i) => {
-        row[cfg.fields[i]] = String(r[h] ?? r[cfg.fields[i]] ?? '').trim();
+        const field = cfg.fields[i];
+        const aliases = cfg.aliases?.[field] || [];
+        row[field] = String(r[h] ?? r[field] ?? aliases.map(alias => r[alias]).find(value => value !== undefined) ?? '').trim();
       });
       return row;
     });
@@ -5416,6 +5456,58 @@ function Maestros() {
       });
     }
 
+    if (sel?.id === 'mst_tipos_servicio') {
+      const normalizar = value => String(value || '').trim().toLocaleLowerCase('es-PE');
+      const codigoClave = value => String(value || '').trim().toUpperCase();
+      const codigosArchivo = new Map();
+      (rows || []).forEach((row, index) => {
+        const codigo = codigoClave(row.codigo);
+        if (codigo) codigosArchivo.set(codigo, [...(codigosArchivo.get(codigo) || []), index + 2]);
+      });
+      const codigosExistentes = new Set((selectedRows || []).map(row => codigoClave(row.codigo)));
+      const esSiNo = value => ['si', 'sí', 'no'].includes(normalizar(value));
+
+      return (rows || []).map((source, index) => {
+        const codigo = String(source.codigo || '').trim();
+        const nombre = String(source.nombre || '').trim();
+        const clasificacion = String(source.clasificacion || '').trim();
+        const familia = String(source.familia || '').trim();
+        const nivelRiesgo = String(source.nivel_riesgo || '').trim();
+        const errores = [];
+        const advertencias = [];
+        const codigoNormalizado = codigoClave(codigo);
+        const coincidenciaClasificacion = clasificacionesServicioInterno.find(item => normalizar(item.nombre) === normalizar(clasificacion));
+        const coincidenciaFamilia = familiasServicioInterno.find(item => normalizar(item.nombre) === normalizar(familia));
+
+        if (!codigo) errores.push('Código obligatorio.');
+        if (!nombre) errores.push('Nombre obligatorio.');
+        if (codigoNormalizado && codigosExistentes.has(codigoNormalizado)) errores.push(`Código duplicado: "${codigo}" ya existe.`);
+        const filasMismoCodigo = codigosArchivo.get(codigoNormalizado) || [];
+        if (codigoNormalizado && filasMismoCodigo.length > 1) errores.push(`Código duplicado en archivo: filas ${filasMismoCodigo.join(', ')}.`);
+        if (source.requiere_certificacion && !esSiNo(source.requiere_certificacion)) errores.push('Requiere certificación debe ser Sí o No.');
+        if (source.requiere_permiso_especial && !esSiNo(source.requiere_permiso_especial)) errores.push('Requiere permiso especial debe ser Sí o No.');
+        if (source.requiere_repuestos && !esSiNo(source.requiere_repuestos)) errores.push('Requiere repuestos debe ser Sí o No.');
+        if (nivelRiesgo && !['Bajo', 'Medio', 'Alto'].some(valor => normalizar(valor) === normalizar(nivelRiesgo))) errores.push('Nivel de riesgo debe ser Bajo, Medio o Alto.');
+        if (source.tiempo_estimado_horas && !Number.isFinite(Number(source.tiempo_estimado_horas))) errores.push('Tiempo estimado debe ser numérico.');
+        if (source.costo_estandar_hora && !Number.isFinite(Number(source.costo_estandar_hora))) errores.push('Costo estándar por hora debe ser numérico.');
+        if (source.orden_sugerido && !Number.isFinite(Number(source.orden_sugerido))) errores.push('Orden sugerido debe ser numérico.');
+        if (clasificacion && !coincidenciaClasificacion) advertencias.push(`Clasificación "${clasificacion}" no encontrada; clasificacion_id queda NULL.`);
+        if (familia && !coincidenciaFamilia) advertencias.push(`Familia "${familia}" no encontrada; familia_id queda NULL.`);
+
+        return {
+          ...source,
+          _fila: index + 2,
+          codigo,
+          nombre,
+          clasificacion,
+          familia,
+          nivel_riesgo: nivelRiesgo,
+          _errores: errores,
+          _advertencias: advertencias,
+        };
+      });
+    }
+
     return rows.map(r => {
     const errores = [];
     const estadoNorm = (r.estado||'').trim().toLowerCase();
@@ -5429,6 +5521,20 @@ function Maestros() {
     }
       return { ...r, estado: estadoNorm || 'activo', tipo: sel?.id === 'mst_sedes' ? (tipoNorm || 'oficina') : r.tipo, _errores: errores };
     });
+  };
+
+  const cargarImportacionTiposServicio = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const parsed = await parseMstXlsx(file);
+      setImportSummary(null);
+      setImportRows(validarImportMaestro(parsed));
+      setImportStep(2);
+    } catch (error) {
+      addNotificacion?.(`No se pudo leer el Excel: ${error?.message || 'archivo inválido'}.`, 'error');
+    }
   };
 
   const exportarMaestro = () => {
@@ -5471,6 +5577,60 @@ function Maestros() {
 
   const descargarPlantillaMaestro = () => {
     const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
+    if (sel?.id === 'mst_tipos_servicio') {
+      const instrucciones = XLSX.utils.aoa_to_sheet([
+        ['Plantilla de Catálogo de Actividades Operativas'],
+        [],
+        ['Columna', 'Instrucción'],
+        ['codigo', 'Obligatorio y único dentro del tenant.'],
+        ['nombre', 'Obligatorio.'],
+        ['clasificacion', 'Texto. Debe coincidir con: Preventivo / Predictivo / Correctivo / Emergencia / Inspección / Proyecto / Garantía / Interno. Si no coincide, queda sin asignar y se reporta una advertencia; no se autocrea.'],
+        ['familia', 'Texto. Debe coincidir con: Mecánico / Eléctrico / Hidráulico / Neumático / Soldadura / Administrativo. Si no coincide, queda sin asignar y se reporta una advertencia; no se autocrea.'],
+        ['tiempo_estimado_horas', 'Opcional. Déjalo vacío si el tiempo varía por caso, por ejemplo en correctivos no diagnosticados.'],
+        ['requiere_certificacion', 'Sí o No.'],
+        ['nivel_riesgo', 'Opcional: Bajo, Medio o Alto.'],
+        ['requiere_permiso_especial', 'Sí o No.'],
+        ['herramientas_requeridas', 'Texto libre. Separa múltiples herramientas con punto y coma (;).'],
+        ['requiere_repuestos', 'Sí o No.'],
+        ['frecuencia_sugerida', 'Texto libre y opcional; ejemplo: Cada 250 horas.'],
+        ['unidad_medida', 'Texto libre; ejemplo: Hora, Visita o Proyecto.'],
+        ['costo_estandar_hora', 'Opcional. Déjalo vacío si no aplica, por ejemplo en trabajo bajo garantía.'],
+        ['orden_sugerido', 'Numérico. Orden de referencia dentro del catálogo.'],
+      ]);
+      instrucciones['!cols'] = [{ wch: 30 }, { wch: 150 }];
+      const plantilla = XLSX.utils.aoa_to_sheet([cfg.fields]);
+      plantilla['!cols'] = cfg.fields.map(header => ({ wch: Math.max(18, header.length + 2) }));
+      const ejemplo = XLSX.utils.aoa_to_sheet([
+        cfg.fields,
+        ['ACT-001','Cambio de aceite y filtros motor','Preventivo','Mecánico','2','No','Bajo','No','Llave de filtros;Bomba de extracción','Sí','Cada 250 horas','Hora','45','1'],
+        ['ACT-002','Engrase general de chasis','Preventivo','Mecánico','1.5','No','Bajo','No','Pistola de grasa','Sí','Semanal','Hora','40','2'],
+        ['ACT-003','Inspección de frenos','Preventivo','Mecánico','1','Sí','Medio','No','Calibrador;Manómetro','No','Cada 500 horas','Hora','45','3'],
+        ['ACT-004','Diagnóstico de falla eléctrica','Correctivo','Eléctrico','','Sí','Medio','Sí','Multímetro;Osciloscopio','','','Hora','55','4'],
+        ['ACT-005','Reemplazo de alternador','Correctivo','Eléctrico','3','Sí','Medio','No','Juego de dados;Multímetro','Sí','','Hora','55','5'],
+        ['ACT-006','Reparación de fuga hidráulica','Correctivo','Hidráulico','','No','Medio','No','Llaves hidráulicas;Kit de sellos','Sí','','Hora','50','6'],
+        ['ACT-007','Cambio de manguera hidráulica de alta presión','Correctivo','Hidráulico','2','Sí','Alto','Sí','Prensa de mangueras','Sí','','Hora','50','7'],
+        ['ACT-008','Análisis de vibración en motor','Predictivo','Mecánico','1','Sí','Bajo','No','Analizador de vibraciones','No','Mensual','Visita','65','8'],
+        ['ACT-009','Termografía de tablero eléctrico','Predictivo','Eléctrico','1.5','Sí','Medio','Sí','Cámara termográfica','No','Trimestral','Visita','70','9'],
+        ['ACT-010','Análisis de aceite (muestra)','Predictivo','Mecánico','0.5','No','Bajo','No','Kit de muestreo','No','Cada 250 horas','Hora','35','10'],
+        ['ACT-011','Atención de avería en carguío','Emergencia','Mecánico','','Sí','Alto','Sí','Caja de herramientas completa','Sí','','Hora','80','11'],
+        ['ACT-012','Reparación eléctrica de emergencia','Emergencia','Eléctrico','','Sí','Alto','Sí','Multímetro;EPP dieléctrico','Sí','','Hora','85','12'],
+        ['ACT-013','Inspección técnica reglamentaria','Inspección','Administrativo','2','Sí','Bajo','No','Checklist normativo','No','Anual','Visita','60','13'],
+        ['ACT-014','Inspección de sistema neumático','Inspección','Neumático','1','No','Medio','No','Manómetro','No','Mensual','Hora','45','14'],
+        ['ACT-015','Instalación de sistema de monitoreo GPS','Proyecto','Administrativo','8','No','Bajo','No','Kit de instalación GPS','Sí','','Proyecto','60','15'],
+        ['ACT-016','Overhaul de compresor neumático','Proyecto','Neumático','16','Sí','Medio','Sí','Kit de overhaul','Sí','','Proyecto','55','16'],
+        ['ACT-017','Reparación bajo garantía de fabricante','Garantía','Mecánico','','Sí','Medio','No','Según especificación fabricante','Sí','','Hora','0','17'],
+        ['ACT-018','Soldadura estructural de reparación','Interno','Soldadura','4','Sí','Alto','Sí','Equipo de soldar;EPP completo','Sí','','Hora','50','18'],
+        ['ACT-019','Fabricación de guarda de seguridad','Interno','Soldadura','6','No','Medio','No','Equipo de soldar;Amoladora','Sí','','Proyecto','50','19'],
+        ['ACT-020','Trabajo administrativo de cierre de OT','Interno','Administrativo','0.5','No','Bajo','No','','No','','Hora','25','20'],
+      ]);
+      ejemplo['!cols'] = cfg.fields.map((header, index) => ({ wch: index === 1 ? 48 : Math.max(18, header.length + 2) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, instrucciones, 'Instrucciones');
+      XLSX.utils.book_append_sheet(wb, plantilla, 'Plantilla');
+      XLSX.utils.book_append_sheet(wb, ejemplo, 'Ejemplo');
+      XLSX.writeFile(wb, 'plantilla_actividades_operativas.xlsx');
+      return;
+    }
     if (sel?.id === 'mst_unidades_organizacionales') {
       const dataSheet = XLSX.utils.aoa_to_sheet([
         cfg.headers,
@@ -5575,7 +5735,7 @@ function Maestros() {
     try {
       for (let i = 0; i < valid.length; i++) {
         const r = valid[i];
-        const base = { codigo: autoCode(sel.id, selectedRows.length + i), nombre: r.nombre, estado: r.estado || 'activo' };
+        const base = { codigo: r.codigo || autoCode(sel.id, selectedRows.length + i), nombre: r.nombre, estado: r.estado || 'activo' };
         if (sel.id === 'mst_cargos') {
           const cargoResultado = await crearCargo(
             { ...base, tipo: r.tipo || 'Administrativo', detalle: r.detalle || '' },
@@ -5604,7 +5764,8 @@ function Maestros() {
           const advertencias = [];
           if (r.clasificacion && !clas) advertencias.push(`Clasificación "${r.clasificacion}" no encontrada; clasificacion_id queda NULL.`);
           if (r.familia && !familia) advertencias.push(`Familia "${r.familia}" no encontrada; familia_id queda NULL.`);
-          await crearTipoServicio({ ...base, clasificacion: clas?.nombre || r.clasificacion || 'General', clasificacion_id: clas?.id || null, familia_id: familia?.id || null, tiempo_estimado_horas: r.tiempo_estimado_horas === '' ? null : Number(r.tiempo_estimado_horas), nivel_riesgo: r.nivel_riesgo || null, requiere_permiso_especial: String(r.requiere_permiso_especial || '').toLowerCase()==='si', herramientas_requeridas: r.herramientas_requeridas || null, requiere_repuestos: String(r.requiere_repuestos || '').toLowerCase()==='si', frecuencia_sugerida: r.frecuencia_sugerida || null, unidad_medida: r.unidad_medida || null, costo_estandar_hora: r.costo_estandar_hora === '' ? null : Number(r.costo_estandar_hora), orden_sugerido: Number(r.orden_sugerido) || 0 });
+          const esSi = value => ['si', 'sí'].includes(String(value || '').trim().toLocaleLowerCase('es-PE'));
+          await crearTipoServicio({ ...base, clasificacion: clas?.nombre || r.clasificacion || 'General', clasificacion_id: clas?.id || null, familia_id: familia?.id || null, tiempo_estimado_horas: r.tiempo_estimado_horas === '' ? null : Number(r.tiempo_estimado_horas), requiere_certificacion: esSi(r.requiere_certificacion), nivel_riesgo: r.nivel_riesgo || null, requiere_permiso_especial: esSi(r.requiere_permiso_especial), herramientas_requeridas: r.herramientas_requeridas || null, requiere_repuestos: esSi(r.requiere_repuestos), frecuencia_sugerida: r.frecuencia_sugerida || null, unidad_medida: r.unidad_medida || null, costo_estandar_hora: r.costo_estandar_hora === '' ? null : Number(r.costo_estandar_hora), orden_sugerido: Number(r.orden_sugerido) || 0 });
           r._advertencias = advertencias;
         }
         else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
@@ -5950,6 +6111,7 @@ function Maestros() {
       return `${c} CECOs · ${b} CEBEs`;
     }
     if (mId === 'mst_familias_servicio') return 'Catálogo por tenant';
+    if (mId === 'mst_catalogo_servicios') return 'Catálogo comercial por tenant';
     
     let arr = [];
     switch (mId) {
@@ -6094,12 +6256,47 @@ function Maestros() {
           {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Mantenimiento predictivo" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group"><label>Clasificación</label><select className="select" value={nuevo.clasificacion_id} onChange={e=>setNuevo(v=>({...v,clasificacion_id:e.target.value}))}><option value="">Seleccionar...</option>{clasificacionesServicioInterno.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-          <div className="input-group"><label>Familia técnica / Disciplina</label><select className="select" value={nuevo.familia_id} onChange={e=>setNuevo(v=>({...v,familia_id:e.target.value}))}><option value="">Sin definir</option>{familiasServicioInterno.map(f=><option key={f.id} value={f.id}>{f.nombre}</option>)}</select></div>
-          {[['planificacion','Planificación'],['hse','Seguridad (HSE)'],['recursos','Recursos']].map(([key,label]) => <div key={key} style={{gridColumn:'1/-1'}}><button type="button" className="btn btn-secondary btn-sm" onClick={()=>setSeccionesTipoServicio(p=>({...p,[key]:!p[key]}))}>{seccionesTipoServicio[key] ? '−' : '+'} {label}</button></div>)}
-          {seccionesTipoServicio.planificacion && <><div className="input-group"><label>Tiempo estimado (horas)</label><input className="input" type="number" min="0" step="0.25" value={nuevo.tiempo_estimado_horas} onChange={e=>setNuevo(v=>({...v,tiempo_estimado_horas:e.target.value}))}/></div><div className="input-group"><label>Especialidad requerida</label><select className="select" value={nuevo.especialidad_id} onChange={e=>setNuevo(v=>({...v,especialidad_id:e.target.value}))}><option value="">Sin definir</option>{especialidades.filter(e=>e.estado==='activo').map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</select></div><div className="input-group"><label>Unidad de medida</label><input className="input" value={nuevo.unidad_medida} onChange={e=>setNuevo(v=>({...v,unidad_medida:e.target.value}))}/></div><div className="input-group"><label>Frecuencia sugerida</label><input className="input" value={nuevo.frecuencia_sugerida} onChange={e=>setNuevo(v=>({...v,frecuencia_sugerida:e.target.value}))}/></div><div className="input-group"><label>Orden sugerido</label><input className="input" type="number" value={nuevo.orden_sugerido} onChange={e=>setNuevo(v=>({...v,orden_sugerido:e.target.value}))}/></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_certificacion} onChange={e=>setNuevo(v=>({...v,requiere_certificacion:e.target.checked}))}/> Requiere certificación</label></>}
-          {seccionesTipoServicio.hse && <><div className="input-group"><label>Nivel de riesgo</label><select className="select" value={nuevo.nivel_riesgo} onChange={e=>setNuevo(v=>({...v,nivel_riesgo:e.target.value}))}><option value="">Sin definir</option><option>Bajo</option><option>Medio</option><option>Alto</option></select></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_permiso_especial} onChange={e=>setNuevo(v=>({...v,requiere_permiso_especial:e.target.checked}))}/> Requiere permiso especial</label></>}
-          {seccionesTipoServicio.recursos && <><div className="input-group" style={{gridColumn:'span 2'}}><label>Herramientas requeridas</label><input className="input" value={nuevo.herramientas_requeridas} onChange={e=>setNuevo(v=>({...v,herramientas_requeridas:e.target.value}))}/></div><div className="input-group"><label>Costo estándar por hora</label><input className="input" type="number" min="0" step="0.01" placeholder="Sin definir" value={nuevo.costo_estandar_hora} onChange={e=>setNuevo(v=>({...v,costo_estandar_hora:e.target.value}))}/></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_repuestos} onChange={e=>setNuevo(v=>({...v,requiere_repuestos:e.target.checked}))}/> Requiere repuestos</label></>}
+          {catalogosTipoServicioError && <div role="alert" style={{gridColumn:'1/-1', color:'var(--red)', fontSize:12}}>{catalogosTipoServicioError}</div>}
+          <div className="input-group"><label>Clasificación</label><select className="select" disabled={catalogosTipoServicioLoading} value={nuevo.clasificacion_id} onChange={e=>setNuevo(v=>({...v,clasificacion_id:e.target.value}))}><option value="">{catalogosTipoServicioLoading ? 'Cargando...' : 'Seleccionar...'}</option>{clasificacionesServicioInterno.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+          <div className="input-group"><label>Familia técnica / Disciplina</label><select className="select" disabled={catalogosTipoServicioLoading} value={nuevo.familia_id} onChange={e=>setNuevo(v=>({...v,familia_id:e.target.value}))}><option value="">{catalogosTipoServicioLoading ? 'Cargando...' : 'Sin definir'}</option>{familiasServicioInterno.map(f=><option key={f.id} value={f.id}>{f.nombre}</option>)}</select></div>
+          <div style={{gridColumn:'1/-1', border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden'}}>
+            <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesTipoServicio.planificacion} onClick={()=>setSeccionesTipoServicio(p=>({...p,planificacion:!p.planificacion}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesTipoServicio.planificacion ? '−' : '+'} Planificación</button>
+            {seccionesTipoServicio.planificacion && (
+              <div style={{padding:12, borderTop:'1px solid var(--border)'}}>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+                  <div className="input-group"><label>Tiempo estimado (horas)</label><input className="input" type="number" min="0" step="0.25" value={nuevo.tiempo_estimado_horas} onChange={e=>setNuevo(v=>({...v,tiempo_estimado_horas:e.target.value}))}/></div>
+                  <div className="input-group"><label>Especialidad requerida</label><select className="select" value={nuevo.especialidad_id} onChange={e=>setNuevo(v=>({...v,especialidad_id:e.target.value}))}><option value="">Sin definir</option>{especialidades.filter(e=>e.estado==='activo').map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</select></div>
+                  <div className="input-group"><label>Unidad de medida</label><input className="input" value={nuevo.unidad_medida} onChange={e=>setNuevo(v=>({...v,unidad_medida:e.target.value}))}/></div>
+                  <div className="input-group"><label>Frecuencia sugerida</label><input className="input" value={nuevo.frecuencia_sugerida} onChange={e=>setNuevo(v=>({...v,frecuencia_sugerida:e.target.value}))}/></div>
+                  <div className="input-group"><label>Orden sugerido</label><input className="input" type="number" value={nuevo.orden_sugerido} onChange={e=>setNuevo(v=>({...v,orden_sugerido:e.target.value}))}/></div>
+                  <label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_certificacion} onChange={e=>setNuevo(v=>({...v,requiere_certificacion:e.target.checked}))}/> Requiere certificación</label>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{gridColumn:'1/-1', border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden'}}>
+            <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesTipoServicio.hse} onClick={()=>setSeccionesTipoServicio(p=>({...p,hse:!p.hse}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesTipoServicio.hse ? '−' : '+'} Seguridad (HSE)</button>
+            {seccionesTipoServicio.hse && (
+              <div style={{padding:12, borderTop:'1px solid var(--border)'}}>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+                  <div className="input-group"><label>Nivel de riesgo</label><select className="select" value={nuevo.nivel_riesgo} onChange={e=>setNuevo(v=>({...v,nivel_riesgo:e.target.value}))}><option value="">Sin definir</option><option>Bajo</option><option>Medio</option><option>Alto</option></select></div>
+                  <label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_permiso_especial} onChange={e=>setNuevo(v=>({...v,requiere_permiso_especial:e.target.checked}))}/> Requiere permiso especial</label>
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{gridColumn:'1/-1', border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden'}}>
+            <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesTipoServicio.recursos} onClick={()=>setSeccionesTipoServicio(p=>({...p,recursos:!p.recursos}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesTipoServicio.recursos ? '−' : '+'} Recursos</button>
+            {seccionesTipoServicio.recursos && (
+              <div style={{padding:12, borderTop:'1px solid var(--border)'}}>
+                <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+                  <div className="input-group" style={{gridColumn:'span 2'}}><label>Herramientas requeridas</label><input className="input" value={nuevo.herramientas_requeridas} onChange={e=>setNuevo(v=>({...v,herramientas_requeridas:e.target.value}))}/></div>
+                  <div className="input-group"><label>Costo estándar por hora</label><input className="input" type="number" min="0" step="0.01" placeholder="Sin definir" value={nuevo.costo_estandar_hora} onChange={e=>setNuevo(v=>({...v,costo_estandar_hora:e.target.value}))}/></div>
+                  <label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_repuestos} onChange={e=>setNuevo(v=>({...v,requiere_repuestos:e.target.checked}))}/> Requiere repuestos</label>
+                </div>
+              </div>
+            )}
+          </div>
           <FormActions label="tipo" />
         </div>
       </form>
@@ -6571,7 +6768,7 @@ function Maestros() {
         </div>
       </div>
       <div className="maestros-grid">
-        {maestrosCatalogos.map(m => (
+        {maestrosCatalogosVisibles.map(m => (
           <div key={m.id} className="maestro-card hover-raise">
             <div className="maestro-card-icon">{I.settings}</div>
             <div className="maestro-card-main">
@@ -6742,12 +6939,13 @@ function Maestros() {
             <div>
               <div className="eyebrow">Gestión de catálogo</div>
               <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{sel.tabla}</div>
-              <div className="text-muted" style={{fontSize:12, marginTop:4}}>{sel.id === 'mst_clientes' ? cuentas.length : sel.id === 'mst_proveedores' ? proveedores.length : selectedRows.length} valores visibles · empresa actual</div>
+              <div className="text-muted" style={{fontSize:12, marginTop:4}}>{sel.id === 'mst_catalogo_servicios' ? 'Catálogo comercial por tenant' : `${sel.id === 'mst_clientes' ? cuentas.length : sel.id === 'mst_proveedores' ? proveedores.length : selectedRows.length} valores visibles · empresa actual`}</div>
               {NOTAS_PANEL[sel.id] && <div style={{fontSize:12, color:'var(--cyan)', marginTop:6}}>{NOTAS_PANEL[sel.id]}</div>}
             </div>
             <button className="icon-btn" onClick={() => setSel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
+            {sel.id === 'mst_catalogo_servicios' ? <Servicios embedded /> : <>
             {sel.id !== 'mst_clientes' && sel.id !== 'mst_proveedores' && sel.id !== 'mst_requisitos_cargo' && (
               <div className="row" style={{gap:10, marginBottom:18, flexWrap:'wrap'}}>
                 {checkedIds.length > 0 && (
@@ -6755,9 +6953,15 @@ function Maestros() {
                     {I.trash} Eliminar seleccionados ({checkedIds.length})
                   </button>
                 )}
-                <button className="btn btn-secondary" onClick={() => { setImportSummary(null); setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
-                {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>}
-                <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
+                {sel.id === 'mst_tipos_servicio' ? <>
+                  <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>
+                  <button className="btn btn-secondary" onClick={() => tiposServicioImportInputRef.current?.click()}>{I.download} Importar Excel</button>
+                  <input ref={tiposServicioImportInputRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={cargarImportacionTiposServicio}/>
+                </> : <>
+                  <button className="btn btn-secondary" onClick={() => { setImportSummary(null); setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
+                  {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>}
+                  <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
+                </>}
                 {sel.id === 'mst_tipos_documento' && (
                   <button className="btn btn-secondary" onClick={async () => {
                     try {
@@ -6766,16 +6970,52 @@ function Maestros() {
                     } catch(err) { addNotificacion?.('Error al importar: ' + (err?.message || '')); }
                   }}>Importar Plantilla Base</button>
                 )}
-                <span className="badge badge-cyan">Validación de duplicados activa</span>
+                {sel.id !== 'mst_tipos_servicio' && <span className="badge badge-cyan">Validación de duplicados activa</span>}
               </div>
             )}
             {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
             {renderForm()}
+            {sel.id === 'mst_tipos_servicio' && importRows.length > 0 && (
+              <div className="card" style={{padding:16, marginBottom:18}}>
+                <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                  <div>
+                    <div className="eyebrow">Importar Excel</div>
+                    <div className="font-display" style={{fontSize:18, fontWeight:700}}>Vista previa de actividades operativas</div>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { setImportRows([]); setImportSummary(null); setImportStep(1); }}>Cerrar</button>
+                </div>
+                {importSummary && <div className={importSummary.fallidas ? 'alert alert-danger' : 'alert alert-success'} style={{marginBottom:12, fontSize:12}}>
+                  <strong>Resultado de la importación:</strong> {importSummary.creados} creadas{importSummary.fallidas ? ` · ${importSummary.fallidas} fallidas` : ''}.
+                </div>}
+                <div className="text-muted" style={{fontSize:12, marginBottom:12}}>
+                  {importRows.length} filas analizadas · {importRows.filter(row => row._errores.length === 0).length} válidas · {importRows.filter(row => row._errores.length > 0).length} con errores
+                </div>
+                <div className="table-wrap" style={{maxHeight:280, overflow:'auto'}}>
+                  <table className="tbl" style={{minWidth:900}}>
+                    <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Clasificación</th><th>Familia</th><th>Estado</th><th>Observaciones</th></tr></thead>
+                    <tbody>{importRows.map((row, index) => {
+                      const conErrores = row._errores.length > 0;
+                      return <tr key={row._fila || index} style={{background: conErrores ? 'rgba(239,68,68,.05)' : 'transparent'}}>
+                        <td className="mono text-muted">{row._fila || index + 2}</td><td>{row.codigo}</td><td>{row.nombre}</td><td>{row.clasificacion || '—'}</td><td>{row.familia || '—'}</td>
+                        <td>{conErrores ? <span className="badge badge-red">ERROR</span> : row._advertencias?.length ? <span className="badge badge-cyan">ADVERTENCIA</span> : <span className="badge badge-green">VÁLIDA</span>}</td>
+                        <td style={{fontSize:11, color: conErrores ? 'var(--danger)' : 'var(--orange)'}}>{[...(row._errores || []), ...(row._advertencias || [])].join(' · ') || 'Lista para importar.'}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>
+                {!importSummary && <div className="row" style={{justifyContent:'flex-end', marginTop:16}}>
+                  <button className="btn btn-primary" disabled={!importRows.some(row => row._errores.length === 0)} onClick={event => doImportMaestro(event.currentTarget)}>
+                    Importar {importRows.filter(row => row._errores.length === 0).length} actividades válidas
+                  </button>
+                </div>}
+              </div>
+            )}
             <div className="card">
               <div className="table-wrap">
                 {renderTable()}
               </div>
             </div>
+            </>}
           </div>
         </div>
       </>}
@@ -6783,21 +7023,23 @@ function Maestros() {
   );
 }
 
-function Servicios() {
+function Servicios({ embedded = false }) {
   const { role, addNotificacion, empresa } = useApp();
   const [servicios, setServicios] = useState([]);
   const [familiasServicio, setFamiliasServicio] = useState([]);
   const [familiasLoading, setFamiliasLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [panelAbierto, setPanelAbierto] = useState(false);
+  const [serviciosCargados, setServiciosCargados] = useState(false);
   const [editando, setEditando] = useState(null);
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!empresa?.id) return;
     setLoading(true);
+    setServiciosCargados(false);
     maestrosService.getServicios(empresa.id).then(data => {
       setServicios(data || []);
+      setServiciosCargados(true);
       setLoading(false);
     }).catch(err => {
       console.error(err);
@@ -6818,9 +7060,10 @@ function Servicios() {
       .finally(() => setFamiliasLoading(false));
   }, [empresa?.id]);
 
-  const [modalImportar, setModalImportar] = useState(false);
+  const importServiciosInputRef = useRef(null);
   const [importRows, setImportRows] = useState([]);
   const [importSummary, setImportSummary] = useState(null);
+  const [seccionesServicio, setSeccionesServicio] = useState({ economia:false, entregables:false, notas:false });
 
   const formBase = { 
     codigo: '', familia_id: '', familia: '', descripcion: '', unidad: 'Servicio',
@@ -6828,12 +7071,18 @@ function Servicios() {
     precio_incluido: false, detalle: '', entregables: [], notas_internas: '' 
   };
   const [form, setForm] = useState(formBase);
+  const formularioServicioRef = useRef(null);
   const [nuevoEntregable, setNuevoEntregable] = useState('');
   const familiaRapidaBase = { codigo: '', nombre: '', descripcion: '', orden: 0 };
   const [creandoFamiliaRapida, setCreandoFamiliaRapida] = useState(false);
   const [familiaRapida, setFamiliaRapida] = useState(familiaRapidaBase);
   const [familiaRapidaError, setFamiliaRapidaError] = useState('');
   const [guardandoFamiliaRapida, setGuardandoFamiliaRapida] = useState(false);
+
+  useEffect(() => {
+    if (!serviciosCargados || editando || form.codigo) return;
+    setForm(prev => ({ ...prev, codigo: `SRV-${String(servicios.length + 1).padStart(3, '0')}` }));
+  }, [editando, form.codigo, servicios.length, serviciosCargados]);
 
   const margenCalc = (c, p) => {
     const pc = Number(p), cc = Number(c);
@@ -6847,19 +7096,8 @@ function Servicios() {
   const margenActual = margenCalc(form.costo, form.precio);
   const colorMargen = margenActual > 30 ? 'var(--green)' : margenActual >= 10 ? 'var(--orange)' : 'var(--danger)';
 
-  const abrirNuevo = () => { 
-    const nuevoCodigo = `SRV-${String(servicios.length + 1).padStart(3, '0')}`;
-    setForm({ ...formBase, codigo: nuevoCodigo }); 
-    setNuevoEntregable(''); 
-    setEditando(null); 
-    setFormError('');
-    setCreandoFamiliaRapida(false);
-    setFamiliaRapida(familiaRapidaBase);
-    setFamiliaRapidaError('');
-    setPanelAbierto(true); 
-  };
-  
   const abrirEditar = (s) => {
+    setSeccionesServicio({ economia:false, entregables:false, notas:false });
     setForm({ 
       id: s.id,
       codigo: s.codigo || s.id || '',
@@ -6883,10 +7121,19 @@ function Servicios() {
     setCreandoFamiliaRapida(false);
     setFamiliaRapida(familiaRapidaBase);
     setFamiliaRapidaError('');
-    setPanelAbierto(true);
+    requestAnimationFrame(() => formularioServicioRef.current?.scrollIntoView({ behavior:'smooth', block:'start' }));
   };
   
-  const cerrar = () => { setPanelAbierto(false); setEditando(null); };
+  const cerrar = () => {
+    setSeccionesServicio({ economia:false, entregables:false, notas:false });
+    setEditando(null);
+    setForm(formBase);
+    setNuevoEntregable('');
+    setCreandoFamiliaRapida(false);
+    setFamiliaRapida(familiaRapidaBase);
+    setFamiliaRapidaError('');
+    setFormError('');
+  };
 
   const upd = (f, v) => setForm(p => ({ ...p, [f]: v }));
 
@@ -7137,16 +7384,25 @@ function Servicios() {
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Catálogo de Servicios</h1>
-          <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
+      {embedded ? (
+        <div className="row" style={{justifyContent:'flex-end', marginBottom:18}}>
+          <button className="btn btn-secondary" disabled={familiasLoading} onClick={() => importServiciosInputRef.current?.click()}>{I.download} {familiasLoading ? 'Cargando familias...' : 'Importar Excel'}</button>
+          <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
         </div>
-        <div className="row">
-          <button className="btn btn-secondary" onClick={() => { setModalImportar(true); setImportRows([]); setImportSummary(null); }}>{I.download} Carga masiva</button>
-          <button className="btn btn-primary" onClick={abrirNuevo}>{I.plus} Nuevo servicio</button>
+      ) : (
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Catálogo de Servicios</h1>
+            <div className="page-sub">Servicios ofrecidos con estructura de costos</div>
+          </div>
+          <div className="row">
+            <button className="btn btn-secondary" disabled={familiasLoading} onClick={() => importServiciosInputRef.current?.click()}>{I.download} {familiasLoading ? 'Cargando familias...' : 'Importar Excel'}</button>
+            <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
+          </div>
         </div>
-      </div>
+      )}
+      <input ref={importServiciosInputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{display:'none'}} onChange={handleFileUpload} />
+      <div style={{display:'flex', flexDirection:'column', gap:18}}>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
@@ -7194,17 +7450,14 @@ function Servicios() {
         </div>
       </div>
 
-      {panelAbierto && <>
-        <div className="side-panel-backdrop" onClick={cerrar}/>
-        <div className="side-panel" style={{width:'min(680px, 96vw)'}}>
-          <div className="side-panel-head">
+      <div ref={formularioServicioRef} className="card" style={{order:-1, padding:22, border:'1px solid var(--border)', borderRadius:10}}>
+          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:18}}>
             <div>
               <div className="eyebrow">Catálogo de Servicios</div>
               <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>{editando ? 'Editar servicio' : 'Nuevo servicio'}</div>
             </div>
-            <button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={cerrar}>{I.x}</button>
+            {editando && <button type="button" className="btn btn-secondary btn-sm" onClick={cerrar}>Cancelar edición</button>}
           </div>
-          <div className="side-panel-body">
             {formError && <div className="alert alert-danger" style={{marginBottom:16}}>{formError}</div>}
             
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>IDENTIFICACIÓN</div>
@@ -7256,9 +7509,10 @@ function Servicios() {
             </div>
 
             {(verCostos || verPrecios) && (
-              <>
-                <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>ECONOMÍA</div>
-                <div className="grid-2" style={{gap:14, marginBottom:24, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+              <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:18}}>
+                <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.economia} onClick={()=>setSeccionesServicio(p=>({...p,economia:!p.economia}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.economia ? '−' : '+'} Economía</button>
+                {seccionesServicio.economia && <div style={{padding:16, borderTop:'1px solid var(--border)'}}>
+                <div className="grid-2" style={{gap:14}}>
                   <div className="input-group" style={{gridColumn:'1/-1', display:'flex', gap:12, alignItems:'center'}}>
                     <label style={{margin:0}}>Moneda base:</label>
                     <select className="select" style={{width:150}} value={form.moneda} onChange={e => upd('moneda', e.target.value)}>
@@ -7287,11 +7541,13 @@ function Servicios() {
                     </label>
                   </div>
                 </div>
-              </>
+                </div>}
+              </div>
             )}
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>ENTREGABLES</div>
-            <div style={{marginBottom:24}}>
+            <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:18}}>
+              <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.entregables} onClick={()=>setSeccionesServicio(p=>({...p,entregables:!p.entregables}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.entregables ? '−' : '+'} Entregables</button>
+              {seccionesServicio.entregables && <div style={{padding:16, borderTop:'1px solid var(--border)'}}>
               {form.entregables.map((ent, idx) => (
                 <div key={idx} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:6, marginBottom:6, fontSize:13}}>
                   <span style={{color:'var(--fg-muted)'}}>•</span>
@@ -7303,47 +7559,33 @@ function Servicios() {
                 <input className="input" style={{flex:1}} value={nuevoEntregable} onChange={e => setNuevoEntregable(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), agregarEntregable())} placeholder="Ej: Capacitación 36 horas" />
                 <button type="button" className="btn btn-secondary" style={{padding:'0 16px'}} onClick={agregarEntregable}>{I.plus} Agregar entregable</button>
               </div>
+              </div>}
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--cyan)'}}>NOTAS INTERNAS</div>
-            <div className="input-group" style={{marginBottom:24}}>
+            <div style={{border:'1px solid var(--border)', borderRadius:8, background:'var(--bg-subtle)', overflow:'hidden', marginBottom:24}}>
+              <button type="button" className="btn btn-secondary btn-sm" aria-expanded={seccionesServicio.notas} onClick={()=>setSeccionesServicio(p=>({...p,notas:!p.notas}))} style={{width:'100%', justifyContent:'flex-start', border:'none', borderRadius:0}}>{seccionesServicio.notas ? '−' : '+'} Notas internas</button>
+              {seccionesServicio.notas && <div className="input-group" style={{padding:16, borderTop:'1px solid var(--border)'}}>
               <textarea className="input" rows={3} value={form.notas_internas} onChange={e => upd('notas_internas', e.target.value)} placeholder="Instrucciones opcionales para ventas o cotizaciones..." />
+              </div>}
             </div>
 
             <div className="row" style={{justifyContent:'flex-end', gap:10}}>
               <button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button>
               <button type="button" className="btn btn-primary" data-local-form="true" onClick={guardar}>{I.save} {editando ? 'Guardar cambios' : 'Crear servicio'}</button>
             </div>
-          </div>
-        </div>
-      </>}
+      </div>
+      </div>
 
-      {modalImportar && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setModalImportar(false)} />
-          <div className="side-panel" style={{maxWidth: 800, width: '96vw', padding:0}}>
-            <div className="side-panel-head" style={{padding:'20px 24px'}}>
-              <div>
-                <div className="font-display" style={{fontSize:22, fontWeight:700}}>Carga Masiva de Servicios</div>
-              </div>
-              <button className="icon-btn" onClick={() => setModalImportar(false)}>{I.x}</button>
+      {importRows.length > 0 && (
+        <div className="card" style={{padding:22, marginTop:18}}>
+          <div className="row" style={{justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+            <div>
+              <div className="eyebrow">Importar Excel</div>
+              <div className="font-display" style={{fontSize:20, fontWeight:700}}>Vista previa de servicios</div>
             </div>
-            
-            <div className="side-panel-body" style={{padding:'24px', maxHeight:'calc(100vh - 140px)', overflowY:'auto'}}>
-              <div className="row" style={{gap:10, marginBottom:20}}>
-                <button className="btn btn-secondary" onClick={descargarPlantilla}>{I.download} Descargar plantilla</button>
-                <button className="btn btn-primary" disabled={familiasLoading} onClick={() => document.getElementById('servicios-xlsx-upload').click()}>{familiasLoading ? 'Cargando familias...' : '⬆️ Subir archivo'}</button>
-                <input id="servicios-xlsx-upload" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{display:'none'}} onChange={handleFileUpload} />
-              </div>
-              <div className="col" style={{gap:20}}>
-                  {!importRows.length ? (
-                    <div style={{border:'2px dashed var(--border)', borderRadius:12, padding:'60px 20px', textAlign:'center', cursor:'pointer'}} onClick={() => document.getElementById('servicios-xlsx-upload').click()}>
-                      <div style={{fontSize:40, marginBottom:16, color:'var(--fg-muted)'}}>⬆️</div>
-                      <h4 style={{margin:0}}>Selecciona un archivo Excel (.xlsx)</h4>
-                      <p className="text-muted" style={{marginTop:8, fontSize:13}}>Usa la hoja "Plantilla" y conserva los nombres de columna.</p>
-                    </div>
-                  ) : (
-                    <>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setImportRows([]); setImportSummary(null); }}>Cerrar</button>
+          </div>
+          <div className="col" style={{gap:20}}>
                       <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
                         <div>
                           <strong>{importRows.length} filas analizadas</strong>
@@ -7409,12 +7651,8 @@ function Servicios() {
                           Importar {importRows.filter(r => r._errores.length===0).length} filas válidas
                         </button>
                       </div>
-                    </>
-                  )}
-              </div>
-            </div>
           </div>
-        </>
+        </div>
       )}
     </>
   );
