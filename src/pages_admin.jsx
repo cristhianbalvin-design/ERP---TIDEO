@@ -144,7 +144,7 @@ const USER_TABLE_COLUMNS = [
 ];
 
 function Roles() {
-  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, setUsuarios, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
+  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, actualizarUsuarioAcceso, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
   const esSuperadminPlataforma = authUser?.superadmin_plataforma === true;
   const puedeConfigurarPlataforma = Boolean(empresa?.id === 'emp_tideo' && empresa?.es_plataforma);
   const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
@@ -171,6 +171,7 @@ function Roles() {
   const [guardandoRol, setGuardandoRol] = useState(false);
   const [reasignarUsuario, setReasignarUsuario] = useState(null);
   const [reasignarRolId, setReasignarRolId] = useState('');
+  const [guardandoReasignacion, setGuardandoReasignacion] = useState(false);
   const [roleActionError, setRoleActionError] = useState('');
   const [guardandoPermisos, setGuardandoPermisos] = useState(false);
   const [permisosDirty, setPermisosDirty] = useState(false);
@@ -373,10 +374,40 @@ function Roles() {
     }
   };
 
-  const handleReasignar = () => {
-    setUsuarios(prev => prev.map(u => u.id === reasignarUsuario.id ? { ...u, rol: reasignarRolId } : u));
-    addNotificacion(`${reasignarUsuario.nombre} reasignado a "${roles[reasignarRolId]?.nombre || reasignarRolId}".`);
-    setReasignarUsuario(null);
+  const handleReasignar = async () => {
+    if (!reasignarUsuario || !reasignarRolId || guardandoReasignacion) return;
+    const nuevoRol = roles[reasignarRolId];
+    if (!nuevoRol) {
+      const message = 'El rol seleccionado ya no está disponible.';
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
+      return;
+    }
+    if (reasignarUsuario.rol === reasignarRolId) {
+      setReasignarUsuario(null);
+      return;
+    }
+
+    setRoleActionError('');
+    setGuardandoReasignacion(true);
+    try {
+      await actualizarUsuarioAcceso(reasignarUsuario.id, {
+        ...reasignarUsuario,
+        rol: reasignarRolId,
+        empresa_id: reasignarUsuario.empresa_id || empresa?.id,
+        // La asignación principal se reconstruye a partir del rol elegido. Solo se
+        // envían las asignaciones adicionales para no convertir la principal previa
+        // en un rol extra durante la reasignación.
+        asignaciones: (reasignarUsuario.asignaciones || []).filter(asignacion => !asignacion.principal),
+      });
+      addNotificacion(`${reasignarUsuario.nombre} reasignado a "${nuevoRol.nombre}".`);
+      setReasignarUsuario(null);
+    } catch (error) {
+      const message = `No se pudo reasignar el rol: ${error?.message || 'Error desconocido'}`;
+      setRoleActionError(message);
+    } finally {
+      setGuardandoReasignacion(false);
+    }
   };
   const seleccionarRol = roleId => {
     const targetRole = roles[roleId];
@@ -854,19 +885,19 @@ function Roles() {
 
       {/* Modal: Reasignar usuario */}
       {reasignarUsuario && <>
-        <div className="side-panel-backdrop" onClick={()=>setReasignarUsuario(null)}/>
+        <div className="side-panel-backdrop" onClick={()=>!guardandoReasignacion && setReasignarUsuario(null)}/>
         <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:400,zIndex:200,boxShadow:'0 20px 60px rgba(0,0,0,0.2)'}}>
           <h3 style={{marginBottom:8}}>Reasignar usuario</h3>
           <div className="text-muted" style={{fontSize:12,marginBottom:20}}>{reasignarUsuario.nombre} · {reasignarUsuario.email}</div>
           <div className="input-group">
             <label>Nuevo rol</label>
-            <select className="select" value={reasignarRolId} onChange={e=>setReasignarRolId(e.target.value)}>
+            <select className="select" value={reasignarRolId} onChange={e=>setReasignarRolId(e.target.value)} disabled={guardandoReasignacion}>
               {Object.entries(roles).map(([k,r])=><option key={k} value={k}>{r.nombre}</option>)}
             </select>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={()=>setReasignarUsuario(null)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleReasignar}>Confirmar</button>
+            <button className="btn btn-secondary" onClick={()=>setReasignarUsuario(null)} disabled={guardandoReasignacion}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleReasignar} disabled={!reasignarRolId || guardandoReasignacion}>{guardandoReasignacion ? 'Reasignando...' : 'Confirmar'}</button>
           </div>
         </div>
       </>}
