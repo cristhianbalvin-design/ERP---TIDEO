@@ -5164,7 +5164,7 @@ function Maestros() {
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
-  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
+  const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', clasificacion_id:'', familia_id:'', especialidad_id:'', tiempo_estimado_horas:'', requiere_certificacion:false, nivel_riesgo:'', requiere_permiso_especial:false, herramientas_requeridas:'', requiere_repuestos:false, frecuencia_sugerida:'', unidad_medida:'', costo_estandar_hora:'', orden_sugerido:0, facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
   const [rows, setRows] = useState({
     mst_clientes: [],
     mst_proveedores: [],
@@ -5179,6 +5179,13 @@ function Maestros() {
   const [importStep, setImportStep] = useState(1);
   const [importSummary, setImportSummary] = useState(null);
   const [importandoUnidades, setImportandoUnidades] = useState(false);
+  const [clasificacionesServicioInterno, setClasificacionesServicioInterno] = useState([]);
+  const [familiasServicioInterno, setFamiliasServicioInterno] = useState([]);
+  const [seccionesTipoServicio, setSeccionesTipoServicio] = useState({ planificacion:false, hse:false, recursos:false });
+  useEffect(() => {
+    maestrosService.getClasificacionesServicioInterno().then(setClasificacionesServicioInterno).catch(err => console.error('clasificaciones servicio interno:', err));
+    maestrosService.getFamiliasServicioInterno().then(setFamiliasServicioInterno).catch(err => console.error('familias servicio interno:', err));
+  }, []);
   const getSelectedRows = () => {
     if (!sel) return [];
     if (sel.id === 'mst_unidades_organizacionales') return unidadesOrganizacionales;
@@ -5284,10 +5291,10 @@ function Maestros() {
     },
     mst_tipos_servicio: {
       sheetName: 'Tipos de Servicio', filename: 'tipos_servicio.xlsx',
-      headers: ['Codigo','Nombre','Clasificacion','Facturable','Estado'],
-      fields:  ['codigo','nombre','clasificacion','facturable','estado'],
-      ejemplo: ['TSI-001','Mantenimiento preventivo','Mantenimiento','si','activo'],
-      hint: 'Facturable: si / no',
+      headers: ['Codigo','Nombre','Clasificacion','Familia','Tiempo estimado horas','Nivel riesgo','Requiere permiso especial','Herramientas requeridas','Requiere repuestos','Frecuencia sugerida','Unidad medida','Costo estandar hora','Orden sugerido','Estado'],
+      fields:  ['codigo','nombre','clasificacion','familia','tiempo_estimado_horas','nivel_riesgo','requiere_permiso_especial','herramientas_requeridas','requiere_repuestos','frecuencia_sugerida','unidad_medida','costo_estandar_hora','orden_sugerido','estado'],
+      ejemplo: ['TSI-001','Mantenimiento preventivo','Preventivo','Mecánico','8','Medio','no','Juego de llaves','si','Mensual','Hora','0','1','activo'],
+      hint: 'Clasificación y Familia se resuelven contra los maestros globales; una no coincidencia se importa con ID vacío y advertencia.',
     },
     mst_almacenes: {
       sheetName: 'Almacenes', filename: 'almacenes.xlsx',
@@ -5590,7 +5597,16 @@ function Maestros() {
           }
         }
         else if (sel.id === 'mst_especialidades') await crearEspecialidad({ ...base, area: r.area || 'General', requiere_cert: (r.requiere_cert||'').toLowerCase()==='si' });
-        else if (sel.id === 'mst_tipos_servicio') await crearTipoServicio({ ...base, clasificacion: r.clasificacion || 'General', facturable: (r.facturable||'').toLowerCase()==='si' });
+        else if (sel.id === 'mst_tipos_servicio') {
+          const norm = v => String(v || '').trim().toLocaleLowerCase('es-PE');
+          const clas = clasificacionesServicioInterno.find(c => norm(c.nombre) === norm(r.clasificacion));
+          const familia = familiasServicioInterno.find(f => norm(f.nombre) === norm(r.familia));
+          const advertencias = [];
+          if (r.clasificacion && !clas) advertencias.push(`Clasificación "${r.clasificacion}" no encontrada; clasificacion_id queda NULL.`);
+          if (r.familia && !familia) advertencias.push(`Familia "${r.familia}" no encontrada; familia_id queda NULL.`);
+          await crearTipoServicio({ ...base, clasificacion: clas?.nombre || r.clasificacion || 'General', clasificacion_id: clas?.id || null, familia_id: familia?.id || null, tiempo_estimado_horas: r.tiempo_estimado_horas === '' ? null : Number(r.tiempo_estimado_horas), nivel_riesgo: r.nivel_riesgo || null, requiere_permiso_especial: String(r.requiere_permiso_especial || '').toLowerCase()==='si', herramientas_requeridas: r.herramientas_requeridas || null, requiere_repuestos: String(r.requiere_repuestos || '').toLowerCase()==='si', frecuencia_sugerida: r.frecuencia_sugerida || null, unidad_medida: r.unidad_medida || null, costo_estandar_hora: r.costo_estandar_hora === '' ? null : Number(r.costo_estandar_hora), orden_sugerido: Number(r.orden_sugerido) || 0 });
+          r._advertencias = advertencias;
+        }
         else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
         else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '', tipo: r.tipo || 'oficina' });
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
@@ -5685,7 +5701,23 @@ function Maestros() {
         if (editandoId) await actualizarNivelJerarquico(editandoId, item);
         else await crearNivelJerarquico(item);
       } else if (sel.id === 'mst_tipos_servicio') {
-        const item = { ...base, clasificacion: nuevo.clasificacion || 'General', facturable: nuevo.facturable };
+        const clasificacion = clasificacionesServicioInterno.find(c => c.id === nuevo.clasificacion_id);
+        const item = { ...base,
+          clasificacion: clasificacion?.nombre || nuevo.clasificacion || 'General',
+          clasificacion_id: nuevo.clasificacion_id || null,
+          familia_id: nuevo.familia_id || null,
+          especialidad_id: nuevo.especialidad_id || null,
+          tiempo_estimado_horas: nuevo.tiempo_estimado_horas === '' ? null : Number(nuevo.tiempo_estimado_horas),
+          requiere_certificacion: Boolean(nuevo.requiere_certificacion),
+          nivel_riesgo: nuevo.nivel_riesgo || null,
+          requiere_permiso_especial: Boolean(nuevo.requiere_permiso_especial),
+          herramientas_requeridas: nuevo.herramientas_requeridas || null,
+          requiere_repuestos: Boolean(nuevo.requiere_repuestos),
+          frecuencia_sugerida: nuevo.frecuencia_sugerida || null,
+          unidad_medida: nuevo.unidad_medida || null,
+          costo_estandar_hora: nuevo.costo_estandar_hora === '' ? null : Number(nuevo.costo_estandar_hora),
+          orden_sugerido: Number(nuevo.orden_sugerido) || 0,
+        };
         if (editandoId) await actualizarTipoServicio(editandoId, item);
         else await crearTipoServicio(item);
       } else if (sel.id === 'mst_almacenes') {
@@ -5806,6 +5838,19 @@ function Maestros() {
       area: r.area || '',
       requiere_cert: Boolean(r.requiere_cert),
       clasificacion: r.clasificacion || '',
+      clasificacion_id: r.clasificacion_id || '',
+      familia_id: r.familia_id || '',
+      especialidad_id: r.especialidad_id || '',
+      tiempo_estimado_horas: r.tiempo_estimado_horas ?? '',
+      requiere_certificacion: Boolean(r.requiere_certificacion),
+      nivel_riesgo: r.nivel_riesgo || '',
+      requiere_permiso_especial: Boolean(r.requiere_permiso_especial),
+      herramientas_requeridas: r.herramientas_requeridas || '',
+      requiere_repuestos: Boolean(r.requiere_repuestos),
+      frecuencia_sugerida: r.frecuencia_sugerida || '',
+      unidad_medida: r.unidad_medida || '',
+      costo_estandar_hora: r.costo_estandar_hora ?? '',
+      orden_sugerido: r.orden_sugerido ?? 0,
       facturable: Boolean(r.facturable),
       tipo: r.tipo || '',
       tipo_catalogo: r.tipo || 'moneda',
@@ -6049,8 +6094,12 @@ function Maestros() {
           {renderCodPreview(sel.id, formLen)}
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Mantenimiento predictivo" autoFocus/></div>
           <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group"><label>Clasificación</label><select className="select" value={nuevo.clasificacion} onChange={e=>setNuevo(v=>({...v,clasificacion:e.target.value}))}><option value="">Seleccionar...</option>{['Preventivo','Correctivo','Proyecto','Emergencia','Garantía','Interno'].map(c=><option key={c}>{c}</option>)}</select></div>
-          <div className="input-group"><label>Facturable</label><select className="select" value={nuevo.facturable?'si':'no'} onChange={e=>setNuevo(v=>({...v,facturable:e.target.value==='si'}))}><option value="si">Sí</option><option value="no">No</option></select></div>
+          <div className="input-group"><label>Clasificación</label><select className="select" value={nuevo.clasificacion_id} onChange={e=>setNuevo(v=>({...v,clasificacion_id:e.target.value}))}><option value="">Seleccionar...</option>{clasificacionesServicioInterno.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+          <div className="input-group"><label>Familia técnica / Disciplina</label><select className="select" value={nuevo.familia_id} onChange={e=>setNuevo(v=>({...v,familia_id:e.target.value}))}><option value="">Sin definir</option>{familiasServicioInterno.map(f=><option key={f.id} value={f.id}>{f.nombre}</option>)}</select></div>
+          {[['planificacion','Planificación'],['hse','Seguridad (HSE)'],['recursos','Recursos']].map(([key,label]) => <div key={key} style={{gridColumn:'1/-1'}}><button type="button" className="btn btn-secondary btn-sm" onClick={()=>setSeccionesTipoServicio(p=>({...p,[key]:!p[key]}))}>{seccionesTipoServicio[key] ? '−' : '+'} {label}</button></div>)}
+          {seccionesTipoServicio.planificacion && <><div className="input-group"><label>Tiempo estimado (horas)</label><input className="input" type="number" min="0" step="0.25" value={nuevo.tiempo_estimado_horas} onChange={e=>setNuevo(v=>({...v,tiempo_estimado_horas:e.target.value}))}/></div><div className="input-group"><label>Especialidad requerida</label><select className="select" value={nuevo.especialidad_id} onChange={e=>setNuevo(v=>({...v,especialidad_id:e.target.value}))}><option value="">Sin definir</option>{especialidades.filter(e=>e.estado==='activo').map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</select></div><div className="input-group"><label>Unidad de medida</label><input className="input" value={nuevo.unidad_medida} onChange={e=>setNuevo(v=>({...v,unidad_medida:e.target.value}))}/></div><div className="input-group"><label>Frecuencia sugerida</label><input className="input" value={nuevo.frecuencia_sugerida} onChange={e=>setNuevo(v=>({...v,frecuencia_sugerida:e.target.value}))}/></div><div className="input-group"><label>Orden sugerido</label><input className="input" type="number" value={nuevo.orden_sugerido} onChange={e=>setNuevo(v=>({...v,orden_sugerido:e.target.value}))}/></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_certificacion} onChange={e=>setNuevo(v=>({...v,requiere_certificacion:e.target.checked}))}/> Requiere certificación</label></>}
+          {seccionesTipoServicio.hse && <><div className="input-group"><label>Nivel de riesgo</label><select className="select" value={nuevo.nivel_riesgo} onChange={e=>setNuevo(v=>({...v,nivel_riesgo:e.target.value}))}><option value="">Sin definir</option><option>Bajo</option><option>Medio</option><option>Alto</option></select></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_permiso_especial} onChange={e=>setNuevo(v=>({...v,requiere_permiso_especial:e.target.checked}))}/> Requiere permiso especial</label></>}
+          {seccionesTipoServicio.recursos && <><div className="input-group" style={{gridColumn:'span 2'}}><label>Herramientas requeridas</label><input className="input" value={nuevo.herramientas_requeridas} onChange={e=>setNuevo(v=>({...v,herramientas_requeridas:e.target.value}))}/></div><div className="input-group"><label>Costo estándar por hora</label><input className="input" type="number" min="0" step="0.01" placeholder="Sin definir" value={nuevo.costo_estandar_hora} onChange={e=>setNuevo(v=>({...v,costo_estandar_hora:e.target.value}))}/></div><label className="row" style={{alignItems:'center',gap:8}}><input type="checkbox" checked={nuevo.requiere_repuestos} onChange={e=>setNuevo(v=>({...v,requiere_repuestos:e.target.checked}))}/> Requiere repuestos</label></>}
           <FormActions label="tipo" />
         </div>
       </form>
@@ -6644,8 +6693,8 @@ function Maestros() {
                         <tr key={i} style={{background: esError ? 'rgba(239,68,68,0.05)' : 'transparent'}}>
                           <td className="mono text-muted">{i+2}</td>
                           <td>{r.nombre}</td>
-                          <td>{esError ? <span className="badge badge-red">{estado}</span> : <span className="badge badge-green">{estado}</span>}</td>
-                          <td style={{fontSize:11, color:'var(--danger)'}}>{r._errores.join(' · ')}</td>
+                          <td>{esError ? <span className="badge badge-red">{estado}</span> : r._advertencias?.length ? <span className="badge badge-cyan">ADVERTENCIA</span> : <span className="badge badge-green">{estado}</span>}</td>
+                          <td style={{fontSize:11, color:r._errores.length ? 'var(--danger)' : 'var(--orange)'}}>{[...(r._errores || []), ...(r._advertencias || [])].join(' · ')}</td>
                         </tr>
                         );
                       })}</tbody>

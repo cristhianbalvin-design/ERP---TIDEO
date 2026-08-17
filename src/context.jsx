@@ -3151,6 +3151,7 @@ export function AppProvider({ children }) {
       os_cliente_id: os.id,
       cuenta_id: os.cuenta_id,
       cliente: os.cuenta_id,
+      tipo_servicio_interno_id: datos.tipo_servicio_interno_id || null,
       tipo: datos.servicio || 'Servicio cliente',
       descripcion: datos.descripcion || `Ejecucion de ${os.numero}`,
       estado: datos.estado || 'programada',
@@ -3190,8 +3191,9 @@ export function AppProvider({ children }) {
         if (ot.est_terceros == null && localEst.est_terceros != null) ot.est_terceros = localEst.est_terceros;
         if (ot.est_logistica == null && localEst.est_logistica != null) ot.est_logistica = localEst.est_logistica;
         // Persist est breakdown to DB since the RPC doesn't save these columns
-        if ([ot.est_mo, ot.est_materiales, ot.est_terceros, ot.est_logistica].some(v => v != null)) {
+        if (ot.tipo_servicio_interno_id || [ot.est_mo, ot.est_materiales, ot.est_terceros, ot.est_logistica].some(v => v != null)) {
           opsSync(sb => svcActualizarOT(sb, ot.id, {
+            tipo_servicio_interno_id: ot.tipo_servicio_interno_id,
             costoEst: ot.costoEst,
             costo_estimado_ot: ot.costo_estimado_ot,
             est_mo: ot.est_mo,

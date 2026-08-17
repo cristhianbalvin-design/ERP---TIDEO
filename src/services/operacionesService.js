@@ -28,6 +28,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     backlog_id: ot.backlog_id || null,
     numero: ot.numero,
     cuenta_id: ot.cuenta_id || ot.cliente || null,
+    tipo_servicio_interno_id: ot.tipo_servicio_interno_id || null,
     servicio: ot.tipo || 'General',
     descripcion: ot.descripcion || null,
     direccion_ejecucion: ot.direccion_ejecucion || ot.sede || null,
@@ -88,6 +89,7 @@ export async function actualizarOT(supabase, otId, datos) {
   const row = {};
 
   if (datos.cuenta_id !== undefined) row.cuenta_id = datos.cuenta_id || null;
+  if (datos.tipo_servicio_interno_id !== undefined) row.tipo_servicio_interno_id = datos.tipo_servicio_interno_id || null;
   if (datos.os_cliente_id !== undefined) row.os_cliente_id = datos.os_cliente_id || null;
   if (datos.backlog_id !== undefined) row.backlog_id = datos.backlog_id || null;
   if (datos.tipo !== undefined || datos.servicio !== undefined) row.servicio = datos.tipo || datos.servicio || 'General';

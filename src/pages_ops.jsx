@@ -1566,7 +1566,7 @@ function OT({ role }) {
   const [motivoAccionParteOT, setMotivoAccionParteOT] = useState('');
   const [avanceAprobacionParteOT, setAvanceAprobacionParteOT] = useState(0);
 
-  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', costo_estimado_ot: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
+  const formNuevaOTBase = { tipo: 'interna', os_cliente_id: '', centro_costo_id: '', centro_beneficio_id: '', servicio: '', tipo_servicio_interno_id: '', descripcion: '', tecnico_responsable_id: '', prioridad: 'normal', fecha_programada: '', costo_estimado_ot: '', est_mo: '', est_materiales: '', est_terceros: '', est_logistica: '', participantes_admin: [] };
   const [panelNuevaOT, setPanelNuevaOT] = useState(false);
   const [formNuevaOT, setFormNuevaOT] = useState(formNuevaOTBase);
   const [errorNuevaOT, setErrorNuevaOT] = useState('');
@@ -1714,6 +1714,7 @@ function OT({ role }) {
     try {
       const datos = {
         tipo: formNuevaOT.tipo,
+        tipo_servicio_interno_id: formNuevaOT.tipo_servicio_interno_id || null,
         centro_costo_id: formNuevaOT.centro_costo_id,
         servicio: formNuevaOT.servicio || (formNuevaOT.tipo === 'garantia' ? 'Garantia' : formNuevaOT.tipo === 'correctiva' ? 'Correctiva' : 'Servicio cliente'),
         descripcion: formNuevaOT.descripcion,
@@ -4801,6 +4802,13 @@ function OT({ role }) {
 
               <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
               <div className="grid-2" style={{gap:16, marginBottom:20}}>
+                <div className="input-group">
+                  <label>Tipo de servicio interno</label>
+                  <select className="select" value={formNuevaOT.tipo_servicio_interno_id} onChange={e => updNuevaOT('tipo_servicio_interno_id', e.target.value)}>
+                    <option value="">Sin definir</option>
+                    {tiposActivos.map(t => <option key={t.id} value={t.id}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
+                  </select>
+                </div>
                 <div className="input-group">
                   <label>Tipo de OT <span style={{color:'var(--danger)'}}>*</span></label>
                   <select className="select" value={formNuevaOT.tipo} onChange={e => updNuevaOT('tipo', e.target.value)}>

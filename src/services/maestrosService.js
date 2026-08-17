@@ -291,6 +291,18 @@ export const maestrosService = {
   },
 
   // Tipos de Servicio
+  getClasificacionesServicioInterno: async () => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('clasificacion_servicio_interno').select('*').eq('activo', true).order('orden');
+    if (error) throw error;
+    return data || [];
+  },
+  getFamiliasServicioInterno: async () => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from('familia_servicio_interno').select('*').eq('activo', true).order('orden');
+    if (error) throw error;
+    return data || [];
+  },
   getTiposServicio: async (empresaId) => {
     if (!empresaId) return [];
     const supabase = await getSupabaseClient();
@@ -304,7 +316,7 @@ export const maestrosService = {
       id: tipoServicio.id || makeId('tsi'),
       empresa_id: empresaId,
       codigo: tipoServicio.codigo || `TSI-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
-      ...pick(tipoServicio, ['nombre', 'clasificacion', 'facturable', 'estado']),
+      ...pick(tipoServicio, ['nombre', 'clasificacion', 'clasificacion_id', 'familia_id', 'especialidad_id', 'tiempo_estimado_horas', 'requiere_certificacion', 'nivel_riesgo', 'requiere_permiso_especial', 'herramientas_requeridas', 'requiere_repuestos', 'frecuencia_sugerida', 'unidad_medida', 'costo_estandar_hora', 'orden_sugerido', 'facturable', 'estado']),
     };
     const { data, error } = await supabase.from('tipos_servicio_interno').insert([payload]).select().single();
     if (error) throw error;
@@ -312,7 +324,7 @@ export const maestrosService = {
   },
   actualizarTipoServicio: async (tipoServicioId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('tipos_servicio_interno').update(pick(payload, ['codigo', 'nombre', 'clasificacion', 'facturable', 'estado'])).eq('id', tipoServicioId).select().single();
+    const { data, error } = await supabase.from('tipos_servicio_interno').update(pick(payload, ['codigo', 'nombre', 'clasificacion', 'clasificacion_id', 'familia_id', 'especialidad_id', 'tiempo_estimado_horas', 'requiere_certificacion', 'nivel_riesgo', 'requiere_permiso_especial', 'herramientas_requeridas', 'requiere_repuestos', 'frecuencia_sugerida', 'unidad_medida', 'costo_estandar_hora', 'orden_sugerido', 'facturable', 'estado'])).eq('id', tipoServicioId).select().single();
     if (error) throw error;
     return data;
   },
