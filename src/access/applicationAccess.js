@@ -22,11 +22,14 @@ export function getApplicationAccess({ empresa, role }) {
   const permisos = role?.permisos || {};
   const accesoTotal = Boolean(permisos.todo);
   const pantallasConVista = new Set(permisos.ver || []);
+  const modulosCampo = Array.isArray(permisos.campo_modulos) ? permisos.campo_modulos : [];
   const puedeAdministrar = accesoTotal || pantallasConVista.has('app_administrativo');
   const puedeOperar = accesoTotal || pantallasConVista.has('app_operativo');
+  const puedeMarcarAsistencia = Boolean(permisos.acceso_campo) && modulosCampo.includes('asistencia');
 
   return {
     administrativa: puedeAdministrar,
     operativa: Boolean(empresa?.modulo_operativo_habilitado) && puedeOperar,
+    asistencia: puedeMarcarAsistencia,
   };
 }

@@ -31,6 +31,12 @@ const apps = [
     description: 'Consulta y ejecuta el trabajo operativo diario.',
     icon: APPLICATION_ICONS.operativa,
   },
+  {
+    key: 'asistencia',
+    title: 'Control de asistencia',
+    description: 'Registra tus marcaciones de ingreso y salida.',
+    icon: I.clock,
+  },
 ];
 
 function AppCard({ app, enabled, loading, onSelect }) {
@@ -68,9 +74,15 @@ function AppCard({ app, enabled, loading, onSelect }) {
   );
 }
 
-export function ApplicationWelcome({ onEnterAdministration }) {
-  const { empresa, role, membresiaCargando } = useApp();
-  const access = getApplicationAccess({ empresa, role });
+export function ApplicationWelcome({ onEnterAdministration, onEnterAttendance }) {
+  const { empresa, role, membresiaCargando, membresiaActiva, todasMembresias = [] } = useApp();
+  const accessBase = getApplicationAccess({ empresa, role });
+  // La asistencia es un portal personal: cualquier miembro activo puede abrirlo.
+  // La ficha y el turno se validan dentro de la vista antes de permitir marcar.
+  const access = {
+    ...accessBase,
+    asistencia: Boolean(membresiaActiva?.empresa?.id || todasMembresias.length),
+  };
   const enterOperations = () => {
     window.location.assign(import.meta.env.VITE_OPERATIONS_APP_URL || '/operaciones/');
   };
@@ -91,7 +103,11 @@ export function ApplicationWelcome({ onEnterAdministration }) {
               app={app}
               enabled={access[app.key]}
               loading={membresiaCargando}
-              onSelect={app.key === 'administrativa' ? onEnterAdministration : enterOperations}
+              onSelect={app.key === 'administrativa'
+                ? onEnterAdministration
+                : app.key === 'asistencia'
+                  ? onEnterAttendance
+                  : enterOperations}
             />
           ))}
         </div>

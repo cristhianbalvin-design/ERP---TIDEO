@@ -20,7 +20,6 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   const { authUser, usuarios, personalAdmin, personalOperativo, role } = useApp();
   const [screen, setScreen] = useState('home');
   const fichaColaborador = getFichaColaboradorMovil({ authUser, usuarios, personalAdmin, personalOperativo });
-  const trabajadorAsistencia = fichaColaborador?.turno_id ? fichaColaborador : null;
   // Usar role.permisos.campo_modulos (de membresiaActiva, disponible desde el login)
   // en lugar de buscar en usuarios[] que puede estar vacío por RLS para roles no-admin.
   const modulosAsignados = (role?.permisos?.campo_modulos?.length ? role.permisos.campo_modulos : null)
@@ -33,8 +32,10 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     : fichaColaborador
       ? modulosAsignados
       : modulosSinFichaPermitidos;
-  const modulosUsuarioKey = modulosUsuario.join('|');
-  const puedeVerAsistencia = Boolean(trabajadorAsistencia);
+  const modulosAccesibles = !modulosUsuario.includes('asistencia')
+    ? [...modulosUsuario, 'asistencia']
+    : modulosUsuario;
+  const modulosUsuarioKey = modulosAccesibles.join('|');
 
   const profiles = useMemo(() => [
     { k: 'tecnico', l: 'Técnico', icon: I.wrench },
@@ -46,21 +47,16 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     { k: 'asistencia', l: 'Asistencia', icon: I.clock, requiereAsistencia: true },
     { k: 'mi_espacio', l: 'Mi portal', icon: I.userCheck },
     { k: 'administrativo', l: 'Tareo', icon: I.users },
-  ].filter(p => modulosUsuario.includes(p.k) && (!p.requiereAsistencia || puedeVerAsistencia)), [modulosUsuarioKey, puedeVerAsistencia]);
+  ].filter(p => modulosAccesibles.includes(p.k)), [modulosUsuarioKey]);
 
   useEffect(() => {
     if (!profiles.length) return;
-    if (profile === 'asistencia' && !puedeVerAsistencia) {
-      setProfile(profiles[0].k);
-      setScreen('home');
-      return;
-    }
     // null (inicial) o perfil no permitido → asignar el primero disponible
     if (!profile || !profiles.some(p => p.k === profile)) {
       setProfile(profiles[0].k);
       setScreen('home');
     }
-  }, [profile, puedeVerAsistencia, setProfile, profiles]);
+  }, [profile, setProfile, profiles]);
 
   return (
     <div className="mobile-field-shell" style={{background:dark?'#0D1B2E':'#EEF2F6'}}>
@@ -295,6 +291,9 @@ function AsistenciaMobileView({ screen, setScreen }) {
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
+  if (!trabajadorActual?.turno_id) {
+    return <MobileAccessMessage text="Tu ficha de colaborador no tiene un turno asignado. Contacta a RRHH para habilitar las marcaciones." />;
+  }
   
   const hoy = new Date();
   const today = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');

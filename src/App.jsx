@@ -429,9 +429,19 @@ function MainLayout({ onShowApplicationWelcome }) {
 
 function ApplicationEntry() {
   const [selected, setSelected] = useState(false);
+  const { setMobileMode, setMobileProfile } = useApp();
+  const enterAttendance = () => {
+    setMobileProfile('asistencia');
+    setMobileMode(true);
+    setSelected(true);
+  };
+
   return selected
     ? <MainLayout onShowApplicationWelcome={() => setSelected(false)} />
-    : <ApplicationWelcome onEnterAdministration={() => setSelected(true)} />;
+    : <ApplicationWelcome
+        onEnterAdministration={() => setSelected(true)}
+        onEnterAttendance={enterAttendance}
+      />;
 }
 
 // ─── Raíz de la app ───────────────────────────────────────────────────────────

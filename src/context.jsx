@@ -838,6 +838,11 @@ export function AppProvider({ children }) {
     const callerEmail = authUser?.email || '';
     const callerId = authUser?.id || '';
     const hasPlatformSuperadminMembership = todasMembresias.some(m => m.rol?.es_superadmin && m.empresa?.es_plataforma);
+    const puedeListarRoles = Boolean(
+      membresiaActiva?.rol?.es_admin_empresa ||
+      membresiaActiva?.rol?.es_superadmin ||
+      (membresiaActiva?.permisos_rows || []).some(p => p.pantalla === 'roles' && p.puede_ver)
+    );
 
     setUsuarios([]);
     setAccessDebug(prev => ({
@@ -853,7 +858,7 @@ export function AppProvider({ children }) {
     const loadAccessData = async () => {
       const [usuariosResult, rolesResult, posicionesResult, posicionesUsuariosResult, unidadesResult] = await Promise.allSettled([
         usuariosService.getUsuarios(empresaId),
-        rolesService.getRolesConPermisos(empresaId),
+        puedeListarRoles ? rolesService.getRolesConPermisos(empresaId) : Promise.resolve(null),
         posicionesService.getPosiciones(empresaId),
         posicionesService.getPosicionesUsuarios(empresaId),
         posicionesService.getUnidadesOrganizacionales(empresaId),
@@ -905,7 +910,9 @@ export function AppProvider({ children }) {
         addNotificacion(`No se pudieron cargar usuarios: ${message}`);
       }
 
-      if (rolesResult.status === 'fulfilled') {
+      if (!puedeListarRoles) {
+        setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoading: false }));
+      } else if (rolesResult.status === 'fulfilled') {
         const { roles: rolesData, permisos: permisosData } = rolesResult.value || {};
         if (rolesData?.length) {
           setRolesCtx(rolesConPermisosAObjeto(rolesData, permisosData));
@@ -9653,6 +9660,12 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
     if (!authSession?.user?.id || !empresa?.id || !membresiaActiva?.rol_id) return;
+    const puedeListarRoles = Boolean(
+      membresiaActiva?.rol?.es_admin_empresa ||
+      membresiaActiva?.rol?.es_superadmin ||
+      (membresiaActiva?.permisos_rows || []).some(p => p.pantalla === 'roles' && p.puede_ver)
+    );
+    if (!puedeListarRoles) return;
     cargarRolesAcceso().catch(error => {
       console.error('Error reloading roles from Supabase:', error);
       setAccessDebug(prev => ({ ...prev, rolesError: error.message || 'Error desconocido' }));
