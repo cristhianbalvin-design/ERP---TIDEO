@@ -105,9 +105,8 @@ const SIDEBAR = [
     { key: 'usuarios', label: 'Usuarios', icon: I.users },
     { key: 'organigrama', label: 'Organigrama', icon: I.users },
     { key: 'roles', label: 'Roles y Permisos', icon: I.shield },
-    { key: 'maestros', label: 'Maestros Base', icon: I.settings },
+    { key: 'maestros', label: 'Maestros Base', icon: I.settings, accessAnyOf: ['maestros', 'servicios'] },
     { key: 'parametros', label: 'Parametros Generales', icon: I.settings },
-    { key: 'servicios', label: 'Catalogo Servicios', icon: I.package },
     { key: 'salud_implementacion_tenant', label: 'Salud Implementacion', icon: I.trend, adminOnly: true },
   ]},
 ];
@@ -255,7 +254,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items
-      .filter(it => it.key === 'mi_portal' || !allowed || allowed.has(it.key))
+      .filter(it => it.key === 'mi_portal' || !allowed || allowed.has(it.key) || it.accessAnyOf?.some(key => allowed.has(key)))
       .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);

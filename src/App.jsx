@@ -289,7 +289,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       return;
     }
     
-    const activeAllowed = allowed ? (active === 'mi_portal' || allowed.has(active)) : true;
+    const activeAllowed = allowed ? (active === 'mi_portal' || allowed.has(active) || (active === 'maestros' && allowed.has('servicios'))) : true;
     if (!activeAllowed) {
       let fallback = 'mi_portal';
       if (allowed && allowed.has('dashboard')) {

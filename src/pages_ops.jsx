@@ -4803,7 +4803,7 @@ function OT({ role }) {
               <div className="eyebrow" style={{marginBottom:12}}>Clasificación</div>
               <div className="grid-2" style={{gap:16, marginBottom:20}}>
                 <div className="input-group">
-                  <label>Tipo de servicio interno</label>
+                  <label>Actividad operativa</label>
                   <select className="select" value={formNuevaOT.tipo_servicio_interno_id} onChange={e => updNuevaOT('tipo_servicio_interno_id', e.target.value)}>
                     <option value="">Sin definir</option>
                     {tiposActivos.map(t => <option key={t.id} value={t.id}>{t.codigo ? `[${t.codigo}] ` : ''}{t.nombre}</option>)}
