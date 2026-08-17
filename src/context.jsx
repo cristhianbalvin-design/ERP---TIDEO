@@ -3106,7 +3106,23 @@ export function AppProvider({ children }) {
     });
     addNotificacion('Requerimiento convertido a OT.');
   };
+  // La BD deriva la sociedad de una OT con esta precedencia. Repetimos la
+  // resolucion para el estado local, que se pinta antes de la siguiente carga.
+  // Sin esto, una OT recien creada se filtraba de la grilla por sociedad y en
+  // consolidado se mostraba transitoriamente como "Sin sociedad".
+  const resolverSociedadOTLocal = (datos = {}) => {
+    const ceco = (centrosCosto || []).find(item => item.id === datos.centro_costo_id);
+    if (ceco?.sociedad_id) return ceco.sociedad_id;
+
+    const cebe = (centrosBeneficio || []).find(item => item.id === datos.centro_beneficio_id);
+    if (cebe?.sociedad_id) return cebe.sociedad_id;
+
+    const os = (osClientes || []).find(item => item.id === datos.os_cliente_id);
+    return os?.sociedad_id || null;
+  };
+
   const crearOT = (datos) => {
+    const sociedadId = resolverSociedadOTLocal(datos);
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
@@ -3116,7 +3132,11 @@ export function AppProvider({ children }) {
       costoEst: 0, costoReal: 0, avance: 0,
       tareas: [],
       materiales_estimados: [],
-      ...datos
+      ...datos,
+      // La sociedad no se envía como valor autoritativo: el trigger de BD la
+      // deriva y valida. Solo mantenemos el reflejo local consistente de forma
+      // inmediata para filtros y badges.
+      sociedad_id: sociedadId,
     };
     setOts(prev => [...prev, ot]);
     opsSync(sb => persistirOT(sb, empresa.id, ot));
@@ -3128,6 +3148,12 @@ export function AppProvider({ children }) {
   const crearOTDesdeOS = async (osClienteId, datos) => {
     const os = osClientes.find(item => item.id === osClienteId);
     if (!os) return null;
+
+    const sociedadId = resolverSociedadOTLocal({
+      ...datos,
+      os_cliente_id: os.id,
+      centro_beneficio_id: datos.centro_beneficio_id || os.centro_beneficio_id || null,
+    });
 
     const montoPlanificado = Number(datos.costo_estimado_ot ?? datos.costo_estimado ?? datos.costoEst ?? 0);
 
@@ -3151,6 +3177,7 @@ export function AppProvider({ children }) {
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
+      sociedad_id: sociedadId,
       numero: `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
       sla: 'ok',
       tareas: [],
@@ -4499,6 +4526,54 @@ export function AppProvider({ children }) {
       setUsuarios(previous);
       addNotificacion('Error al actualizar usuario: ' + (err.message || 'Error desconocido'), 'error');
       throw err;
+    }
+  };
+
+  const reasignarRolUsuario = async (usuarioId, rolId, empresaId = empresa?.id) => {
+    const previous = usuarios;
+    const current = usuarios.find(u => u.id === usuarioId && (!empresaId || u.empresa_id === empresaId));
+    if (!current) throw new Error('No se encontro el usuario dentro del tenant seleccionado.');
+    const role = rolesCtx[rolId];
+    if (!role) throw new Error('El rol seleccionado ya no esta disponible.');
+
+    const actualizarLocal = (usuario, reasignacion = {}) => ({
+      ...usuario,
+      rol: rolId,
+      rol_nombre: reasignacion.rol_nombre || role.nombre,
+      rol_categoria: reasignacion.rol_categoria || role.categoria,
+      nivel_jerarquico: reasignacion.nivel_jerarquico || role.nivel_jerarquico,
+      asignaciones: Array.isArray(reasignacion.asignaciones)
+        ? reasignacion.asignaciones
+        : (usuario.asignaciones || []).map(asignacion => asignacion.principal
+          ? {
+            ...asignacion,
+            rol_id: rolId,
+            categoria: role.categoria || asignacion.categoria,
+            nivel_jerarquico: role.nivel_jerarquico || asignacion.nivel_jerarquico,
+          }
+          : asignacion),
+    });
+
+    setUsuarios(prev => prev.map(usuario => (
+      usuario.id === usuarioId && usuario.empresa_id === empresaId ? actualizarLocal(usuario) : usuario
+    )));
+
+    if (!isSupabaseConfigured()) return actualizarLocal(current);
+
+    try {
+      const reasignacion = await usuariosService.reasignarRolUsuario({
+        user_id: usuarioId,
+        empresa_id: empresaId,
+        rol: rolId,
+      });
+      const savedUser = actualizarLocal(current, reasignacion);
+      setUsuarios(prev => prev.map(usuario => (
+        usuario.id === usuarioId && usuario.empresa_id === empresaId ? savedUser : usuario
+      )));
+      return savedUser;
+    } catch (error) {
+      setUsuarios(previous);
+      throw error;
     }
   };
 
@@ -10404,6 +10479,7 @@ export function AppProvider({ children }) {
     registrarUsuario,
     eliminarUsuario,
     actualizarUsuarioAcceso,
+    reasignarRolUsuario,
     crearUsuarioConAcceso,
     asignarPasswordTemporal,
     marcarContrasenaActualizada,

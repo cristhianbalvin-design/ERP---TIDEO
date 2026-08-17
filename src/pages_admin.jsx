@@ -144,7 +144,7 @@ const USER_TABLE_COLUMNS = [
 ];
 
 function Roles() {
-  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, actualizarUsuarioAcceso, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
+  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, reasignarRolUsuario, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
   const esSuperadminPlataforma = authUser?.superadmin_plataforma === true;
   const puedeConfigurarPlataforma = Boolean(empresa?.id === 'emp_tideo' && empresa?.es_plataforma);
   const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
@@ -391,20 +391,17 @@ function Roles() {
     setRoleActionError('');
     setGuardandoReasignacion(true);
     try {
-      await actualizarUsuarioAcceso(reasignarUsuario.id, {
-        ...reasignarUsuario,
-        rol: reasignarRolId,
-        empresa_id: reasignarUsuario.empresa_id || empresa?.id,
-        // La asignación principal se reconstruye a partir del rol elegido. Solo se
-        // envían las asignaciones adicionales para no convertir la principal previa
-        // en un rol extra durante la reasignación.
-        asignaciones: (reasignarUsuario.asignaciones || []).filter(asignacion => !asignacion.principal),
-      });
+      await reasignarRolUsuario(
+        reasignarUsuario.id,
+        reasignarRolId,
+        reasignarUsuario.empresa_id || empresa?.id,
+      );
       addNotificacion(`${reasignarUsuario.nombre} reasignado a "${nuevoRol.nombre}".`);
       setReasignarUsuario(null);
     } catch (error) {
       const message = `No se pudo reasignar el rol: ${error?.message || 'Error desconocido'}`;
       setRoleActionError(message);
+      addNotificacion(message, 'error');
     } finally {
       setGuardandoReasignacion(false);
     }
@@ -777,7 +774,7 @@ function Roles() {
                       <td><strong>{u.nombre}</strong></td>
                       <td className="text-muted">{u.email}</td>
                       <td className="text-muted">{u.ultimo || u.ultimo_login || '—'}</td>
-                      <td><button className="btn btn-sm btn-ghost" onClick={()=>{ setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
+                      <td><button type="button" className="btn btn-sm btn-ghost" onClick={()=>{ setRoleActionError(''); setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -896,9 +893,14 @@ function Roles() {
             </select>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={()=>setReasignarUsuario(null)} disabled={guardandoReasignacion}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleReasignar} disabled={!reasignarRolId || guardandoReasignacion}>{guardandoReasignacion ? 'Reasignando...' : 'Confirmar'}</button>
+            <button type="button" className="btn btn-secondary" onClick={()=>{ setRoleActionError(''); setReasignarUsuario(null); }} disabled={guardandoReasignacion}>Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={handleReasignar} disabled={!reasignarRolId || guardandoReasignacion}>{guardandoReasignacion ? 'Reasignando...' : 'Confirmar'}</button>
           </div>
+          {roleActionError && (
+            <div className="alert alert-danger" role="alert" style={{marginTop:16, marginBottom:0}}>
+              {roleActionError}
+            </div>
+          )}
         </div>
       </>}
 
