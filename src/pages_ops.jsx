@@ -23766,7 +23766,8 @@ export function SolicitudesRrhh() {
       const hist = await solicitudesRrhhService.cargarHistorial(sol.id);
       const { pdf } = await import('@react-pdf/renderer');
       const { PapeletaMovimientoPDF } = await import('./pages_pdf.jsx');
-      const personaSolicitud = todosPersonal.find(p => String(p.id) === String(sol.personal_id)) || null;
+      const allWorkers = [...(personalOperativo || []), ...(personalAdmin || [])];
+      const personaSolicitud = allWorkers.find(p => String(p.id) === String(sol.personal_id)) || null;
       const blob = await pdf(
         <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} emisor={emisor} historial={hist} persona={personaSolicitud} />
       ).toBlob();
