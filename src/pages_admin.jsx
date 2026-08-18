@@ -7756,11 +7756,23 @@ function ParamChipGroup({ options, value, onChange }) {
 }
 
 function CuentasBancariasSection() {
-  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion } = useApp();
-  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'' };
+  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion, sociedades = [] } = useApp();
+  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // Filtros
+  const [filtroBanco, setFiltroBanco] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroMoneda, setFiltroMoneda] = useState('');
+
+  const cuentasFiltradas = cuentasBancarias.filter(c => {
+    if (filtroBanco && !c.banco?.toLowerCase().includes(filtroBanco.toLowerCase())) return false;
+    if (filtroTipo && c.tipo !== filtroTipo) return false;
+    if (filtroMoneda && c.moneda !== filtroMoneda) return false;
+    return true;
+  });
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -7769,46 +7781,84 @@ function CuentasBancariasSection() {
     if (!form.nombre.trim() || !form.banco.trim()) return;
     setSaving(true);
     try {
+      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null };
       if (editId) {
-        await actualizarCuentaBancaria(editId, { ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+        await actualizarCuentaBancaria(editId, payload);
         addNotificacion('Cuenta bancaria actualizada.');
       } else {
-        await crearCuentaBancaria({ ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+        await crearCuentaBancaria(payload);
+        addNotificacion('Cuenta bancaria agregada.');
       }
       setForm(empty); setEditId(null);
     } finally { setSaving(false); }
   };
 
-  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0) }); setEditId(c.id); };
+  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'' }); setEditId(c.id); };
   const cancelar = () => { setForm(empty); setEditId(null); };
 
+  const getSociedadName = (id) => {
+    if (!id) return '—';
+    const s = sociedades.find(x => x.id === id);
+    return s ? (s.razon_social || s.nombre_comercial || 'Sociedad') : '—';
+  };
+
   return (
-    <div className="card">
+    <div className="card" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
       <div className="card-head"><h3>Cuentas Bancarias</h3><span className="badge badge-cyan">{cuentasBancarias.length} cuentas</span></div>
-      <form className="card-body" onSubmit={guardar} data-local-form="true" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+      
+      <form className="card-body" onSubmit={guardar} data-local-form="true" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:10}}>
         <div className="input-group"><label>Nombre / Alias *</label><input className="input" value={form.nombre} onChange={set('nombre')} placeholder="BCP Soles Principal" required /></div>
         <div className="input-group"><label>Banco *</label><input className="input" value={form.banco} onChange={set('banco')} placeholder="BCP, BBVA, Interbank..." required /></div>
         <div className="input-group"><label>N° Cuenta</label><input className="input" value={form.numero_cuenta} onChange={set('numero_cuenta')} placeholder="194-XXXXXXXX-0-XX" /></div>
         <div className="input-group"><label>CCI</label><input className="input" value={form.cci} onChange={set('cci')} placeholder="002-194-XXXXXXXX-X" /></div>
-        <div className="input-group"><label>Moneda</label><ParamChipGroup value={form.moneda} onChange={value => setForm(p => ({ ...p, moneda: value }))} options={[{ value:'PEN', label:'PEN' }, { value:'USD', label:'USD' }, { value:'EUR', label:'EUR' }]} /></div>
+        <div className="input-group"><label>Moneda</label><ParamChipGroup value={form.moneda} onChange={value => setForm(p => ({ ...p, moneda: value }))} options={[{ value:'PEN', label:'PEN' }, { value:'USD', label:'USD' }, { value:'EUR', label:'EUR' }, { value:'CRC', label:'CRC' }]} /></div>
         <div className="input-group"><label>Tipo</label><ParamChipGroup value={form.tipo} onChange={value => setForm(p => ({ ...p, tipo: value }))} options={[{ value:'corriente', label:'Corriente' }, { value:'ahorros', label:'Ahorros' }, { value:'recaudadora', label:'Recaudadora' }, { value:'caja_chica', label:'Caja chica' }]} /></div>
         <div className="input-group"><label>Saldo inicial</label><input className="input" type="number" step="0.01" min="0" value={form.saldo_inicial} onChange={set('saldo_inicial')} /></div>
+        <div className="input-group">
+          <label>Sociedad</label>
+          <select className="input" value={form.sociedad_id} onChange={set('sociedad_id')}>
+            <option value="">(Sin sociedad)</option>
+            {sociedades.map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre_comercial || 'Sociedad'}</option>)}
+          </select>
+        </div>
         <div className="input-group"><label>Estado</label><ParamChipGroup value={form.estado} onChange={value => setForm(p => ({ ...p, estado: value }))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
+        
         <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end', gap:8}}>
           {editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}
           <button type="submit" className="btn btn-primary" disabled={saving}>{editId ? I.save : I.plus} {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Agregar cuenta'}</button>
         </div>
       </form>
+
+      <div className="card-body" style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)', display:'flex', gap:10, flexWrap:'wrap' }}>
+        <input className="input" placeholder="Buscar por banco..." value={filtroBanco} onChange={e => setFiltroBanco(e.target.value)} style={{maxWidth: 200}} />
+        <select className="input" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{maxWidth: 160}}>
+          <option value="">Todos los tipos</option>
+          <option value="corriente">Corriente</option>
+          <option value="ahorros">Ahorros</option>
+          <option value="recaudadora">Recaudadora</option>
+          <option value="caja_chica">Caja chica</option>
+        </select>
+        <select className="input" value={filtroMoneda} onChange={e => setFiltroMoneda(e.target.value)} style={{maxWidth: 120}}>
+          <option value="">Moneda</option>
+          <option value="PEN">PEN</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="CRC">CRC</option>
+        </select>
+        { (filtroBanco || filtroTipo || filtroMoneda) && <button type="button" className="btn btn-secondary" onClick={() => { setFiltroBanco(''); setFiltroTipo(''); setFiltroMoneda(''); }}>Limpiar</button> }
+      </div>
+
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
-          <tbody>{cuentasBancarias.map(c => (
+          <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Sociedad</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{cuentasFiltradas.length > 0 ? cuentasFiltradas.map(c => (
             <tr key={c.id}>
               <td><strong>{c.nombre}</strong></td>
               <td>{c.banco}</td>
               <td>{c.numero_cuenta || '—'}</td>
               <td><span className="badge badge-cyan">{c.moneda}</span></td>
               <td style={{textTransform:'capitalize'}}>{c.tipo}</td>
+              <td style={{fontSize:'0.9em', color:'var(--fg-muted)'}}>{getSociedadName(c.sociedad_id)}</td>
               <td>{Number(c.saldo_inicial||0).toLocaleString('es-PE', {minimumFractionDigits:2})}</td>
               <td><span className={'badge ' + (c.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{c.estado}</span></td>
               <td className="row" style={{justifyContent:'flex-end', gap:4}}>
@@ -7816,7 +7866,9 @@ function CuentasBancariasSection() {
                 <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm(`Eliminar "${c.nombre}"?`)) eliminarCuentaBancaria(c.id); }} style={{color:'var(--danger)'}}>{I.trash}</button>
               </td>
             </tr>
-          ))}</tbody>
+          )) : (
+            <tr><td colSpan="9" style={{textAlign:'center', color:'var(--fg-muted)', padding:'20px'}}>No se encontraron cuentas bancarias</td></tr>
+          )}</tbody>
         </table>
       </div>
     </div>

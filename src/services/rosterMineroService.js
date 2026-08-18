@@ -203,7 +203,10 @@ export function calcularRangoRosterMinero({
   hoy = null,
 }) {
   const hoyStr = hoy || new Date().toISOString().split('T')[0];
-  const registrosTrabajador = registros.filter(r => r.trabajador_id === trabajadorId);
+  // Asistencia minera excluye registros anulados al mostrar el estado real;
+  // el roster debe aplicar exactamente el mismo criterio antes de escoger la
+  // fila más reciente del día.
+  const registrosTrabajador = registros.filter(r => r.trabajador_id === trabajadorId && r.estado !== 'anulado');
   const ajustesTrabajador = ajustes.filter(a => a.personal_id === trabajadorId);
 
   const dias = [];
@@ -266,6 +269,12 @@ export function calcularRangoRosterMinero({
     }
 
     if (registro) {
+      // Una falta cargada por error durante una bajada no convierte el día de
+      // descanso en ausencia: no es una subida a mina y debe seguir contando
+      // como descanso gozado en el balance.
+      if (registro.es_falta && teorico?.estado === 'en_descanso') {
+        return { fecha: fechaStr, origen: 'teorico', estado: 'en_descanso', detalle: teorico, ajustePendiente, ajusteAprobado: null, registro, teorico, pendienteRevision: false, faltaEnDescanso: true };
+      }
       // 'incompleto' sin ajuste aprobado: no queda claro si fue trabajo o
       // descanso — pendiente de revisión (ajuste manual o falta en Asistencia).
       return { fecha: fechaStr, origen: 'real', estado: registro.estado, detalle: registro, ajustePendiente, ajusteAprobado: null, registro, teorico, pendienteRevision: registro.estado === 'incompleto' };
@@ -717,7 +726,7 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
   const diasEnMes = new Date(periodoAnio, periodoMes, 0).getDate();
 
   return mineros.map(t => {
-    const regsT = registros.filter(r => r.trabajador_id === t.id && r.fecha?.startsWith(prefijoMes));
+    const regsT = registros.filter(r => r.trabajador_id === t.id && r.estado !== 'anulado' && r.fecha?.startsWith(prefijoMes));
     const cicloT = ciclos.filter(c => c.personal_id === t.id);
     const cicloInfo = cicloT[0] || null;
     const ajustesT = ajustes.filter(a => a.personal_id === t.id && a.estado === 'aprobado' && a.fecha?.startsWith(prefijoMes));
@@ -788,8 +797,12 @@ export function calcularRosterPeriodo(periodoAnio, periodoMes, trabajadores, reg
         // generan mina ni descanso ganado/gozado. No se modifica el teórico,
         // por lo que diaDentroDelCiclo sigue avanzando normalmente.
         if (esAusenciaAutorizadaRoster(registro.estado)) continue;
-        // 4. Falta real: igual que antes (no suma a nada).
-        if (registro.es_falta) continue;
+        // 4. Falta real: solo afecta el balance si el ciclo esperaba subida a
+        // mina. Durante descanso sigue siendo descanso gozado.
+        if (registro.es_falta) {
+          if (teorico?.estado === 'en_descanso') diasGozados++;
+          continue;
+        }
         // 4. Descanso/bajada real: igual que antes.
         if (registro.estado === 'descanso' || registro.estado === 'bajada') { diasGozados++; continue; }
         // Inducción real: igual que antes.

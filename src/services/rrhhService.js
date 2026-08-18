@@ -899,16 +899,47 @@ export const rrhhService = {
   },
 
   // ─── Registros de Asistencia ──────────────────────────────────
-  getAsistencia: async (empresaId, fechaInicio, fechaFin) => {
+  getAsistencia: async (empresaId, fechaInicio, fechaFin, { strict = false, completa = false } = {}) => {
     if (!empresaId) return [];
     const supabase = await getSupabaseClient();
-    let query = supabase
-      .from('registros_asistencia').select('*').eq('empresa_id', empresaId);
-    if (fechaInicio) query = query.gte('fecha', fechaInicio);
-    if (fechaFin) query = query.lte('fecha', fechaFin);
-    const { data, error } = await query.order('fecha', { ascending: false });
-    if (error) { console.error('Error fetching asistencia:', error); return []; }
-    return (data || []).map(normalizarAsistencia);
+    const construirConsulta = () => {
+      let query = supabase.from('registros_asistencia').select('*').eq('empresa_id', empresaId);
+      if (fechaInicio) query = query.gte('fecha', fechaInicio);
+      if (fechaFin) query = query.lte('fecha', fechaFin);
+      // El orden estable es indispensable al paginar: dos marcaciones del
+      // mismo día no pueden aparecer/saltarse entre páginas consecutivas.
+      return query
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+    };
+    const manejarError = (error) => {
+      console.error('Error fetching asistencia:', error);
+      // Las pantallas históricas conservan el fallback vacío. Las vistas que
+      // deben distinguir "sin dato" de "la consulta falló" (p. ej. roster)
+      // pueden pedir strict para no generar alertas falsas.
+      if (strict) throw error;
+      return null;
+    };
+
+    if (!completa) {
+      const { data, error } = await construirConsulta();
+      if (error) return manejarError(error) || [];
+      return (data || []).map(normalizarAsistencia);
+    }
+
+    // Supabase/PostgREST puede imponer un máximo de filas por respuesta. El
+    // roster no puede tratar una página truncada como un mes sin marcaciones.
+    const TAMANO_PAGINA = 100;
+    const filas = [];
+    for (let desde = 0; ; desde += TAMANO_PAGINA) {
+      const { data, error } = await construirConsulta().range(desde, desde + TAMANO_PAGINA - 1);
+      if (error) return manejarError(error) || [];
+      const pagina = data || [];
+      filas.push(...pagina);
+      if (pagina.length < TAMANO_PAGINA) break;
+    }
+    return filas.map(normalizarAsistencia);
   },
   getMarcaciones: async (empresaId, trabajadorId, fecha) => {
     if (!empresaId || !trabajadorId || !fecha) return [];
