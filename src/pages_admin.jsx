@@ -8696,6 +8696,144 @@ function SociedadesAdmin() {
   );
 }
 
+const FERIADOS_REGIMENES = [
+  ['general', 'Régimen general'],
+  ['minero_14x7', 'Minero 14×7'],
+  ['minero_20x10', 'Minero 20×10'],
+  ['minero_28x14', 'Minero 28×14'],
+  ['minero_2x1', 'Minero 2×1'],
+];
+const FERIADOS_POLITICAS = [
+  ['sin_pago_adicional', 'Sin pago adicional'],
+  ['doble', 'Doble'],
+  ['triple', 'Triple'],
+];
+const FERIADOS_AMBITOS = [
+  ['nacional', 'Nacional'],
+  ['regional', 'Regional'],
+  ['local', 'Local'],
+];
+
+function FeriadosParametros({ empresaId, addNotificacion }) {
+  const [anio, setAnio] = useState(String(new Date().getFullYear()));
+  const [feriados, setFeriados] = useState([]);
+  const [politicasDefault, setPoliticasDefault] = useState([]);
+  const [overrides, setOverrides] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [feriadoEditando, setFeriadoEditando] = useState(null);
+  const [formFeriado, setFormFeriado] = useState({ fecha: '', nombre: '', ambito: 'nacional' });
+  const [overrideAbierto, setOverrideAbierto] = useState(null);
+
+  const cargar = useCallback(async () => {
+    if (!empresaId || !/^\d{4}$/.test(anio)) return;
+    setCargando(true);
+    const desde = `${anio}-01-01`;
+    const hasta = `${anio}-12-31`;
+    try {
+      const supabase = await getSupabaseClient();
+      const [feriadosRes, defaultsRes, overridesRes] = await Promise.all([
+        supabase.from('feriados').select('id,fecha,nombre,ambito,origen').eq('empresa_id', empresaId).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+        supabase.from('feriados_politica_regimen_default').select('id,regimen_jornada,politica_pago').eq('empresa_id', empresaId),
+        supabase.from('feriados_politica_override').select('id,feriado_id,regimen_jornada,politica_pago').eq('empresa_id', empresaId),
+      ]);
+      if (feriadosRes.error) throw feriadosRes.error;
+      if (defaultsRes.error) throw defaultsRes.error;
+      if (overridesRes.error) throw overridesRes.error;
+      setFeriados(feriadosRes.data || []);
+      setPoliticasDefault(defaultsRes.data || []);
+      setOverrides(overridesRes.data || []);
+    } catch (error) {
+      addNotificacion(`No se pudieron cargar los feriados: ${error.message || 'error de base de datos'}`, 'error');
+    } finally {
+      setCargando(false);
+    }
+  }, [anio, empresaId, addNotificacion]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const politicaDefault = regimen => politicasDefault.find(p => p.regimen_jornada === regimen)?.politica_pago || 'sin_pago_adicional';
+  const politicaOverride = (feriadoId, regimen) => overrides.find(p => p.feriado_id === feriadoId && p.regimen_jornada === regimen)?.politica_pago || 'sin_pago_adicional';
+  const label = (items, value) => items.find(([key]) => key === value)?.[1] || value;
+
+  const guardarFeriado = async event => {
+    event.preventDefault();
+    if (!formFeriado.fecha || !formFeriado.nombre.trim()) {
+      addNotificacion('Completa la fecha y el nombre del feriado.', 'error');
+      return;
+    }
+    setGuardando(true);
+    try {
+      const supabase = await getSupabaseClient();
+      const valores = { fecha: formFeriado.fecha, nombre: formFeriado.nombre.trim(), ambito: formFeriado.ambito };
+      const query = feriadoEditando?.id
+        ? supabase.from('feriados').update(valores).eq('id', feriadoEditando.id).eq('empresa_id', empresaId)
+        : supabase.from('feriados').insert({ ...valores, empresa_id: empresaId, origen: 'manual' });
+      const { error } = await query;
+      if (error) throw error;
+      addNotificacion(feriadoEditando?.id ? 'Feriado actualizado.' : 'Feriado manual agregado.');
+      setFeriadoEditando(null);
+      setFormFeriado({ fecha: '', nombre: '', ambito: 'nacional' });
+      await cargar();
+    } catch (error) {
+      addNotificacion(`No se pudo guardar el feriado: ${error.message || 'error de base de datos'}`, 'error');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eliminarFeriado = async feriado => {
+    if (!window.confirm(`¿Eliminar el feriado “${feriado.nombre}” del ${feriado.fecha}?`)) return;
+    try {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('feriados').delete().eq('id', feriado.id).eq('empresa_id', empresaId);
+      if (error) throw error;
+      addNotificacion('Feriado eliminado.');
+      await cargar();
+    } catch (error) {
+      addNotificacion(`No se pudo eliminar el feriado: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  const guardarPoliticaDefault = async (regimen, politicaPago) => {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('feriados_politica_regimen_default')
+        .upsert({ empresa_id: empresaId, regimen_jornada: regimen, politica_pago: politicaPago }, { onConflict: 'empresa_id,regimen_jornada' })
+        .select('id,regimen_jornada,politica_pago').single();
+      if (error) throw error;
+      setPoliticasDefault(prev => [...prev.filter(p => p.regimen_jornada !== regimen), data]);
+      addNotificacion(`Política ${label(FERIADOS_REGIMENES, regimen)} guardada.`);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la política: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  const guardarOverride = async (feriadoId, regimen, politicaPago) => {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('feriados_politica_override')
+        .upsert({ empresa_id: empresaId, feriado_id: feriadoId, regimen_jornada: regimen, politica_pago: politicaPago }, { onConflict: 'feriado_id,regimen_jornada' })
+        .select('id,feriado_id,regimen_jornada,politica_pago').single();
+      if (error) throw error;
+      setOverrides(prev => [...prev.filter(p => !(p.feriado_id === feriadoId && p.regimen_jornada === regimen)), data]);
+      addNotificacion(`Override ${label(FERIADOS_REGIMENES, regimen)} guardado.`);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar el override: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  return <div className="params-section" style={{display:'flex', flexDirection:'column', gap:18, paddingBottom:24}}>
+    <div className="card params-card">
+      <div className="card-head" style={{flexWrap:'wrap', gap:12}}><div><h3>Calendario de feriados</h3><div className="text-muted" style={{fontSize:12, marginTop:4}}>Gestiona los feriados de esta empresa por año.</div></div><div className="row" style={{gap:8}}><input className="input" type="number" min="2000" max="2100" value={anio} onChange={e=>setAnio(e.target.value)} style={{width:110}}/><button type="button" className="btn btn-primary" onClick={()=>{ setFeriadoEditando({}); setFormFeriado({ fecha:`${anio}-01-01`, nombre:'', ambito:'nacional' }); }}>{I.plus} Agregar feriado</button></div></div>
+      <div className="table-wrap"><table className="tbl"><thead><tr><th>Fecha</th><th>Nombre</th><th>Ámbito</th><th>Origen</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead><tbody>
+        {cargando ? <tr><td colSpan="5" className="text-muted">Cargando feriados...</td></tr> : feriados.length === 0 ? <tr><td colSpan="5" className="text-muted">No hay feriados para este año.</td></tr> : feriados.map(feriado => <React.Fragment key={feriado.id}><tr><td>{feriado.fecha}</td><td><strong>{feriado.nombre}</strong></td><td><span className={`badge ${feriado.ambito === 'nacional' ? 'badge-blue' : feriado.ambito === 'regional' ? 'badge-purple' : 'badge-orange'}`}>{label(FERIADOS_AMBITOS, feriado.ambito)}</span></td><td><span className={`badge ${feriado.origen === 'automatico' ? 'badge-green' : 'badge-gray'}`}>{feriado.origen === 'automatico' ? 'Automático' : 'Manual'}</span></td><td><div className="row" style={{justifyContent:'flex-end', gap:6}}><button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ setFeriadoEditando(feriado); setFormFeriado({ fecha:feriado.fecha, nombre:feriado.nombre, ambito:feriado.ambito }); }}>{I.edit} Editar</button><button type="button" className="icon-btn" title="Eliminar feriado" style={{color:'var(--danger)'}} onClick={()=>eliminarFeriado(feriado)}>{I.trash}</button><button type="button" className="btn btn-ghost btn-sm" onClick={()=>setOverrideAbierto(overrideAbierto === feriado.id ? null : feriado.id)}>{overrideAbierto === feriado.id ? 'Ocultar overrides' : 'Overrides'}</button></div></td></tr>{overrideAbierto === feriado.id && <tr><td colSpan="5" style={{background:'var(--bg-subtle)'}}><div style={{padding:8}}><strong style={{fontSize:13}}>Política específica para {feriado.nombre}</strong><div className="table-wrap" style={{marginTop:10}}><table className="tbl" style={{fontSize:12}}><thead><tr><th>Régimen</th><th>Política de pago</th></tr></thead><tbody>{FERIADOS_REGIMENES.map(([regimen, nombre])=><tr key={regimen}><td>{nombre}</td><td><select className="select" value={politicaOverride(feriado.id, regimen)} onChange={e=>guardarOverride(feriado.id, regimen, e.target.value)}>{FERIADOS_POLITICAS.map(([valor, texto])=><option key={valor} value={valor}>{texto}</option>)}</select></td></tr>)}</tbody></table></div></div></td></tr>}</React.Fragment>)}
+      </tbody></table></div>
+    </div>
+    <div className="card params-card"><div className="card-head"><div><h3>Política de pago por régimen</h3><div className="text-muted" style={{fontSize:12, marginTop:4}}>Define la política predeterminada aplicable a cada régimen de jornada.</div></div></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Régimen</th><th>Política de pago</th></tr></thead><tbody>{FERIADOS_REGIMENES.map(([regimen, nombre])=><tr key={regimen}><td><strong>{nombre}</strong></td><td><select className="select" value={politicaDefault(regimen)} onChange={e=>guardarPoliticaDefault(regimen, e.target.value)}>{FERIADOS_POLITICAS.map(([valor, texto])=><option key={valor} value={valor}>{texto}</option>)}</select></td></tr>)}</tbody></table></div></div>
+    {feriadoEditando && <><div className="side-panel-backdrop" onClick={()=>!guardando && setFeriadoEditando(null)}/><div className="side-panel" style={{width:'min(480px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Calendario de feriados</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{feriadoEditando.id ? 'Editar feriado' : 'Agregar feriado'}</div></div><button type="button" className="icon-btn" onClick={()=>setFeriadoEditando(null)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarFeriado}><div className="input-group"><label>Fecha</label><input className="input" required type="date" value={formFeriado.fecha} onChange={e=>setFormFeriado(v=>({...v,fecha:e.target.value}))} disabled={Boolean(feriadoEditando.id)}/></div><div className="input-group"><label>Nombre</label><input className="input" required value={formFeriado.nombre} onChange={e=>setFormFeriado(v=>({...v,nombre:e.target.value}))}/></div><div className="input-group"><label>Ámbito</label><select className="select" value={formFeriado.ambito} onChange={e=>setFormFeriado(v=>({...v,ambito:e.target.value}))}>{FERIADOS_AMBITOS.map(([valor,texto])=><option key={valor} value={valor}>{texto}</option>)}</select></div><div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}><button type="button" className="btn btn-secondary" onClick={()=>setFeriadoEditando(null)}>Cancelar</button><button className="btn btn-primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar feriado'}</button></div></form></div></>}
+  </div>;
+}
 
 function Parametros() {
   const {
@@ -9181,6 +9319,7 @@ function Parametros() {
     { key: 'whatsapp', title: 'WhatsApp', description: 'Proveedor, plantillas, matriz de destinatarios y log de envios.' },
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
+    { key: 'feriados', title: 'Feriados', description: 'Calendario de feriados y políticas de pago por régimen.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
     { key: 'egresos_config', title: 'Egresos', description: 'Tipos de gasto, estructura del ER y categorías personalizadas. Importa desde Excel para configurar todo de una vez.' },
   ];
@@ -9895,6 +10034,8 @@ function Parametros() {
               {showRegimenModal && <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)setShowRegimenModal(false)}}><div className="modal"><div className="modal-head"><h3>Confirmar cambio de régimen laboral</h3><button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={()=>setShowRegimenModal(false)}>{I.x}</button></div><div className="modal-body"><div className="alert alert-warning" style={{marginBottom:16}}>Cambiar el régimen laboral afecta el cálculo de todos los períodos futuros. Los períodos ya cerrados no se recalculan.</div><p>¿Confirmar el cambio a <strong>{regimenes.find(r=>r.key===pendingRegimen)?.label}</strong>?</p><label style={{display:'flex', alignItems:'center', gap:8, margin:'12px 0', fontSize:13, cursor:'pointer'}}><input type="checkbox" checked={regimenConfirmCheck} onChange={e=>setRegimenConfirmCheck(e.target.checked)}/> Entiendo que este cambio aplica solo a períodos futuros y no recalcula nóminas cerradas.</label><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setShowRegimenModal(false)}>Cancelar</button><button className="btn btn-primary" disabled={!regimenConfirmCheck} onClick={()=>{setNominaCfg(p=>({...p,regimen_laboral_empresa:pendingRegimen}));setShowRegimenModal(false);setPendingRegimen(null);}}>Confirmar cambio</button></div></div></div></div>}
             </div>);
           })()}
+
+          {paramSection === 'feriados' && <FeriadosParametros empresaId={empresa?.id} addNotificacion={addNotificacion} />}
 
           {paramSection === 'evaluaciones' && (() => {
             const sumaEvaluadores = Number(evalCfg.eval_peso_autoevaluacion) + Number(evalCfg.eval_peso_jefe);

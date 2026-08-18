@@ -15379,15 +15379,28 @@ function ControlAsistencia() {
     rrhhService.getAutorizacionesHorasExtra(empresa.id).then(setAutHeRows).catch(() => {});
   }, [empresa?.id]);
 
-  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'' });
   // Vía independiente para registrar la asistencia real del personal por ciclo.
   // No comparte estado ni handler con "+ Manual": para un minero las horas y el
   // turno no tienen efecto de cálculo; solo el estado real corrige el roster/nómina.
   const [panelAsistenciaMinera, setPanelAsistenciaMinera] = useState(false);
   const [asistenciaMineraSaving, setAsistenciaMineraSaving] = useState(false);
   const [formAsistenciaMinera, setFormAsistenciaMinera] = useState({
-    trabajador_id: '', fecha, estado: 'completo', hora_entrada: '', hora_salida: '', motivo_falta: '', notas: '',
+    trabajador_id: '', fecha, estado: 'completo', hora_entrada: '', hora_salida: '', motivo_falta: '', notas: '', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'',
   });
+  const [fechasFeriado, setFechasFeriado] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!empresa?.id || !isSupabaseConfigured()) { setFechasFeriado(new Set()); return undefined; }
+    const fechasConsulta = [...new Set([form.fecha, formAsistenciaMinera.fecha].filter(Boolean))];
+    if (!fechasConsulta.length) return undefined;
+    let cancelado = false;
+    getSupabaseClient().then(supabase => supabase.from('feriados').select('fecha').eq('empresa_id', empresa.id).in('fecha', fechasConsulta))
+      .then(({ data, error }) => {
+        if (!cancelado && !error) setFechasFeriado(new Set((data || []).map(feriado => feriado.fecha)));
+      }).catch(() => {});
+    return () => { cancelado = true; };
+  }, [empresa?.id, form.fecha, formAsistenciaMinera.fecha]);
   useEffect(() => {
     if (!form.trabajador_id && trabajadoresGenerales[0]?.id) {
       setForm(prev => ({ ...prev, trabajador_id: trabajadoresGenerales[0].id }));
@@ -15433,6 +15446,8 @@ function ControlAsistencia() {
   const turno = workerTurno(turnos, trabajador || {}, form.fecha);
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
+  const esFeriadoGeneral = form.asistio === 'si' && fechasFeriado.has(form.fecha);
+  const esFeriadoMinero = !['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && fechasFeriado.has(formAsistenciaMinera.fecha);
   const currentMonth = fecha.substring(0, 7);
   const [registrosMensualPeriodo, setRegistrosMensualPeriodo] = useState(null);
   const registrosMensualListos = registrosMensualPeriodo?.periodo === currentMonth
@@ -15590,6 +15605,10 @@ function ControlAsistencia() {
       return;
     }
     if (getTipoFiscalizacion(trabajador) !== 'diaria') return;
+    if (esFeriadoGeneral && form.descanso_sustitutorio_otorgado && !form.descanso_sustitutorio_fecha) {
+      addNotificacion('Indica la fecha del descanso sustitutorio otorgado.');
+      return;
+    }
     const nuevo = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
       trabajador_tipo: trabajador?.trabajador_tipo || 'operativo',
@@ -15599,7 +15618,9 @@ function ControlAsistencia() {
       horas_extra_min:resultado.horas_extra_min, estado:resultado.estado, es_falta:form.asistio === 'no',
       justificada:form.justificada, motivo_falta:form.justificada ? form.motivo_falta : null, notas:form.notas,
       latitud:form.latitud, longitud:form.longitud, refrigerio_tomado_minutos:form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0,
-      regimen_jornada: 'general'
+      regimen_jornada: 'general',
+      descanso_sustitutorio_otorgado: esFeriadoGeneral && Boolean(form.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: esFeriadoGeneral && form.descanso_sustitutorio_otorgado ? form.descanso_sustitutorio_fecha : null,
     };
 
     const existente = registrosAsistencia.find(r => r.trabajador_id === form.trabajador_id && r.fecha === form.fecha);
@@ -15637,6 +15658,8 @@ function ControlAsistencia() {
       hora_salida: registro?.hora_salida || '',
       motivo_falta: registro?.motivo_falta || '',
       notas: registro?.notas || '',
+      descanso_sustitutorio_otorgado: Boolean(registro?.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: registro?.descanso_sustitutorio_fecha || '',
     });
     setPanelAsistenciaMinera(true);
   };
@@ -15651,6 +15674,10 @@ function ControlAsistencia() {
     const esFalta = ['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado);
     if (esFalta && !formAsistenciaMinera.motivo_falta.trim()) {
       addNotificacion('El motivo es obligatorio para registrar una falta.');
+      return;
+    }
+    if (esFeriadoMinero && formAsistenciaMinera.descanso_sustitutorio_otorgado && !formAsistenciaMinera.descanso_sustitutorio_fecha) {
+      addNotificacion('Indica la fecha del descanso sustitutorio otorgado.');
       return;
     }
 
@@ -15674,6 +15701,8 @@ function ControlAsistencia() {
       notas: formAsistenciaMinera.notas.trim() || null,
       regimen_jornada: trabajadorMinero.regimen_jornada || 'ciclo_acumulativo',
       origen_registro: 'manual_minero',
+      descanso_sustitutorio_otorgado: esFeriadoMinero && Boolean(formAsistenciaMinera.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: esFeriadoMinero && formAsistenciaMinera.descanso_sustitutorio_otorgado ? formAsistenciaMinera.descanso_sustitutorio_fecha : null,
     };
     const existente = registrosAsistencia.find(r =>
       r.trabajador_id === registroMinero.trabajador_id && r.fecha === registroMinero.fecha && r.estado !== 'anulado'
@@ -15773,6 +15802,7 @@ function ControlAsistencia() {
       hora_entrada:r?.hora_entrada || row.turno.hora_entrada || '08:00',
       hora_salida:r?.hora_salida || row.turno.hora_salida || '17:00',
       justificada:Boolean(r?.justificada), motivo_falta:r?.motivo_falta || '', notas:r?.notas || ''
+      ,descanso_sustitutorio_otorgado:Boolean(r?.descanso_sustitutorio_otorgado), descanso_sustitutorio_fecha:r?.descanso_sustitutorio_fecha || ''
     });
     setPanel(true);
   };
@@ -16547,6 +16577,7 @@ function ControlAsistencia() {
               <div className="input-group"><label>Hora de entrada <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_entrada} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_entrada:e.target.value}))}/></div>
               <div className="input-group"><label>Hora de salida <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_salida} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_salida:e.target.value}))}/></div>
             </div>
+            {esFeriadoMinero && <div className="card" style={{padding:12, margin:'12px 0', background:'var(--bg-subtle)'}}><label className="row" style={{gap:8, fontWeight:600}}><input type="checkbox" checked={formAsistenciaMinera.descanso_sustitutorio_otorgado} onChange={e=>setFormAsistenciaMinera(v=>({...v, descanso_sustitutorio_otorgado:e.target.checked, descanso_sustitutorio_fecha:e.target.checked ? v.descanso_sustitutorio_fecha : ''}))}/> Descanso sustitutorio otorgado</label>{formAsistenciaMinera.descanso_sustitutorio_otorgado && <div className="input-group" style={{marginTop:10}}><label>Fecha del descanso sustitutorio</label><input className="input" required type="date" value={formAsistenciaMinera.descanso_sustitutorio_fecha} onChange={e=>setFormAsistenciaMinera(v=>({...v, descanso_sustitutorio_fecha:e.target.value}))}/></div>}</div>}
             {['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && <div className="input-group"><label>Motivo *</label><textarea className="input" rows="3" required value={formAsistenciaMinera.motivo_falta} onChange={e => setFormAsistenciaMinera(v => ({...v, motivo_falta:e.target.value}))}/></div>}
             <div className="input-group"><label>Notas <span className="text-muted">(opcional)</span></label><textarea className="input" rows="3" value={formAsistenciaMinera.notas} onChange={e => setFormAsistenciaMinera(v => ({...v, notas:e.target.value}))}/></div>
             <div className="alert alert-info" style={{fontSize:12}}>No se guardarán horas trabajadas, tardanza ni horas extra. Las horas ingresadas son solo una referencia.</div>
