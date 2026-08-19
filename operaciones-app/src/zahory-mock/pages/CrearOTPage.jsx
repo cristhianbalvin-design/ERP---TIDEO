@@ -611,12 +611,15 @@ export const CrearOTPage = ({ onNav }) => {
   const [osClientesReales, setOsClientesReales] = useState([]);
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
+  const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
+  const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
+  const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
 
@@ -760,6 +763,53 @@ export const CrearOTPage = ({ onNav }) => {
   useEffect(() => {
     let vigente = true;
     if (
+      form.lugarEjecucion !== 'Campo_Mina'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setUnidadesMinerasReales([]);
+      setCargandoUnidadesMineras(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoUnidadesMineras(true);
+    setErrorUnidadesMineras(null);
+    getSupabaseClient()
+      .from('sedes')
+      .select('id,codigo,nombre')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('tipo', 'unidad_minera')
+      .eq('estado', 'activo')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setUnidadesMinerasReales([]);
+          setErrorUnidadesMineras(error.message);
+        } else {
+          setUnidadesMinerasReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setUnidadesMinerasReales([]);
+          setErrorUnidadesMineras(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoUnidadesMineras(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    form.lugarEjecucion,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
       !sesionOperativa.empresaId
       || !sesionOperativa.permiteEscritura
       || !form.clienteId
@@ -895,7 +945,7 @@ export const CrearOTPage = ({ onNav }) => {
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
-      unidadMinera: inferUnidadMinera(next),
+      unidadMinera: f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next),
       objeto_costo_id: contratoId,
       horometroApertura: '',
     }));
@@ -920,8 +970,7 @@ export const CrearOTPage = ({ onNav }) => {
   const setLugarEjecucion = (lugarEjecucion) =>
     setForm(f => ({
       ...f, lugarEjecucion,
-      unidadMinera: lugarEjecucion === 'Campo_Mina'
-        ? (f.unidadMinera || inferUnidadMinera(contrato)) : '',
+      unidadMinera: '',
     }));
 
   // C5 — handlers con validación DBS en tiempo real
@@ -1376,11 +1425,35 @@ export const CrearOTPage = ({ onNav }) => {
                 {form.lugarEjecucion === 'Campo_Mina' ? (
                   <div className="ot-form-field">
                     <div className="label" style={{ fontSize: 12 }}>Unidad Minera *</div>
-                    <input className="input" value={form.unidadMinera}
-                      disabled={!form.equipo}
+                    <select className="input" value={form.unidadMinera}
+                      disabled={!form.equipo || cargandoUnidadesMineras}
                       onChange={e => set('unidadMinera', e.target.value)}
-                      placeholder={form.equipo ? 'Unidad minera' : 'Seleccione primero un equipo'}
-                      style={{ marginTop: 4, background: !form.equipo ? '#ECEFF1' : undefined, borderColor: fieldErrors.unidadMinera ? '#E53935' : undefined }} />
+                      style={{
+                        marginTop: 4,
+                        background: !form.equipo || cargandoUnidadesMineras ? '#ECEFF1' : undefined,
+                        borderColor: fieldErrors.unidadMinera ? '#E53935' : undefined,
+                      }}
+                    >
+                      <option value="">
+                        {!form.equipo
+                          ? 'Seleccione primero un equipo'
+                          : cargandoUnidadesMineras
+                            ? 'Cargando unidades mineras...'
+                            : unidadesMinerasReales.length === 0
+                              ? 'No hay unidades mineras activas disponibles'
+                              : '-- Seleccionar unidad minera --'}
+                      </option>
+                      {unidadesMinerasReales.map(unidad => (
+                        <option key={unidad.id} value={unidad.id}>
+                          {unidad.codigo} - {unidad.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    {errorUnidadesMineras && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar las unidades mineras: {errorUnidadesMineras}
+                      </div>
+                    )}
                     {fieldErrors.unidadMinera?.[0] && (
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.unidadMinera[0]}</div>
                     )}
