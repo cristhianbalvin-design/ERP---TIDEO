@@ -14291,7 +14291,17 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   // Mismo criterio que sinFiscalizacionDiariaLocal más arriba: solo cargo_confianza.
   const sinFiscalizacionDiaria = Boolean(trabajador.cargo_confianza);
   const requiereAutHe = Boolean(empresaCfg?.requiere_autorizacion_he);
-  const registrosNomina = sinFiscalizacionDiaria ? [] : registros.map(r => {
+  // El snapshot de nómina contiene el mes calendario completo para que Q2 pueda
+  // reconciliarse contra Q1. Cada ejecución del motor debe usar solo el rango del
+  // período que recibe; la recursión de Q2 pasa un período mensual sintético y,
+  // por tanto, conserva intencionalmente todo el mes.
+  const { inicio: inicioRegistrosNomina, fin: finRegistrosNomina } = rangoDiasPeriodo(periodo);
+  const inicioRegistrosNominaIso = _isoDate(inicioRegistrosNomina);
+  const finRegistrosNominaIso = _isoDate(finRegistrosNomina);
+  const registrosDelPeriodo = registros.filter(r => (
+    r.fecha >= inicioRegistrosNominaIso && r.fecha <= finRegistrosNominaIso
+  ));
+  const registrosNomina = sinFiscalizacionDiaria ? [] : registrosDelPeriodo.map(r => {
     if (r.es_dia_compensado) return { ...r, estado: 'dia_compensado', es_falta: false, horas_extra_min: 0 };
     if (requiereAutHe && Number(r.horas_extra_min || 0) > 0 && !r.he_autorizada) return { ...r, horas_extra_min: 0, horas_extra: 0 };
     return r;
@@ -17851,15 +17861,20 @@ function Nomina() {
 
   // Nómina no puede depender de la caché de la vista de asistencia: esa
   // caché puede contener solo los días consultados por el usuario. Se obtiene
-  // un snapshot completo y paginado para el rango exacto del período antes de
-  // calcular, advertir o procesar.
+  // un snapshot completo y paginado del mes calendario antes de calcular,
+  // advertir o procesar. Q2 necesita también las asistencias de Q1 al
+  // recalcular el mes completo para reconciliar la primera quincena.
   const rangoAsistenciaNomina = useMemo(() => {
     if (!periodo) return null;
-    const { inicio, fin } = rangoDiasPeriodo(periodo);
-    return { inicio: _isoDate(inicio), fin: _isoDate(fin) };
-  }, [periodo?.id, periodo?.fecha_inicio, periodo?.fecha_fin, periodo?.anio, periodo?.mes]);
-  const claveAsistenciaNomina = periodo && rangoAsistenciaNomina
-    ? `${periodo.id || periodoKey}:${rangoAsistenciaNomina.inicio}:${rangoAsistenciaNomina.fin}`
+    const anio = periodo.anio || new Date().getFullYear();
+    const mes = periodo.mes || new Date().getMonth() + 1;
+    return {
+      inicio: _isoDate(new Date(anio, mes - 1, 1)),
+      fin: _isoDate(new Date(anio, mes, 0)),
+    };
+  }, [periodo?.anio, periodo?.mes]);
+  const claveAsistenciaNomina = empresa?.id && rangoAsistenciaNomina
+    ? `${empresa.id}:${rangoAsistenciaNomina.inicio}:${rangoAsistenciaNomina.fin}`
     : '';
   const [cargaAsistenciaNomina, setCargaAsistenciaNomina] = useState({ clave: '', registros: [], cargando: false, error: null });
   const asistenciaNominaLista = Boolean(
@@ -18111,7 +18126,7 @@ function Nomina() {
       const heNoPagoAsistencia = new Set(heNoPago.map(h => h.registro_asistencia_id || h.asistencia_id).filter(Boolean));
       const heNoPagoFechas = new Set(heNoPago.map(h => h.fecha_he).filter(Boolean));
       const regs = registrosParaNomina
-        .filter(r => r.trabajador_id === t.id && (periodo.fecha_inicio && periodo.fecha_fin ? (r.fecha >= periodo.fecha_inicio && r.fecha <= periodo.fecha_fin) : r.fecha.startsWith(periodoKey)))
+        .filter(r => r.trabajador_id === t.id)
         .map(r => (Number(r.horas_extra_min || 0) > 0 && (heNoPagoAsistencia.has(r.id) || heNoPagoFechas.has(r.fecha)))
           ? { ...r, horas_extra_min: 0, horas_extra: 0 }
           : r
