@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
+import { useSesionOperativa } from './lib/sesionOperativa.js';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
 import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
@@ -37,6 +38,7 @@ function NavEntry({ item, route, navigate }) {
 }
 
 export function OperationalApp() {
+  const sesionOperativa = useSesionOperativa();
   const [route, setRoute] = useState(readRoute);
   const [openGroupIds, setOpenGroupIds] = useState(() => {
     const activeGroup = findGroupForRoute(readRoute(), zahoryNavigation);
@@ -53,6 +55,20 @@ export function OperationalApp() {
 
   const navigate = key => { window.location.hash = `/${key}`; };
   const page = routes[route];
+  const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
+  const estadoSesion = !isSupabaseConfigured()
+    ? 'Backend pendiente'
+    : sesionOperativa.cargando
+      ? 'Verificando sesion...'
+      : sesionOperativa.estado === 'sin_sesion'
+        ? 'Inicia sesion desde Administrativo'
+        : sesionOperativa.estado === 'sin_empresa'
+          ? 'No tienes una empresa activa'
+          : sesionOperativa.estado === 'error'
+            ? 'Sesion no disponible'
+            : sesionOperativa.vistaConsolidada
+              ? 'Vista consolidada - solo lectura'
+              : 'Sesion operativa lista';
 
   useEffect(() => {
     const activeGroup = findGroupForRoute(route, zahoryNavigation);
@@ -75,7 +91,7 @@ export function OperationalApp() {
   return (
     <div className="ops-shell">
       <aside className="ops-sidebar">
-        <a className="ops-brand" href={import.meta.env.VITE_ADMIN_APP_URL || '/'} aria-label="Ir al selector de aplicaciones">
+        <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <span className="ops-brand-mark">T</span><span>TIDEO</span>
         </a>
         <div className="ops-product">OPERACIONES</div>
@@ -144,8 +160,12 @@ export function OperationalApp() {
       </aside>
       <section className="ops-main-column">
         <header className="ops-header">
-          <a className="ops-header-brand" href={import.meta.env.VITE_ADMIN_APP_URL || '/'} aria-label="Volver al selector de aplicaciones">TIDEO</a>
-          <span className={isSupabaseConfigured() ? 'ops-status ready' : 'ops-status'}>{isSupabaseConfigured() ? 'Backend configurado' : 'Backend pendiente'}</span>
+          <a className="ops-header-brand" href={adminAppUrl} aria-label="Volver al selector de aplicaciones">TIDEO</a>
+          {sesionOperativa.estado === 'sin_sesion' && isSupabaseConfigured() ? (
+            <a className="ops-status" href={adminAppUrl}>{estadoSesion}</a>
+          ) : (
+            <span className={sesionOperativa.estado === 'listo' && !sesionOperativa.vistaConsolidada ? 'ops-status ready' : 'ops-status'} title={sesionOperativa.error || undefined}>{estadoSesion}</span>
+          )}
         </header>
         {page ? (
           <main className="ops-main">
