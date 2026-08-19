@@ -23,12 +23,11 @@ import {
 } from '../schemas/otSchema.js';
 
 const D = ZAHORY_SAC_DATA;
-const NEW_OT_CODE = 'OT-2026-055';
 const TODAY = new Date().toISOString().slice(0, 10);
 
 export const OT_FORM_SCHEMA = {
   tipo_trabajo: ['Preventivo_PM', 'Correctivo', 'Acondicionamiento', 'Overhaul'],
-  tipo_cargo: ['Cliente_Contrato', 'Interno_Zahory', 'Garantia_Fabrica', 'Reclamo_Rework'],
+  tipo_cargo: ['Cliente_Contrato', 'Interno_Plataforma', 'Garantia_Fabrica', 'Reclamo_Rework'],
   required: ['linea_negocio', 'cliente_id', 'contrato_id', 'equipo', 'lugar_ejecucion', 'tipo_trabajo', 'tipo_cargo', 'tecnico', 'descripcion'],
   conditional: {
     motivo_retrabajo: "required when tipo_cargo === 'Reclamo_Rework'",
@@ -45,7 +44,7 @@ const TIPO_TRABAJO = [
 
 const TIPO_CARGO = [
   ['Cliente_Contrato', 'Cliente / Contrato — facturable al cliente'],
-  ['Interno_Zahory',   'Interno plataforma — costo absorbido por la plataforma'],
+  ['Interno_Plataforma', 'Interno plataforma — costo absorbido por la plataforma'],
   ['Garantia_Fabrica', 'Garantía Fábrica — recuperable del fabricante'],
   ['Reclamo_Rework',   'Reclamo / Rework — retrabajo no facturable'],
 ];
@@ -58,9 +57,29 @@ const LUGAR_EJECUCION = [
 
 const cargoLabel = (v) => TIPO_CARGO.find(([c]) => c === v)?.[1] || v;
 const trabajoLabel = (v) => TIPO_TRABAJO.find(([t]) => t === v)?.[1] || v;
-const noFacturable = (cargo) => NON_BILLABLE_CARGOS.includes(cargo);
+const CARGOS_NO_FACTURABLES_DBS = ['Interno_Plataforma', 'Garantia_Fabrica', 'Reclamo_Rework'];
+const noFacturable = (cargo) => CARGOS_NO_FACTURABLES_DBS.includes(cargo) || NON_BILLABLE_CARGOS.includes(cargo);
 const nombreCliente = (cliente) => cliente?.nombre_comercial || cliente?.razon_social || cliente?.razonSocial || cliente?.id || '';
 const descripcionObjetoCosto = (objeto) => objeto?.nombre || objeto?.objeto || objeto?.descripcion || objeto?.numero || '';
+const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
+const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+
+const esErrorNumeroDuplicado = (error) =>
+  error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '');
+
+const mensajeErrorGuardadoOT = (error) => {
+  const mensaje = String(error?.message || 'No se pudo guardar la OT.');
+  if (error?.code === '42501' || /row-level security|permission denied|no tienes acceso|membres/i.test(mensaje)) {
+    return 'No tienes permiso para crear OTs en la empresa o sociedad activa.';
+  }
+  if (error?.code === '23503') {
+    return 'La OS, contrato, CECO o CEBE seleccionado ya no es válido para esta empresa o sociedad.';
+  }
+  if (error?.code === '23514' || /ordenes_trabajo_(tipo_trabajo|cargo_financiero|combinacion_dbs|motivo_rework|horometro|raiz_costo)/i.test(mensaje)) {
+    return 'La combinación de datos DBS no es válida. Revisa la clasificación, raíz de costo y horómetro.';
+  }
+  return mensaje;
+};
 
 const inferUnidadMinera = (contrato) => {
   if (!contrato) return '';
@@ -227,7 +246,7 @@ const getBannerImpacto = (cargo) => {
 
 // ── Barra inferior fija (Sticky Bottom Bar) ────────────────────────────────
 
-const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, onCancel, onSave }) => {
+const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, guardando, onCancel, onSave }) => {
   const totals = useMemo(() => calcOTTotals(segmentos), [segmentos]);
   const ingresoNum = noFacturable(tipoCargo) ? 0 : Number(ingreso || 0);
   const margen = totals.total > 0 && ingresoNum > 0
@@ -325,8 +344,8 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
         </div>
         <div style={{ width: 1, height: 36, background: 'var(--card-border)' }} />
         <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={onSave}>
-          <Icon name="check" size={13}/> Guardar OT
+        <button className="btn btn-primary" disabled={!valid || guardando} onClick={onSave}>
+          <Icon name="check" size={13}/> {guardando ? 'Guardando OT...' : 'Guardar OT'}
         </button>
       </div>
     </div>
@@ -595,6 +614,8 @@ export const CrearOTPage = ({ onNav }) => {
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState(null);
 
   const [form, setForm] = useState({
     lineaNegocio: '',
@@ -860,7 +881,7 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const handleCargoChange = (nuevoCargo) => {
-    const noFact = ['Interno_Zahory', 'Garantia_Fabrica', 'Reclamo_Rework'];
+    const noFact = CARGOS_NO_FACTURABLES_DBS;
     setForm(f => ({
       ...f, tipoCargo: nuevoCargo,
       ingreso: noFact.includes(nuevoCargo) ? 0 : f.ingreso,
@@ -883,8 +904,12 @@ export const CrearOTPage = ({ onNav }) => {
     ...form, hasValidSegment: hasValidSegment(segmentos), objetoCostoTipo,
   });
   const fieldErrors = validation.fieldErrors;
-  const hasCentroCosto = Boolean(form.centro_costo);
+  const hasCentroCosto = Boolean(form.centro_costo || form.centro_beneficio_id);
+  const raizDisponibleParaGuardado = objetoCostoTipo !== 'equipo_interno';
+  const horometroContratoValido = objetoCostoTipo !== 'contrato'
+    || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
   const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
+    && raizDisponibleParaGuardado && horometroContratoValido
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
     && !(form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura);
 
@@ -897,7 +922,80 @@ export const CrearOTPage = ({ onNav }) => {
       && '- El motivo del retrabajo es obligatorio.',
     (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
+    !raizDisponibleParaGuardado
+      && '- La raíz Equipo interno aún no está disponible para creación real.',
+    !horometroContratoValido
+      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato.',
   ].filter(Boolean);
+
+  const guardarOT = async () => {
+    if (guardando || !valid) return;
+
+    setGuardando(true);
+    setErrorGuardado(null);
+    const totales = calcOTTotals(segmentos);
+    const esOTDesdeOS = objetoCostoTipo === 'os_cliente';
+    const payloadBase = {
+      id: generarIdOT(),
+      empresa_id: sesionOperativa.empresaId,
+      os_cliente_id: esOTDesdeOS ? form.contratoId : null,
+      contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
+      cuenta_id: form.clienteId,
+      // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
+      // separado: la descripción técnica es el servicio registrado en esta fase.
+      servicio: form.descripcion.trim(),
+      descripcion: form.descripcion.trim(),
+      direccion_ejecucion: form.unidadMinera || form.lugarEjecucion || null,
+      fecha_programada: form.fechaProgramadaInicio,
+      estado: 'programada',
+      avance_pct: 0,
+      costo_estimado: totales.total,
+      costo_estimado_ot: totales.total,
+      costo_real: 0,
+      moneda: contrato?.moneda || sesionOperativa.empresa?.moneda_base || 'PEN',
+      centro_costo_id: form.centro_costo || null,
+      centro_beneficio_id: form.centro_beneficio_id || null,
+      tipo_trabajo: form.tipoTrabajo,
+      cargo_financiero: form.tipoCargo,
+      motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
+      horometro_actual: objetoCostoTipo === 'contrato' ? Number(form.horometroApertura) : null,
+    };
+
+    try {
+      let guardada = null;
+      let ultimoError = null;
+      for (let intento = 0; intento < 5; intento += 1) {
+        const numero = generarNumeroOT();
+        const { data, error } = await getSupabaseClient()
+          .from('ordenes_trabajo')
+          .insert({ ...payloadBase, numero })
+          .select('id, numero')
+          .single();
+        if (!error) {
+          guardada = data || { id: payloadBase.id, numero };
+          break;
+        }
+        ultimoError = error;
+        if (!esErrorNumeroDuplicado(error)) throw error;
+      }
+      if (!guardada) throw ultimoError || new Error('No se pudo reservar un número de OT único.');
+
+      setCreada({
+        ...form,
+        id: guardada.id,
+        numero: guardada.numero,
+        backlogs,
+        segmentos,
+        fechaPrimerLaborReal: null,
+        ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
+        horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
+      });
+    } catch (error) {
+      setErrorGuardado(mensajeErrorGuardadoOT(error));
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   if (sesionOperativa.cargando) {
     return (
@@ -938,7 +1036,7 @@ export const CrearOTPage = ({ onNav }) => {
           </div>
           <h2>OT creada correctamente</h2>
           <div className="sub" style={{ marginBottom: 18 }}>
-            <b>{NEW_OT_CODE}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
+            <b>{creada.numero}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
           </div>
           <div className="card" style={{ padding: 16, textAlign: 'left', marginBottom: 18 }}>
             <div><span className="muted">Equipo:</span> <b>{creada.equipo}</b></div>
@@ -970,11 +1068,11 @@ export const CrearOTPage = ({ onNav }) => {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Nueva Orden de Trabajo · {NEW_OT_CODE}</h1>
+          <h1>Nueva Orden de Trabajo</h1>
           <div className="sub">Creacion directa DBS · Tipo de Trabajo × Cargo Financiero</div>
         </div>
         <div className="spacer"/>
-        <button className="btn btn-secondary" onClick={registrarAprobacion} disabled={!sesionOperativa.permiteEscritura}>
+        <button className="btn btn-secondary" onClick={registrarAprobacion} disabled={!sesionOperativa.permiteEscritura || !creada || guardando} title="Disponible después de guardar la OT">
           <Icon name="check" size={13}/> Registrar Aprobacion Comercial
         </button>
       </div>
@@ -982,6 +1080,11 @@ export const CrearOTPage = ({ onNav }) => {
       {!sesionOperativa.permiteEscritura && (
         <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
           Vista consolidada de grupo: no se permite crear ni editar OTs hasta seleccionar una sociedad operativa.
+        </div>
+      )}
+      {errorGuardado && (
+        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b91c1c', borderColor: '#fecaca' }}>
+          No se pudo guardar la OT: {errorGuardado}
         </div>
       )}
       <fieldset disabled={!sesionOperativa.permiteEscritura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
@@ -1052,6 +1155,7 @@ export const CrearOTPage = ({ onNav }) => {
 
                 {/* Cascada según tipo objeto */}
                 {objetoCostoTipo === 'equipo_interno' ? (
+                  <>
                   <div className="ot-form-field" style={{ marginBottom: 12 }}>
                     <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de la plataforma) *</div>
                     <select className="input" value={form.equipo}
@@ -1066,6 +1170,10 @@ export const CrearOTPage = ({ onNav }) => {
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                     )}
                   </div>
+                  <div style={{ marginTop: 10, fontSize: 11, color: '#b45309' }}>
+                    La raíz Equipo interno aún no está disponible para creación real: falta un maestro de equipos que derive un CECO válido.
+                  </div>
+                  </>
                 ) : (
                   <div className="ot-form-grid commercial">
                     <div className="ot-form-field">
@@ -1234,7 +1342,7 @@ export const CrearOTPage = ({ onNav }) => {
               {/* C2 — Horómetro de apertura */}
               <div style={{ padding: '12px 12px 8px' }}>
                 <div className="label" style={{ fontSize: 12 }}>
-                  Horómetro actual del equipo{form.lugarEjecucion === 'Campo_Mina' ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+                  Horómetro actual del equipo{(form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') ? <span style={{ color: '#ef4444' }}> *</span> : ''}
                 </div>
                 {horometroSugerido != null && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 4px' }}>
@@ -1250,7 +1358,7 @@ export const CrearOTPage = ({ onNav }) => {
                     style={{
                       width: 200, fontFamily: 'monospace',
                       background: !form.equipo ? '#ECEFF1' : undefined,
-                      borderColor: form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura
+                      borderColor: (form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') && form.equipo && !form.horometroApertura
                         ? '#E53935' : undefined,
                     }}
                   />
@@ -1258,9 +1366,9 @@ export const CrearOTPage = ({ onNav }) => {
                     horas — registrar el horómetro físico al iniciar la OT
                   </span>
                 </div>
-                {form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura && (
+                {(form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') && form.equipo && !form.horometroApertura && (
                   <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
-                    El horómetro de apertura es obligatorio para OTs en campo.
+                    El horómetro actual es obligatorio para OTs en campo o bajo contrato.
                   </div>
                 )}
               </div>
@@ -1464,15 +1572,9 @@ export const CrearOTPage = ({ onNav }) => {
         centroCosto={form.centro_costo}
         objetoCostoId={form.objeto_costo_id}
         valid={valid}
+        guardando={guardando}
         onCancel={() => onNav('ots')}
-        onSave={() => setCreada({
-          ...form,
-          backlogs,
-          segmentos,
-          fechaPrimerLaborReal: null,
-          ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
-          horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
-        })}
+        onSave={guardarOT}
       />
       <BacklogDrawer
         open={drawerOpen}
