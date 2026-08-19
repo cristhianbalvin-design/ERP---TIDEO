@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { STORAGE_BUCKETS, subirAdjunto } from '../../../../src/services/storageService.js';
 
 // ── Mock Data — delegado a data.js (Capa 3) ───────────────────────────────
 const ACTIVOS_RENTAL  = ZAHORY_SAC_DATA.flota_equipos_rental;
@@ -30,15 +33,34 @@ const fmtFechaLarga = (iso) => {
 };
 
 // Opciones del formulario de nuevo contrato
-const CLIENTES_OPT   = ['Minera Nexa Resources','Cia. Minas Buenaventura','Antamina S.A.','Volcan Compañía Minera','Cerro Verde S.A.C.','Gold Fields La Cima','Antapaccay S.A.'];
-const UNIDADES_OPT   = ['U.M. Animón — Cerro de Pasco','U.M. Uchucchacua — Lima','U.M. Antamina — Áncash','U.M. Yauli — Junín','U.M. Cuajone — Moquegua','U.M. Cerro Verde — Arequipa','U.M. Tintaya — Cusco'];
-const UM_TARIFA_OPT  = ['Hora','Día','Mes'];
-
 const CTFORM_INIT = {
-  numero: '', cliente: '', unidad: '',
-  equipo: '', tarifa: '', unidadMedida: 'Hora', minimo: '',
-  metaDMR: '85',
-  inicio: '', vencimiento: '',
+  clienteId: '', unidadMinera: '', equipoId: '',
+  fechaInicio: '', fechaFin: '', tarifaMonto: '', moneda: 'USD',
+  tarifaPeriodicidad: 'hora', minimoFacturable: '', metaDmr: '85',
+  centroCostoId: '', centroBeneficioId: '',
+};
+
+const generarNumeroContrato = () => {
+  const anio = String(new Date().getFullYear()).slice(-2);
+  return `CT-${anio}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+};
+
+const generarIdContrato = () => (
+  globalThis.crypto?.randomUUID?.() || `ctr_${Date.now()}_${Math.random().toString(36).slice(2)}`
+);
+
+const esNumeroContratoDuplicado = error => (
+  error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '')
+);
+
+const etiquetaCuenta = cuenta => cuenta?.nombre_comercial || cuenta?.razon_social || cuenta?.id || '';
+const etiquetaCatalogo = item => [item?.codigo, item?.nombre].filter(Boolean).join(' - ') || item?.id || '';
+
+const mensajeErrorContrato = error => {
+  if (error?.code === '42501') return 'No tienes permiso para registrar contratos en la sociedad activa.';
+  if (error?.code === '23503') return 'El cliente, equipo o centro seleccionado ya no es válido para tu alcance.';
+  if (error?.code === '23514') return 'Los datos del contrato no cumplen las validaciones requeridas.';
+  return error?.message || 'No se pudo guardar el contrato. Inténtalo nuevamente.';
 };
 
 // ── Componente de vista previa de contrato ────────────────────────────────
@@ -903,6 +925,7 @@ export const FlotaRentalPage = ({ onNav }) => {
 // 2. CONTRATOS Y TARIFAS
 // ═══════════════════════════════════════════════════════════════════════════
 export const ContratosRentalPage = ({ onNav }) => {
+  const sesion = useSesionOperativa();
   const [modalNuevo,           setModalNuevo]           = useState(false);
   const [preview,              setPreview]              = useState(null);
   const [ctForm,               setCtForm]               = useState(CTFORM_INIT);
@@ -912,6 +935,19 @@ export const ContratosRentalPage = ({ onNav }) => {
   const [contratoSeleccionado, setContratoSeleccionado] = useState(null);
   const [tabFicha,             setTabFicha]             = useState('resumen');
   const [fichaAbierta,         setFichaAbierta]         = useState(false);
+  const [numeroSugerido,       setNumeroSugerido]       = useState('');
+  const [clientes,             setClientes]             = useState([]);
+  const [unidadesMineras,      setUnidadesMineras]      = useState([]);
+  const [equipos,              setEquipos]              = useState([]);
+  const [centrosCosto,         setCentrosCosto]         = useState([]);
+  const [centrosBeneficio,     setCentrosBeneficio]     = useState([]);
+  const [cargandoCatalogos,    setCargandoCatalogos]    = useState(false);
+  const [errorCatalogos,       setErrorCatalogos]       = useState('');
+  const [errorGuardar,         setErrorGuardar]         = useState('');
+  const [archivoContrato,      setArchivoContrato]      = useState(null);
+  const [contratoGuardado,     setContratoGuardado]     = useState(null);
+  const [errorArchivo,         setErrorArchivo]         = useState('');
+  const [subiendoArchivo,      setSubiendoArchivo]      = useState(false);
 
   const contratos = ZAHORY_SAC_DATA.contratosRental;
 
@@ -1024,15 +1060,171 @@ export const ContratosRentalPage = ({ onNav }) => {
 
   const setCtField = (k, v) => setCtForm(f => ({ ...f, [k]: v }));
 
-  const handleGuardar = () => {
+  useEffect(() => {
+    let activo = true;
+    if (!modalNuevo || !sesion.empresaId || !sesion.sociedadId || !sesion.permiteEscritura) return undefined;
+
+    const cargarCatalogos = async () => {
+      setCargandoCatalogos(true);
+      setErrorCatalogos('');
+      try {
+        const supabase = getSupabaseClient();
+        // activos no posee sociedad_id: el alcance disponible hoy es empresa + estado operativo.
+        const [cuentasRes, unidadesRes, equiposRes, cecoRes, cebeRes] = await Promise.all([
+          supabase.from('cuentas').select('id,nombre_comercial,razon_social,ruc,estado')
+            .eq('empresa_id', sesion.empresaId).eq('estado', 'activo').order('nombre_comercial'),
+          supabase.from('sedes').select('id,codigo,nombre')
+            .eq('empresa_id', sesion.empresaId).eq('tipo', 'unidad_minera').eq('estado', 'activo').order('nombre'),
+          supabase.from('activos').select('id,codigo,nombre,marca,modelo,estado')
+            .eq('empresa_id', sesion.empresaId).eq('estado', 'operativo').order('codigo'),
+          supabase.from('centros_costo').select('id,nombre,codigo')
+            .eq('empresa_id', sesion.empresaId).eq('sociedad_id', sesion.sociedadId).eq('estado', 'activo').order('nombre'),
+          supabase.from('centros_beneficio').select('id,nombre,codigo')
+            .eq('empresa_id', sesion.empresaId).eq('sociedad_id', sesion.sociedadId).eq('estado', 'activo').order('nombre'),
+        ]);
+        const error = [cuentasRes, unidadesRes, equiposRes, cecoRes, cebeRes].find(resultado => resultado.error)?.error;
+        if (error) throw error;
+        if (!activo) return;
+        setClientes(cuentasRes.data || []);
+        setUnidadesMineras(unidadesRes.data || []);
+        setEquipos(equiposRes.data || []);
+        setCentrosCosto(cecoRes.data || []);
+        setCentrosBeneficio(cebeRes.data || []);
+      } catch (error) {
+        if (activo) setErrorCatalogos(`No se pudieron cargar los catálogos: ${error.message || 'error desconocido'}`);
+      } finally {
+        if (activo) setCargandoCatalogos(false);
+      }
+    };
+
+    cargarCatalogos();
+    return () => { activo = false; };
+  }, [modalNuevo, sesion.empresaId, sesion.sociedadId, sesion.permiteEscritura]);
+
+  const limpiarModalContrato = () => {
+    setModalNuevo(false);
+    setCtForm(CTFORM_INIT);
+    setArchivoContrato(null);
+    setContratoGuardado(null);
+    setErrorGuardar('');
+    setErrorArchivo('');
+  };
+
+  const abrirModalContrato = () => {
+    setCtForm(CTFORM_INIT);
+    setNumeroSugerido(generarNumeroContrato());
+    setArchivoContrato(null);
+    setContratoGuardado(null);
+    setErrorGuardar('');
+    setErrorArchivo('');
+    setModalNuevo(true);
+  };
+
+  const subirDocumentoContrato = async contratoId => {
+    if (!archivoContrato) return true;
+    setSubiendoArchivo(true);
+    setErrorArchivo('');
+    try {
+      await subirAdjunto({
+        empresaId: sesion.empresaId,
+        entidadTipo: 'contratos_alquiler',
+        entidadId: contratoId,
+        file: archivoContrato,
+        categoria: 'contrato_pdf',
+        subidoPor: sesion.usuario?.id || null,
+        bucket: STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
+      });
+      return true;
+    } catch (error) {
+      setErrorArchivo(`El contrato fue creado, pero no se pudo subir el PDF: ${error.message || 'error desconocido'}`);
+      return false;
+    } finally {
+      setSubiendoArchivo(false);
+    }
+  };
+
+  const handleGuardar = async () => {
+    if (!sesion.permiteEscritura) {
+      setErrorGuardar('No puedes crear contratos desde la vista consolidada. Selecciona una sociedad operativa.');
+      return;
+    }
+    if (!sesion.empresaId || !sesion.sociedadId) {
+      setErrorGuardar('Aún no se resolvió la empresa y sociedad activas.');
+      return;
+    }
+    const tarifa = Number(ctForm.tarifaMonto);
+    const dmr = Number(ctForm.metaDmr);
+    const minimo = ctForm.minimoFacturable === '' ? null : Number(ctForm.minimoFacturable);
+    if (!ctForm.clienteId || !ctForm.equipoId || !ctForm.fechaInicio || !ctForm.fechaFin || !Number.isFinite(tarifa) || tarifa < 0 || !Number.isFinite(dmr) || dmr < 0 || dmr > 100 || (minimo !== null && (!Number.isFinite(minimo) || minimo < 0))) {
+      setErrorGuardar('Completa Cliente, Equipo, fechas, tarifa y una meta DMR válida entre 0 y 100.');
+      return;
+    }
+    if (ctForm.fechaFin < ctForm.fechaInicio) {
+      setErrorGuardar('La fecha de vencimiento no puede ser anterior a la fecha de inicio.');
+      return;
+    }
+
     setSaving(true);
-    setTimeout(() => {
+    setErrorGuardar('');
+    let contrato = null;
+    try {
+      const supabase = getSupabaseClient();
+      const id = generarIdContrato();
+      for (let intento = 0; intento < 5; intento += 1) {
+        const numero = intento === 0 ? numeroSugerido : generarNumeroContrato();
+        const { data, error } = await supabase.from('contratos_alquiler').insert({
+          id,
+          empresa_id: sesion.empresaId,
+          sociedad_id: sesion.sociedadId,
+          numero,
+          cuenta_id: ctForm.clienteId,
+          unidad_minera: ctForm.unidadMinera || null,
+          fecha_inicio: ctForm.fechaInicio,
+          fecha_fin: ctForm.fechaFin,
+          tarifa_monto: tarifa,
+          tarifa_periodicidad: ctForm.tarifaPeriodicidad,
+          minimo_facturable: minimo,
+          meta_dmr: dmr,
+          moneda: ctForm.moneda,
+          centro_costo_id: ctForm.centroCostoId || null,
+          centro_beneficio_id: ctForm.centroBeneficioId || null,
+        }).select('id,numero').single();
+        if (!error) { contrato = data; break; }
+        if (!esNumeroContratoDuplicado(error) || intento === 4) throw error;
+      }
+      if (!contrato) throw new Error('No se pudo asignar un número de contrato disponible.');
+      const { error: equipoError } = await supabase.from('contratos_alquiler_equipos').insert({
+        contrato_alquiler_id: contrato.id,
+        equipo_id: ctForm.equipoId,
+      });
+      if (equipoError) {
+        // No dejamos un contrato nuevo sin el único equipo exigido por este flujo.
+        await supabase.from('contratos_alquiler').delete().eq('id', contrato.id);
+        throw equipoError;
+      }
+
+      setContratoGuardado(contrato);
+      const documentoSubido = await subirDocumentoContrato(contrato.id);
+      if (documentoSubido) {
+        limpiarModalContrato();
+        setToast(true);
+        setTimeout(() => setToast(false), 2800);
+      }
+    } catch (error) {
+      setErrorGuardar(mensajeErrorContrato(error));
+    } finally {
       setSaving(false);
-      setModalNuevo(false);
-      setCtForm(CTFORM_INIT);
+    }
+  };
+
+  const reintentarSubida = async () => {
+    if (!contratoGuardado || subiendoArchivo) return;
+    const documentoSubido = await subirDocumentoContrato(contratoGuardado.id);
+    if (documentoSubido) {
+      limpiarModalContrato();
       setToast(true);
       setTimeout(() => setToast(false), 2800);
-    }, 900);
+    }
   };
 
   return (
@@ -1044,7 +1236,7 @@ export const ContratosRentalPage = ({ onNav }) => {
         </div>
         <div className="spacer"/>
         <button className="btn btn-secondary"><Icon name="download" size={13}/> Exportar</button>
-        <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>
+        <button className="btn btn-primary" onClick={abrirModalContrato}>
           <Icon name="plus" size={13}/> Nuevo Contrato
         </button>
       </div>
@@ -1585,154 +1777,63 @@ export const ContratosRentalPage = ({ onNav }) => {
 
       {/* ── Modal Nuevo Contrato ───────────────────────────────────────── */}
       {modalNuevo && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(15,23,42,0.65)',
-          zIndex:1000, display:'grid', placeItems:'center', padding:20, overflowY:'auto',
-        }}
-          onClick={e => { if (e.target === e.currentTarget) { setModalNuevo(false); setCtForm(CTFORM_INIT); } }}
-        >
-          <div className="card" style={{ width:'100%', maxWidth:640, animation:'fadeInUp 0.2s ease-out', margin:'auto' }}>
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.65)', zIndex:1001, display:'grid', placeItems:'center', padding:20, overflowY:'auto' }}
+          onClick={e => { if (e.target === e.currentTarget && !saving && !subiendoArchivo) limpiarModalContrato(); }}>
+          <div className="card" style={{ width:'100%', maxWidth:760, animation:'fadeInUp 0.2s ease-out', margin:'auto' }}>
             <div className="card-header" style={{ background:'var(--navy)', color:'white', borderRadius:'8px 8px 0 0' }}>
-              <div>
-                <h3 style={{ margin:0 }}>Nuevo Contrato de Alquiler</h3>
-                <div style={{ fontSize:12, opacity:.75, marginTop:2 }}>Complete los datos del acuerdo comercial.</div>
-              </div>
+              <div><h3 style={{ margin:0 }}>Nuevo Contrato de Alquiler</h3><div style={{ fontSize:12, opacity:.75, marginTop:2 }}>Registro real para la sociedad activa.</div></div>
               <div className="spacer"/>
-              <button className="icon-btn" onClick={() => { setModalNuevo(false); setCtForm(CTFORM_INIT); }} style={{ color:'white' }}>
-                <Icon name="x" size={16}/>
-              </button>
+              <button className="icon-btn" onClick={limpiarModalContrato} disabled={saving || subiendoArchivo} style={{ color:'white' }}><Icon name="x" size={16}/></button>
             </div>
-
             <div className="card-body" style={{ display:'flex', flexDirection:'column', gap:20 }}>
+              {sesion.cargando && <div className="alert alert-info">Verificando sesión operativa...</div>}
+              {!sesion.cargando && !sesion.permiteEscritura && <div className="alert alert-warning">Selecciona una sociedad operativa para crear contratos. La vista consolidada es solo de lectura.</div>}
+              {errorCatalogos && <div className="alert alert-error">{errorCatalogos}</div>}
+              {errorGuardar && <div className="alert alert-error">{errorGuardar}</div>}
+              {errorArchivo && <div className="alert alert-warning">{errorArchivo}</div>}
+              {contratoGuardado && errorArchivo && <div className="alert alert-info">Contrato {contratoGuardado.numero} creado. Puedes reintentar solo la subida del PDF, sin duplicar el contrato.</div>}
 
-              {/* Sección A */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  A — Identificación
-                </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>A — Identificación</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="field" style={{ gridColumn:'1/-1' }}>
-                    <label>Nº de Contrato *</label>
-                    <input className="input" placeholder="Ej. CT-2026-005"
-                      value={ctForm.numero} onChange={e => setCtField('numero', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Cliente *</label>
-                    <select className="select" value={ctForm.cliente} onChange={e => setCtField('cliente', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {CLIENTES_OPT.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Unidad Minera *</label>
-                    <select className="select" value={ctForm.unidad} onChange={e => setCtField('unidad', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {UNIDADES_OPT.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Equipo Asignado *</label>
-                    <select className="select" value={ctForm.equipo} onChange={e => setCtField('equipo', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {ACTIVOS_RENTAL.filter(e => e.estado === 'disponible').map(e => (
-                        <option key={e.id}>{e.id} — {e.modelo}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Fecha de Inicio *</label>
-                    <input className="input" type="date" value={ctForm.inicio} onChange={e => setCtField('inicio', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Fecha de Vencimiento *</label>
-                    <input className="input" type="date" value={ctForm.vencimiento} onChange={e => setCtField('vencimiento', e.target.value)}/>
-                  </div>
+                  <div className="field"><label>Número de Contrato</label><input className="input" value={numeroSugerido} readOnly /></div>
+                  <div className="field"><label>Cliente *</label><select className="select" value={ctForm.clienteId} onChange={e => setCtField('clienteId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando clientes...' : 'Seleccionar...'}</option>{clientes.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{etiquetaCuenta(cuenta)}{cuenta.ruc ? ` · ${cuenta.ruc}` : ''}</option>)}</select></div>
+                  <div className="field"><label>Unidad Minera</label><select className="select" value={ctForm.unidadMinera} onChange={e => setCtField('unidadMinera', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando unidades...' : 'Sin unidad minera'}</option>{unidadesMineras.map(unidad => <option key={unidad.id} value={unidad.id}>{etiquetaCatalogo(unidad)}</option>)}</select></div>
+                  <div className="field"><label>Equipo Asignado *</label><select className="select" value={ctForm.equipoId} onChange={e => setCtField('equipoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando equipos...' : 'Seleccionar...'}</option>{equipos.map(equipo => <option key={equipo.id} value={equipo.id}>{etiquetaCatalogo(equipo)}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>Activos se filtra por empresa: el maestro no tiene sociedad_id.</div></div>
+                  <div className="field"><label>Fecha de Inicio *</label><input className="input" type="date" value={ctForm.fechaInicio} onChange={e => setCtField('fechaInicio', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field"><label>Fecha de Vencimiento *</label><input className="input" type="date" min={ctForm.fechaInicio || undefined} value={ctForm.fechaFin} onChange={e => setCtField('fechaFin', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                 </div>
               </div>
 
-              {/* Sección B */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  B — Parámetros de Cobro
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>B — Parámetros de Cobro</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:12 }}>
+                  <div className="field"><label>Tarifa *</label><input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={ctForm.tarifaMonto} onChange={e => setCtField('tarifaMonto', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field"><label>Moneda *</label><select className="select" value={ctForm.moneda} onChange={e => setCtField('moneda', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="USD">USD</option><option value="PEN">PEN</option></select></div>
+                  <div className="field"><label>Unidad de tarifa *</label><select className="select" value={ctForm.tarifaPeriodicidad} onChange={e => setCtField('tarifaPeriodicidad', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="hora">Hora</option><option value="dia">Día</option><option value="mes">Mes</option></select></div>
+                  <div className="field"><label>Mínimo garantizado</label><input className="input" type="number" min="0" step="0.01" placeholder="Opcional" value={ctForm.minimoFacturable} onChange={e => setCtField('minimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                 </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>C — Disponibilidad y centros</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-                  <div className="field">
-                    <label>Tarifa (USD) *</label>
-                    <input className="input" type="number" placeholder="0.00"
-                      value={ctForm.tarifa} onChange={e => setCtField('tarifa', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Unidad de Medida</label>
-                    <select className="select" value={ctForm.unidadMedida} onChange={e => setCtField('unidadMedida', e.target.value)}>
-                      {UM_TARIFA_OPT.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Mínimo Garantizado (hrs)</label>
-                    <input className="input" type="number" placeholder="200"
-                      value={ctForm.minimo} onChange={e => setCtField('minimo', e.target.value)}/>
-                  </div>
+                  <div className="field"><label>Meta DMR % *</label><input className="input" type="number" min="0" max="100" step="0.01" value={ctForm.metaDmr} onChange={e => setCtField('metaDmr', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field"><label>Centro de Costo</label><select className="select" value={ctForm.centroCostoId} onChange={e => setCtField('centroCostoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">Sin centro de costo</option>{centrosCosto.map(centro => <option key={centro.id} value={centro.id}>{etiquetaCatalogo(centro)}</option>)}</select></div>
+                  <div className="field"><label>Centro de Beneficio</label><select className="select" value={ctForm.centroBeneficioId} onChange={e => setCtField('centroBeneficioId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">Sin centro de beneficio</option>{centrosBeneficio.map(centro => <option key={centro.id} value={centro.id}>{etiquetaCatalogo(centro)}</option>)}</select></div>
                 </div>
               </div>
 
-              {/* Sección C */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  C — KPI de Disponibilidad
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="field">
-                    <label>Meta DMR % *</label>
-                    <input className="input" type="number" min={0} max={100} placeholder="85"
-                      value={ctForm.metaDMR} onChange={e => setCtField('metaDMR', e.target.value)}/>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:4 }}>
-                    <div style={{
-                      padding:'8px 12px', background:'#E0F7FA', borderRadius:8,
-                      fontSize:12, color:'#006064', fontWeight:600, lineHeight:1.4,
-                    }}>
-                      Si DMR real {'<'} meta → penalidad contractual según Anexo A
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sección D */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  D — Documento del Contrato
-                </div>
-                <div style={{
-                  border:'2px dashed var(--card-border)', borderRadius:10,
-                  padding:'22px 20px', textAlign:'center', background:'#F8FAFC',
-                  cursor:'pointer', transition:'border-color .15s, background .15s',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='var(--cyan)'; e.currentTarget.style.background='#F0FDFE'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='var(--card-border)'; e.currentTarget.style.background='#F8FAFC'; }}
-                >
-                  <Icon name="pdf" size={26} stroke={1.5}/>
-                  <div style={{ marginTop:8, fontWeight:700, fontSize:13, color:'var(--navy)' }}>
-                    Adjuntar PDF escaneado del contrato
-                  </div>
-                  <div style={{ fontSize:11.5, color:'var(--text-muted)', marginTop:3 }}>
-                    PDF · Máx. 25 MB
-                  </div>
-                </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>D — Documento del contrato</div>
+                <div className="field"><label>PDF del contrato (opcional, máximo 20 MB)</label><input className="input" type="file" accept="application/pdf,.pdf" onChange={e => { setArchivoContrato(e.target.files?.[0] || null); setErrorArchivo(''); }} disabled={Boolean(contratoGuardado) || subiendoArchivo}/>{archivoContrato && <div className="sub" style={{ marginTop:5, fontSize:12 }}>Archivo seleccionado: {archivoContrato.name}</div>}</div>
               </div>
             </div>
-
             <div style={{ display:'flex', gap:10, padding:'4px 16px 16px' }}>
-              <button className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}
-                onClick={() => { setModalNuevo(false); setCtForm(CTFORM_INIT); }} disabled={saving}>
-                Cancelar
-              </button>
-              <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}
-                onClick={handleGuardar} disabled={saving}>
-                {saving
-                  ? <><span className="spinner" style={{ width:13, height:13, borderWidth:2, marginRight:6 }}/> Guardando...</>
-                  : <><Icon name="check" size={13}/> Guardar Contrato</>
-                }
-              </button>
+              <button className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }} onClick={limpiarModalContrato} disabled={saving || subiendoArchivo}>{contratoGuardado ? 'Cerrar' : 'Cancelar'}</button>
+              {contratoGuardado && errorArchivo
+                ? <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }} onClick={reintentarSubida} disabled={subiendoArchivo}>{subiendoArchivo ? 'Subiendo PDF...' : 'Reintentar PDF'}</button>
+                : <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }} onClick={handleGuardar} disabled={saving || cargandoCatalogos || !sesion.permiteEscritura}>{saving ? <><span className="spinner" style={{ width:13, height:13, borderWidth:2, marginRight:6 }}/> Guardando...</> : <><Icon name="check" size={13}/> Guardar Contrato</>}</button>}
             </div>
           </div>
         </div>
