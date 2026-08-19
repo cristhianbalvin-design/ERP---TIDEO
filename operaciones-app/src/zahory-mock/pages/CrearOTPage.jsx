@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   NON_BILLABLE_CARGOS,
   getBlockedCargoReason,
@@ -57,9 +59,12 @@ const LUGAR_EJECUCION = [
 const cargoLabel = (v) => TIPO_CARGO.find(([c]) => c === v)?.[1] || v;
 const trabajoLabel = (v) => TIPO_TRABAJO.find(([t]) => t === v)?.[1] || v;
 const noFacturable = (cargo) => NON_BILLABLE_CARGOS.includes(cargo);
+const nombreCliente = (cliente) => cliente?.nombre_comercial || cliente?.razon_social || cliente?.razonSocial || cliente?.id || '';
+const descripcionObjetoCosto = (objeto) => objeto?.nombre || objeto?.objeto || objeto?.descripcion || objeto?.numero || '';
 
 const inferUnidadMinera = (contrato) => {
   if (!contrato) return '';
+  if (contrato.unidad_minera) return contrato.unidad_minera;
   const m = contrato.descripcion?.match(/Unidad\s+(.+)$/i);
   if (m) return m[1].trim();
   return contrato.descripcion?.split('–').pop()?.trim() || contrato.cliente || '';
@@ -70,15 +75,15 @@ const hasValidSegment = (segs) =>
 
 // ── Drawer de backlogs ─────────────────────────────────────────────────────
 
-const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
+const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = false, loading = false }) => {
   const wrapperRef = useRef(null);
   const selected = clientes.find(c => c.id === value);
-  const [query, setQuery] = useState(selected?.razonSocial || '');
+  const [query, setQuery] = useState(nombreCliente(selected));
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setQuery(selected?.razonSocial || '');
-  }, [selected?.razonSocial]);
+    setQuery(nombreCliente(selected));
+  }, [selected?.id, selected?.nombre_comercial, selected?.razon_social, selected?.razonSocial]);
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -90,7 +95,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
 
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = normalizedQuery
-    ? clientes.filter(c => [c.razonSocial, c.ruc, c.contacto, c.id]
+    ? clientes.filter(c => [nombreCliente(c), c.razon_social, c.ruc, c.contacto, c.id]
         .some(v => String(v || '').toLowerCase().includes(normalizedQuery)))
     : clientes;
 
@@ -102,7 +107,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
   const handleInput = (nextQuery) => {
     setQuery(nextQuery);
     setOpen(true);
-    if (value && nextQuery !== selected?.razonSocial) onChange('');
+    if (value && nextQuery !== nombreCliente(selected)) onChange('');
   };
 
   return (
@@ -114,6 +119,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
           value={query}
           onChange={e => handleInput(e.target.value)}
           onFocus={() => setOpen(true)}
+          disabled={disabled}
           placeholder="Buscar cliente por razon social, RUC o contacto"
           style={{ borderColor: error ? '#E53935' : undefined }}
           autoComplete="off"
@@ -135,7 +141,9 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
       </div>
       {open && (
         <div className="search-select-menu">
-          {filtered.map(c => (
+          {loading ? (
+            <div className="search-select-empty">Cargando clientes...</div>
+          ) : filtered.map(c => (
             <button
               type="button"
               key={c.id}
@@ -144,8 +152,8 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
               onClick={() => selectCliente(c.id)}
             >
               <span>
-                <b>{c.razonSocial}</b>
-                <small>{c.ruc} - {c.contacto}</small>
+                <b>{nombreCliente(c)}</b>
+                <small>{c.ruc || 'Sin RUC'}{c.contacto ? ` - ${c.contacto}` : ''}</small>
               </span>
               {c.id === value && <Icon name="check" size={13}/>}
             </button>
@@ -567,6 +575,7 @@ const CC_DESC = {
 };
 
 export const CrearOTPage = ({ onNav }) => {
+  const sesionOperativa = useSesionOperativa();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
   const [backlogs, setBacklogs] = useState([]);
@@ -576,6 +585,13 @@ export const CrearOTPage = ({ onNav }) => {
   const [objetoCostoTipo, setObjetoCostoTipo] = useState('contrato');
   const [errorDBS, setErrorDBS] = useState(null);
   const [horometroSugerido, setHorometroSugerido] = useState(null);
+  const [clientesReales, setClientesReales] = useState([]);
+  const [osClientesReales, setOsClientesReales] = useState([]);
+  const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
+  const [cargandoClientes, setCargandoClientes] = useState(false);
+  const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
+  const [errorClientes, setErrorClientes] = useState(null);
+  const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
 
   const [form, setForm] = useState({
     lineaNegocio: '',
@@ -594,6 +610,7 @@ export const CrearOTPage = ({ onNav }) => {
     fechaAprobacionComercial: '',
     ingreso: 0,
     centro_costo: null,
+    centro_beneficio_id: null,
     horometroApertura: '',
   });
 
@@ -626,14 +643,124 @@ export const CrearOTPage = ({ onNav }) => {
   }, []);
 
   // ── Datos derivados ─────────────────────────────────────────────────────
-  const cliente = useMemo(() => D.clientes.find(c => c.id === form.clienteId), [form.clienteId]);
-  const contratosFiltrados = useMemo(() => {
-    if (!form.clienteId) return [];
-    if (objetoCostoTipo === 'os_cliente')
-      return D.contratos.filter(c => c.clienteId === form.clienteId && c.tipo === 'OS');
-    return D.contratos.filter(c => c.clienteId === form.clienteId && c.tipo !== 'OS');
-  }, [form.clienteId, objetoCostoTipo]);
-  const contrato = useMemo(() => D.contratos.find(c => c.id === form.contratoId), [form.contratoId]);
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setClientesReales([]);
+      setCargandoClientes(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoClientes(true);
+    setErrorClientes(null);
+    getSupabaseClient()
+      .from('cuentas')
+      .select('id,nombre_comercial,razon_social,ruc,estado')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .order('nombre_comercial')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setClientesReales([]);
+          setErrorClientes(error.message);
+        } else {
+          setClientesReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setClientesReales([]);
+          setErrorClientes(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoClientes(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+      || !form.clienteId
+      || objetoCostoTipo === 'equipo_interno'
+    ) {
+      setOsClientesReales([]);
+      setContratosAlquilerReales([]);
+      setCargandoObjetoCosto(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoObjetoCosto(true);
+    setErrorObjetoCosto(null);
+    const hoy = new Date().toISOString().slice(0, 10);
+    let consulta = objetoCostoTipo === 'os_cliente'
+      ? getSupabaseClient()
+        .from('os_clientes')
+        .select('id,numero,nombre,cuenta_id,sociedad_id,estado,moneda,fecha_inicio,fecha_fin,centro_beneficio_id')
+        .eq('empresa_id', sesionOperativa.empresaId)
+        .eq('cuenta_id', form.clienteId)
+        .order('numero')
+      : getSupabaseClient()
+        .from('contratos_alquiler')
+        .select('id,numero,cuenta_id,sociedad_id,estado,fecha_inicio,fecha_fin,moneda,unidad_minera,objeto,centro_costo_id,centro_beneficio_id,meta_dmr')
+        .eq('empresa_id', sesionOperativa.empresaId)
+        .eq('cuenta_id', form.clienteId)
+        .eq('estado', 'vigente')
+        .lte('fecha_inicio', hoy)
+        .gte('fecha_fin', hoy)
+        .order('numero');
+    if (sesionOperativa.sociedadId) consulta = consulta.eq('sociedad_id', sesionOperativa.sociedadId);
+
+    consulta
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setOsClientesReales([]);
+          setContratosAlquilerReales([]);
+          setErrorObjetoCosto(error.message);
+        } else if (objetoCostoTipo === 'os_cliente') {
+          setOsClientesReales(data || []);
+          setContratosAlquilerReales([]);
+        } else {
+          setContratosAlquilerReales(data || []);
+          setOsClientesReales([]);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setOsClientesReales([]);
+          setContratosAlquilerReales([]);
+          setErrorObjetoCosto(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoObjetoCosto(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    form.clienteId,
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
+
+  const cliente = useMemo(() => clientesReales.find(c => c.id === form.clienteId), [clientesReales, form.clienteId]);
+  const objetosCostoFiltrados = useMemo(
+    () => (objetoCostoTipo === 'os_cliente' ? osClientesReales : contratosAlquilerReales)
+      .map(objeto => ({ ...objeto, descripcion: descripcionObjetoCosto(objeto) })),
+    [contratosAlquilerReales, objetoCostoTipo, osClientesReales],
+  );
+  const contrato = useMemo(() => {
+    if (objetoCostoTipo === 'equipo_interno') return D.contratos.find(c => c.id === form.contratoId);
+    return objetosCostoFiltrados.find(c => c.id === form.contratoId);
+  }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
   const equiposFiltrados = useMemo(() => {
     if (objetoCostoTipo === 'equipo_interno') return D.equipos.filter(e => e.propietario === 'Empresa Operadora');
     if (!contrato) return [];
@@ -644,14 +771,19 @@ export const CrearOTPage = ({ onNav }) => {
   // ── Herencia de CC (C1) ─────────────────────────────────────────────────
   const heredarCC = (tipo, id) => {
     let cc = null;
-    if (tipo === 'contrato' || tipo === 'os_cliente') {
-      const c = D.contratos.find(x => x.id === id);
-      cc = c?.centro_costo || (tipo === 'os_cliente' ? 'PROD-MAE' : 'FLO-ALQ');
+    let centroBeneficioId = null;
+    if (tipo === 'contrato') {
+      const c = contratosAlquilerReales.find(x => x.id === id);
+      cc = c?.centro_costo_id || null;
+      centroBeneficioId = c?.centro_beneficio_id || null;
+    } else if (tipo === 'os_cliente') {
+      const os = osClientesReales.find(x => x.id === id);
+      centroBeneficioId = os?.centro_beneficio_id || null;
     } else if (tipo === 'equipo_interno') {
       const eq = D.equipos.find(e => e.cod === id);
       cc = eq?.centro_costo_default || 'OPS-INT';
     }
-    setForm(prev => ({ ...prev, centro_costo: cc }));
+    setForm(prev => ({ ...prev, centro_costo: cc, centro_beneficio_id: centroBeneficioId }));
     return cc;
   };
 
@@ -667,7 +799,7 @@ export const CrearOTPage = ({ onNav }) => {
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
       clienteId: '', contratoId: '', equipo: '',
-      unidadMinera: '', centro_costo: null, horometroApertura: '',
+      unidadMinera: '', centro_costo: null, centro_beneficio_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
     setBacklogs([]);
@@ -676,14 +808,14 @@ export const CrearOTPage = ({ onNav }) => {
   const setCliente = (clienteId) => {
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
-      unidadMinera: '', centro_costo: null, objeto_costo_id: null, horometroApertura: '',
+      unidadMinera: '', centro_costo: null, centro_beneficio_id: null, objeto_costo_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
     setBacklogs([]);
   };
 
   const setContrato = (contratoId) => {
-    const next = D.contratos.find(c => c.id === contratoId);
+    const next = objetosCostoFiltrados.find(c => c.id === contratoId);
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
@@ -749,7 +881,7 @@ export const CrearOTPage = ({ onNav }) => {
   });
   const fieldErrors = validation.fieldErrors;
   const hasCentroCosto = Boolean(form.centro_costo);
-  const valid = validation.success && !errorDBS && hasCentroCosto
+  const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
     && !(form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura);
 
@@ -763,6 +895,34 @@ export const CrearOTPage = ({ onNav }) => {
     (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
   ].filter(Boolean);
+
+  if (sesionOperativa.cargando) {
+    return (
+      <div className="page">
+        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24, textAlign: 'center' }}>
+          Cargando la sesión operativa…
+        </div>
+        <FooterBrand/>
+      </div>
+    );
+  }
+
+  if (!sesionOperativa.usuario || !sesionOperativa.empresaId) {
+    return (
+      <div className="page">
+        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24 }}>
+          <h2>Sesión administrativa requerida</h2>
+          <p className="sub">
+            Inicia sesión en Administrativo para cargar los datos de empresa y sociedad antes de crear una OT.
+          </p>
+          {sesionOperativa.error && (
+            <div style={{ color: '#E53935', fontSize: 12 }}>{sesionOperativa.error}</div>
+          )}
+        </div>
+        <FooterBrand/>
+      </div>
+    );
+  }
 
   // ── Pantalla de confirmación ────────────────────────────────────────────
   if (creada) {
@@ -811,11 +971,17 @@ export const CrearOTPage = ({ onNav }) => {
           <div className="sub">Creacion directa DBS · Tipo de Trabajo × Cargo Financiero</div>
         </div>
         <div className="spacer"/>
-        <button className="btn btn-secondary" onClick={registrarAprobacion}>
+        <button className="btn btn-secondary" onClick={registrarAprobacion} disabled={!sesionOperativa.permiteEscritura}>
           <Icon name="check" size={13}/> Registrar Aprobacion Comercial
         </button>
       </div>
 
+      {!sesionOperativa.permiteEscritura && (
+        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
+          Vista consolidada de grupo: no se permite crear ni editar OTs hasta seleccionar una sociedad operativa.
+        </div>
+      )}
+      <fieldset disabled={!sesionOperativa.permiteEscritura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div>
 
         {/* ── Cabecera DBS ── */}
@@ -902,11 +1068,18 @@ export const CrearOTPage = ({ onNav }) => {
                     <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Cliente *</div>
                       <ClienteSearchSelect
-                        clientes={D.clientes.filter(c => c.estado === 'Activo')}
+                        clientes={clientesReales}
                         value={form.clienteId}
                         onChange={setCliente}
                         error={Boolean(fieldErrors.clienteId)}
+                        disabled={cargandoClientes || !sesionOperativa.permiteEscritura}
+                        loading={cargandoClientes}
                       />
+                      {errorClientes && (
+                        <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                          No se pudieron cargar los clientes: {errorClientes}
+                        </div>
+                      )}
                       {fieldErrors.clienteId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.clienteId[0]}</div>
                       )}
@@ -916,18 +1089,25 @@ export const CrearOTPage = ({ onNav }) => {
                         {objetoCostoTipo === 'os_cliente' ? 'OS / Orden de Servicio *' : 'Contrato / Proyecto *'}
                       </div>
                       <select className="input" value={form.contratoId}
-                        disabled={!form.clienteId}
+                        disabled={!form.clienteId || cargandoObjetoCosto}
                         onChange={e => setContrato(e.target.value)}
-                        style={{ marginTop: 4, background: !form.clienteId ? '#ECEFF1' : undefined, borderColor: fieldErrors.contratoId ? '#E53935' : undefined }}>
+                        style={{ marginTop: 4, background: !form.clienteId || cargandoObjetoCosto ? '#ECEFF1' : undefined, borderColor: fieldErrors.contratoId ? '#E53935' : undefined }}>
                         <option value="">
-                          {form.clienteId
+                          {cargandoObjetoCosto
+                            ? 'Cargando opciones...'
+                            : form.clienteId
                             ? (objetoCostoTipo === 'os_cliente' ? '-- Seleccionar OS --' : '-- Seleccionar contrato --')
                             : 'Seleccione primero un cliente'}
                         </option>
-                        {contratosFiltrados.map(c => (
+                        {objetosCostoFiltrados.map(c => (
                           <option key={c.id} value={c.id}>{c.numero} · {c.descripcion}</option>
                         ))}
                       </select>
+                      {errorObjetoCosto && (
+                        <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                          No se pudieron cargar las opciones: {errorObjetoCosto}
+                        </div>
+                      )}
                       {fieldErrors.contratoId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.contratoId[0]}</div>
                       )}
@@ -953,10 +1133,32 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
 
                 {/* C1 — Badge CC heredado (solo lectura) */}
+                {objetoCostoTipo === 'os_cliente' && (
+                  <div className="ot-form-field" style={{ marginTop: 12, paddingBottom: 4 }}>
+                    <div className="label" style={{ fontSize: 12 }}>Centro de Costo *</div>
+                    <input
+                      className="input"
+                      value={form.centro_costo || ''}
+                      onChange={e => set('centro_costo', e.target.value)}
+                      placeholder="Seleccione o ingrese el centro de costo"
+                      style={{ marginTop: 4, borderColor: !form.centro_costo ? '#E53935' : undefined }}
+                    />
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                      La OS no define un centro de costo: selección manual obligatoria.
+                    </div>
+                  </div>
+                )}
+                {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                    Centro de Beneficio heredado de la OS: <strong>{form.centro_beneficio_id}</strong>
+                  </div>
+                )}
                 {form.centro_costo && (
                   <div style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
-                      Centro de Costo (heredado automáticamente)
+                      {objetoCostoTipo === 'os_cliente'
+                        ? 'Centro de Costo (selección manual)'
+                        : 'Centro de Costo (heredado automáticamente)'}
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{
@@ -1019,7 +1221,7 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="label" style={{ fontSize: 12 }}>Contexto comercial</div>
                   <div className="ot-context-box" style={{ marginTop: 4 }}>
                     {needsCliente
-                      ? (cliente ? <>{cliente.razonSocial}{contrato && <><br/><span className="muted">{contrato.numero}</span></>}</> : <span className="muted">Sin cliente</span>)
+                      ? (cliente ? <>{nombreCliente(cliente)}{contrato && <><br/><span className="muted">{contrato.numero}</span></>}</> : <span className="muted">Sin cliente</span>)
                       : (equipo ? `Equipo interno: ${equipo.cod}` : <span className="muted">Sin equipo</span>)
                     }
                   </div>
@@ -1276,6 +1478,7 @@ export const CrearOTPage = ({ onNav }) => {
         onToggle={toggleBacklog}
         onClose={() => setDrawerOpen(false)}
       />
+      </fieldset>
     </div>
   );
 };
