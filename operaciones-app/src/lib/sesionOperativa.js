@@ -341,13 +341,25 @@ export function useSesionOperativa() {
     montadoRef.current = true;
     if (!isSupabaseConfigured()) return undefined;
 
-    cargar();
+    // En un remount, el estado inicial ya tomó resultadoSesionCompartida.
+    // Solo se necesita cargar si todavía no existe un bootstrap resuelto.
+    if (!resultadoSesionCompartida) cargar();
 
     const cliente = getSupabaseClient();
+    let esPrimerEventoAuth = true;
     const { data: listener } = cliente.auth.onAuthStateChange(event => {
-      // INITIAL_SESSION reutiliza la promesa o resultado ya disponible. Los
-      // demás eventos sí deben releer el contexto autenticado.
-      cargar({ forzar: event !== 'INITIAL_SESSION' });
+      // El primer evento corresponde al estado ya leído por cargar() o por la
+      // cache. No debe iniciar otro bootstrap al remontar una pantalla.
+      if (esPrimerEventoAuth) {
+        esPrimerEventoAuth = false;
+        return;
+      }
+
+      // Un refresh del token no cambia empresa, alcance ni sociedad activa.
+      // Los cambios reales de autenticación sí invalidan el resultado actual.
+      if (['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)) {
+        cargar({ forzar: true });
+      }
     });
     return () => {
       montadoRef.current = false;
