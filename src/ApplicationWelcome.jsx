@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { getApplicationAccess } from './access/applicationAccess.js';
 import { I } from './icons.jsx';
 import { useApp } from './context.jsx';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const APPLICATION_ICONS = {
   administrativa: (
@@ -76,11 +77,62 @@ function AppCard({ app, enabled, loading, onSelect }) {
 
 export function ApplicationWelcome({ onEnterAdministration, onEnterAttendance }) {
   const { empresa, role, membresiaCargando, membresiaActiva, todasMembresias = [] } = useApp();
-  const accessBase = getApplicationAccess({ empresa, role });
+  const empresaAcceso = membresiaActiva?.empresa || empresa;
+  const accessBase = getApplicationAccess({ empresa: empresaAcceso, role });
+  const [accessVerified, setAccessVerified] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const empresaId = empresaAcceso?.id;
+
+    // En Supabase la fuente de verdad es la misma autorizacion que protege las
+    // pantallas. Esto evita bloquear las tarjetas si la hidratacion local del
+    // objeto role llega incompleta o se refresca despues de la membresia.
+    if (!isSupabaseConfigured() || !empresaId || !membresiaActiva) {
+      setAccessVerified(accessBase);
+      return () => { active = false; };
+    }
+
+    setAccessVerified(null);
+    const verificarAcceso = async () => {
+      try {
+        const supabase = await getSupabaseClient();
+        const [administrativa, operativa] = await Promise.all([
+          supabase.rpc('usuario_puede', {
+            target_empresa_id: empresaId,
+            target_pantalla: 'app_administrativo',
+            target_accion: 'ver',
+          }),
+          supabase.rpc('usuario_puede', {
+            target_empresa_id: empresaId,
+            target_pantalla: 'app_operativo',
+            target_accion: 'ver',
+          }),
+        ]);
+        if (administrativa.error) throw administrativa.error;
+        if (operativa.error) throw operativa.error;
+        if (!active) return;
+
+        setAccessVerified({
+          ...accessBase,
+          administrativa: Boolean(administrativa.data),
+          operativa: Boolean(empresaAcceso?.modulo_operativo_habilitado) && Boolean(operativa.data),
+        });
+      } catch (error) {
+        // Ante una incidencia transitoria, se conserva la evaluacion local
+        // existente en vez de conceder acceso sin autorizacion verificable.
+        if (active) setAccessVerified(accessBase);
+      }
+    };
+
+    verificarAcceso();
+    return () => { active = false; };
+  }, [empresaAcceso?.id, empresaAcceso?.modulo_operativo_habilitado, membresiaActiva?.rol_id, accessBase.administrativa, accessBase.operativa, accessBase.asistencia]);
+
   // La asistencia es un portal personal: cualquier miembro activo puede abrirlo.
   // La ficha y el turno se validan dentro de la vista antes de permitir marcar.
   const access = {
-    ...accessBase,
+    ...(accessVerified || accessBase),
     asistencia: Boolean(membresiaActiva?.empresa?.id || todasMembresias.length),
   };
   const enterOperations = () => {
@@ -102,7 +154,7 @@ export function ApplicationWelcome({ onEnterAdministration, onEnterAttendance })
               key={app.key}
               app={app}
               enabled={access[app.key]}
-              loading={membresiaCargando}
+              loading={membresiaCargando || (isSupabaseConfigured() && Boolean(membresiaActiva) && !accessVerified)}
               onSelect={app.key === 'administrativa'
                 ? onEnterAdministration
                 : app.key === 'asistencia'

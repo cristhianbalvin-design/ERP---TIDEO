@@ -1376,6 +1376,24 @@ export function AppProvider({ children }) {
   const recargarSociedades = () => cargarSociedadesDeEmpresa(empresa);
 
   const cargarMembresiaCompleta = async (mem) => {
+    const empresaBase = mem?.empresa || null;
+    const empresaBaseResuelta = empresaBase ? normalizarEmpresaSupabase(empresaBase) : null;
+
+    // get_mis_membresias ya entrego una membresia valida. La conservamos como
+    // contexto base mientras se refrescan empresa y permisos; antes, un fallo
+    // puntual en cualquiera de esas lecturas anulaba toda la membresia y las
+    // tarjetas de aplicacion terminaban usando un rol mock sin app_*.
+    if (empresaBaseResuelta) setEmpresa(empresaBaseResuelta);
+    setMembresiaActiva({
+      empresa: empresaBase,
+      rol: mem?.rol || null,
+      rol_id: mem?.rol_id || null,
+      acceso_campo: Boolean(mem?.acceso_campo),
+      perfil_campo: mem?.perfil_campo || null,
+      campo_modulos: mem?.campo_modulos || [],
+      permisos_rows: [],
+    });
+
     try {
       const supabase = await getSupabaseClient();
       const [{ data: permisosRows, error: permisosError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
@@ -1418,10 +1436,19 @@ export function AppProvider({ children }) {
         Boolean(roleResuelto.permisos?.todo || roleResuelto.permisos?.ver_consolidado_grupo)
       );
     } catch (_err) {
-      setMembresiaActiva(null);
-      setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
-      setSociedadActiva(null);
-      setSociedadesDisponibles([]);
+      // Se mantiene el contexto basico de una membresia que ya fue validada
+      // por get_mis_membresias. ApplicationWelcome verifica app_* en el
+      // servidor, por lo que una recarga parcial no debe convertir permisos
+      // reales en tarjetas bloqueadas.
+      setMembresiaActiva({
+        empresa: empresaBase,
+        rol: mem?.rol || null,
+        rol_id: mem?.rol_id || null,
+        acceso_campo: Boolean(mem?.acceso_campo),
+        perfil_campo: mem?.perfil_campo || null,
+        campo_modulos: mem?.campo_modulos || [],
+        permisos_rows: [],
+      });
     } finally {
       setMembresiaCargando(false);
     }
