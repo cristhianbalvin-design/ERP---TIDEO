@@ -47,7 +47,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'mina':
     case 'mis-reportes': return <HistorialMinaPage onNav={onNavigate} />;
     case 'nuevo-reporte': return <ReporteMinaPage onNav={onNavigate} />;
-    case 'cierre-conformidad': return <AdministrativeAppLinkPage title="Cierre y Conformidad" adminRoute="cierre" />;
+    case 'cierre-conformidad': return <><AdministrativeAppLinkPage title="Cierre y Conformidad" adminRoute="cierre" /><CierreConformidad /></>;
     case 'scheduler-despacho': return <SchedulerDespacho setCurrent={onNavigate} />;
 
     case 'hse-dashboard': return <HSEDashboard setCurrent={onNavigate} />;
@@ -57,7 +57,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'analisis-riesgo-ats': return <AnalisisRiesgoATS />;
     case 'protocolo-loto': return <ProtocoloLOTO />;
 
-    case 'backlog': return <AdministrativeAppLinkPage title="Backlog Operativo" adminRoute="backlog" />;
+    case 'backlog': return <><AdministrativeAppLinkPage title="Backlog Operativo" adminRoute="backlog" /><BacklogPage onNav={onNavigate} /></>;
     case 'sos-telemetria':
     case 'analisis-sos': return <AnalisisSOS setCurrent={onNavigate} />;
     case 'confiabilidad': return <KPIsConfiabilidad />;
