@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient.js';
 
 // Intentional duplication of the pure society-resolution rules in
@@ -177,11 +177,11 @@ const estadoBase = (overrides = {}) => ({
   ...overrides,
 });
 
-let ultimoRequestIdSesionOperativa = 0;
-
-export async function cargarSesionOperativa({ supabase = null, storage = globalThis.localStorage } = {}) {
-  const requestId = ++ultimoRequestIdSesionOperativa;
-  const esSolicitudActual = () => requestId === ultimoRequestIdSesionOperativa;
+export async function cargarSesionOperativa({
+  supabase = null,
+  storage = globalThis.localStorage,
+  esSolicitudActual = () => true,
+} = {}) {
   const resultadoActual = resultado => (esSolicitudActual() ? resultado : null);
 
   try {
@@ -279,6 +279,7 @@ export async function cargarSesionOperativa({ supabase = null, storage = globalT
 }
 
 export function useSesionOperativa() {
+  const requestIdRef = useRef(0);
   const [sesion, setSesion] = useState(() => estadoBase({
     cargando: isSupabaseConfigured(),
     estado: isSupabaseConfigured() ? 'cargando' : 'no_configurado',
@@ -286,13 +287,16 @@ export function useSesionOperativa() {
   }));
 
   const recargar = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const esSolicitudActual = () => requestId === requestIdRef.current;
     setSesion(actual => ({ ...actual, cargando: true, error: null, estado: 'cargando' }));
     try {
-      const resultado = await cargarSesionOperativa();
-      if (!resultado) return null;
+      const resultado = await cargarSesionOperativa({ esSolicitudActual });
+      if (!resultado || !esSolicitudActual()) return null;
       setSesion(resultado);
       return resultado;
     } catch (error) {
+      if (!esSolicitudActual()) return null;
       const resultado = estadoBase({
         cargando: false,
         estado: 'error',

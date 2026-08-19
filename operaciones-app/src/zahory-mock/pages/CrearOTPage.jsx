@@ -148,8 +148,11 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = fals
               type="button"
               key={c.id}
               className={"search-select-option" + (c.id === value ? " active" : "")}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => selectCliente(c.id)}
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCliente(c.id);
+              }}
             >
               <span>
                 <b>{nombreCliente(c)}</b>

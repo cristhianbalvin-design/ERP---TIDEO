@@ -13,7 +13,9 @@ const excludedNavigationPatterns = PWA_EXCLUDED_PREFIXES.map(
 const excludedPrecacheGlobs = PWA_EXCLUDED_PREFIXES.map(
   prefix => `${prefix.slice(1)}/**`,
 );
-const operationsDevTarget = process.env.VITE_OPERATIONS_DEV_ORIGIN || 'http://localhost:5174';
+// Operaciones usa un proceso Vite independiente. Debe ser distinto del puerto
+// administrativo, que puede cambiar automáticamente si 5173 está ocupado.
+const operationsDevTarget = process.env.VITE_OPERATIONS_DEV_ORIGIN || 'http://localhost:5175';
 const operationsDevProxy = Object.fromEntries(
   PWA_EXCLUDED_PREFIXES.map(prefix => [prefix, { target: operationsDevTarget, changeOrigin: true }]),
 );
