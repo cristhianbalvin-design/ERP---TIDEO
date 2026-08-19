@@ -18891,13 +18891,13 @@ function Nomina() {
               <tbody>
                 {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>{!asistenciaNominaLista ? 'Cargando asistencias completas del período...' : 'Sin trabajadores registrados.'}</td></tr>}
                 {calculos.map(c => (
-                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
-                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: (c.incompleto_ciclo || c.incompleto_q1) ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
+                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.incompleto_q1 && <span className="badge badge-red" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>Q1 pendiente</span>}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
+                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
                     {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
                     <td title={c.dias_computables != null ? "Asistencias sobre los días programados de subida a mina." : "Asistencias registradas"}>
-                      {c.incompleto_ciclo ? '—' : c.dias_computables != null ? (
+                      {(c.incompleto_ciclo || c.incompleto_q1) ? (c.incompleto_q1 ? <span className="text-muted" title="No se puede calcular Q2 hasta procesar la primera quincena.">Q1 pendiente</span> : '—') : c.dias_computables != null ? (
                         <div style={{lineHeight: 1.2}}>
                           <div>{c.dias_asistidos}/{c.dias_laborables}</div>
                           <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>días de subida</div>
@@ -18906,14 +18906,14 @@ function Nomina() {
                         `${c.dias_asistidos}/${c.dias_laborables}`
                       )}
                     </td>
-                    <td>{c.incompleto_ciclo ? '—' : c.faltas_roster > 0 ? <span className="text-muted" title={`${c.faltas_roster} incidencia(s) gestionada(s) en el balance del roster minero`}>Roster</span> : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
-                    <td>{c.incompleto_ciclo ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
-                    <td className="num">{money(c.sueldo_base)}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : c.faltas_roster > 0 ? <span className="text-muted" title={`${c.faltas_roster} incidencia(s) gestionada(s) en el balance del roster minero`}>Roster</span> : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td className="num">{c.incompleto_q1 ? '—' : money(c.sueldo_base)}</td>
                     <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
-                    <td className="num">{c.incompleto_ciclo ? '—' : money(c.total_descuentos)}</td>
-                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
-                    <td>{!c.incompleto_ciclo && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
+                    <td>{!c.incompleto_ciclo && !c.incompleto_q1 && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -18939,9 +18939,10 @@ function Nomina() {
               <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} · {periodo.periodo}</div>
               <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{detalle.turno?.nombre} · {detalle.regimen_jornada !== 'general' ? `${detalle.dias_computables ?? '?'} días comp.` : `${detalle.dias_laborables} días lab.`}</div>
               {detalle.error_historial && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Historial de jornada: {detalle.error_historial === 'gap' ? 'hueco sin asignación' : detalle.error_historial === 'overlap' ? 'solapamiento entre asignaciones' : 'datos de ciclo incompletos'}.</strong> {detalle.error_historial_detail}</div>}
+              {detalle.incompleto_q1 && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Q1 sin procesar.</strong> No se puede calcular la segunda quincena hasta que se procese la primera quincena de este trabajador.</div>}
               {detalle.es_proporcional && <div style={{padding:'6px 10px', marginBottom:12, fontSize:12, background:'rgba(6,182,212,0.08)', color:'var(--cyan)', borderLeft:'3px solid var(--cyan)', borderRadius:4}}>Cálculo proporcional · {detalle.dias_efectivos_periodo} días de 30</div>}
-              <div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
-              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
+              {!detalle.incompleto_q1 && <><div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
+              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p></>}
               {detalle.asignacion_familiar > 0 && <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>}
               {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) · {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
               {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) · {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
@@ -18950,7 +18951,7 @@ function Nomina() {
               {(comisionPorTrabajador[detalle.trabajador_id] || 0) > 0 && <p>(+) Comision planilla: {money(comisionPorTrabajador[detalle.trabajador_id])}</p>}
               {detalle.desc_faltas > 0 && <p style={{color:'var(--danger)'}}>(-) Faltas: {money(detalle.desc_faltas)}</p>}
               {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
-              <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
+              {!detalle.incompleto_q1 && <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>}
               {!detalle.multi_tramo && detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
                 <p> Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
                 {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
@@ -19179,8 +19180,9 @@ function Nomina() {
             <button className="icon-btn" onClick={()=>setDetallePanel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
-            <div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
-            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p>
+            {detallePanel.incompleto_q1 && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Q1 sin procesar.</strong> No se puede calcular la segunda quincena hasta que se procese la primera quincena de este trabajador.</div>}
+            {!detallePanel.incompleto_q1 && <><div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
+            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p></>}
             {detallePanel.asignacion_familiar>0&&<p>Asignacion familiar: {money(detallePanel.asignacion_familiar)}</p>}
             {detallePanel.horas_extra_tramo1_min>0&&<p>H. extra tramo 1 (25%): {money(detallePanel.add_tramo1)}</p>}
             {detallePanel.horas_extra_tramo2_min>0&&<p>H. extra tramo 2 (35%): {money(detallePanel.add_tramo2)}</p>}
@@ -19188,7 +19190,7 @@ function Nomina() {
             {detallePanel.bonif_altitud>0&&<p>Bonif. altitud: {money(detallePanel.bonif_altitud)}</p>}
             {detallePanel.desc_faltas>0&&<p style={{color:'var(--danger)'}}>(-) Faltas: {money(detallePanel.desc_faltas)}</p>}
             {detallePanel.desc_tardanzas>0&&<p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detallePanel.desc_tardanzas)}</p>}
-            <p style={{fontWeight:700}}>Total bruto: {money(detallePanel.remuneracion_bruta)}</p>
+            {!detallePanel.incompleto_q1 && <p style={{fontWeight:700}}>Total bruto: {money(detallePanel.remuneracion_bruta)}</p>}
             <hr style={{margin:'12px 0'}}/>
             <div style={{fontWeight:600, marginBottom:8}}>Descuentos</div>
             {detallePanel.sistema_pensionario==='AFP'?<>
