@@ -110,6 +110,7 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
     remuneracion_bruta: Number(c.remuneracion_bruta) || 0,
     asignacion_familiar: Number(c.asignacion_familiar) || 0,
     add_horas_extra: Number(c.add_horas_extra) || 0,
+    sobretasa_feriado: Number(c.sobretasa_feriado) || 0,
     bonif_altitud: Number(c.bonif_altitud) || 0,
     // Suma de ingresos_extraordinarios NO remunerativos aprobados (Frente 4). Los
     // remunerativos NO se repiten aca: ya estan dentro de remuneracion_bruta.
