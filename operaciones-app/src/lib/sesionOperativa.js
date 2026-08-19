@@ -282,23 +282,6 @@ export async function cargarSesionOperativa({
 // shell y cualquier pantalla consumen un único bootstrap de sesión.
 let resultadoSesionCompartida = null;
 let promesaSesionCompartida = null;
-let siguienteInstanciaSesionOperativa = 1;
-
-// TEMPORAL: activar con localStorage.setItem('tideo_debug_sesion_operativa', '1')
-// para diagnosticar eventos de foco/autenticación sin registrar tokens ni datos de usuario.
-const trazarSesionOperativa = (evento, detalle = {}) => {
-  try {
-    if (globalThis.localStorage?.getItem('tideo_debug_sesion_operativa') !== '1') return;
-    console.info('[sesionOperativa]', evento, {
-      ...detalle,
-      cache: Boolean(resultadoSesionCompartida),
-      promesaEnVuelo: Boolean(promesaSesionCompartida),
-      visibilidad: globalThis.document?.visibilityState,
-    });
-  } catch {
-    // El diagnóstico no debe interferir con el bootstrap si localStorage no está disponible.
-  }
-};
 
 const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
   // Una recarga explícita también se comparte: si ya está en vuelo, los demás
@@ -319,8 +302,6 @@ const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
 };
 
 export function useSesionOperativa() {
-  const instanciaRef = useRef(null);
-  if (instanciaRef.current == null) instanciaRef.current = siguienteInstanciaSesionOperativa++;
   const requestIdRef = useRef(0);
   const montadoRef = useRef(true);
   const [sesion, setSesion] = useState(() => resultadoSesionCompartida || estadoBase({
@@ -333,31 +314,22 @@ export function useSesionOperativa() {
     const requestId = ++requestIdRef.current;
     const esSolicitudActual = () => montadoRef.current && requestId === requestIdRef.current;
     const reutilizaResultado = !forzar && !promesaSesionCompartida && Boolean(resultadoSesionCompartida);
-    trazarSesionOperativa('cargar', { instancia: instanciaRef.current, requestId, forzar, reutilizaResultado });
     if (!reutilizaResultado) {
       setSesion(actual => ({ ...actual, cargando: true, error: null, estado: 'cargando' }));
     }
     try {
       const resultado = await cargarSesionOperativaCompartida({ forzar });
-      if (!resultado || !esSolicitudActual()) {
-        trazarSesionOperativa('resultado_descartado', { instancia: instanciaRef.current, requestId });
-        return null;
-      }
+      if (!resultado || !esSolicitudActual()) return null;
       setSesion(resultado);
-      trazarSesionOperativa('resultado_aplicado', { instancia: instanciaRef.current, requestId, estado: resultado.estado });
       return resultado;
     } catch (error) {
-      if (!esSolicitudActual()) {
-        trazarSesionOperativa('error_descartado', { instancia: instanciaRef.current, requestId });
-        return null;
-      }
+      if (!esSolicitudActual()) return null;
       const resultado = estadoBase({
         cargando: false,
         estado: 'error',
         error: error?.message || 'No se pudo resolver la sesion operativa.',
       });
       setSesion(resultado);
-      trazarSesionOperativa('error_aplicado', { instancia: instanciaRef.current, requestId, mensaje: resultado.error });
       return resultado;
     }
   }, []);
@@ -368,7 +340,6 @@ export function useSesionOperativa() {
   useEffect(() => {
     montadoRef.current = true;
     if (!isSupabaseConfigured()) return undefined;
-    trazarSesionOperativa('mount', { instancia: instanciaRef.current });
 
     // En un remount, el estado inicial ya tomó resultadoSesionCompartida.
     // Solo se necesita cargar si todavía no existe un bootstrap resuelto.
@@ -376,8 +347,7 @@ export function useSesionOperativa() {
 
     const cliente = getSupabaseClient();
     let esPrimerEventoAuth = true;
-    const { data: listener } = cliente.auth.onAuthStateChange(event => {
-      trazarSesionOperativa('auth', { instancia: instanciaRef.current, evento: event, esPrimerEventoAuth });
+    const { data: listener } = cliente.auth.onAuthStateChange((event, sesionAuth) => {
       // El primer evento corresponde al estado ya leído por cargar() o por la
       // cache. No debe iniciar otro bootstrap al remontar una pantalla.
       if (esPrimerEventoAuth) {
@@ -387,20 +357,20 @@ export function useSesionOperativa() {
 
       // Un refresh del token no cambia empresa, alcance ni sociedad activa.
       // Los cambios reales de autenticación sí invalidan el resultado actual.
+      const esRevalidacionMismoUsuario = event === 'SIGNED_IN'
+        && resultadoSesionCompartida?.estado === 'listo'
+        && Boolean(resultadoSesionCompartida.usuario?.id)
+        && resultadoSesionCompartida.usuario.id === sesionAuth?.user?.id;
+      if (esRevalidacionMismoUsuario) return;
+
       if (['SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(event)) {
         cargar({ forzar: true });
       }
     });
-    const alCambiarVisibilidad = () => {
-      trazarSesionOperativa('visibilitychange', { instancia: instanciaRef.current });
-    };
-    document.addEventListener('visibilitychange', alCambiarVisibilidad);
     return () => {
-      trazarSesionOperativa('unmount', { instancia: instanciaRef.current });
       montadoRef.current = false;
       requestIdRef.current += 1;
       listener?.subscription?.unsubscribe?.();
-      document.removeEventListener('visibilitychange', alCambiarVisibilidad);
     };
   }, [cargar]);
 

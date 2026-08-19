@@ -579,15 +579,6 @@ const CC_DESC = {
 
 export const CrearOTPage = ({ onNav }) => {
   const sesionOperativa = useSesionOperativa();
-  useEffect(() => {
-    try {
-      if (localStorage.getItem('tideo_debug_sesion_operativa') !== '1') return undefined;
-      console.info('[CrearOTPage][temporal]', 'mount', { visibilidad: document.visibilityState });
-      return () => console.info('[CrearOTPage][temporal]', 'unmount');
-    } catch {
-      return undefined;
-    }
-  }, []);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
   const [backlogs, setBacklogs] = useState([]);
