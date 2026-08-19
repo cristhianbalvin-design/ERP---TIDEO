@@ -610,10 +610,13 @@ export const CrearOTPage = ({ onNav }) => {
   const [clientesReales, setClientesReales] = useState([]);
   const [osClientesReales, setOsClientesReales] = useState([]);
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
+  const [centrosCostoReales, setCentrosCostoReales] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
+  const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
+  const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
 
@@ -704,6 +707,55 @@ export const CrearOTPage = ({ onNav }) => {
 
     return () => { vigente = false; };
   }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      objetoCostoTipo !== 'os_cliente'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.sociedadId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setCentrosCostoReales([]);
+      setCargandoCentrosCosto(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCentrosCosto(true);
+    setErrorCentrosCosto(null);
+    getSupabaseClient()
+      .from('centros_costo')
+      .select('id,nombre,codigo')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .eq('sociedad_id', sesionOperativa.sociedadId)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCentrosCostoReales([]);
+          setErrorCentrosCosto(error.message);
+        } else {
+          setCentrosCostoReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCentrosCostoReales([]);
+          setErrorCentrosCosto(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCentrosCosto(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
 
   useEffect(() => {
     let vigente = true;
@@ -1247,16 +1299,36 @@ export const CrearOTPage = ({ onNav }) => {
                 {objetoCostoTipo === 'os_cliente' && (
                   <div className="ot-form-field" style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div className="label" style={{ fontSize: 12 }}>Centro de Costo *</div>
-                    <input
+                    <select
                       className="input"
                       value={form.centro_costo || ''}
-                      onChange={e => set('centro_costo', e.target.value)}
-                      placeholder="Seleccione o ingrese el centro de costo"
-                      style={{ marginTop: 4, borderColor: !form.centro_costo ? '#E53935' : undefined }}
-                    />
+                      disabled={cargandoCentrosCosto || !sesionOperativa.empresaId || !sesionOperativa.sociedadId}
+                      onChange={e => set('centro_costo', e.target.value || null)}
+                      style={{
+                        marginTop: 4,
+                        borderColor: !form.centro_costo ? '#E53935' : undefined,
+                        background: cargandoCentrosCosto || !sesionOperativa.empresaId || !sesionOperativa.sociedadId ? '#ECEFF1' : undefined,
+                      }}
+                    >
+                      <option value="">
+                        {cargandoCentrosCosto
+                          ? 'Cargando centros de costo...'
+                          : '-- Seleccionar centro de costo --'}
+                      </option>
+                      {centrosCostoReales.map(centroCosto => (
+                        <option key={centroCosto.id} value={centroCosto.id}>
+                          {centroCosto.codigo} - {centroCosto.nombre}
+                        </option>
+                      ))}
+                    </select>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
                       La OS no define un centro de costo: selección manual obligatoria.
                     </div>
+                    {errorCentrosCosto && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar los centros de costo: {errorCentrosCosto}
+                      </div>
+                    )}
                   </div>
                 )}
                 {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
