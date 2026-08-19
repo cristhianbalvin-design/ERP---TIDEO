@@ -3097,6 +3097,7 @@ export function AppProvider({ children }) {
     crearOT({
       cliente: req.cuenta_id,
       cuenta_id: req.cuenta_id,
+      os_cliente_id: req.os_cliente_id || null,
       descripcion: req.descripcion,
       tipo: datos.tipo || 'Correctiva',
       estado: 'programada',
