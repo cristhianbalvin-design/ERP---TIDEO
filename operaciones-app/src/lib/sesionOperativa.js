@@ -278,20 +278,47 @@ export async function cargarSesionOperativa({
   }
 }
 
+// El resultado y la promesa pertenecen al módulo, no a una pantalla. Así el
+// shell y cualquier pantalla consumen un único bootstrap de sesión.
+let resultadoSesionCompartida = null;
+let promesaSesionCompartida = null;
+
+const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
+  // Una recarga explícita también se comparte: si ya está en vuelo, los demás
+  // consumidores esperan esa misma promesa en vez de iniciar otra.
+  if (promesaSesionCompartida) return promesaSesionCompartida;
+  if (!forzar && resultadoSesionCompartida) return Promise.resolve(resultadoSesionCompartida);
+
+  const promesa = cargarSesionOperativa()
+    .then(resultado => {
+      resultadoSesionCompartida = resultado;
+      return resultado;
+    })
+    .finally(() => {
+      if (promesaSesionCompartida === promesa) promesaSesionCompartida = null;
+    });
+  promesaSesionCompartida = promesa;
+  return promesa;
+};
+
 export function useSesionOperativa() {
   const requestIdRef = useRef(0);
-  const [sesion, setSesion] = useState(() => estadoBase({
+  const montadoRef = useRef(true);
+  const [sesion, setSesion] = useState(() => resultadoSesionCompartida || estadoBase({
     cargando: isSupabaseConfigured(),
     estado: isSupabaseConfigured() ? 'cargando' : 'no_configurado',
     error: isSupabaseConfigured() ? null : 'Faltan VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.',
   }));
 
-  const recargar = useCallback(async () => {
+  const cargar = useCallback(async ({ forzar = false } = {}) => {
     const requestId = ++requestIdRef.current;
-    const esSolicitudActual = () => requestId === requestIdRef.current;
-    setSesion(actual => ({ ...actual, cargando: true, error: null, estado: 'cargando' }));
+    const esSolicitudActual = () => montadoRef.current && requestId === requestIdRef.current;
+    const reutilizaResultado = !forzar && !promesaSesionCompartida && Boolean(resultadoSesionCompartida);
+    if (!reutilizaResultado) {
+      setSesion(actual => ({ ...actual, cargando: true, error: null, estado: 'cargando' }));
+    }
     try {
-      const resultado = await cargarSesionOperativa({ esSolicitudActual });
+      const resultado = await cargarSesionOperativaCompartida({ forzar });
       if (!resultado || !esSolicitudActual()) return null;
       setSesion(resultado);
       return resultado;
@@ -307,23 +334,27 @@ export function useSesionOperativa() {
     }
   }, []);
 
+  // La API pública mantiene la semántica de una recarga explícita.
+  const recargar = useCallback(() => cargar({ forzar: true }), [cargar]);
+
   useEffect(() => {
+    montadoRef.current = true;
     if (!isSupabaseConfigured()) return undefined;
 
-    let vigente = true;
-    const cargar = async () => {
-      const resultado = await recargar();
-      return vigente ? resultado : null;
-    };
     cargar();
 
     const cliente = getSupabaseClient();
-    const { data: listener } = cliente.auth.onAuthStateChange(() => { cargar(); });
+    const { data: listener } = cliente.auth.onAuthStateChange(event => {
+      // INITIAL_SESSION reutiliza la promesa o resultado ya disponible. Los
+      // demás eventos sí deben releer el contexto autenticado.
+      cargar({ forzar: event !== 'INITIAL_SESSION' });
+    });
     return () => {
-      vigente = false;
+      montadoRef.current = false;
+      requestIdRef.current += 1;
       listener?.subscription?.unsubscribe?.();
     };
-  }, [recargar]);
+  }, [cargar]);
 
   return { ...sesion, recargar };
 }
