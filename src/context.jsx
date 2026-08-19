@@ -238,6 +238,48 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
   return rolesObj;
 }
 
+const PERMISOS_DE_APLICACION = new Set(['app_administrativo', 'app_operativo']);
+
+// Recuperacion defensiva para sesiones donde la consulta directa de
+// permisos_roles es filtrada por RLS o retorna incompleta. La misma funcion
+// de base de datos protege las rutas funcionales, por lo que nunca amplia el
+// acceso: solo reconstruye el listado de pantallas que el servidor ya permite.
+async function recuperarPermisosVistaAutorizados(supabase, empresaId, rolId) {
+  const pantallas = MOCK.pantallasPermisos.filter(p => !PERMISOS_DE_APLICACION.has(p.key));
+  const recuperados = [];
+
+  // Se consulta en grupos pequenos para no generar una rafaga de RPCs al
+  // cargar el contexto de un usuario.
+  for (let index = 0; index < pantallas.length; index += 8) {
+    const grupo = pantallas.slice(index, index + 8);
+    const resultados = await Promise.all(grupo.map(async pantalla => {
+      const { data, error } = await supabase.rpc('usuario_puede', {
+        target_empresa_id: empresaId,
+        target_pantalla: pantalla.key,
+        target_accion: 'ver',
+      });
+      return !error && data === true ? pantalla.key : null;
+    }));
+    resultados.filter(Boolean).forEach(pantalla => {
+      recuperados.push({
+        rol_id: rolId,
+        pantalla,
+        puede_ver: true,
+        puede_crear: false,
+        puede_editar: false,
+        puede_anular: false,
+        puede_aprobar: false,
+        puede_exportar: false,
+        puede_ver_costos: false,
+        puede_ver_finanzas: false,
+        permisos_extra: {},
+      });
+    });
+  }
+
+  return recuperados;
+}
+
 function empresaPermiteAcceso(estado) {
   return ['activa', 'activo', 'demo'].includes(String(estado || '').toLowerCase());
 }
@@ -1407,8 +1449,24 @@ export function AppProvider({ children }) {
           .eq('id', mem.empresa_id)
           .single(),
       ]);
-      if (permisosError) throw permisosError;
       if (empresaError) throw empresaError;
+
+      let permisosResueltos = permisosError ? [] : (permisosRows || []);
+      const tienePantallaFuncional = permisosResueltos.some(p => (
+        !PERMISOS_DE_APLICACION.has(p.pantalla) && p.puede_ver
+      ));
+      if (!tienePantallaFuncional && mem?.empresa_id && mem?.rol_id) {
+        const permisosRecuperados = await recuperarPermisosVistaAutorizados(
+          supabase,
+          mem.empresa_id,
+          mem.rol_id,
+        );
+        if (permisosRecuperados.length) {
+          const porPantalla = new Map(permisosResueltos.map(permiso => [permiso.pantalla, permiso]));
+          permisosRecuperados.forEach(permiso => porPantalla.set(permiso.pantalla, permiso));
+          permisosResueltos = Array.from(porPantalla.values());
+        }
+      }
 
       const membresiaFresca = { ...mem, empresa: empresaFresca };
       const empresaResuelta = normalizarEmpresaSupabase(empresaFresca);
@@ -1423,11 +1481,11 @@ export function AppProvider({ children }) {
         acceso_campo: membresiaFresca.acceso_campo,
         perfil_campo: membresiaFresca.perfil_campo,
         campo_modulos: membresiaFresca.campo_modulos || [],
-        permisos_rows: permisosRows || [],
+        permisos_rows: permisosResueltos,
       });
       const roleResuelto = buildRoleDePermisos(
         membresiaFresca.rol,
-        permisosRows || [],
+        permisosResueltos,
         membresiaFresca.acceso_campo,
         membresiaFresca.campo_modulos || []
       );
