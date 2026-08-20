@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import tideoIsotipo from '../../public/tideo-isotipo.png';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { useSesionOperativa } from './lib/sesionOperativa.js';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
@@ -69,6 +70,18 @@ export function OperationalApp() {
             : sesionOperativa.vistaConsolidada
               ? 'Vista consolidada - solo lectura'
               : 'Sesion operativa lista';
+  const nombreTenant = sesionOperativa.empresa?.nombre_comercial || sesionOperativa.empresa?.razon_social || '';
+  const etiquetaSociedad = sesionOperativa.cargando
+    ? ''
+    : sesionOperativa.vistaConsolidada
+      ? 'Vista consolidada'
+      : sesionOperativa.empresa?.multisociedad_habilitado && sesionOperativa.sociedadActiva
+        ? (sesionOperativa.sociedadActiva.codigo || sesionOperativa.sociedadActiva.nombre || '')
+        : '';
+  const nombreUsuario = sesionOperativa.usuario?.user_metadata?.nombre
+    || sesionOperativa.usuario?.user_metadata?.full_name
+    || sesionOperativa.usuario?.email
+    || '';
 
   useEffect(() => {
     const activeGroup = findGroupForRoute(route, zahoryNavigation);
@@ -160,12 +173,20 @@ export function OperationalApp() {
       </aside>
       <section className="ops-main-column">
         <header className="ops-header">
-          <a className="ops-header-brand" href={adminAppUrl} aria-label="Volver al selector de aplicaciones">TIDEO</a>
-          {sesionOperativa.estado === 'sin_sesion' && isSupabaseConfigured() ? (
-            <a className="ops-status" href={adminAppUrl}>{estadoSesion}</a>
-          ) : (
-            <span className={sesionOperativa.estado === 'listo' && !sesionOperativa.vistaConsolidada ? 'ops-status ready' : 'ops-status'} title={sesionOperativa.error || undefined}>{estadoSesion}</span>
-          )}
+          <a className="ops-header-brand" href={adminAppUrl} aria-label="Volver al selector de aplicaciones">
+            <span className="ops-header-logo-mark"><img src={tideoIsotipo} alt="" /></span>
+            <span className="ops-header-wordmark"><strong>TIDEO</strong><small>OPERACIONES</small></span>
+          </a>
+          <div className="ops-header-context">
+            {!sesionOperativa.cargando && nombreTenant && <span className="ops-tenant" title={nombreTenant}>{nombreTenant}</span>}
+            {!sesionOperativa.cargando && etiquetaSociedad && <span className={`ops-sociedad${sesionOperativa.vistaConsolidada ? ' consolidated' : ''}`} title={sesionOperativa.sociedadActiva?.nombre || etiquetaSociedad}>{etiquetaSociedad}</span>}
+            {!sesionOperativa.cargando && nombreUsuario && <span className="ops-user" title={nombreUsuario}>{nombreUsuario}</span>}
+            {sesionOperativa.estado === 'sin_sesion' && isSupabaseConfigured() ? (
+              <a className="ops-status" href={adminAppUrl}>{estadoSesion}</a>
+            ) : (
+              <span className={sesionOperativa.estado === 'listo' && !sesionOperativa.vistaConsolidada ? 'ops-status ready' : 'ops-status'} title={sesionOperativa.error || undefined}>{estadoSesion}</span>
+            )}
+          </div>
         </header>
         {page ? (
           <main className="ops-main">
