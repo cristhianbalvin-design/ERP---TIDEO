@@ -163,6 +163,7 @@ function conSolicitudesIncluido(mods = []) {
 function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
   const esSuperadmin = rol?.es_superadmin || false;
   const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
+  const especialesExtra = permisosRows.find(p => p.pantalla === '__especiales__')?.permisos_extra || {};
   const ver = permisosRows.filter(p => p.puede_ver).map(p => p.pantalla);
   const crear = permisosRows.filter(p => p.puede_crear).map(p => p.pantalla);
   const editar = permisosRows.filter(p => p.puede_editar).map(p => p.pantalla);
@@ -171,8 +172,9 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
   const exportar = permisosRows.filter(p => p.puede_exportar).map(p => p.pantalla);
   const verFinanzas = esSuperadmin || permisosRows.some(p => p.puede_ver_finanzas);
   const verCostos = esSuperadmin || permisosRows.some(p => p.puede_ver_costos);
+  const verPrecios = esSuperadmin || permisosRows.some(p => p.permisos_extra?.puede_ver_precios);
   const puedeAprobar = esSuperadmin || permisosRows.some(p => p.puede_aprobar);
-  const verConsolidadoGrupo = esAdmin || permisosRows.some(p => p.permisos_extra?.ver_consolidado_grupo === true);
+  const verConsolidadoGrupo = esAdmin || especialesExtra.ver_consolidado_grupo === true;
   return {
     nombre: rol?.nombre || 'Usuario',
     color: esSuperadmin ? 'navy' : esAdmin ? 'purple' : 'cyan',
@@ -189,10 +191,14 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
       tenant_admin: esAdmin,
       ver_finanzas: verFinanzas,
       ver_costos: verCostos,
-      aprobar_descuentos: puedeAprobar,
+      ver_precios: verPrecios,
+      aprobar_descuentos: Boolean(esAdmin || especialesExtra.aprobar_descuentos || puedeAprobar),
+      anular_documentos: Boolean(esAdmin || especialesExtra.anular_documentos),
       ver_agenda_equipo: esAdmin,
       ver_consolidado_grupo: verConsolidadoGrupo,
-      acceso_campo,
+      acceso_campo: Boolean(esAdmin || especialesExtra.acceso_campo || acceso_campo),
+      monto_max_compras: especialesExtra.monto_max_compras ?? 0,
+      perfil_campo: especialesExtra.perfil_campo ?? null,
       campo_modulos: Array.isArray(campo_modulos) ? campo_modulos : [],
     },
   };
@@ -236,48 +242,6 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
     };
   }
   return rolesObj;
-}
-
-const PERMISOS_DE_APLICACION = new Set(['app_administrativo', 'app_operativo']);
-
-// Recuperacion defensiva para sesiones donde la consulta directa de
-// permisos_roles es filtrada por RLS o retorna incompleta. La misma funcion
-// de base de datos protege las rutas funcionales, por lo que nunca amplia el
-// acceso: solo reconstruye el listado de pantallas que el servidor ya permite.
-async function recuperarPermisosVistaAutorizados(supabase, empresaId, rolId) {
-  const pantallas = MOCK.pantallasPermisos.filter(p => !PERMISOS_DE_APLICACION.has(p.key));
-  const recuperados = [];
-
-  // Se consulta en grupos pequenos para no generar una rafaga de RPCs al
-  // cargar el contexto de un usuario.
-  for (let index = 0; index < pantallas.length; index += 8) {
-    const grupo = pantallas.slice(index, index + 8);
-    const resultados = await Promise.all(grupo.map(async pantalla => {
-      const { data, error } = await supabase.rpc('usuario_puede', {
-        target_empresa_id: empresaId,
-        target_pantalla: pantalla.key,
-        target_accion: 'ver',
-      });
-      return !error && data === true ? pantalla.key : null;
-    }));
-    resultados.filter(Boolean).forEach(pantalla => {
-      recuperados.push({
-        rol_id: rolId,
-        pantalla,
-        puede_ver: true,
-        puede_crear: false,
-        puede_editar: false,
-        puede_anular: false,
-        puede_aprobar: false,
-        puede_exportar: false,
-        puede_ver_costos: false,
-        puede_ver_finanzas: false,
-        permisos_extra: {},
-      });
-    });
-  }
-
-  return recuperados;
 }
 
 function empresaPermiteAcceso(estado) {
@@ -1438,11 +1402,8 @@ export function AppProvider({ children }) {
 
     try {
       const supabase = await getSupabaseClient();
-      const [{ data: permisosRows, error: permisosError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
-        supabase
-          .from('permisos_roles')
-          .select('*')
-          .eq('rol_id', mem.rol_id),
+      const [{ data: snapshotPermisos, error: snapshotError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
+        supabase.rpc('get_mis_permisos_efectivos', { p_empresa_id: mem.empresa_id }),
         supabase
           .from('empresas')
           .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado')
@@ -1451,21 +1412,26 @@ export function AppProvider({ children }) {
       ]);
       if (empresaError) throw empresaError;
 
-      let permisosResueltos = permisosError ? [] : (permisosRows || []);
-      const tienePantallaFuncional = permisosResueltos.some(p => (
-        !PERMISOS_DE_APLICACION.has(p.pantalla) && p.puede_ver
-      ));
-      if (!tienePantallaFuncional && mem?.empresa_id && mem?.rol_id) {
-        const permisosRecuperados = await recuperarPermisosVistaAutorizados(
-          supabase,
-          mem.empresa_id,
-          mem.rol_id,
-        );
-        if (permisosRecuperados.length) {
-          const porPantalla = new Map(permisosResueltos.map(permiso => [permiso.pantalla, permiso]));
-          permisosRecuperados.forEach(permiso => porPantalla.set(permiso.pantalla, permiso));
-          permisosResueltos = Array.from(porPantalla.values());
-        }
+      // El contexto debe traer una fotografia completa de permisos. La
+      // recuperacion anterior verificaba solo `ver` pantalla por pantalla y
+      // reemplazaba crear/editar/aprobar por false; eso hacia que el menu se
+      // viera, pero los flujos de una pantalla quedaran bloqueados.
+      let permisosResueltos = [];
+      let rolIdEfectivo = mem.rol_id;
+      if (!snapshotError && snapshotPermisos) {
+        permisosResueltos = Array.isArray(snapshotPermisos.permisos)
+          ? snapshotPermisos.permisos
+          : [];
+        rolIdEfectivo = snapshotPermisos.rol_id || rolIdEfectivo;
+      } else {
+        // Compatibilidad transitoria mientras se despliega la RPC. Incluso
+        // este camino conserva todas las acciones: nunca sintetiza permisos.
+        const { data: permisosDirectos, error: permisosDirectosError } = await supabase
+          .from('permisos_roles')
+          .select('*')
+          .eq('rol_id', mem.rol_id);
+        if (permisosDirectosError) throw (snapshotError || permisosDirectosError);
+        permisosResueltos = permisosDirectos || [];
       }
 
       const membresiaFresca = { ...mem, empresa: empresaFresca };
@@ -1477,7 +1443,7 @@ export function AppProvider({ children }) {
       setMembresiaActiva({
         empresa: membresiaFresca.empresa,
         rol: membresiaFresca.rol,
-        rol_id: membresiaFresca.rol_id,
+        rol_id: rolIdEfectivo,
         acceso_campo: membresiaFresca.acceso_campo,
         perfil_campo: membresiaFresca.perfil_campo,
         campo_modulos: membresiaFresca.campo_modulos || [],
