@@ -3,6 +3,7 @@ import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { getAdministrativeHref } from '../components/AdministrativeAppLinkPage.jsx';
 import { STORAGE_BUCKETS, subirAdjunto } from '../../../../src/services/storageService.js';
 
 // ── Mock Data — delegado a data.js (Capa 3) ───────────────────────────────
@@ -11,6 +12,17 @@ const CONTRATOS_MOCK  = ZAHORY_SAC_DATA.contratosRental;
 
 // ── Helpers de fecha y estado ─────────────────────────────────────────────
 const HOY = new Date('2026-05-13');
+
+// En el maestro histórico, tipo_categoria también contiene descripciones
+// específicas de flota (SCOOPTRAM, JUMBO, CARGADOR, etc.). Por eso se excluyen
+// solo las categorías genéricas inequívocamente ajenas a flota.
+const CATEGORIAS_NO_FLOTA = new Set([
+  'MUEBLE', 'MOBILIARIO', 'INMUEBLE', 'INFORMATICA',
+  'ACTIVO INTANGIBLE', 'INTANGIBLE', 'ACTIVO NO DEPRECIABLE', 'OTRO',
+]);
+const esActivoDeFlota = activo => !CATEGORIAS_NO_FLOTA.has(
+  String(activo?.tipo_categoria || '').trim().toUpperCase(),
+);
 
 const calcEstadoContrato = (vencStr) => {
   const venc = new Date(vencStr);
@@ -428,6 +440,7 @@ const Toast = ({ msg }) => (
 // ═══════════════════════════════════════════════════════════════════════════
 export const FlotaRentalPage = ({ onNav }) => {
   const sesionOperativa = useSesionOperativa();
+  const crearActivosHref = getAdministrativeHref('activos_fijos');
   const [tab, setTab]               = useState('todos');
   const [equiposReales, setEquiposReales] = useState([]);
   const [cargandoFlota, setCargandoFlota] = useState(false);
@@ -525,7 +538,9 @@ export const FlotaRentalPage = ({ onNav }) => {
           actuales.push(contrato);
           contratosPorEquipo.set(relacion.equipo_id, actuales);
         });
-        setEquiposReales((activosRes.data || []).map(activo => ({
+        const activos = activosRes.data || [];
+        const activosFlota = activos.filter(esActivoDeFlota);
+        setEquiposReales(activosFlota.map(activo => ({
           ...activo,
           contratosVigentes: contratosPorEquipo.get(activo.id) || [],
         })));
@@ -561,6 +576,14 @@ export const FlotaRentalPage = ({ onNav }) => {
           <h1>Panel de Flota</h1>
           <div className="sub">Activos y contratos de alquiler vigentes</div>
         </div>
+        <div className="spacer" />
+        <a className="btn btn-secondary" href={crearActivosHref}>
+          Crear activos en Administración
+        </a>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+        Las acciones Historial, Despachar y Retornar estarán disponibles cuando se implemente el módulo de movimientos de flota.
       </div>
 
       {/* Quick filter tabs — dinámico con conteos */}
@@ -600,6 +623,19 @@ export const FlotaRentalPage = ({ onNav }) => {
                 </div>
                 {equipo.ubicacion && <div style={{ padding:'8px 10px', background:'#F8FAFC', borderRadius:6 }}><div style={{ fontSize:9.5, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>Ubicación</div><div style={{ fontWeight:700, color:'var(--navy)', fontSize:12 }}>{equipo.ubicacion}</div></div>}
                 {!multiplesContratos && contrato && <div style={{ padding:'8px 10px', background:'#E0F7FA', borderRadius:6, fontSize:12 }}><span style={{ color:'var(--text-muted)' }}>Cliente: </span><span style={{ fontWeight:700 }}>{cliente}</span><span className="chip" style={{ marginLeft:8, fontSize:10.5, fontFamily:'ui-monospace,monospace' }}>{contrato.numero}</span></div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 'auto' }}>
+                  {['Historial', 'Despachar', 'Retornar'].map(accion => (
+                    <button
+                      key={accion}
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled
+                      title="Disponible cuando se implemente el módulo de movimientos de flota"
+                    >
+                      {accion}
+                    </button>
+                  ))}
+                </div>
               </div>
             );
           })}

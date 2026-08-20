@@ -1,4 +1,4 @@
-function getAdministrativeHref(adminRoute) {
+export function getAdministrativeHref(adminRoute) {
   const baseUrl = (import.meta.env.VITE_ADMIN_APP_URL || '/').replace(/\/$/, '');
   const route = String(adminRoute || '').replace(/^#?\/?/, '');
   return `${baseUrl}/#${route}`;
