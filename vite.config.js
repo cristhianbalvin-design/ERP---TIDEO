@@ -15,7 +15,10 @@ const excludedPrecacheGlobs = PWA_EXCLUDED_PREFIXES.map(
 );
 // Operaciones usa un proceso Vite independiente. Debe ser distinto del puerto
 // administrativo, que puede cambiar automáticamente si 5173 está ocupado.
-const operationsDevTarget = process.env.VITE_OPERATIONS_DEV_ORIGIN || 'http://localhost:5175';
+// Usar IPv4 explícito en desarrollo evita que `localhost` resuelva a un
+// servidor administrativo distinto en ::1 y mantiene el navegador en el
+// mismo origen del ERP, donde vive la sesión compartida.
+const operationsDevTarget = process.env.VITE_OPERATIONS_DEV_ORIGIN || 'http://127.0.0.1:5175';
 const operationsDevProxy = Object.fromEntries(
   PWA_EXCLUDED_PREFIXES.map(prefix => [prefix, { target: operationsDevTarget, changeOrigin: true }]),
 );
