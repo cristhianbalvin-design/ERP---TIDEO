@@ -54,7 +54,8 @@ export const isCargoDisabledForTrabajo = (tipoTrabajo, tipoCargo) =>
 
 export const makeOperacion = (n = 1) => ({
   codigo: String(n).padStart(2, '0'),
-  descripcion: n === 1 ? 'Diagnostico y ejecucion del trabajo' : '',
+  tipo_servicio_interno_id: '',
+  descripcion: '',
 });
 
 export const makeMOItem = () => ({

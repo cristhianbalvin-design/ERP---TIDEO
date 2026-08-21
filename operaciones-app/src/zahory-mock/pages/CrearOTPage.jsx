@@ -97,7 +97,7 @@ const inferUnidadMinera = (contrato) => {
 };
 
 const hasValidSegment = (segs) =>
-  segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.descripcion));
+  segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.tipo_servicio_interno_id));
 
 // ── Drawer de backlogs ─────────────────────────────────────────────────────
 
@@ -361,7 +361,7 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 // ── SegmentoCard: accordion con 3 tabs de estimación ──────────────────────
 
-const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
+const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio, errorTiposServicio }) => {
   const [tab, setTab] = useState('mo');
 
   const patchEst = (tipo, idx, patch) =>
@@ -375,8 +375,8 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
     onPatch({ ot_operaciones: [...seg.ot_operaciones, makeOperacion(seg.ot_operaciones.length + 1)] });
   const removeOp = (oi) =>
     onPatch({ ot_operaciones: seg.ot_operaciones.filter((_, i) => i !== oi) });
-  const patchOp = (oi, k, v) =>
-    onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, [k]: v } : op) });
+  const patchOp = (oi, patch) =>
+    onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, ...patch } : op) });
 
   const totalMO  = calcSegmentoMO(seg);
   const totalRep = calcSegmentoRepuestos(seg);
@@ -425,9 +425,23 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
             <input className="input" value={op.codigo} placeholder="01"
               onChange={e => patchOp(oi, 'codigo', e.target.value)}
               style={{ textAlign: 'center', fontSize: 12, padding: '4px 6px' }} />
-            <input className="input" value={op.descripcion} placeholder="Descripción de la operación *"
-              onChange={e => patchOp(oi, 'descripcion', e.target.value)}
-              style={{ fontSize: 12, padding: '4px 8px' }} />
+            <select className="input" value={op.tipo_servicio_interno_id || ''}
+              disabled={cargandoTiposServicio}
+              onChange={e => {
+                const tipoServicio = tiposServicio.find(tipo => tipo.id === e.target.value);
+                patchOp(oi, {
+                  tipo_servicio_interno_id: e.target.value,
+                  descripcion: tipoServicio?.nombre || '',
+                });
+              }}
+              style={{ fontSize: 12, padding: '4px 8px', background: cargandoTiposServicio ? '#ECEFF1' : undefined }}>
+              <option value="">{cargandoTiposServicio ? 'Cargando operaciones...' : '-- Seleccionar operación --'}</option>
+              {tiposServicio.map(tipoServicio => (
+                <option key={tipoServicio.id} value={tipoServicio.id}>
+                  {tipoServicio.codigo} - {tipoServicio.nombre}{tipoServicio.facturable === false ? ' · No facturable' : ''}
+                </option>
+              ))}
+            </select>
             {seg.ot_operaciones.length > 1 && (
               <button className="btn btn-ghost btn-sm" style={{ color: '#E53935', padding: '4px 6px' }}
                 onClick={() => removeOp(oi)} title="Eliminar operación">
@@ -439,6 +453,11 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
         <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--cyan)' }} onClick={addOp}>
           <Icon name="plus" size={11}/> Agregar Operación
         </button>
+        {errorTiposServicio && (
+          <div style={{ fontSize: 11, color: '#E53935', marginTop: 6 }}>
+            No se pudieron cargar las operaciones: {errorTiposServicio}
+          </div>
+        )}
       </div>
 
       {/* ── Tabs de estimación ── */}
@@ -621,18 +640,21 @@ export const CrearOTPage = ({ onNav }) => {
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
+  const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
+  const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
+  const [errorTiposServicio, setErrorTiposServicio] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
 
@@ -719,6 +741,44 @@ export const CrearOTPage = ({ onNav }) => {
       })
       .finally(() => {
         if (vigente) setCargandoClientes(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setTiposServicioInterno([]);
+      setCargandoTiposServicio(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoTiposServicio(true);
+    setErrorTiposServicio(null);
+    getSupabaseClient()
+      .from('tipos_servicio_interno')
+      .select('id,codigo,nombre,clasificacion,familia_tecnica,facturable,estado')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setTiposServicioInterno([]);
+          setErrorTiposServicio(error.message);
+        } else {
+          setTiposServicioInterno(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setTiposServicioInterno([]);
+          setErrorTiposServicio(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoTiposServicio(false);
       });
 
     return () => { vigente = false; };
@@ -1815,6 +1875,9 @@ export const CrearOTPage = ({ onNav }) => {
                 onPatch={(patch) => patchSegmento(si, patch)}
                 onRemove={() => removeSegmento(si)}
                 repuestosDB={D.repuestos}
+                tiposServicio={tiposServicioInterno}
+                cargandoTiposServicio={cargandoTiposServicio}
+                errorTiposServicio={errorTiposServicio}
               />
             ))}
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
