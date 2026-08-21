@@ -61,6 +61,13 @@ const CARGOS_NO_FACTURABLES_DBS = ['Interno_Plataforma', 'Garantia_Fabrica', 'Re
 const noFacturable = (cargo) => CARGOS_NO_FACTURABLES_DBS.includes(cargo) || NON_BILLABLE_CARGOS.includes(cargo);
 const nombreCliente = (cliente) => cliente?.nombre_comercial || cliente?.razon_social || cliente?.razonSocial || cliente?.id || '';
 const descripcionObjetoCosto = (objeto) => objeto?.nombre || objeto?.objeto || objeto?.descripcion || objeto?.numero || '';
+// El maestro usa categorías de flota personalizadas (por ejemplo, "Maquinaria pesada").
+// Se excluyen únicamente las categorías que no pueden ser equipos operativos.
+const CATEGORIAS_NO_FLOTA = new Set([
+  'MUEBLE', 'MOBILIARIO', 'INMUEBLE', 'INFORMATICA',
+  'ACTIVO INTANGIBLE', 'INTANGIBLE', 'ACTIVO NO DEPRECIABLE', 'OTRO',
+]);
+const esActivoDeFlota = (activo) => !CATEGORIAS_NO_FLOTA.has(String(activo?.tipo_categoria || '').trim().toUpperCase());
 const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
 const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 
@@ -612,14 +619,17 @@ export const CrearOTPage = ({ onNav }) => {
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
+  const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
+  const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
+  const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
 
@@ -714,7 +724,53 @@ export const CrearOTPage = ({ onNav }) => {
   useEffect(() => {
     let vigente = true;
     if (
-      objetoCostoTipo !== 'os_cliente'
+      objetoCostoTipo !== 'equipo_interno'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setEquiposInternosReales([]);
+      setCargandoEquiposInternos(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoEquiposInternos(true);
+    setErrorEquiposInternos(null);
+    getSupabaseClient()
+      .from('activos')
+      .select('id,codigo,nombre,marca,modelo,tipo_categoria,centro_costo_id')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'operativo')
+      .order('codigo')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setEquiposInternosReales([]);
+          setErrorEquiposInternos(error.message);
+        } else {
+          setEquiposInternosReales((data || []).filter(esActivoDeFlota));
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setEquiposInternosReales([]);
+          setErrorEquiposInternos(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoEquiposInternos(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      !['os_cliente', 'equipo_interno'].includes(objetoCostoTipo)
       || !sesionOperativa.empresaId
       || !sesionOperativa.sociedadId
       || !sesionOperativa.permiteEscritura
@@ -884,15 +940,21 @@ export const CrearOTPage = ({ onNav }) => {
     [contratosAlquilerReales, objetoCostoTipo, osClientesReales],
   );
   const contrato = useMemo(() => {
-    if (objetoCostoTipo === 'equipo_interno') return D.contratos.find(c => c.id === form.contratoId);
+    if (objetoCostoTipo === 'equipo_interno') return null;
     return objetosCostoFiltrados.find(c => c.id === form.contratoId);
   }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
   const equiposFiltrados = useMemo(() => {
-    if (objetoCostoTipo === 'equipo_interno') return D.equipos.filter(e => e.propietario === 'Empresa Operadora');
+    if (objetoCostoTipo === 'equipo_interno') return equiposInternosReales;
     if (!contrato) return [];
     return D.equipos.filter(e => contrato.equiposScope?.includes(e.cod));
-  }, [contrato, objetoCostoTipo]);
-  const equipo = useMemo(() => D.equipos.find(e => e.cod === form.equipo), [form.equipo]);
+  }, [contrato, equiposInternosReales, objetoCostoTipo]);
+  const equipo = useMemo(() => (
+    objetoCostoTipo === 'equipo_interno'
+      ? equiposInternosReales.find(e => e.id === form.equipo)
+      : D.equipos.find(e => e.cod === form.equipo)
+  ), [equiposInternosReales, form.equipo, objetoCostoTipo]);
+  const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
+    || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
   // ── Herencia de CC (C1) ─────────────────────────────────────────────────
   const heredarCC = (tipo, id) => {
@@ -906,8 +968,8 @@ export const CrearOTPage = ({ onNav }) => {
       const os = osClientesReales.find(x => x.id === id);
       centroBeneficioId = os?.centro_beneficio_id || null;
     } else if (tipo === 'equipo_interno') {
-      const eq = D.equipos.find(e => e.cod === id);
-      cc = eq?.centro_costo_default || 'OPS-INT';
+      const eq = equiposInternosReales.find(e => e.id === id);
+      cc = eq?.centro_costo_id || null;
     }
     setForm(prev => ({ ...prev, centro_costo: cc, centro_beneficio_id: centroBeneficioId }));
     return cc;
@@ -954,7 +1016,9 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const handleEquipoChange = (cod) => {
-    const eq = D.equipos.find(e => e.cod === cod);
+    const eq = objetoCostoTipo === 'equipo_interno'
+      ? equiposInternosReales.find(e => e.id === cod)
+      : D.equipos.find(e => e.cod === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
     const extra = objetoCostoTipo === 'equipo_interno' ? { objeto_costo_id: cod } : {};
@@ -1006,11 +1070,10 @@ export const CrearOTPage = ({ onNav }) => {
   });
   const fieldErrors = validation.fieldErrors;
   const hasCentroCosto = Boolean(form.centro_costo || form.centro_beneficio_id);
-  const raizDisponibleParaGuardado = objetoCostoTipo !== 'equipo_interno';
-  const horometroContratoValido = objetoCostoTipo !== 'contrato'
+  const horometroRaizEquipoValido = !['contrato', 'equipo_interno'].includes(objetoCostoTipo)
     || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
   const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
-    && raizDisponibleParaGuardado && horometroContratoValido
+    && horometroRaizEquipoValido
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
     && !(form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura);
 
@@ -1023,10 +1086,8 @@ export const CrearOTPage = ({ onNav }) => {
       && '- El motivo del retrabajo es obligatorio.',
     (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
-    !raizDisponibleParaGuardado
-      && '- La raíz Equipo interno aún no está disponible para creación real.',
-    !horometroContratoValido
-      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato.',
+    !horometroRaizEquipoValido
+      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato o sobre equipo interno.',
   ].filter(Boolean);
 
   const guardarOT = async () => {
@@ -1041,7 +1102,8 @@ export const CrearOTPage = ({ onNav }) => {
       empresa_id: sesionOperativa.empresaId,
       os_cliente_id: esOTDesdeOS ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
-      cuenta_id: form.clienteId,
+      equipo_id: objetoCostoTipo === 'equipo_interno' ? form.equipo : null,
+      cuenta_id: form.clienteId || null,
       // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
       // separado: la descripción técnica es el servicio registrado en esta fase.
       servicio: form.descripcion.trim(),
@@ -1059,7 +1121,8 @@ export const CrearOTPage = ({ onNav }) => {
       tipo_trabajo: form.tipoTrabajo,
       cargo_financiero: form.tipoCargo,
       motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
-      horometro_actual: objetoCostoTipo === 'contrato' ? Number(form.horometroApertura) : null,
+      horometro_actual: ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+        ? Number(form.horometroApertura) : null,
     };
 
     try {
@@ -1260,19 +1323,27 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="ot-form-field" style={{ marginBottom: 12 }}>
                     <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de la plataforma) *</div>
                     <select className="input" value={form.equipo}
+                      disabled={cargandoEquiposInternos || !sesionOperativa.permiteEscritura}
                       onChange={e => handleEquipoChange(e.target.value)}
-                      style={{ marginTop: 4, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
-                      <option value="">-- Seleccionar equipo --</option>
+                      style={{ marginTop: 4, background: cargandoEquiposInternos || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
+                      <option value="">{cargandoEquiposInternos ? 'Cargando equipos...' : '-- Seleccionar equipo --'}</option>
                       {equiposFiltrados.map(eq => (
-                        <option key={eq.cod} value={eq.cod}>{eq.cod} · {eq.marca} · {eq.ctx}</option>
+                        <option key={eq.id} value={eq.id}>{eq.codigo} - {eq.nombre}</option>
                       ))}
                     </select>
+                    {errorEquiposInternos && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar los equipos: {errorEquiposInternos}
+                      </div>
+                    )}
+                    {!cargandoEquiposInternos && !errorEquiposInternos && equiposFiltrados.length === 0 && (
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                        No hay equipos operativos de flota disponibles para esta empresa.
+                      </div>
+                    )}
                     {fieldErrors.equipo?.[0] && (
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                     )}
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: 11, color: '#b45309' }}>
-                    La raíz Equipo interno aún no está disponible para creación real: falta un maestro de equipos que derive un CECO válido.
                   </div>
                   </>
                 ) : (
@@ -1345,7 +1416,7 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
 
                 {/* C1 — Badge CC heredado (solo lectura) */}
-                {objetoCostoTipo === 'os_cliente' && (
+                {requiereCentroCostoManual && (
                   <div className="ot-form-field" style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div className="label" style={{ fontSize: 12 }}>Centro de Costo *</div>
                     <select
@@ -1371,7 +1442,9 @@ export const CrearOTPage = ({ onNav }) => {
                       ))}
                     </select>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                      La OS no define un centro de costo: selección manual obligatoria.
+                      {objetoCostoTipo === 'os_cliente'
+                        ? 'La OS no define un centro de costo: selección manual obligatoria.'
+                        : 'El equipo no tiene un centro de costo asignado: selección manual obligatoria.'}
                     </div>
                     {errorCentrosCosto && (
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
@@ -1388,7 +1461,7 @@ export const CrearOTPage = ({ onNav }) => {
                 {form.centro_costo && (
                   <div style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
-                      {objetoCostoTipo === 'os_cliente'
+                      {requiereCentroCostoManual
                         ? 'Centro de Costo (selección manual)'
                         : 'Centro de Costo (heredado automáticamente)'}
                     </div>
@@ -1478,7 +1551,7 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="ot-context-box" style={{ marginTop: 4 }}>
                     {needsCliente
                       ? (cliente ? <>{nombreCliente(cliente)}{contrato && <><br/><span className="muted">{contrato.numero}</span></>}</> : <span className="muted">Sin cliente</span>)
-                      : (equipo ? `Equipo interno: ${equipo.cod}` : <span className="muted">Sin equipo</span>)
+                      : (equipo ? `Equipo interno: ${equipo.codigo || equipo.cod}` : <span className="muted">Sin equipo</span>)
                     }
                   </div>
                 </div>
@@ -1487,7 +1560,7 @@ export const CrearOTPage = ({ onNav }) => {
               {/* C2 — Horómetro de apertura */}
               <div style={{ padding: '12px 12px 8px' }}>
                 <div className="label" style={{ fontSize: 12 }}>
-                  Horómetro actual del equipo{(form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+                  Horómetro actual del equipo{(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) ? <span style={{ color: '#ef4444' }}> *</span> : ''}
                 </div>
                 {horometroSugerido != null && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 4px' }}>
@@ -1503,7 +1576,7 @@ export const CrearOTPage = ({ onNav }) => {
                     style={{
                       width: 200, fontFamily: 'monospace',
                       background: !form.equipo ? '#ECEFF1' : undefined,
-                      borderColor: (form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') && form.equipo && !form.horometroApertura
+                      borderColor: (form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura
                         ? '#E53935' : undefined,
                     }}
                   />
@@ -1511,9 +1584,9 @@ export const CrearOTPage = ({ onNav }) => {
                     horas — registrar el horómetro físico al iniciar la OT
                   </span>
                 </div>
-                {(form.lugarEjecucion === 'Campo_Mina' || objetoCostoTipo === 'contrato') && form.equipo && !form.horometroApertura && (
+                {(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura && (
                   <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
-                    El horómetro actual es obligatorio para OTs en campo o bajo contrato.
+                    El horómetro actual es obligatorio para OTs en campo, bajo contrato o sobre equipo interno.
                   </div>
                 )}
               </div>
