@@ -1234,6 +1234,9 @@ export const CrearOTPage = ({ onNav }) => {
   // ── Pantalla de confirmación ────────────────────────────────────────────
   if (creada) {
     const t = calcOTTotals(creada.segmentos);
+    const etiquetaEquipoCreada = creada.equipo
+      ? [equipo?.codigo || equipo?.cod, equipo?.nombre].filter(Boolean).join(' - ') || creada.equipo
+      : 'Sin equipo';
     return (
       <div className="page">
         <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center' }}>
@@ -1245,7 +1248,7 @@ export const CrearOTPage = ({ onNav }) => {
             <b>{creada.numero}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
           </div>
           <div className="card" style={{ padding: 16, textAlign: 'left', marginBottom: 18 }}>
-            <div><span className="muted">Equipo:</span> <b>{creada.equipo}</b></div>
+            <div><span className="muted">Equipo:</span> <b>{etiquetaEquipoCreada}</b></div>
             <div><span className="muted">CC:</span>{' '}
               <b style={{ fontFamily: 'monospace', color: '#f59e0b' }}>{creada.centro_costo}</b></div>
             <div><span className="muted">Segmentos:</span> <b>{creada.segmentos.length}</b></div>

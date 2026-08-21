@@ -583,14 +583,18 @@ export const OTsListadoPage = () => {
         const idsOS = [...new Set((ots || []).map(ot => ot.os_cliente_id).filter(Boolean))];
         const idsCECO = [...new Set((ots || []).map(ot => ot.centro_costo_id).filter(Boolean))];
         const idsTecnico = [...new Set((ots || []).map(ot => ot.tecnico_responsable_id).filter(Boolean))];
-        const [cuentasR, contratosR, osR, cecosR, tecnicosR] = await Promise.all([
+        const idsEquipo = [...new Set((ots || []).map(ot => ot.equipo_id).filter(Boolean))];
+        const idsSede = [...new Set((ots || []).map(ot => ot.direccion_ejecucion).filter(Boolean))];
+        const [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR] = await Promise.all([
           consultaAuxiliarOT(supabase.from('cuentas').select('id, nombre_comercial, razon_social').eq('empresa_id', empresaId), idsCuenta),
           consultaAuxiliarOT(supabase.from('contratos_alquiler').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsContrato),
           consultaAuxiliarOT(supabase.from('os_clientes').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsOS),
           consultaAuxiliarOT(supabase.from('centros_costo').select('id, codigo, nombre').eq('empresa_id', empresaId), idsCECO),
           consultaAuxiliarOT(supabase.from('personal_operativo').select('id, nombre, codigo').eq('empresa_id', empresaId), idsTecnico),
+          consultaAuxiliarOT(supabase.from('activos').select('id, codigo, nombre').eq('empresa_id', empresaId), idsEquipo),
+          consultaAuxiliarOT(supabase.from('sedes').select('id, codigo, nombre').eq('empresa_id', empresaId), idsSede),
         ]);
-        for (const resultado of [cuentasR, contratosR, osR, cecosR, tecnicosR]) {
+        for (const resultado of [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR]) {
           if (resultado.error) throw resultado.error;
         }
         if (solicitudId !== solicitudRef.current) return;
@@ -600,6 +604,8 @@ export const OTsListadoPage = () => {
         const ordenesServicio = porId(osR);
         const centrosCosto = porId(cecosR);
         const tecnicosPorId = porId(tecnicosR);
+        const activosPorId = porId(activosR);
+        const sedesPorId = porId(sedesR);
         setFilas((ots || []).map(ot => ({
           ...ot,
           cliente: cuentas.get(ot.cuenta_id) || null,
@@ -607,6 +613,8 @@ export const OTsListadoPage = () => {
           osCliente: ordenesServicio.get(ot.os_cliente_id) || null,
           centroCosto: centrosCosto.get(ot.centro_costo_id) || null,
           tecnico: tecnicosPorId.get(ot.tecnico_responsable_id) || null,
+          equipo: activosPorId.get(ot.equipo_id) || null,
+          sede: sedesPorId.get(ot.direccion_ejecucion) || null,
         })));
         setTotal(count || 0);
       } catch (consultaError) {
@@ -676,16 +684,19 @@ export const OTsListadoPage = () => {
                 <tbody>
                   {!cargando && !error && filas.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No hay OTs para los filtros seleccionados.</td></tr>}
                   {filas.map(ot => {
-                    const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${ot.equipo_id}` : 'Sin raíz registrada';
+                    const etiquetaEquipo = ot.equipo
+                      ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
+                      : ot.equipo_id || 'Sin equipo';
+                    const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
                     return <tr key={ot.id} className="clickable" aria-disabled="true" title="El detalle real estará disponible próximamente."
                       style={{ cursor: 'not-allowed' }} onClick={mostrarAvisoDetalle}>
                       <td><div className="ot-code">{ot.numero}</div><div className="muted" style={{ fontSize: 11 }}>{formatoFechaOT(ot.fecha_programada)}</div></td>
-                      <td><strong>{ot.equipo_id || 'Sin equipo'}</strong><div className="muted" style={{ fontSize: 11 }}>{nombreCuentaOT(ot.cliente)}</div>{ot.horometro_actual != null && <div className="mono" style={{ fontSize: 10 }}>Horóm.: {Number(ot.horometro_actual).toLocaleString()} h</div>}</td>
+                      <td><strong>{etiquetaEquipo}</strong><div className="muted" style={{ fontSize: 11 }}>{nombreCuentaOT(ot.cliente)}</div>{ot.horometro_actual != null && <div className="mono" style={{ fontSize: 10 }}>Horóm.: {Number(ot.horometro_actual).toLocaleString()} h</div>}</td>
                       <td><div style={{ fontSize: 12 }}>{raiz}</div>{ot.centroCosto && <div className="muted" style={{ fontSize: 10 }}>{ot.centroCosto.codigo} · {ot.centroCosto.nombre}</div>}</td>
                       <td><div>{ot.tipo_trabajo || 'Sin clasificar'}</div><div className="muted" style={{ fontSize: 11 }}>{ot.cargo_financiero || 'Sin cargo financiero'}</div>{ot.motivo_rework && <div className="muted" style={{ fontSize: 10 }} title={ot.motivo_rework}>Rework con motivo</div>}</td>
                       <td><span className="badge slate">{etiquetaEstadoOT(ot.estado)}</span></td>
                       <td>{ot.tecnico?.nombre || ot.tecnico_responsable_id || 'Sin asignar'}</td>
-                      <td>{ot.direccion_ejecucion || 'Sin ubicación'}</td>
+                      <td>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</td>
                       <td style={{ textAlign: 'right' }}><strong>{formatoMontoOT(ot.costo_real)}</strong><div className="muted" style={{ fontSize: 10 }}>est. {formatoMontoOT(ot.costo_estimado)}</div></td>
                       <td>{Number(ot.avance_pct || 0).toFixed(0)}%</td>
                       <td onClick={event => event.stopPropagation()}><button className="btn btn-secondary btn-sm" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button></td>
