@@ -739,7 +739,7 @@ export const CrearOTPage = ({ onNav }) => {
       .from('activos')
       .select('id,codigo,nombre,marca,modelo,tipo_categoria,centro_costo_id')
       .eq('empresa_id', sesionOperativa.empresaId)
-      .eq('estado', 'operativo')
+      .neq('estado', 'dado_baja')
       .order('codigo')
       .then(({ data, error }) => {
         if (!vigente) return;
