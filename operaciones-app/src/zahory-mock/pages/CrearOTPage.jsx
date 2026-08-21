@@ -620,16 +620,19 @@ export const CrearOTPage = ({ onNav }) => {
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
+  const [tecnicosReales, setTecnicosReales] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
+  const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
+  const [errorTecnicos, setErrorTecnicos] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
 
@@ -716,6 +719,44 @@ export const CrearOTPage = ({ onNav }) => {
       })
       .finally(() => {
         if (vigente) setCargandoClientes(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setTecnicosReales([]);
+      setCargandoTecnicos(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoTecnicos(true);
+    setErrorTecnicos(null);
+    getSupabaseClient()
+      .from('personal_operativo')
+      .select('id,nombre,especialidad,estado,tarifa_hora')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setTecnicosReales([]);
+          setErrorTecnicos(error.message);
+        } else {
+          setTecnicosReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setTecnicosReales([]);
+          setErrorTecnicos(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoTecnicos(false);
       });
 
     return () => { vigente = false; };
@@ -1120,6 +1161,7 @@ export const CrearOTPage = ({ onNav }) => {
       centro_beneficio_id: form.centro_beneficio_id || null,
       tipo_trabajo: form.tipoTrabajo,
       cargo_financiero: form.tipoCargo,
+      tecnico_responsable_id: form.tecnico || null,
       motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
       horometro_actual: ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
         ? Number(form.horometroApertura) : null,
@@ -1691,11 +1733,24 @@ export const CrearOTPage = ({ onNav }) => {
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Técnico responsable *</div>
                   <select className="input" value={form.tecnico}
+                    disabled={cargandoTecnicos || !sesionOperativa.permiteEscritura}
                     onChange={e => set('tecnico', e.target.value)}
-                    style={{ marginTop: 4 }}>
-                    <option value="">-- Seleccionar técnico --</option>
-                    {D.tecnicos.map(t => <option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
+                    style={{
+                      marginTop: 4,
+                      background: cargandoTecnicos || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined,
+                      borderColor: fieldErrors.tecnico ? '#E53935' : undefined,
+                    }}>
+                    <option value="">{cargandoTecnicos ? 'Cargando técnicos...' : '-- Seleccionar técnico --'}</option>
+                    {tecnicosReales.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}
                   </select>
+                  {errorTecnicos && (
+                    <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                      No se pudieron cargar los técnicos: {errorTecnicos}
+                    </div>
+                  )}
+                  {fieldErrors.tecnico?.[0] && (
+                    <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.tecnico[0]}</div>
+                  )}
                 </div>
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Fecha Programada de Inicio *</div>
