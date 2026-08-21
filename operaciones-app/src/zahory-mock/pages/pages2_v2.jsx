@@ -538,7 +538,7 @@ export const OTsListadoPage = () => {
           .from('personal_operativo')
           .select('id, nombre, codigo')
           .eq('empresa_id', empresaId)
-          .eq('estado', 'activo')
+          .eq('estado', 'disponible')
           .order('nombre');
         if (consultaError) throw consultaError;
         if (activo) setTecnicos(data || []);

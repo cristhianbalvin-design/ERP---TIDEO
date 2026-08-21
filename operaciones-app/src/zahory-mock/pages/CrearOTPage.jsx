@@ -738,7 +738,7 @@ export const CrearOTPage = ({ onNav }) => {
       .from('personal_operativo')
       .select('id,nombre,especialidad,estado,tarifa_hora')
       .eq('empresa_id', sesionOperativa.empresaId)
-      .eq('estado', 'activo')
+      .eq('estado', 'disponible')
       .order('nombre')
       .then(({ data, error }) => {
         if (!vigente) return;
