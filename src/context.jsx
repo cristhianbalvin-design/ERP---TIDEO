@@ -163,6 +163,7 @@ function conSolicitudesIncluido(mods = []) {
 function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
   const esSuperadmin = rol?.es_superadmin || false;
   const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
+  const especialesExtra = permisosRows.find(p => p.pantalla === '__especiales__')?.permisos_extra || {};
   const ver = permisosRows.filter(p => p.puede_ver).map(p => p.pantalla);
   const crear = permisosRows.filter(p => p.puede_crear).map(p => p.pantalla);
   const editar = permisosRows.filter(p => p.puede_editar).map(p => p.pantalla);
@@ -171,8 +172,9 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
   const exportar = permisosRows.filter(p => p.puede_exportar).map(p => p.pantalla);
   const verFinanzas = esSuperadmin || permisosRows.some(p => p.puede_ver_finanzas);
   const verCostos = esSuperadmin || permisosRows.some(p => p.puede_ver_costos);
+  const verPrecios = esSuperadmin || permisosRows.some(p => p.permisos_extra?.puede_ver_precios);
   const puedeAprobar = esSuperadmin || permisosRows.some(p => p.puede_aprobar);
-  const verConsolidadoGrupo = esAdmin || permisosRows.some(p => p.permisos_extra?.ver_consolidado_grupo === true);
+  const verConsolidadoGrupo = esAdmin || especialesExtra.ver_consolidado_grupo === true;
   return {
     nombre: rol?.nombre || 'Usuario',
     color: esSuperadmin ? 'navy' : esAdmin ? 'purple' : 'cyan',
@@ -189,10 +191,14 @@ function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo
       tenant_admin: esAdmin,
       ver_finanzas: verFinanzas,
       ver_costos: verCostos,
-      aprobar_descuentos: puedeAprobar,
+      ver_precios: verPrecios,
+      aprobar_descuentos: Boolean(esAdmin || especialesExtra.aprobar_descuentos || puedeAprobar),
+      anular_documentos: Boolean(esAdmin || especialesExtra.anular_documentos),
       ver_agenda_equipo: esAdmin,
       ver_consolidado_grupo: verConsolidadoGrupo,
-      acceso_campo,
+      acceso_campo: Boolean(esAdmin || especialesExtra.acceso_campo || acceso_campo),
+      monto_max_compras: especialesExtra.monto_max_compras ?? 0,
+      perfil_campo: especialesExtra.perfil_campo ?? null,
       campo_modulos: Array.isArray(campo_modulos) ? campo_modulos : [],
     },
   };
@@ -1376,21 +1382,57 @@ export function AppProvider({ children }) {
   const recargarSociedades = () => cargarSociedadesDeEmpresa(empresa);
 
   const cargarMembresiaCompleta = async (mem) => {
+    const empresaBase = mem?.empresa || null;
+    const empresaBaseResuelta = empresaBase ? normalizarEmpresaSupabase(empresaBase) : null;
+
+    // get_mis_membresias ya entrego una membresia valida. La conservamos como
+    // contexto base mientras se refrescan empresa y permisos; antes, un fallo
+    // puntual en cualquiera de esas lecturas anulaba toda la membresia y las
+    // tarjetas de aplicacion terminaban usando un rol mock sin app_*.
+    if (empresaBaseResuelta) setEmpresa(empresaBaseResuelta);
+    setMembresiaActiva({
+      empresa: empresaBase,
+      rol: mem?.rol || null,
+      rol_id: mem?.rol_id || null,
+      acceso_campo: Boolean(mem?.acceso_campo),
+      perfil_campo: mem?.perfil_campo || null,
+      campo_modulos: mem?.campo_modulos || [],
+      permisos_rows: [],
+    });
+
     try {
       const supabase = await getSupabaseClient();
-      const [{ data: permisosRows, error: permisosError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
-        supabase
-          .from('permisos_roles')
-          .select('*')
-          .eq('rol_id', mem.rol_id),
+      const [{ data: snapshotPermisos, error: snapshotError }, { data: empresaFresca, error: empresaError }] = await Promise.all([
+        supabase.rpc('get_mis_permisos_efectivos', { p_empresa_id: mem.empresa_id }),
         supabase
           .from('empresas')
           .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado')
           .eq('id', mem.empresa_id)
           .single(),
       ]);
-      if (permisosError) throw permisosError;
       if (empresaError) throw empresaError;
+
+      // El contexto debe traer una fotografia completa de permisos. La
+      // recuperacion anterior verificaba solo `ver` pantalla por pantalla y
+      // reemplazaba crear/editar/aprobar por false; eso hacia que el menu se
+      // viera, pero los flujos de una pantalla quedaran bloqueados.
+      let permisosResueltos = [];
+      let rolIdEfectivo = mem.rol_id;
+      if (!snapshotError && snapshotPermisos) {
+        permisosResueltos = Array.isArray(snapshotPermisos.permisos)
+          ? snapshotPermisos.permisos
+          : [];
+        rolIdEfectivo = snapshotPermisos.rol_id || rolIdEfectivo;
+      } else {
+        // Compatibilidad transitoria mientras se despliega la RPC. Incluso
+        // este camino conserva todas las acciones: nunca sintetiza permisos.
+        const { data: permisosDirectos, error: permisosDirectosError } = await supabase
+          .from('permisos_roles')
+          .select('*')
+          .eq('rol_id', mem.rol_id);
+        if (permisosDirectosError) throw (snapshotError || permisosDirectosError);
+        permisosResueltos = permisosDirectos || [];
+      }
 
       const membresiaFresca = { ...mem, empresa: empresaFresca };
       const empresaResuelta = normalizarEmpresaSupabase(empresaFresca);
@@ -1401,15 +1443,15 @@ export function AppProvider({ children }) {
       setMembresiaActiva({
         empresa: membresiaFresca.empresa,
         rol: membresiaFresca.rol,
-        rol_id: membresiaFresca.rol_id,
+        rol_id: rolIdEfectivo,
         acceso_campo: membresiaFresca.acceso_campo,
         perfil_campo: membresiaFresca.perfil_campo,
         campo_modulos: membresiaFresca.campo_modulos || [],
-        permisos_rows: permisosRows || [],
+        permisos_rows: permisosResueltos,
       });
       const roleResuelto = buildRoleDePermisos(
         membresiaFresca.rol,
-        permisosRows || [],
+        permisosResueltos,
         membresiaFresca.acceso_campo,
         membresiaFresca.campo_modulos || []
       );
@@ -1418,10 +1460,19 @@ export function AppProvider({ children }) {
         Boolean(roleResuelto.permisos?.todo || roleResuelto.permisos?.ver_consolidado_grupo)
       );
     } catch (_err) {
-      setMembresiaActiva(null);
-      setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
-      setSociedadActiva(null);
-      setSociedadesDisponibles([]);
+      // Se mantiene el contexto basico de una membresia que ya fue validada
+      // por get_mis_membresias. ApplicationWelcome verifica app_* en el
+      // servidor, por lo que una recarga parcial no debe convertir permisos
+      // reales en tarjetas bloqueadas.
+      setMembresiaActiva({
+        empresa: empresaBase,
+        rol: mem?.rol || null,
+        rol_id: mem?.rol_id || null,
+        acceso_campo: Boolean(mem?.acceso_campo),
+        perfil_campo: mem?.perfil_campo || null,
+        campo_modulos: mem?.campo_modulos || [],
+        permisos_rows: [],
+      });
     } finally {
       setMembresiaCargando(false);
     }
@@ -3097,6 +3148,7 @@ export function AppProvider({ children }) {
     crearOT({
       cliente: req.cuenta_id,
       cuenta_id: req.cuenta_id,
+      os_cliente_id: req.os_cliente_id || null,
       descripcion: req.descripcion,
       tipo: datos.tipo || 'Correctiva',
       estado: 'programada',
@@ -3106,7 +3158,23 @@ export function AppProvider({ children }) {
     });
     addNotificacion('Requerimiento convertido a OT.');
   };
+  // La BD deriva la sociedad de una OT con esta precedencia. Repetimos la
+  // resolucion para el estado local, que se pinta antes de la siguiente carga.
+  // Sin esto, una OT recien creada se filtraba de la grilla por sociedad y en
+  // consolidado se mostraba transitoriamente como "Sin sociedad".
+  const resolverSociedadOTLocal = (datos = {}) => {
+    const ceco = (centrosCosto || []).find(item => item.id === datos.centro_costo_id);
+    if (ceco?.sociedad_id) return ceco.sociedad_id;
+
+    const cebe = (centrosBeneficio || []).find(item => item.id === datos.centro_beneficio_id);
+    if (cebe?.sociedad_id) return cebe.sociedad_id;
+
+    const os = (osClientes || []).find(item => item.id === datos.os_cliente_id);
+    return os?.sociedad_id || null;
+  };
+
   const crearOT = (datos) => {
+    const sociedadId = resolverSociedadOTLocal(datos);
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
@@ -3116,7 +3184,11 @@ export function AppProvider({ children }) {
       costoEst: 0, costoReal: 0, avance: 0,
       tareas: [],
       materiales_estimados: [],
-      ...datos
+      ...datos,
+      // La sociedad no se envía como valor autoritativo: el trigger de BD la
+      // deriva y valida. Solo mantenemos el reflejo local consistente de forma
+      // inmediata para filtros y badges.
+      sociedad_id: sociedadId,
     };
     setOts(prev => [...prev, ot]);
     opsSync(sb => persistirOT(sb, empresa.id, ot));
@@ -3128,6 +3200,12 @@ export function AppProvider({ children }) {
   const crearOTDesdeOS = async (osClienteId, datos) => {
     const os = osClientes.find(item => item.id === osClienteId);
     if (!os) return null;
+
+    const sociedadId = resolverSociedadOTLocal({
+      ...datos,
+      os_cliente_id: os.id,
+      centro_beneficio_id: datos.centro_beneficio_id || os.centro_beneficio_id || null,
+    });
 
     const montoPlanificado = Number(datos.costo_estimado_ot ?? datos.costo_estimado ?? datos.costoEst ?? 0);
 
@@ -3151,6 +3229,7 @@ export function AppProvider({ children }) {
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
+      sociedad_id: sociedadId,
       numero: `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
       sla: 'ok',
       tareas: [],
@@ -4499,6 +4578,54 @@ export function AppProvider({ children }) {
       setUsuarios(previous);
       addNotificacion('Error al actualizar usuario: ' + (err.message || 'Error desconocido'), 'error');
       throw err;
+    }
+  };
+
+  const reasignarRolUsuario = async (usuarioId, rolId, empresaId = empresa?.id) => {
+    const previous = usuarios;
+    const current = usuarios.find(u => u.id === usuarioId && (!empresaId || u.empresa_id === empresaId));
+    if (!current) throw new Error('No se encontro el usuario dentro del tenant seleccionado.');
+    const role = rolesCtx[rolId];
+    if (!role) throw new Error('El rol seleccionado ya no esta disponible.');
+
+    const actualizarLocal = (usuario, reasignacion = {}) => ({
+      ...usuario,
+      rol: rolId,
+      rol_nombre: reasignacion.rol_nombre || role.nombre,
+      rol_categoria: reasignacion.rol_categoria || role.categoria,
+      nivel_jerarquico: reasignacion.nivel_jerarquico || role.nivel_jerarquico,
+      asignaciones: Array.isArray(reasignacion.asignaciones)
+        ? reasignacion.asignaciones
+        : (usuario.asignaciones || []).map(asignacion => asignacion.principal
+          ? {
+            ...asignacion,
+            rol_id: rolId,
+            categoria: role.categoria || asignacion.categoria,
+            nivel_jerarquico: role.nivel_jerarquico || asignacion.nivel_jerarquico,
+          }
+          : asignacion),
+    });
+
+    setUsuarios(prev => prev.map(usuario => (
+      usuario.id === usuarioId && usuario.empresa_id === empresaId ? actualizarLocal(usuario) : usuario
+    )));
+
+    if (!isSupabaseConfigured()) return actualizarLocal(current);
+
+    try {
+      const reasignacion = await usuariosService.reasignarRolUsuario({
+        user_id: usuarioId,
+        empresa_id: empresaId,
+        rol: rolId,
+      });
+      const savedUser = actualizarLocal(current, reasignacion);
+      setUsuarios(prev => prev.map(usuario => (
+        usuario.id === usuarioId && usuario.empresa_id === empresaId ? savedUser : usuario
+      )));
+      return savedUser;
+    } catch (error) {
+      setUsuarios(previous);
+      throw error;
     }
   };
 
@@ -10404,6 +10531,7 @@ export function AppProvider({ children }) {
     registrarUsuario,
     eliminarUsuario,
     actualizarUsuarioAcceso,
+    reasignarRolUsuario,
     crearUsuarioConAcceso,
     asignarPasswordTemporal,
     marcarContrasenaActualizada,

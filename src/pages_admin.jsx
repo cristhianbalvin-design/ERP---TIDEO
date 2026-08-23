@@ -144,7 +144,7 @@ const USER_TABLE_COLUMNS = [
 ];
 
 function Roles() {
-  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, actualizarUsuarioAcceso, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
+  const { empresa, roles, clonarRol, actualizarPermisosRol, guardarPermisosRol, crearRol, eliminarRol, editarRol, usuarios, reasignarRolUsuario, addNotificacion, accessDebug, authUser, nivelesJerarquicos = [] } = useApp();
   const esSuperadminPlataforma = authUser?.superadmin_plataforma === true;
   const puedeConfigurarPlataforma = Boolean(empresa?.id === 'emp_tideo' && empresa?.es_plataforma);
   const nivelesActivos = nivelesJerarquicos.filter(n => n.estado === 'activo').sort((a, b) => (a.orden ?? 100) - (b.orden ?? 100));
@@ -391,20 +391,17 @@ function Roles() {
     setRoleActionError('');
     setGuardandoReasignacion(true);
     try {
-      await actualizarUsuarioAcceso(reasignarUsuario.id, {
-        ...reasignarUsuario,
-        rol: reasignarRolId,
-        empresa_id: reasignarUsuario.empresa_id || empresa?.id,
-        // La asignación principal se reconstruye a partir del rol elegido. Solo se
-        // envían las asignaciones adicionales para no convertir la principal previa
-        // en un rol extra durante la reasignación.
-        asignaciones: (reasignarUsuario.asignaciones || []).filter(asignacion => !asignacion.principal),
-      });
+      await reasignarRolUsuario(
+        reasignarUsuario.id,
+        reasignarRolId,
+        reasignarUsuario.empresa_id || empresa?.id,
+      );
       addNotificacion(`${reasignarUsuario.nombre} reasignado a "${nuevoRol.nombre}".`);
       setReasignarUsuario(null);
     } catch (error) {
       const message = `No se pudo reasignar el rol: ${error?.message || 'Error desconocido'}`;
       setRoleActionError(message);
+      addNotificacion(message, 'error');
     } finally {
       setGuardandoReasignacion(false);
     }
@@ -777,7 +774,7 @@ function Roles() {
                       <td><strong>{u.nombre}</strong></td>
                       <td className="text-muted">{u.email}</td>
                       <td className="text-muted">{u.ultimo || u.ultimo_login || '—'}</td>
-                      <td><button className="btn btn-sm btn-ghost" onClick={()=>{ setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
+                      <td><button type="button" className="btn btn-sm btn-ghost" onClick={()=>{ setRoleActionError(''); setReasignarUsuario(u); setReasignarRolId(sel); }}>Reasignar</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -896,9 +893,14 @@ function Roles() {
             </select>
           </div>
           <div className="row" style={{gap:8,marginTop:24,justifyContent:'flex-end'}}>
-            <button className="btn btn-secondary" onClick={()=>setReasignarUsuario(null)} disabled={guardandoReasignacion}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleReasignar} disabled={!reasignarRolId || guardandoReasignacion}>{guardandoReasignacion ? 'Reasignando...' : 'Confirmar'}</button>
+            <button type="button" className="btn btn-secondary" onClick={()=>{ setRoleActionError(''); setReasignarUsuario(null); }} disabled={guardandoReasignacion}>Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={handleReasignar} disabled={!reasignarRolId || guardandoReasignacion}>{guardandoReasignacion ? 'Reasignando...' : 'Confirmar'}</button>
           </div>
+          {roleActionError && (
+            <div className="alert alert-danger" role="alert" style={{marginTop:16, marginBottom:0}}>
+              {roleActionError}
+            </div>
+          )}
         </div>
       </>}
 
@@ -7754,11 +7756,23 @@ function ParamChipGroup({ options, value, onChange }) {
 }
 
 function CuentasBancariasSection() {
-  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion } = useApp();
-  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'' };
+  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion, sociedades = [] } = useApp();
+  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // Filtros
+  const [filtroBanco, setFiltroBanco] = useState('');
+  const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroMoneda, setFiltroMoneda] = useState('');
+
+  const cuentasFiltradas = cuentasBancarias.filter(c => {
+    if (filtroBanco && !c.banco?.toLowerCase().includes(filtroBanco.toLowerCase())) return false;
+    if (filtroTipo && c.tipo !== filtroTipo) return false;
+    if (filtroMoneda && c.moneda !== filtroMoneda) return false;
+    return true;
+  });
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -7767,46 +7781,84 @@ function CuentasBancariasSection() {
     if (!form.nombre.trim() || !form.banco.trim()) return;
     setSaving(true);
     try {
+      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null };
       if (editId) {
-        await actualizarCuentaBancaria(editId, { ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+        await actualizarCuentaBancaria(editId, payload);
         addNotificacion('Cuenta bancaria actualizada.');
       } else {
-        await crearCuentaBancaria({ ...form, saldo_inicial: Number(form.saldo_inicial || 0) });
+        await crearCuentaBancaria(payload);
+        addNotificacion('Cuenta bancaria agregada.');
       }
       setForm(empty); setEditId(null);
     } finally { setSaving(false); }
   };
 
-  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0) }); setEditId(c.id); };
+  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'' }); setEditId(c.id); };
   const cancelar = () => { setForm(empty); setEditId(null); };
 
+  const getSociedadName = (id) => {
+    if (!id) return '—';
+    const s = sociedades.find(x => x.id === id);
+    return s ? (s.razon_social || s.nombre_comercial || 'Sociedad') : '—';
+  };
+
   return (
-    <div className="card">
+    <div className="card" style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
       <div className="card-head"><h3>Cuentas Bancarias</h3><span className="badge badge-cyan">{cuentasBancarias.length} cuentas</span></div>
-      <form className="card-body" onSubmit={guardar} data-local-form="true" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
+      
+      <form className="card-body" onSubmit={guardar} data-local-form="true" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:10}}>
         <div className="input-group"><label>Nombre / Alias *</label><input className="input" value={form.nombre} onChange={set('nombre')} placeholder="BCP Soles Principal" required /></div>
         <div className="input-group"><label>Banco *</label><input className="input" value={form.banco} onChange={set('banco')} placeholder="BCP, BBVA, Interbank..." required /></div>
         <div className="input-group"><label>N° Cuenta</label><input className="input" value={form.numero_cuenta} onChange={set('numero_cuenta')} placeholder="194-XXXXXXXX-0-XX" /></div>
         <div className="input-group"><label>CCI</label><input className="input" value={form.cci} onChange={set('cci')} placeholder="002-194-XXXXXXXX-X" /></div>
-        <div className="input-group"><label>Moneda</label><ParamChipGroup value={form.moneda} onChange={value => setForm(p => ({ ...p, moneda: value }))} options={[{ value:'PEN', label:'PEN' }, { value:'USD', label:'USD' }, { value:'EUR', label:'EUR' }]} /></div>
+        <div className="input-group"><label>Moneda</label><ParamChipGroup value={form.moneda} onChange={value => setForm(p => ({ ...p, moneda: value }))} options={[{ value:'PEN', label:'PEN' }, { value:'USD', label:'USD' }, { value:'EUR', label:'EUR' }, { value:'CRC', label:'CRC' }]} /></div>
         <div className="input-group"><label>Tipo</label><ParamChipGroup value={form.tipo} onChange={value => setForm(p => ({ ...p, tipo: value }))} options={[{ value:'corriente', label:'Corriente' }, { value:'ahorros', label:'Ahorros' }, { value:'recaudadora', label:'Recaudadora' }, { value:'caja_chica', label:'Caja chica' }]} /></div>
         <div className="input-group"><label>Saldo inicial</label><input className="input" type="number" step="0.01" min="0" value={form.saldo_inicial} onChange={set('saldo_inicial')} /></div>
+        <div className="input-group">
+          <label>Sociedad</label>
+          <select className="input" value={form.sociedad_id} onChange={set('sociedad_id')}>
+            <option value="">(Sin sociedad)</option>
+            {sociedades.map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre_comercial || 'Sociedad'}</option>)}
+          </select>
+        </div>
         <div className="input-group"><label>Estado</label><ParamChipGroup value={form.estado} onChange={value => setForm(p => ({ ...p, estado: value }))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
+        
         <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end', gap:8}}>
           {editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}
           <button type="submit" className="btn btn-primary" disabled={saving}>{editId ? I.save : I.plus} {saving ? 'Guardando...' : editId ? 'Actualizar' : 'Agregar cuenta'}</button>
         </div>
       </form>
+
+      <div className="card-body" style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)', display:'flex', gap:10, flexWrap:'wrap' }}>
+        <input className="input" placeholder="Buscar por banco..." value={filtroBanco} onChange={e => setFiltroBanco(e.target.value)} style={{maxWidth: 200}} />
+        <select className="input" value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{maxWidth: 160}}>
+          <option value="">Todos los tipos</option>
+          <option value="corriente">Corriente</option>
+          <option value="ahorros">Ahorros</option>
+          <option value="recaudadora">Recaudadora</option>
+          <option value="caja_chica">Caja chica</option>
+        </select>
+        <select className="input" value={filtroMoneda} onChange={e => setFiltroMoneda(e.target.value)} style={{maxWidth: 120}}>
+          <option value="">Moneda</option>
+          <option value="PEN">PEN</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="CRC">CRC</option>
+        </select>
+        { (filtroBanco || filtroTipo || filtroMoneda) && <button type="button" className="btn btn-secondary" onClick={() => { setFiltroBanco(''); setFiltroTipo(''); setFiltroMoneda(''); }}>Limpiar</button> }
+      </div>
+
       <div className="table-wrap">
         <table className="tbl">
-          <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
-          <tbody>{cuentasBancarias.map(c => (
+          <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Sociedad</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
+          <tbody>{cuentasFiltradas.length > 0 ? cuentasFiltradas.map(c => (
             <tr key={c.id}>
               <td><strong>{c.nombre}</strong></td>
               <td>{c.banco}</td>
               <td>{c.numero_cuenta || '—'}</td>
               <td><span className="badge badge-cyan">{c.moneda}</span></td>
               <td style={{textTransform:'capitalize'}}>{c.tipo}</td>
+              <td style={{fontSize:'0.9em', color:'var(--fg-muted)'}}>{getSociedadName(c.sociedad_id)}</td>
               <td>{Number(c.saldo_inicial||0).toLocaleString('es-PE', {minimumFractionDigits:2})}</td>
               <td><span className={'badge ' + (c.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{c.estado}</span></td>
               <td className="row" style={{justifyContent:'flex-end', gap:4}}>
@@ -7814,7 +7866,9 @@ function CuentasBancariasSection() {
                 <button className="icon-btn" title="Eliminar" onClick={() => { if (window.confirm(`Eliminar "${c.nombre}"?`)) eliminarCuentaBancaria(c.id); }} style={{color:'var(--danger)'}}>{I.trash}</button>
               </td>
             </tr>
-          ))}</tbody>
+          )) : (
+            <tr><td colSpan="9" style={{textAlign:'center', color:'var(--fg-muted)', padding:'20px'}}>No se encontraron cuentas bancarias</td></tr>
+          )}</tbody>
         </table>
       </div>
     </div>
@@ -8642,6 +8696,149 @@ function SociedadesAdmin() {
   );
 }
 
+const FERIADOS_REGIMENES = [
+  ['general', 'Régimen general'],
+  ['minero_14x7', 'Minero 14×7'],
+  ['minero_20x10', 'Minero 20×10'],
+  ['minero_28x14', 'Minero 28×14'],
+  ['minero_2x1', 'Minero 2×1'],
+];
+const FERIADOS_POLITICAS = [
+  ['sin_pago_adicional', 'Sin pago adicional'],
+  ['doble', 'Doble'],
+  ['triple', 'Triple'],
+];
+const FERIADOS_AMBITOS = [
+  ['nacional', 'Nacional'],
+  ['regional', 'Regional'],
+  ['local', 'Local'],
+];
+
+function FeriadosParametros({ empresaId, addNotificacion }) {
+  const [anio, setAnio] = useState(String(new Date().getFullYear()));
+  const [feriados, setFeriados] = useState([]);
+  const [politicasDefault, setPoliticasDefault] = useState([]);
+  const [overrides, setOverrides] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [feriadoEditando, setFeriadoEditando] = useState(null);
+  const [formFeriado, setFormFeriado] = useState({ fecha: '', nombre: '', ambito: 'nacional' });
+  const [overrideAbierto, setOverrideAbierto] = useState(null);
+  const [seccionActiva, setSeccionActiva] = useState('calendario');
+
+  const cargar = useCallback(async () => {
+    if (!empresaId || !/^\d{4}$/.test(anio)) return;
+    setCargando(true);
+    const desde = `${anio}-01-01`;
+    const hasta = `${anio}-12-31`;
+    try {
+      const supabase = await getSupabaseClient();
+      const [feriadosRes, defaultsRes, overridesRes] = await Promise.all([
+        supabase.from('feriados').select('id,fecha,nombre,ambito,origen').eq('empresa_id', empresaId).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+        supabase.from('feriados_politica_regimen_default').select('id,regimen_jornada,politica_pago').eq('empresa_id', empresaId),
+        supabase.from('feriados_politica_override').select('id,feriado_id,regimen_jornada,politica_pago').eq('empresa_id', empresaId),
+      ]);
+      if (feriadosRes.error) throw feriadosRes.error;
+      if (defaultsRes.error) throw defaultsRes.error;
+      if (overridesRes.error) throw overridesRes.error;
+      setFeriados(feriadosRes.data || []);
+      setPoliticasDefault(defaultsRes.data || []);
+      setOverrides(overridesRes.data || []);
+    } catch (error) {
+      addNotificacion(`No se pudieron cargar los feriados: ${error.message || 'error de base de datos'}`, 'error');
+    } finally {
+      setCargando(false);
+    }
+  }, [anio, empresaId, addNotificacion]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const politicaDefault = regimen => politicasDefault.find(p => p.regimen_jornada === regimen)?.politica_pago || 'sin_pago_adicional';
+  const politicaOverride = (feriadoId, regimen) => overrides.find(p => p.feriado_id === feriadoId && p.regimen_jornada === regimen)?.politica_pago || 'sin_pago_adicional';
+  const label = (items, value) => items.find(([key]) => key === value)?.[1] || value;
+
+  const guardarFeriado = async event => {
+    event.preventDefault();
+    if (!formFeriado.fecha || !formFeriado.nombre.trim()) {
+      addNotificacion('Completa la fecha y el nombre del feriado.', 'error');
+      return;
+    }
+    setGuardando(true);
+    try {
+      const supabase = await getSupabaseClient();
+      const valores = { fecha: formFeriado.fecha, nombre: formFeriado.nombre.trim(), ambito: formFeriado.ambito };
+      const query = feriadoEditando?.id
+        ? supabase.from('feriados').update(valores).eq('id', feriadoEditando.id).eq('empresa_id', empresaId)
+        : supabase.from('feriados').insert({ ...valores, empresa_id: empresaId, origen: 'manual' });
+      const { error } = await query;
+      if (error) throw error;
+      addNotificacion(feriadoEditando?.id ? 'Feriado actualizado.' : 'Feriado manual agregado.');
+      setFeriadoEditando(null);
+      setFormFeriado({ fecha: '', nombre: '', ambito: 'nacional' });
+      await cargar();
+    } catch (error) {
+      addNotificacion(`No se pudo guardar el feriado: ${error.message || 'error de base de datos'}`, 'error');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eliminarFeriado = async feriado => {
+    if (!window.confirm(`¿Eliminar el feriado “${feriado.nombre}” del ${feriado.fecha}?`)) return;
+    try {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from('feriados').delete().eq('id', feriado.id).eq('empresa_id', empresaId);
+      if (error) throw error;
+      addNotificacion('Feriado eliminado.');
+      await cargar();
+    } catch (error) {
+      addNotificacion(`No se pudo eliminar el feriado: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  const guardarPoliticaDefault = async (regimen, politicaPago) => {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('feriados_politica_regimen_default')
+        .upsert({ empresa_id: empresaId, regimen_jornada: regimen, politica_pago: politicaPago }, { onConflict: 'empresa_id,regimen_jornada' })
+        .select('id,regimen_jornada,politica_pago').single();
+      if (error) throw error;
+      setPoliticasDefault(prev => [...prev.filter(p => p.regimen_jornada !== regimen), data]);
+      addNotificacion(`Política ${label(FERIADOS_REGIMENES, regimen)} guardada.`);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la política: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  const guardarOverride = async (feriadoId, regimen, politicaPago) => {
+    try {
+      const supabase = await getSupabaseClient();
+      const { data, error } = await supabase.from('feriados_politica_override')
+        .upsert({ empresa_id: empresaId, feriado_id: feriadoId, regimen_jornada: regimen, politica_pago: politicaPago }, { onConflict: 'feriado_id,regimen_jornada' })
+        .select('id,feriado_id,regimen_jornada,politica_pago').single();
+      if (error) throw error;
+      setOverrides(prev => [...prev.filter(p => !(p.feriado_id === feriadoId && p.regimen_jornada === regimen)), data]);
+      addNotificacion(`Override ${label(FERIADOS_REGIMENES, regimen)} guardado.`);
+    } catch (error) {
+      addNotificacion(`No se pudo guardar el override: ${error.message || 'error de base de datos'}`, 'error');
+    }
+  };
+
+  return <div className="params-section" style={{display:'flex', flexDirection:'column', gap:18, paddingBottom:24}}>
+    <div className="tabs">
+      <div className={'tab '+(seccionActiva === 'calendario' ? 'active' : '')} onClick={()=>setSeccionActiva('calendario')}>Calendario de feriados</div>
+      <div className={'tab '+(seccionActiva === 'politica' ? 'active' : '')} onClick={()=>setSeccionActiva('politica')}>Política de pago</div>
+    </div>
+    {seccionActiva === 'calendario' && <div className="card params-card">
+      <div className="card-head" style={{flexWrap:'wrap', gap:12}}><div><h3>Calendario de feriados</h3><div className="text-muted" style={{fontSize:12, marginTop:4}}>Gestiona los feriados de esta empresa por año.</div></div><div className="row" style={{gap:8}}><input className="input" type="number" min="2000" max="2100" value={anio} onChange={e=>setAnio(e.target.value)} style={{width:110}}/><button type="button" className="btn btn-primary" onClick={()=>{ setFeriadoEditando({}); setFormFeriado({ fecha:`${anio}-01-01`, nombre:'', ambito:'nacional' }); }}>{I.plus} Agregar feriado</button></div></div>
+      <div className="table-wrap"><table className="tbl"><thead><tr><th>Fecha</th><th>Nombre</th><th>Ámbito</th><th>Origen</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead><tbody>
+        {cargando ? <tr><td colSpan="5" className="text-muted">Cargando feriados...</td></tr> : feriados.length === 0 ? <tr><td colSpan="5" className="text-muted">No hay feriados para este año.</td></tr> : feriados.map(feriado => <React.Fragment key={feriado.id}><tr><td>{feriado.fecha}</td><td><strong>{feriado.nombre}</strong></td><td><span className={`badge ${feriado.ambito === 'nacional' ? 'badge-blue' : feriado.ambito === 'regional' ? 'badge-purple' : 'badge-orange'}`}>{label(FERIADOS_AMBITOS, feriado.ambito)}</span></td><td><span className={`badge ${feriado.origen === 'automatico' ? 'badge-green' : 'badge-gray'}`}>{feriado.origen === 'automatico' ? 'Automático' : 'Manual'}</span></td><td><div className="row" style={{justifyContent:'flex-end', gap:6}}><button type="button" className="btn btn-secondary btn-sm" onClick={()=>{ setFeriadoEditando(feriado); setFormFeriado({ fecha:feriado.fecha, nombre:feriado.nombre, ambito:feriado.ambito }); }}>{I.edit} Editar</button><button type="button" className="icon-btn" title="Eliminar feriado" style={{color:'var(--danger)'}} onClick={()=>eliminarFeriado(feriado)}>{I.trash}</button><button type="button" className="btn btn-ghost btn-sm" onClick={()=>setOverrideAbierto(overrideAbierto === feriado.id ? null : feriado.id)}>{overrideAbierto === feriado.id ? 'Ocultar overrides' : 'Overrides'}</button></div></td></tr>{overrideAbierto === feriado.id && <tr><td colSpan="5" style={{background:'var(--bg-subtle)'}}><div style={{padding:8}}><strong style={{fontSize:13}}>Política específica para {feriado.nombre}</strong><div className="table-wrap" style={{marginTop:10}}><table className="tbl" style={{fontSize:12}}><thead><tr><th>Régimen</th><th>Política de pago</th></tr></thead><tbody>{FERIADOS_REGIMENES.map(([regimen, nombre])=><tr key={regimen}><td>{nombre}</td><td><select className="select" value={politicaOverride(feriado.id, regimen)} onChange={e=>guardarOverride(feriado.id, regimen, e.target.value)}>{FERIADOS_POLITICAS.map(([valor, texto])=><option key={valor} value={valor}>{texto}</option>)}</select></td></tr>)}</tbody></table></div></div></td></tr>}</React.Fragment>)}
+      </tbody></table></div>
+    </div>}
+    {seccionActiva === 'politica' && <div className="card params-card"><div className="card-head"><div><h3>Política de pago por régimen</h3><div className="text-muted" style={{fontSize:12, marginTop:4}}>Define la política predeterminada aplicable a cada régimen de jornada.</div></div></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Régimen</th><th>Política de pago</th></tr></thead><tbody>{FERIADOS_REGIMENES.map(([regimen, nombre])=><tr key={regimen}><td><strong>{nombre}</strong></td><td><select className="select" value={politicaDefault(regimen)} onChange={e=>guardarPoliticaDefault(regimen, e.target.value)}>{FERIADOS_POLITICAS.map(([valor, texto])=><option key={valor} value={valor}>{texto}</option>)}</select></td></tr>)}</tbody></table></div></div>}
+    {feriadoEditando && <><div className="side-panel-backdrop" onClick={()=>!guardando && setFeriadoEditando(null)}/><div className="side-panel" style={{width:'min(480px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Calendario de feriados</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{feriadoEditando.id ? 'Editar feriado' : 'Agregar feriado'}</div></div><button type="button" className="icon-btn" onClick={()=>setFeriadoEditando(null)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarFeriado}><div className="input-group"><label>Fecha</label><input className="input" required type="date" value={formFeriado.fecha} onChange={e=>setFormFeriado(v=>({...v,fecha:e.target.value}))} disabled={Boolean(feriadoEditando.id)}/></div><div className="input-group"><label>Nombre</label><input className="input" required value={formFeriado.nombre} onChange={e=>setFormFeriado(v=>({...v,nombre:e.target.value}))}/></div><div className="input-group"><label>Ámbito</label><select className="select" value={formFeriado.ambito} onChange={e=>setFormFeriado(v=>({...v,ambito:e.target.value}))}>{FERIADOS_AMBITOS.map(([valor,texto])=><option key={valor} value={valor}>{texto}</option>)}</select></div><div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}><button type="button" className="btn btn-secondary" onClick={()=>setFeriadoEditando(null)}>Cancelar</button><button className="btn btn-primary" type="submit" disabled={guardando}>{guardando ? 'Guardando...' : 'Guardar feriado'}</button></div></form></div></>}
+  </div>;
+}
 
 function Parametros() {
   const {
@@ -9127,6 +9324,7 @@ function Parametros() {
     { key: 'whatsapp', title: 'WhatsApp', description: 'Proveedor, plantillas, matriz de destinatarios y log de envios.' },
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
+    { key: 'feriados', title: 'Feriados', description: 'Calendario de feriados y políticas de pago por régimen.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
     { key: 'egresos_config', title: 'Egresos', description: 'Tipos de gasto, estructura del ER y categorías personalizadas. Importa desde Excel para configurar todo de una vez.' },
   ];
@@ -9841,6 +10039,8 @@ function Parametros() {
               {showRegimenModal && <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget)setShowRegimenModal(false)}}><div className="modal"><div className="modal-head"><h3>Confirmar cambio de régimen laboral</h3><button className="icon-btn" style={{color:'var(--fg-muted)'}} onClick={()=>setShowRegimenModal(false)}>{I.x}</button></div><div className="modal-body"><div className="alert alert-warning" style={{marginBottom:16}}>Cambiar el régimen laboral afecta el cálculo de todos los períodos futuros. Los períodos ya cerrados no se recalculan.</div><p>¿Confirmar el cambio a <strong>{regimenes.find(r=>r.key===pendingRegimen)?.label}</strong>?</p><label style={{display:'flex', alignItems:'center', gap:8, margin:'12px 0', fontSize:13, cursor:'pointer'}}><input type="checkbox" checked={regimenConfirmCheck} onChange={e=>setRegimenConfirmCheck(e.target.checked)}/> Entiendo que este cambio aplica solo a períodos futuros y no recalcula nóminas cerradas.</label><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setShowRegimenModal(false)}>Cancelar</button><button className="btn btn-primary" disabled={!regimenConfirmCheck} onClick={()=>{setNominaCfg(p=>({...p,regimen_laboral_empresa:pendingRegimen}));setShowRegimenModal(false);setPendingRegimen(null);}}>Confirmar cambio</button></div></div></div></div>}
             </div>);
           })()}
+
+          {paramSection === 'feriados' && <FeriadosParametros empresaId={empresa?.id} addNotificacion={addNotificacion} />}
 
           {paramSection === 'evaluaciones' && (() => {
             const sumaEvaluadores = Number(evalCfg.eval_peso_autoevaluacion) + Number(evalCfg.eval_peso_jefe);

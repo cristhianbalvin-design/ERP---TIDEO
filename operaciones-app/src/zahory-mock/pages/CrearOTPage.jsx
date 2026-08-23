@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   NON_BILLABLE_CARGOS,
   getBlockedCargoReason,
@@ -21,12 +23,11 @@ import {
 } from '../schemas/otSchema.js';
 
 const D = ZAHORY_SAC_DATA;
-const NEW_OT_CODE = 'OT-2026-055';
 const TODAY = new Date().toISOString().slice(0, 10);
 
 export const OT_FORM_SCHEMA = {
   tipo_trabajo: ['Preventivo_PM', 'Correctivo', 'Acondicionamiento', 'Overhaul'],
-  tipo_cargo: ['Cliente_Contrato', 'Interno_Zahory', 'Garantia_Fabrica', 'Reclamo_Rework'],
+  tipo_cargo: ['Cliente_Contrato', 'Interno_Plataforma', 'Garantia_Fabrica', 'Reclamo_Rework'],
   required: ['linea_negocio', 'cliente_id', 'contrato_id', 'equipo', 'lugar_ejecucion', 'tipo_trabajo', 'tipo_cargo', 'tecnico', 'descripcion'],
   conditional: {
     motivo_retrabajo: "required when tipo_cargo === 'Reclamo_Rework'",
@@ -43,7 +44,7 @@ const TIPO_TRABAJO = [
 
 const TIPO_CARGO = [
   ['Cliente_Contrato', 'Cliente / Contrato — facturable al cliente'],
-  ['Interno_Zahory',   'Interno plataforma — costo absorbido por la plataforma'],
+  ['Interno_Plataforma', 'Interno plataforma — costo absorbido por la plataforma'],
   ['Garantia_Fabrica', 'Garantía Fábrica — recuperable del fabricante'],
   ['Reclamo_Rework',   'Reclamo / Rework — retrabajo no facturable'],
 ];
@@ -56,29 +57,59 @@ const LUGAR_EJECUCION = [
 
 const cargoLabel = (v) => TIPO_CARGO.find(([c]) => c === v)?.[1] || v;
 const trabajoLabel = (v) => TIPO_TRABAJO.find(([t]) => t === v)?.[1] || v;
-const noFacturable = (cargo) => NON_BILLABLE_CARGOS.includes(cargo);
+const CARGOS_NO_FACTURABLES_DBS = ['Interno_Plataforma', 'Garantia_Fabrica', 'Reclamo_Rework'];
+const noFacturable = (cargo) => CARGOS_NO_FACTURABLES_DBS.includes(cargo) || NON_BILLABLE_CARGOS.includes(cargo);
+const nombreCliente = (cliente) => cliente?.nombre_comercial || cliente?.razon_social || cliente?.razonSocial || cliente?.id || '';
+const descripcionObjetoCosto = (objeto) => objeto?.nombre || objeto?.objeto || objeto?.descripcion || objeto?.numero || '';
+// El maestro usa categorías de flota personalizadas (por ejemplo, "Maquinaria pesada").
+// Se excluyen únicamente las categorías que no pueden ser equipos operativos.
+const CATEGORIAS_NO_FLOTA = new Set([
+  'MUEBLE', 'MOBILIARIO', 'INMUEBLE', 'INFORMATICA',
+  'ACTIVO INTANGIBLE', 'INTANGIBLE', 'ACTIVO NO DEPRECIABLE', 'OTRO',
+]);
+const esActivoDeFlota = (activo) => !CATEGORIAS_NO_FLOTA.has(String(activo?.tipo_categoria || '').trim().toUpperCase());
+const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
+const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+
+const esErrorNumeroDuplicado = (error) =>
+  error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '');
+
+const mensajeErrorGuardadoOT = (error) => {
+  const mensaje = String(error?.message || 'No se pudo guardar la OT.');
+  if (error?.code === '42501' || /row-level security|permission denied|no tienes acceso|membres/i.test(mensaje)) {
+    return 'No tienes permiso para crear OTs en la empresa o sociedad activa.';
+  }
+  if (error?.code === '23503') {
+    return 'La OS, contrato, CECO o CEBE seleccionado ya no es válido para esta empresa o sociedad.';
+  }
+  if (error?.code === '23514' || /ordenes_trabajo_(tipo_trabajo|cargo_financiero|combinacion_dbs|motivo_rework|horometro|raiz_costo)/i.test(mensaje)) {
+    return 'La combinación de datos DBS no es válida. Revisa la clasificación, raíz de costo y horómetro.';
+  }
+  return mensaje;
+};
 
 const inferUnidadMinera = (contrato) => {
   if (!contrato) return '';
+  if (contrato.unidad_minera) return contrato.unidad_minera;
   const m = contrato.descripcion?.match(/Unidad\s+(.+)$/i);
   if (m) return m[1].trim();
   return contrato.descripcion?.split('–').pop()?.trim() || contrato.cliente || '';
 };
 
 const hasValidSegment = (segs) =>
-  segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.descripcion));
+  segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.tipo_servicio_interno_id));
 
 // ── Drawer de backlogs ─────────────────────────────────────────────────────
 
-const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
+const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = false, loading = false }) => {
   const wrapperRef = useRef(null);
   const selected = clientes.find(c => c.id === value);
-  const [query, setQuery] = useState(selected?.razonSocial || '');
+  const [query, setQuery] = useState(nombreCliente(selected));
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setQuery(selected?.razonSocial || '');
-  }, [selected?.razonSocial]);
+    setQuery(nombreCliente(selected));
+  }, [selected?.id, selected?.nombre_comercial, selected?.razon_social, selected?.razonSocial]);
 
   useEffect(() => {
     const onPointerDown = (event) => {
@@ -90,7 +121,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
 
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = normalizedQuery
-    ? clientes.filter(c => [c.razonSocial, c.ruc, c.contacto, c.id]
+    ? clientes.filter(c => [nombreCliente(c), c.razon_social, c.ruc, c.contacto, c.id]
         .some(v => String(v || '').toLowerCase().includes(normalizedQuery)))
     : clientes;
 
@@ -102,7 +133,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
   const handleInput = (nextQuery) => {
     setQuery(nextQuery);
     setOpen(true);
-    if (value && nextQuery !== selected?.razonSocial) onChange('');
+    if (value && nextQuery !== nombreCliente(selected)) onChange('');
   };
 
   return (
@@ -114,6 +145,7 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
           value={query}
           onChange={e => handleInput(e.target.value)}
           onFocus={() => setOpen(true)}
+          disabled={disabled}
           placeholder="Buscar cliente por razon social, RUC o contacto"
           style={{ borderColor: error ? '#E53935' : undefined }}
           autoComplete="off"
@@ -135,17 +167,22 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error }) => {
       </div>
       {open && (
         <div className="search-select-menu">
-          {filtered.map(c => (
+          {loading ? (
+            <div className="search-select-empty">Cargando clientes...</div>
+          ) : filtered.map(c => (
             <button
               type="button"
               key={c.id}
               className={"search-select-option" + (c.id === value ? " active" : "")}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => selectCliente(c.id)}
+              onPointerDown={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                selectCliente(c.id);
+              }}
             >
               <span>
-                <b>{c.razonSocial}</b>
-                <small>{c.ruc} - {c.contacto}</small>
+                <b>{nombreCliente(c)}</b>
+                <small>{c.ruc || 'Sin RUC'}{c.contacto ? ` - ${c.contacto}` : ''}</small>
               </span>
               {c.id === value && <Icon name="check" size={13}/>}
             </button>
@@ -216,7 +253,7 @@ const getBannerImpacto = (cargo) => {
 
 // ── Barra inferior fija (Sticky Bottom Bar) ────────────────────────────────
 
-const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, onCancel, onSave }) => {
+const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoId, valid, guardando, onCancel, onSave }) => {
   const totals = useMemo(() => calcOTTotals(segmentos), [segmentos]);
   const ingresoNum = noFacturable(tipoCargo) ? 0 : Number(ingreso || 0);
   const margen = totals.total > 0 && ingresoNum > 0
@@ -314,8 +351,8 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
         </div>
         <div style={{ width: 1, height: 36, background: 'var(--card-border)' }} />
         <button className="btn btn-secondary" onClick={onCancel}>Cancelar</button>
-        <button className="btn btn-primary" disabled={!valid} onClick={onSave}>
-          <Icon name="check" size={13}/> Guardar OT
+        <button className="btn btn-primary" disabled={!valid || guardando} onClick={onSave}>
+          <Icon name="check" size={13}/> {guardando ? 'Guardando OT...' : 'Guardar OT'}
         </button>
       </div>
     </div>
@@ -324,7 +361,10 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 // ── SegmentoCard: accordion con 3 tabs de estimación ──────────────────────
 
-const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
+const SegmentoCard = ({
+  seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio,
+  errorTiposServicio, tecnicos, cargandoTecnicos,
+}) => {
   const [tab, setTab] = useState('mo');
 
   const patchEst = (tipo, idx, patch) =>
@@ -338,8 +378,8 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
     onPatch({ ot_operaciones: [...seg.ot_operaciones, makeOperacion(seg.ot_operaciones.length + 1)] });
   const removeOp = (oi) =>
     onPatch({ ot_operaciones: seg.ot_operaciones.filter((_, i) => i !== oi) });
-  const patchOp = (oi, k, v) =>
-    onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, [k]: v } : op) });
+  const patchOp = (oi, patch) =>
+    onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, ...patch } : op) });
 
   const totalMO  = calcSegmentoMO(seg);
   const totalRep = calcSegmentoRepuestos(seg);
@@ -383,14 +423,38 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
       {/* ── Operaciones ── */}
       <div style={{ padding: '8px 12px 6px', background: '#FAFCFF', borderBottom: '1px solid var(--card-border)' }}>
         {seg.ot_operaciones.map((op, oi) => (
-          <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px 1fr auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+          <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px minmax(180px, 1fr) minmax(150px, .65fr) auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>↳</span>
             <input className="input" value={op.codigo} placeholder="01"
-              onChange={e => patchOp(oi, 'codigo', e.target.value)}
+              onChange={e => patchOp(oi, { codigo: e.target.value })}
               style={{ textAlign: 'center', fontSize: 12, padding: '4px 6px' }} />
-            <input className="input" value={op.descripcion} placeholder="Descripción de la operación *"
-              onChange={e => patchOp(oi, 'descripcion', e.target.value)}
-              style={{ fontSize: 12, padding: '4px 8px' }} />
+            <select className="input" value={op.tipo_servicio_interno_id || ''}
+              disabled={cargandoTiposServicio}
+              onChange={e => {
+                const tipoServicio = tiposServicio.find(tipo => tipo.id === e.target.value);
+                patchOp(oi, {
+                  tipo_servicio_interno_id: e.target.value,
+                  descripcion: tipoServicio?.nombre || '',
+                });
+              }}
+              style={{ fontSize: 12, padding: '4px 8px', background: cargandoTiposServicio ? '#ECEFF1' : undefined }}>
+              <option value="">{cargandoTiposServicio ? 'Cargando operaciones...' : '-- Seleccionar operación --'}</option>
+              {tiposServicio.map(tipoServicio => (
+                <option key={tipoServicio.id} value={tipoServicio.id}>
+                  {tipoServicio.codigo} - {tipoServicio.nombre}{tipoServicio.facturable === false ? ' · No facturable' : ''}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={op.tecnico_id || ''}
+              disabled={cargandoTecnicos}
+              onChange={e => patchOp(oi, { tecnico_id: e.target.value })}
+              title="Técnico asignado a esta operación (opcional)"
+              style={{ minWidth: 0, fontSize: 12, padding: '4px 8px', background: cargandoTecnicos ? '#ECEFF1' : undefined }}>
+              <option value="">{cargandoTecnicos ? 'Cargando técnicos...' : '-- Sin técnico asignado --'}</option>
+              {tecnicos.map(tecnico => (
+                <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>
+              ))}
+            </select>
             {seg.ot_operaciones.length > 1 && (
               <button className="btn btn-ghost btn-sm" style={{ color: '#E53935', padding: '4px 6px' }}
                 onClick={() => removeOp(oi)} title="Eliminar operación">
@@ -402,6 +466,11 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB }) => {
         <button className="btn btn-ghost btn-sm" style={{ fontSize: 11, color: 'var(--cyan)' }} onClick={addOp}>
           <Icon name="plus" size={11}/> Agregar Operación
         </button>
+        {errorTiposServicio && (
+          <div style={{ fontSize: 11, color: '#E53935', marginTop: 6 }}>
+            No se pudieron cargar las operaciones: {errorTiposServicio}
+          </div>
+        )}
       </div>
 
       {/* ── Tabs de estimación ── */}
@@ -567,6 +636,7 @@ const CC_DESC = {
 };
 
 export const CrearOTPage = ({ onNav }) => {
+  const sesionOperativa = useSesionOperativa();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
   const [backlogs, setBacklogs] = useState([]);
@@ -576,6 +646,30 @@ export const CrearOTPage = ({ onNav }) => {
   const [objetoCostoTipo, setObjetoCostoTipo] = useState('contrato');
   const [errorDBS, setErrorDBS] = useState(null);
   const [horometroSugerido, setHorometroSugerido] = useState(null);
+  const [clientesReales, setClientesReales] = useState([]);
+  const [osClientesReales, setOsClientesReales] = useState([]);
+  const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
+  const [centrosCostoReales, setCentrosCostoReales] = useState([]);
+  const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
+  const [equiposInternosReales, setEquiposInternosReales] = useState([]);
+  const [tecnicosReales, setTecnicosReales] = useState([]);
+  const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
+  const [cargandoClientes, setCargandoClientes] = useState(false);
+  const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
+  const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
+  const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
+  const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
+  const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
+  const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
+  const [errorClientes, setErrorClientes] = useState(null);
+  const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
+  const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
+  const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
+  const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
+  const [errorTecnicos, setErrorTecnicos] = useState(null);
+  const [errorTiposServicio, setErrorTiposServicio] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState(null);
 
   const [form, setForm] = useState({
     lineaNegocio: '',
@@ -594,6 +688,7 @@ export const CrearOTPage = ({ onNav }) => {
     fechaAprobacionComercial: '',
     ingreso: 0,
     centro_costo: null,
+    centro_beneficio_id: null,
     horometroApertura: '',
   });
 
@@ -626,32 +721,371 @@ export const CrearOTPage = ({ onNav }) => {
   }, []);
 
   // ── Datos derivados ─────────────────────────────────────────────────────
-  const cliente = useMemo(() => D.clientes.find(c => c.id === form.clienteId), [form.clienteId]);
-  const contratosFiltrados = useMemo(() => {
-    if (!form.clienteId) return [];
-    if (objetoCostoTipo === 'os_cliente')
-      return D.contratos.filter(c => c.clienteId === form.clienteId && c.tipo === 'OS');
-    return D.contratos.filter(c => c.clienteId === form.clienteId && c.tipo !== 'OS');
-  }, [form.clienteId, objetoCostoTipo]);
-  const contrato = useMemo(() => D.contratos.find(c => c.id === form.contratoId), [form.contratoId]);
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setClientesReales([]);
+      setCargandoClientes(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoClientes(true);
+    setErrorClientes(null);
+    getSupabaseClient()
+      .from('cuentas')
+      .select('id,nombre_comercial,razon_social,ruc,estado')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .order('nombre_comercial')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setClientesReales([]);
+          setErrorClientes(error.message);
+        } else {
+          setClientesReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setClientesReales([]);
+          setErrorClientes(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoClientes(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setTiposServicioInterno([]);
+      setCargandoTiposServicio(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoTiposServicio(true);
+    setErrorTiposServicio(null);
+    getSupabaseClient()
+      .from('tipos_servicio_interno')
+      .select('id,codigo,nombre,clasificacion,familia_tecnica,facturable,estado')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setTiposServicioInterno([]);
+          setErrorTiposServicio(error.message);
+        } else {
+          setTiposServicioInterno(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setTiposServicioInterno([]);
+          setErrorTiposServicio(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoTiposServicio(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setTecnicosReales([]);
+      setCargandoTecnicos(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoTecnicos(true);
+    setErrorTecnicos(null);
+    getSupabaseClient()
+      .from('personal_operativo')
+      .select('id,nombre,especialidad,estado,tarifa_hora')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'disponible')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setTecnicosReales([]);
+          setErrorTecnicos(error.message);
+        } else {
+          setTecnicosReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setTecnicosReales([]);
+          setErrorTecnicos(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoTecnicos(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      objetoCostoTipo !== 'equipo_interno'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setEquiposInternosReales([]);
+      setCargandoEquiposInternos(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoEquiposInternos(true);
+    setErrorEquiposInternos(null);
+    getSupabaseClient()
+      .from('activos')
+      .select('id,codigo,nombre,marca,modelo,tipo_categoria,centro_costo_id')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .neq('estado', 'dado_baja')
+      .order('codigo')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setEquiposInternosReales([]);
+          setErrorEquiposInternos(error.message);
+        } else {
+          setEquiposInternosReales((data || []).filter(esActivoDeFlota));
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setEquiposInternosReales([]);
+          setErrorEquiposInternos(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoEquiposInternos(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      !['os_cliente', 'equipo_interno'].includes(objetoCostoTipo)
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.sociedadId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setCentrosCostoReales([]);
+      setCargandoCentrosCosto(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCentrosCosto(true);
+    setErrorCentrosCosto(null);
+    getSupabaseClient()
+      .from('centros_costo')
+      .select('id,nombre,codigo')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .eq('sociedad_id', sesionOperativa.sociedadId)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCentrosCostoReales([]);
+          setErrorCentrosCosto(error.message);
+        } else {
+          setCentrosCostoReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCentrosCostoReales([]);
+          setErrorCentrosCosto(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCentrosCosto(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      form.lugarEjecucion !== 'Campo_Mina'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setUnidadesMinerasReales([]);
+      setCargandoUnidadesMineras(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoUnidadesMineras(true);
+    setErrorUnidadesMineras(null);
+    getSupabaseClient()
+      .from('sedes')
+      .select('id,codigo,nombre')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('tipo', 'unidad_minera')
+      .eq('estado', 'activo')
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setUnidadesMinerasReales([]);
+          setErrorUnidadesMineras(error.message);
+        } else {
+          setUnidadesMinerasReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setUnidadesMinerasReales([]);
+          setErrorUnidadesMineras(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoUnidadesMineras(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    form.lugarEjecucion,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+      || !form.clienteId
+      || objetoCostoTipo === 'equipo_interno'
+    ) {
+      setOsClientesReales([]);
+      setContratosAlquilerReales([]);
+      setCargandoObjetoCosto(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoObjetoCosto(true);
+    setErrorObjetoCosto(null);
+    const hoy = new Date().toISOString().slice(0, 10);
+    let consulta = objetoCostoTipo === 'os_cliente'
+      ? getSupabaseClient()
+        .from('os_clientes')
+        .select('id,numero,nombre,cuenta_id,sociedad_id,estado,moneda,fecha_inicio,fecha_fin,centro_beneficio_id')
+        .eq('empresa_id', sesionOperativa.empresaId)
+        .eq('cuenta_id', form.clienteId)
+        .order('numero')
+      : getSupabaseClient()
+        .from('contratos_alquiler')
+        .select('id,numero,cuenta_id,sociedad_id,estado,fecha_inicio,fecha_fin,moneda,unidad_minera,objeto,centro_costo_id,centro_beneficio_id,meta_dmr')
+        .eq('empresa_id', sesionOperativa.empresaId)
+        .eq('cuenta_id', form.clienteId)
+        .eq('estado', 'vigente')
+        .lte('fecha_inicio', hoy)
+        .gte('fecha_fin', hoy)
+        .order('numero');
+    if (sesionOperativa.sociedadId) consulta = consulta.eq('sociedad_id', sesionOperativa.sociedadId);
+
+    consulta
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setOsClientesReales([]);
+          setContratosAlquilerReales([]);
+          setErrorObjetoCosto(error.message);
+        } else if (objetoCostoTipo === 'os_cliente') {
+          setOsClientesReales(data || []);
+          setContratosAlquilerReales([]);
+        } else {
+          setContratosAlquilerReales(data || []);
+          setOsClientesReales([]);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setOsClientesReales([]);
+          setContratosAlquilerReales([]);
+          setErrorObjetoCosto(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoObjetoCosto(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    form.clienteId,
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
+
+  const cliente = useMemo(() => clientesReales.find(c => c.id === form.clienteId), [clientesReales, form.clienteId]);
+  const objetosCostoFiltrados = useMemo(
+    () => (objetoCostoTipo === 'os_cliente' ? osClientesReales : contratosAlquilerReales)
+      .map(objeto => ({ ...objeto, descripcion: descripcionObjetoCosto(objeto) })),
+    [contratosAlquilerReales, objetoCostoTipo, osClientesReales],
+  );
+  const contrato = useMemo(() => {
+    if (objetoCostoTipo === 'equipo_interno') return null;
+    return objetosCostoFiltrados.find(c => c.id === form.contratoId);
+  }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
   const equiposFiltrados = useMemo(() => {
-    if (objetoCostoTipo === 'equipo_interno') return D.equipos.filter(e => e.propietario === 'Empresa Operadora');
+    if (objetoCostoTipo === 'equipo_interno') return equiposInternosReales;
     if (!contrato) return [];
     return D.equipos.filter(e => contrato.equiposScope?.includes(e.cod));
-  }, [contrato, objetoCostoTipo]);
-  const equipo = useMemo(() => D.equipos.find(e => e.cod === form.equipo), [form.equipo]);
+  }, [contrato, equiposInternosReales, objetoCostoTipo]);
+  const equipo = useMemo(() => (
+    objetoCostoTipo === 'equipo_interno'
+      ? equiposInternosReales.find(e => e.id === form.equipo)
+      : D.equipos.find(e => e.cod === form.equipo)
+  ), [equiposInternosReales, form.equipo, objetoCostoTipo]);
+  const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
+    || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
   // ── Herencia de CC (C1) ─────────────────────────────────────────────────
   const heredarCC = (tipo, id) => {
     let cc = null;
-    if (tipo === 'contrato' || tipo === 'os_cliente') {
-      const c = D.contratos.find(x => x.id === id);
-      cc = c?.centro_costo || (tipo === 'os_cliente' ? 'PROD-MAE' : 'FLO-ALQ');
+    let centroBeneficioId = null;
+    if (tipo === 'contrato') {
+      const c = contratosAlquilerReales.find(x => x.id === id);
+      cc = c?.centro_costo_id || null;
+      centroBeneficioId = c?.centro_beneficio_id || null;
+    } else if (tipo === 'os_cliente') {
+      const os = osClientesReales.find(x => x.id === id);
+      centroBeneficioId = os?.centro_beneficio_id || null;
     } else if (tipo === 'equipo_interno') {
-      const eq = D.equipos.find(e => e.cod === id);
-      cc = eq?.centro_costo_default || 'OPS-INT';
+      const eq = equiposInternosReales.find(e => e.id === id);
+      cc = eq?.centro_costo_id || null;
     }
-    setForm(prev => ({ ...prev, centro_costo: cc }));
+    setForm(prev => ({ ...prev, centro_costo: cc, centro_beneficio_id: centroBeneficioId }));
     return cc;
   };
 
@@ -667,7 +1101,7 @@ export const CrearOTPage = ({ onNav }) => {
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
       clienteId: '', contratoId: '', equipo: '',
-      unidadMinera: '', centro_costo: null, horometroApertura: '',
+      unidadMinera: '', centro_costo: null, centro_beneficio_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
     setBacklogs([]);
@@ -676,18 +1110,18 @@ export const CrearOTPage = ({ onNav }) => {
   const setCliente = (clienteId) => {
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
-      unidadMinera: '', centro_costo: null, objeto_costo_id: null, horometroApertura: '',
+      unidadMinera: '', centro_costo: null, centro_beneficio_id: null, objeto_costo_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
     setBacklogs([]);
   };
 
   const setContrato = (contratoId) => {
-    const next = D.contratos.find(c => c.id === contratoId);
+    const next = objetosCostoFiltrados.find(c => c.id === contratoId);
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
-      unidadMinera: inferUnidadMinera(next),
+      unidadMinera: f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next),
       objeto_costo_id: contratoId,
       horometroApertura: '',
     }));
@@ -696,7 +1130,9 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const handleEquipoChange = (cod) => {
-    const eq = D.equipos.find(e => e.cod === cod);
+    const eq = objetoCostoTipo === 'equipo_interno'
+      ? equiposInternosReales.find(e => e.id === cod)
+      : D.equipos.find(e => e.cod === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
     const extra = objetoCostoTipo === 'equipo_interno' ? { objeto_costo_id: cod } : {};
@@ -712,8 +1148,7 @@ export const CrearOTPage = ({ onNav }) => {
   const setLugarEjecucion = (lugarEjecucion) =>
     setForm(f => ({
       ...f, lugarEjecucion,
-      unidadMinera: lugarEjecucion === 'Campo_Mina'
-        ? (f.unidadMinera || inferUnidadMinera(contrato)) : '',
+      unidadMinera: '',
     }));
 
   // C5 — handlers con validación DBS en tiempo real
@@ -725,7 +1160,7 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const handleCargoChange = (nuevoCargo) => {
-    const noFact = ['Interno_Zahory', 'Garantia_Fabrica', 'Reclamo_Rework'];
+    const noFact = CARGOS_NO_FACTURABLES_DBS;
     setForm(f => ({
       ...f, tipoCargo: nuevoCargo,
       ingreso: noFact.includes(nuevoCargo) ? 0 : f.ingreso,
@@ -748,8 +1183,11 @@ export const CrearOTPage = ({ onNav }) => {
     ...form, hasValidSegment: hasValidSegment(segmentos), objetoCostoTipo,
   });
   const fieldErrors = validation.fieldErrors;
-  const hasCentroCosto = Boolean(form.centro_costo);
-  const valid = validation.success && !errorDBS && hasCentroCosto
+  const hasCentroCosto = Boolean(form.centro_costo || form.centro_beneficio_id);
+  const horometroRaizEquipoValido = !['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+    || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
+  const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
+    && horometroRaizEquipoValido
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
     && !(form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura);
 
@@ -762,11 +1200,154 @@ export const CrearOTPage = ({ onNav }) => {
       && '- El motivo del retrabajo es obligatorio.',
     (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
+    !horometroRaizEquipoValido
+      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato o sobre equipo interno.',
   ].filter(Boolean);
+
+  const guardarOT = async () => {
+    if (guardando || !valid) return;
+
+    setGuardando(true);
+    setErrorGuardado(null);
+    const totales = calcOTTotals(segmentos);
+    const esOTDesdeOS = objetoCostoTipo === 'os_cliente';
+    const payloadBase = {
+      id: generarIdOT(),
+      empresa_id: sesionOperativa.empresaId,
+      os_cliente_id: esOTDesdeOS ? form.contratoId : null,
+      contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
+      equipo_id: objetoCostoTipo === 'equipo_interno' ? form.equipo : null,
+      cuenta_id: form.clienteId || null,
+      // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
+      // separado: la descripción técnica es el servicio registrado en esta fase.
+      servicio: form.descripcion.trim(),
+      descripcion: form.descripcion.trim(),
+      direccion_ejecucion: form.unidadMinera || form.lugarEjecucion || null,
+      fecha_programada: form.fechaProgramadaInicio,
+      estado: 'programada',
+      avance_pct: 0,
+      costo_estimado: totales.total,
+      costo_estimado_ot: totales.total,
+      costo_real: 0,
+      moneda: contrato?.moneda || sesionOperativa.empresa?.moneda_base || 'PEN',
+      centro_costo_id: form.centro_costo || null,
+      centro_beneficio_id: form.centro_beneficio_id || null,
+      tipo_trabajo: form.tipoTrabajo,
+      cargo_financiero: form.tipoCargo,
+      tecnico_responsable_id: form.tecnico || null,
+      motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
+      horometro_actual: ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+        ? Number(form.horometroApertura) : null,
+    };
+
+    try {
+      let guardada = null;
+      let ultimoError = null;
+      for (let intento = 0; intento < 5; intento += 1) {
+        const numero = generarNumeroOT();
+        const { data, error } = await getSupabaseClient()
+          .from('ordenes_trabajo')
+          .insert({ ...payloadBase, numero })
+          .select('id, numero')
+          .single();
+        if (!error) {
+          guardada = data || { id: payloadBase.id, numero };
+          break;
+        }
+        ultimoError = error;
+        if (!esErrorNumeroDuplicado(error)) throw error;
+      }
+      if (!guardada) throw ultimoError || new Error('No se pudo reservar un número de OT único.');
+
+      // Las operaciones se persisten solo después de contar con el id real
+      // requerido por la FK ot_tareas.ot_id.
+      const tareas = segmentos.flatMap((segmento) =>
+        segmento.ot_operaciones
+          .filter(operacion => operacion.tipo_servicio_interno_id)
+          .map((operacion) => {
+            const tipoServicio = tiposServicioInterno.find(
+              tipo => tipo.id === operacion.tipo_servicio_interno_id,
+            );
+            const tecnico = tecnicosReales.find(tecnicoItem => tecnicoItem.id === operacion.tecnico_id);
+            return {
+              empresa_id: sesionOperativa.empresaId,
+              ot_id: guardada.id,
+              titulo: [tipoServicio?.codigo, tipoServicio?.nombre].filter(Boolean).join(' - ') || operacion.descripcion,
+              descripcion: segmento.descripcion || null,
+              tecnico_id: tecnico?.id || null,
+              tecnico_nombre: tecnico?.nombre || null,
+              tecnico_tipo: tecnico ? 'operativo' : null,
+              estado: 'pendiente',
+              horas_estimadas: null,
+              horas_reales: 0,
+              avance_pct: 0,
+              completada: false,
+            };
+          }),
+      ).map((tarea, orden) => ({ ...tarea, orden }));
+
+      let errorTareas = null;
+      if (tareas.length > 0) {
+        const { error } = await getSupabaseClient()
+          .from('ot_tareas')
+          .insert(tareas);
+        errorTareas = error;
+      }
+
+      setCreada({
+        ...form,
+        id: guardada.id,
+        numero: guardada.numero,
+        backlogs,
+        segmentos,
+        fechaPrimerLaborReal: null,
+        ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
+        horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
+        errorTareas: errorTareas
+          ? `La OT ${guardada.numero} fue creada, pero sus tareas no pudieron registrarse. Regístralas manualmente desde Administrativo.`
+          : null,
+      });
+    } catch (error) {
+      setErrorGuardado(mensajeErrorGuardadoOT(error));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (sesionOperativa.cargando) {
+    return (
+      <div className="page">
+        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24, textAlign: 'center' }}>
+          Cargando la sesión operativa…
+        </div>
+        <FooterBrand/>
+      </div>
+    );
+  }
+
+  if (!sesionOperativa.usuario || !sesionOperativa.empresaId) {
+    return (
+      <div className="page">
+        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24 }}>
+          <h2>Sesión administrativa requerida</h2>
+          <p className="sub">
+            Inicia sesión en Administrativo para cargar los datos de empresa y sociedad antes de crear una OT.
+          </p>
+          {sesionOperativa.error && (
+            <div style={{ color: '#E53935', fontSize: 12 }}>{sesionOperativa.error}</div>
+          )}
+        </div>
+        <FooterBrand/>
+      </div>
+    );
+  }
 
   // ── Pantalla de confirmación ────────────────────────────────────────────
   if (creada) {
     const t = calcOTTotals(creada.segmentos);
+    const etiquetaEquipoCreada = creada.equipo
+      ? [equipo?.codigo || equipo?.cod, equipo?.nombre].filter(Boolean).join(' - ') || creada.equipo
+      : 'Sin equipo';
     return (
       <div className="page">
         <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center' }}>
@@ -775,10 +1356,15 @@ export const CrearOTPage = ({ onNav }) => {
           </div>
           <h2>OT creada correctamente</h2>
           <div className="sub" style={{ marginBottom: 18 }}>
-            <b>{NEW_OT_CODE}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
+            <b>{creada.numero}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
           </div>
+          {creada.errorTareas && (
+            <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
+              {creada.errorTareas}
+            </div>
+          )}
           <div className="card" style={{ padding: 16, textAlign: 'left', marginBottom: 18 }}>
-            <div><span className="muted">Equipo:</span> <b>{creada.equipo}</b></div>
+            <div><span className="muted">Equipo:</span> <b>{etiquetaEquipoCreada}</b></div>
             <div><span className="muted">CC:</span>{' '}
               <b style={{ fontFamily: 'monospace', color: '#f59e0b' }}>{creada.centro_costo}</b></div>
             <div><span className="muted">Segmentos:</span> <b>{creada.segmentos.length}</b></div>
@@ -807,15 +1393,26 @@ export const CrearOTPage = ({ onNav }) => {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Nueva Orden de Trabajo · {NEW_OT_CODE}</h1>
+          <h1>Nueva Orden de Trabajo</h1>
           <div className="sub">Creacion directa DBS · Tipo de Trabajo × Cargo Financiero</div>
         </div>
         <div className="spacer"/>
-        <button className="btn btn-secondary" onClick={registrarAprobacion}>
+        <button className="btn btn-secondary" onClick={registrarAprobacion} disabled={!sesionOperativa.permiteEscritura || !creada || guardando} title="Disponible después de guardar la OT">
           <Icon name="check" size={13}/> Registrar Aprobacion Comercial
         </button>
       </div>
 
+      {!sesionOperativa.permiteEscritura && (
+        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
+          Vista consolidada de grupo: no se permite crear ni editar OTs hasta seleccionar una sociedad operativa.
+        </div>
+      )}
+      {errorGuardado && (
+        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b91c1c', borderColor: '#fecaca' }}>
+          No se pudo guardar la OT: {errorGuardado}
+        </div>
+      )}
+      <fieldset disabled={!sesionOperativa.permiteEscritura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div>
 
         {/* ── Cabecera DBS ── */}
@@ -883,30 +1480,50 @@ export const CrearOTPage = ({ onNav }) => {
 
                 {/* Cascada según tipo objeto */}
                 {objetoCostoTipo === 'equipo_interno' ? (
+                  <>
                   <div className="ot-form-field" style={{ marginBottom: 12 }}>
                     <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de la plataforma) *</div>
                     <select className="input" value={form.equipo}
+                      disabled={cargandoEquiposInternos || !sesionOperativa.permiteEscritura}
                       onChange={e => handleEquipoChange(e.target.value)}
-                      style={{ marginTop: 4, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
-                      <option value="">-- Seleccionar equipo --</option>
+                      style={{ marginTop: 4, background: cargandoEquiposInternos || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
+                      <option value="">{cargandoEquiposInternos ? 'Cargando equipos...' : '-- Seleccionar equipo --'}</option>
                       {equiposFiltrados.map(eq => (
-                        <option key={eq.cod} value={eq.cod}>{eq.cod} · {eq.marca} · {eq.ctx}</option>
+                        <option key={eq.id} value={eq.id}>{eq.codigo} - {eq.nombre}</option>
                       ))}
                     </select>
+                    {errorEquiposInternos && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar los equipos: {errorEquiposInternos}
+                      </div>
+                    )}
+                    {!cargandoEquiposInternos && !errorEquiposInternos && equiposFiltrados.length === 0 && (
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                        No hay equipos operativos de flota disponibles para esta empresa.
+                      </div>
+                    )}
                     {fieldErrors.equipo?.[0] && (
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                     )}
                   </div>
+                  </>
                 ) : (
                   <div className="ot-form-grid commercial">
                     <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Cliente *</div>
                       <ClienteSearchSelect
-                        clientes={D.clientes.filter(c => c.estado === 'Activo')}
+                        clientes={clientesReales}
                         value={form.clienteId}
                         onChange={setCliente}
                         error={Boolean(fieldErrors.clienteId)}
+                        disabled={cargandoClientes || !sesionOperativa.permiteEscritura}
+                        loading={cargandoClientes}
                       />
+                      {errorClientes && (
+                        <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                          No se pudieron cargar los clientes: {errorClientes}
+                        </div>
+                      )}
                       {fieldErrors.clienteId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.clienteId[0]}</div>
                       )}
@@ -916,18 +1533,25 @@ export const CrearOTPage = ({ onNav }) => {
                         {objetoCostoTipo === 'os_cliente' ? 'OS / Orden de Servicio *' : 'Contrato / Proyecto *'}
                       </div>
                       <select className="input" value={form.contratoId}
-                        disabled={!form.clienteId}
+                        disabled={!form.clienteId || cargandoObjetoCosto}
                         onChange={e => setContrato(e.target.value)}
-                        style={{ marginTop: 4, background: !form.clienteId ? '#ECEFF1' : undefined, borderColor: fieldErrors.contratoId ? '#E53935' : undefined }}>
+                        style={{ marginTop: 4, background: !form.clienteId || cargandoObjetoCosto ? '#ECEFF1' : undefined, borderColor: fieldErrors.contratoId ? '#E53935' : undefined }}>
                         <option value="">
-                          {form.clienteId
+                          {cargandoObjetoCosto
+                            ? 'Cargando opciones...'
+                            : form.clienteId
                             ? (objetoCostoTipo === 'os_cliente' ? '-- Seleccionar OS --' : '-- Seleccionar contrato --')
                             : 'Seleccione primero un cliente'}
                         </option>
-                        {contratosFiltrados.map(c => (
+                        {objetosCostoFiltrados.map(c => (
                           <option key={c.id} value={c.id}>{c.numero} · {c.descripcion}</option>
                         ))}
                       </select>
+                      {errorObjetoCosto && (
+                        <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                          No se pudieron cargar las opciones: {errorObjetoCosto}
+                        </div>
+                      )}
                       {fieldErrors.contratoId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.contratoId[0]}</div>
                       )}
@@ -953,10 +1577,54 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
 
                 {/* C1 — Badge CC heredado (solo lectura) */}
+                {requiereCentroCostoManual && (
+                  <div className="ot-form-field" style={{ marginTop: 12, paddingBottom: 4 }}>
+                    <div className="label" style={{ fontSize: 12 }}>Centro de Costo *</div>
+                    <select
+                      className="input"
+                      value={form.centro_costo || ''}
+                      disabled={cargandoCentrosCosto || !sesionOperativa.empresaId || !sesionOperativa.sociedadId}
+                      onChange={e => set('centro_costo', e.target.value || null)}
+                      style={{
+                        marginTop: 4,
+                        borderColor: !form.centro_costo ? '#E53935' : undefined,
+                        background: cargandoCentrosCosto || !sesionOperativa.empresaId || !sesionOperativa.sociedadId ? '#ECEFF1' : undefined,
+                      }}
+                    >
+                      <option value="">
+                        {cargandoCentrosCosto
+                          ? 'Cargando centros de costo...'
+                          : '-- Seleccionar centro de costo --'}
+                      </option>
+                      {centrosCostoReales.map(centroCosto => (
+                        <option key={centroCosto.id} value={centroCosto.id}>
+                          {centroCosto.codigo} - {centroCosto.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                      {objetoCostoTipo === 'os_cliente'
+                        ? 'La OS no define un centro de costo: selección manual obligatoria.'
+                        : 'El equipo no tiene un centro de costo asignado: selección manual obligatoria.'}
+                    </div>
+                    {errorCentrosCosto && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar los centros de costo: {errorCentrosCosto}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                    Centro de Beneficio heredado de la OS: <strong>{form.centro_beneficio_id}</strong>
+                  </div>
+                )}
                 {form.centro_costo && (
                   <div style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
-                      Centro de Costo (heredado automáticamente)
+                      {requiereCentroCostoManual
+                        ? 'Centro de Costo (selección manual)'
+                        : 'Centro de Costo (heredado automáticamente)'}
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{
@@ -991,11 +1659,35 @@ export const CrearOTPage = ({ onNav }) => {
                 {form.lugarEjecucion === 'Campo_Mina' ? (
                   <div className="ot-form-field">
                     <div className="label" style={{ fontSize: 12 }}>Unidad Minera *</div>
-                    <input className="input" value={form.unidadMinera}
-                      disabled={!form.equipo}
+                    <select className="input" value={form.unidadMinera}
+                      disabled={!form.equipo || cargandoUnidadesMineras}
                       onChange={e => set('unidadMinera', e.target.value)}
-                      placeholder={form.equipo ? 'Unidad minera' : 'Seleccione primero un equipo'}
-                      style={{ marginTop: 4, background: !form.equipo ? '#ECEFF1' : undefined, borderColor: fieldErrors.unidadMinera ? '#E53935' : undefined }} />
+                      style={{
+                        marginTop: 4,
+                        background: !form.equipo || cargandoUnidadesMineras ? '#ECEFF1' : undefined,
+                        borderColor: fieldErrors.unidadMinera ? '#E53935' : undefined,
+                      }}
+                    >
+                      <option value="">
+                        {!form.equipo
+                          ? 'Seleccione primero un equipo'
+                          : cargandoUnidadesMineras
+                            ? 'Cargando unidades mineras...'
+                            : unidadesMinerasReales.length === 0
+                              ? 'No hay unidades mineras activas disponibles'
+                              : '-- Seleccionar unidad minera --'}
+                      </option>
+                      {unidadesMinerasReales.map(unidad => (
+                        <option key={unidad.id} value={unidad.id}>
+                          {unidad.codigo} - {unidad.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    {errorUnidadesMineras && (
+                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                        No se pudieron cargar las unidades mineras: {errorUnidadesMineras}
+                      </div>
+                    )}
                     {fieldErrors.unidadMinera?.[0] && (
                       <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.unidadMinera[0]}</div>
                     )}
@@ -1019,8 +1711,8 @@ export const CrearOTPage = ({ onNav }) => {
                   <div className="label" style={{ fontSize: 12 }}>Contexto comercial</div>
                   <div className="ot-context-box" style={{ marginTop: 4 }}>
                     {needsCliente
-                      ? (cliente ? <>{cliente.razonSocial}{contrato && <><br/><span className="muted">{contrato.numero}</span></>}</> : <span className="muted">Sin cliente</span>)
-                      : (equipo ? `Equipo interno: ${equipo.cod}` : <span className="muted">Sin equipo</span>)
+                      ? (cliente ? <>{nombreCliente(cliente)}{contrato && <><br/><span className="muted">{contrato.numero}</span></>}</> : <span className="muted">Sin cliente</span>)
+                      : (equipo ? `Equipo interno: ${equipo.codigo || equipo.cod}` : <span className="muted">Sin equipo</span>)
                     }
                   </div>
                 </div>
@@ -1029,7 +1721,7 @@ export const CrearOTPage = ({ onNav }) => {
               {/* C2 — Horómetro de apertura */}
               <div style={{ padding: '12px 12px 8px' }}>
                 <div className="label" style={{ fontSize: 12 }}>
-                  Horómetro actual del equipo{form.lugarEjecucion === 'Campo_Mina' ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+                  Horómetro actual del equipo{(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) ? <span style={{ color: '#ef4444' }}> *</span> : ''}
                 </div>
                 {horometroSugerido != null && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 4px' }}>
@@ -1045,7 +1737,7 @@ export const CrearOTPage = ({ onNav }) => {
                     style={{
                       width: 200, fontFamily: 'monospace',
                       background: !form.equipo ? '#ECEFF1' : undefined,
-                      borderColor: form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura
+                      borderColor: (form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura
                         ? '#E53935' : undefined,
                     }}
                   />
@@ -1053,9 +1745,9 @@ export const CrearOTPage = ({ onNav }) => {
                     horas — registrar el horómetro físico al iniciar la OT
                   </span>
                 </div>
-                {form.lugarEjecucion === 'Campo_Mina' && form.equipo && !form.horometroApertura && (
+                {(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura && (
                   <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
-                    El horómetro de apertura es obligatorio para OTs en campo.
+                    El horómetro actual es obligatorio para OTs en campo, bajo contrato o sobre equipo interno.
                   </div>
                 )}
               </div>
@@ -1160,11 +1852,24 @@ export const CrearOTPage = ({ onNav }) => {
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Técnico responsable *</div>
                   <select className="input" value={form.tecnico}
+                    disabled={cargandoTecnicos || !sesionOperativa.permiteEscritura}
                     onChange={e => set('tecnico', e.target.value)}
-                    style={{ marginTop: 4 }}>
-                    <option value="">-- Seleccionar técnico --</option>
-                    {D.tecnicos.map(t => <option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
+                    style={{
+                      marginTop: 4,
+                      background: cargandoTecnicos || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined,
+                      borderColor: fieldErrors.tecnico ? '#E53935' : undefined,
+                    }}>
+                    <option value="">{cargandoTecnicos ? 'Cargando técnicos...' : '-- Seleccionar técnico --'}</option>
+                    {tecnicosReales.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}
                   </select>
+                  {errorTecnicos && (
+                    <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                      No se pudieron cargar los técnicos: {errorTecnicos}
+                    </div>
+                  )}
+                  {fieldErrors.tecnico?.[0] && (
+                    <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.tecnico[0]}</div>
+                  )}
                 </div>
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Fecha Programada de Inicio *</div>
@@ -1226,6 +1931,11 @@ export const CrearOTPage = ({ onNav }) => {
                 onPatch={(patch) => patchSegmento(si, patch)}
                 onRemove={() => removeSegmento(si)}
                 repuestosDB={D.repuestos}
+                tiposServicio={tiposServicioInterno}
+                cargandoTiposServicio={cargandoTiposServicio}
+                errorTiposServicio={errorTiposServicio}
+                tecnicos={tecnicosReales}
+                cargandoTecnicos={cargandoTecnicos}
               />
             ))}
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
@@ -1259,15 +1969,9 @@ export const CrearOTPage = ({ onNav }) => {
         centroCosto={form.centro_costo}
         objetoCostoId={form.objeto_costo_id}
         valid={valid}
+        guardando={guardando}
         onCancel={() => onNav('ots')}
-        onSave={() => setCreada({
-          ...form,
-          backlogs,
-          segmentos,
-          fechaPrimerLaborReal: null,
-          ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
-          horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
-        })}
+        onSave={guardarOT}
       />
       <BacklogDrawer
         open={drawerOpen}
@@ -1276,6 +1980,7 @@ export const CrearOTPage = ({ onNav }) => {
         onToggle={toggleBacklog}
         onClose={() => setDrawerOpen(false)}
       />
+      </fieldset>
     </div>
   );
 };

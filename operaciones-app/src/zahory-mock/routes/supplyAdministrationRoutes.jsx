@@ -26,26 +26,26 @@ export function renderSupplyAdministrationRoute(route, context) {
   const { onNavigate, setCurrentOT } = context;
 
   switch (route) {
-    case 'solicitudes': return <AdministrativeAppLinkPage title="Solicitudes SOLPE" adminRoute="solpe" />;
+    case 'solicitudes': return <><AdministrativeAppLinkPage title="Solicitudes SOLPE" adminRoute="solpe" /><SolicitudesPage onNav={onNavigate} /></>;
     case 'almacen-reservas': return <PlaceholderPage title="Reserva de Repuestos" subtitle="Reserva de ítems de stock vinculados a una OT específica. Bloquea el ítem hasta consumo o liberación." />;
-    case 'almacen-movimientos': return <AdministrativeAppLinkPage title="Entradas y Salidas" adminRoute="inventario" />;
-    case 'almacen-alertas': return <AdministrativeAppLinkPage title="Stock Mínimos y Alertas" adminRoute="inventario" />;
-    case 'compras-proveedores': return <AdministrativeAppLinkPage title="Proveedores" adminRoute="proveedores" />;
-    case 'compras-cotizaciones': return <AdministrativeAppLinkPage title="Cotizaciones Compra" adminRoute="cot_compras" />;
-    case 'compras-oc': return <AdministrativeAppLinkPage title="Órdenes de Compra" adminRoute="ordenes_compra" />;
+    case 'almacen-movimientos': return <><AdministrativeAppLinkPage title="Entradas y Salidas" adminRoute="inventario" /><PlaceholderPage title="Entradas & Salidas" /></>;
+    case 'almacen-alertas': return <><AdministrativeAppLinkPage title="Stock Mínimos y Alertas" adminRoute="inventario" /><PlaceholderPage title="Stock Mínimos & Alertas" /></>;
+    case 'compras-proveedores': return <><AdministrativeAppLinkPage title="Proveedores" adminRoute="proveedores" /><PlaceholderPage title="Proveedores" /></>;
+    case 'compras-cotizaciones': return <><AdministrativeAppLinkPage title="Cotizaciones Compra" adminRoute="cot_compras" /><PlaceholderPage title="Cotizaciones Compra" /></>;
+    case 'compras-oc': return <><AdministrativeAppLinkPage title="Órdenes de Compra" adminRoute="ordenes_compra" /><PlaceholderPage title="Órdenes de Compra" /></>;
     case 'compras-importaciones': return <PlaceholderPage title="Compras e Importaciones" />;
-    case 'compras-recepciones': return <AdministrativeAppLinkPage title="Recepciones" adminRoute="recepciones" />;
+    case 'compras-recepciones': return <><AdministrativeAppLinkPage title="Recepciones" adminRoute="recepciones" /><PlaceholderPage title="Recepciones" /></>;
 
     case 'consolidado': return <ConsolidadoPage />;
-    case 'finanzas-cxc': return <AdministrativeAppLinkPage title="Cuentas por Cobrar" adminRoute="cxc" />;
-    case 'finanzas-cxp': return <AdministrativeAppLinkPage title="Cuentas por Pagar" adminRoute="cxp" />;
-    case 'finanzas-tesoreria': return <AdministrativeAppLinkPage title="Tesorería" adminRoute="tesoreria" />;
+    case 'finanzas-cxc': return <><AdministrativeAppLinkPage title="Cuentas por Cobrar" adminRoute="cxc" /><PlaceholderPage title="Cuentas por Cobrar" /></>;
+    case 'finanzas-cxp': return <><AdministrativeAppLinkPage title="Cuentas por Pagar" adminRoute="cxp" /><PlaceholderPage title="Cuentas por Pagar" /></>;
+    case 'finanzas-tesoreria': return <><AdministrativeAppLinkPage title="Tesorería" adminRoute="tesoreria" /><PlaceholderPage title="Tesorería" /></>;
     case 'ots-costos':
     case 'costos': return <CostosPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
     case 'clientes': return <ClientesContratosPage />;
     case 'equipos': return <EquiposPage />;
     case 'proyectos': return <ProyectosTarifasPage />;
-    case 'usuarios': return <AdministrativeAppLinkPage title="Usuarios y Roles" adminRoute="usuarios" />;
+    case 'usuarios': return <><AdministrativeAppLinkPage title="Usuarios y Roles" adminRoute="usuarios" /><UsuariosPage /></>;
     case 'configuracion':
     case 'config': return <ConfiguracionPage />;
     case 'docs': return <DocsPage />;

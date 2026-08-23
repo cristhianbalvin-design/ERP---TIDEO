@@ -626,6 +626,19 @@ function Cuentas() {
   const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
   const industriasDisponibles = [...new Set(cuentas.map(c => c.industria).filter(Boolean).filter(i => i !== 'Por definir'))].sort();
   const responsablesDisponibles = [...new Set(cuentas.map(c => c.responsable_comercial).filter(Boolean).filter(r => r !== 'Sin asignar'))].sort();
+  const primerContactoPorCuenta = useMemo(() => {
+    const contactosPorCuenta = {};
+    for (const contacto of contactos) {
+      if (!contacto.cuenta_id) continue;
+      const actual = contactosPorCuenta[contacto.cuenta_id];
+      const contactoEsPrincipal = contacto.principal || contacto.es_principal;
+      const actualEsPrincipal = actual?.principal || actual?.es_principal;
+      if (!actual || (contactoEsPrincipal && !actualEsPrincipal)) {
+        contactosPorCuenta[contacto.cuenta_id] = contacto;
+      }
+    }
+    return contactosPorCuenta;
+  }, [contactos]);
 
   const cuentasBase = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const cuentasFiltradas = cuentasBase.filter(c => {
@@ -700,6 +713,7 @@ function Cuentas() {
         )}
         {cuentasFiltradas.map(c => {
           const logoUrl = getCuentaLogo(c);
+          const primerContacto = primerContactoPorCuenta[c.id];
           return (
             <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
               <div className="account-logo-wrap">
@@ -726,6 +740,25 @@ function Cuentas() {
                   <div><span>Industria</span><strong>{c.industria || 'Por definir'}</strong></div>
                   <div><span>Responsable</span><strong>{c.responsable_comercial || 'Sin asignar'}</strong></div>
                   <div><span>Última compra</span><strong>{c.fecha_ultima_compra || '—'}</strong></div>
+                </div>
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+                  {!primerContacto ? (
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', minHeight: 42 }}>Sin contacto registrado</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 42, justifyContent: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg)' }}>
+                        <span style={{ width: 14, height: 14, color: 'var(--fg-muted)', display: 'inline-flex' }}>{I.userCheck}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.nombre}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, overflow: 'hidden' }}>
+                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} title={primerContacto.telefono}>
+                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.phone}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.telefono || 'Sin teléfono'}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }} title={primerContacto.email}>
+                          <span style={{ width: 12, height: 12, display: 'inline-flex' }}>{I.send}</span> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{primerContacto.email || 'Sin correo'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="account-footer">
                   <div className="row" style={{gap:8}}>
@@ -13508,8 +13541,8 @@ function workerTurno(turnos, worker, fechaStr = null) {
   };
 }
 
-function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12, retencionesAcumuladas = 0) {
-  const rentaBrutaAnual = (remuneracionBrutaMensual * 12);
+function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12, retencionesAcumuladas = 0, ingresoAnualAdicional = 0) {
+  const rentaBrutaAnual = (remuneracionBrutaMensual * 12) + Number(ingresoAnualAdicional || 0);
   const base = rentaBrutaAnual - (7 * UIT);
   if (base <= 0) return 0;
   let impuesto = 0;
@@ -13680,8 +13713,10 @@ function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, 
   if (Boolean(trabajador?.cargo_confianza)) return [];
   const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
   const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
-  const pIniOriginal = new Date(periodo.anio, periodo.mes - 1, 1);
-  const pFin = new Date(periodo.anio, periodo.mes, 0);
+  // fecha_inicio/fecha_fin distinguen correctamente las quincenas. Usar el
+  // mes completo aquí hacía que una alerta de Q1/Q2 revisara días ajenos al
+  // período seleccionado.
+  const { inicio: pIniOriginal, fin: pFin } = rangoDiasPeriodo(periodo);
   const dtIng = trabajador.fecha_ingreso ? new Date(`${trabajador.fecha_ingreso}T00:00:00`) : null;
   const pIni = (dtIng && dtIng > pIniOriginal) ? dtIng : pIniOriginal;
   const dtCese = trabajador.fecha_cese ? new Date(`${trabajador.fecha_cese}T00:00:00`) : null;
@@ -13699,8 +13734,69 @@ function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, 
   return faltantes;
 }
 
+// Una incidencia minera solo puede ser falta de subida cuando la fecha cae en
+// el tramo de trabajo del ciclo. Los días de bajada nunca son faltas.
+function esDiaSubidaCiclo(fecha, fechaInicioCiclo, diasTrabajo, diasDescanso) {
+  const t = Number(diasTrabajo) || 0;
+  const d = Number(diasDescanso) || 0;
+  if (!fecha || !fechaInicioCiclo || t <= 0 || t + d <= 0) return false;
+  const diff = Math.floor((new Date(`${fecha}T00:00:00`) - new Date(`${fechaInicioCiclo}T00:00:00`)) / 86400000);
+  const pos = ((diff % (t + d)) + (t + d)) % (t + d);
+  return pos < t;
+}
+
+function resolverAsignacionParaFeriado(fecha, trabajador, datosNomina, asignaciones = []) {
+  const vigente = asignaciones
+    .filter(a => a?.tipo_tramo !== 'suspension_perfecta' && a?.fecha_inicio <= fecha && (!a?.fecha_fin || a.fecha_fin >= fecha))
+    .sort((a, b) => String(b.fecha_inicio || '').localeCompare(String(a.fecha_inicio || '')))[0];
+  if (vigente) return vigente;
+  return {
+    regimen_jornada: datosNomina?.regimen_jornada || trabajador?.regimen_jornada || 'general',
+    dias_ciclo_trabajo: datosNomina?.dias_ciclo_trabajo ?? trabajador?.dias_ciclo_trabajo,
+    dias_ciclo_descanso: datosNomina?.dias_ciclo_descanso ?? trabajador?.dias_ciclo_descanso,
+  };
+}
+
+function calcularSobretasaFeriados({ registros = [], valorDia = 0, trabajador, datosNomina, asignaciones = [], configuracionFeriados = {} }) {
+  const {
+    feriadoPorFecha = new Map(),
+    politicaDefaultPorRegimen = new Map(),
+    politicaOverridePorFeriadoRegimen = new Map(),
+  } = configuracionFeriados;
+  const detalles = [];
+  const ausenciasPolitica = [];
+
+  registros.filter(registro => registro?.estado === 'completo').forEach(registro => {
+    const feriado = feriadoPorFecha.get(registro.fecha);
+    if (!feriado) return;
+
+    const asignacion = resolverAsignacionParaFeriado(registro.fecha, trabajador, datosNomina, asignaciones);
+    const regimen = regimenDesdeAsignacion(asignacion);
+    if (registro.descanso_sustitutorio_otorgado === true) {
+      detalles.push({ fecha: registro.fecha, feriado_id: feriado.id, nombre: feriado.nombre, regimen, politica: 'sin_pago_adicional', origen_politica: 'descanso_sustitutorio', monto: 0 });
+      return;
+    }
+
+    const keyOverride = `${feriado.id}:${regimen}`;
+    const politicaOverride = politicaOverridePorFeriadoRegimen.get(keyOverride);
+    const politicaDefault = politicaDefaultPorRegimen.get(regimen);
+    const politica = politicaOverride || politicaDefault || 'sin_pago_adicional';
+    const origenPolitica = politicaOverride ? 'override' : politicaDefault ? 'default' : 'ausente';
+    const multiplicador = politica === 'triple' ? 2 : politica === 'doble' ? 1 : 0;
+    const monto = valorDia * multiplicador;
+    detalles.push({ fecha: registro.fecha, feriado_id: feriado.id, nombre: feriado.nombre, regimen, politica, origen_politica: origenPolitica, monto });
+    if (origenPolitica === 'ausente') ausenciasPolitica.push({ regimen, fecha: registro.fecha, feriado_id: feriado.id, nombre: feriado.nombre });
+  });
+
+  return {
+    sobretasaFeriado: detalles.reduce((total, detalle) => total + detalle.monto, 0),
+    detalleSobretasaFeriado: detalles,
+    ausenciasPoliticaFeriado: ausenciasPolitica,
+  };
+}
+
 // Calcula remuneración de un tramo (sin AFP/IR/cargas — se aplican sobre el total)
-function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno) {
+function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados = {}) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
   const finStr = _isoDate(fechaSegFin);
@@ -13748,16 +13844,27 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   if (asistidos > esperados) asistidos = esperados;
 
   if (asignacion.tipo_tramo === 'suspension_perfecta') {
-    return { tipo: 'suspension_perfecta', fechaIni: iniStr, fechaFin: finStr, diasCal, esperados, asistidos, sueldoTramo: 0, descFaltas: 0, descTardanzas: 0, addHorasExtra: 0, tramo1Min: 0, tramo2Min: 0, addTramo1: 0, addTramo2: 0, faltas: 0, justificadas: 0, tardanzas: 0, minutosTardanza: 0 };
+    return { tipo: 'suspension_perfecta', fechaIni: iniStr, fechaFin: finStr, diasCal, esperados, asistidos, sueldoTramo: 0, descFaltas: 0, descTardanzas: 0, addHorasExtra: 0, sobretasa_feriado: 0, detalle_sobretasa_feriado: [], ausencias_politica_feriado: [], tramo1Min: 0, tramo2Min: 0, addTramo1: 0, addTramo2: 0, faltas: 0, justificadas: 0, tardanzas: 0, minutosTardanza: 0 };
   }
 
-  const faltas          = regsTramo.filter(r => r.estado === 'falta').length;
-  const justificadas    = regsTramo.filter(r => r.estado === 'falta_justificada').length;
+  const esTramoMinero   = asignacion.regimen_jornada === 'ciclo_acumulativo';
+  const faltasReales    = regsTramo.filter(r => r.estado === 'falta').length;
+  const justificadasReales = regsTramo.filter(r => r.estado === 'falta_justificada').length;
+  // Las incidencias de un ciclo minero se compensan en el balance del roster
+  // (menos días en mina/descanso ganado), no mediante descuento monetario de
+  // nómina. Se conservan separadas para trazabilidad, pero no se mezclan con
+  // las faltas ni descuentos propios de planilla.
+  const faltasRoster = esTramoMinero
+    ? regsTramo.filter(r => r.estado === 'falta' && esDiaSubidaCiclo(r.fecha, asignacion.fecha_inicio_ciclo, asignacion.dias_ciclo_trabajo, asignacion.dias_ciclo_descanso)).length
+    : 0;
+  const faltas          = esTramoMinero ? 0 : faltasReales;
+  const justificadas    = esTramoMinero ? 0 : justificadasReales;
   const tardanzas       = regsTramo.filter(r => r.estado === 'tardanza').length;
   const minutosTardanza = regsTramo.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
-  const descFaltas      = contarDiasDescontablesAsistencia(regsTramo) * valorDia;
+  const descFaltas      = esTramoMinero ? 0 : contarDiasDescontablesAsistencia(regsTramo) * valorDia;
   const descTardanzas   = minutosTardanza * valorMinuto;
   const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(regsTramo, valorHora);
+  const sobretasa = calcularSobretasaFeriados({ registros: regsTramo, valorDia, trabajador: null, datosNomina: asignacion, asignaciones: [asignacion], configuracionFeriados });
 
   let sueldoTramo;
   let diasComp = null;
@@ -13774,8 +13881,11 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
     fechaIni: iniStr, fechaFin: finStr, diasCal, diasComp,
     esperados, asistidos,
     sueldoTramo, descFaltas, descTardanzas, addHorasExtra,
+    sobretasa_feriado: sobretasa.sobretasaFeriado,
+    detalle_sobretasa_feriado: sobretasa.detalleSobretasaFeriado,
+    ausencias_politica_feriado: sobretasa.ausenciasPoliticaFeriado,
     tramo1Min, tramo2Min, addTramo1, addTramo2,
-    faltas, justificadas, tardanzas, minutosTardanza,
+    faltas, justificadas, faltasRoster, tardanzas, minutosTardanza,
   };
 }
 
@@ -13796,12 +13906,13 @@ function reconciliarQ2(resultadoMesCompleto, q1Row) {
     desc_faltas: restar('desc_faltas'),
     desc_tardanzas: restar('desc_tardanzas'),
     add_horas_extra: restar('add_horas_extra'),
+    sobretasa_feriado: restar('sobretasa_feriado'),
     asignacion_familiar: restar('asignacion_familiar'),
     bonif_altitud: restar('bonif_altitud'),
     remuneracion_bruta: restar('remuneracion_bruta'),
     // sueldo_proporcional no se persiste en nomina_detalle; se deriva como residual para
     // que el desglose mostrado siga sumando exactamente a remuneracion_bruta reconciliada.
-    sueldo_proporcional: restar('remuneracion_bruta') - restar('asignacion_familiar') - restar('bonif_altitud') + restar('desc_faltas') + restar('desc_tardanzas') - restar('add_horas_extra'),
+    sueldo_proporcional: restar('remuneracion_bruta') - restar('asignacion_familiar') - restar('bonif_altitud') - restar('sobretasa_feriado') + restar('desc_faltas') + restar('desc_tardanzas') - restar('add_horas_extra'),
     aporte_afp: restar('aporte_afp'),
     comision_flujo: restar('comision_flujo', 'comision_afp_flujo'),
     prima_seguro: restar('prima_seguro', 'prima_seguro_afp'),
@@ -13838,6 +13949,7 @@ function incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimen
     sueldo_base: sueldoBase, sueldo_proporcional: 0,
     valor_dia: 0, valor_hora: 0,
     desc_faltas: 0, desc_tardanzas: 0, add_horas_extra: 0,
+    sobretasa_feriado: 0, detalle_sobretasa_feriado: [], ausencias_politica_feriado: [],
     asignacion_familiar: 0, bonif_altitud: 0,
     remuneracion_bruta: 0,
     sistema_pensionario: datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP',
@@ -13855,19 +13967,19 @@ function incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimen
 }
 
 // Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresión) si no.
-function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0) {
+function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0, configuracionFeriados = {}) {
   if (!asigsTrabajador || asigsTrabajador.length === 0) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
+    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, []);
   }
 
   const segmentos = segmentarMesPorAsignaciones(asigsTrabajador, periodo, trabajador);
 
   if (!segmentos) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
+    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador);
   }
 
   if (segmentos.error) {
-    const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo) || {};
+    const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador) || {};
     return { ...base, error_historial: segmentos.error, error_historial_detail: segmentos.detail, tramos: null, multi_tramo: false };
   }
 
@@ -13875,14 +13987,14 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   if (segmentos.length === 1) {
     const { asignacion } = segmentos[0];
     if (asignacion.tipo_tramo === 'suspension_perfecta') {
-      const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo) || {};
-      return { ...base, sueldo_proporcional: 0, remuneracion_bruta: 0, total_descuentos: 0, neto: 0, essalud: 0, cts_mensualizado: 0, gratificacion_mensualizada: 0, bonif_extraordinaria: 0, vacaciones_mensualizadas: 0, total_cargas: 0, costo_real_empresa: 0, tramos: [calcularRemuneracionTramo(segmentos[0], 0, 0, 0, registros, turno)], multi_tramo: false, tiene_suspension: true };
+      const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador) || {};
+      return { ...base, sueldo_proporcional: 0, remuneracion_bruta: 0, total_descuentos: 0, neto: 0, essalud: 0, cts_mensualizado: 0, gratificacion_mensualizada: 0, bonif_extraordinaria: 0, vacaciones_mensualizadas: 0, total_cargas: 0, costo_real_empresa: 0, tramos: [calcularRemuneracionTramo(segmentos[0], 0, 0, 0, registros, turno, configuracionFeriados)], multi_tramo: false, tiene_suspension: true };
     }
     const workerAdaptado = { ...trabajador, regimen_jornada: asignacion.regimen_jornada || trabajador.regimen_jornada, dias_ciclo_trabajo: asignacion.dias_ciclo_trabajo ?? trabajador.dias_ciclo_trabajo, dias_ciclo_descanso: asignacion.dias_ciclo_descanso ?? trabajador.dias_ciclo_descanso, fecha_inicio_ciclo: asignacion.fecha_inicio_ciclo ?? trabajador.fecha_inicio_ciclo };
-    const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo);
+    const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador);
     if (!result) return null;
     const sb = Number(datosNomina?.sueldo_base || trabajador.remuneracion || 3000);
-    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno)], multi_tramo: false };
+    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno, configuracionFeriados)], multi_tramo: false };
   }
 
   // ── Multi-tramo ───────────────────────────────────────────────────────────────
@@ -13901,7 +14013,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     const q1Row = q1Snapshot?.disponible ? q1Snapshot.porTrabajador[trabajador.id] : null;
     if (!q1Row) return incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, trabajador.regimen_jornada || 'general', sueldoBase);
     const periodoMesCompleto = { anio: periodo.anio, mes: periodo.mes, quincena: null };
-    const mesCompleto = calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo);
+    const mesCompleto = calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo, configuracionFeriados);
     if (!mesCompleto) return null;
     if (mesCompleto.incompleto_ciclo || mesCompleto.incompleto_historial) return { ...mesCompleto, periodo };
     return { ...reconciliarQ2(mesCompleto, q1Row), periodo };
@@ -13916,18 +14028,22 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     }
   }
 
-  const tramosCalc = segmentos.map(seg => calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno));
+  const tramosCalc = segmentos.map(seg => calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados));
 
   const sueldoProporcional   = tramosCalc.reduce((s, t) => s + t.sueldoTramo, 0) * factorQuincena;
   const descFaltasTotal      = tramosCalc.reduce((s, t) => s + t.descFaltas, 0);
   const descTardanzasTotal   = tramosCalc.reduce((s, t) => s + t.descTardanzas, 0);
   const addHorasExtraTotal   = tramosCalc.reduce((s, t) => s + t.addHorasExtra, 0);
+  const sobretasaFeriadoTotal = tramosCalc.reduce((s, t) => s + (t.sobretasa_feriado || 0), 0);
+  const detalleSobretasaFeriado = tramosCalc.flatMap(t => t.detalle_sobretasa_feriado || []);
+  const ausenciasPoliticaFeriado = tramosCalc.flatMap(t => t.ausencias_politica_feriado || []);
   const tramo1MinTotal       = tramosCalc.reduce((s, t) => s + (t.tramo1Min || 0), 0);
   const tramo2MinTotal       = tramosCalc.reduce((s, t) => s + (t.tramo2Min || 0), 0);
   const addTramo1Total       = tramosCalc.reduce((s, t) => s + (t.addTramo1 || 0), 0);
   const addTramo2Total       = tramosCalc.reduce((s, t) => s + (t.addTramo2 || 0), 0);
   const faltasTotal          = tramosCalc.reduce((s, t) => s + (t.faltas || 0), 0);
   const faltasJustTotal      = tramosCalc.reduce((s, t) => s + (t.justificadas || 0), 0);
+  const faltasRosterTotal    = tramosCalc.reduce((s, t) => s + (t.faltasRoster || 0), 0);
   const tardanzasTotal       = tramosCalc.reduce((s, t) => s + (t.tardanzas || 0), 0);
   const minutosTardanzaTotal = tramosCalc.reduce((s, t) => s + (t.minutosTardanza || 0), 0);
   const diasCompTotal        = tramosCalc.reduce((s, t) => s + (t.diasComp || 0), 0);
@@ -13936,7 +14052,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const asignacionFamiliar = asignacionFamiliarBase * factorQuincena;
   const bonifAltitud = (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * factorQuincena;
 
-  const remuneracionBruta = sueldoProporcional - descFaltasTotal - descTardanzasTotal + addHorasExtraTotal + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
+  const remuneracionBruta = sueldoProporcional - descFaltasTotal - descTardanzasTotal + addHorasExtraTotal + sobretasaFeriadoTotal + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
 
   const sistema          = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
   const afpNombre        = datosNomina?.afp_nombre || trabajador.afp_nombre || 'Integra';
@@ -13953,10 +14069,6 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const descPrestamo     = Number(datosNomina?.cuota_prestamo_mes || trabajador.cuota_prestamo_mes || 0);
   const descAnticipo     = Number(datosNomina?.anticipo_periodo || 0);
   const descJudicial     = Number(datosNomina?.descuento_judicial || trabajador.descuento_judicial || 0);
-  const retencionIR      = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente));
-  const totalDescuentos  = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
-  const neto = remuneracionBruta - totalDescuentos;
-
   const essalud  = esQ1 ? 0 : remuneracionBruta * 0.09;
   const esMicro  = regimen_laboral_empresa === 'microempresa';
   const esPequena = regimen_laboral_empresa === 'pequena_empresa';
@@ -13965,6 +14077,11 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const baseComputable      = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion       = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
+  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
+  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const retencionIR      = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
+  const totalDescuentos  = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
+  const neto = remuneracionBruta - totalDescuentos;
   const remComputable       = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts         = tieneCts && !esQ1 ? remComputable / (esPequena ? 24 : 12) : 0;
   const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
@@ -13999,12 +14116,14 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     dias_computables: diasCompTotal > 0 ? diasCompTotal : null,
     dias_computables_display: diasComputablesDisplay,
     faltas_injustificadas: faltasTotal, faltas_justificadas: faltasJustTotal,
+    faltas_roster: faltasRosterTotal,
     tardanzas: tardanzasTotal, minutos_tardanza_total: minutosTardanzaTotal,
     horas_extra_total_min: tramo1MinTotal + tramo2MinTotal, horas_extra_tramo1_min: tramo1MinTotal, horas_extra_tramo2_min: tramo2MinTotal,
     add_tramo1: addTramo1Total, add_tramo2: addTramo2Total,
     sueldo_base: sueldoBase, sueldo_proporcional: sueldoProporcional,
     valor_dia: valorDia, valor_hora: valorHora,
     desc_faltas: descFaltasTotal, desc_tardanzas: descTardanzasTotal, add_horas_extra: addHorasExtraTotal,
+    sobretasa_feriado: sobretasaFeriadoTotal, detalle_sobretasa_feriado: detalleSobretasaFeriado, ausencias_politica_feriado: ausenciasPoliticaFeriado,
     asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
     remuneracion_bruta: remuneracionBruta,
     ingreso_extra_remunerativo: Number(montoIngresoRemunerativo || 0),
@@ -14022,7 +14141,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}, q1Snapshot = null, montoIngresoRemunerativo = 0) {
+function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg = {}, q1Snapshot = null, montoIngresoRemunerativo = 0, configuracionFeriados = {}, asignacionesTrabajador = []) {
   if (esModalidadHonorarios(trabajador)) return null;
   const {
     regimen_laboral_empresa = 'general',
@@ -14048,7 +14167,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     const q1Row = q1Snapshot?.disponible ? q1Snapshot.porTrabajador[trabajador.id] : null;
     if (!q1Row) return incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimenJornada, sueldoBase);
     const periodoMesCompleto = { anio: periodo.anio, mes: periodo.mes, quincena: null };
-    const mesCompleto = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo);
+    const mesCompleto = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodoMesCompleto, empresaCfg, null, montoIngresoRemunerativo, configuracionFeriados, asignacionesTrabajador);
     if (!mesCompleto) return null;
     if (mesCompleto.incompleto_ciclo) return { ...mesCompleto, periodo };
     return { ...reconciliarQ2(mesCompleto, q1Row), periodo };
@@ -14071,6 +14190,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
       sueldo_base: sueldoBase, sueldo_proporcional: 0,
       valor_dia: 0, valor_hora: 0,
       desc_faltas: 0, desc_tardanzas: 0, add_horas_extra: 0,
+      sobretasa_feriado: 0, detalle_sobretasa_feriado: [], ausencias_politica_feriado: [],
       asignacion_familiar: 0, bonif_altitud: 0,
       remuneracion_bruta: 0,
       sistema_pensionario: datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP',
@@ -14088,6 +14208,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   }
   let esperados = 0;
   let asistidos = 0;
+  let faltasMinerasEnSubida = 0;
   const mapDias = ['dom','lun','mar','mie','jue','vie','sab'];
   const diasLaborablesSemana = turno?.dias_laborables || ['lun','mar','mie','jue','vie','sab'];
 
@@ -14122,6 +14243,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
           const reg = registrosNominaLocal
             .filter(r => r.fecha === iso)
             .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
+          if (reg?.estado === 'falta') faltasMinerasEnSubida++;
           if (!reg || !reg.es_falta) asistidos++;
         }
       }
@@ -14170,23 +14292,46 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   // Mismo criterio que sinFiscalizacionDiariaLocal más arriba: solo cargo_confianza.
   const sinFiscalizacionDiaria = Boolean(trabajador.cargo_confianza);
   const requiereAutHe = Boolean(empresaCfg?.requiere_autorizacion_he);
-  const registrosNomina = sinFiscalizacionDiaria ? [] : registros.map(r => {
+  // El snapshot de nómina contiene el mes calendario completo para que Q2 pueda
+  // reconciliarse contra Q1. Cada ejecución del motor debe usar solo el rango del
+  // período que recibe; la recursión de Q2 pasa un período mensual sintético y,
+  // por tanto, conserva intencionalmente todo el mes.
+  const { inicio: inicioRegistrosNomina, fin: finRegistrosNomina } = rangoDiasPeriodo(periodo);
+  const inicioRegistrosNominaIso = _isoDate(inicioRegistrosNomina);
+  const finRegistrosNominaIso = _isoDate(finRegistrosNomina);
+  const registrosDelPeriodo = registros.filter(r => (
+    r.fecha >= inicioRegistrosNominaIso && r.fecha <= finRegistrosNominaIso
+  ));
+  const registrosNomina = sinFiscalizacionDiaria ? [] : registrosDelPeriodo.map(r => {
     if (r.es_dia_compensado) return { ...r, estado: 'dia_compensado', es_falta: false, horas_extra_min: 0 };
     if (requiereAutHe && Number(r.horas_extra_min || 0) > 0 && !r.he_autorizada) return { ...r, horas_extra_min: 0, horas_extra: 0 };
     return r;
   });
   const asistencias = asistidos;
-  const faltasInjustificadas = registrosNomina.filter(r => r.estado === 'falta').length;
-  const faltasJustificadas = registrosNomina.filter(r => r.estado === 'falta_justificada').length;
+  const faltasReales = registrosNomina.filter(r => r.estado === 'falta').length;
+  const faltasJustificadasReales = registrosNomina.filter(r => r.estado === 'falta_justificada').length;
+  // En régimen minero estas incidencias pertenecen al balance del roster. No
+  // son faltas de nómina y no deben reducir la remuneración ni aparecer como
+  // tales en la grilla de planilla.
+  const faltasInjustificadas = esMinero ? 0 : faltasReales;
+  const faltasJustificadas = esMinero ? 0 : faltasJustificadasReales;
   const tardanzas = registrosNomina.filter(r => r.estado === 'tardanza').length;
   const minutosTardanza = registrosNomina.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
 
-  const descFaltas = contarDiasDescontablesAsistencia(registrosNomina) * valorDia;
+  const descFaltas = esMinero ? 0 : contarDiasDescontablesAsistencia(registrosNomina) * valorDia;
   const descTardanzas = minutosTardanza * valorMinuto;
   const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = sinFiscalizacionDiaria
     ? { tramo1Min: 0, tramo2Min: 0, addHorasExtra: 0, addTramo1: 0, addTramo2: 0 }
     : calcularHorasExtra(registrosNomina, valorHora);
   const horasExtraMin = tramo1Min + tramo2Min;
+  const sobretasa = calcularSobretasaFeriados({
+    registros: registrosNomina,
+    valorDia,
+    trabajador,
+    datosNomina,
+    asignaciones: asignacionesTrabajador,
+    configuracionFeriados,
+  });
 
   // Prorrateo por quincena (Q1): se compone multiplicativamente con factorProp (ingreso/cese),
   // no lo reemplaza. En Q2/mensual factorQuincena=1, deja todo bit a bit igual que antes.
@@ -14199,7 +14344,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 
   // Remuneración proporcional para minero si no completó ciclo
   const sueldoProporcional = (esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp) * factorQuincena;
-  const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
+  const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + sobretasa.sobretasaFeriado + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
 
   // ── Sistema previsional ──
   const sistema = datosNomina?.sistema_pensionario || trabajador.sistema_pensionario || 'AFP';
@@ -14220,10 +14365,6 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const descPrestamo = Number(datosNomina?.cuota_prestamo_mes || trabajador.cuota_prestamo_mes || 0);
   const descAnticipo = Number(datosNomina?.anticipo_periodo || 0);
   const descJudicial = Number(datosNomina?.descuento_judicial || trabajador.descuento_judicial || 0);
-  const retencionIR = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente));
-  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
-  const neto = remuneracionBruta - totalDescuentos;
-
   // ── Cargas empresa ──
   // En Q1 no se provisiona nada (ESSALUD, CTS, gratificación, bonif. extraordinaria,
   // vacaciones): se calculan/pagan en la 2da quincena sobre el mes completo.
@@ -14238,6 +14379,11 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const baseComputable = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
+  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
+  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const retencionIR = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
+  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
+  const neto = remuneracionBruta - totalDescuentos;
   // CTS: base computable + 1/6 de la gratificación semi-anual (según régimen empresa)
   const remComputable = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts = tieneCts && !esQ1 ? remComputable / (esPequena ? 24 : 12) : 0;
@@ -14253,12 +14399,16 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
     dias_laborables: diasLaborables, dias_asistidos: asistencias, dias_computables: diasComputables,
     dias_computables_display: diasComputablesDisplay,
     faltas_injustificadas: faltasInjustificadas, faltas_justificadas: faltasJustificadas,
+    faltas_roster: esMinero ? faltasMinerasEnSubida : 0,
     tardanzas, minutos_tardanza_total: minutosTardanza,
     horas_extra_total_min: horasExtraMin, horas_extra_tramo1_min: tramo1Min, horas_extra_tramo2_min: tramo2Min,
     add_tramo1: addTramo1, add_tramo2: addTramo2,
     sueldo_base: sueldoBase, sueldo_proporcional: sueldoProporcional,
     valor_dia: valorDia, valor_hora: valorHora,
     desc_faltas: descFaltas, desc_tardanzas: descTardanzas, add_horas_extra: addHorasExtra,
+    sobretasa_feriado: sobretasa.sobretasaFeriado,
+    detalle_sobretasa_feriado: sobretasa.detalleSobretasaFeriado,
+    ausencias_politica_feriado: sobretasa.ausenciasPoliticaFeriado,
     asignacion_familiar: asignacionFamiliar, bonif_altitud: bonifAltitud,
     remuneracion_bruta: remuneracionBruta,
     // Informativo (ya incluido en remuneracion_bruta) — desglose para boleta/detalle.
@@ -14460,6 +14610,16 @@ const BIO_MOTIVO_LABELS = {
   registro_existente_del_dia: 'Ya existe un registro ese dia',
 };
 
+const regimenDesdeAsignacion = (asignacion) => {
+  if (!asignacion || asignacion.regimen_jornada === 'general') return 'general';
+  return ({
+    '14x7': 'minero_14x7',
+    '20x10': 'minero_20x10',
+    '28x14': 'minero_28x14',
+    '2x1': 'minero_2x1',
+  })[`${Number(asignacion.dias_ciclo_trabajo)}x${Number(asignacion.dias_ciclo_descanso)}`] || 'ciclo_acumulativo';
+};
+
 function ControlAsistencia() {
   const {
     turnos, registrosAsistencia, setRegistrosAsistencia, personalOperativo, personalAdmin, empresa, addNotificacion, asignacionesJornada = [], setAsignacionesJornada, role, authUser,
@@ -14468,6 +14628,7 @@ function ControlAsistencia() {
     periodosNomina = [],
   } = useApp();
   const [tab, setTab] = useState('diaria');
+  const [vistaMensualSubTab, setVistaMensualSubTab] = useState('reporte');
   const [modalidadFiltro, setModalidadFiltro] = useState('todas'); // 'todas' | 'planilla' | 'honorarios'
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [filtroTrabajador, setFiltroTrabajador] = useState('');
@@ -14537,15 +14698,6 @@ function ControlAsistencia() {
   // Control de asistencia solo trabaja con personas que ya tienen una jornada
   // vigente para la fecha consultada. El valor espejo de personal_* no es una
   // asignación: la única fuente es personal_asignaciones_jornada.
-  const regimenDesdeAsignacion = (asignacion) => {
-    if (!asignacion || asignacion.regimen_jornada === 'general') return 'general';
-    return ({
-      '14x7': 'minero_14x7',
-      '20x10': 'minero_20x10',
-      '28x14': 'minero_28x14',
-      '2x1': 'minero_2x1',
-    })[`${Number(asignacion.dias_ciclo_trabajo)}x${Number(asignacion.dias_ciclo_descanso)}`] || 'ciclo_acumulativo';
-  };
   const asignacionVigentePorPersonal = new Map(
     asignacionesJornada
       .filter(a => a.tipo_tramo === 'normal' && a.fecha_inicio <= fecha && (!a.fecha_fin || a.fecha_fin >= fecha))
@@ -14635,6 +14787,11 @@ function ControlAsistencia() {
   ]);
   const [rosterRows, setRosterRows] = useState([]);
   const [rosterBusqueda, setRosterBusqueda] = useState('');
+  // El roster no debe inferir marcaciones desde la caché general de Asistencia:
+  // esa caché se refresca por día en la vista diaria/minera y puede contener un
+  // mes incompleto. Conservamos una carga propia, acotada exactamente al mes que
+  // se está mostrando, para que la grilla y los cálculos lean la misma fuente.
+  const [registrosRosterPeriodo, setRegistrosRosterPeriodo] = useState(null);
 
   const trabajadoresRosterVisibles = trabajadoresRoster.filter(t => {
     if (!coincideModalidad(t)) return false;
@@ -14664,6 +14821,49 @@ function ControlAsistencia() {
     getSnapshotsRoster(empresa.id, p.anio, p.mes).then(setRosterRows).catch(() => {});
   }, [empresa?.id, fecha, hayMinerosRoster, periodosNomina]);
 
+  const rosterPeriodoClave = rosterPeriodo
+    ? `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2, '0')}`
+    : null;
+  const registrosRosterListos = registrosRosterPeriodo?.periodo === rosterPeriodoClave
+    && !registrosRosterPeriodo?.cargando
+    && !registrosRosterPeriodo?.error;
+  const registrosParaRoster = registrosRosterListos ? registrosRosterPeriodo.registros : [];
+
+  useEffect(() => {
+    if (!empresa?.id || !rosterPeriodoClave || tab !== 'roster') return;
+    let cancelled = false;
+    const fechaInicio = `${rosterPeriodoClave}-01`;
+    const [anio, mes] = rosterPeriodoClave.split('-').map(Number);
+    const fechaFin = `${rosterPeriodoClave}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`;
+
+    setRegistrosRosterPeriodo(prev => prev?.periodo === rosterPeriodoClave
+      ? { ...prev, cargando: true }
+      : { periodo: rosterPeriodoClave, registros: [], cargando: true });
+
+    rrhhService.getAsistencia(empresa.id, fechaInicio, fechaFin, { strict: true, completa: true })
+      .then(registros => {
+        if (!cancelled) setRegistrosRosterPeriodo({ periodo: rosterPeriodoClave, registros, cargando: false });
+      })
+      .catch(() => {
+        // Una carga fallida nunca debe convertir la ausencia de caché en una
+        // "marcación por confirmar" falsa. Se deja la grilla sin alertas hasta
+        // que la siguiente apertura/reintento pueda obtener el rango real.
+        if (!cancelled) setRegistrosRosterPeriodo({ periodo: rosterPeriodoClave, registros: [], cargando: false, error: true });
+      });
+    return () => { cancelled = true; };
+  }, [empresa?.id, rosterPeriodoClave, tab]);
+
+  const sincronizarRegistroRoster = (registro) => {
+    const periodoRegistro = registro?.fecha?.slice(0, 7);
+    setRegistrosRosterPeriodo(prev => {
+      if (!prev || prev.periodo !== periodoRegistro) return prev;
+      return {
+        ...prev,
+        registros: [registro, ...prev.registros.filter(r => !(r.trabajador_id === registro.trabajador_id && r.fecha === registro.fecha))],
+      };
+    });
+  };
+
   const recalcularRoster = async () => {
     if (!empresa?.id || !rosterPeriodo) return;
     if (rosterPeriodo.estado === 'cerrado') {
@@ -14671,9 +14871,13 @@ function ControlAsistencia() {
     }
     setRosterLoading(true);
     try {
-      const regsDelPeriodo = registrosAsistencia.filter(r => r.fecha?.startsWith(`${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2,'0')}`));
-      const ciclos = await rrhhService.getCiclosMineros(empresa.id);
       const prefijoPeriodo = `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2,'0')}`;
+      const fechaFinPeriodo = `${prefijoPeriodo}-${String(new Date(rosterPeriodo.anio, rosterPeriodo.mes, 0).getDate()).padStart(2, '0')}`;
+      // Carga fresca y completa: no reutilizar registrosAsistencia, que puede
+      // tener solamente los días abiertos en las otras pestañas.
+      const regsDelPeriodo = await rrhhService.getAsistencia(empresa.id, `${prefijoPeriodo}-01`, fechaFinPeriodo, { strict: true, completa: true });
+      setRegistrosRosterPeriodo({ periodo: prefijoPeriodo, registros: regsDelPeriodo, cargando: false });
+      const ciclos = await rrhhService.getCiclosMineros(empresa.id);
       const ajustesAprobadosPeriodo = ajustesRoster.filter(a => a.estado === 'aprobado' && a.fecha?.startsWith(prefijoPeriodo));
       const rows = await calcularYGuardarRoster(empresa.id, rosterPeriodo.anio, rosterPeriodo.mes, trabajadoresRoster, regsDelPeriodo, ciclos, ajustesAprobadosPeriodo, role?.nombre || 'RRHH', rosterPeriodo.id, asignacionesJornada);
       setRosterRows(rows);
@@ -14881,7 +15085,9 @@ function ControlAsistencia() {
     setRecalculoDirigidoId(snapshot.personal_id);
     try {
       const prefijo = `${rosterPeriodo.anio}-${String(rosterPeriodo.mes).padStart(2, '0')}`;
-      const registrosDelPeriodo = registrosAsistencia.filter(r => r.fecha?.startsWith(prefijo));
+      const fechaFinPeriodo = `${prefijo}-${String(new Date(rosterPeriodo.anio, rosterPeriodo.mes, 0).getDate()).padStart(2, '0')}`;
+      const registrosDelPeriodo = await rrhhService.getAsistencia(empresa.id, `${prefijo}-01`, fechaFinPeriodo, { strict: true, completa: true });
+      setRegistrosRosterPeriodo({ periodo: prefijo, registros: registrosDelPeriodo, cargando: false });
       const ciclos = await rrhhService.getCiclosMineros(empresa.id);
       const ajustesAprobadosPeriodo = ajustesRoster.filter(a => a.estado === 'aprobado' && a.fecha?.startsWith(prefijo));
       const actualizado = await recalcularSnapshotRosterDirigido(
@@ -14972,7 +15178,7 @@ function ControlAsistencia() {
       fechaInicioInduccion: ciclo?.fecha_inicio_induccion || null,
       fechaInicio: rosterGridInicio,
       fechaFin: rosterGridFin,
-      registros: registrosAsistencia,
+      registros: registrosParaRoster,
       ajustes: ajustesRoster,
     }) : [];
     const totales = rosterRows.find(r => r.personal_id === t.id);
@@ -15017,6 +15223,10 @@ function ControlAsistencia() {
 
   // Íconos de advertencia. Cada uno tiene una posición fija; pueden coexistir.
   const marcacionPorConfirmar = (dia) => {
+    // Mientras la consulta mensual propia del roster no termine, no se puede
+    // distinguir una marcación registrada de una realmente pendiente. Evita
+    // mostrar una alerta falsa con datos parciales de otra pestaña.
+    if (!registrosRosterListos) return false;
     // Caso ya validado: hay un registro real problemático (tardanza/incompleto/
     // falta) bajo un fondo Trabajo — usa dia.registro.estado (no dia.estado) a
     // propósito, para detectar también el caso de ajuste-override (falta real
@@ -15042,7 +15252,10 @@ function ControlAsistencia() {
     && dia.registro.origen_registro !== 'manual_minero'
     && !(dia.ajusteAprobado?.revision_asistencia_confirmada)
   );
-  const esFaltaReal = (dia) => dia.registro?.estado === 'falta';
+  // No se marca falta en el roster si el ciclo ubicaba al trabajador en
+  // descanso; esa fecha se mantiene como bajada y no es una incidencia de
+  // subida a mina.
+  const esFaltaReal = (dia) => dia.registro?.estado === 'falta' && dia.teorico?.estado === 'en_mina';
   const AUSENCIA_AUTORIZADA_MARCA = {
     vacaciones: { letra: 'V', tooltip: 'Vacaciones aprobadas' },
     licencia_medica: { letra: 'M', tooltip: 'Licencia médica aprobada' },
@@ -15251,15 +15464,28 @@ function ControlAsistencia() {
     rrhhService.getAutorizacionesHorasExtra(empresa.id).then(setAutHeRows).catch(() => {});
   }, [empresa?.id]);
 
-  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'' });
+  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'' });
   // Vía independiente para registrar la asistencia real del personal por ciclo.
   // No comparte estado ni handler con "+ Manual": para un minero las horas y el
   // turno no tienen efecto de cálculo; solo el estado real corrige el roster/nómina.
   const [panelAsistenciaMinera, setPanelAsistenciaMinera] = useState(false);
   const [asistenciaMineraSaving, setAsistenciaMineraSaving] = useState(false);
   const [formAsistenciaMinera, setFormAsistenciaMinera] = useState({
-    trabajador_id: '', fecha, estado: 'completo', hora_entrada: '', hora_salida: '', motivo_falta: '', notas: '',
+    trabajador_id: '', fecha, estado: 'completo', hora_entrada: '', hora_salida: '', motivo_falta: '', notas: '', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'',
   });
+  const [fechasFeriado, setFechasFeriado] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!empresa?.id || !isSupabaseConfigured()) { setFechasFeriado(new Set()); return undefined; }
+    const fechasConsulta = [...new Set([form.fecha, formAsistenciaMinera.fecha].filter(Boolean))];
+    if (!fechasConsulta.length) return undefined;
+    let cancelado = false;
+    getSupabaseClient().then(supabase => supabase.from('feriados').select('fecha').eq('empresa_id', empresa.id).in('fecha', fechasConsulta))
+      .then(({ data, error }) => {
+        if (!cancelado && !error) setFechasFeriado(new Set((data || []).map(feriado => feriado.fecha)));
+      }).catch(() => {});
+    return () => { cancelado = true; };
+  }, [empresa?.id, form.fecha, formAsistenciaMinera.fecha]);
   useEffect(() => {
     if (!form.trabajador_id && trabajadoresGenerales[0]?.id) {
       setForm(prev => ({ ...prev, trabajador_id: trabajadoresGenerales[0].id }));
@@ -15305,8 +15531,57 @@ function ControlAsistencia() {
   const turno = workerTurno(turnos, trabajador || {}, form.fecha);
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
+  const esFeriadoGeneral = form.asistio === 'si' && fechasFeriado.has(form.fecha);
+  const esFeriadoMinero = !['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && fechasFeriado.has(formAsistenciaMinera.fecha);
   const currentMonth = fecha.substring(0, 7);
-  const registrosPeriodo = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadores.some(t => t.id === r.trabajador_id));
+  const [registrosMensualPeriodo, setRegistrosMensualPeriodo] = useState(null);
+  const registrosMensualListos = registrosMensualPeriodo?.periodo === currentMonth
+    && !registrosMensualPeriodo?.cargando
+    && !registrosMensualPeriodo?.error;
+  const registrosPeriodoCache = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadores.some(t => t.id === r.trabajador_id));
+
+  // La vista mensual necesita el mes completo. La caché global se hidrata por
+  // fecha visitada en las vistas diarias y dejaba la grilla minera incompleta.
+  // Por eso esta pantalla tiene su propia carga paginada y no infiere días
+  // vacíos como asistencia o falta mientras la consulta está pendiente.
+  useEffect(() => {
+    if (tab !== 'mensual' || !empresa?.id || !currentMonth) return undefined;
+    const [anio, mes] = currentMonth.split('-').map(Number);
+    const inicio = `${currentMonth}-01`;
+    const fin = `${currentMonth}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`;
+    let cancelado = false;
+    setRegistrosMensualPeriodo({ periodo: currentMonth, registros: [], cargando: true, error: null });
+
+    rrhhService.getAsistencia(empresa.id, inicio, fin, { strict: true, completa: true })
+      .then(registros => {
+        if (!cancelado) setRegistrosMensualPeriodo({ periodo: currentMonth, registros, cargando: false, error: null });
+      })
+      .catch(error => {
+        console.error('[Asistencia mensual] No se pudo cargar el período completo:', error);
+        if (!cancelado) setRegistrosMensualPeriodo({ periodo: currentMonth, registros: [], cargando: false, error });
+      });
+    return () => { cancelado = true; };
+  }, [tab, empresa?.id, currentMonth]);
+
+  const registrosPeriodo = tab === 'mensual'
+    ? (registrosMensualListos ? registrosMensualPeriodo.registros.filter(r => trabajadores.some(t => t.id === r.trabajador_id)) : [])
+    : registrosPeriodoCache;
+
+  // Para el calendario mensual del régimen general se conserva únicamente el
+  // último registro vigente de cada trabajador y día. Así la grilla refleja
+  // exactamente la asistencia registrada, sin convertir días vacíos en faltas.
+  const registrosMensualPorTrabajadorDia = useMemo(() => {
+    const porDia = new Map();
+    registrosPeriodo.forEach(registro => {
+      if (registro.estado === 'anulado') return;
+      const clave = `${registro.trabajador_id}:${registro.fecha}`;
+      const actual = porDia.get(clave);
+      if (!actual || new Date(registro.created_at || 0) > new Date(actual.created_at || 0)) {
+        porDia.set(clave, registro);
+      }
+    });
+    return porDia;
+  }, [registrosPeriodo]);
 
   const geocercaAsignadaPorTrabajador = useMemo(() => {
     const map = new Map();
@@ -15350,12 +15625,55 @@ function ControlAsistencia() {
   };
 
   const periodoFiltro = { anio: parseInt(currentMonth.split('-')[0]), mes: parseInt(currentMonth.split('-')[1]) };
-  const calculosAsistencia = trabajadores.map(t => {
+  const calculosAsistencia = (tab === 'mensual' && !registrosMensualListos) ? [] : trabajadores.map(t => {
     const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
     const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
     return calcularNominaConTramos(t, asigsTrabajador, {}, workerTurno(turnos, t), regs, periodoFiltro, empresa?.configuracion || {});
   }).filter(Boolean);
   const calculosAsistenciaVisibles = calculosAsistencia.filter(c => c.trabajador && coincideModalidad(c.trabajador));
+
+  // Fuente única para la grilla y los indicadores mineros mensuales. Siempre
+  // se generan todos los días calendario; una falta solo es válida si existe
+  // un registro explícito y el ciclo teórico indicaba subida a mina.
+  const resumenMensualMineroPorId = useMemo(() => {
+    if (!registrosMensualListos) return new Map();
+    const [anio, mes] = currentMonth.split('-').map(Number);
+    const fechaInicio = `${currentMonth}-01`;
+    const fechaFin = `${currentMonth}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`;
+    const resumen = new Map();
+
+    trabajadoresMineros.forEach(t => {
+      const tramo = asignacionesJornada
+        .filter(a => a.personal_id === t.id
+          && a.personal_tipo === t.trabajador_tipo
+          && a.regimen_jornada === 'ciclo_acumulativo'
+          && a.fecha_inicio <= fechaFin
+          && (!a.fecha_fin || a.fecha_fin >= fechaInicio))
+        .sort((a, b) => String(b.fecha_inicio).localeCompare(String(a.fecha_inicio)))[0];
+      const ciclo = ciclosMineros.find(c => c.personal_id === t.id);
+      const dias = tramo ? calcularRangoRosterMinero({
+        trabajadorId: t.id,
+        fechaInicioTramo: tramo.fecha_inicio,
+        fechaFinTramo: tramo.fecha_fin,
+        fechaInicioCiclo: tramo.fecha_inicio_ciclo,
+        diasTrabajo: tramo.dias_ciclo_trabajo,
+        diasDescanso: tramo.dias_ciclo_descanso,
+        tieneInduccion: ciclo?.tiene_induccion || false,
+        diasInduccion: ciclo?.dias_induccion || 0,
+        fechaFinInduccion: ciclo?.fecha_fin_induccion || null,
+        fechaInicioInduccion: ciclo?.fecha_inicio_induccion || null,
+        fechaInicio,
+        fechaFin,
+        registros: registrosPeriodo,
+        ajustes: ajustesRoster,
+      }) : [];
+      const faltasEnSubida = dias.filter(d => d.registro?.estado === 'falta' && d.teorico?.estado === 'en_mina').length;
+      const asistenciasReales = dias.filter(d => ['completo', 'tardanza', 'horas_extra'].includes(d.registro?.estado)).length;
+      resumen.set(t.id, { dias, asistenciasReales, faltasEnSubida });
+    });
+    return resumen;
+  }, [registrosMensualListos, registrosPeriodo, currentMonth, trabajadoresMineros, asignacionesJornada, ciclosMineros, ajustesRoster]);
+
   // Diaria y Semanal representan solo régimen general; Mensual muestra el
   // universo completo filtrado. Las tarjetas deben seguir esa misma regla.
   const trabajadoresKpi = ['diaria', 'semanal'].includes(tab) ? trabajadoresGenerales : trabajadoresVisibles;
@@ -15364,9 +15682,13 @@ function ControlAsistencia() {
 
   const kpis = {
     total: trabajadoresKpi.length,
-    completos: calculosKpi.reduce((s, c) => s + (c.dias_asistidos || 0), 0),
+    completos: calculosKpi.reduce((s, c) => s + (tab === 'mensual' && resumenMensualMineroPorId.has(c.trabajador_id)
+      ? resumenMensualMineroPorId.get(c.trabajador_id).asistenciasReales
+      : (c.dias_asistidos || 0)), 0),
     tardanzas: calculosKpi.reduce((s, c) => s + (c.tardanzas || 0), 0),
-    faltas: calculosKpi.reduce((s, c) => s + (c.faltas_injustificadas + c.faltas_justificadas || 0), 0)
+    faltas: calculosKpi.reduce((s, c) => s + (tab === 'mensual' && resumenMensualMineroPorId.has(c.trabajador_id)
+      ? resumenMensualMineroPorId.get(c.trabajador_id).faltasEnSubida
+      : (c.faltas_injustificadas + c.faltas_justificadas || 0)), 0)
   };
   const autHeRowsVisibles = autHeRows.filter(r => {
     const trabajadorSolicitud = trabajadores.find(t => t.id === r.personal_id);
@@ -15384,6 +15706,10 @@ function ControlAsistencia() {
       return;
     }
     if (getTipoFiscalizacion(trabajador) !== 'diaria') return;
+    if (esFeriadoGeneral && form.descanso_sustitutorio_otorgado && !form.descanso_sustitutorio_fecha) {
+      addNotificacion('Indica la fecha del descanso sustitutorio otorgado.');
+      return;
+    }
     const nuevo = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
       trabajador_tipo: trabajador?.trabajador_tipo || 'operativo',
@@ -15393,7 +15719,9 @@ function ControlAsistencia() {
       horas_extra_min:resultado.horas_extra_min, estado:resultado.estado, es_falta:form.asistio === 'no',
       justificada:form.justificada, motivo_falta:form.justificada ? form.motivo_falta : null, notas:form.notas,
       latitud:form.latitud, longitud:form.longitud, refrigerio_tomado_minutos:form.refrigerio_tomado_minutos ? Number(form.refrigerio_tomado_minutos) : 0,
-      regimen_jornada: 'general'
+      regimen_jornada: 'general',
+      descanso_sustitutorio_otorgado: esFeriadoGeneral && Boolean(form.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: esFeriadoGeneral && form.descanso_sustitutorio_otorgado ? form.descanso_sustitutorio_fecha : null,
     };
 
     const existente = registrosAsistencia.find(r => r.trabajador_id === form.trabajador_id && r.fecha === form.fecha);
@@ -15431,6 +15759,8 @@ function ControlAsistencia() {
       hora_salida: registro?.hora_salida || '',
       motivo_falta: registro?.motivo_falta || '',
       notas: registro?.notas || '',
+      descanso_sustitutorio_otorgado: Boolean(registro?.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: registro?.descanso_sustitutorio_fecha || '',
     });
     setPanelAsistenciaMinera(true);
   };
@@ -15445,6 +15775,10 @@ function ControlAsistencia() {
     const esFalta = ['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado);
     if (esFalta && !formAsistenciaMinera.motivo_falta.trim()) {
       addNotificacion('El motivo es obligatorio para registrar una falta.');
+      return;
+    }
+    if (esFeriadoMinero && formAsistenciaMinera.descanso_sustitutorio_otorgado && !formAsistenciaMinera.descanso_sustitutorio_fecha) {
+      addNotificacion('Indica la fecha del descanso sustitutorio otorgado.');
       return;
     }
 
@@ -15468,6 +15802,8 @@ function ControlAsistencia() {
       notas: formAsistenciaMinera.notas.trim() || null,
       regimen_jornada: trabajadorMinero.regimen_jornada || 'ciclo_acumulativo',
       origen_registro: 'manual_minero',
+      descanso_sustitutorio_otorgado: esFeriadoMinero && Boolean(formAsistenciaMinera.descanso_sustitutorio_otorgado),
+      descanso_sustitutorio_fecha: esFeriadoMinero && formAsistenciaMinera.descanso_sustitutorio_otorgado ? formAsistenciaMinera.descanso_sustitutorio_fecha : null,
     };
     const existente = registrosAsistencia.find(r =>
       r.trabajador_id === registroMinero.trabajador_id && r.fecha === registroMinero.fecha && r.estado !== 'anulado'
@@ -15479,6 +15815,9 @@ function ControlAsistencia() {
         ? await rrhhService.actualizarAsistencia(existente.id, registroMinero)
         : await rrhhService.registrarAsistencia(empresa.id, registroMinero);
       setRegistrosAsistencia(prev => [data, ...prev.filter(r => !(r.trabajador_id === data.trabajador_id && r.fecha === data.fecha))]);
+      // Si el mes está abierto en el roster, refleja la corrección de inmediato
+      // sin esperar a que se cambie de pestaña o se recargue la página.
+      sincronizarRegistroRoster(data);
       setPanelAsistenciaMinera(false);
       addNotificacion(existente?.id ? 'Asistencia minera actualizada.' : 'Asistencia minera registrada.');
     } catch (err) {
@@ -15564,6 +15903,7 @@ function ControlAsistencia() {
       hora_entrada:r?.hora_entrada || row.turno.hora_entrada || '08:00',
       hora_salida:r?.hora_salida || row.turno.hora_salida || '17:00',
       justificada:Boolean(r?.justificada), motivo_falta:r?.motivo_falta || '', notas:r?.notas || ''
+      ,descanso_sustitutorio_otorgado:Boolean(r?.descanso_sustitutorio_otorgado), descanso_sustitutorio_fecha:r?.descanso_sustitutorio_fecha || ''
     });
     setPanel(true);
   };
@@ -16338,6 +16678,7 @@ function ControlAsistencia() {
               <div className="input-group"><label>Hora de entrada <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_entrada} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_entrada:e.target.value}))}/></div>
               <div className="input-group"><label>Hora de salida <span className="text-muted">(referencial)</span></label><input className="input" type="time" value={formAsistenciaMinera.hora_salida} onChange={e => setFormAsistenciaMinera(v => ({...v, hora_salida:e.target.value}))}/></div>
             </div>
+            {esFeriadoMinero && <div className="card" style={{padding:12, margin:'12px 0', background:'var(--bg-subtle)'}}><label className="row" style={{gap:8, fontWeight:600}}><input type="checkbox" checked={formAsistenciaMinera.descanso_sustitutorio_otorgado} onChange={e=>setFormAsistenciaMinera(v=>({...v, descanso_sustitutorio_otorgado:e.target.checked, descanso_sustitutorio_fecha:e.target.checked ? v.descanso_sustitutorio_fecha : ''}))}/> Descanso sustitutorio otorgado</label>{formAsistenciaMinera.descanso_sustitutorio_otorgado && <div className="input-group" style={{marginTop:10}}><label>Fecha del descanso sustitutorio</label><input className="input" required type="date" value={formAsistenciaMinera.descanso_sustitutorio_fecha} onChange={e=>setFormAsistenciaMinera(v=>({...v, descanso_sustitutorio_fecha:e.target.value}))}/></div>}</div>}
             {['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && <div className="input-group"><label>Motivo *</label><textarea className="input" rows="3" required value={formAsistenciaMinera.motivo_falta} onChange={e => setFormAsistenciaMinera(v => ({...v, motivo_falta:e.target.value}))}/></div>}
             <div className="input-group"><label>Notas <span className="text-muted">(opcional)</span></label><textarea className="input" rows="3" value={formAsistenciaMinera.notas} onChange={e => setFormAsistenciaMinera(v => ({...v, notas:e.target.value}))}/></div>
             <div className="alert alert-info" style={{fontSize:12}}>No se guardarán horas trabajadas, tardanza ni horas extra. Las horas ingresadas son solo una referencia.</div>
@@ -16391,11 +16732,12 @@ function ControlAsistencia() {
 
       {tab === 'semanal' && <div className="card"><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', flexWrap:'wrap', width:'100%', gap:10}}><h3>Vista semanal (Régimen General)</h3><div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><div className="row" style={{background:'var(--bg-subtle)', borderRadius:8, padding:'2px 4px', border:'1px solid var(--border)'}}><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() - 7); return n.toISOString().split('T')[0]; })} title="Semana anterior">{I.chevronLeft}</button><span className="text-muted" style={{minWidth:200, textAlign:'center', fontSize:13, fontWeight:600}}>{semanaTexto}</span><button type="button" className="icon-btn" onClick={() => setFecha(d => { const n = new Date(d + 'T00:00:00'); n.setDate(n.getDate() + 7); return n.toISOString().split('T')[0]; })} title="Siguiente semana">{I.chevronRight}</button></div><input className="input" type="date" value={fecha} onChange={e=>setFecha(e.target.value)} style={{width:160}}/><button type="button" className="btn btn-ghost btn-sm" onClick={() => setFecha(new Date().toISOString().split('T')[0])}>Hoy</button></div></div><div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}</div></div><div style={{overflowX:'auto'}}><table className="tbl" style={{minWidth:900}}><thead><tr><th>Trabajador</th><th>Modalidad</th>{semanalDias.map(d=><th key={d}>{d.slice(5)}</th>)}</tr></thead><tbody>{trabajadoresGenerales.filter(t => !filtroTrabajador || t.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(t=><tr key={t.id}><td><strong>{t.nombre}</strong></td><td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>{semanalDias.map(d=>{ const r=registrosAsistencia.find(x=>x.trabajador_id===t.id&&x.fecha===d); const trn=workerTurno(turnos,t,d); const calc=r?calcularResultadoAsistencia(r.hora_entrada,r.hora_salida,trn,r.es_falta,r.justificada):null; return <td key={d}>{calc?<span className={'badge '+asistenciaBadge(calc.estado)}>{calc.estado==='completo'?'OK':calc.estado==='tardanza'?'Tard.':calc.estado==='horas_extra'?'Extra':'Falta'}</span>:<span className="text-muted">-</span>}</td>})}</tr>)}</tbody></table></div><div style={{padding:16, fontSize:12}}><span className="badge badge-green">OK</span> <span className="badge badge-orange">Tardanza</span> <span className="badge badge-cyan">Horas extra</span> <span className="badge badge-red">Falta</span></div></div>}
 
-      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}</div></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Régimen/Turno</th><th>Dias lab.</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
+      {tab === 'mensual' && <div className="card" style={{display:'flex', flexDirection:'column', gap:20}}><div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}><div className="row" style={{justifyContent:'space-between', width:'100%', gap:16}}><h3>Resumen mensual - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap'}}><input className="input" placeholder="Filtrar por trabajador..." value={filtroTrabajador} onChange={e=>setFiltroTrabajador(e.target.value)} style={{flex:1, minWidth:240}}/>{filtroModalidadControl()}</div></div>{registrosMensualPeriodo?.cargando && <div className="alert alert-warning" style={{margin:'0 16px', fontSize:12}}>Cargando todas las asistencias y estados del roster del mes...</div>}{registrosMensualPeriodo?.error && <div className="alert alert-danger" style={{margin:'0 16px', fontSize:12}}>No se pudo cargar el mes completo. No se mostrarán indicadores parciales hasta reintentar.</div>}<div className="row" style={{gap:6, margin:'0 16px', borderBottom:'1px solid var(--border-subtle)'}}><button type="button" className={`btn btn-sm ${vistaMensualSubTab === 'reporte' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaMensualSubTab('reporte')}>Reporte mensual</button><button type="button" className={`btn btn-sm ${vistaMensualSubTab === 'visual_general' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaMensualSubTab('visual_general')}>Calendario general</button><button type="button" className={`btn btn-sm ${vistaMensualSubTab === 'visual' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setVistaMensualSubTab('visual')}>Calendario minero</button></div>{vistaMensualSubTab === 'reporte' && <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Régimen/Turno</th><th>Días programados</th><th>Asistencias</th><th>Tardanzas</th><th>Faltas</th><th>Horas extra</th><th>Horas totales</th></tr></thead><tbody>
         {calculosAsistenciaVisibles.filter(c => c && c.trabajador && (!filtroTrabajador || (c.trabajador.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(c => {
           const t = c.trabajador;
           const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
-          const faltas = c.faltas_injustificadas + c.faltas_justificadas;
+          const resumenMinero = resumenMensualMineroPorId.get(t.id);
+          const faltas = resumenMinero ? resumenMinero.faltasEnSubida : c.faltas_injustificadas + c.faltas_justificadas;
           const regimenStr = c.regimen_jornada || 'general';
           const isMinero = regimenStr !== 'general' && !regimenStr.startsWith('Mixto');
           const badgeClass = c.incompleto_ciclo ? 'badge-red' : regimenStr.startsWith('Mixto') ? 'badge-purple' : isMinero ? 'badge-orange' : 'badge-gray';
@@ -16404,19 +16746,20 @@ function ControlAsistencia() {
             <td><strong>{t.nombre || 'Desconocido'}</strong></td>
             <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
             <td><span className={`badge ${badgeClass}`}>{regimenLabel}</span></td>
-            <td>{c.incompleto_ciclo ? '—' : c.dias_laborables}</td>
-            <td title={c.dias_computables != null ? "Indicador de días trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? '—' : c.dias_computables != null ? `${c.dias_asistidos} (días trab. ciclo)` : c.dias_asistidos}</td>
+            <td>{c.incompleto_ciclo ? '—' : resumenMinero ? `${c.dias_laborables} mina` : c.dias_laborables}</td>
+            <td title={resumenMinero ? 'Asistencias sobre los días programados de subida a mina' : c.dias_computables != null ? "Indicador de días trabajados del ciclo" : "Asistencias registradas"}>{c.incompleto_ciclo ? '—' : resumenMinero ? `${c.dias_asistidos}/${c.dias_laborables} (subida)` : c.dias_computables != null ? `${c.dias_asistidos} (días trab. ciclo)` : c.dias_asistidos}</td>
             <td>{c.incompleto_ciclo ? '—' : c.tardanzas}</td>
             <td>{c.incompleto_ciclo ? '—' : (faltas > 0 ? <span style={{color:'var(--danger)'}}>{faltas}</span> : '0')}</td>
             <td>{c.incompleto_ciclo ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
             <td>{c.incompleto_ciclo ? '—' : minutesToLabel(regs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</td>
           </tr>;
         })}
-      </tbody></table></div>
+      </tbody></table></div>}
 
       {/* Grilla Mensual para Régimen Minero */}
-      {trabajadoresMinerosVisibles.length > 0 && <div style={{padding: '0 16px 16px 16px'}}>
-        <h4 style={{marginBottom:10}}>Vista Mensual - Régimen Minero</h4>
+      {vistaMensualSubTab === 'visual' && <div style={{padding: '0 16px 16px 16px'}}>
+        <h4 style={{marginBottom:10}}>Calendario mensual — Régimen Minero</h4>
+        {trabajadoresMinerosVisibles.length === 0 ? <div className="text-muted" style={{padding:'20px 0'}}>No hay trabajadores mineros para los filtros seleccionados.</div> : <>
         <div style={{overflowX:'auto'}}>
           <table className="tbl" style={{minWidth:1000}}>
             <thead>
@@ -16426,23 +16769,32 @@ function ControlAsistencia() {
             </thead>
             <tbody>
               {trabajadoresMinerosVisibles.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(t => {
-                const regsM = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+                const resumenMinero = resumenMensualMineroPorId.get(t.id);
                 return <tr key={t.id}>
                   <td><strong>{t.nombre}</strong></td>
                   <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
                   {Array.from({length: 31}).map((_, i) => {
                     const diaStr = String(i+1).padStart(2,'0');
                     const fechaBuscada = `${currentMonth}-${diaStr}`;
-                    const r = regsM.find(x => x.fecha === fechaBuscada);
+                    const dia = resumenMinero?.dias.find(x => x.fecha === fechaBuscada);
+                    const r = dia?.registro || null;
+                    // Una falta minera solo se pinta como tal si fue marcada
+                    // expresamente y el ciclo indicaba subida a mina. Un
+                    // registro de falta durante la bajada conserva descanso.
+                    const faltaEnSubida = r?.estado === 'falta' && dia?.teorico?.estado === 'en_mina';
+                    const faltaJustificadaEnSubida = r?.estado === 'falta_justificada' && dia?.teorico?.estado === 'en_mina';
                     let col = 'var(--bg-subtle)', bg = 'transparent';
-                    if (r) {
-                      if (r.estado === 'descanso') { col = 'var(--slate)'; bg = 'var(--bg-muted)'; }
-                      else if (r.estado === 'completo') { col = 'var(--green)'; bg = '#e6f4ea'; }
-                      else if (r.estado === 'falta') { col = 'var(--red)'; bg = '#fce8e6'; }
-                      else if (r.estado === 'falta_justificada') { col = 'var(--orange)'; bg = '#fef7e0'; }
+                    let titulo = 'Sin ciclo';
+                    if (dia) {
+                      titulo = r ? `Registro real: ${r.estado}` : `Ciclo: ${dia.estado}`;
+                      if (faltaEnSubida) { col = '#b4232a'; bg = '#e5484d'; titulo = 'Falta en día de subida a mina'; }
+                      else if (faltaJustificadaEnSubida) { col = '#b86500'; bg = '#f5a524'; titulo = 'Incidencia justificada en día de subida a mina'; }
+                      else if (r && ['completo', 'tardanza', 'horas_extra'].includes(r.estado)) { col = '#187a36'; bg = '#55c975'; }
+                      else if (dia.estado === 'en_descanso' || dia.teorico?.estado === 'en_descanso' || r?.estado === 'descanso' || r?.estado === 'bajada') { col = '#566b84'; bg = '#9aa9bc'; }
+                      else if (dia.estado === 'en_mina') { col = '#187a36'; bg = '#55c975'; }
                     }
                     return <td key={i} style={{padding:2}}>
-                      <div style={{width:20, height:20, borderRadius:4, background:bg, border:`1px solid ${col}`, margin:'auto'}} title={r ? r.estado : ''}></div>
+                      <div style={{width:20, height:20, borderRadius:4, background:bg, border:`1px solid ${col}`, margin:'auto'}} title={titulo}></div>
                     </td>;
                   })}
                 </tr>;
@@ -16451,12 +16803,68 @@ function ControlAsistencia() {
           </table>
         </div>
         <div style={{display:'flex', gap:10, fontSize:12, marginTop:8}}>
-          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#e6f4ea', border:'1px solid var(--green)'}}></div> Trabajo</div>
-          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'var(--bg-muted)', border:'1px solid var(--slate)'}}></div> Descanso</div>
-          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#fef7e0', border:'1px solid var(--orange)'}}></div> Incidencia (Justificada)</div>
-          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#fce8e6', border:'1px solid var(--red)'}}></div> Falta (Injustificada)</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#55c975', border:'1px solid #187a36'}}></div> Trabajo</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#9aa9bc', border:'1px solid #566b84'}}></div> Descanso</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#f5a524', border:'1px solid #b86500'}}></div> Incidencia (Justificada)</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#e5484d', border:'1px solid #b4232a'}}></div> Falta (Injustificada)</div>
         </div>
-      </div>}
+        </>}</div>}
+
+      {vistaMensualSubTab === 'visual_general' && <div style={{padding: '0 16px 16px 16px'}}>
+        <h4 style={{marginBottom:10}}>Calendario mensual — Régimen General</h4>
+        {trabajadoresGenerales.length === 0 ? <div className="text-muted" style={{padding:'20px 0'}}>No hay trabajadores de régimen general para los filtros seleccionados.</div> : <>
+        <div style={{overflowX:'auto'}}>
+          <table className="tbl" style={{minWidth:1000}}>
+            <thead>
+              <tr><th>Trabajador</th><th>Modalidad</th>
+              {Array.from({length: 31}).map((_, i) => <th key={i} style={{width:28, padding:4, textAlign:'center', fontSize:10}}>{i+1}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {trabajadoresGenerales.filter(t => t && (!filtroTrabajador || (t.nombre || '').toLowerCase().includes(filtroTrabajador.toLowerCase()))).map(t => (
+                <tr key={t.id}>
+                  <td><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
+                  <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
+                  {Array.from({length: 31}).map((_, i) => {
+                    const fechaBuscada = `${currentMonth}-${String(i + 1).padStart(2, '0')}`;
+                    const registro = registrosMensualPorTrabajadorDia.get(`${t.id}:${fechaBuscada}`);
+                    const esFalta = registro && (registro.es_falta || registro.estado === 'falta' || registro.estado === 'falta_justificada');
+                    const esFaltaJustificada = esFalta && (registro.justificada || registro.estado === 'falta_justificada');
+                    const calculo = registro ? calcularResultadoAsistencia(
+                      registro.hora_entrada,
+                      registro.hora_salida,
+                      workerTurno(turnos, t, fechaBuscada),
+                      esFalta,
+                      esFaltaJustificada,
+                      registro.refrigerio_tomado_minutos,
+                    ) : null;
+                    const estado = registro?.estado || calculo?.estado;
+                    let col = 'var(--bg-subtle)', bg = 'transparent', titulo = 'Sin registro';
+                    if (registro) {
+                      if (esFaltaJustificada) { col = '#b86500'; bg = '#f5a524'; titulo = 'Falta justificada'; }
+                      else if (esFalta) { col = '#b4232a'; bg = '#e5484d'; titulo = 'Falta injustificada'; }
+                      else if (estado === 'tardanza') { col = '#b86500'; bg = '#f5a524'; titulo = `Tardanza${registro.tardanza_min ? `: ${registro.tardanza_min} min` : ''}`; }
+                      else if (estado === 'horas_extra') { col = '#0b7285'; bg = '#66d9e8'; titulo = 'Horas extra'; }
+                      else if (estado === 'incompleto' || estado === 'sin_turno') { col = '#566b84'; bg = '#9aa9bc'; titulo = estado === 'sin_turno' ? 'Sin turno asignado' : 'Marcación incompleta'; }
+                      else { col = '#187a36'; bg = '#55c975'; titulo = 'Asistencia completa'; }
+                    }
+                    return <td key={i} style={{padding:2}}>
+                      <div style={{width:20, height:20, borderRadius:4, background:bg, border:`1px solid ${col}`, margin:'auto'}} title={titulo}></div>
+                    </td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{display:'flex', gap:10, flexWrap:'wrap', fontSize:12, marginTop:8}}>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#55c975', border:'1px solid #187a36'}}></div> Asistencia</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#f5a524', border:'1px solid #b86500'}}></div> Tardanza / falta justificada</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#66d9e8', border:'1px solid #0b7285'}}></div> Horas extra</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#9aa9bc', border:'1px solid #566b84'}}></div> Incompleto</div>
+          <div style={{display:'flex', alignItems:'center', gap:4}}><div style={{width:12, height:12, background:'#e5484d', border:'1px solid #b4232a'}}></div> Falta injustificada</div>
+        </div>
+        </>}</div>}
 
       </div>}
 
@@ -17308,7 +17716,7 @@ function ControlAsistencia() {
       </div></>}
 
       {/* Modal General */}
-      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}{t.asistencia_bloqueada?' - Contrato vencido':''}</option>)}</select></div>{trabajadorBloqueado && <div className="alert alert-danger" style={{fontSize:12}}>Contrato vencido - asistencia bloqueada. Regularice el contrato en Documentos.</div>}<div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))} disabled={trabajadorBloqueado}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}><span>Hora entrada</span>{form.hora_entrada && !trabajadorBloqueado && <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:'0 6px'}} onClick={()=>setForm(v=>({...v,hora_entrada:''}))}>Borrar</button>}</label><input className="input" type="time" value={form.hora_entrada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}><span>Hora salida</span>{form.hora_salida && !trabajadorBloqueado && <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:'0 6px'}} onClick={()=>setForm(v=>({...v,hora_salida:''}))}>Borrar</button>}</label><input className="input" type="time" value={form.hora_salida} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion} disabled={trabajadorBloqueado}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={trabajadorBloqueado}>Guardar registro</button></div></form></div></>}
+      {panel && <><div className="side-panel-backdrop" onClick={()=>setPanel(false)}/><div className="side-panel" style={{width:'min(520px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registrar asistencia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{form.fecha}</div></div><button className="icon-btn" onClick={()=>setPanel(false)}>{I.x}</button></div><form className="side-panel-body" onSubmit={guardarRegistro}><div className="input-group"><label>Fecha</label><input className="input" type="date" value={form.fecha} onChange={e=>setForm(v=>({...v,fecha:e.target.value}))}/></div><div className="input-group"><label>Trabajador</label><select className="select" value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}{t.asistencia_bloqueada?' - Contrato vencido':''}</option>)}</select></div>{trabajadorBloqueado && <div className="alert alert-danger" style={{fontSize:12}}>Contrato vencido - asistencia bloqueada. Regularice el contrato en Documentos.</div>}<div className="card" style={{padding:12, margin:'12px 0'}}>Turno asignado: <strong>{turno.nombre}</strong> · {turno.hora_entrada} - {turno.hora_salida} · Tolerancia {turno.tolerancia_minutos} min</div><div className="input-group"><label>Asistio</label><select className="select" value={form.asistio} onChange={e=>setForm(v=>({...v,asistio:e.target.value}))} disabled={trabajadorBloqueado}><option value="si">Si</option><option value="no">No - falta</option></select></div>{form.asistio==='si' ? <div className="grid-2" style={{gap:12}}><div className="input-group"><label style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}><span>Hora entrada</span>{form.hora_entrada && !trabajadorBloqueado && <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:'0 6px'}} onClick={()=>setForm(v=>({...v,hora_entrada:''}))}>Borrar</button>}</label><input className="input" type="time" value={form.hora_entrada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_entrada:e.target.value}))}/></div><div className="input-group"><label style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}><span>Hora salida</span>{form.hora_salida && !trabajadorBloqueado && <button type="button" className="btn btn-ghost btn-sm" style={{fontSize:11, padding:'0 6px'}} onClick={()=>setForm(v=>({...v,hora_salida:''}))}>Borrar</button>}</label><input className="input" type="time" value={form.hora_salida} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,hora_salida:e.target.value}))}/></div></div> : <><label className="row" style={{gap:8}}><input type="checkbox" checked={form.justificada} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,justificada:e.target.checked}))}/> Falta justificada</label>{form.justificada && <div className="input-group"><label>Motivo</label><select className="select" value={form.motivo_falta} onChange={e=>setForm(v=>({...v,motivo_falta:e.target.value}))}><option>Enfermedad con certificado</option><option>Permiso autorizado</option><option>Licencia</option><option>Otro</option></select></div>}</>}{esFeriadoGeneral && <div className="card" style={{padding:12, margin:'12px 0', background:'var(--bg-subtle)'}}><label className="row" style={{gap:8, fontWeight:600}}><input type="checkbox" checked={form.descanso_sustitutorio_otorgado} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v, descanso_sustitutorio_otorgado:e.target.checked, descanso_sustitutorio_fecha:e.target.checked ? v.descanso_sustitutorio_fecha : ''}))}/> Descanso sustitutorio otorgado</label>{form.descanso_sustitutorio_otorgado && <div className="input-group" style={{marginTop:10}}><label>Fecha del descanso sustitutorio</label><input className="input" required type="date" value={form.descanso_sustitutorio_fecha} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v, descanso_sustitutorio_fecha:e.target.value}))}/></div>}</div>}<div className="input-group"><label>Minutos de refrigerio tomados</label><input className="input" type="number" min="0" value={form.refrigerio_tomado_minutos} disabled={trabajadorBloqueado} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación (Opcional)</label><button type="button" className="btn btn-secondary" style={{width:'100%'}} onClick={obtenerUbicacion} disabled={trabajadorBloqueado}>{form.ubicacion_estado || 'Capturar lat/lng'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}<div className="card" style={{padding:12, margin:'14px 0'}}><p><strong>Horas trabajadas:</strong> {minutesToLabel(resultado.horas_trabajadas_min)}</p><p><strong>Tardanza:</strong> {resultado.tardanza_min} min</p><p><strong>Horas extra:</strong> {minutesToLabel(resultado.horas_extra_min)}</p><p><strong>Estado:</strong> <span className={'badge '+asistenciaBadge(resultado.estado)}>{resultado.label}</span></p></div><div className="input-group"><label>Notas adicionales</label><textarea className="input" rows="3" value={form.notas} onChange={e=>setForm(v=>({...v,notas:e.target.value}))}/></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setPanel(false)}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={trabajadorBloqueado}>Guardar registro</button></div></form></div></>}
       {kiosk && <><div className="side-panel-backdrop" onClick={()=>setKiosk(false)}/><div className="side-panel" style={{width:'min(520px,100vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reloj Control Móvil</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{new Date().toLocaleDateString()}</div></div><button className="icon-btn" onClick={()=>setKiosk(false)}>{I.x}</button></div><div className="side-panel-body" style={{display:'flex', flexDirection:'column', gap:24}}><div className="input-group"><label>Trabajador</label><select className="select" style={{fontSize:16, padding:12}} value={form.trabajador_id} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresGenerales.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div><div className="card" style={{padding:20, textAlign:'center', background:'var(--bg-subtle)'}}><button className="btn btn-primary" style={{width:'100%', padding:'24px 20px', fontSize:20, marginBottom:20, justifyContent:'center'}} onClick={() => marcarKiosk('entrada')}>Entrada</button><button className="btn btn-secondary" style={{width:'100%', padding:'24px 20px', fontSize:20, justifyContent:'center'}} onClick={() => marcarKiosk('salida')}>Salida</button></div><div className="input-group"><label>Minutos de refrigerio tomados (especificar al marcar salida)</label><input className="input" type="number" min="0" style={{fontSize:16, padding:12}} value={form.refrigerio_tomado_minutos} onChange={e=>setForm(v=>({...v,refrigerio_tomado_minutos:e.target.value}))}/></div><div className="input-group"><label>Ubicación requerida</label><button className="btn btn-secondary" style={{width:'100%', padding:12, justifyContent:'center'}} onClick={obtenerUbicacion}>{I.mapPin} {form.ubicacion_estado || 'Obtener mi ubicación actual'}</button></div>{form.latitud && <div className="text-muted" style={{fontSize:14, textAlign:'center'}}>Lat: {form.latitud}, Lng: {form.longitud}</div>}</div></div></>}
       {exportModal && <><div className="side-panel-backdrop" onClick={()=>!exportando && setExportModal(false)}/><div className="side-panel" style={{width:'min(420px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Reporte</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Exportar marcaciones</div></div><button className="icon-btn" onClick={()=>setExportModal(false)}>{I.x}</button></div><div className="side-panel-body"><p className="text-muted" style={{fontSize:12, marginBottom:16}}>Incluye a todo el personal (planilla y honorarios). Rango máximo: 6 meses.</p>{exportError && <div className="alert alert-danger" style={{fontSize:12, marginBottom:14}}>{exportError}</div>}<div className="grid-2" style={{gap:12}}><div className="input-group"><label>Desde</label><input className="input" type="date" value={exportDesde} onChange={e=>setExportDesde(e.target.value)}/></div><div className="input-group"><label>Hasta</label><input className="input" type="date" value={exportHasta} onChange={e=>setExportHasta(e.target.value)}/></div></div><div className="row mt-6" style={{justifyContent:'flex-end', gap:8}}><button type="button" className="btn btn-secondary" onClick={()=>setExportModal(false)} disabled={exportando}>Cancelar</button><button type="button" className="btn btn-primary" onClick={exportarMarcacionesExcel} disabled={exportando}>{exportando ? 'Generando...' : (<>{I.download} Descargar Excel</>)}</button></div></div></div></>}
       {masivo && <><div className="side-panel-backdrop" onClick={()=>setMasivo(false)}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Registro masivo</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{fecha}</div></div><button className="icon-btn" onClick={()=>setMasivo(false)}>{I.x}</button></div><div className="side-panel-body"><div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody>{trabajadoresGenerales.map(t=>{const trn=workerTurno(turnos,t,fecha);const d=masivoDatos[t.id]||{estado:'completo',hora_entrada:trn.hora_entrada,hora_salida:trn.hora_salida};const esFalta=d.estado==='falta'||d.estado==='falta_justificada';const bloqueado=Boolean(t.asistencia_bloqueada);return <tr key={t.id}><td><strong>{t.nombre}</strong>{bloqueado&&<div><span className="badge badge-red" style={{fontSize:10}}>Contrato vencido</span></div>}</td><td>{trn.nombre}</td><td><input className="input" type="time" value={d.hora_entrada} disabled={esFalta||bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_entrada:e.target.value}}))} /></td><td><input className="input" type="time" value={d.hora_salida} disabled={esFalta||bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],hora_salida:e.target.value}}))} /></td><td><select className="select" style={{minWidth:140}} value={d.estado} disabled={bloqueado} onChange={e=>setMasivoDatos(prev=>({...prev,[t.id]:{...prev[t.id],estado:e.target.value}}))}>  <option value="completo">Completo</option><option value="tardanza">Tardanza</option><option value="falta">Falta</option><option value="falta_justificada">Falta Justificada</option></select></td></tr>})}</tbody></table></div>
@@ -17525,6 +17933,122 @@ function Nomina() {
   const periodo = periodoActivo || periodoMesActual || periodoMasCercano();
   const periodoKey = periodo ? `${periodo.anio}-${String(periodo.mes).padStart(2, '0')}` : '';
 
+  // Nómina no puede depender de la caché de la vista de asistencia: esa
+  // caché puede contener solo los días consultados por el usuario. Se obtiene
+  // un snapshot completo y paginado del mes calendario antes de calcular,
+  // advertir o procesar. Q2 necesita también las asistencias de Q1 al
+  // recalcular el mes completo para reconciliar la primera quincena.
+  const rangoAsistenciaNomina = useMemo(() => {
+    if (!periodo) return null;
+    const anio = periodo.anio || new Date().getFullYear();
+    const mes = periodo.mes || new Date().getMonth() + 1;
+    return {
+      inicio: _isoDate(new Date(anio, mes - 1, 1)),
+      fin: _isoDate(new Date(anio, mes, 0)),
+    };
+  }, [periodo?.anio, periodo?.mes]);
+  const claveAsistenciaNomina = empresa?.id && rangoAsistenciaNomina
+    ? `${empresa.id}:${rangoAsistenciaNomina.inicio}:${rangoAsistenciaNomina.fin}`
+    : '';
+  const [cargaAsistenciaNomina, setCargaAsistenciaNomina] = useState({ clave: '', registros: [], cargando: false, error: null });
+  const asistenciaNominaLista = Boolean(
+    claveAsistenciaNomina
+    && cargaAsistenciaNomina.clave === claveAsistenciaNomina
+    && !cargaAsistenciaNomina.cargando
+    && !cargaAsistenciaNomina.error
+  );
+  const registrosParaNomina = asistenciaNominaLista ? cargaAsistenciaNomina.registros : [];
+
+  useEffect(() => {
+    if (!claveAsistenciaNomina || !rangoAsistenciaNomina) {
+      setCargaAsistenciaNomina({ clave: '', registros: [], cargando: false, error: null });
+      return undefined;
+    }
+
+    let cancelado = false;
+    setCargaAsistenciaNomina({ clave: claveAsistenciaNomina, registros: [], cargando: true, error: null });
+
+    // El modo local conserva los datos en memoria. En producción la consulta
+    // completa es obligatoria y no hay fallback a una caché parcial.
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      const registrosLocales = registrosAsistencia.filter(r => (
+        r.fecha >= rangoAsistenciaNomina.inicio && r.fecha <= rangoAsistenciaNomina.fin
+      ));
+      setCargaAsistenciaNomina({ clave: claveAsistenciaNomina, registros: registrosLocales, cargando: false, error: null });
+      return undefined;
+    }
+
+    rrhhService.getAsistencia(empresa.id, rangoAsistenciaNomina.inicio, rangoAsistenciaNomina.fin, { strict: true, completa: true })
+      .then(registros => {
+        if (!cancelado) setCargaAsistenciaNomina({ clave: claveAsistenciaNomina, registros, cargando: false, error: null });
+      })
+      .catch(error => {
+        console.error('[Nomina] No se pudieron cargar las asistencias completas del período:', error);
+        if (!cancelado) setCargaAsistenciaNomina({ clave: claveAsistenciaNomina, registros: [], cargando: false, error });
+      });
+
+    return () => { cancelado = true; };
+  }, [claveAsistenciaNomina, rangoAsistenciaNomina?.inicio, rangoAsistenciaNomina?.fin, empresa?.id, registrosAsistencia]);
+
+  // La configuración de feriados siempre cubre el mes calendario completo,
+  // igual que el snapshot de asistencias usado al reconciliar Q2 contra Q1.
+  const rangoConfiguracionFeriadosNomina = useMemo(() => {
+    if (!periodo) return null;
+    const anio = periodo.anio || new Date().getFullYear();
+    const mes = periodo.mes || new Date().getMonth() + 1;
+    return {
+      inicio: _isoDate(new Date(anio, mes - 1, 1)),
+      fin: _isoDate(new Date(anio, mes, 0)),
+    };
+  }, [periodo?.anio, periodo?.mes]);
+  // Se conserva una sola carga por empresa/mes, sin refetch al alternar Q1/Q2.
+  const claveConfiguracionFeriados = empresa?.id && rangoConfiguracionFeriadosNomina
+    ? `${empresa.id}:${rangoConfiguracionFeriadosNomina.inicio}:${rangoConfiguracionFeriadosNomina.fin}`
+    : '';
+  const [cargaConfiguracionFeriados, setCargaConfiguracionFeriados] = useState({ clave: '', feriados: [], defaults: [], overrides: [], cargando: false, error: null });
+  const configuracionFeriadosLista = Boolean(
+    claveConfiguracionFeriados
+    && cargaConfiguracionFeriados.clave === claveConfiguracionFeriados
+    && !cargaConfiguracionFeriados.cargando
+    && !cargaConfiguracionFeriados.error
+  );
+
+  useEffect(() => {
+    if (!claveConfiguracionFeriados || !rangoConfiguracionFeriadosNomina) {
+      setCargaConfiguracionFeriados({ clave: '', feriados: [], defaults: [], overrides: [], cargando: false, error: null });
+      return undefined;
+    }
+    if (!isSupabaseConfigured()) {
+      setCargaConfiguracionFeriados({ clave: claveConfiguracionFeriados, feriados: [], defaults: [], overrides: [], cargando: false, error: null });
+      return undefined;
+    }
+
+    let cancelado = false;
+    setCargaConfiguracionFeriados({ clave: claveConfiguracionFeriados, feriados: [], defaults: [], overrides: [], cargando: true, error: null });
+    getSupabaseClient().then(async supabase => {
+      const [feriadosRes, defaultsRes, overridesRes] = await Promise.all([
+        supabase.from('feriados').select('id,fecha,nombre').eq('empresa_id', empresa.id).gte('fecha', rangoConfiguracionFeriadosNomina.inicio).lte('fecha', rangoConfiguracionFeriadosNomina.fin),
+        supabase.from('feriados_politica_regimen_default').select('regimen_jornada,politica_pago').eq('empresa_id', empresa.id),
+        supabase.from('feriados_politica_override').select('feriado_id,regimen_jornada,politica_pago').eq('empresa_id', empresa.id),
+      ]);
+      if (feriadosRes.error) throw feriadosRes.error;
+      if (defaultsRes.error) throw defaultsRes.error;
+      if (overridesRes.error) throw overridesRes.error;
+      return { feriados: feriadosRes.data || [], defaults: defaultsRes.data || [], overrides: overridesRes.data || [] };
+    }).then(datos => {
+      if (!cancelado) setCargaConfiguracionFeriados({ clave: claveConfiguracionFeriados, ...datos, cargando: false, error: null });
+    }).catch(error => {
+      if (!cancelado) setCargaConfiguracionFeriados({ clave: claveConfiguracionFeriados, feriados: [], defaults: [], overrides: [], cargando: false, error });
+    });
+    return () => { cancelado = true; };
+  }, [claveConfiguracionFeriados, rangoConfiguracionFeriadosNomina?.inicio, rangoConfiguracionFeriadosNomina?.fin, empresa?.id]);
+
+  const configuracionFeriadosNomina = useMemo(() => ({
+    feriadoPorFecha: new Map(cargaConfiguracionFeriados.feriados.map(feriado => [feriado.fecha, feriado])),
+    politicaDefaultPorRegimen: new Map(cargaConfiguracionFeriados.defaults.map(politica => [politica.regimen_jornada, politica.politica_pago])),
+    politicaOverridePorFeriadoRegimen: new Map(cargaConfiguracionFeriados.overrides.map(politica => [`${politica.feriado_id}:${politica.regimen_jornada}`, politica.politica_pago])),
+  }), [cargaConfiguracionFeriados]);
+
   const comisionesPlanilla = useMemo(() => {
     // comisiones.periodo solo tiene precision de mes ("YYYY-MM"); para distinguir quincena
     // se usa creado_en (fecha real del cobro que genero la comision) contra el rango del período.
@@ -17676,7 +18200,7 @@ function Nomina() {
   }, [ingresosExtraRows, periodo?.quincena, periodo?.id, periodoQ1?.id]);
 
   const calculos = useMemo(() => {
-    if (!periodo) return [];
+    if (!periodo || !asistenciaNominaLista || !configuracionFeriadosLista) return [];
     return trabajadores.map(t => {
       const turno = workerTurno(turnos, t);
       const datos = empresa?.multisociedad_habilitado
@@ -17685,8 +18209,8 @@ function Nomina() {
       const heNoPago = heCompRows.filter(h => h.personal_id === t.id && (h.estado === 'pendiente' || h.estado === 'compensar'));
       const heNoPagoAsistencia = new Set(heNoPago.map(h => h.registro_asistencia_id || h.asistencia_id).filter(Boolean));
       const heNoPagoFechas = new Set(heNoPago.map(h => h.fecha_he).filter(Boolean));
-      const regs = registrosAsistencia
-        .filter(r => r.trabajador_id === t.id && (periodo.fecha_inicio && periodo.fecha_fin ? (r.fecha >= periodo.fecha_inicio && r.fecha <= periodo.fecha_fin) : r.fecha.startsWith(periodoKey)))
+      const regs = registrosParaNomina
+        .filter(r => r.trabajador_id === t.id)
         .map(r => (Number(r.horas_extra_min || 0) > 0 && (heNoPagoAsistencia.has(r.id) || heNoPagoFechas.has(r.fecha)))
           ? { ...r, horas_extra_min: 0, horas_extra: 0 }
           : r
@@ -17700,7 +18224,7 @@ function Nomina() {
       const montoIngresoRemunerativo = periodo.quincena === 2
         ? (ingresoRemunerativoMesCompletoPorTrabajador[t.id] || 0)
         : ingresoInfo.remunerativo;
-      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfgPeriodo, q1Snapshot, montoIngresoRemunerativo);
+      const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfgPeriodo, q1Snapshot, montoIngresoRemunerativo, configuracionFeriadosNomina);
       if (!base) return base;
       const descExtra = Number(descExtraPorTrabajador[t.id] || 0);
       const ingresoNoRemunerativo = ingresoInfo.noRemunerativo;
@@ -17718,24 +18242,56 @@ function Nomina() {
         neto: Math.round((Number(base.neto || 0) + ingresoNoRemunerativo - descExtra) * 100) / 100,
       };
     }).filter(Boolean);
-  }, [periodo?.id, trabajadores, registrosAsistencia.length, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado, parametrosSociedadNominaKey]);
+  }, [periodo?.id, trabajadores, asistenciaNominaLista, configuracionFeriadosLista, configuracionFeriadosNomina, registrosParaNomina, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado, parametrosSociedadNominaKey]);
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
     SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
   ), [solicitudesRRHH]);
 
+  // La alerta de días sin cobertura es una auditoría de asistencia diaria.
+  // El personal minero se controla por roster/ciclo e incidencias explícitas,
+  // por lo que nunca debe aparecer aquí como si cada día sin marcación fuera
+  // una inasistencia. La asignación histórica es la fuente principal porque
+  // permite clasificar correctamente el período aun si la ficha espejo está
+  // desactualizada.
+  const trabajadoresMinerosEnPeriodoNomina = useMemo(() => {
+    if (!periodo) return new Set();
+    const { inicio, fin } = rangoDiasPeriodo(periodo);
+    const inicioPeriodo = _isoDate(inicio);
+    const finPeriodo = _isoDate(fin);
+    return new Set(asignacionesJornada
+      .filter(a => a.tipo_tramo === 'normal'
+        && esRegimenMinero(a.regimen_jornada)
+        && a.fecha_inicio <= finPeriodo
+        && (!a.fecha_fin || a.fecha_fin >= inicioPeriodo))
+      .map(a => a.personal_id));
+  }, [asignacionesJornada, periodo?.id, periodo?.fecha_inicio, periodo?.fecha_fin, periodo?.anio, periodo?.mes]);
+
   // Auditoría de control: días sin marcación de asistencia ni justificación aprobada.
   // No afecta ningún cálculo de nómina — solo alimenta la alerta visual del tab Resumen.
   const diasSinCoberturaPorTrabajador = useMemo(() => {
-    if (!periodo) return [];
-    return trabajadores.map(t => {
+    if (!periodo || !asistenciaNominaLista) return [];
+    return trabajadores
+      .filter(t => !trabajadoresMinerosEnPeriodoNomina.has(t.id) && !esRegimenMinero(t.regimen_jornada))
+      .map(t => {
       const turno = workerTurno(turnos, t);
-      const regs = registrosAsistencia.filter(r => r.trabajador_id === t.id && r.fecha.startsWith(periodoKey));
+      const regs = registrosParaNomina.filter(r => r.trabajador_id === t.id);
       const fechas = detectarDiasSinCobertura(t, turno, regs, periodo, solicitudesAprobadasCobertura, hoy);
       return { trabajador_id: t.id, nombre: t.nombre, fechas };
-    }).filter(x => x.fechas.length > 0);
-  }, [trabajadores, turnos, registrosAsistencia, periodo?.id, periodoKey, solicitudesAprobadasCobertura]);
+      })
+      .filter(x => x.fechas.length > 0);
+  }, [trabajadores, turnos, asistenciaNominaLista, registrosParaNomina, periodo?.id, solicitudesAprobadasCobertura, trabajadoresMinerosEnPeriodoNomina]);
   const totalDiasSinCobertura = diasSinCoberturaPorTrabajador.reduce((s, x) => s + x.fechas.length, 0);
+
+  const advertenciasPoliticaFeriado = useMemo(() => {
+    const unicas = new Map();
+    calculos.forEach(calculo => (calculo.ausencias_politica_feriado || []).forEach(ausencia => {
+      const key = `${calculo.trabajador_id}:${ausencia.regimen}`;
+      if (!unicas.has(key)) unicas.set(key, { nombre: calculo.trabajador.nombre, regimen: ausencia.regimen, fechas: [] });
+      unicas.get(key).fechas.push(`${ausencia.fecha} (${ausencia.nombre})`);
+    }));
+    return [...unicas.values()];
+  }, [calculos]);
 
   const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
 
@@ -17755,6 +18311,18 @@ function Nomina() {
 
   const procesarNominaAhora = async () => {
     if (!periodo || procesandoNominaRef.current) return;
+    if (!asistenciaNominaLista) {
+      addToast(cargaAsistenciaNomina.error
+        ? 'No se puede procesar: no fue posible cargar todas las asistencias del período.'
+        : 'Espera a que se carguen todas las asistencias del período.', 'error');
+      return;
+    }
+    if (!configuracionFeriadosLista) {
+      addToast(cargaConfiguracionFeriados.error
+        ? 'No se puede procesar: no fue posible cargar la configuración de feriados del período.'
+        : 'Espera a que se cargue la configuración de feriados del período.', 'error');
+      return;
+    }
     procesandoNominaRef.current = true;
     setProcesandoNomina(true);
     try {
@@ -17804,6 +18372,18 @@ function Nomina() {
   // en la primera vez que se procesa un período que en un reproceso.
   const calcularNomina = () => {
     if (!periodo || procesandoNominaRef.current) return;
+    if (!asistenciaNominaLista) {
+      addToast(cargaAsistenciaNomina.error
+        ? 'No se puede procesar: no fue posible cargar todas las asistencias del período.'
+        : 'Espera a que se carguen todas las asistencias del período.', 'error');
+      return;
+    }
+    if (!configuracionFeriadosLista) {
+      addToast(cargaConfiguracionFeriados.error
+        ? 'No se puede procesar: no fue posible cargar la configuración de feriados del período.'
+        : 'Espera a que se cargue la configuración de feriados del período.', 'error');
+      return;
+    }
     const hoyStr = new Date().toISOString().split('T')[0];
     if (periodo.fecha_corte && hoyStr < periodo.fecha_corte) {
       setAdvertenciaCorte(true);
@@ -18254,7 +18834,17 @@ function Nomina() {
         {periodo && tab !== 'periodos' && (
           <div className="row" style={{gap:8}}>
             <button className="btn btn-secondary" onClick={() => setBoleta(calculos[0])} disabled={!calculos.length}>{I.download} Boletas</button>
-            <button className="btn btn-primary" data-local-form="true" onClick={calcularNomina} disabled={periodo?.estado === 'cerrado' || procesandoNomina}>{procesandoNomina ? 'Procesando...' : 'Procesar'}</button>
+            <button
+              className="btn btn-primary"
+              data-local-form="true"
+              onClick={calcularNomina}
+              disabled={periodo?.estado === 'cerrado' || procesandoNomina || !asistenciaNominaLista || !configuracionFeriadosLista}
+              title={cargaAsistenciaNomina.error
+                ? 'No se pudieron cargar todas las asistencias del período.'
+                : cargaConfiguracionFeriados.error ? 'No se pudo cargar la configuración de feriados del período.'
+                : !asistenciaNominaLista ? 'Cargando asistencias completas del período...'
+                : !configuracionFeriadosLista ? 'Cargando la configuración de feriados del período...' : ''}
+            >{procesandoNomina ? 'Procesando...' : 'Procesar'}</button>
             <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo)} onClick={() => setCierre(true)}>Cerrar</button>
           </div>
         )}
@@ -18330,9 +18920,37 @@ function Nomina() {
             <div className="kpi-card"><div className="kpi-label">Cargas empresa</div><div className="kpi-value" style={{fontSize:20}}>{money(resumen.total_cargas_empresa)}</div></div>
             <div className="kpi-card"><div className="kpi-label">Costo laboral</div><div className="kpi-value" style={{fontSize:20}}>{money(resumen.costo_laboral_total)}</div></div>
           </div>
+          {cargaAsistenciaNomina.cargando && (
+            <div className="alert alert-warning" style={{margin:'0 16px 12px', fontSize:12}}>
+              Cargando todas las asistencias registradas entre {rangoAsistenciaNomina?.inicio} y {rangoAsistenciaNomina?.fin} antes de calcular la nómina.
+            </div>
+          )}
+          {cargaAsistenciaNomina.error && (
+            <div className="alert alert-danger" style={{margin:'0 16px 12px', fontSize:12}}>
+              No se pudieron cargar todas las asistencias del período. No se mostrarán faltas ni se permitirá procesar hasta resolver la conexión y recargar. Detalle: {cargaAsistenciaNomina.error.message || 'error desconocido'}.
+            </div>
+          )}
+          {cargaConfiguracionFeriados.cargando && (
+            <div className="alert alert-warning" style={{margin:'0 16px 12px', fontSize:12}}>
+              Cargando feriados y políticas de pago antes de calcular la nómina.
+            </div>
+          )}
+          {cargaConfiguracionFeriados.error && (
+            <div className="alert alert-danger" style={{margin:'0 16px 12px', fontSize:12}}>
+              No se pudo cargar la configuración de feriados. No se permitirá procesar hasta recargar. Detalle: {cargaConfiguracionFeriados.error.message || 'error desconocido'}.
+            </div>
+          )}
           {calculos.some(c => c.incompleto_ciclo) && (
             <div className="alert alert-warning" style={{margin:'0 16px 12px',fontSize:12}}>
               <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} — completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
+            </div>
+          )}
+          {advertenciasPoliticaFeriado.length > 0 && (
+            <div className="alert alert-warning" style={{margin:'0 16px 12px', fontSize:12}}>
+              <strong>Feriados trabajados sin política de pago configurada:</strong> se aplicó <em>Sin pago adicional</em> por ausencia de configuración.
+              <ul style={{margin:'6px 0 0', paddingLeft:18}}>
+                {advertenciasPoliticaFeriado.map(advertencia => <li key={`${advertencia.nombre}:${advertencia.regimen}`}><strong>{advertencia.nombre}</strong> · {advertencia.regimen}: {advertencia.fechas.join(', ')}</li>)}
+              </ul>
             </div>
           )}
           {totalDiasSinCobertura > 0 && (
@@ -18352,34 +18970,34 @@ function Nomina() {
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr>
-                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th>Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
+                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th>Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas nómina</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
               </tr></thead>
               <tbody>
-                {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>Sin trabajadores registrados.</td></tr>}
+                {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>{!asistenciaNominaLista ? 'Cargando asistencias completas del período...' : 'Sin trabajadores registrados.'}</td></tr>}
                 {calculos.map(c => (
-                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
-                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: (c.incompleto_ciclo || c.incompleto_q1) ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
+                    <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.incompleto_q1 && <span className="badge badge-red" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>Q1 pendiente</span>}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
+                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
                     {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
-                    <td title={c.dias_computables != null ? "Indicador de días trabajados del ciclo, independiente de marcaciones físicas." : "Asistencias registradas"}>
-                      {c.incompleto_ciclo ? '—' : c.dias_computables != null ? (
+                    <td title={c.dias_computables != null ? "Asistencias sobre los días programados de subida a mina." : "Asistencias registradas"}>
+                      {(c.incompleto_ciclo || c.incompleto_q1) ? (c.incompleto_q1 ? <span className="text-muted" title="No se puede calcular Q2 hasta procesar la primera quincena.">Q1 pendiente</span> : '—') : c.dias_computables != null ? (
                         <div style={{lineHeight: 1.2}}>
                           <div>{c.dias_asistidos}/{c.dias_laborables}</div>
-                          <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>días trab. ciclo</div>
+                          <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>días de subida</div>
                         </div>
                       ) : (
                         `${c.dias_asistidos}/${c.dias_laborables}`
                       )}
                     </td>
-                    <td>{c.incompleto_ciclo ? '—' : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
-                    <td>{c.incompleto_ciclo ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
-                    <td className="num">{money(c.sueldo_base)}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : c.faltas_roster > 0 ? <span className="text-muted" title={`${c.faltas_roster} incidencia(s) gestionada(s) en el balance del roster minero`}>Roster</span> : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td className="num">{c.incompleto_q1 ? '—' : money(c.sueldo_base)}</td>
                     <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                    <td className="num">{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
-                    <td className="num">{c.incompleto_ciclo ? '—' : money(c.total_descuentos)}</td>
-                    <td className="num"><strong>{c.incompleto_ciclo ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
-                    <td>{!c.incompleto_ciclo && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
+                    <td>{!c.incompleto_ciclo && !c.incompleto_q1 && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -18405,17 +19023,19 @@ function Nomina() {
               <div style={{fontWeight:700, marginBottom:8}}>{detalle.trabajador.nombre} · {periodo.periodo}</div>
               <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{detalle.turno?.nombre} · {detalle.regimen_jornada !== 'general' ? `${detalle.dias_computables ?? '?'} días comp.` : `${detalle.dias_laborables} días lab.`}</div>
               {detalle.error_historial && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Historial de jornada: {detalle.error_historial === 'gap' ? 'hueco sin asignación' : detalle.error_historial === 'overlap' ? 'solapamiento entre asignaciones' : 'datos de ciclo incompletos'}.</strong> {detalle.error_historial_detail}</div>}
+              {detalle.incompleto_q1 && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Q1 sin procesar.</strong> No se puede calcular la segunda quincena hasta que se procese la primera quincena de este trabajador.</div>}
               {detalle.es_proporcional && <div style={{padding:'6px 10px', marginBottom:12, fontSize:12, background:'rgba(6,182,212,0.08)', color:'var(--cyan)', borderLeft:'3px solid var(--cyan)', borderRadius:4}}>Cálculo proporcional · {detalle.dias_efectivos_periodo} días de 30</div>}
-              <div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
-              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p>
+              {!detalle.incompleto_q1 && <><div style={{fontWeight:600, marginBottom:6}}>Ingresos</div>
+              <p>(+) Sueldo base: {money(detalle.sueldo_base)}{(detalle.regimen_jornada !== 'general' || detalle.es_proporcional) && ` → prop. ${money(detalle.sueldo_proporcional)}`}</p></>}
               {detalle.asignacion_familiar > 0 && <p>(+) Asignacion familiar: {money(detalle.asignacion_familiar)}</p>}
               {detalle.horas_extra_tramo1_min > 0 && <p>(+) Horas extra tramo 1 (25%) · {minutesToLabel(detalle.horas_extra_tramo1_min)}: {money(detalle.add_tramo1)}</p>}
               {detalle.horas_extra_tramo2_min > 0 && <p>(+) Horas extra tramo 2 (35%) · {minutesToLabel(detalle.horas_extra_tramo2_min)}: {money(detalle.add_tramo2)}</p>}
+              {detalle.sobretasa_feriado > 0 && <p>(+) Sobretasa por feriado: {money(detalle.sobretasa_feriado)}</p>}
               {detalle.bonif_altitud > 0 && <p>(+) Bonif. altitud: {money(detalle.bonif_altitud)}</p>}
               {(comisionPorTrabajador[detalle.trabajador_id] || 0) > 0 && <p>(+) Comision planilla: {money(comisionPorTrabajador[detalle.trabajador_id])}</p>}
               {detalle.desc_faltas > 0 && <p style={{color:'var(--danger)'}}>(-) Faltas: {money(detalle.desc_faltas)}</p>}
               {detalle.desc_tardanzas > 0 && <p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detalle.desc_tardanzas)}</p>}
-              <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>
+              {!detalle.incompleto_q1 && <p style={{fontWeight:700, borderTop:'1px solid var(--border-subtle)', paddingTop:8, marginTop:8}}>Total bruto: {money(detalle.remuneracion_bruta)}</p>}
               {!detalle.multi_tramo && detalle.regimen_jornada !== 'general' && <div className="card" style={{padding:'8px 12px', marginTop:12, fontSize:12, background:'rgba(251,191,36,0.08)'}}>
                 <p> Días laborados en ciclo: {detalle.dias_computables ?? '—'} · Horas diarias: {detalle.datosNomina?.horas_diarias_pactadas || 12}h</p>
                 {detalle.datosNomina?.fecha_inicio_ciclo && <p>Inicio ciclo: {detalle.datosNomina.fecha_inicio_ciclo}</p>}
@@ -18644,15 +19264,17 @@ function Nomina() {
             <button className="icon-btn" onClick={()=>setDetallePanel(null)}>{I.x}</button>
           </div>
           <div className="side-panel-body">
-            <div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
-            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p>
+            {detallePanel.incompleto_q1 && <div style={{padding:'8px 12px', marginBottom:12, fontSize:12, background:'rgba(239,68,68,0.08)', color:'var(--danger)', borderLeft:'3px solid var(--danger)', borderRadius:4}}><strong>Q1 sin procesar.</strong> No se puede calcular la segunda quincena hasta que se procese la primera quincena de este trabajador.</div>}
+            {!detallePanel.incompleto_q1 && <><div style={{fontWeight:600, marginBottom:8}}>Ingresos</div>
+            <p>Sueldo base: {money(detallePanel.sueldo_base)}{detallePanel.regimen_jornada!=='general'&&` → prop. ${money(detallePanel.sueldo_proporcional)}`}</p></>}
             {detallePanel.asignacion_familiar>0&&<p>Asignacion familiar: {money(detallePanel.asignacion_familiar)}</p>}
             {detallePanel.horas_extra_tramo1_min>0&&<p>H. extra tramo 1 (25%): {money(detallePanel.add_tramo1)}</p>}
             {detallePanel.horas_extra_tramo2_min>0&&<p>H. extra tramo 2 (35%): {money(detallePanel.add_tramo2)}</p>}
+            {(detallePanel.detalle_sobretasa_feriado || []).length > 0 && <div className="card" style={{padding:'10px 12px', margin:'10px 0', background:'rgba(34,197,94,0.08)', borderLeft:'3px solid var(--green)'}}><div style={{fontWeight:600, marginBottom:6}}>Sobretasa por feriado: {money(detallePanel.sobretasa_feriado)}</div>{detallePanel.detalle_sobretasa_feriado.map((item, index) => <div key={`${item.fecha}:${item.feriado_id}:${index}`} style={{fontSize:12, padding:'6px 0', borderTop:index ? '1px solid var(--border-subtle)' : 'none'}}><strong>{item.fecha} · {item.nombre}</strong><div className="text-muted">Régimen: {item.regimen} · {item.origen_politica === 'descanso_sustitutorio' ? 'Descanso sustitutorio otorgado' : `${item.politica === 'doble' ? 'Doble' : item.politica === 'triple' ? 'Triple' : 'Sin pago adicional'} (${item.origen_politica === 'override' ? 'override' : item.origen_politica === 'default' ? 'default' : 'sin configuración'})`} · {money(item.monto)}</div></div>)}</div>}
             {detallePanel.bonif_altitud>0&&<p>Bonif. altitud: {money(detallePanel.bonif_altitud)}</p>}
             {detallePanel.desc_faltas>0&&<p style={{color:'var(--danger)'}}>(-) Faltas: {money(detallePanel.desc_faltas)}</p>}
             {detallePanel.desc_tardanzas>0&&<p style={{color:'var(--danger)'}}>(-) Tardanzas: {money(detallePanel.desc_tardanzas)}</p>}
-            <p style={{fontWeight:700}}>Total bruto: {money(detallePanel.remuneracion_bruta)}</p>
+            {!detallePanel.incompleto_q1 && <p style={{fontWeight:700}}>Total bruto: {money(detallePanel.remuneracion_bruta)}</p>}
             <hr style={{margin:'12px 0'}}/>
             <div style={{fontWeight:600, marginBottom:8}}>Descuentos</div>
             {detallePanel.sistema_pensionario==='AFP'?<>
@@ -18680,7 +19302,7 @@ function Nomina() {
 
 
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{emisorBoleta?.razon_social || emisorBoleta?.nombre}</strong>{emisorBoleta?.ruc&&<><br/><span className="text-muted" style={{fontSize:11}}>RUC {emisorBoleta.ruc}</span></>}</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={descargarBoletaPdf}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{emisorBoleta?.razon_social || emisorBoleta?.nombre}</strong>{emisorBoleta?.ruc&&<><br/><span className="text-muted" style={{fontSize:11}}>RUC {emisorBoleta.ruc}</span></>}</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{boleta.sobretasa_feriado>0&&<p>Sobretasa por feriado: {money(boleta.sobretasa_feriado)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={descargarBoletaPdf}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {descPanel && <><div className="side-panel-backdrop" onClick={()=>setDescPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo descuento</div></div><button className="icon-btn" onClick={()=>setDescPanel(false)}>{I.x}</button></div>
@@ -23766,7 +24388,8 @@ export function SolicitudesRrhh() {
       const hist = await solicitudesRrhhService.cargarHistorial(sol.id);
       const { pdf } = await import('@react-pdf/renderer');
       const { PapeletaMovimientoPDF } = await import('./pages_pdf.jsx');
-      const personaSolicitud = todosPersonal.find(p => String(p.id) === String(sol.personal_id)) || null;
+      const allWorkers = [...(personalOperativo || []), ...(personalAdmin || [])];
+      const personaSolicitud = allWorkers.find(p => String(p.id) === String(sol.personal_id)) || null;
       const blob = await pdf(
         <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} emisor={emisor} historial={hist} persona={personaSolicitud} />
       ).toBlob();

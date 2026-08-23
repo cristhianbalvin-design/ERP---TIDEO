@@ -149,7 +149,7 @@ export function renderBusinessLinesRoute(route, context) {
     case 'catalogo': return <CatalogoPage onNav={onNavigate} />;
     case 'repuestos-cotizaciones': return <CotizacionesVenta setCurrent={onNavigate} />;
     case 'repuestos-ordenes': return <OrdenesVenta setCurrent={onNavigate} />;
-    case 'repuestos-despachos': return <AdministrativeAppLinkPage title="Guías y Despachos" adminRoute="remision" />;
+    case 'repuestos-despachos': return <><AdministrativeAppLinkPage title="Guías y Despachos" adminRoute="remision" /><GuiasDespachos /></>;
     default: return null;
   }
 }

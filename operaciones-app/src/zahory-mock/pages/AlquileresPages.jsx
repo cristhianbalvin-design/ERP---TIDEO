@@ -1,6 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { getAdministrativeHref } from '../components/AdministrativeAppLinkPage.jsx';
+import { STORAGE_BUCKETS, subirAdjunto } from '../../../../src/services/storageService.js';
 
 // ── Mock Data — delegado a data.js (Capa 3) ───────────────────────────────
 const ACTIVOS_RENTAL  = ZAHORY_SAC_DATA.flota_equipos_rental;
@@ -8,6 +12,17 @@ const CONTRATOS_MOCK  = ZAHORY_SAC_DATA.contratosRental;
 
 // ── Helpers de fecha y estado ─────────────────────────────────────────────
 const HOY = new Date('2026-05-13');
+
+// En el maestro histórico, tipo_categoria también contiene descripciones
+// específicas de flota (SCOOPTRAM, JUMBO, CARGADOR, etc.). Por eso se excluyen
+// solo las categorías genéricas inequívocamente ajenas a flota.
+const CATEGORIAS_NO_FLOTA = new Set([
+  'MUEBLE', 'MOBILIARIO', 'INMUEBLE', 'INFORMATICA',
+  'ACTIVO INTANGIBLE', 'INTANGIBLE', 'ACTIVO NO DEPRECIABLE', 'OTRO',
+]);
+const esActivoDeFlota = activo => !CATEGORIAS_NO_FLOTA.has(
+  String(activo?.tipo_categoria || '').trim().toUpperCase(),
+);
 
 const calcEstadoContrato = (vencStr) => {
   const venc = new Date(vencStr);
@@ -30,15 +45,34 @@ const fmtFechaLarga = (iso) => {
 };
 
 // Opciones del formulario de nuevo contrato
-const CLIENTES_OPT   = ['Minera Nexa Resources','Cia. Minas Buenaventura','Antamina S.A.','Volcan Compañía Minera','Cerro Verde S.A.C.','Gold Fields La Cima','Antapaccay S.A.'];
-const UNIDADES_OPT   = ['U.M. Animón — Cerro de Pasco','U.M. Uchucchacua — Lima','U.M. Antamina — Áncash','U.M. Yauli — Junín','U.M. Cuajone — Moquegua','U.M. Cerro Verde — Arequipa','U.M. Tintaya — Cusco'];
-const UM_TARIFA_OPT  = ['Hora','Día','Mes'];
-
 const CTFORM_INIT = {
-  numero: '', cliente: '', unidad: '',
-  equipo: '', tarifa: '', unidadMedida: 'Hora', minimo: '',
-  metaDMR: '85',
-  inicio: '', vencimiento: '',
+  clienteId: '', unidadMinera: '', equipoId: '',
+  fechaInicio: '', fechaFin: '', tarifaMonto: '', moneda: 'USD',
+  tarifaPeriodicidad: 'hora', minimoFacturable: '', metaDmr: '85',
+  centroCostoId: '', centroBeneficioId: '',
+};
+
+const generarNumeroContrato = () => {
+  const anio = String(new Date().getFullYear()).slice(-2);
+  return `CT-${anio}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+};
+
+const generarIdContrato = () => (
+  globalThis.crypto?.randomUUID?.() || `ctr_${Date.now()}_${Math.random().toString(36).slice(2)}`
+);
+
+const esNumeroContratoDuplicado = error => (
+  error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '')
+);
+
+const etiquetaCuenta = cuenta => cuenta?.nombre_comercial || cuenta?.razon_social || cuenta?.id || '';
+const etiquetaCatalogo = item => [item?.codigo, item?.nombre].filter(Boolean).join(' - ') || item?.id || '';
+
+const mensajeErrorContrato = error => {
+  if (error?.code === '42501') return 'No tienes permiso para registrar contratos en la sociedad activa.';
+  if (error?.code === '23503') return 'El cliente, equipo o centro seleccionado ya no es válido para tu alcance.';
+  if (error?.code === '23514') return 'Los datos del contrato no cumplen las validaciones requeridas.';
+  return error?.message || 'No se pudo guardar el contrato. Inténtalo nuevamente.';
 };
 
 // ── Componente de vista previa de contrato ────────────────────────────────
@@ -405,7 +439,12 @@ const Toast = ({ msg }) => (
 // 1. PANEL DE FLOTA
 // ═══════════════════════════════════════════════════════════════════════════
 export const FlotaRentalPage = ({ onNav }) => {
+  const sesionOperativa = useSesionOperativa();
+  const crearActivosHref = getAdministrativeHref('activos_fijos');
   const [tab, setTab]               = useState('todos');
+  const [equiposReales, setEquiposReales] = useState([]);
+  const [cargandoFlota, setCargandoFlota] = useState(false);
+  const [errorFlota, setErrorFlota] = useState('');
   const [modalOpen, setModalOpen]   = useState(false);
   const [form, setForm]             = useState(FLOTA_FORM_INIT);
   const [saving, setSaving]         = useState(false);
@@ -458,17 +497,76 @@ export const FlotaRentalPage = ({ onNav }) => {
     onNav('checkout');
   };
 
-  const filtered = ACTIVOS_RENTAL.filter(e =>
-    tab === 'todos' || e.estado === tab
-  );
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId) {
+      setEquiposReales([]);
+      return () => { vigente = false; };
+    }
 
+    const cargarFlota = async () => {
+      setCargandoFlota(true);
+      setErrorFlota('');
+      try {
+        const supabase = getSupabaseClient();
+        const hoy = new Date().toISOString().slice(0, 10);
+        const activosQuery = supabase
+          .from('activos')
+          .select('id,codigo,nombre,tipo_categoria,marca,modelo,ubicacion,estado')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .neq('estado', 'dado_baja')
+          .order('codigo');
+        let contratosQuery = supabase
+          .from('contratos_alquiler_equipos')
+          .select('equipo_id,contrato:contratos_alquiler!inner(id,numero,cuenta_id,sociedad_id,estado,fecha_inicio,fecha_fin,cuenta:cuentas!inner(nombre_comercial,razon_social))')
+          .eq('contrato.empresa_id', sesionOperativa.empresaId)
+          .eq('contrato.estado', 'vigente')
+          .lte('contrato.fecha_inicio', hoy)
+          .gte('contrato.fecha_fin', hoy);
+        if (sesionOperativa.sociedadId) contratosQuery = contratosQuery.eq('contrato.sociedad_id', sesionOperativa.sociedadId);
+
+        const [activosRes, contratosRes] = await Promise.all([activosQuery, contratosQuery]);
+        if (activosRes.error) throw activosRes.error;
+        if (contratosRes.error) throw contratosRes.error;
+        if (!vigente) return;
+
+        const contratosPorEquipo = new Map();
+        (contratosRes.data || []).forEach(relacion => {
+          const contrato = Array.isArray(relacion.contrato) ? relacion.contrato[0] : relacion.contrato;
+          if (!contrato || !relacion.equipo_id) return;
+          const actuales = contratosPorEquipo.get(relacion.equipo_id) || [];
+          actuales.push(contrato);
+          contratosPorEquipo.set(relacion.equipo_id, actuales);
+        });
+        const activos = activosRes.data || [];
+        const activosFlota = activos.filter(esActivoDeFlota);
+        setEquiposReales(activosFlota.map(activo => ({
+          ...activo,
+          contratosVigentes: contratosPorEquipo.get(activo.id) || [],
+        })));
+      } catch (error) {
+        if (vigente) {
+          setEquiposReales([]);
+          setErrorFlota(`No se pudo cargar el Panel de Flota: ${error.message || 'error desconocido'}`);
+        }
+      } finally {
+        if (vigente) setCargandoFlota(false);
+      }
+    };
+
+    cargarFlota();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.sociedadId]);
+
+  const filtered = equiposReales.filter(equipo => (
+    tab === 'todos'
+    || (tab === 'con_contrato' && equipo.contratosVigentes.length > 0)
+    || (tab === 'sin_contrato' && equipo.contratosVigentes.length === 0)
+  ));
   const flotaTabs = [
-    { key: 'todos',           label: 'Todos',       count: ACTIVOS_RENTAL.length },
-    { key: 'disponible',      label: 'Disponibles', count: ACTIVOS_RENTAL.filter(e => e.estado === 'disponible').length },
-    { key: 'alquilado',       label: 'Alquilados',  count: ACTIVOS_RENTAL.filter(e => e.estado === 'alquilado').length },
-    { key: 'en_mantenimiento',label: 'En Taller',   count: ACTIVOS_RENTAL.filter(e => e.estado === 'en_mantenimiento').length },
-    { key: 'en_transito',     label: 'En Tránsito', count: ACTIVOS_RENTAL.filter(e => e.estado === 'en_transito').length },
-    { key: 'baja',            label: 'Baja',        count: ACTIVOS_RENTAL.filter(e => e.estado === 'baja').length },
+    { key: 'todos', label: 'Todos', count: equiposReales.length },
+    { key: 'con_contrato', label: 'Con contrato activo', count: equiposReales.filter(equipo => equipo.contratosVigentes.length > 0).length },
+    { key: 'sin_contrato', label: 'Sin contrato activo', count: equiposReales.filter(equipo => equipo.contratosVigentes.length === 0).length },
   ];
 
   return (
@@ -476,13 +574,16 @@ export const FlotaRentalPage = ({ onNav }) => {
       <div className="page-header">
         <div>
           <h1>Panel de Flota</h1>
-          <div className="sub">Disponibilidad y estado comercial de activos en alquiler</div>
+          <div className="sub">Activos y contratos de alquiler vigentes</div>
         </div>
-        <div className="spacer"/>
-        <button className="btn btn-secondary"><Icon name="download" size={13}/> Exportar</button>
-        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <Icon name="plus" size={13}/> Nuevo Equipo
-        </button>
+        <div className="spacer" />
+        <a className="btn btn-secondary" href={crearActivosHref}>
+          Crear activos en Administración
+        </a>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16, padding: '10px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+        Las acciones Historial, Despachar y Retornar estarán disponibles cuando se implemente el módulo de movimientos de flota.
       </div>
 
       {/* Quick filter tabs — dinámico con conteos */}
@@ -499,152 +600,48 @@ export const FlotaRentalPage = ({ onNav }) => {
         </div>
       </div>
 
-      {/* Grid de cards */}
-      <div style={{
-        display:'grid',
-        gridTemplateColumns:'repeat(auto-fill, minmax(284px, 1fr))',
-        gap:16, marginBottom:24,
-      }}>
-        {filtered.map(eq => {
-          const cfg          = ESTADO_FLOTA_CFG[eq.estado] || ESTADO_FLOTA_CFG['disponible'];
-          const horasPM      = calcProximoPM(eq);
-          const pmColor      = horasPM <= 0 ? '#ef4444' : horasPM <= 100 ? '#f59e0b' : '#22c55e';
-          const hasPenalidad = eq.estado === 'alquilado' && eq.dmr_actual !== null && eq.dmr_actual < eq.dmr_meta;
-
-          return (
-            <div key={eq.id} className="card"
-              style={{ overflow:'hidden', cursor:'pointer', transition:'box-shadow .15s', display:'flex', flexDirection:'column' }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow='0 6px 24px rgba(17,24,39,0.12)'}
-              onMouseLeave={e => e.currentTarget.style.boxShadow=''}
-            >
-              {/* Foto del equipo */}
-              <div style={{ height:160, position:'relative', overflow:'hidden', background:'#F0F2F5' }}>
-                <img
-                  src={eq.imagen}
-                  alt={eq.modelo}
-                  style={{ width:'100%', height:'100%', objectFit:'contain', objectPosition:'center', padding:'10px 16px', transition:'transform .25s ease' }}
-                  onMouseEnter={e => e.currentTarget.style.transform='scale(1.04)'}
-                  onMouseLeave={e => e.currentTarget.style.transform='scale(1)'}
-                  onError={e => { e.currentTarget.style.display='none'; e.currentTarget.parentElement.style.background='linear-gradient(135deg, var(--navy) 0%, #253759 100%)'; }}
-                />
-                {/* Badge de estado */}
-                <span className={cfg.cls} style={{ position:'absolute', top:10, right:10, fontSize:11, padding:'3px 9px' }}>
-                  <span className="dot"/>{cfg.label}
-                </span>
-                {/* Badge riesgo penalidad — solo cuando DMR < meta */}
-                {hasPenalidad && (
-                  <span style={{ position:'absolute', top:10, left:10, background:'rgba(239,68,68,0.15)', color:'#ef4444', fontSize:9, padding:'2px 7px', borderRadius:8, fontWeight:700 }}>
-                    ⚠ Riesgo penalidad
-                  </span>
-                )}
-                <span style={{ position:'absolute', bottom:8, left:12, fontSize:10, fontWeight:700, letterSpacing:1, color:'var(--text-muted)', textTransform:'uppercase' }}>
-                  {eq.tipo}
-                </span>
-              </div>
-
-              {/* Body */}
-              <div style={{ padding:'14px 16px 16px', flex:1, display:'flex', flexDirection:'column' }}>
-                {/* ID + modelo */}
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontFamily:'ui-monospace,monospace', fontWeight:800, fontSize:16, color:'var(--navy)', letterSpacing:-.2 }}>{eq.id}</div>
-                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginTop:2 }}>{eq.modelo}</div>
+      {(sesionOperativa.cargando || cargandoFlota) && <div className="card" style={{ padding:16, marginBottom:16 }}>Cargando activos y contratos vigentes...</div>}
+      {errorFlota && <div className="card" style={{ padding:16, marginBottom:16, color:'#b91c1c', borderColor:'#fecaca' }}>{errorFlota}</div>}
+      {!sesionOperativa.cargando && !cargandoFlota && !errorFlota && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(284px, 1fr))', gap:16, marginBottom:24 }}>
+          {filtered.map(equipo => {
+            const contrato = equipo.contratosVigentes[0] || null;
+            const multiplesContratos = equipo.contratosVigentes.length > 1;
+            const marcaModelo = [equipo.marca, equipo.modelo].filter(Boolean).join(' · ');
+            const cuenta = Array.isArray(contrato?.cuenta) ? contrato.cuenta[0] : contrato?.cuenta;
+            const cliente = cuenta?.nombre_comercial || cuenta?.razon_social || contrato?.cuenta_id || '';
+            return (
+              <div key={equipo.id} className="card" style={{ padding:'16px', display:'flex', flexDirection:'column', gap:12 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10 }}>
+                  {equipo.tipo_categoria && <span className="chip" style={{ fontSize:10.5, fontFamily:'ui-monospace,monospace' }}>{equipo.tipo_categoria}</span>}
+                  {multiplesContratos && <span style={{ padding:'3px 8px', borderRadius:999, background:'rgba(245,158,11,.14)', color:'#b45309', fontSize:10.5, fontWeight:800 }}>⚠ Múltiples contratos vigentes</span>}
                 </div>
-
-                {/* Horómetro + Ubicación */}
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
-                  {[
-                    { label:'Horómetro', val:`${eq.horometro.toLocaleString()} h`, mono:true },
-                    { label:'Ubicación',  val: eq.ubicacion, mono:false },
-                  ].map(({ label, val, mono }) => (
-                    <div key={label} style={{ padding:'7px 10px', background:'#F8FAFC', borderRadius:6 }}>
-                      <div style={{ fontSize:9.5, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>{label}</div>
-                      <div style={{ fontWeight:700, color:'var(--navy)', fontSize:12, fontFamily: mono ? 'ui-monospace,monospace' : 'inherit' }}>{val}</div>
-                    </div>
+                <div>
+                  <div style={{ fontFamily:'ui-monospace,monospace', fontWeight:800, fontSize:16, color:'var(--navy)' }}>{equipo.codigo}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginTop:3 }}>{equipo.nombre}</div>
+                  {marcaModelo && <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:3 }}>{marcaModelo}</div>}
+                </div>
+                {equipo.ubicacion && <div style={{ padding:'8px 10px', background:'#F8FAFC', borderRadius:6 }}><div style={{ fontSize:9.5, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>Ubicación</div><div style={{ fontWeight:700, color:'var(--navy)', fontSize:12 }}>{equipo.ubicacion}</div></div>}
+                {!multiplesContratos && contrato && <div style={{ padding:'8px 10px', background:'#E0F7FA', borderRadius:6, fontSize:12 }}><span style={{ color:'var(--text-muted)' }}>Cliente: </span><span style={{ fontWeight:700 }}>{cliente}</span><span className="chip" style={{ marginLeft:8, fontSize:10.5, fontFamily:'ui-monospace,monospace' }}>{contrato.numero}</span></div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 'auto' }}>
+                  {['Historial', 'Despachar', 'Retornar'].map(accion => (
+                    <button
+                      key={accion}
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      disabled
+                      title="Disponible cuando se implemente el módulo de movimientos de flota"
+                    >
+                      {accion}
+                    </button>
                   ))}
                 </div>
-
-                {/* CC + Propietario badges (Correcciones 1 y 7) */}
-                <div style={{ display:'flex', gap:4, marginBottom:8, flexWrap:'wrap', alignItems:'center' }}>
-                  <span style={{ background: CC_COLORS[eq.centro_costo]?.bg, color: CC_COLORS[eq.centro_costo]?.color, fontSize:'9px', fontFamily:'monospace', padding:'2px 7px', borderRadius:'8px', fontWeight:600, letterSpacing:'0.05em' }}>
-                    {eq.centro_costo}
-                  </span>
-                  <span style={{ background: eq.propietario === 'Empresa Operadora' ? 'rgba(34,197,94,0.10)' : 'rgba(59,130,246,0.10)', color: eq.propietario === 'Empresa Operadora' ? '#22c55e' : '#3b82f6', fontSize:'9px', fontFamily:'monospace', padding:'2px 7px', borderRadius:'8px', fontWeight:600, marginLeft:'4px' }}>
-                    {eq.propietario === 'Empresa Operadora' ? 'Propio' : 'Cliente'}
-                  </span>
-                </div>
-
-                {/* Próximo PM — todas las cards (Corrección 3) */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, padding:'4px 0', borderBottom:'1px solid rgba(0,0,0,0.05)' }}>
-                  <span style={{ fontSize:'9.5px', color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6 }}>PRÓXIMO PM</span>
-                  <span style={{ color:pmColor, fontWeight:600, fontSize:'12px' }}>
-                    {horasPM <= 0 ? '⚠ PM vencido' : `en ${horasPM.toLocaleString()} h`}
-                  </span>
-                </div>
-
-                {/* DMR actual — solo equipos alquilados (Corrección 2) */}
-                {eq.estado === 'alquilado' && eq.dmr_actual !== null && (
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, padding:'6px 8px', background:'rgba(0,0,0,0.03)', borderRadius:6 }}>
-                    <span style={{ fontSize:'9.5px', color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', letterSpacing:.6 }}>DMR ACTUAL</span>
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span style={{ color: eq.dmr_actual >= eq.dmr_meta ? '#22c55e' : '#ef4444', fontWeight:700, fontSize:'14px' }}>
-                        {eq.dmr_actual.toFixed(1)}%
-                      </span>
-                      <span style={{ fontSize:'10px', color: eq.dmr_actual >= eq.dmr_meta ? '#22c55e' : '#ef4444' }}>
-                        {eq.dmr_actual >= eq.dmr_meta ? '✓ Sobre meta' : `⚠ Bajo meta (${eq.dmr_meta}%)`}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Cliente / contrato — alquilados */}
-                {eq.cliente && (
-                  <div style={{ marginBottom:10, padding:'8px 10px', background: cfg.bg, borderRadius:6, fontSize:12 }}>
-                    <span style={{ color:'var(--text-muted)' }}>Cliente: </span>
-                    <span style={{ fontWeight:700 }}>{eq.cliente}</span>
-                    <span className="chip" style={{ marginLeft:8, fontSize:10.5, fontFamily:'ui-monospace,monospace' }}>{eq.contrato}</span>
-                  </div>
-                )}
-
-                {/* OT activa — equipos en mantenimiento (Corrección 5) */}
-                {eq.estado === 'en_mantenimiento' && eq.ot_activa_id && (
-                  <div style={{ background:'rgba(249,115,22,0.08)', borderLeft:'2px solid #f97316', borderRadius:4, padding:'8px 10px', fontSize:11, marginBottom:10 }}>
-                    <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:3 }}>
-                      <span style={{ fontFamily:'ui-monospace,monospace', fontWeight:700, color:'#f97316', fontSize:11 }}>{eq.ot_activa_id}</span>
-                      <span style={{ color:'var(--text-muted)', fontSize:10 }}>{eq.ot_activa_tipo}</span>
-                    </div>
-                    <div style={{ display:'flex', gap:12, color:'var(--text-muted)', fontSize:10 }}>
-                      <span>Desde: {eq.ot_activa_desde}</span>
-                      <span>Est. cierre: {eq.ot_activa_est_cierre}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Botones de acción */}
-                <div style={{ display:'flex', gap:6, marginTop:'auto', paddingTop:10 }}>
-                  {eq.estado === 'en_mantenimiento'
-                    ? <button className="btn btn-secondary btn-sm" style={{ flex:1, justifyContent:'center' }} onClick={() => onNav('ots')}>
-                        Ver OT →
-                      </button>
-                    : <button className="btn btn-secondary btn-sm" style={{ flex:1, justifyContent:'center' }}>
-                        Historial
-                      </button>
-                  }
-                  {eq.estado === 'disponible' && (
-                    <button className="btn btn-cyan btn-sm" style={{ flex:1, justifyContent:'center' }} onClick={() => handleDespachar(eq)}>
-                      <Icon name="arrow" size={12}/> Despachar
-                    </button>
-                  )}
-                  {eq.estado === 'alquilado' && (
-                    <button className="btn btn-secondary btn-sm" style={{ flex:1, justifyContent:'center' }} onClick={() => onNav('checkout')}>
-                      <Icon name="back" size={12}/> Retornar
-                    </button>
-                  )}
-                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+          {filtered.length === 0 && <div className="card" style={{ padding:16, color:'var(--text-muted)' }}>No hay equipos para esta vista.</div>}
+        </div>
+      )}
 
       {/* ── Modal Nuevo Equipo ─────────────────────────────────────────── */}
       {modalOpen && (
@@ -903,6 +900,7 @@ export const FlotaRentalPage = ({ onNav }) => {
 // 2. CONTRATOS Y TARIFAS
 // ═══════════════════════════════════════════════════════════════════════════
 export const ContratosRentalPage = ({ onNav }) => {
+  const sesion = useSesionOperativa();
   const [modalNuevo,           setModalNuevo]           = useState(false);
   const [preview,              setPreview]              = useState(null);
   const [ctForm,               setCtForm]               = useState(CTFORM_INIT);
@@ -912,6 +910,19 @@ export const ContratosRentalPage = ({ onNav }) => {
   const [contratoSeleccionado, setContratoSeleccionado] = useState(null);
   const [tabFicha,             setTabFicha]             = useState('resumen');
   const [fichaAbierta,         setFichaAbierta]         = useState(false);
+  const [numeroSugerido,       setNumeroSugerido]       = useState('');
+  const [clientes,             setClientes]             = useState([]);
+  const [unidadesMineras,      setUnidadesMineras]      = useState([]);
+  const [equipos,              setEquipos]              = useState([]);
+  const [centrosCosto,         setCentrosCosto]         = useState([]);
+  const [centrosBeneficio,     setCentrosBeneficio]     = useState([]);
+  const [cargandoCatalogos,    setCargandoCatalogos]    = useState(false);
+  const [errorCatalogos,       setErrorCatalogos]       = useState('');
+  const [errorGuardar,         setErrorGuardar]         = useState('');
+  const [archivoContrato,      setArchivoContrato]      = useState(null);
+  const [contratoGuardado,     setContratoGuardado]     = useState(null);
+  const [errorArchivo,         setErrorArchivo]         = useState('');
+  const [subiendoArchivo,      setSubiendoArchivo]      = useState(false);
 
   const contratos = ZAHORY_SAC_DATA.contratosRental;
 
@@ -1024,15 +1035,171 @@ export const ContratosRentalPage = ({ onNav }) => {
 
   const setCtField = (k, v) => setCtForm(f => ({ ...f, [k]: v }));
 
-  const handleGuardar = () => {
+  useEffect(() => {
+    let activo = true;
+    if (!modalNuevo || !sesion.empresaId || !sesion.sociedadId || !sesion.permiteEscritura) return undefined;
+
+    const cargarCatalogos = async () => {
+      setCargandoCatalogos(true);
+      setErrorCatalogos('');
+      try {
+        const supabase = getSupabaseClient();
+        // activos no posee sociedad_id: el alcance disponible hoy es empresa + estado operativo.
+        const [cuentasRes, unidadesRes, equiposRes, cecoRes, cebeRes] = await Promise.all([
+          supabase.from('cuentas').select('id,nombre_comercial,razon_social,ruc,estado')
+            .eq('empresa_id', sesion.empresaId).eq('estado', 'activo').order('nombre_comercial'),
+          supabase.from('sedes').select('id,codigo,nombre')
+            .eq('empresa_id', sesion.empresaId).eq('tipo', 'unidad_minera').eq('estado', 'activo').order('nombre'),
+          supabase.from('activos').select('id,codigo,nombre,marca,modelo,estado')
+            .eq('empresa_id', sesion.empresaId).eq('estado', 'operativo').order('codigo'),
+          supabase.from('centros_costo').select('id,nombre,codigo')
+            .eq('empresa_id', sesion.empresaId).eq('sociedad_id', sesion.sociedadId).eq('estado', 'activo').order('nombre'),
+          supabase.from('centros_beneficio').select('id,nombre,codigo')
+            .eq('empresa_id', sesion.empresaId).eq('sociedad_id', sesion.sociedadId).eq('estado', 'activo').order('nombre'),
+        ]);
+        const error = [cuentasRes, unidadesRes, equiposRes, cecoRes, cebeRes].find(resultado => resultado.error)?.error;
+        if (error) throw error;
+        if (!activo) return;
+        setClientes(cuentasRes.data || []);
+        setUnidadesMineras(unidadesRes.data || []);
+        setEquipos(equiposRes.data || []);
+        setCentrosCosto(cecoRes.data || []);
+        setCentrosBeneficio(cebeRes.data || []);
+      } catch (error) {
+        if (activo) setErrorCatalogos(`No se pudieron cargar los catálogos: ${error.message || 'error desconocido'}`);
+      } finally {
+        if (activo) setCargandoCatalogos(false);
+      }
+    };
+
+    cargarCatalogos();
+    return () => { activo = false; };
+  }, [modalNuevo, sesion.empresaId, sesion.sociedadId, sesion.permiteEscritura]);
+
+  const limpiarModalContrato = () => {
+    setModalNuevo(false);
+    setCtForm(CTFORM_INIT);
+    setArchivoContrato(null);
+    setContratoGuardado(null);
+    setErrorGuardar('');
+    setErrorArchivo('');
+  };
+
+  const abrirModalContrato = () => {
+    setCtForm(CTFORM_INIT);
+    setNumeroSugerido(generarNumeroContrato());
+    setArchivoContrato(null);
+    setContratoGuardado(null);
+    setErrorGuardar('');
+    setErrorArchivo('');
+    setModalNuevo(true);
+  };
+
+  const subirDocumentoContrato = async contratoId => {
+    if (!archivoContrato) return true;
+    setSubiendoArchivo(true);
+    setErrorArchivo('');
+    try {
+      await subirAdjunto({
+        empresaId: sesion.empresaId,
+        entidadTipo: 'contratos_alquiler',
+        entidadId: contratoId,
+        file: archivoContrato,
+        categoria: 'contrato_pdf',
+        subidoPor: sesion.usuario?.id || null,
+        bucket: STORAGE_BUCKETS.DOCUMENTOS_PRIVADOS,
+      });
+      return true;
+    } catch (error) {
+      setErrorArchivo(`El contrato fue creado, pero no se pudo subir el PDF: ${error.message || 'error desconocido'}`);
+      return false;
+    } finally {
+      setSubiendoArchivo(false);
+    }
+  };
+
+  const handleGuardar = async () => {
+    if (!sesion.permiteEscritura) {
+      setErrorGuardar('No puedes crear contratos desde la vista consolidada. Selecciona una sociedad operativa.');
+      return;
+    }
+    if (!sesion.empresaId || !sesion.sociedadId) {
+      setErrorGuardar('Aún no se resolvió la empresa y sociedad activas.');
+      return;
+    }
+    const tarifa = Number(ctForm.tarifaMonto);
+    const dmr = Number(ctForm.metaDmr);
+    const minimo = ctForm.minimoFacturable === '' ? null : Number(ctForm.minimoFacturable);
+    if (!ctForm.clienteId || !ctForm.equipoId || !ctForm.fechaInicio || !ctForm.fechaFin || !Number.isFinite(tarifa) || tarifa < 0 || !Number.isFinite(dmr) || dmr < 0 || dmr > 100 || (minimo !== null && (!Number.isFinite(minimo) || minimo < 0))) {
+      setErrorGuardar('Completa Cliente, Equipo, fechas, tarifa y una meta DMR válida entre 0 y 100.');
+      return;
+    }
+    if (ctForm.fechaFin < ctForm.fechaInicio) {
+      setErrorGuardar('La fecha de vencimiento no puede ser anterior a la fecha de inicio.');
+      return;
+    }
+
     setSaving(true);
-    setTimeout(() => {
+    setErrorGuardar('');
+    let contrato = null;
+    try {
+      const supabase = getSupabaseClient();
+      const id = generarIdContrato();
+      for (let intento = 0; intento < 5; intento += 1) {
+        const numero = intento === 0 ? numeroSugerido : generarNumeroContrato();
+        const { data, error } = await supabase.from('contratos_alquiler').insert({
+          id,
+          empresa_id: sesion.empresaId,
+          sociedad_id: sesion.sociedadId,
+          numero,
+          cuenta_id: ctForm.clienteId,
+          unidad_minera: ctForm.unidadMinera || null,
+          fecha_inicio: ctForm.fechaInicio,
+          fecha_fin: ctForm.fechaFin,
+          tarifa_monto: tarifa,
+          tarifa_periodicidad: ctForm.tarifaPeriodicidad,
+          minimo_facturable: minimo,
+          meta_dmr: dmr,
+          moneda: ctForm.moneda,
+          centro_costo_id: ctForm.centroCostoId || null,
+          centro_beneficio_id: ctForm.centroBeneficioId || null,
+        }).select('id,numero').single();
+        if (!error) { contrato = data; break; }
+        if (!esNumeroContratoDuplicado(error) || intento === 4) throw error;
+      }
+      if (!contrato) throw new Error('No se pudo asignar un número de contrato disponible.');
+      const { error: equipoError } = await supabase.from('contratos_alquiler_equipos').insert({
+        contrato_alquiler_id: contrato.id,
+        equipo_id: ctForm.equipoId,
+      });
+      if (equipoError) {
+        // No dejamos un contrato nuevo sin el único equipo exigido por este flujo.
+        await supabase.from('contratos_alquiler').delete().eq('id', contrato.id);
+        throw equipoError;
+      }
+
+      setContratoGuardado(contrato);
+      const documentoSubido = await subirDocumentoContrato(contrato.id);
+      if (documentoSubido) {
+        limpiarModalContrato();
+        setToast(true);
+        setTimeout(() => setToast(false), 2800);
+      }
+    } catch (error) {
+      setErrorGuardar(mensajeErrorContrato(error));
+    } finally {
       setSaving(false);
-      setModalNuevo(false);
-      setCtForm(CTFORM_INIT);
+    }
+  };
+
+  const reintentarSubida = async () => {
+    if (!contratoGuardado || subiendoArchivo) return;
+    const documentoSubido = await subirDocumentoContrato(contratoGuardado.id);
+    if (documentoSubido) {
+      limpiarModalContrato();
       setToast(true);
       setTimeout(() => setToast(false), 2800);
-    }, 900);
+    }
   };
 
   return (
@@ -1044,7 +1211,7 @@ export const ContratosRentalPage = ({ onNav }) => {
         </div>
         <div className="spacer"/>
         <button className="btn btn-secondary"><Icon name="download" size={13}/> Exportar</button>
-        <button className="btn btn-primary" onClick={() => setModalNuevo(true)}>
+        <button className="btn btn-primary" onClick={abrirModalContrato}>
           <Icon name="plus" size={13}/> Nuevo Contrato
         </button>
       </div>
@@ -1585,154 +1752,62 @@ export const ContratosRentalPage = ({ onNav }) => {
 
       {/* ── Modal Nuevo Contrato ───────────────────────────────────────── */}
       {modalNuevo && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(15,23,42,0.65)',
-          zIndex:1000, display:'grid', placeItems:'center', padding:20, overflowY:'auto',
-        }}
-          onClick={e => { if (e.target === e.currentTarget) { setModalNuevo(false); setCtForm(CTFORM_INIT); } }}
-        >
-          <div className="card" style={{ width:'100%', maxWidth:640, animation:'fadeInUp 0.2s ease-out', margin:'auto' }}>
-            <div className="card-header" style={{ background:'var(--navy)', color:'white', borderRadius:'8px 8px 0 0' }}>
-              <div>
-                <h3 style={{ margin:0 }}>Nuevo Contrato de Alquiler</h3>
-                <div style={{ fontSize:12, opacity:.75, marginTop:2 }}>Complete los datos del acuerdo comercial.</div>
-              </div>
-              <div className="spacer"/>
-              <button className="icon-btn" onClick={() => { setModalNuevo(false); setCtForm(CTFORM_INIT); }} style={{ color:'white' }}>
-                <Icon name="x" size={16}/>
-              </button>
+        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.65)', zIndex:1001, display:'grid', placeItems:'center', padding:20, overflowY:'auto' }}
+          onClick={e => { if (e.target === e.currentTarget && !saving && !subiendoArchivo) limpiarModalContrato(); }}>
+          <div className="card" style={{ width:'100%', maxWidth:760, animation:'fadeInUp 0.2s ease-out', margin:'auto' }}>
+            <div className="card-header" style={{ background:'var(--navy)', color:'white', borderRadius:'8px 8px 0 0', justifyContent:'space-between' }}>
+              <div><h3 style={{ margin:0, color:'white' }}>Nuevo Contrato de Alquiler</h3><div style={{ fontSize:12, opacity:.75, marginTop:2 }}>Registro real para la sociedad activa.</div></div>
+              <button className="icon-btn" onClick={limpiarModalContrato} disabled={saving || subiendoArchivo} style={{ color:'white', flexShrink:0 }}><Icon name="x" size={16}/></button>
             </div>
-
             <div className="card-body" style={{ display:'flex', flexDirection:'column', gap:20 }}>
+              {sesion.cargando && <div className="alert alert-info">Verificando sesión operativa...</div>}
+              {!sesion.cargando && !sesion.permiteEscritura && <div className="alert alert-warning">Selecciona una sociedad operativa para crear contratos. La vista consolidada es solo de lectura.</div>}
+              {errorCatalogos && <div className="alert alert-error">{errorCatalogos}</div>}
+              {errorGuardar && <div className="alert alert-error">{errorGuardar}</div>}
+              {errorArchivo && <div className="alert alert-warning">{errorArchivo}</div>}
+              {contratoGuardado && errorArchivo && <div className="alert alert-info">Contrato {contratoGuardado.numero} creado. Puedes reintentar solo la subida del PDF, sin duplicar el contrato.</div>}
 
-              {/* Sección A */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  A — Identificación
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="field" style={{ gridColumn:'1/-1' }}>
-                    <label>Nº de Contrato *</label>
-                    <input className="input" placeholder="Ej. CT-2026-005"
-                      value={ctForm.numero} onChange={e => setCtField('numero', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Cliente *</label>
-                    <select className="select" value={ctForm.cliente} onChange={e => setCtField('cliente', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {CLIENTES_OPT.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Unidad Minera *</label>
-                    <select className="select" value={ctForm.unidad} onChange={e => setCtField('unidad', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {UNIDADES_OPT.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Equipo Asignado *</label>
-                    <select className="select" value={ctForm.equipo} onChange={e => setCtField('equipo', e.target.value)}>
-                      <option value="">Seleccionar...</option>
-                      {ACTIVOS_RENTAL.filter(e => e.estado === 'disponible').map(e => (
-                        <option key={e.id}>{e.id} — {e.modelo}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Fecha de Inicio *</label>
-                    <input className="input" type="date" value={ctForm.inicio} onChange={e => setCtField('inicio', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Fecha de Vencimiento *</label>
-                    <input className="input" type="date" value={ctForm.vencimiento} onChange={e => setCtField('vencimiento', e.target.value)}/>
-                  </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>A — Identificación</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:12 }}>
+                  <div className="field" style={{ minWidth:0 }}><label>Número de Contrato</label><input className="input" style={{ width:'100%', minWidth:0 }} value={numeroSugerido} readOnly /></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Cliente *</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.clienteId} onChange={e => setCtField('clienteId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando clientes...' : 'Seleccionar...'}</option>{clientes.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{etiquetaCuenta(cuenta)}{cuenta.ruc ? ` · ${cuenta.ruc}` : ''}</option>)}</select></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Unidad Minera</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.unidadMinera} onChange={e => setCtField('unidadMinera', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando unidades...' : 'Sin unidad minera'}</option>{unidadesMineras.map(unidad => <option key={unidad.id} value={unidad.id}>{etiquetaCatalogo(unidad)}</option>)}</select></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Equipo Asignado *</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.equipoId} onChange={e => setCtField('equipoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando equipos...' : 'Seleccionar...'}</option>{equipos.map(equipo => <option key={equipo.id} value={equipo.id}>{etiquetaCatalogo(equipo)}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>Activos se filtra por empresa: el maestro no tiene sociedad_id.</div></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Fecha de Inicio *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" value={ctForm.fechaInicio} onChange={e => setCtField('fechaInicio', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Fecha de Vencimiento *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" min={ctForm.fechaInicio || undefined} value={ctForm.fechaFin} onChange={e => setCtField('fechaFin', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                 </div>
               </div>
 
-              {/* Sección B */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  B — Parámetros de Cobro
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-                  <div className="field">
-                    <label>Tarifa (USD) *</label>
-                    <input className="input" type="number" placeholder="0.00"
-                      value={ctForm.tarifa} onChange={e => setCtField('tarifa', e.target.value)}/>
-                  </div>
-                  <div className="field">
-                    <label>Unidad de Medida</label>
-                    <select className="select" value={ctForm.unidadMedida} onChange={e => setCtField('unidadMedida', e.target.value)}>
-                      {UM_TARIFA_OPT.map(u => <option key={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Mínimo Garantizado (hrs)</label>
-                    <input className="input" type="number" placeholder="200"
-                      value={ctForm.minimo} onChange={e => setCtField('minimo', e.target.value)}/>
-                  </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>B — Parámetros de Cobro</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:12 }}>
+                  <div className="field"><label>Tarifa *</label><input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={ctForm.tarifaMonto} onChange={e => setCtField('tarifaMonto', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field"><label>Moneda *</label><select className="select" value={ctForm.moneda} onChange={e => setCtField('moneda', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="USD">USD</option><option value="PEN">PEN</option></select></div>
+                  <div className="field"><label>Unidad de tarifa *</label><select className="select" value={ctForm.tarifaPeriodicidad} onChange={e => setCtField('tarifaPeriodicidad', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="hora">Hora</option><option value="dia">Día</option><option value="mes">Mes</option></select></div>
+                  <div className="field"><label>Mínimo garantizado</label><input className="input" type="number" min="0" step="0.01" placeholder="Opcional" value={ctForm.minimoFacturable} onChange={e => setCtField('minimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                 </div>
               </div>
 
-              {/* Sección C */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  C — KPI de Disponibilidad
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="field">
-                    <label>Meta DMR % *</label>
-                    <input className="input" type="number" min={0} max={100} placeholder="85"
-                      value={ctForm.metaDMR} onChange={e => setCtField('metaDMR', e.target.value)}/>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'flex-end', paddingBottom:4 }}>
-                    <div style={{
-                      padding:'8px 12px', background:'#E0F7FA', borderRadius:8,
-                      fontSize:12, color:'#006064', fontWeight:600, lineHeight:1.4,
-                    }}>
-                      Si DMR real {'<'} meta → penalidad contractual según Anexo A
-                    </div>
-                  </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>C — Disponibilidad y centros</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:12 }}>
+                  <div className="field" style={{ minWidth:0 }}><label>Meta DMR % *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="number" min="0" max="100" step="0.01" value={ctForm.metaDmr} onChange={e => setCtField('metaDmr', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Centro de Costo</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.centroCostoId} onChange={e => setCtField('centroCostoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">Sin centro de costo</option>{centrosCosto.map(centro => <option key={centro.id} value={centro.id}>{etiquetaCatalogo(centro)}</option>)}</select></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Centro de Beneficio</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.centroBeneficioId} onChange={e => setCtField('centroBeneficioId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">Sin centro de beneficio</option>{centrosBeneficio.map(centro => <option key={centro.id} value={centro.id}>{etiquetaCatalogo(centro)}</option>)}</select></div>
                 </div>
               </div>
 
-              {/* Sección D */}
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>
-                  D — Documento del Contrato
-                </div>
-                <div style={{
-                  border:'2px dashed var(--card-border)', borderRadius:10,
-                  padding:'22px 20px', textAlign:'center', background:'#F8FAFC',
-                  cursor:'pointer', transition:'border-color .15s, background .15s',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='var(--cyan)'; e.currentTarget.style.background='#F0FDFE'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='var(--card-border)'; e.currentTarget.style.background='#F8FAFC'; }}
-                >
-                  <Icon name="pdf" size={26} stroke={1.5}/>
-                  <div style={{ marginTop:8, fontWeight:700, fontSize:13, color:'var(--navy)' }}>
-                    Adjuntar PDF escaneado del contrato
-                  </div>
-                  <div style={{ fontSize:11.5, color:'var(--text-muted)', marginTop:3 }}>
-                    PDF · Máx. 25 MB
-                  </div>
-                </div>
+                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>D — Documento del contrato</div>
+                <div className="field"><label>PDF del contrato (opcional, máximo 20 MB)</label><input className="input" type="file" accept="application/pdf,.pdf" onChange={e => { setArchivoContrato(e.target.files?.[0] || null); setErrorArchivo(''); }} disabled={Boolean(contratoGuardado) || subiendoArchivo}/>{archivoContrato && <div className="sub" style={{ marginTop:5, fontSize:12 }}>Archivo seleccionado: {archivoContrato.name}</div>}</div>
               </div>
             </div>
-
             <div style={{ display:'flex', gap:10, padding:'4px 16px 16px' }}>
-              <button className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }}
-                onClick={() => { setModalNuevo(false); setCtForm(CTFORM_INIT); }} disabled={saving}>
-                Cancelar
-              </button>
-              <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }}
-                onClick={handleGuardar} disabled={saving}>
-                {saving
-                  ? <><span className="spinner" style={{ width:13, height:13, borderWidth:2, marginRight:6 }}/> Guardando...</>
-                  : <><Icon name="check" size={13}/> Guardar Contrato</>
-                }
-              </button>
+              <button className="btn btn-secondary" style={{ flex:1, justifyContent:'center' }} onClick={limpiarModalContrato} disabled={saving || subiendoArchivo}>{contratoGuardado ? 'Cerrar' : 'Cancelar'}</button>
+              {contratoGuardado && errorArchivo
+                ? <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }} onClick={reintentarSubida} disabled={subiendoArchivo}>{subiendoArchivo ? 'Subiendo PDF...' : 'Reintentar PDF'}</button>
+                : <button className="btn btn-primary" style={{ flex:1, justifyContent:'center' }} onClick={handleGuardar} disabled={saving || cargandoCatalogos || !sesion.permiteEscritura}>{saving ? <><span className="spinner" style={{ width:13, height:13, borderWidth:2, marginRight:6 }}/> Guardando...</> : <><Icon name="check" size={13}/> Guardar Contrato</>}</button>}
             </div>
           </div>
         </div>

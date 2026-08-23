@@ -1,6 +1,8 @@
-import React, { useState as useS2 } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState as useS2 } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 
 // ─── OTs Centro de Control Operativo ─────────────────────────────────────────
 
@@ -125,7 +127,7 @@ const ActionMenu = ({ ot, onNav, setCurrentOT, open, onOpen, onClose }) => (
   </div>
 );
 
-export const OTsListadoPage = ({ onNav, setCurrentOT }) => {
+const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
   const D = ZAHORY_SAC_DATA;
   const [otsState, setOtsState] = useS2(() => D.otsCostos.map(enrichOT));
   const all = otsState;
@@ -469,6 +471,259 @@ export const OTsListadoPage = ({ onNav, setCurrentOT }) => {
   );
 };
 // ── Partes Diarios — datos mock ────────────────────────────────────────────
+const OT_PAGE_SIZE = 25;
+const OT_COLUMNS = [
+  'id', 'numero', 'estado', 'fecha_programada', 'cuenta_id', 'os_cliente_id',
+  'contrato_alquiler_id', 'equipo_id', 'tipo_trabajo', 'cargo_financiero',
+  'motivo_rework', 'tecnico_responsable_id', 'avance_pct', 'costo_estimado',
+  'costo_real', 'centro_costo_id', 'horometro_actual', 'direccion_ejecucion',
+].join(', ');
+const ESTADOS_OT_BASE = ['borrador', 'programada', 'ejecucion', 'cerrada', 'pendiente_cierre', 'valorizada'];
+
+const nombreCuentaOT = (cuenta) => cuenta?.nombre_comercial || cuenta?.razon_social || 'Sin cliente';
+const etiquetaEstadoOT = (estado) => String(estado || 'sin estado').replace(/_/g, ' ');
+const formatoFechaOT = (fecha) => fecha ? new Date(`${fecha}T00:00:00`).toLocaleDateString('es-PE') : 'Sin programar';
+const formatoMontoOT = (monto) => Number(monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const construirConsultaBandejaOT = ({ supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros, soloConteo = false }) => {
+  let consulta = supabase
+    .from('ordenes_trabajo')
+    .select(soloConteo ? 'id' : OT_COLUMNS, { count: 'exact', head: soloConteo })
+    .eq('empresa_id', empresaId);
+
+  // RLS de OTs protege el tenant y el permiso, pero no delimita sociedad.
+  // Esta frontera debe viajar en todas las lecturas operativas no consolidadas.
+  if (sociedadId && !vistaConsolidada) consulta = consulta.eq('sociedad_id', sociedadId);
+  if (vistaConsolidada && Array.isArray(sociedadesIdsAlcance) && sociedadesIdsAlcance.length) {
+    consulta = consulta.in('sociedad_id', sociedadesIdsAlcance);
+  }
+  if (filtros.numero.trim()) consulta = consulta.ilike('numero', `%${filtros.numero.trim()}%`);
+  if (filtros.estado) consulta = consulta.eq('estado', filtros.estado);
+  if (filtros.tecnicoId) consulta = consulta.eq('tecnico_responsable_id', filtros.tecnicoId);
+  if (filtros.retrabajos) consulta = consulta.eq('cargo_financiero', 'Reclamo_Rework');
+  return consulta;
+};
+
+const consultaAuxiliarOT = (consulta, ids) => ids.length ? consulta.in('id', ids) : Promise.resolve({ data: [], error: null });
+
+export const OTsListadoPage = () => {
+  const sesionOperativa = useSesionOperativa();
+  const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
+  const [filtros, setFiltros] = useS2({ numero: '', estado: '', tecnicoId: '', retrabajos: false });
+  const [pagina, setPagina] = useS2(1);
+  const [filas, setFilas] = useS2([]);
+  const [total, setTotal] = useS2(0);
+  const [tecnicos, setTecnicos] = useS2([]);
+  const [cargando, setCargando] = useS2(false);
+  const [error, setError] = useS2('');
+  const [errorTecnicos, setErrorTecnicos] = useS2('');
+  const [aviso, setAviso] = useS2('');
+  const solicitudRef = useRef(0);
+
+  const actualizarFiltro = useCallback((campo, valor) => {
+    setPagina(1);
+    setFiltros(actual => ({ ...actual, [campo]: valor }));
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    if (!empresaId) {
+      setTecnicos([]);
+      return undefined;
+    }
+    const cargarTecnicos = async () => {
+      setErrorTecnicos('');
+      try {
+        const { data, error: consultaError } = await getSupabaseClient()
+          .from('personal_operativo')
+          .select('id, nombre, codigo')
+          .eq('empresa_id', empresaId)
+          .eq('estado', 'disponible')
+          .order('nombre');
+        if (consultaError) throw consultaError;
+        if (activo) setTecnicos(data || []);
+      } catch (consultaError) {
+        if (activo) {
+          setTecnicos([]);
+          setErrorTecnicos(consultaError?.message || 'No se pudo cargar el catálogo de técnicos.');
+        }
+      }
+    };
+    cargarTecnicos();
+    return () => { activo = false; };
+  }, [empresaId]);
+
+  useEffect(() => {
+    if (!empresaId || estadoSesion !== 'listo') return undefined;
+    const solicitudId = ++solicitudRef.current;
+    const cargarPagina = async () => {
+      setCargando(true);
+      setError('');
+      try {
+        const supabase = getSupabaseClient();
+        const desde = (pagina - 1) * OT_PAGE_SIZE;
+        const consultaFilas = construirConsultaBandejaOT({
+          supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros,
+        })
+          .order('fecha_programada', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .range(desde, desde + OT_PAGE_SIZE - 1);
+        const consultaConteo = construirConsultaBandejaOT({
+          supabase, empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, filtros, soloConteo: true,
+        });
+        const [{ data: ots, error: otsError }, { count, error: conteoError }] = await Promise.all([
+          consultaFilas,
+          consultaConteo,
+        ]);
+        if (otsError) throw otsError;
+        if (conteoError) throw conteoError;
+
+        const idsCuenta = [...new Set((ots || []).map(ot => ot.cuenta_id).filter(Boolean))];
+        const idsContrato = [...new Set((ots || []).map(ot => ot.contrato_alquiler_id).filter(Boolean))];
+        const idsOS = [...new Set((ots || []).map(ot => ot.os_cliente_id).filter(Boolean))];
+        const idsCECO = [...new Set((ots || []).map(ot => ot.centro_costo_id).filter(Boolean))];
+        const idsTecnico = [...new Set((ots || []).map(ot => ot.tecnico_responsable_id).filter(Boolean))];
+        const idsEquipo = [...new Set((ots || []).map(ot => ot.equipo_id).filter(Boolean))];
+        const idsSede = [...new Set((ots || []).map(ot => ot.direccion_ejecucion).filter(Boolean))];
+        const [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR] = await Promise.all([
+          consultaAuxiliarOT(supabase.from('cuentas').select('id, nombre_comercial, razon_social').eq('empresa_id', empresaId), idsCuenta),
+          consultaAuxiliarOT(supabase.from('contratos_alquiler').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsContrato),
+          consultaAuxiliarOT(supabase.from('os_clientes').select('id, numero, cuenta_id').eq('empresa_id', empresaId), idsOS),
+          consultaAuxiliarOT(supabase.from('centros_costo').select('id, codigo, nombre').eq('empresa_id', empresaId), idsCECO),
+          consultaAuxiliarOT(supabase.from('personal_operativo').select('id, nombre, codigo').eq('empresa_id', empresaId), idsTecnico),
+          consultaAuxiliarOT(supabase.from('activos').select('id, codigo, nombre').eq('empresa_id', empresaId), idsEquipo),
+          consultaAuxiliarOT(supabase.from('sedes').select('id, codigo, nombre').eq('empresa_id', empresaId), idsSede),
+        ]);
+        for (const resultado of [cuentasR, contratosR, osR, cecosR, tecnicosR, activosR, sedesR]) {
+          if (resultado.error) throw resultado.error;
+        }
+        if (solicitudId !== solicitudRef.current) return;
+        const porId = resultados => new Map((resultados.data || []).map(item => [item.id, item]));
+        const cuentas = porId(cuentasR);
+        const contratos = porId(contratosR);
+        const ordenesServicio = porId(osR);
+        const centrosCosto = porId(cecosR);
+        const tecnicosPorId = porId(tecnicosR);
+        const activosPorId = porId(activosR);
+        const sedesPorId = porId(sedesR);
+        setFilas((ots || []).map(ot => ({
+          ...ot,
+          cliente: cuentas.get(ot.cuenta_id) || null,
+          contrato: contratos.get(ot.contrato_alquiler_id) || null,
+          osCliente: ordenesServicio.get(ot.os_cliente_id) || null,
+          centroCosto: centrosCosto.get(ot.centro_costo_id) || null,
+          tecnico: tecnicosPorId.get(ot.tecnico_responsable_id) || null,
+          equipo: activosPorId.get(ot.equipo_id) || null,
+          sede: sedesPorId.get(ot.direccion_ejecucion) || null,
+        })));
+        setTotal(count || 0);
+      } catch (consultaError) {
+        if (solicitudId !== solicitudRef.current) return;
+        setFilas([]);
+        setTotal(0);
+        setError(consultaError?.message || 'No se pudo cargar la Bandeja Maestra.');
+      } finally {
+        if (solicitudId === solicitudRef.current) setCargando(false);
+      }
+    };
+    cargarPagina();
+    return () => { solicitudRef.current += 1; };
+  }, [empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, estadoSesion, pagina, filtros]);
+
+  const estados = useMemo(() => [...new Set([...ESTADOS_OT_BASE, ...filas.map(fila => fila.estado).filter(Boolean)])], [filas]);
+  const totalPaginas = Math.max(1, Math.ceil(total / OT_PAGE_SIZE));
+  const sinSesion = !cargandoSesion && estadoSesion !== 'listo';
+  const mostrarAvisoDetalle = () => {
+    setAviso('El detalle real de OT estará disponible próximamente. Esta Bandeja es solo lectura por ahora.');
+    window.setTimeout(() => setAviso(''), 4000);
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <h1>Bandeja Maestra</h1>
+          <div className="sub">Órdenes de trabajo reales · {total} resultado{total === 1 ? '' : 's'}</div>
+        </div>
+      </div>
+
+      {cargandoSesion && <div className="alert alert-info">Cargando el contexto de sesión operativa…</div>}
+      {sinSesion && <div className="alert alert-warning">No hay una sesión operativa válida para consultar órdenes de trabajo.</div>}
+      {estadoSesion === 'listo' && vistaConsolidada && <div className="alert alert-info">Vista consolidada: se muestran las OTs de las sociedades permitidas.</div>}
+
+      {estadoSesion === 'listo' && (
+        <>
+          <div className="report-toolbar">
+            <div className="report-tabs">
+              <button className={'report-tab' + (!filtros.retrabajos ? ' active' : '')} onClick={() => actualizarFiltro('retrabajos', false)}>Todas ({total})</button>
+              <button className={'report-tab' + (filtros.retrabajos ? ' active' : '')} onClick={() => actualizarFiltro('retrabajos', true)}>Retrabajos</button>
+            </div>
+            <div className="report-filters">
+              <input className="input" placeholder="Buscar por número de OT…" value={filtros.numero}
+                onChange={event => actualizarFiltro('numero', event.target.value)} style={{ width: 220 }} />
+              <select className="select" value={filtros.estado} onChange={event => actualizarFiltro('estado', event.target.value)} style={{ width: 180 }}>
+                <option value="">Estado: Todos</option>
+                {estados.map(estado => <option key={estado} value={estado}>{etiquetaEstadoOT(estado)}</option>)}
+              </select>
+              <select className="select" value={filtros.tecnicoId} onChange={event => actualizarFiltro('tecnicoId', event.target.value)} style={{ width: 190 }}>
+                <option value="">Técnico: Todos</option>
+                {tecnicos.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre || tecnico.codigo || tecnico.id}</option>)}
+              </select>
+            </div>
+          </div>
+          {errorTecnicos && <div className="alert alert-warning">No se pudo cargar el filtro de técnicos: {errorTecnicos}</div>}
+
+          {error && <div className="alert alert-danger">No se pudo cargar la Bandeja Maestra: {error}</div>}
+          <div className="card">
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr>
+                  <th>OT / Fecha</th><th>Equipo / Cliente</th><th>Raíz de costo</th><th>Tipo & Cargo</th>
+                  <th>Estado</th><th>Técnico</th><th>Ubicación</th><th style={{ textAlign: 'right' }}>Costo</th><th>Avance</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>
+                  {!cargando && !error && filas.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No hay OTs para los filtros seleccionados.</td></tr>}
+                  {filas.map(ot => {
+                    const etiquetaEquipo = ot.equipo
+                      ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
+                      : ot.equipo_id || 'Sin equipo';
+                    const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
+                    return <tr key={ot.id} className="clickable" aria-disabled="true" title="El detalle real estará disponible próximamente."
+                      style={{ cursor: 'not-allowed' }} onClick={mostrarAvisoDetalle}>
+                      <td><div className="ot-code">{ot.numero}</div><div className="muted" style={{ fontSize: 11 }}>{formatoFechaOT(ot.fecha_programada)}</div></td>
+                      <td><strong>{etiquetaEquipo}</strong><div className="muted" style={{ fontSize: 11 }}>{nombreCuentaOT(ot.cliente)}</div>{ot.horometro_actual != null && <div className="mono" style={{ fontSize: 10 }}>Horóm.: {Number(ot.horometro_actual).toLocaleString()} h</div>}</td>
+                      <td><div style={{ fontSize: 12 }}>{raiz}</div>{ot.centroCosto && <div className="muted" style={{ fontSize: 10 }}>{ot.centroCosto.codigo} · {ot.centroCosto.nombre}</div>}</td>
+                      <td><div>{ot.tipo_trabajo || 'Sin clasificar'}</div><div className="muted" style={{ fontSize: 11 }}>{ot.cargo_financiero || 'Sin cargo financiero'}</div>{ot.motivo_rework && <div className="muted" style={{ fontSize: 10 }} title={ot.motivo_rework}>Rework con motivo</div>}</td>
+                      <td><span className="badge slate">{etiquetaEstadoOT(ot.estado)}</span></td>
+                      <td>{ot.tecnico?.nombre || ot.tecnico_responsable_id || 'Sin asignar'}</td>
+                      <td>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</td>
+                      <td style={{ textAlign: 'right' }}><strong>{formatoMontoOT(ot.costo_real)}</strong><div className="muted" style={{ fontSize: 10 }}>est. {formatoMontoOT(ot.costo_estimado)}</div></td>
+                      <td>{Number(ot.avance_pct || 0).toFixed(0)}%</td>
+                      <td onClick={event => event.stopPropagation()}><button className="btn btn-secondary btn-sm" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {cargando && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando órdenes de trabajo…</div>}
+          </div>
+
+          {!error && total > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+            <span className="muted" style={{ fontSize: 12 }}>Mostrando {(pagina - 1) * OT_PAGE_SIZE + 1}–{Math.min(pagina * OT_PAGE_SIZE, total)} de {total}</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-secondary btn-sm" disabled={pagina === 1 || cargando} onClick={() => setPagina(actual => actual - 1)}>← Ant.</button>
+              <span className="muted" style={{ fontSize: 12 }}>Pág. {pagina} / {totalPaginas}</span>
+              <button className="btn btn-secondary btn-sm" disabled={pagina === totalPaginas || cargando} onClick={() => setPagina(actual => actual + 1)}>Sig. →</button>
+            </div>
+          </div>}
+        </>
+      )}
+      {aviso && <div className="alert alert-info" style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 1000 }}>{aviso}</div>}
+      <FooterBrand/>
+    </div>
+  );
+};
+
 const PARTES_TALLER_MOCK = [
   { id: 'PT-2026-041', fecha: '2026-04-19', mecanico: 'Quispe R.',  ot: 'OT-2026-050', horas: 8.0, estado: 'Aprobado',  tecnico_id: 'TEC-003', tecnico_nombre: 'García Quispe, Roberto', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 45, actividades: [{id:'ACT-001',descripcion:'Reparación menor',hora_inicio:'08:00',hora_fin:'16:00',horometro_inicio:1000,horometro_fin:1008}], repuestos_consumidos: [{item_id:'REP-CAT-0441',descripcion:'Sello hidráulico kit completo',cantidad:2,unidad:'kit',costo_unitario:145.00}], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
   { id: 'PT-2026-040', fecha: '2026-04-18', mecanico: 'Torres M.',  ot: 'OT-2026-048', horas: 7.5, estado: 'Aprobado',  tecnico_id: 'TEC-004', tecnico_nombre: 'Torres Mamani, Miguel', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Electricista', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-26', avance_ot_pct: 60, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },

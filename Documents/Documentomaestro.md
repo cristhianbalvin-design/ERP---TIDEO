@@ -1,6 +1,6 @@
 # ERP Modular Estándar para Empresas de Servicios con CRM Potenciado
 ## Documento Maestro Consolidado — TIDEO Tech & Strategy
-### Arquitectura Multitenant SaaS · Última actualización: 10/08/2026
+### Arquitectura Multitenant SaaS · Última actualización: 18/08/2026
 
 ---
 
@@ -23,7 +23,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 
 ---
 
-## 3. Estado de desarrollo — 10/08/2026
+## 3. Estado de desarrollo — 18/08/2026
 
 ### 3.1 Resumen de progreso
 
@@ -32,14 +32,15 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Módulos implementados (construidos) | ~75 ítems activos de sidebar/ruta |
 | Módulos en prompt pendiente de implementar | 0 |
 | Stack técnico | React 18 + Vite 5 · Context API · CSS custom properties · Supabase |
-| Arquitectura | Multitenant SaaS funcional con selector de empresa y simulador de roles |
-| Migraciones SQL registradas en el repositorio | 384 archivos SQL locales, hasta `383_reinicio_jornada_por_trabajadores.sql` |
-| Migración local más reciente | `383_reinicio_jornada_por_trabajadores.sql`: reinicio de roster minero con impactos, salud de implementación por tenant.
-| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (364-383):
-- Salud de Implementación: configuración, anotaciones y respuestas multitenant.
-- Reinicio de Roster Minero y Jornadas de Trabajadores con previsualización de impactos.
-- Refactorización de lógicas de responsabilidades TIDEO/Cliente.
-| Bugs/ajustes corregidos en sesiones 20–24/06/2026 | **Hardening y fix de persistencia:** Corrección de supervisor huérfano; **Maestros:** Migración de tipos de contrato a base de datos con interfaz UI; **Turnos:** Detalle de días laborables, selector autoservicio y autorizaciones HE; **Seguridad:** RLS para postulaciones anónimas y self-read de email. |
+| Arquitectura | Multisociedad y Multitenant SaaS funcional con selector de empresa y simulador de roles |
+| Migraciones SQL registradas en el repositorio | 446 archivos SQL locales, hasta `438_feriados_ambito.sql` |
+| Migración local más reciente | `438_feriados_ambito.sql`: gestión de feriados con ámbito y políticas de pago.
+| Migraciones creadas pendientes de confirmar contra Supabase real | Verificar aplicación remota. Nuevas posteriores al corte anterior (384-438):
+- Multisociedad: soporte para finanzas, contratos, inventario, RLS de sociedades y CECO/CEBE.
+- WMS Atómico: consolidación de movimientos atómicos de inventario y valorización funcional.
+- Catálogos avanzados: fabricantes y número de parte en materiales.
+- Feriados: políticas de pago para feriados fase A y ámbitos específicos.
+| Bugs/ajustes corregidos en sesiones 18/08/2026 | **Multisociedad:** Aislamiento estricto y resolución dinámica; **Inventarios:** Invariabilidad funcional, registro atómico; **Roles:** Reasignación atómica; **Cadena Comercial:** Coherencia de sociedad heredada entre documentos (OS → OT). |
 
 ### 3.2 Inventario completo de módulos
 
@@ -156,6 +157,7 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | Catálogo de Servicios | ✔ Implementado | Formulario ampliado con campos comerciales/técnicos, moneda, costo, precio, margen, facturable, entregables y notas internas. |
 | Tarifarios | ✅ Implementado | |
 | Parámetros Generales | ✅ Implementado | Tabla `afp_parametros` multitenant completa (prima, flujo, mixta). |
+| Feriados y Políticas de Pago | ✔ Implementado | Gestión de feriados, su ámbito de aplicación y políticas de pago (Fase A). |
 | Salud de Implementación | ✅ Implementado | Dashboard interactivo de configuración y anotaciones compartidas TIDEO/Cliente. Control RLS estricto para "solo interno". |
 
 #### Integraciones
@@ -256,6 +258,10 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 | `src/services/whatsappService.js` | Plantillas, matriz de destinatarios, cola/log y estado de proveedor WhatsApp | 5.4 KB |
 | `src/services/tesoreriaService.js` | Movimientos de tesorería, match bancario y saldos de cuentas bancarias | 7.1 KB |
 | `src/services/plataformaService.js` | Empresas/tenants, métricas SaaS | 1.7 KB |
+| `src/services/sociedadesService.js` | Contexto multisociedad, perfil activo y reglas de RLS societarias | 13.5 KB |
+| `src/services/sociedadDestinoService.js` | Funciones específicas de selección de sociedad destino | 1.6 KB |
+| `src/services/sociedadEscrituraService.js` | Funciones de validación para rutas de escritura societaria | 2.5 KB |
+| `src/services/transferenciasIntercompaniaService.js` | Soporte de transferencias de inventario entre distintas sociedades | 1.5 KB |
 | `src/services/auditoriaService.js` | Inserción de eventos en `auditoria` | 0.3 KB |
 | `src/services/createMockRepository.js` | Repositorio genérico para modo mock/local | 1.6 KB |
 | `src/services/createSupabaseRepository.js` | Repositorio genérico para tablas Supabase por tenant | 1.4 KB |
@@ -304,25 +310,25 @@ El ERP opera como plataforma **SaaS multitenant**: una sola instalación sirve a
 ### 3.7 GAPS de Auditoría (Resultados de Revisión Continua)
 
 #### [A] TÉCNICO — Implementado en código pero NO documentado
-- **Migraciones 364 a 383**: Se implementó el módulo completo "Salud Implementación" y el "Reinicio de Roster Minero", no reflejados previamente.
-- **Nuevas Tablas**: `tideo_salud_configuracion`, `tideo_salud_anotaciones`, `tideo_salud_comentarios`.
-- **Servicios/RPCs**: `get_salud_implementacion_conteos`, funciones de previsualización de reinicio de roster y jornadas.
-- **UI**: `pages_salud_tenant.jsx` para la vista de progreso del cliente, integrada en `shell.jsx`.
+- **Migraciones 384 a 438**: Introducen la consolidación de la arquitectura **Multisociedad** (aislamiento estricto RLS de sociedad, CECO/CEBE multisociedad, stock y finanzas inter-sociedad).
+- **Servicios nuevos**: `sociedadesService.js`, `sociedadDestinoService.js`, `sociedadEscrituraService.js`, `transferenciasIntercompaniaService.js`.
+- **WMS Atómico y Valorización**: (Migración 426, 427) Implementación de movimientos de inventario atómicos y valorización en moneda funcional.
+- **Feriados y Materiales**: Feriados fase A con políticas de pago (437, 438); y extensión de fabricantes y nro_parte en materiales (425).
 
 #### [B] TÉCNICO — Documentado pero NO implementado o desactualizado
-- **Sección 3.1**: El documento indicaba la migración 363 como la más reciente; el código real ya va por la 383.
-- **Inventario (3.2)**: "Salud de Implementación" ahora es un módulo oficial en Configuración.
+- **Sección 3.1**: El documento indicaba la migración 383 como la última; el repositorio ya va por la 438.
+- **Limpieza de tablas**: Se documentaba en procesos anteriores la limpieza de tablas pero las migraciones 400+ eliminan explícitamente funciones obsoletas (ej. `eliminar_asignacion_jornada_rpc`).
 
 #### [C] LÓGICA DE NEGOCIO — Regla/validación en código que el documento no refleja
-- **Salud de Implementación**: Existen anotaciones "solo interno" para TIDEO, protegidas por RLS. El acceso requiere ser Superadmin o ser explícitamente "Admin Empresa" del tenant respectivo.
-- **Reinicio Roster Minero**: Se exige una evaluación de impactos (previsualización de registros a eliminar) antes de reiniciar un roster o la jornada de los trabajadores para evitar pérdida de datos consolidados.
+- **Invariante Sociedad Obligatoria**: Desde la migración 416, la sociedad es estrictamente obligatoria en las tablas transaccionales de grupos que habiliten Multisociedad.
+- **Coherencia Societaria Cadena Comercial**: (Migración 396 y 402) Las OTs derivan directamente su sociedad desde la OS Cliente de manera más estricta, impidiendo cruces de información.
+- **Reasignación atómica de roles (434)**: Garantiza transacciones seguras sin huecos de permisos en el reemplazo de roles de usuarios.
 
 #### [D] LÓGICA DE NEGOCIO — Regla documentada que el código contradice o ignora
-- La plataforma solo asume métricas genéricas SaaS en Plataforma, pero el código delega el control cualitativo a la nueva sección de "Salud de Implementación" parametrizada por tabla base de cada módulo.
+- El documento describía mecanismos de flexibilidad y reinicios (`eliminar_asignacion_jornada_rpc`, etc.) que ya fueron eliminados y consolidados por las migraciones recientes para priorizar la estabilidad.
 
 #### [E] FLUJOS — Flujo real difiere del flujo documentado
-- **Onboarding/Implementación**: TIDEO (superadmin) y el Cliente interactúan a través de hilos de comentarios sobre el estado de carga de las tablas maestras y transaccionales, creando un nuevo flujo asíncrono de implementación.
-- **Ciclo RRHH (Roster)**: El flujo operativo incluye ahora la etapa explícita de "Reinicio / Recálculo con previsualización" de la jornada en caso de errores de configuración inicial del Roster.
+- **Transferencias de Inventario**: Ahora incluyen validaciones de transferencias intercompañía, impactando en los centros de costo y stock disponible según sociedad.
 
 #### [F] FLUJOS — Flujo documentado que el código nunca implementó
 - N/A.
@@ -360,11 +366,11 @@ TIDEO (Superadmin)
 
 La plataforma implementa un nivel adicional de aislamiento denominado **Multisociedad**, diseñado para grupos empresariales que operan bajo un mismo tenant (`empresa_id`) pero con múltiples razones sociales distintas.
 
-- **Invariante de sociedad obligatoria:** Todas las tablas transaccionales tienen la columna `sociedad_id` (uuid). La restricción de obligatoriedad (no ser `NULL`) solo aplica cuando el tenant tiene habilitada la arquitectura multisociedad, existiendo además excepciones legítimas para registros históricos creados antes de su instalación.
-- **Frontera RLS:** El aislamiento se garantiza a nivel de base de datos usando Row Level Security y la función `usuario_alcance_sociedades()`. Si el usuario tiene acceso global (NULL), ve todo el tenant; si tiene asignaciones específicas, solo ve los registros de sus sociedades.
-- **Cobertura RLS (Lectura y Escritura):** Cubre toda la cadena comercial (Cuentas, Leads, Cotizaciones, OS, OT, Valorizaciones, Facturas), inventarios, finanzas, nómina y RRHH (amonestaciones, constancias, solicitudes). *Excepciones conocidas:* (1) tablas de registro histórico puro (ej. logs) o catalogadas que son transversales al tenant, y (2) dos tablas del esquema que tienen RLS habilitado sin ninguna política definida (hallazgo pendiente de evaluación).
-- **Identidad emisora y Propagación:** Las entidades heredan irrompiblemente la sociedad. Ejemplo: `Hoja Costeo -> OS -> OT -> Valorización -> Factura`. Es imposible modificar la sociedad una vez instanciada la cadena.
-- **Validación estricta de cruce:** El sistema previene el cruce de datos (ej. un empleado de Sociedad A no puede registrar horas en un Centro de Costo de Sociedad B, y un CECO no puede agruparse bajo un CEBE de distinta sociedad).
+- **Invariante de sociedad obligatoria:** Todas las tablas transaccionales tienen la columna `sociedad_id` (uuid). La restricción de obligatoriedad (no ser `NULL`) solo aplica cuando el tenant tiene habilitada la arquitectura multisociedad (migración 416). Existen excepciones legítimas para registros históricos creados antes de la instalación.
+- **Frontera RLS:** El aislamiento se garantiza a nivel de base de datos usando Row Level Security y la función `usuario_alcance_sociedades()`. Si el usuario tiene acceso global (NULL), ve todo el tenant; si tiene asignaciones específicas, solo ve los registros de sus sociedades. Las migraciones recientes (404, 423) refuerzan esta frontera en nómina, finanzas y operaciones.
+- **Cobertura RLS (Lectura y Escritura):** Cubre toda la cadena comercial (Cuentas, Leads, Cotizaciones, OS, OT, Valorizaciones, Facturas), inventarios, finanzas, nómina y RRHH (amonestaciones, constancias, solicitudes).
+- **Identidad emisora y Propagación:** Las entidades heredan irrompiblemente la sociedad. Ejemplo: `Hoja Costeo -> OS -> OT -> Valorización -> Factura`. Es imposible modificar la sociedad una vez instanciada la cadena. A partir de la migración 402, la derivación societaria en OTs desde OS es aún más estricta.
+- **Validación estricta de cruce:** El sistema previene el cruce de datos (ej. un empleado de Sociedad A no puede registrar horas en un Centro de Costo de Sociedad B, y un CECO no puede agruparse bajo un CEBE de distinta sociedad). Las validaciones incluyen CEBE estructurales y vigencia extendida (migración 418).
 
 ---
 
@@ -625,7 +631,7 @@ Lead → [Convertir] → Cuenta (Prospecto) + Contacto + Oportunidad
     Customer Success → Renovación / Upsell
 ```
 
-### 7.2 Flujo de compras completo
+### 7.2 Flujo de compras, transferencias e inventario
 
 ```
 SOLPE Interna (desde OT o área interna)
@@ -644,7 +650,9 @@ SOLPE Interna (desde OT o área interna)
          ↓
     Recepción (bienes) o Conformidad (servicios)
          ↓
-    Ingreso a inventario (bienes) + CxP generada + Evaluación proveedor
+    Movimiento Atómico a Inventario (bienes) + Valorización + CxP generada
+         ↓
+    (Multisociedad) Transferencias Intercompañía (opcional si aplica a otra sociedad)
 ```
 
 ### 7.3 Flujo de RRHH y nómina
@@ -1209,9 +1217,11 @@ Origen de toda necesidad de compra. Desde OT o parte diario. Clasificación, urg
 
 Stock disponible, reservado y mínimo por almacén. Entradas, salidas, consumos por OT, transferencias, ajustes, devoluciones. Kardex en panel lateral. Alertas de stock crítico. Lote/serie/vencimiento. Inventario físico. Código de barras (campo móvil F2).
 
-**WMS conteo y analítica (11/06/2026):** El módulo de Almacenes incorpora tabs `Stock`, `Conteo físico` y `Analítica`. Conteo físico inicia desde el stock teórico, permite avance parcial, respeta lote/serie, cierra como solo lectura y genera ajustes automáticos `ajuste_conteo` con referencia al conteo. Analítica calcula ABC sobre salidas del período, rotación estimada por artículo/almacén y stock muerto con umbral configurable de días sin actividad.
+**Movimientos Atómicos y Valorización (Migraciones >420):** El registro de movimientos ahora es atómico en la base de datos (entradas y salidas). Se ha implementado valorización de inventario en moneda funcional, con precios referenciales y cruce de proveedores mediante fabricantes y números de parte.
 
-**Reorden y trazabilidad (11–12/06/2026):** materiales incorporan `stock_seguridad`, `punto_reorden` y `stock_maximo`; el backend puede generar SOLPEs automáticas de reorden. Las OTs pueden registrar trazabilidad de lotes/series consumidos y la PWA ya incluye `BarcodeScanner` para lectura de códigos.
+**WMS conteo y analítica:** El módulo de Almacenes incorpora tabs `Stock`, `Conteo físico` y `Analítica`. Conteo físico inicia desde el stock teórico, permite avance parcial, respeta lote/serie, cierra como solo lectura y genera ajustes automáticos `ajuste_conteo` con referencia al conteo. Analítica calcula ABC sobre salidas del período, rotación estimada por artículo/almacén y stock muerto con umbral configurable de días sin actividad.
+
+**Reorden y trazabilidad:** materiales incorporan `stock_seguridad`, `punto_reorden` y `stock_maximo`; el backend puede generar SOLPEs automáticas de reorden. Las OTs pueden registrar trazabilidad de lotes/series consumidos y la PWA ya incluye `BarcodeScanner` para lectura de códigos. El catálogo de materiales cuenta ahora con `fabricantes` y `nro_parte`.
 
 ---
 

@@ -92,34 +92,17 @@ let _mockPmCorrelativo = 3;
 const _mockPmMap = new Map();
 
 async function siguienteCorrelativoPM(supabase, empresaId, sociedadId = null) {
-  let query = supabase
-    .from('correlativos_documentos')
-    .select('*')
-    .eq('empresa_id', empresaId)
-    .eq('tipo_documento', 'papeleta_movimiento')
-    .eq('serie', 'PM');
-  query = sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
-  const { data: existing, error: correlativoError } = await query.maybeSingle();
-  if (correlativoError) throw correlativoError;
-  const siguiente = Number(existing?.ultimo_numero ?? 0) + 1;
-  const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const corId = `cor_${String(r).replace(/-/g, '').slice(0, 18)}`;
-  if (existing) {
-    const { error } = await supabase.from('correlativos_documentos')
-      .update({ ultimo_numero: siguiente, updated_at: new Date().toISOString() })
-      .eq('id', existing.id);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.from('correlativos_documentos').insert({
-      id: corId, empresa_id: empresaId,
-      sociedad_id: sociedadId,
-      tipo_documento: 'papeleta_movimiento', serie: 'PM',
-      ultimo_numero: siguiente,
-      updated_at: new Date().toISOString(),
-    });
-    if (error) throw error;
-  }
-  return `PM-${String(siguiente).padStart(4, '0')}`;
+  // La restricción de la solicitud es por empresa, no por sociedad. La RPC
+  // bloquea y avanza el contador en la misma transacción para evitar que dos
+  // confirmaciones reciban el mismo PM-XXXX (o que un contador antiguo se
+  // cruce con una papeleta ya emitida).
+  const { data, error } = await supabase.rpc('siguiente_correlativo_papeleta_movimiento', {
+    p_empresa_id: empresaId,
+    p_sociedad_id: sociedadId,
+  });
+  if (error) throw error;
+  if (!data) throw new Error('No se pudo reservar el correlativo de la papeleta de movimiento.');
+  return data;
 }
 
 function mockCorrelativoPM(empresaId) {
