@@ -542,6 +542,26 @@ function pathFromSignedUrl(url) {
   return null;
 }
 
+export async function eliminarDocumento(documentoId) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('eliminar_documento_personal_seguro', {
+    p_documento_id: documentoId,
+  });
+
+  if (error) {
+    return { ok: false, error: `No se pudo verificar ni eliminar el documento: ${error.message || 'error de base de datos'}.` };
+  }
+  if (!data?.ok) return { ok: false, error: data?.error || 'No se pudo eliminar el documento.' };
+
+  const path = pathFromSignedUrl(data.archivo_url);
+  if (!path) return { ok: true };
+
+  const { error: storageError } = await supabase.storage.from(BUCKET).remove([path]);
+  return storageError
+    ? { ok: true, advertenciaAlmacenamiento: `El documento fue eliminado, pero no se pudo borrar su archivo: ${storageError.message || 'error de almacenamiento'}.` }
+    : { ok: true };
+}
+
 // Acepta un storage path directo o una URL firmada expirada.
 export async function renovarUrlDocumento(storagePathOrUrl) {
   const path = (storagePathOrUrl && storagePathOrUrl.startsWith('http'))
