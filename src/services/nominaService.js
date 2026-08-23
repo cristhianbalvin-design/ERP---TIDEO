@@ -120,6 +120,7 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
     comision_afp_flujo: Number(c.comision_flujo) || 0,
     prima_seguro_afp: Number(c.prima_seguro) || 0,
     desc_onp: Number(c.desc_onp) || 0,
+    fcjmms_trabajador: Number(c.fcjmms_trabajador) || 0,
     retencion_ir: Number(c.retencion_ir) || 0,
     desc_prestamo: Number(c.desc_prestamo) || 0,
     desc_anticipo: Number(c.desc_anticipo) || 0,

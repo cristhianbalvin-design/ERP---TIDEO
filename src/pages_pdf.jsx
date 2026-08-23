@@ -118,6 +118,7 @@ export function BoletaPagoPDF({ calculo, periodo, emisor }) {
     ['Comisión AFP', calculo?.comision_flujo],
     ['Prima de seguro AFP', calculo?.prima_seguro],
     ['ONP', calculo?.desc_onp],
+    ['FCJMMS', calculo?.fcjmms_trabajador],
     ['IR 5ta categoría', calculo?.retencion_ir],
     ['Préstamos', calculo?.desc_prestamo],
     ['Otros descuentos', calculo?.desc_extraordinario],
