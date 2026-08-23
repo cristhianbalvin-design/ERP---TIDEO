@@ -771,7 +771,7 @@ export const CrearOTPage = ({ onNav }) => {
     setErrorTiposServicio(null);
     getSupabaseClient()
       .from('tipos_servicio_interno')
-      .select('id,codigo,nombre,clasificacion,familia_tecnica,facturable,estado')
+      .select('id,codigo,nombre,clasificacion,facturable,estado')
       .eq('empresa_id', sesionOperativa.empresaId)
       .eq('estado', 'activo')
       .order('nombre')
@@ -884,8 +884,7 @@ export const CrearOTPage = ({ onNav }) => {
   useEffect(() => {
     let vigente = true;
     if (
-      !['os_cliente', 'equipo_interno'].includes(objetoCostoTipo)
-      || !sesionOperativa.empresaId
+      !sesionOperativa.empresaId
       || !sesionOperativa.sociedadId
       || !sesionOperativa.permiteEscritura
     ) {
@@ -898,7 +897,7 @@ export const CrearOTPage = ({ onNav }) => {
     setErrorCentrosCosto(null);
     getSupabaseClient()
       .from('centros_costo')
-      .select('id,nombre,codigo')
+      .select('id,nombre,codigo,cebe_id')
       .eq('empresa_id', sesionOperativa.empresaId)
       .eq('estado', 'activo')
       .eq('sociedad_id', sesionOperativa.sociedadId)
@@ -1070,6 +1069,19 @@ export const CrearOTPage = ({ onNav }) => {
   const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
     || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
+  const resolverCebeEstructural = (centroCostoId) =>
+    centrosCostoReales.find(centroCosto => centroCosto.id === centroCostoId)?.cebe_id || null;
+
+  useEffect(() => {
+    if (objetoCostoTipo !== 'equipo_interno') return;
+    const centroBeneficioId = resolverCebeEstructural(form.centro_costo);
+    setForm(prev => (
+      prev.centro_beneficio_id === centroBeneficioId
+        ? prev
+        : { ...prev, centro_beneficio_id: centroBeneficioId }
+    ));
+  }, [centrosCostoReales, form.centro_costo, objetoCostoTipo]);
+
   // ── Herencia de CC (C1) ─────────────────────────────────────────────────
   const heredarCC = (tipo, id) => {
     let cc = null;
@@ -1084,6 +1096,7 @@ export const CrearOTPage = ({ onNav }) => {
     } else if (tipo === 'equipo_interno') {
       const eq = equiposInternosReales.find(e => e.id === id);
       cc = eq?.centro_costo_id || null;
+      centroBeneficioId = resolverCebeEstructural(cc);
     }
     setForm(prev => ({ ...prev, centro_costo: cc, centro_beneficio_id: centroBeneficioId }));
     return cc;
@@ -1095,6 +1108,17 @@ export const CrearOTPage = ({ onNav }) => {
 
   // ── Handlers ────────────────────────────────────────────────────────────
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const setCentroCostoManual = (centroCostoId) => {
+    const cc = centroCostoId || null;
+    setForm(prev => ({
+      ...prev,
+      centro_costo: cc,
+      centro_beneficio_id: objetoCostoTipo === 'equipo_interno'
+        ? resolverCebeEstructural(cc)
+        : prev.centro_beneficio_id,
+    }));
+  };
 
   const changeObjetoCostoTipo = (tipo) => {
     setObjetoCostoTipo(tipo);
@@ -1348,6 +1372,10 @@ export const CrearOTPage = ({ onNav }) => {
     const etiquetaEquipoCreada = creada.equipo
       ? [equipo?.codigo || equipo?.cod, equipo?.nombre].filter(Boolean).join(' - ') || creada.equipo
       : 'Sin equipo';
+    const centroCostoCreado = centrosCostoReales.find(centroCosto => centroCosto.id === creada.centro_costo);
+    const etiquetaCentroCostoCreado = centroCostoCreado
+      ? [centroCostoCreado.codigo, centroCostoCreado.nombre].filter(Boolean).join(' - ')
+      : 'Centro de costo no disponible';
     return (
       <div className="page">
         <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center' }}>
@@ -1366,7 +1394,7 @@ export const CrearOTPage = ({ onNav }) => {
           <div className="card" style={{ padding: 16, textAlign: 'left', marginBottom: 18 }}>
             <div><span className="muted">Equipo:</span> <b>{etiquetaEquipoCreada}</b></div>
             <div><span className="muted">CC:</span>{' '}
-              <b style={{ fontFamily: 'monospace', color: '#f59e0b' }}>{creada.centro_costo}</b></div>
+              <b style={{ color: '#f59e0b' }}>{etiquetaCentroCostoCreado}</b></div>
             <div><span className="muted">Segmentos:</span> <b>{creada.segmentos.length}</b></div>
             <div><span className="muted">Costo total estimado:</span> <b className="mono">${t.total.toFixed(0)}</b></div>
             <div><span className="muted">Ingreso facturable:</span>{' '}
@@ -1584,7 +1612,7 @@ export const CrearOTPage = ({ onNav }) => {
                       className="input"
                       value={form.centro_costo || ''}
                       disabled={cargandoCentrosCosto || !sesionOperativa.empresaId || !sesionOperativa.sociedadId}
-                      onChange={e => set('centro_costo', e.target.value || null)}
+                      onChange={e => setCentroCostoManual(e.target.value)}
                       style={{
                         marginTop: 4,
                         borderColor: !form.centro_costo ? '#E53935' : undefined,
@@ -1617,6 +1645,11 @@ export const CrearOTPage = ({ onNav }) => {
                 {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
                   <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
                     Centro de Beneficio heredado de la OS: <strong>{form.centro_beneficio_id}</strong>
+                  </div>
+                )}
+                {objetoCostoTipo === 'equipo_interno' && form.centro_beneficio_id && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                    Centro de Beneficio heredado del CECO: <strong>{form.centro_beneficio_id}</strong>
                   </div>
                 )}
                 {form.centro_costo && (
