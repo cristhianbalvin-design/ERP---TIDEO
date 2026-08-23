@@ -650,6 +650,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [osClientesReales, setOsClientesReales] = useState([]);
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
+  const [centrosBeneficioReales, setCentrosBeneficioReales] = useState([]);
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
@@ -657,6 +658,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
+  const [cargandoCentrosBeneficio, setCargandoCentrosBeneficio] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
@@ -664,6 +666,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
+  const [errorCentrosBeneficio, setErrorCentrosBeneficio] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
@@ -932,6 +935,55 @@ export const CrearOTPage = ({ onNav }) => {
   useEffect(() => {
     let vigente = true;
     if (
+      objetoCostoTipo !== 'os_cliente'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.sociedadId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setCentrosBeneficioReales([]);
+      setCargandoCentrosBeneficio(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCentrosBeneficio(true);
+    setErrorCentrosBeneficio(null);
+    getSupabaseClient()
+      .from('centros_beneficio')
+      .select('id,nombre,codigo')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .eq('sociedad_id', sesionOperativa.sociedadId)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCentrosBeneficioReales([]);
+          setErrorCentrosBeneficio(error.message);
+        } else {
+          setCentrosBeneficioReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCentrosBeneficioReales([]);
+          setErrorCentrosBeneficio(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCentrosBeneficio(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
       form.lugarEjecucion !== 'Campo_Mina'
       || !sesionOperativa.empresaId
       || !sesionOperativa.permiteEscritura
@@ -1056,6 +1108,22 @@ export const CrearOTPage = ({ onNav }) => {
     if (objetoCostoTipo === 'equipo_interno') return null;
     return objetosCostoFiltrados.find(c => c.id === form.contratoId);
   }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
+  const etiquetaCentroBeneficioOs = useMemo(() => {
+    const centroBeneficio = centrosBeneficioReales.find(
+      item => item.id === form.centro_beneficio_id,
+    );
+    if (centroBeneficio) {
+      return [centroBeneficio.codigo, centroBeneficio.nombre].filter(Boolean).join(' - ');
+    }
+    if (cargandoCentrosBeneficio) return 'Cargando centro de beneficio...';
+    if (errorCentrosBeneficio) return 'Centro de beneficio no disponible';
+    return 'Centro de beneficio no disponible';
+  }, [
+    centrosBeneficioReales,
+    cargandoCentrosBeneficio,
+    errorCentrosBeneficio,
+    form.centro_beneficio_id,
+  ]);
   const equiposFiltrados = useMemo(() => {
     if (objetoCostoTipo === 'equipo_interno') return equiposInternosReales;
     if (!contrato) return [];
@@ -1536,7 +1604,7 @@ export const CrearOTPage = ({ onNav }) => {
                   </div>
                   </>
                 ) : (
-                  <div className="ot-form-grid commercial">
+                  <div className={`ot-form-grid commercial${objetoCostoTipo === 'os_cliente' ? ' os-cliente' : ''}`}>
                     <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Cliente *</div>
                       <ClienteSearchSelect
@@ -1584,7 +1652,8 @@ export const CrearOTPage = ({ onNav }) => {
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.contratoId[0]}</div>
                       )}
                     </div>
-                    <div className="ot-form-field">
+                    {objetoCostoTipo === 'contrato' && (
+                      <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Activo / Equipo *</div>
                       <select className="input" value={form.equipo}
                         disabled={!form.contratoId}
@@ -1600,7 +1669,8 @@ export const CrearOTPage = ({ onNav }) => {
                       {fieldErrors.equipo?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                       )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1644,7 +1714,7 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
                 {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
                   <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-                    Centro de Beneficio heredado de la OS: <strong>{form.centro_beneficio_id}</strong>
+                    Centro de Beneficio heredado de la OS: <strong>{etiquetaCentroBeneficioOs}</strong>
                   </div>
                 )}
                 {objetoCostoTipo === 'equipo_interno' && form.centro_beneficio_id && (
@@ -1652,7 +1722,7 @@ export const CrearOTPage = ({ onNav }) => {
                     Centro de Beneficio heredado del CECO: <strong>{form.centro_beneficio_id}</strong>
                   </div>
                 )}
-                {form.centro_costo && (
+                {objetoCostoTipo !== 'os_cliente' && form.centro_costo && (
                   <div style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
                       {requiereCentroCostoManual
