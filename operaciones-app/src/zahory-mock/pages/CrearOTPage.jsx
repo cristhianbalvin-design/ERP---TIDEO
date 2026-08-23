@@ -363,7 +363,8 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 const SegmentoCard = ({
   seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio,
-  errorTiposServicio, tecnicos, cargandoTecnicos,
+  errorTiposServicio, tecnicos, cargandoTecnicos, cuadrillas, cargandoCuadrillas,
+  errorCuadrillas,
 }) => {
   const [tab, setTab] = useState('mo');
 
@@ -380,6 +381,23 @@ const SegmentoCard = ({
     onPatch({ ot_operaciones: seg.ot_operaciones.filter((_, i) => i !== oi) });
   const patchOp = (oi, patch) =>
     onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, ...patch } : op) });
+
+  const aplicarCuadrilla = (cuadrillaId) => {
+    const cuadrilla = cuadrillas.find(item => item.id === cuadrillaId);
+    if (!cuadrilla) return;
+
+    const tecnicosDisponibles = new Map(tecnicos.map(tecnico => [tecnico.id, tecnico]));
+    const tecnicoIds = (cuadrilla.cuadrilla_miembros || [])
+      .map(miembro => miembro.tecnico_id)
+      .filter(tecnicoId => tecnicosDisponibles.has(tecnicoId));
+
+    onPatch({
+      ot_operaciones: seg.ot_operaciones.map((operacion, indice) => ({
+        ...operacion,
+        tecnico_id: tecnicoIds[indice] || '',
+      })),
+    });
+  };
 
   const totalMO  = calcSegmentoMO(seg);
   const totalRep = calcSegmentoRepuestos(seg);
@@ -422,6 +440,29 @@ const SegmentoCard = ({
 
       {/* ── Operaciones ── */}
       <div style={{ padding: '8px 12px 6px', background: '#FAFCFF', borderBottom: '1px solid var(--card-border)' }}>
+        <div className="input-group" style={{ marginBottom: 8, maxWidth: 360 }}>
+          <label style={{ fontSize: 11 }}>Aplicar cuadrilla</label>
+          <select
+            className="input"
+            value=""
+            disabled={cargandoCuadrillas}
+            onChange={e => aplicarCuadrilla(e.target.value)}
+            title="Distribuye los miembros disponibles entre las operaciones de este segmento"
+            style={{ fontSize: 12, padding: '4px 8px', background: cargandoCuadrillas ? '#ECEFF1' : undefined }}
+          >
+            <option value="">{cargandoCuadrillas ? 'Cargando cuadrillas...' : '-- Rellenar técnicos del segmento --'}</option>
+            {cuadrillas.map(cuadrilla => (
+              <option key={cuadrilla.id} value={cuadrilla.id}>
+                {cuadrilla.nombre}{cuadrilla.especialidad_principal ? ` · ${cuadrilla.especialidad_principal}` : ''}
+              </option>
+            ))}
+          </select>
+          {errorCuadrillas && (
+            <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+              No se pudieron cargar las cuadrillas: {errorCuadrillas}
+            </div>
+          )}
+        </div>
         {seg.ot_operaciones.map((op, oi) => (
           <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px minmax(180px, 1fr) minmax(150px, .65fr) auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>↳</span>
@@ -654,6 +695,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
+  const [cuadrillasReales, setCuadrillasReales] = useState([]);
   const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
@@ -662,6 +704,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
+  const [cargandoCuadrillas, setCargandoCuadrillas] = useState(false);
   const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
@@ -670,6 +713,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
+  const [errorCuadrillas, setErrorCuadrillas] = useState(null);
   const [errorTiposServicio, setErrorTiposServicio] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
@@ -761,6 +805,45 @@ export const CrearOTPage = ({ onNav }) => {
 
     return () => { vigente = false; };
   }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId) {
+      setCuadrillasReales([]);
+      setCargandoCuadrillas(false);
+      setErrorCuadrillas(null);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCuadrillas(true);
+    setErrorCuadrillas(null);
+    getSupabaseClient()
+      .from('cuadrillas')
+      .select('id,nombre,especialidad_principal,cuadrilla_miembros(id,tecnico_id)')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('activa', true)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCuadrillasReales([]);
+          setErrorCuadrillas(error.message);
+        } else {
+          setCuadrillasReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCuadrillasReales([]);
+          setErrorCuadrillas(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCuadrillas(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId]);
 
   useEffect(() => {
     let vigente = true;
@@ -2039,6 +2122,9 @@ export const CrearOTPage = ({ onNav }) => {
                 errorTiposServicio={errorTiposServicio}
                 tecnicos={tecnicosReales}
                 cargandoTecnicos={cargandoTecnicos}
+                cuadrillas={cuadrillasReales}
+                cargandoCuadrillas={cargandoCuadrillas}
+                errorCuadrillas={errorCuadrillas}
               />
             ))}
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
