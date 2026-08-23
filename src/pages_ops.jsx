@@ -13541,8 +13541,8 @@ function workerTurno(turnos, worker, fechaStr = null) {
   };
 }
 
-function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12, retencionesAcumuladas = 0) {
-  const rentaBrutaAnual = (remuneracionBrutaMensual * 12);
+function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12, retencionesAcumuladas = 0, ingresoAnualAdicional = 0) {
+  const rentaBrutaAnual = (remuneracionBrutaMensual * 12) + Number(ingresoAnualAdicional || 0);
   const base = rentaBrutaAnual - (7 * UIT);
   if (base <= 0) return 0;
   let impuesto = 0;
@@ -14069,10 +14069,6 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const descPrestamo     = Number(datosNomina?.cuota_prestamo_mes || trabajador.cuota_prestamo_mes || 0);
   const descAnticipo     = Number(datosNomina?.anticipo_periodo || 0);
   const descJudicial     = Number(datosNomina?.descuento_judicial || trabajador.descuento_judicial || 0);
-  const retencionIR      = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente));
-  const totalDescuentos  = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
-  const neto = remuneracionBruta - totalDescuentos;
-
   const essalud  = esQ1 ? 0 : remuneracionBruta * 0.09;
   const esMicro  = regimen_laboral_empresa === 'microempresa';
   const esPequena = regimen_laboral_empresa === 'pequena_empresa';
@@ -14081,6 +14077,11 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const baseComputable      = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion       = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
+  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
+  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const retencionIR      = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
+  const totalDescuentos  = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
+  const neto = remuneracionBruta - totalDescuentos;
   const remComputable       = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts         = tieneCts && !esQ1 ? remComputable / (esPequena ? 24 : 12) : 0;
   const diasVacaciones = regimen_laboral_empresa === 'general' ? 30 : 15;
@@ -14364,10 +14365,6 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const descPrestamo = Number(datosNomina?.cuota_prestamo_mes || trabajador.cuota_prestamo_mes || 0);
   const descAnticipo = Number(datosNomina?.anticipo_periodo || 0);
   const descJudicial = Number(datosNomina?.descuento_judicial || trabajador.descuento_judicial || 0);
-  const retencionIR = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente));
-  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
-  const neto = remuneracionBruta - totalDescuentos;
-
   // ── Cargas empresa ──
   // En Q1 no se provisiona nada (ESSALUD, CTS, gratificación, bonif. extraordinaria,
   // vacaciones): se calculan/pagan en la 2da quincena sobre el mes completo.
@@ -14382,6 +14379,11 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const baseComputable = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
+  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
+  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const retencionIR = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
+  const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR;
+  const neto = remuneracionBruta - totalDescuentos;
   // CTS: base computable + 1/6 de la gratificación semi-anual (según régimen empresa)
   const remComputable = baseComputable + (tieneGratif ? gratificacion : 0);
   const cts = tieneCts && !esQ1 ? remComputable / (esPequena ? 24 : 12) : 0;
