@@ -361,7 +361,10 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 // ── SegmentoCard: accordion con 3 tabs de estimación ──────────────────────
 
-const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio, errorTiposServicio }) => {
+const SegmentoCard = ({
+  seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio,
+  errorTiposServicio, tecnicos, cargandoTecnicos,
+}) => {
   const [tab, setTab] = useState('mo');
 
   const patchEst = (tipo, idx, patch) =>
@@ -420,10 +423,10 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB, tiposServic
       {/* ── Operaciones ── */}
       <div style={{ padding: '8px 12px 6px', background: '#FAFCFF', borderBottom: '1px solid var(--card-border)' }}>
         {seg.ot_operaciones.map((op, oi) => (
-          <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px 1fr auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+          <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px minmax(180px, 1fr) minmax(150px, .65fr) auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>↳</span>
             <input className="input" value={op.codigo} placeholder="01"
-              onChange={e => patchOp(oi, 'codigo', e.target.value)}
+              onChange={e => patchOp(oi, { codigo: e.target.value })}
               style={{ textAlign: 'center', fontSize: 12, padding: '4px 6px' }} />
             <select className="input" value={op.tipo_servicio_interno_id || ''}
               disabled={cargandoTiposServicio}
@@ -440,6 +443,16 @@ const SegmentoCard = ({ seg, isOnly, onPatch, onRemove, repuestosDB, tiposServic
                 <option key={tipoServicio.id} value={tipoServicio.id}>
                   {tipoServicio.codigo} - {tipoServicio.nombre}{tipoServicio.facturable === false ? ' · No facturable' : ''}
                 </option>
+              ))}
+            </select>
+            <select className="input" value={op.tecnico_id || ''}
+              disabled={cargandoTecnicos}
+              onChange={e => patchOp(oi, { tecnico_id: e.target.value })}
+              title="Técnico asignado a esta operación (opcional)"
+              style={{ minWidth: 0, fontSize: 12, padding: '4px 8px', background: cargandoTecnicos ? '#ECEFF1' : undefined }}>
+              <option value="">{cargandoTecnicos ? 'Cargando técnicos...' : '-- Sin técnico asignado --'}</option>
+              {tecnicos.map(tecnico => (
+                <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>
               ))}
             </select>
             {seg.ot_operaciones.length > 1 && (
@@ -1246,6 +1259,41 @@ export const CrearOTPage = ({ onNav }) => {
       }
       if (!guardada) throw ultimoError || new Error('No se pudo reservar un número de OT único.');
 
+      // Las operaciones se persisten solo después de contar con el id real
+      // requerido por la FK ot_tareas.ot_id.
+      const tareas = segmentos.flatMap((segmento) =>
+        segmento.ot_operaciones
+          .filter(operacion => operacion.tipo_servicio_interno_id)
+          .map((operacion) => {
+            const tipoServicio = tiposServicioInterno.find(
+              tipo => tipo.id === operacion.tipo_servicio_interno_id,
+            );
+            const tecnico = tecnicosReales.find(tecnicoItem => tecnicoItem.id === operacion.tecnico_id);
+            return {
+              empresa_id: sesionOperativa.empresaId,
+              ot_id: guardada.id,
+              titulo: [tipoServicio?.codigo, tipoServicio?.nombre].filter(Boolean).join(' - ') || operacion.descripcion,
+              descripcion: segmento.descripcion || null,
+              tecnico_id: tecnico?.id || null,
+              tecnico_nombre: tecnico?.nombre || null,
+              tecnico_tipo: tecnico ? 'operativo' : null,
+              estado: 'pendiente',
+              horas_estimadas: null,
+              horas_reales: 0,
+              avance_pct: 0,
+              completada: false,
+            };
+          }),
+      ).map((tarea, orden) => ({ ...tarea, orden }));
+
+      let errorTareas = null;
+      if (tareas.length > 0) {
+        const { error } = await getSupabaseClient()
+          .from('ot_tareas')
+          .insert(tareas);
+        errorTareas = error;
+      }
+
       setCreada({
         ...form,
         id: guardada.id,
@@ -1255,6 +1303,9 @@ export const CrearOTPage = ({ onNav }) => {
         fechaPrimerLaborReal: null,
         ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
         horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
+        errorTareas: errorTareas
+          ? `La OT ${guardada.numero} fue creada, pero sus tareas no pudieron registrarse. Regístralas manualmente desde Administrativo.`
+          : null,
       });
     } catch (error) {
       setErrorGuardado(mensajeErrorGuardadoOT(error));
@@ -1307,6 +1358,11 @@ export const CrearOTPage = ({ onNav }) => {
           <div className="sub" style={{ marginBottom: 18 }}>
             <b>{creada.numero}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
           </div>
+          {creada.errorTareas && (
+            <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
+              {creada.errorTareas}
+            </div>
+          )}
           <div className="card" style={{ padding: 16, textAlign: 'left', marginBottom: 18 }}>
             <div><span className="muted">Equipo:</span> <b>{etiquetaEquipoCreada}</b></div>
             <div><span className="muted">CC:</span>{' '}
@@ -1878,6 +1934,8 @@ export const CrearOTPage = ({ onNav }) => {
                 tiposServicio={tiposServicioInterno}
                 cargandoTiposServicio={cargandoTiposServicio}
                 errorTiposServicio={errorTiposServicio}
+                tecnicos={tecnicosReales}
+                cargandoTecnicos={cargandoTecnicos}
               />
             ))}
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
