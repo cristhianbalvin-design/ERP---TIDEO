@@ -17837,6 +17837,12 @@ function Nomina() {
   const [nuevoPeriodoPanel, setNuevoPeriodoPanel] = useState(false);
   const [nuevoPeriodoForm, setNuevoPeriodoForm] = useState({ mes: new Date().toISOString().slice(0, 7), sociedad_id: '' });
   const [creandoPeriodo, setCreandoPeriodo] = useState(false);
+  const [detalleSnapshotPeriodo, setDetalleSnapshotPeriodo] = useState([]);
+  const [previsualizacionGratificacion, setPrevisualizacionGratificacion] = useState(null);
+  const [cargandoGratificacion, setCargandoGratificacion] = useState(false);
+  const [errorGratificacion, setErrorGratificacion] = useState('');
+  const [confirmarGratificacionModal, setConfirmarGratificacionModal] = useState(false);
+  const [confirmandoGratificacion, setConfirmandoGratificacion] = useState(false);
 
   const empresaCfg = {
     regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
@@ -18229,7 +18235,7 @@ function Nomina() {
     return map;
   }, [ingresosExtraRows, periodo?.quincena, periodo?.id, periodoQ1?.id]);
 
-  const calculos = useMemo(() => {
+  const calculosMotor = useMemo(() => {
     if (!periodo || !asistenciaNominaLista || !configuracionFeriadosLista) return [];
     return trabajadores.map(t => {
       const turno = workerTurno(turnos, t);
@@ -18273,6 +18279,62 @@ function Nomina() {
       };
     }).filter(Boolean);
   }, [periodo?.id, trabajadores, asistenciaNominaLista, configuracionFeriadosLista, configuracionFeriadosNomina, registrosParaNomina, asignacionesJornada.length, heCompRows, descExtraPorTrabajador, ingresoExtraPorTrabajador, ingresoRemunerativoMesCompletoPorTrabajador, empresaCfg.regimen_laboral_empresa, empresaCfg.ram_tope_afp, empresaCfg.requiere_autorizacion_he, afpParametros, q1Snapshot, empresa?.multisociedad_habilitado, parametrosSociedadNominaKey]);
+
+  useEffect(() => {
+    if (!periodo?.id || !isSupabaseConfigured()) { setDetalleSnapshotPeriodo([]); return; }
+    let cancelado = false;
+    nominaService.getDetalle(periodo.id).then(rows => { if (!cancelado) setDetalleSnapshotPeriodo(rows); });
+    return () => { cancelado = true; };
+  }, [periodo?.id]);
+
+  const calculos = useMemo(() => {
+    const porTrabajador = new Map(detalleSnapshotPeriodo.map(row => [row.trabajador_id, row]));
+    return calculosMotor.map(calculo => {
+      const snapshot = porTrabajador.get(calculo.trabajador_id);
+      return snapshot ? { ...calculo,
+        remuneracion_bruta: Number(snapshot.remuneracion_bruta), retencion_ir: Number(snapshot.retencion_ir),
+        total_descuentos: Number(snapshot.total_descuentos), neto: Number(snapshot.neto),
+        gratificacion_pagada: Number(snapshot.gratificacion_pagada) || 0,
+        bonif_extraordinaria_pagada: Number(snapshot.bonif_extraordinaria_pagada) || 0,
+      } : calculo;
+    });
+  }, [calculosMotor, detalleSnapshotPeriodo]);
+
+  const periodoGratificacion = Boolean(periodo?.fecha_pago
+    && [7, 12].includes(Number(String(periodo.fecha_pago).slice(5, 7)))
+    && (periodo.quincena == null || Number(periodo.quincena) === 1)
+    && (periodo.estado === 'en_proceso' || periodo.gratificacion_real_confirmada === true));
+
+  const cargarPrevisualizacionGratificacion = useCallback(async () => {
+    if (!periodoGratificacion || !periodo?.id || !empresa?.id) return;
+    setCargandoGratificacion(true); setErrorGratificacion('');
+    try {
+      setPrevisualizacionGratificacion(await nominaService.previsualizarGratificacionReal(empresa.id, periodo.id, periodo.sociedad_id || null));
+    } catch (error) {
+      setPrevisualizacionGratificacion(null);
+      setErrorGratificacion(error?.message || 'No se pudo cargar la previsualización.');
+    } finally { setCargandoGratificacion(false); }
+  }, [periodoGratificacion, periodo?.id, periodo?.sociedad_id, empresa?.id]);
+
+  useEffect(() => {
+    if (tab === 'gratificacion') cargarPrevisualizacionGratificacion();
+  }, [tab, cargarPrevisualizacionGratificacion]);
+
+  const confirmarGratificacionReal = async () => {
+    if (!periodo?.id || !empresa?.id || confirmandoGratificacion) return;
+    setConfirmandoGratificacion(true); setErrorGratificacion('');
+    try {
+      const resultado = await nominaService.confirmarGratificacionReal(empresa.id, periodo.id, periodo.sociedad_id || null);
+      setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, gratificacion_real_confirmada: true } : p));
+      const filas = await nominaService.getDetalle(periodo.id);
+      setDetalleSnapshotPeriodo(filas);
+      await cargarPrevisualizacionGratificacion();
+      setConfirmarGratificacionModal(false);
+      addToast(`Gratificación real confirmada: ${resultado?.trabajadores_con_pago || 0} trabajador(es).`, 'success');
+    } catch (error) {
+      setErrorGratificacion(error?.message || 'No se pudo confirmar la gratificación real.');
+    } finally { setConfirmandoGratificacion(false); }
+  };
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
     SOLICITUD_ESTADOS_APROBADOS.includes(s.estado) && SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA.includes(s.tipo)
@@ -18334,6 +18396,15 @@ function Nomina() {
     total_ir: acc.total_ir + c.retencion_ir,
     costo_laboral_total: acc.costo_laboral_total + c.costo_real_empresa,
   }), { total_trabajadores:0, masa_salarial_bruta:0, total_neto:0, total_cargas_empresa:0, total_descuentos:0, total_ir:0, costo_laboral_total:0 });
+  const resumenMotor = calculosMotor.reduce((acc, c) => ({
+    total_trabajadores: acc.total_trabajadores + 1,
+    masa_salarial_bruta: acc.masa_salarial_bruta + c.remuneracion_bruta,
+    total_neto: acc.total_neto + c.neto,
+    total_cargas_empresa: acc.total_cargas_empresa + c.total_cargas,
+    total_descuentos: acc.total_descuentos + c.total_descuentos,
+    total_ir: acc.total_ir + c.retencion_ir,
+    costo_laboral_total: acc.costo_laboral_total + c.costo_real_empresa,
+  }), { total_trabajadores:0, masa_salarial_bruta:0, total_neto:0, total_cargas_empresa:0, total_descuentos:0, total_ir:0, costo_laboral_total:0 });
 
   const detalle = calculos.find(c => c.trabajador_id === trabajadorSel) || calculos[0];
 
@@ -18378,14 +18449,14 @@ function Nomina() {
       }
 
       if (isSupabaseConfigured() && empresa?.id) {
-        const filas = calculos.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfgPeriodo));
+        const filas = calculosMotor.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfgPeriodo));
         const guardadas = await nominaService.guardarDetalle(empresa.id, periodo.id, filas, periodo.sociedad_id || null);
         const actualizado = await nominaService.upsertPeriodo(empresa.id, { id: periodo.id, estado: 'en_proceso' });
-        setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
+        setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumenMotor.total_trabajadores, masa_salarial_bruta:resumenMotor.masa_salarial_bruta, total_neto:resumenMotor.total_neto, total_cargas_empresa:resumenMotor.total_cargas_empresa } : p));
         addToast(`Nómina ${periodo.periodo} procesada: ${guardadas} trabajador(es) guardados.`, 'success');
         addNotificacion(`Nomina ${periodo.periodo} calculada y lista para revision.`);
       } else {
-        setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado:'en_proceso', total_trabajadores:resumen.total_trabajadores, masa_salarial_bruta:resumen.masa_salarial_bruta, total_neto:resumen.total_neto, total_cargas_empresa:resumen.total_cargas_empresa } : p));
+        setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, estado:'en_proceso', total_trabajadores:resumenMotor.total_trabajadores, masa_salarial_bruta:resumenMotor.masa_salarial_bruta, total_neto:resumenMotor.total_neto, total_cargas_empresa:resumenMotor.total_cargas_empresa } : p));
         addNotificacion(`Nomina ${periodo.periodo} calculada y lista para revision.`);
       }
     } catch (err) {
@@ -18430,6 +18501,11 @@ function Nomina() {
 
   const cerrarPeriodo = async () => {
     if (!periodo) return;
+    if (periodoGratificacion && periodo.gratificacion_real_confirmada !== true) {
+      addToast('Debes confirmar la gratificación real antes de cerrar este período.', 'error');
+      addNotificacion(`Cierre bloqueado: falta confirmar la gratificación real de ${periodo.periodo}.`);
+      return;
+    }
     if (cerrandoPeriodoRef.current) return;
     cerrandoPeriodoRef.current = true;
     setCerrandoPeriodo(true);
@@ -18830,6 +18906,7 @@ function Nomina() {
     ['descuentos','Descuentos'],
     ['ingresos','Ingresos'],
     ['cargas','Cargas empresa'],
+    ...(periodoGratificacion ? [['gratificacion','Gratificación']] : []),
     ['entrega_boletas','Entrega boletas'],
     ['plame', periodo?.estado === 'cerrado' ? 'Reporte PLAME' : 'PLAME'],
   ];
@@ -18876,7 +18953,7 @@ function Nomina() {
                 : !asistenciaNominaLista ? 'Cargando asistencias completas del período...'
                 : !configuracionFeriadosLista ? 'Cargando la configuración de feriados del período...' : ''}
             >{procesandoNomina ? 'Procesando...' : 'Procesar'}</button>
-            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo)} onClick={() => setCierre(true)}>Cerrar</button>
+            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo) || (periodoGratificacion && periodo.gratificacion_real_confirmada !== true)} title={periodoGratificacion && periodo.gratificacion_real_confirmada !== true ? 'Confirma la gratificación real antes de cerrar el período.' : ''} onClick={() => setCierre(true)}>Cerrar</button>
           </div>
         )}
       </div>
@@ -19193,6 +19270,14 @@ function Nomina() {
       )}
 
       {/* ── TAB: CARGAS ── */}
+      {tab === 'gratificacion' && periodo && (
+        <div className="card" style={{padding:20}}>
+          <div className="card-head"><div><h3>Gratificación real — {periodo.periodo}</h3><div className="text-muted" style={{fontSize:12}}>Cálculo sobre la nómina procesada; la confirmación actualiza bruto, IR y neto.</div></div>{periodo.gratificacion_real_confirmada ? <span className="badge badge-green">Confirmada</span> : <button className="btn btn-primary" disabled={cargandoGratificacion || !previsualizacionGratificacion} onClick={()=>setConfirmarGratificacionModal(true)}>Confirmar gratificación real</button>}</div>
+          {errorGratificacion && <div className="alert alert-danger" style={{marginBottom:12}}>{errorGratificacion}</div>}
+          {cargandoGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>Calculando previsualización…</div> : !previsualizacionGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>No hay previsualización disponible.</div> : <><div className="table-wrap"><table className="tbl" style={{fontSize:12}}><thead><tr><th>Trabajador</th><th>Elegible</th><th>Meses</th><th>Gratificación</th><th>Bonif. extra</th><th>IR 5ta</th><th>Neto</th></tr></thead><tbody>{(previsualizacionGratificacion.detalle || []).map(row=><tr key={`${row.trabajador_tipo}:${row.trabajador_id}`}><td><strong>{row.trabajador_nombre || row.trabajador_id}</strong></td><td>{row.elegible ? <span className="badge badge-green">Sí</span> : <><span className="badge badge-gray">No</span><div className="text-muted" style={{marginTop:4}}>{row.motivo_no_elegible || 'No elegible'}</div></>}</td><td className="num">{row.elegible ? row.meses_completos : '—'}</td><td className="num">{row.elegible ? money(row.gratificacion_pagada) : '—'}</td><td className="num">{row.elegible ? money(row.bonif_extraordinaria_pagada) : '—'}</td><td className="num">{row.elegible ? money(row.retencion_ir_nueva) : '—'}</td><td className="num">{row.elegible ? <strong>{money(row.neto_nuevo)}</strong> : '—'}</td></tr>)}{!previsualizacionGratificacion.detalle?.length && <tr><td colSpan={7} style={{padding:28,textAlign:'center'}} className="text-muted">No hay trabajadores en el snapshot.</td></tr>}</tbody></table></div><div className="row" style={{justifyContent:'flex-end',marginTop:12,fontWeight:700}}>Total a pagar: {money(previsualizacionGratificacion.totales?.monto_total || 0)}</div></>}
+        </div>
+      )}
+
       {tab === 'cargas' && periodo && (
         <div className="card" style={{padding:20}}>
           <div className="card-head"><h3>Cargas empresa — {periodo.periodo}</h3></div>
@@ -19382,6 +19467,7 @@ function Nomina() {
       </div></>}
 
       {/* Modal cierre */}
+      {confirmarGratificacionModal && <div className="modal-backdrop" onClick={()=>!confirmandoGratificacion&&setConfirmarGratificacionModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Confirmar gratificación real</h3><button className="icon-btn" disabled={confirmandoGratificacion} onClick={()=>setConfirmarGratificacionModal(false)}>{I.x}</button></div><div className="modal-body"><p>Se aplicará el pago real de gratificación y bonificación extraordinaria a la nómina procesada. También se recalculará la retención de IR de quinta categoría.</p><p><strong>Total a pagar: {money(previsualizacionGratificacion?.totales?.monto_total || 0)}</strong></p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" disabled={confirmandoGratificacion} onClick={()=>setConfirmarGratificacionModal(false)}>Cancelar</button><button className="btn btn-primary" disabled={confirmandoGratificacion} onClick={confirmarGratificacionReal}>{confirmandoGratificacion ? 'Confirmando...' : 'Confirmar pago real'}</button></div></div></div></div>}
       {cierre && <div className="modal-backdrop" onClick={()=>setCierre(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo} disabled={cerrandoPeriodo}>{cerrandoPeriodo ? 'Cerrando...' : 'Confirmar cierre'}</button></div></div></div></div>}
       {advertenciaCorte && <div className="modal-backdrop" onClick={()=>setAdvertenciaCorte(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Fecha de corte no alcanzada</h3><button className="icon-btn" onClick={()=>setAdvertenciaCorte(false)}>{I.x}</button></div><div className="modal-body"><p>Aún no llega la fecha de corte configurada ({periodo?.fecha_corte}). ¿Deseas procesar de todos modos?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setAdvertenciaCorte(false)}>Cancelar</button><button className="btn btn-primary" onClick={confirmarProcesarPeseACorte}>Procesar de todos modos</button></div></div></div></div>}
       {nuevoPeriodoPanel && <div className="modal-backdrop" onClick={()=>setNuevoPeriodoPanel(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Nuevo período de nómina</h3><button className="icon-btn" onClick={()=>setNuevoPeriodoPanel(false)}>{I.x}</button></div><form className="modal-body" onSubmit={crearPeriodoManual}>{!modoVistaSociedadNomina.permiteEscritura && <div style={{padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13, marginBottom:14}}>{mensajeSeleccionSociedad}</div>}<div className="input-group"><label>Mes *</label><input className="input" type="month" value={nuevoPeriodoForm.mes} onChange={e=>setNuevoPeriodoForm(f=>({...f,mes:e.target.value}))} required /></div><SociedadFormField value={nuevoPeriodoForm.sociedad_id} onChange={sociedad_id=>setNuevoPeriodoForm(f=>({...f,sociedad_id}))} /><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setNuevoPeriodoPanel(false)}>Cancelar</button><button className="btn btn-primary" title={!modoVistaSociedadNomina.permiteEscritura ? mensajeSeleccionSociedad : 'Crear período'} disabled={creandoPeriodo || !modoVistaSociedadNomina.permiteEscritura}>{creandoPeriodo?'Creando...':'Crear período'}</button></div></form></div></div>}

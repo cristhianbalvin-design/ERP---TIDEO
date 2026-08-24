@@ -107,6 +107,7 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
     horas_extra_tramo1_min: Number(c.horas_extra_tramo1_min) || 0,
     horas_extra_tramo2_min: Number(c.horas_extra_tramo2_min) || 0,
     sueldo_base: Number(c.sueldo_base) || 0,
+    sueldo_proporcional: Number(c.sueldo_proporcional) || 0,
     remuneracion_bruta: Number(c.remuneracion_bruta) || 0,
     asignacion_familiar: Number(c.asignacion_familiar) || 0,
     add_horas_extra: Number(c.add_horas_extra) || 0,
@@ -230,6 +231,24 @@ export const nominaService = {
     const { data, error } = await supabase.rpc(rpc, params);
     if (error) throw error;
     return data ?? 0;
+  },
+
+  previsualizarGratificacionReal: async (empresaId, periodoId, sociedadId = null) => {
+    const supabase = await getSupabaseClient();
+    const multi = await obtenerEstadoMultisociedad(supabase, empresaId);
+    const rpc = multi ? 'previsualizar_gratificacion_real_periodo_sociedad' : 'previsualizar_gratificacion_real_periodo';
+    const { data, error } = await supabase.rpc(rpc, { p_empresa_id: empresaId, p_periodo_id: periodoId, ...(multi ? { p_sociedad_id: sociedadId } : {}) });
+    if (error) throw error;
+    return data;
+  },
+
+  confirmarGratificacionReal: async (empresaId, periodoId, sociedadId = null) => {
+    const supabase = await getSupabaseClient();
+    const multi = await obtenerEstadoMultisociedad(supabase, empresaId);
+    const rpc = multi ? 'confirmar_gratificacion_real_periodo_sociedad' : 'confirmar_gratificacion_real_periodo';
+    const { data, error } = await supabase.rpc(rpc, { p_empresa_id: empresaId, p_periodo_id: periodoId, ...(multi ? { p_sociedad_id: sociedadId } : {}) });
+    if (error) throw error;
+    return data;
   },
 
   // ─── Config nómina en empresa_config ─────────────────────────
