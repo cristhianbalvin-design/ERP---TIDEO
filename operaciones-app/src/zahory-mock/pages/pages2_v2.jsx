@@ -724,17 +724,6 @@ export const OTsListadoPage = () => {
   );
 };
 
-const PARTES_TALLER_MOCK = [
-  { id: 'PT-2026-041', fecha: '2026-04-19', mecanico: 'Quispe R.',  ot: 'OT-2026-050', horas: 8.0, estado: 'Aprobado',  tecnico_id: 'TEC-003', tecnico_nombre: 'García Quispe, Roberto', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 45, actividades: [{id:'ACT-001',descripcion:'Reparación menor',hora_inicio:'08:00',hora_fin:'16:00',horometro_inicio:1000,horometro_fin:1008}], repuestos_consumidos: [{item_id:'REP-CAT-0441',descripcion:'Sello hidráulico kit completo',cantidad:2,unidad:'kit',costo_unitario:145.00}], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-040', fecha: '2026-04-18', mecanico: 'Torres M.',  ot: 'OT-2026-048', horas: 7.5, estado: 'Aprobado',  tecnico_id: 'TEC-004', tecnico_nombre: 'Torres Mamani, Miguel', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Electricista', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-26', avance_ot_pct: 60, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-039', fecha: '2026-04-17', mecanico: 'Quispe R.',  ot: 'OT-2026-044', horas: 6.0, estado: 'Aprobado',  tecnico_id: 'TEC-003', tecnico_nombre: 'García Quispe, Roberto', supervisor: 'Supervisor del taller', taller: 'Satipo', especialidad: 'Mecánico', contrato_id: 'CT-2026-001', centro_costo: 'FLO-ALQ', equipo_id: 'JB-DD311', avance_ot_pct: 100, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-038', fecha: '2026-04-16', mecanico: 'Pajuelo E.', ot: 'OT-2026-042', horas: 8.0, estado: 'Pendiente', tecnico_id: 'TEC-001', tecnico_nombre: 'Pajuelo Jurado, Edson', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecatrónico', contrato_id: 'CT-2026-003', centro_costo: 'FLO-ALQ', equipo_id: 'SC-701', avance_ot_pct: 20, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-037', fecha: '2026-04-15', mecanico: 'Torres M.',  ot: 'OT-2026-041', horas: 4.5, estado: 'Rechazado', tecnico_id: 'TEC-004', tecnico_nombre: 'Torres Mamani, Miguel', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Electricista', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 35, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-036', fecha: '2026-04-14', mecanico: 'Condori L.', ot: 'OT-2026-039', horas: 8.0, estado: 'Aprobado',  tecnico_id: 'TEC-005', tecnico_nombre: 'López Vargas, Carlos', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecánico', contrato_id: 'CT-2026-001', centro_costo: 'FLO-ALQ', equipo_id: 'JB-DD311', avance_ot_pct: 50, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-035', fecha: '2026-04-13', mecanico: 'Quispe R.',  ot: 'OT-2026-038', horas: 7.0, estado: 'Aprobado',  tecnico_id: 'TEC-003', tecnico_nombre: 'García Quispe, Roberto', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-26', avance_ot_pct: 80, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PT-2026-034', fecha: '2026-04-12', mecanico: 'Pajuelo E.', ot: 'OT-2026-035', horas: 3.0, estado: 'Pendiente', tecnico_id: 'TEC-001', tecnico_nombre: 'Pajuelo Jurado, Edson', supervisor: 'Supervisor del taller', taller: 'Ate', especialidad: 'Mecatrónico', contrato_id: 'CT-2026-003', centro_costo: 'FLO-ALQ', equipo_id: 'SC-701', avance_ot_pct: 10, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-];
-
 const PARTES_MINA_MOCK = [
   { id: 'PM-2026-016', fecha: '2026-04-16', mecanico: 'Miranda B.', ot: 'OT-2026-047', horas: 2.9, estado: 'Aprobado',  tecnico_id: 'TEC-002', tecnico_nombre: 'Miranda Barra, Sandro', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 45, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
   { id: 'PM-2026-015', fecha: '2026-04-15', mecanico: 'Pajuelo E.', ot: 'OT-2026-045', horas: 3.9, estado: 'Aprobado',  tecnico_id: 'TEC-001', tecnico_nombre: 'Pajuelo Jurado, Edson', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecatrónico', contrato_id: 'CT-2026-003', centro_costo: 'FLO-ALQ', equipo_id: 'SC-701', avance_ot_pct: 60, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
@@ -861,7 +850,7 @@ const PartesDiariosDataTable = ({ rows, onNav, editRoute, openMenu, setOpenMenu 
                   textDecoration:'underline', textUnderlineOffset:3,
                 }}
               >
-                {r.id}
+                {r.numero || r.id}
               </button>
             </td>
             <td style={{ fontSize:12.5 }}>{fmtFechaCorta(r.fecha)}</td>
@@ -902,13 +891,80 @@ const PartesDiariosDataTable = ({ rows, onNav, editRoute, openMenu, setOpenMenu 
 
 // ── Gestión de Partes Diarios — Taller ────────────────────────────────────
 export const GestionPartesTallerPage = ({ onNav }) => {
+  const sesionOperativa = useSesionOperativa();
   const [tab,      setTab]      = useS2('todos');
   const [search,   setSearch]   = useS2('');
   const [dateFrom, setDateFrom] = useS2('');
   const [dateTo,   setDateTo]   = useS2('');
   const [openMenu, setOpenMenu] = useS2(null);
+  const [partesReales, setPartesReales] = useS2([]);
+  const [cargandoPartes, setCargandoPartes] = useS2(false);
+  const [errorPartes, setErrorPartes] = useS2('');
 
-  const filtered = PARTES_TALLER_MOCK
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || sesionOperativa.estado !== 'listo') {
+      setPartesReales([]);
+      setCargandoPartes(false);
+      return () => { vigente = false; };
+    }
+
+    const cargarPartes = async () => {
+      setCargandoPartes(true);
+      setErrorPartes('');
+      try {
+        let consulta = getSupabaseClient()
+          .from('partes_diarios')
+          .select('id,numero,empresa_id,orden_trabajo_id,tecnico_id,tecnico_nombre,fecha,horas_normales,estado,avance_pct,ordenes_trabajo!inner(id,numero,sociedad_id)')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .order('fecha', { ascending: false })
+          .order('created_at', { ascending: false });
+        // partes_diarios no tiene sociedad_id: el alcance se aplica mediante la OT relacionada.
+        if (sesionOperativa.sociedadId && !sesionOperativa.vistaConsolidada) {
+          consulta = consulta.eq('ordenes_trabajo.sociedad_id', sesionOperativa.sociedadId);
+        }
+        if (sesionOperativa.vistaConsolidada && Array.isArray(sesionOperativa.sociedadesIdsAlcance) && sesionOperativa.sociedadesIdsAlcance.length) {
+          consulta = consulta.in('ordenes_trabajo.sociedad_id', sesionOperativa.sociedadesIdsAlcance);
+        }
+        const { data, error } = await consulta;
+        if (error) throw error;
+
+        const tecnicoIds = [...new Set((data || []).map(parte => parte.tecnico_id).filter(Boolean))];
+        const { data: tecnicos, error: errorTecnicos } = tecnicoIds.length
+          ? await getSupabaseClient().from('personal_operativo').select('id,nombre').eq('empresa_id', sesionOperativa.empresaId).in('id', tecnicoIds)
+          : { data: [], error: null };
+        if (errorTecnicos) throw errorTecnicos;
+        const tecnicosPorId = new Map((tecnicos || []).map(tecnico => [tecnico.id, tecnico.nombre]));
+        const estadoListado = estado => ({
+          aprobado: 'Aprobado', rechazado: 'Rechazado', en_revision: 'Pendiente',
+          registrado: 'Pendiente', borrador: 'Pendiente', con_restriccion: 'Pendiente',
+        })[String(estado || '').toLowerCase()] || 'Pendiente';
+        if (vigente) {
+          setPartesReales((data || []).map(parte => ({
+            id: parte.id,
+            numero: parte.numero,
+            fecha: parte.fecha,
+            mecanico: parte.tecnico_nombre || tecnicosPorId.get(parte.tecnico_id) || parte.tecnico_id || 'Sin técnico',
+            ot: parte.ordenes_trabajo?.numero || parte.orden_trabajo_id,
+            horas: Number(parte.horas_normales || 0),
+            estado: estadoListado(parte.estado),
+          })));
+        }
+      } catch (error) {
+        if (vigente) {
+          setPartesReales([]);
+          setErrorPartes(error?.message || 'No se pudieron cargar los partes diarios reales.');
+        }
+      } finally {
+        if (vigente) setCargandoPartes(false);
+      }
+    };
+
+    cargarPartes();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.estado, sesionOperativa.sociedadId, sesionOperativa.vistaConsolidada, sesionOperativa.sociedadesIdsAlcance]);
+
+  const filtered = partesReales
     .filter(r => tab === 'todos' || r.estado === tab)
     .filter(r => !search   || r.mecanico.toLowerCase().includes(search.toLowerCase()) || r.ot.toLowerCase().includes(search.toLowerCase()))
     .filter(r => !dateFrom || r.fecha >= dateFrom)
@@ -919,7 +975,7 @@ export const GestionPartesTallerPage = ({ onNav }) => {
       <div className="page-header">
         <div>
           <h1>Gestión de Partes Diarios — Taller</h1>
-          <div className="sub">Carapongo y Lurín · {PARTES_TALLER_MOCK.length} registros</div>
+          <div className="sub">Carapongo y Lurín · {partesReales.length} registros reales</div>
         </div>
         <div className="spacer"/>
         <button className="btn btn-primary" onClick={() => onNav('crear-parte-taller')}>
@@ -927,7 +983,7 @@ export const GestionPartesTallerPage = ({ onNav }) => {
         </button>
       </div>
       <PartesDiariosToolbar
-        tab={tab} setTab={setTab} allRows={PARTES_TALLER_MOCK}
+        tab={tab} setTab={setTab} allRows={partesReales}
         search={search} setSearch={setSearch}
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
@@ -937,6 +993,8 @@ export const GestionPartesTallerPage = ({ onNav }) => {
         editRoute="crear-parte-taller"
         openMenu={openMenu} setOpenMenu={setOpenMenu}
       />
+      {cargandoPartes && <div className="muted" style={{ marginTop: 12, textAlign: 'center' }}>Cargando partes diarios reales...</div>}
+      {errorPartes && <div style={{ marginTop: 12, color: '#B91C1C', textAlign: 'center' }}>{errorPartes}</div>}
       <FooterBrand/>
     </div>
   );

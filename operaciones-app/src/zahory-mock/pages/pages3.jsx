@@ -1,13 +1,24 @@
-import { useState as useS3 } from 'react';
+import { useEffect, useState as useS3 } from 'react';
 import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA as MOCK } from '../data.js';
+import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 
-const MicField = ({ defaultValue = "", placeholder }) => {
+const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+
+const IndicadorPendienteConexion = () => (
+  <span className="badge orange" style={{ marginLeft: 8, fontSize: 10 }}>Pendiente de conexión real</span>
+);
+
+const MicField = ({ defaultValue = "", placeholder, value, onChange }) => {
   const [rec, setRec] = useS3(false);
-  const [val, setVal] = useS3(defaultValue);
+  const [val, setVal] = useS3(value ?? defaultValue);
+  useEffect(() => {
+    if (value !== undefined) setVal(value);
+  }, [value]);
   return (
     <div className={"mic-field-wrap " + (rec ? "recording" : "")}>
-      <textarea value={val} onChange={e => setVal(e.target.value)} placeholder={placeholder}/>
+      <textarea value={val} onChange={e => { setVal(e.target.value); onChange?.(e.target.value); }} placeholder={placeholder}/>
       {rec && <span className="rec-dot"/>}
       <button className={"mic-btn " + (rec ? "rec" : "")} onClick={() => setRec(!rec)} title="Dictar por voz">
         <Icon name="mic" size={18}/>
@@ -621,12 +632,14 @@ export const ReporteMinaPage = ({ onNav }) => {
 
 // ---------- Parte diario de taller ----------
 export const ParteTallerPage = ({ onNav }) => {
+  const sesionOperativa = useSesionOperativa();
   const [formData, setFormData] = useS3({
     id: 'PD-2026-112',
-    ot_id: 'OT-2026-0847',
-    fecha: '2026-04-20',
-    tecnico_id: 'TEC-001',
-    tecnico_nombre: 'Pajuelo Jurado, Edson',
+    ot_id: '',
+    tarea_id: '',
+    fecha: new Date().toISOString().slice(0, 10),
+    tecnico_id: '',
+    tecnico_nombre: '',
     supervisor: 'Supervisor del taller',
     taller: 'Ate',
     especialidad: 'Mecánico',
@@ -651,8 +664,127 @@ export const ParteTallerPage = ({ onNav }) => {
     backlog_generado_id: null
   });
 
+  const [ordenesReales, setOrdenesReales] = useS3([]);
+  const [tareasReales, setTareasReales] = useS3([]);
+  const [tecnicosReales, setTecnicosReales] = useS3([]);
+  const [cargandoOTs, setCargandoOTs] = useS3(false);
+  const [cargandoTareas, setCargandoTareas] = useS3(false);
+  const [cargandoTecnicos, setCargandoTecnicos] = useS3(false);
+  const [errorDatosReales, setErrorDatosReales] = useS3('');
+  const [guardandoParte, setGuardandoParte] = useS3(false);
+  const [errorGuardadoParte, setErrorGuardadoParte] = useS3('');
+  const [parteGuardado, setParteGuardado] = useS3(null);
   const [showBacklogModal, setShowBacklogModal] = useS3(false);
   const [nuevoBacklog, setNuevoBacklog] = useS3({});
+
+  const aplicarFiltroSociedadOT = (consulta) => {
+    if (sesionOperativa.sociedadId && !sesionOperativa.vistaConsolidada) {
+      return consulta.eq('sociedad_id', sesionOperativa.sociedadId);
+    }
+    if (sesionOperativa.vistaConsolidada && Array.isArray(sesionOperativa.sociedadesIdsAlcance) && sesionOperativa.sociedadesIdsAlcance.length) {
+      return consulta.in('sociedad_id', sesionOperativa.sociedadesIdsAlcance);
+    }
+    return consulta;
+  };
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setOrdenesReales([]);
+      setCargandoOTs(false);
+      return () => { vigente = false; };
+    }
+
+    const cargarOTs = async () => {
+      setCargandoOTs(true);
+      setErrorDatosReales('');
+      try {
+        let consulta = getSupabaseClient()
+          .from('ordenes_trabajo')
+          .select('id,numero,descripcion,servicio,estado,sociedad_id,equipo_id,tecnico_responsable_id,centro_costo_id,contrato_alquiler_id')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .in('estado', ['programada', 'ejecucion'])
+          .order('numero');
+        consulta = aplicarFiltroSociedadOT(consulta);
+        const { data, error } = await consulta;
+        if (error) throw error;
+        if (vigente) setOrdenesReales(data || []);
+      } catch (error) {
+        if (vigente) {
+          setOrdenesReales([]);
+          setErrorDatosReales(error?.message || 'No se pudieron cargar las OTs disponibles.');
+        }
+      } finally {
+        if (vigente) setCargandoOTs(false);
+      }
+    };
+
+    cargarOTs();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.sociedadId, sesionOperativa.vistaConsolidada, sesionOperativa.sociedadesIdsAlcance, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
+      setTecnicosReales([]);
+      setCargandoTecnicos(false);
+      return () => { vigente = false; };
+    }
+
+    const cargarTecnicos = async () => {
+      setCargandoTecnicos(true);
+      try {
+        const { data, error } = await getSupabaseClient()
+          .from('personal_operativo')
+          .select('id,nombre,codigo,especialidad,estado,tarifa_hora')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .eq('estado', 'disponible')
+          .order('nombre');
+        if (error) throw error;
+        if (vigente) setTecnicosReales(data || []);
+      } catch (error) {
+        if (vigente) setErrorDatosReales(error?.message || 'No se pudo cargar el catálogo de técnicos.');
+      } finally {
+        if (vigente) setCargandoTecnicos(false);
+      }
+    };
+
+    cargarTecnicos();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId || !formData.ot_id) {
+      setTareasReales([]);
+      setCargandoTareas(false);
+      return () => { vigente = false; };
+    }
+
+    const cargarTareas = async () => {
+      setCargandoTareas(true);
+      try {
+        const { data, error } = await getSupabaseClient()
+          .from('ot_tareas')
+          .select('id,titulo,descripcion,tecnico_id,tecnico_nombre,estado,completada,orden')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .eq('ot_id', formData.ot_id)
+          .order('orden');
+        if (error) throw error;
+        if (vigente) setTareasReales(data || []);
+      } catch (error) {
+        if (vigente) {
+          setTareasReales([]);
+          setErrorDatosReales(error?.message || 'No se pudieron cargar las tareas de la OT.');
+        }
+      } finally {
+        if (vigente) setCargandoTareas(false);
+      }
+    };
+
+    cargarTareas();
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId, formData.ot_id]);
 
   // Funciones de cálculo
   const calcularHoras = (horaInicio, horaFin) => {
@@ -674,23 +806,53 @@ export const ParteTallerPage = ({ onNav }) => {
   };
 
   const getCostoHora = (tecnicoId) => {
-    const tecnico = MOCK.personalOperativo?.find(t => t.cod === tecnicoId);
-    return tecnico?.costo_hora || 0;
+    const tecnico = tecnicosReales.find(t => t.id === tecnicoId);
+    return Number(tecnico?.tarifa_hora || 0);
   };
 
   const getContextoOT = (otId) => {
-    const ot = MOCK.otsDashboard?.find(o => o.codigo === otId)
-      || MOCK.otsCostos?.find(o => o.codigo === otId) || {
-        // Fallback for mock if exact OT is not found
-        objeto_costo_id: 'CT-2026-002',
-        centro_costo: 'FLO-ALQ',
-        equipo_id: 'JB-24'
-      };
+    const ot = ordenesReales.find(o => o.id === otId);
     return ot ? {
-      contrato_id:  ot.objeto_costo_id || ot.contrato_id || 'CT-2026-002',
-      centro_costo: ot.centro_costo || 'FLO-ALQ',
-      equipo_id:    ot.equipo_id || 'JB-24',
+      contrato_id: ot.contrato_alquiler_id || null,
+      centro_costo: ot.centro_costo_id || null,
+      equipo_id: ot.equipo_id || null,
     } : null;
+  };
+
+  const tareaSeleccionada = tareasReales.find(tarea => tarea.id === formData.tarea_id) || null;
+  const tecnicoTareaNombre = tareaSeleccionada?.tecnico_nombre
+    || tecnicosReales.find(tecnico => tecnico.id === tareaSeleccionada?.tecnico_id)?.nombre
+    || (tareaSeleccionada?.tecnico_id ? `Técnico asignado (${tareaSeleccionada.tecnico_id})` : '');
+
+  const seleccionarOT = (otId) => {
+    const ot = ordenesReales.find(item => item.id === otId);
+    setTareasReales([]);
+    setFormData(prev => ({
+      ...prev,
+      ot_id: otId,
+      tarea_id: '',
+      tecnico_id: '',
+      tecnico_nombre: '',
+      contrato_id: ot?.contrato_alquiler_id || '',
+      centro_costo: ot?.centro_costo_id || '',
+      equipo_id: ot?.equipo_id || '',
+    }));
+  };
+
+  const seleccionarTarea = (tareaId) => {
+    const tarea = tareasReales.find(item => item.id === tareaId);
+    const tecnico = tecnicosReales.find(item => item.id === tarea?.tecnico_id);
+    setFormData(prev => ({
+      ...prev,
+      tarea_id: tareaId,
+      tecnico_id: tarea?.tecnico_id || '',
+      tecnico_nombre: tarea?.tecnico_nombre || tecnico?.nombre || '',
+    }));
+  };
+
+  const seleccionarTecnico = (tecnicoId) => {
+    const tecnico = tecnicosReales.find(item => item.id === tecnicoId);
+    setFormData(prev => ({ ...prev, tecnico_id: tecnicoId, tecnico_nombre: tecnico?.nombre || '' }));
   };
 
   const totalHoras = calcularTotalHoras(formData.actividades);
@@ -731,6 +893,84 @@ export const ParteTallerPage = ({ onNav }) => {
     setShowBacklogModal(true);
   };
 
+  const guardarParteReal = async () => {
+    if (!sesionOperativa.permiteEscritura || guardandoParte) return;
+    if (!formData.ot_id || !formData.tecnico_id || !formData.fecha) {
+      setErrorGuardadoParte('Selecciona una OT, un técnico y la fecha del parte antes de enviarlo.');
+      return;
+    }
+    if (!ordenesReales.some(ot => ot.id === formData.ot_id)) {
+      setErrorGuardadoParte('La OT seleccionada ya no está disponible en la sociedad operativa actual.');
+      return;
+    }
+
+    const actividadesConTexto = formData.actividades.filter(actividad => actividad.descripcion?.trim());
+    if (!actividadesConTexto.length) {
+      setErrorGuardadoParte('Registra al menos una actividad realizada antes de enviarlo.');
+      return;
+    }
+
+    const horas = calcularTotalHoras(formData.actividades);
+    const horasInicio = formData.actividades.map(actividad => actividad.hora_inicio).filter(Boolean).sort();
+    const horasFin = formData.actividades.map(actividad => actividad.hora_fin).filter(Boolean).sort();
+    const actividad = [
+      ...actividadesConTexto.map(item => [
+        item.descripcion.trim(),
+        item.hora_inicio && item.hora_fin ? `(${item.hora_inicio} - ${item.hora_fin})` : '',
+      ].filter(Boolean).join(' ')),
+      formData.observaciones?.trim() ? `Observaciones: ${formData.observaciones.trim()}` : '',
+    ].filter(Boolean).join('\n');
+    const materiales = [
+      ...formData.repuestos_consumidos.map(item => ({
+        tipo: 'repuesto', item_id: item.item_id, descripcion: item.descripcion,
+        cantidad: Number(item.cantidad || 0), unidad: item.unidad, costo_unitario: Number(item.costo_unitario || 0),
+      })),
+      ...formData.fluidos_consumidos.map(item => ({
+        tipo: 'fluido', descripcion: item.tipo, motivo: item.motivo,
+        cantidad: Number(item.cantidad || 0), unidad: item.unidad,
+      })),
+    ];
+
+    setGuardandoParte(true);
+    setErrorGuardadoParte('');
+    setParteGuardado(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: numeroGenerado, error: errorNumero } = await supabase
+        .rpc('siguiente_numero_parte_diario', { p_empresa_id: sesionOperativa.empresaId });
+      if (errorNumero) throw errorNumero;
+
+      const payload = {
+        id: generarIdParte(),
+        numero: numeroGenerado || null,
+        empresa_id: sesionOperativa.empresaId,
+        orden_trabajo_id: formData.ot_id,
+        tecnico_id: formData.tecnico_id,
+        tecnico_nombre: formData.tecnico_nombre || null,
+        fecha: formData.fecha,
+        hora_inicio: horasInicio[0] || null,
+        hora_fin: horasFin.at(-1) || null,
+        horas_normales: horas,
+        horas_extra: 0,
+        actividad,
+        avance_pct: Number(formData.avance_ot_pct || 0),
+        tarea_id: formData.tarea_id || null,
+        materiales,
+        evidencias: [],
+        origen_registro: 'operativo_taller',
+        estado: 'en_revision',
+      };
+      const { data, error } = await supabase.from('partes_diarios').insert(payload).select('id,numero').single();
+      if (error) throw error;
+      setParteGuardado(data || payload);
+      setFormData(prev => ({ ...prev, id: data?.numero || data?.id || prev.id }));
+    } catch (error) {
+      setErrorGuardadoParte(error?.message || 'No se pudo guardar el parte diario.');
+    } finally {
+      setGuardandoParte(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -741,6 +981,15 @@ export const ParteTallerPage = ({ onNav }) => {
         </div>
       </div>
 
+      {!sesionOperativa.permiteEscritura && (
+        <div className="card" style={{ marginBottom: 14, padding: 14, color: '#b45309' }}>
+          Selecciona una sociedad operativa para registrar partes diarios. La vista consolidada es solo lectura.
+        </div>
+      )}
+      {errorDatosReales && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#B91C1C' }}>{errorDatosReales}</div>}
+      {errorGuardadoParte && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#B91C1C' }}>{errorGuardadoParte}</div>}
+      {parteGuardado && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#15803D' }}>Parte {parteGuardado.numero || parteGuardado.id} enviado a revisión.</div>}
+
       <div style={{ maxWidth: 820, margin: "0 auto" }}>
         
         {/* Cabecera */}
@@ -749,14 +998,14 @@ export const ParteTallerPage = ({ onNav }) => {
           <div className="card-body">
             <div className="grid-2">
               <div className="field">
-                <label>Taller *</label>
+                <label>Taller * <IndicadorPendienteConexion/></label>
                 <div className="toggle-pills">
                   <button className={"toggle-pill " + (formData.taller === "Ate" ? "active" : "")} onClick={() => setFormData({...formData, taller: "Ate"})}>Ate</button>
                   <button className={"toggle-pill " + (formData.taller === "Satipo" ? "active" : "")} onClick={() => setFormData({...formData, taller: "Satipo"})}>Satipo</button>
                 </div>
               </div>
               <div className="field">
-                <label>Especialidad</label>
+                <label>Especialidad <IndicadorPendienteConexion/></label>
                 <div className="toggle-pills">
                   <button className={"toggle-pill " + (formData.especialidad === "Mecánico" ? "active" : "")} onClick={() => setFormData({...formData, especialidad: "Mecánico"})}>⚙️ Mecánico</button>
                   <button className={"toggle-pill " + (formData.especialidad === "Eléctrico" ? "active" : "")} onClick={() => setFormData({...formData, especialidad: "Eléctrico"})}>⚡ Eléctrico</button>
@@ -768,21 +1017,28 @@ export const ParteTallerPage = ({ onNav }) => {
               </div>
               <div className="field">
                 <label>Técnico *</label>
-                <input className="input input-lg" value={formData.tecnico_nombre} readOnly style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #1e2d47", color: "#64748b", cursor: "not-allowed" }}/>
+                {tareaSeleccionada?.tecnico_id ? (
+                  <input className="input input-lg" value={tecnicoTareaNombre} readOnly style={{ background: "rgba(255,255,255,0.04)", border: "1px solid #1e2d47", color: "#64748b", cursor: "not-allowed" }}/>
+                ) : (
+                  <select className="select input-lg" value={formData.tecnico_id} disabled={cargandoTecnicos || !sesionOperativa.permiteEscritura} onChange={e => seleccionarTecnico(e.target.value)}>
+                    <option value="">{cargandoTecnicos ? 'Cargando técnicos...' : '-- Seleccionar técnico disponible --'}</option>
+                    {tecnicosReales.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}{tecnico.codigo ? ` · ${tecnico.codigo}` : ''}</option>)}
+                  </select>
+                )}
               </div>
               <div className="field" style={{ gridColumn: '1 / -1' }}>
-                <label>Supervisor *</label>
+                <label>Supervisor * <IndicadorPendienteConexion/></label>
                 <input className="input input-lg" value={formData.supervisor} onChange={e => setFormData({...formData, supervisor: e.target.value})} placeholder="Supervisor del taller"/>
               </div>
             </div>
 
             <div className="field mt-md" style={{ padding: 14, border: "2px solid var(--navy)", borderRadius: 8, background: "#F5F7FB", position: "relative" }}>
               <label style={{ color: "var(--navy)", fontWeight: 700 }}>OT asociada *</label>
-              <select className="select input-lg" value={formData.ot_id} onChange={e => setFormData({...formData, ot_id: e.target.value})}>
-                <option value="OT-2026-0847">OT-2026-0847 — JB-24 | Buenaventura</option>
-                <option value="OT-2026-0848">OT-2026-0848 — JB-26 | Antapaccay</option>
+              <select className="select input-lg" value={formData.ot_id} disabled={cargandoOTs || !sesionOperativa.permiteEscritura} onChange={e => seleccionarOT(e.target.value)}>
+                <option value="">{cargandoOTs ? 'Cargando OTs...' : '-- Seleccionar OT programada o en ejecución --'}</option>
+                {ordenesReales.map(ot => <option key={ot.id} value={ot.id}>{ot.numero} — {ot.servicio || ot.descripcion || ot.estado}</option>)}
               </select>
-              <div style={{ marginTop: 6 }}><span className="badge cyan"><span className="dot"/>Vinculado</span></div>
+              <div style={{ marginTop: 6 }}><span className={formData.ot_id ? 'badge cyan' : 'badge slate'}><span className="dot"/>{formData.ot_id ? 'Vinculado' : 'Pendiente de seleccionar'}</span></div>
 
               {formData.ot_id && (() => {
                 const ctx = getContextoOT(formData.ot_id);
@@ -814,6 +1070,14 @@ export const ParteTallerPage = ({ onNav }) => {
                   </div>
                 ) : null;
               })()}
+
+              <div className="field" style={{ marginTop: 16 }}>
+                <label>Tarea trabajada <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                <select className="select input-lg" value={formData.tarea_id} disabled={!formData.ot_id || cargandoTareas || !sesionOperativa.permiteEscritura} onChange={e => seleccionarTarea(e.target.value)}>
+                  <option value="">{!formData.ot_id ? 'Selecciona primero una OT' : cargandoTareas ? 'Cargando tareas...' : '-- Sin tarea estructurada --'}</option>
+                  {tareasReales.map(tarea => <option key={tarea.id} value={tarea.id}>{tarea.titulo}{tarea.tecnico_nombre ? ` · ${tarea.tecnico_nombre}` : ''}{tarea.completada ? ' · Completada' : ''}</option>)}
+                </select>
+              </div>
 
               <div style={{ marginTop:'16px' }}>
                 <label>
@@ -903,8 +1167,8 @@ export const ParteTallerPage = ({ onNav }) => {
                   ) : null;
                 })()}
 
-                <div className="field"><label>Horómetro/KM inicio</label><input className="input" value={a.horometro_inicio} onChange={e => actualizarActividad(i, 'horometro_inicio', e.target.value)}/></div>
-                <div className="field"><label>Horómetro/KM fin</label><input className="input" value={a.horometro_fin} onChange={e => actualizarActividad(i, 'horometro_fin', e.target.value)}/></div>
+                <div className="field"><label>Horómetro/KM inicio <IndicadorPendienteConexion/></label><input className="input" value={a.horometro_inicio} onChange={e => actualizarActividad(i, 'horometro_inicio', e.target.value)}/></div>
+                <div className="field"><label>Horómetro/KM fin <IndicadorPendienteConexion/></label><input className="input" value={a.horometro_fin} onChange={e => actualizarActividad(i, 'horometro_fin', e.target.value)}/></div>
               </div>
             </div>
           ))}
@@ -997,7 +1261,7 @@ export const ParteTallerPage = ({ onNav }) => {
         </Accordion>
 
         {/* Pedidos */}
-        <Accordion title="Pedido de repuestos" icon="parts">
+        <Accordion title="Pedido de repuestos" icon="parts" badge={<IndicadorPendienteConexion/>}>
           {formData.pedidos.length === 0 ? (
             <div className="muted" style={{ fontSize: 12 }}>No hay pedidos registrados. Usa "+ Agregar pedido" cuando necesites solicitar stock.</div>
           ) : (
@@ -1027,10 +1291,13 @@ export const ParteTallerPage = ({ onNav }) => {
         </Accordion>
 
         <Accordion title="Trabajos pendientes y observaciones" icon="edit">
-          <MicField defaultValue={formData.trabajos_pendientes || "Pendiente revisión del sistema eléctrico."}/>
+          <MicField
+            defaultValue={formData.trabajos_pendientes || "Pendiente revisión del sistema eléctrico."}
+            onChange={valor => setFormData(prev => ({ ...prev, trabajos_pendientes: valor, observaciones: valor }))}
+          />
         </Accordion>
 
-        <Accordion title="Backlog desde taller" icon="orders" badge={<span className="badge cyan" style={{ marginLeft: 8 }}>Nuevo</span>}>
+        <Accordion title="Backlog desde taller" icon="orders" badge={<><span className="badge cyan" style={{ marginLeft: 8 }}>Nuevo</span><IndicadorPendienteConexion/></>}>
           <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>Registra cualquier hallazgo o trabajo pendiente para futuras OTs.</div>
           
           {showBacklogModal ? (
@@ -1133,11 +1400,10 @@ export const ParteTallerPage = ({ onNav }) => {
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button className="btn btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={() => onNav("partes-taller")}>Guardar borrador</button>
-          <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => onNav("partes-taller")}>Enviar para aprobación</button>
+          <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} disabled={!sesionOperativa.permiteEscritura || guardandoParte} onClick={guardarParteReal}>{guardandoParte ? 'Enviando...' : 'Enviar a revisión'}</button>
         </div>
       </div>
       <FooterBrand/>
     </div>
   );
 };
-
