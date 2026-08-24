@@ -11515,7 +11515,7 @@ function RRHHAdmin() {
       <>
         {documentoAEliminarAdmin && (
           <div className="modal-backdrop" onClick={() => !eliminandoDocumentoAdminId && !archivandoDocumentoAdminId && (setDocumentoAEliminarAdmin(null), setErrorEliminarDocumentoAdmin(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
               <div className="modal-head">
                 <h2>Eliminar documento</h2>
                 <button className="icon-btn" onClick={() => { setDocumentoAEliminarAdmin(null); setErrorEliminarDocumentoAdmin(''); }} disabled={Boolean(eliminandoDocumentoAdminId || archivandoDocumentoAdminId)}>{I.x}</button>
@@ -11527,7 +11527,7 @@ function RRHHAdmin() {
                 </div>
                 {errorEliminarDocumentoAdmin && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorEliminarDocumentoAdmin}</div>}
               </div>
-              <div className="modal-foot">
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
                 <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoAdminId || archivandoDocumentoAdminId)} onClick={() => { setDocumentoAEliminarAdmin(null); setErrorEliminarDocumentoAdmin(''); }}>Cancelar</button>
                 {errorEliminarDocumentoAdmin && <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoAdminId || archivandoDocumentoAdminId)} onClick={() => confirmarArchivarDocumentoAdmin(documentoAEliminarAdmin, true)}>{I.archive} {archivandoDocumentoAdminId ? 'Archivando...' : 'Archivar en su lugar'}</button>}
                 <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoAdminId || archivandoDocumentoAdminId)} onClick={confirmarEliminarDocumentoAdmin}>{I.trash} {eliminandoDocumentoAdminId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
@@ -11537,7 +11537,7 @@ function RRHHAdmin() {
         )}
         {documentoAArchivarAdmin && (
           <div className="modal-backdrop" onClick={() => !archivandoDocumentoAdminId && (setDocumentoAArchivarAdmin(null), setErrorArchivarDocumentoAdmin(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
               <div className="modal-head">
                 <h2>Archivar documento</h2>
                 <button className="icon-btn" onClick={() => { setDocumentoAArchivarAdmin(null); setErrorArchivarDocumentoAdmin(''); }} disabled={Boolean(archivandoDocumentoAdminId)}>{I.x}</button>
@@ -11549,7 +11549,7 @@ function RRHHAdmin() {
                 </div>
                 {errorArchivarDocumentoAdmin && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorArchivarDocumentoAdmin}</div>}
               </div>
-              <div className="modal-foot">
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
                 <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoAdminId)} onClick={() => { setDocumentoAArchivarAdmin(null); setErrorArchivarDocumentoAdmin(''); }}>Cancelar</button>
                 <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoAdminId)} onClick={() => confirmarArchivarDocumentoAdmin()}>{I.archive} {archivandoDocumentoAdminId ? 'Archivando...' : 'Archivar documento'}</button>
               </div>

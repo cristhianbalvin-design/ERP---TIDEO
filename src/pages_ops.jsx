@@ -21427,7 +21427,7 @@ function RRHH_Operativo() {
         {previewDocumentoNode}
         {documentoAEliminar && (
           <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && (setDocumentoAEliminar(null), setErrorEliminarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
               <div className="modal-head">
                 <h2>Eliminar documento</h2>
                 <button className="icon-btn" onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }} disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)}>{I.x}</button>
@@ -21439,7 +21439,7 @@ function RRHH_Operativo() {
                 </div>
                 {errorEliminarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorEliminarDocumento}</div>}
               </div>
-              <div className="modal-foot">
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
                 <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }}>Cancelar</button>
                 {errorEliminarDocumento && <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar en su lugar'}</button>}
                 <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
@@ -21449,7 +21449,7 @@ function RRHH_Operativo() {
         )}
         {documentoAArchivar && (
           <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && (setDocumentoAArchivar(null), setErrorArchivarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
               <div className="modal-head">
                 <h2>Archivar documento</h2>
                 <button className="icon-btn" onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }} disabled={Boolean(archivandoDocumentoId)}>{I.x}</button>
@@ -21461,7 +21461,7 @@ function RRHH_Operativo() {
                 </div>
                 {errorArchivarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorArchivarDocumento}</div>}
               </div>
-              <div className="modal-foot">
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
                 <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }}>Cancelar</button>
                 <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar documento'}</button>
               </div>
