@@ -18251,9 +18251,12 @@ function Nomina() {
           ? { ...r, horas_extra_min: 0, horas_extra: 0 }
           : r
         );
-      // En multisociedad monto y regimen provienen del contrato de esa sociedad.
-      // El flujo legacy conserva sin cambios el historial de asignaciones de jornada.
-      const asigsTrabajador = empresa?.multisociedad_habilitado ? [] : asignacionesJornada.filter(a => a.personal_id === t.id);
+      // En multisociedad monto proviene del contrato de esa sociedad.
+      // NOTA/HALLAZGO: El régimen de jornada existe tanto en el contrato (condiciones_laborales) 
+      // como en la asignación física (personal_asignaciones_jornada). Actualmente pueden diferir 
+      // si RRHH actualiza la jornada sin firmar nueva adenda. Por ahora, conservamos el historial
+      // incondicionalmente para no perder las fechas de los ciclos mineros.
+      const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
       const ingresoInfo = ingresoExtraPorTrabajador[t.id] || { remunerativo: 0, noRemunerativo: 0 };
       // Para Q2, el motor necesita el total remunerativo de Q1+Q2 combinado (para que
       // reconciliarQ2 reste correctamente el snapshot de Q1) — no solo el de esta quincena.
