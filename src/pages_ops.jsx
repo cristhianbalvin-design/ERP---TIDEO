@@ -20380,6 +20380,10 @@ function RRHH_Operativo() {
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
   const [documentoAEliminar, setDocumentoAEliminar] = useState(null);
   const [eliminandoDocumentoId, setEliminandoDocumentoId] = useState(null);
+  const [errorEliminarDocumento, setErrorEliminarDocumento] = useState('');
+  const [documentoAArchivar, setDocumentoAArchivar] = useState(null);
+  const [archivandoDocumentoId, setArchivandoDocumentoId] = useState(null);
+  const [errorArchivarDocumento, setErrorArchivarDocumento] = useState('');
   const [docPreviewReq, setDocPreviewReq] = useState(null);
   const [docPreviewPersona, setDocPreviewPersona] = useState(null);
   const [previewLoadingUrl, setPreviewLoadingUrl] = useState(false);
@@ -21362,10 +21366,11 @@ function RRHH_Operativo() {
       const objetivo = documentoAEliminar;
       if (!objetivo?.doc?.id) return;
       setEliminandoDocumentoId(objetivo.doc.id);
+      setErrorEliminarDocumento('');
       try {
         const resultado = await personalDocumentosService.eliminarDocumento(objetivo.doc.id);
         if (!resultado?.ok) {
-          addNotificacion(resultado?.error || 'No se pudo eliminar el documento.', 'error');
+          setErrorEliminarDocumento(resultado?.error || 'No se pudo eliminar el documento.');
           return;
         }
         if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(objetivo.persona.id);
@@ -21374,9 +21379,37 @@ function RRHH_Operativo() {
           ? `Documento eliminado. ${resultado.advertenciaAlmacenamiento}`
           : 'Documento eliminado.', resultado.advertenciaAlmacenamiento ? 'warning' : 'success');
       } catch (err) {
-        addNotificacion(err?.message || 'No se pudo eliminar el documento.', 'error');
+        setErrorEliminarDocumento(err?.message || 'No se pudo eliminar el documento.');
       } finally {
         setEliminandoDocumentoId(null);
+      }
+    };
+
+    const confirmarArchivarDocumento = async (objetivo = documentoAArchivar, desdeEliminar = false) => {
+      if (!objetivo?.doc?.id) return;
+      setArchivandoDocumentoId(objetivo.doc.id);
+      setErrorArchivarDocumento('');
+      try {
+        const resultado = await personalDocumentosService.archivarDocumento(objetivo.doc.id);
+        if (!resultado?.ok) {
+          const mensaje = resultado?.error || 'No se pudo archivar el documento.';
+          setErrorArchivarDocumento(mensaje);
+          if (desdeEliminar) setErrorEliminarDocumento(mensaje);
+          return;
+        }
+        if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(objetivo.persona.id);
+        setDocumentoAArchivar(null);
+        if (desdeEliminar) {
+          setDocumentoAEliminar(null);
+          setErrorEliminarDocumento('');
+        }
+        addNotificacion('Documento archivado. El registro se conserva, pero deja de estar vigente.', 'success');
+      } catch (err) {
+        const mensaje = err?.message || 'No se pudo archivar el documento.';
+        setErrorArchivarDocumento(mensaje);
+        if (desdeEliminar) setErrorEliminarDocumento(mensaje);
+      } finally {
+        setArchivandoDocumentoId(null);
       }
     };
 
@@ -21395,21 +21428,44 @@ function RRHH_Operativo() {
       <>
         {previewDocumentoNode}
         {documentoAEliminar && (
-          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && setDocumentoAEliminar(null)}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && (setDocumentoAEliminar(null), setErrorEliminarDocumento(''))}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
               <div className="modal-head">
                 <h2>Eliminar documento</h2>
-                <button className="icon-btn" onClick={() => setDocumentoAEliminar(null)} disabled={Boolean(eliminandoDocumentoId)}>{I.x}</button>
+                <button className="icon-btn" onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }} disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)}>{I.x}</button>
               </div>
               <div className="modal-body">
                 <p>¿Eliminar definitivamente <strong>{documentoAEliminar.doc.nombre_archivo || 'este documento'}</strong>?</p>
                 <div className="alert alert-warning" style={{marginTop:12, fontSize:12}}>
                   Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.
                 </div>
+                {errorEliminarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorEliminarDocumento}</div>}
               </div>
-              <div className="modal-foot">
-                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId)} onClick={() => setDocumentoAEliminar(null)}>Cancelar</button>
-                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
+                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }}>Cancelar</button>
+                {errorEliminarDocumento && <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar en su lugar'}</button>}
+                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {documentoAArchivar && (
+          <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && (setDocumentoAArchivar(null), setErrorArchivarDocumento(''))}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
+              <div className="modal-head">
+                <h2>Archivar documento</h2>
+                <button className="icon-btn" onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }} disabled={Boolean(archivandoDocumentoId)}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                <p>¿Archivar <strong>{documentoAArchivar.doc.nombre_archivo || 'este documento'}</strong>?</p>
+                <div className="alert alert-info" style={{marginTop:12, fontSize:12}}>
+                  El documento se conserva como registro histórico, pero dejará de estar vigente.
+                </div>
+                {errorArchivarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorArchivarDocumento}</div>}
+              </div>
+              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
+                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }}>Cancelar</button>
+                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar documento'}</button>
               </div>
             </div>
           </div>
@@ -22547,7 +22603,10 @@ function RRHH_Operativo() {
                                                   )}
                                                    {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
                                                    <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
-                                                   {puedeEliminarDocumentosRrhh && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminar({ doc: req.doc, persona: p })}>{I.trash} Eliminar</button>}
+                                                   {puedeEliminarDocumentosRrhh && <>
+                                                     <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc: req.doc, persona: p }); }}>{I.trash} Eliminar</button>
+                                                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc: req.doc, persona: p }); }}>{I.archive} Archivar</button>
+                                                   </>}
                                                    {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                                                     <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
                                                   )}
@@ -22965,7 +23024,10 @@ function RRHH_Operativo() {
                                  {doc.estado_validacion}
                                </span>
                                <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
-                               {puedeEliminarDocumentosRrhh && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminar({ doc, persona: p })}>{I.trash} Eliminar</button>}
+                               {puedeEliminarDocumentosRrhh && <>
+                                 <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); }}>{I.trash} Eliminar</button>
+                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); }}>{I.archive} Archivar</button>
+                               </>}
                              </div>
                           </div>
                           {doc.motivo_rechazo && (
