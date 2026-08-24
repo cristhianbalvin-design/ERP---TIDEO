@@ -10871,6 +10871,8 @@ function RRHHAdmin() {
   const [modalEnviarFirmaDocAdmin, setModalEnviarFirmaDocAdmin] = useState(null);
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
   const [enviandoFirmaAdmin, setEnviandoFirmaAdmin] = useState(false);
+  const [documentoAEliminarAdmin, setDocumentoAEliminarAdmin] = useState(null);
+  const [eliminandoDocumentoAdminId, setEliminandoDocumentoAdminId] = useState(null);
   const periodoAlertaHoras = useMemo(() => rrhhDesplazarPeriodoMes(rrhhPeriodoMesActual(), -1), []);
   const [tareosAlertaHoras, setTareosAlertaHoras] = useState([]);
   // Estados para tab de amonestaciones (GAP-19)
@@ -11098,6 +11100,37 @@ function RRHHAdmin() {
     role?.permisos?.aprobar?.includes?.('rrhh_admin') ||
     role?.permisos?.editar?.includes?.('rrhh_admin')
   );
+
+  const puedeEliminarDocumentosRrhhAdmin = Boolean(
+    role?.permisos?.todo ||
+    role?.es_admin_empresa ||
+    role?.permisos?.tenant_admin ||
+    role?.permisos?.editar === true ||
+    role?.permisos?.editar?.includes?.('rrhh_admin') ||
+    role?.permisos?.editar?.includes?.('personal_administrativo')
+  );
+
+  const confirmarEliminarDocumentoAdmin = async () => {
+    const objetivo = documentoAEliminarAdmin;
+    if (!objetivo?.doc?.id) return;
+    setEliminandoDocumentoAdminId(objetivo.doc.id);
+    try {
+      const resultado = await personalDocumentosService.eliminarDocumento(objetivo.doc.id);
+      if (!resultado?.ok) {
+        addNotificacion(resultado?.error || 'No se pudo eliminar el documento.', 'error');
+        return;
+      }
+      if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(objetivo.persona.id);
+      setDocumentoAEliminarAdmin(null);
+      addNotificacion(resultado.advertenciaAlmacenamiento
+        ? `Documento eliminado. ${resultado.advertenciaAlmacenamiento}`
+        : 'Documento eliminado.', resultado.advertenciaAlmacenamiento ? 'warning' : 'success');
+    } catch (err) {
+      addNotificacion(err?.message || 'No se pudo eliminar el documento.', 'error');
+    } finally {
+      setEliminandoDocumentoAdminId(null);
+    }
+  };
 
   const abrirPreviewDocumentoAdmin = (req, pers) => {
     if (!req?.doc) return;
@@ -11447,6 +11480,26 @@ function RRHHAdmin() {
     };
     return (
       <>
+        {documentoAEliminarAdmin && (
+          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoAdminId && setDocumentoAEliminarAdmin(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+              <div className="modal-head">
+                <h2>Eliminar documento</h2>
+                <button className="icon-btn" onClick={() => setDocumentoAEliminarAdmin(null)} disabled={Boolean(eliminandoDocumentoAdminId)}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                <p>¿Eliminar definitivamente <strong>{documentoAEliminarAdmin.doc.nombre_archivo || 'este documento'}</strong>?</p>
+                <div className="alert alert-warning" style={{marginTop:12, fontSize:12}}>
+                  Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoAdminId)} onClick={() => setDocumentoAEliminarAdmin(null)}>Cancelar</button>
+                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoAdminId)} onClick={confirmarEliminarDocumentoAdmin}>{I.trash} {eliminandoDocumentoAdminId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="page-header">
           <div className="row" style={{gap:12}}>
             <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)}>{I.chev} Volver</button>
@@ -12716,6 +12769,7 @@ function RRHHAdmin() {
                                   </button>
                                   {tooltipPredecesor && !req.doc && <span style={{fontSize:9, color:'var(--danger)', maxWidth:140, textAlign:'center', lineHeight:1.1}}>{tooltipPredecesor}</span>}
                                 </div>
+                                {req.doc && puedeEliminarDocumentosRrhhAdmin && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminarAdmin({ doc: req.doc, persona })}>{I.trash} Eliminar</button>}
                                 {req.doc && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                                   <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>
                                 )}
@@ -13155,6 +13209,7 @@ function RRHHAdmin() {
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
                               {doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirDocUrl(doc)}>{I.file} Ver</button>}
+                              {puedeEliminarDocumentosRrhhAdmin && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminarAdmin({ doc, persona })}>{I.trash} Eliminar</button>}
                             </div>
                           </div>
                           {doc.motivo_rechazo && (
