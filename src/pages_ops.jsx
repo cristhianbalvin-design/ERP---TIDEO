@@ -18501,6 +18501,11 @@ function Nomina() {
 
   const cerrarPeriodo = async () => {
     if (!periodo) return;
+    if (periodoGratificacion && periodo.gratificacion_real_confirmada !== true) {
+      addToast('Debes confirmar la gratificación real antes de cerrar este período.', 'error');
+      addNotificacion(`Cierre bloqueado: falta confirmar la gratificación real de ${periodo.periodo}.`);
+      return;
+    }
     if (cerrandoPeriodoRef.current) return;
     cerrandoPeriodoRef.current = true;
     setCerrandoPeriodo(true);
@@ -18948,7 +18953,7 @@ function Nomina() {
                 : !asistenciaNominaLista ? 'Cargando asistencias completas del período...'
                 : !configuracionFeriadosLista ? 'Cargando la configuración de feriados del período...' : ''}
             >{procesandoNomina ? 'Procesando...' : 'Procesar'}</button>
-            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo)} onClick={() => setCierre(true)}>Cerrar</button>
+            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo) || (periodoGratificacion && periodo.gratificacion_real_confirmada !== true)} title={periodoGratificacion && periodo.gratificacion_real_confirmada !== true ? 'Confirma la gratificación real antes de cerrar el período.' : ''} onClick={() => setCierre(true)}>Cerrar</button>
           </div>
         )}
       </div>
