@@ -18117,6 +18117,14 @@ function Nomina() {
     periodo,
   }), [personalDocumentos, tiposDocumento, periodo?.id, periodo?.sociedad_id]);
 
+  const contratosNominaAmbiguosConNombre = useMemo(() => {
+    const personasPorId = new Map(personasCompartidas.map(persona => [persona.id, persona]));
+    return contratosNomina.ambiguos.map(ambiguo => ({
+      ...ambiguo,
+      nombre: personasPorId.get(ambiguo.personal_id)?.nombre || ambiguo.personal_id,
+    }));
+  }, [contratosNomina.ambiguos, personasCompartidas]);
+
   const sociedadConfigNomina = useMemo(() => {
     if (!empresa?.multisociedad_habilitado || !periodo?.sociedad_id) return null;
     return sociedadesDisponibles.find(sociedad => sociedad.id === periodo.sociedad_id) || null;
@@ -18363,8 +18371,9 @@ function Nomina() {
         return;
       }
 
-      if (empresa?.multisociedad_habilitado && contratosNomina.ambiguos.length > 0) {
-        addToast('Hay trabajadores con mas de un contrato vigente en la misma sociedad. Corrige la vigencia antes de procesar.', 'error');
+      if (empresa?.multisociedad_habilitado && contratosNominaAmbiguosConNombre.length > 0) {
+        const nombres = contratosNominaAmbiguosConNombre.map(ambiguo => ambiguo.nombre).join(', ');
+        addToast(`No se puede procesar: ${nombres} tiene${contratosNominaAmbiguosConNombre.length === 1 ? '' : 'n'} más de un contrato vigente en la misma sociedad. Corrige la vigencia antes de procesar.`, 'error');
         return;
       }
 
@@ -18972,6 +18981,20 @@ function Nomina() {
               <strong>Feriados trabajados sin política de pago configurada:</strong> se aplicó <em>Sin pago adicional</em> por ausencia de configuración.
               <ul style={{margin:'6px 0 0', paddingLeft:18}}>
                 {advertenciasPoliticaFeriado.map(advertencia => <li key={`${advertencia.nombre}:${advertencia.regimen}`}><strong>{advertencia.nombre}</strong> · {advertencia.regimen}: {advertencia.fechas.join(', ')}</li>)}
+              </ul>
+            </div>
+          )}
+          {empresa?.multisociedad_habilitado && contratosNominaAmbiguosConNombre.length > 0 && (
+            <div className="alert alert-danger" style={{margin:'0 16px 12px', fontSize:13, padding:'12px 14px'}}>
+              <div style={{fontWeight:700, marginBottom:6, fontSize:14, display:'flex', alignItems:'center', gap:6}}>
+                <span style={{width:16, height:16, flexShrink:0, display:'inline-flex'}}>{I.alert}</span>
+                No se puede procesar: contratos vigentes simultáneos
+              </div>
+              <div style={{fontSize:12, marginBottom:6}}>Corrige la vigencia de los contratos antes de procesar la nómina.</div>
+              <ul style={{margin:0, paddingLeft:18}}>
+                {contratosNominaAmbiguosConNombre.map(ambiguo => (
+                  <li key={ambiguo.personal_id}><strong>{ambiguo.nombre}</strong>: {ambiguo.contratos.length} contratos vigentes en la misma sociedad.</li>
+                ))}
               </ul>
             </div>
           )}
@@ -20267,6 +20290,8 @@ function RRHH_Operativo() {
   const [modalEnviarFirmaDocOps, setModalEnviarFirmaDocOps] = useState(null);
   const [enviarFirmaMensajeOps, setEnviarFirmaMensajeOps] = useState('');
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
+  const [documentoAEliminar, setDocumentoAEliminar] = useState(null);
+  const [eliminandoDocumentoId, setEliminandoDocumentoId] = useState(null);
   const [docPreviewReq, setDocPreviewReq] = useState(null);
   const [docPreviewPersona, setDocPreviewPersona] = useState(null);
   const [previewLoadingUrl, setPreviewLoadingUrl] = useState(false);
@@ -20305,6 +20330,15 @@ function RRHH_Operativo() {
     role?.permisos?.aprobar?.includes?.('rrhh_admin') ||
     role?.permisos?.editar?.includes?.('rrhh_operativo') ||
     role?.permisos?.editar?.includes?.('rrhh_admin')
+  );
+
+  const puedeEliminarDocumentosRrhh = Boolean(
+    role?.permisos?.todo ||
+    role?.es_admin_empresa ||
+    role?.permisos?.tenant_admin ||
+    role?.permisos?.editar === true ||
+    role?.permisos?.editar?.includes?.('rrhh_operativo') ||
+    role?.permisos?.editar?.includes?.('personal_operativo')
   );
 
   const abrirPreviewDocumento = (req, persona) => {
@@ -21236,6 +21270,28 @@ function RRHH_Operativo() {
       }
     };
 
+    const confirmarEliminarDocumento = async () => {
+      const objetivo = documentoAEliminar;
+      if (!objetivo?.doc?.id) return;
+      setEliminandoDocumentoId(objetivo.doc.id);
+      try {
+        const resultado = await personalDocumentosService.eliminarDocumento(objetivo.doc.id);
+        if (!resultado?.ok) {
+          addNotificacion(resultado?.error || 'No se pudo eliminar el documento.', 'error');
+          return;
+        }
+        if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(objetivo.persona.id);
+        setDocumentoAEliminar(null);
+        addNotificacion(resultado.advertenciaAlmacenamiento
+          ? `Documento eliminado. ${resultado.advertenciaAlmacenamiento}`
+          : 'Documento eliminado.', resultado.advertenciaAlmacenamiento ? 'warning' : 'success');
+      } catch (err) {
+        addNotificacion(err?.message || 'No se pudo eliminar el documento.', 'error');
+      } finally {
+        setEliminandoDocumentoId(null);
+      }
+    };
+
     const contratoColor = tipo => tipo === 'Indefinido' ? 'green' : tipo === 'Plazo fijo' ? 'orange' : 'cyan';
     const tabs = ['ficha', 'contrato', 'jornada', 'vacaciones', 'licencias', 'solicitudes', 'documentos', 'reembolsos', 'disponibilidad', 'amonestaciones', ...(canFinanzas ? ['bancarios'] : [])];
     const bajaProductividadFicha = construirFilasControlHoras({
@@ -21250,6 +21306,26 @@ function RRHH_Operativo() {
     return (
       <>
         {previewDocumentoNode}
+        {documentoAEliminar && (
+          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && setDocumentoAEliminar(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
+              <div className="modal-head">
+                <h2>Eliminar documento</h2>
+                <button className="icon-btn" onClick={() => setDocumentoAEliminar(null)} disabled={Boolean(eliminandoDocumentoId)}>{I.x}</button>
+              </div>
+              <div className="modal-body">
+                <p>¿Eliminar definitivamente <strong>{documentoAEliminar.doc.nombre_archivo || 'este documento'}</strong>?</p>
+                <div className="alert alert-warning" style={{marginTop:12, fontSize:12}}>
+                  Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.
+                </div>
+              </div>
+              <div className="modal-foot">
+                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId)} onClick={() => setDocumentoAEliminar(null)}>Cancelar</button>
+                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {modalEnviarFirmaDocOps && (
           <div className="modal-backdrop" onClick={() => !enviandoFirmaOps && setModalEnviarFirmaDocOps(null)}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
@@ -22381,9 +22457,10 @@ function RRHH_Operativo() {
                                                       </>
                                                     )
                                                   )}
-                                                  {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
-                                                  <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
-                                                  {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
+                                                   {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
+                                                   <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
+                                                   {puedeEliminarDocumentosRrhh && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminar({ doc: req.doc, persona: p })}>{I.trash} Eliminar</button>}
+                                                   {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                                                     <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
                                                   )}
                                                   {canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false && (() => {
@@ -22796,11 +22873,12 @@ function RRHH_Operativo() {
                                   {DOC_LBL[estadoMotor] || estadoMotor}
                                 </span>
                               )}
-                              <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
-                                {doc.estado_validacion}
-                              </span>
-                              <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
-                            </div>
+                               <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
+                                 {doc.estado_validacion}
+                               </span>
+                               <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
+                               {puedeEliminarDocumentosRrhh && <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => setDocumentoAEliminar({ doc, persona: p })}>{I.trash} Eliminar</button>}
+                             </div>
                           </div>
                           {doc.motivo_rechazo && (
                             <div style={{fontSize:12, color:'var(--danger)', padding:'6px 10px', background:'rgba(229,62,62,0.08)', borderRadius:4}}>

@@ -616,6 +616,7 @@ a { color: var(--cyan); text-decoration: none; }
   align-items: start;
 }
 .ot-form-grid.commercial { grid-template-columns: minmax(190px, 1fr) minmax(330px, 2fr) minmax(260px, 1.3fr); }
+.ot-form-grid.commercial.os-cliente { grid-template-columns: minmax(190px, 1fr) minmax(330px, 2fr); }
 .ot-form-grid.execution { grid-template-columns: minmax(170px, 0.8fr) minmax(220px, 1fr) minmax(280px, 1.6fr); }
 .ot-form-grid.dbs { grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr); }
 .ot-form-grid.operations { grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.75fr) minmax(180px, 0.75fr); }
@@ -740,6 +741,7 @@ a { color: var(--cyan); text-decoration: none; }
 .ot-form-full { grid-column: 1 / -1; }
 @media (max-width: 1100px) {
   .ot-form-grid.commercial,
+  .ot-form-grid.commercial.os-cliente,
   .ot-form-grid.execution,
   .ot-form-grid.dbs,
   .ot-form-grid.operations { grid-template-columns: 1fr; }

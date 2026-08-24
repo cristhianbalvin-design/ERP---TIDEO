@@ -363,7 +363,8 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 const SegmentoCard = ({
   seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio,
-  errorTiposServicio, tecnicos, cargandoTecnicos,
+  errorTiposServicio, tecnicos, cargandoTecnicos, cuadrillas, cargandoCuadrillas,
+  errorCuadrillas,
 }) => {
   const [tab, setTab] = useState('mo');
 
@@ -380,6 +381,23 @@ const SegmentoCard = ({
     onPatch({ ot_operaciones: seg.ot_operaciones.filter((_, i) => i !== oi) });
   const patchOp = (oi, patch) =>
     onPatch({ ot_operaciones: seg.ot_operaciones.map((op, i) => i === oi ? { ...op, ...patch } : op) });
+
+  const aplicarCuadrilla = (cuadrillaId) => {
+    const cuadrilla = cuadrillas.find(item => item.id === cuadrillaId);
+    if (!cuadrilla) return;
+
+    const tecnicosDisponibles = new Map(tecnicos.map(tecnico => [tecnico.id, tecnico]));
+    const tecnicoIds = (cuadrilla.cuadrilla_miembros || [])
+      .map(miembro => miembro.tecnico_id)
+      .filter(tecnicoId => tecnicosDisponibles.has(tecnicoId));
+
+    onPatch({
+      ot_operaciones: seg.ot_operaciones.map((operacion, indice) => ({
+        ...operacion,
+        tecnico_id: tecnicoIds[indice] || '',
+      })),
+    });
+  };
 
   const totalMO  = calcSegmentoMO(seg);
   const totalRep = calcSegmentoRepuestos(seg);
@@ -422,6 +440,29 @@ const SegmentoCard = ({
 
       {/* ── Operaciones ── */}
       <div style={{ padding: '8px 12px 6px', background: '#FAFCFF', borderBottom: '1px solid var(--card-border)' }}>
+        <div className="input-group" style={{ marginBottom: 8, maxWidth: 360 }}>
+          <label style={{ fontSize: 11 }}>Aplicar cuadrilla</label>
+          <select
+            className="input"
+            value=""
+            disabled={cargandoCuadrillas}
+            onChange={e => aplicarCuadrilla(e.target.value)}
+            title="Distribuye los miembros disponibles entre las operaciones de este segmento"
+            style={{ fontSize: 12, padding: '4px 8px', background: cargandoCuadrillas ? '#ECEFF1' : undefined }}
+          >
+            <option value="">{cargandoCuadrillas ? 'Cargando cuadrillas...' : '-- Rellenar técnicos del segmento --'}</option>
+            {cuadrillas.map(cuadrilla => (
+              <option key={cuadrilla.id} value={cuadrilla.id}>
+                {cuadrilla.nombre}{cuadrilla.especialidad_principal ? ` · ${cuadrilla.especialidad_principal}` : ''}
+              </option>
+            ))}
+          </select>
+          {errorCuadrillas && (
+            <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+              No se pudieron cargar las cuadrillas: {errorCuadrillas}
+            </div>
+          )}
+        </div>
         {seg.ot_operaciones.map((op, oi) => (
           <div key={oi} style={{ display: 'grid', gridTemplateColumns: '16px 60px minmax(180px, 1fr) minmax(150px, .65fr) auto', gap: 6, marginBottom: 6, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>↳</span>
@@ -650,23 +691,29 @@ export const CrearOTPage = ({ onNav }) => {
   const [osClientesReales, setOsClientesReales] = useState([]);
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
+  const [centrosBeneficioReales, setCentrosBeneficioReales] = useState([]);
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
+  const [cuadrillasReales, setCuadrillasReales] = useState([]);
   const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
   const [cargandoClientes, setCargandoClientes] = useState(false);
   const [cargandoObjetoCosto, setCargandoObjetoCosto] = useState(false);
   const [cargandoCentrosCosto, setCargandoCentrosCosto] = useState(false);
+  const [cargandoCentrosBeneficio, setCargandoCentrosBeneficio] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
+  const [cargandoCuadrillas, setCargandoCuadrillas] = useState(false);
   const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
   const [errorClientes, setErrorClientes] = useState(null);
   const [errorObjetoCosto, setErrorObjetoCosto] = useState(null);
   const [errorCentrosCosto, setErrorCentrosCosto] = useState(null);
+  const [errorCentrosBeneficio, setErrorCentrosBeneficio] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
+  const [errorCuadrillas, setErrorCuadrillas] = useState(null);
   const [errorTiposServicio, setErrorTiposServicio] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
@@ -758,6 +805,45 @@ export const CrearOTPage = ({ onNav }) => {
 
     return () => { vigente = false; };
   }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId) {
+      setCuadrillasReales([]);
+      setCargandoCuadrillas(false);
+      setErrorCuadrillas(null);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCuadrillas(true);
+    setErrorCuadrillas(null);
+    getSupabaseClient()
+      .from('cuadrillas')
+      .select('id,nombre,especialidad_principal,cuadrilla_miembros(id,tecnico_id)')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('activa', true)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCuadrillasReales([]);
+          setErrorCuadrillas(error.message);
+        } else {
+          setCuadrillasReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCuadrillasReales([]);
+          setErrorCuadrillas(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCuadrillas(false);
+      });
+
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId]);
 
   useEffect(() => {
     let vigente = true;
@@ -932,6 +1018,55 @@ export const CrearOTPage = ({ onNav }) => {
   useEffect(() => {
     let vigente = true;
     if (
+      objetoCostoTipo !== 'os_cliente'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.sociedadId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setCentrosBeneficioReales([]);
+      setCargandoCentrosBeneficio(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoCentrosBeneficio(true);
+    setErrorCentrosBeneficio(null);
+    getSupabaseClient()
+      .from('centros_beneficio')
+      .select('id,nombre,codigo')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('estado', 'activo')
+      .eq('sociedad_id', sesionOperativa.sociedadId)
+      .order('nombre')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setCentrosBeneficioReales([]);
+          setErrorCentrosBeneficio(error.message);
+        } else {
+          setCentrosBeneficioReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setCentrosBeneficioReales([]);
+          setErrorCentrosBeneficio(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoCentrosBeneficio(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+    sesionOperativa.sociedadId,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
       form.lugarEjecucion !== 'Campo_Mina'
       || !sesionOperativa.empresaId
       || !sesionOperativa.permiteEscritura
@@ -1056,6 +1191,22 @@ export const CrearOTPage = ({ onNav }) => {
     if (objetoCostoTipo === 'equipo_interno') return null;
     return objetosCostoFiltrados.find(c => c.id === form.contratoId);
   }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
+  const etiquetaCentroBeneficioOs = useMemo(() => {
+    const centroBeneficio = centrosBeneficioReales.find(
+      item => item.id === form.centro_beneficio_id,
+    );
+    if (centroBeneficio) {
+      return [centroBeneficio.codigo, centroBeneficio.nombre].filter(Boolean).join(' - ');
+    }
+    if (cargandoCentrosBeneficio) return 'Cargando centro de beneficio...';
+    if (errorCentrosBeneficio) return 'Centro de beneficio no disponible';
+    return 'Centro de beneficio no disponible';
+  }, [
+    centrosBeneficioReales,
+    cargandoCentrosBeneficio,
+    errorCentrosBeneficio,
+    form.centro_beneficio_id,
+  ]);
   const equiposFiltrados = useMemo(() => {
     if (objetoCostoTipo === 'equipo_interno') return equiposInternosReales;
     if (!contrato) return [];
@@ -1536,7 +1687,7 @@ export const CrearOTPage = ({ onNav }) => {
                   </div>
                   </>
                 ) : (
-                  <div className="ot-form-grid commercial">
+                  <div className={`ot-form-grid commercial${objetoCostoTipo === 'os_cliente' ? ' os-cliente' : ''}`}>
                     <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Cliente *</div>
                       <ClienteSearchSelect
@@ -1584,7 +1735,8 @@ export const CrearOTPage = ({ onNav }) => {
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.contratoId[0]}</div>
                       )}
                     </div>
-                    <div className="ot-form-field">
+                    {objetoCostoTipo === 'contrato' && (
+                      <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Activo / Equipo *</div>
                       <select className="input" value={form.equipo}
                         disabled={!form.contratoId}
@@ -1600,7 +1752,8 @@ export const CrearOTPage = ({ onNav }) => {
                       {fieldErrors.equipo?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                       )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1644,7 +1797,7 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
                 {objetoCostoTipo === 'os_cliente' && form.centro_beneficio_id && (
                   <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-                    Centro de Beneficio heredado de la OS: <strong>{form.centro_beneficio_id}</strong>
+                    Centro de Beneficio heredado de la OS: <strong>{etiquetaCentroBeneficioOs}</strong>
                   </div>
                 )}
                 {objetoCostoTipo === 'equipo_interno' && form.centro_beneficio_id && (
@@ -1652,7 +1805,7 @@ export const CrearOTPage = ({ onNav }) => {
                     Centro de Beneficio heredado del CECO: <strong>{form.centro_beneficio_id}</strong>
                   </div>
                 )}
-                {form.centro_costo && (
+                {objetoCostoTipo !== 'os_cliente' && form.centro_costo && (
                   <div style={{ marginTop: 12, paddingBottom: 4 }}>
                     <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'monospace' }}>
                       {requiereCentroCostoManual
@@ -1969,6 +2122,9 @@ export const CrearOTPage = ({ onNav }) => {
                 errorTiposServicio={errorTiposServicio}
                 tecnicos={tecnicosReales}
                 cargandoTecnicos={cargandoTecnicos}
+                cuadrillas={cuadrillasReales}
+                cargandoCuadrillas={cargandoCuadrillas}
+                errorCuadrillas={errorCuadrillas}
               />
             ))}
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
