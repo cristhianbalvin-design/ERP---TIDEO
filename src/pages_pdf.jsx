@@ -109,6 +109,12 @@ export function BoletaPagoPDF({ calculo, periodo, emisor }) {
     ['Asignación familiar', calculo?.asignacion_familiar],
     ['Horas extra', calculo?.add_horas_extra],
     ['Bonificación por altitud', calculo?.bonif_altitud],
+    ...(Number(calculo?.gratificacion_pagada) > 0
+      ? [['Gratificación real', calculo.gratificacion_pagada]]
+      : []),
+    ...(Number(calculo?.bonif_extraordinaria_pagada) > 0
+      ? [['Bonif. extraordinaria', calculo.bonif_extraordinaria_pagada]]
+      : []),
     ['Otros ingresos no remunerativos', calculo?.otros_ingresos],
   ].filter(([, value], index) => index === 0 || Number(value) !== 0);
   const descuentos = [
