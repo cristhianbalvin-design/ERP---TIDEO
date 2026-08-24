@@ -562,6 +562,20 @@ export async function eliminarDocumento(documentoId) {
     : { ok: true };
 }
 
+export async function archivarDocumento(documentoId) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('archivar_documento_personal_seguro', {
+    p_documento_id: documentoId,
+  });
+
+  if (error) {
+    return { ok: false, error: `No se pudo archivar el documento: ${error.message || 'error de base de datos'}.` };
+  }
+  return data?.ok
+    ? { ok: true }
+    : { ok: false, error: data?.error || 'No se pudo archivar el documento.' };
+}
+
 // Acepta un storage path directo o una URL firmada expirada.
 export async function renovarUrlDocumento(storagePathOrUrl) {
   const path = (storagePathOrUrl && storagePathOrUrl.startsWith('http'))
