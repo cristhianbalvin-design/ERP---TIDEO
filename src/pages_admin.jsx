@@ -8459,6 +8459,12 @@ const SOCIEDAD_FORM_INICIAL = {
   es_principal: false,
 };
 
+const REGIMEN_LABORAL_SOCIEDAD_LABELS = {
+  general: 'Régimen General',
+  pequena_empresa: 'Pequeña Empresa (MYPE)',
+  microempresa: 'Microempresa (MYPE)',
+};
+
 const sociedadAFormulario = sociedad => ({
   ...SOCIEDAD_FORM_INICIAL,
   ...sociedad,
@@ -8616,6 +8622,8 @@ function SociedadesAdmin() {
                       <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
                         <strong>{sociedad.nombre}</strong>
                         {sociedad.es_principal && <span className="badge badge-cyan">Principal</span>}
+                        <span className={`badge ${sociedad.regimen_laboral ? 'badge-purple' : 'badge-gray'}`}>{sociedad.regimen_laboral ? (REGIMEN_LABORAL_SOCIEDAD_LABELS[sociedad.regimen_laboral] || sociedad.regimen_laboral) : 'Heredado (tenant)'}</span>
+                        <span className={`badge ${sociedad.pct_quincena_1 == null ? 'badge-gray' : 'badge-cyan'}`}>{sociedad.pct_quincena_1 == null ? 'Q1 heredada' : `Q1: ${sociedad.pct_quincena_1}%`}</span>
                       </div>
                       {sociedad.razon_social && <div className="text-muted" style={{fontSize:11, marginTop:2}}>{sociedad.razon_social}</div>}
                     </td>
@@ -9906,31 +9914,25 @@ function Parametros() {
               <div className="card params-card mb-6">
                 <div className="card-head"><h3>Régimen laboral de la empresa</h3></div>
                 <div className="card-body">
-                  <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Selecciona el régimen que gobierna los beneficios laborales futuros de nómina.</div>
-                  <div style={{display:'flex', gap:12, flexWrap:'wrap', marginBottom:20}}>
-                    {regimenes.map(r => (
-                      <button key={r.key} type="button" data-local-form="true"
-                        className={`btn ${nominaCfg.regimen_laboral_empresa === r.key ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{flex:1, minWidth:180, flexDirection:'column', alignItems:'flex-start', padding:'14px 18px', height:'auto', textAlign:'left'}}
-                        onClick={() => confirmarCambioRegimen(r.key)}>
-                        <span style={{fontWeight:700, fontSize:14}}>{r.label}</span>
-                        <span style={{fontSize:11, fontWeight:400, marginTop:4, opacity:0.75}}>{r.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{overflowX:'auto', marginTop:8}}>
-                    <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Beneficio</th><th>Microempresa<br/><span style={{fontWeight:400,opacity:0.65}}>Hasta 10 trab. — Ley 28015</span></th><th>Pequeña empresa<br/><span style={{fontWeight:400,opacity:0.65}}>10–100 trab. — Ley 28015</span></th><th>Régimen general<br/><span style={{fontWeight:400,opacity:0.65}}>D.Leg. 728</span></th></tr></thead>
-                      <tbody>
-                        <tr><td><strong>CTS</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td></tr>
-                        <tr><td><strong>Gratificación</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> ½ sueldo (jul/dic)</td><td><span style={{color:'var(--success)'}}>✓</span> 1 sueldo (jul/dic)</td></tr>
-                        <tr><td><strong>Bonificación extraordinaria 9%</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ ½ gratif.</td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ gratif. completa</td></tr>
-                        <tr><td><strong>Vacaciones</strong></td><td>15 días/año</td><td>15 días/año</td><td>30 días/año</td></tr>
-                        <tr><td><strong>ESSALUD empleador</strong></td><td>SIS (S/ 15 fijo)</td><td>9%</td><td>9%</td></tr>
-                        <tr><td><strong>Indemnización por despido</strong></td><td>10 jornadas/año<br/><span style={{opacity:0.65}}>tope 90 días</span></td><td>20 jornadas/año<br/><span style={{opacity:0.65}}>tope 120 días</span></td><td>1.5 rem/año<br/><span style={{opacity:0.65}}>tope 12 rem</span></td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  {empresa?.multisociedad_habilitado ? (
+                    <div className="alert alert-info" style={{margin:0, fontSize:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
+                      <span>El régimen laboral se configura por sociedad. Ve a Sociedades para revisarlo o cambiarlo.</span>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={()=>setParamSection('sociedades')}>Ir a Sociedades</button>
+                    </div>
+                  ) : <>
+                    <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Selecciona el régimen que gobierna los beneficios laborales futuros de nómina.</div>
+                    <div style={{display:'flex', gap:12, flexWrap:'wrap', marginBottom:20}}>
+                      {regimenes.map(r => (
+                        <button key={r.key} type="button" data-local-form="true"
+                          className={`btn ${nominaCfg.regimen_laboral_empresa === r.key ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{flex:1, minWidth:180, flexDirection:'column', alignItems:'flex-start', padding:'14px 18px', height:'auto', textAlign:'left'}}
+                          onClick={() => confirmarCambioRegimen(r.key)}>
+                          <span style={{fontWeight:700, fontSize:14}}>{r.label}</span>
+                          <span style={{fontSize:11, fontWeight:400, marginTop:4, opacity:0.75}}>{r.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>}
                 </div>
               </div>
 
@@ -10026,6 +10028,33 @@ function Parametros() {
                       })}</tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+
+              <details className="card params-card mb-6" style={{overflow:'hidden'}}>
+                <summary style={{padding:'14px 18px', cursor:'pointer', fontWeight:700, userSelect:'none'}}>¿Qué diferencia hay entre regímenes?</summary>
+                <div className="card-body" style={{borderTop:'1px solid var(--border)'}}>
+                  <div style={{overflowX:'auto'}}>
+                    <table className="tbl" style={{fontSize:12}}>
+                      <thead><tr><th>Beneficio</th><th>Microempresa<br/><span style={{fontWeight:400,opacity:0.65}}>Hasta 10 trab. — Ley 28015</span></th><th>Pequeña empresa<br/><span style={{fontWeight:400,opacity:0.65}}>10–100 trab. — Ley 28015</span></th><th>Régimen general<br/><span style={{fontWeight:400,opacity:0.65}}>D.Leg. 728</span></th></tr></thead>
+                      <tbody>
+                        <tr><td><strong>CTS</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td><td><span style={{color:'var(--success)'}}>✓</span> 1 rem/año</td></tr>
+                        <tr><td><strong>Gratificación</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> ½ sueldo (jul/dic)</td><td><span style={{color:'var(--success)'}}>✓</span> 1 sueldo (jul/dic)</td></tr>
+                        <tr><td><strong>Bonificación extraordinaria 9%</strong></td><td><span className="badge badge-red">✗ No aplica</span></td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ ½ gratif.</td><td><span style={{color:'var(--success)'}}>✓</span> 9% s/ gratif. completa</td></tr>
+                        <tr><td><strong>Vacaciones</strong></td><td>15 días/año</td><td>15 días/año</td><td>30 días/año</td></tr>
+                        <tr><td><strong>ESSALUD empleador</strong></td><td>9%</td><td>9%</td><td>9%</td></tr>
+                        <tr><td><strong>Indemnización por despido</strong></td><td>10 jornadas/año<br/><span style={{opacity:0.65}}>tope 90 días</span></td><td>20 jornadas/año<br/><span style={{opacity:0.65}}>tope 120 días</span></td><td>1.5 rem/año<br/><span style={{opacity:0.65}}>tope 12 rem</span></td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </details>
+
+              <div className="card params-card mb-6">
+                <div className="card-head"><h3>Configuración relacionada</h3></div>
+                <div className="card-body" style={{display:'grid', gap:12}}>
+                  <div className="alert alert-info" style={{margin:0, fontSize:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}><span>Los feriados y su política de pago afectan el cálculo de sobretasa — configúralos en Parámetros &gt; Feriados.</span><button type="button" className="btn btn-secondary btn-sm" onClick={()=>setParamSection('feriados')}>Ir a Feriados</button></div>
+                  <div className="alert alert-info" style={{margin:0, fontSize:12}}>El régimen de jornada minero y la bonificación de altitud se configuran por trabajador en Personal Operativo, no aquí.</div>
                 </div>
               </div>
 
