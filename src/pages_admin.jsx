@@ -9323,6 +9323,7 @@ function Parametros() {
     ...(puedeAdministrarSociedades
       ? [{ key: 'sociedades', title: 'Sociedades', description: 'Identidad legal, estado y configuracion de nomina por sociedad.' }]
       : []),
+    { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
     { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
     { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
@@ -9331,7 +9332,6 @@ function Parametros() {
     { key: 'cuentas', title: 'Cuentas', description: 'Cuentas bancarias, bancos y saldos base para tesoreria y pagos.' },
     { key: 'whatsapp', title: 'WhatsApp', description: 'Proveedor, plantillas, matriz de destinatarios y log de envios.' },
     { key: 'tipo_cambio', title: 'Tipos de Cambio', description: 'Historial diario de tipos de cambio. Fuente: open.er-api.com con ingreso manual como respaldo.' },
-    { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'feriados', title: 'Feriados', description: 'Calendario de feriados y políticas de pago por régimen.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
     { key: 'egresos_config', title: 'Egresos', description: 'Tipos de gasto, estructura del ER y categorías personalizadas. Importa desde Excel para configurar todo de una vez.' },

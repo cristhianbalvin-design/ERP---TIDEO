@@ -185,8 +185,16 @@ function getFichaColaboradorMovil({ authUser, usuarios = [], personalAdmin = [],
       .map(p => ({ ...p, trabajador_tipo: 'administrativo' })),
   ];
 
+  // Priorizar trabajadores Activos en caso de duplicados inactivos
+  trabajadores.sort((a, b) => {
+    const actA = a.estado === 'Activo' ? 1 : 0;
+    const actB = b.estado === 'Activo' ? 1 : 0;
+    return actB - actA;
+  });
+
   return trabajadores.find(p => {
     const email = normalizarTexto(p.email);
+    const emailPersonal = normalizarTexto(p.email_personal);
     const nombreSlug = slugPersona(p.nombre);
     // p.auth_user_id es nullable (empleados sin cuenta vinculada): nunca comparar
     // contra un id de sesion vacio, o cualquier ficha sin vincular calzaria por error
@@ -195,7 +203,7 @@ function getFichaColaboradorMovil({ authUser, usuarios = [], personalAdmin = [],
       (usuarioMovil.id && p.auth_user_id === usuarioMovil.id) ||
       p.id === authUser?.id ||
       p.id === usuarioMovil.id ||
-      (emailAuth && email === emailAuth) ||
+      (emailAuth && (email === emailAuth || emailPersonal === emailAuth)) ||
       (usuarioSlug && nombreSlug === usuarioSlug);
   }) || null;
 }
