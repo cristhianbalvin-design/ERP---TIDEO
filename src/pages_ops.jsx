@@ -3,7 +3,7 @@ import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
-import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
+import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
@@ -14807,6 +14807,26 @@ function ControlAsistencia() {
   const [sarEvaluando, setSarEvaluando] = useState(false);
   const [sarSeleccionado, setSarSeleccionado] = useState(null);
   const [geoCfg, setGeoCfg] = useState({ ...GEO_CONFIG_DEFAULT });
+  const [cargaAsistenciaVisible, setCargaAsistenciaVisible] = useState({ clave: null, cargando: false, error: null });
+  const rangoAsistenciaVisible = useMemo(() => {
+    if (tab === 'diaria' || tab === 'minero_asistencia') return { inicio: fecha, fin: fecha, etiqueta: 'del día' };
+    if (tab === 'sar') return { inicio: sarFecha, fin: sarFecha, etiqueta: 'para SAR' };
+    if (tab === 'semanal') {
+      const base = new Date(`${fecha}T00:00:00`);
+      const diaSemana = base.getDay() || 7;
+      const inicio = new Date(base);
+      inicio.setDate(base.getDate() - diaSemana + 1);
+      const fin = new Date(inicio);
+      fin.setDate(inicio.getDate() + 6);
+      return { inicio: inicio.toISOString().split('T')[0], fin: fin.toISOString().split('T')[0], etiqueta: 'de la semana' };
+    }
+    return null;
+  }, [tab, fecha, sarFecha]);
+  const claveAsistenciaVisible = rangoAsistenciaVisible ? `${tab}:${rangoAsistenciaVisible.inicio}:${rangoAsistenciaVisible.fin}` : null;
+  const asistenciaVisibleCargando = Boolean(claveAsistenciaVisible && (cargaAsistenciaVisible.clave !== claveAsistenciaVisible || cargaAsistenciaVisible.cargando));
+  const asistenciaVisibleError = cargaAsistenciaVisible.clave === claveAsistenciaVisible ? cargaAsistenciaVisible.error : null;
+  const asistenciaVisibleNoDisponible = asistenciaVisibleCargando || Boolean(asistenciaVisibleError);
+  const etiquetaAsistenciaNoDisponible = asistenciaVisibleError ? 'No disponible' : 'Cargando...';
   const [geoSubTab, setGeoSubTab] = useState('politica');
 
   // Estados Mineros
@@ -15626,13 +15646,26 @@ function ControlAsistencia() {
   }, [autHeForm.personal_id, trabajadoresGenerales[0]?.id]);
 
   useEffect(() => {
-    if (!empresa?.id || !fecha) return;
-    let cancelled = false;
-    rrhhService.getAsistencia(empresa.id, fecha, fecha).then(registrosDia => {
-      if (!cancelled) setRegistrosAsistencia(prev => [...registrosDia, ...prev.filter(r => r.fecha !== fecha)]);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [fecha, empresa?.id]);
+    if (!empresa?.id || !rangoAsistenciaVisible || !claveAsistenciaVisible) return undefined;
+    let cancelado = false;
+    setCargaAsistenciaVisible({ clave: claveAsistenciaVisible, cargando: true, error: null });
+    setRegistrosAsistencia(prev => prev.filter(r => r.fecha < rangoAsistenciaVisible.inicio || r.fecha > rangoAsistenciaVisible.fin));
+    rrhhService.getAsistencia(empresa.id, rangoAsistenciaVisible.inicio, rangoAsistenciaVisible.fin, { strict: true, completa: true })
+      .then(registros => {
+        if (cancelado) return;
+        // Reemplaza el rango visible en la caché global: formularios y vista
+        // leen el mismo snapshot completo, identificado por su rango.
+        setRegistrosAsistencia(prev => [
+          ...registros,
+          ...prev.filter(r => r.fecha < rangoAsistenciaVisible.inicio || r.fecha > rangoAsistenciaVisible.fin),
+        ]);
+        setCargaAsistenciaVisible({ clave: claveAsistenciaVisible, cargando: false, error: null });
+      })
+      .catch(error => {
+        if (!cancelado) setCargaAsistenciaVisible({ clave: claveAsistenciaVisible, cargando: false, error });
+      });
+    return () => { cancelado = true; };
+  }, [empresa?.id, claveAsistenciaVisible, rangoAsistenciaVisible?.inicio, rangoAsistenciaVisible?.fin]);
 
   useEffect(() => {
     if (!bioPerfilId && biometricoPerfiles[0]?.id) setBioPerfilId(biometricoPerfiles[0].id);
@@ -16465,14 +16498,16 @@ function ControlAsistencia() {
       const geo = geocercas.find(g => g.id === a.geocerca_id);
       const reg = registrosAsistencia.find(r => r.trabajador_id === a.personal_id && r.fecha === sarFecha);
       const estadoRegistro = reg?.geofence_entrada_estado || (reg?.ubicacion_motivo === 'gps_no_disponible' ? 'sin_ubicacion' : '');
-      const estado = !reg ? 'no_marcado'
+      const estado = asistenciaVisibleError ? 'error'
+        : asistenciaVisibleCargando ? 'cargando'
+        : !reg ? 'no_marcado'
         : estadoRegistro ? estadoRegistro
         : reg.latitud ? evaluarGeofenceLocal({ trabajador: persona, geocercas, asignaciones: geocercaAsignaciones, fix: { lat: reg.latitud, lng: reg.longitud, precision_m: reg.precision_entrada_m }, fecha: sarFecha, config: geoCfg }).estado
         : 'sin_ubicacion';
       return { asignacion: a, persona, geocerca: geo, registro: reg, estado };
     });
     return rows.filter(r => r.persona && r.geocerca);
-  }, [geocercaAsignaciones, geocercas, registrosAsistencia, sarFecha, trabajadores, geoCfg]);
+  }, [geocercaAsignaciones, geocercas, registrosAsistencia, sarFecha, trabajadores, geoCfg, asistenciaVisibleCargando, asistenciaVisibleError]);
 
   const sarRowsVisibles = sarRows.filter(r => coincideModalidad(r.persona));
 
@@ -16731,6 +16766,8 @@ function ControlAsistencia() {
       {['diaria', 'semanal', 'mensual'].includes(tab) && <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Total Gral.</div><div className="kpi-value">{kpis.total}</div></div><div className="kpi-card"><div className="kpi-label">Dias completos</div><div className="kpi-value">{kpis.completos}</div></div><div className="kpi-card"><div className="kpi-label">Tardanzas</div><div className="kpi-value" style={{color:'var(--orange)'}}>{kpis.tardanzas}</div></div><div className="kpi-card"><div className="kpi-label">Faltas</div><div className="kpi-value" style={{color:'var(--danger)'}}>{kpis.faltas}</div></div></div>}
 
       <div className="tabs">{allTabs.map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
+      {rangoAsistenciaVisible && asistenciaVisibleCargando && <div className="alert alert-info" style={{marginTop:12, fontSize:12}}>Cargando asistencias completas {rangoAsistenciaVisible.etiqueta}. Mientras carga, no se interpretan registros ausentes como faltas ni como asistencia.</div>}
+      {rangoAsistenciaVisible && asistenciaVisibleError && <div className="alert alert-danger" style={{marginTop:12, fontSize:12}}>No se pudo cargar la asistencia {rangoAsistenciaVisible.etiqueta}. No se muestran estados parciales.</div>}
 
       {tab === 'minero_asistencia' && <div className="card">
         <div className="card-head" style={{flexDirection:'column', alignItems:'stretch', gap:16}}>
@@ -16763,8 +16800,8 @@ function ControlAsistencia() {
               <td><strong>{t.nombre}</strong>{badgeSinContratoVigente(t)}</td>
               <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
               <td>{t.area || '—'}</td>
-              <td>{labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</td>
-              <td>{registro ? <span className={'badge '+asistenciaBadge(registro.estado)}>{estadoLabel}</span> : <span className="text-muted">Sin registro real</span>}</td>
+              <td>{formatearRegimenLabel(t.regimen_jornada || 'ciclo_acumulativo')}</td>
+              <td>{registro ? <span className={'badge '+asistenciaBadge(registro.estado)}>{estadoLabel}</span> : <span className="text-muted">{asistenciaVisibleNoDisponible ? etiquetaAsistenciaNoDisponible : 'Sin registro real'}</span>}</td>
               <td>{registro?.hora_entrada || '—'}</td>
               <td>{registro?.hora_salida || '—'}</td>
               <td>{registro?.motivo_falta || '—'}</td>
@@ -16784,7 +16821,7 @@ function ControlAsistencia() {
           <form className="side-panel-body" onSubmit={guardarAsistenciaMinera}>
             <div className="input-group"><label>Trabajador</label>
               <select className="select" required value={formAsistenciaMinera.trabajador_id} onChange={e => setFormAsistenciaMinera(v => ({...v, trabajador_id:e.target.value}))}>
-                {trabajadoresMinerosVisibles.map(t => <option key={t.id} value={t.id}>{t.nombre} · {labelOr(REGIMEN_JORNADA_LABELS, t.regimen_jornada || 'ciclo_acumulativo')}</option>)}
+                {trabajadoresMinerosVisibles.map(t => <option key={t.id} value={t.id}>{t.nombre} · {formatearRegimenLabel(t.regimen_jornada || 'ciclo_acumulativo')}</option>)}
               </select>
             </div>
             <div className="input-group"><label>Fecha</label><input className="input" required type="date" value={formAsistenciaMinera.fecha} onChange={e => setFormAsistenciaMinera(v => ({...v, fecha:e.target.value}))}/></div>
@@ -16848,7 +16885,7 @@ function ControlAsistencia() {
           </div>
         </div>
         <div className="table-wrap"><table className="tbl"><thead><tr>{visibleColsDiaria.includes('trabajador')&&<th>Trabajador</th>}{visibleColsDiaria.includes('modalidad')&&<th>Modalidad</th>}{visibleColsDiaria.includes('area')&&<th>Área</th>}{visibleColsDiaria.includes('turno')&&<th>Turno</th>}{visibleColsDiaria.includes('entrada')&&<th>H. Entrada</th>}{visibleColsDiaria.includes('salida')&&<th>H. Salida</th>}{visibleColsDiaria.includes('horas')&&<th>Horas trab.</th>}{visibleColsDiaria.includes('estado')&&<th>Estado</th>}{visibleColsDiaria.includes('geocerca')&&<th>Geocerca</th>}{visibleColsDiaria.includes('sar')&&<th>SAR</th>}{visibleColsDiaria.includes('justif')&&<th>Justif.</th>}{visibleColsDiaria.includes('acciones')&&<th>Acciones</th>}</tr></thead><tbody>
-          {diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer', ...estiloSinContratoVigente(row.trabajador)}} onClick={()=>setResumenPanelId(row.trabajador.id)}>{visibleColsDiaria.includes('trabajador')&&<td><strong>{row.trabajador.nombre}</strong>{badgeSinContratoVigente(row.trabajador)}</td>}{visibleColsDiaria.includes('modalidad')&&<td><span className="badge badge-gray">{modalidadEtiqueta(row.trabajador)}</span></td>}{visibleColsDiaria.includes('area')&&<td>{row.trabajador.area}</td>}{visibleColsDiaria.includes('turno')&&<td>{row.turno.nombre}</td>}{visibleColsDiaria.includes('entrada')&&<td>{row.registro?.hora_entrada || '-'}</td>}{visibleColsDiaria.includes('salida')&&<td>{row.registro?.hora_salida || '-'}</td>}{visibleColsDiaria.includes('horas')&&<td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td>}{visibleColsDiaria.includes('estado')&&<td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">Sin registro</span>}</td>}{visibleColsDiaria.includes('geocerca')&&<td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td>}{visibleColsDiaria.includes('sar')&&<td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td>}{visibleColsDiaria.includes('justif')&&<td>{row.registro?.justificada ? 'Si' : '-'}</td>}{visibleColsDiaria.includes('acciones')&&<td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td>}</tr>)}
+          {diaRows.filter(r => !filtroTrabajador || r.trabajador.nombre.toLowerCase().includes(filtroTrabajador.toLowerCase())).map(row=><tr key={row.trabajador.id} className="hover-row" style={{cursor:'pointer', ...estiloSinContratoVigente(row.trabajador)}} onClick={()=>setResumenPanelId(row.trabajador.id)}>{visibleColsDiaria.includes('trabajador')&&<td><strong>{row.trabajador.nombre}</strong>{badgeSinContratoVigente(row.trabajador)}</td>}{visibleColsDiaria.includes('modalidad')&&<td><span className="badge badge-gray">{modalidadEtiqueta(row.trabajador)}</span></td>}{visibleColsDiaria.includes('area')&&<td>{row.trabajador.area}</td>}{visibleColsDiaria.includes('turno')&&<td>{row.turno.nombre}</td>}{visibleColsDiaria.includes('entrada')&&<td>{row.registro?.hora_entrada || '-'}</td>}{visibleColsDiaria.includes('salida')&&<td>{row.registro?.hora_salida || '-'}</td>}{visibleColsDiaria.includes('horas')&&<td>{row.calc ? minutesToLabel(row.calc.horas_trabajadas_min) : '-'}</td>}{visibleColsDiaria.includes('estado')&&<td>{row.calc ? <span className={'badge '+asistenciaBadge(row.calc.estado)}>{row.calc.label}</span> : <span className="text-muted">{asistenciaVisibleNoDisponible ? etiquetaAsistenciaNoDisponible : 'Sin registro'}</span>}</td>}{visibleColsDiaria.includes('geocerca')&&<td><div className="row" style={{gap:4, flexWrap:'wrap'}}>{geocercaAsignadaPorTrabajador.has(row.trabajador.id) ? <span className="badge badge-cyan">Asignada</span> : <span className="badge badge-gray">Sin asignar</span>}{estadoGeocercaRow(row) === 'dentro' && <span className="badge badge-green">Dentro</span>}{(estadoGeocercaRow(row) === 'fuera' || estadoGeocercaRow(row) === 'rechazable') && <span className="badge badge-orange">Fuera</span>}</div></td>}{visibleColsDiaria.includes('sar')&&<td>{mostrarSarBadge(row) ? <span className="badge badge-red">SAR: no llegada</span> : '-'}</td>}{visibleColsDiaria.includes('justif')&&<td>{row.registro?.justificada ? 'Si' : '-'}</td>}{visibleColsDiaria.includes('acciones')&&<td><div className="row" style={{gap:6}}>{row.registro?.latitud ? <button type="button" className="icon-btn" title="Ver ubicación de marcación" style={{color:'var(--fg-muted)'}} onClick={(e)=>{e.stopPropagation(); abrirUbicacionMarcacion(row);}}>{I.mapPin}</button> : <button type="button" className="icon-btn" disabled title="Sin ubicación registrada" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.mapPin}</button>}{row.registro?.id ? <button type="button" className="icon-btn" title="Eliminar registro de asistencia" style={{color:'var(--danger)'}} onClick={(e)=>{e.stopPropagation(); eliminarRegistroAsistencia(row);}}>{I.trash}</button> : <button type="button" className="icon-btn" disabled title="Sin registro para eliminar" style={{color:'var(--fg-muted)', opacity:0.35, cursor:'not-allowed'}}>{I.trash}</button>}<button className="btn btn-sm btn-secondary" onClick={(e)=>{e.stopPropagation(); abrirEdicion(row);}}>Editar</button></div></td>}</tr>)}
         </tbody></table></div>
       </div>}
 
@@ -16863,7 +16900,7 @@ function ControlAsistencia() {
           const regimenStr = c.regimen_jornada || 'general';
           const isMinero = regimenStr !== 'general' && !regimenStr.startsWith('Mixto');
           const badgeClass = c.incompleto_ciclo ? 'badge-red' : regimenStr.startsWith('Mixto') ? 'badge-purple' : isMinero ? 'badge-orange' : 'badge-gray';
-          const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : regimenStr === 'general' ? workerTurno(turnos, t, fecha)?.nombre || 'General' : regimenStr.replace('minero_', 'Minero ').replace('x', '×');
+          const regimenLabel = c.incompleto_ciclo ? 'Sin fecha ciclo' : formatearRegimenLabel(regimenStr);
           return <tr key={t.id} style={{background: c.incompleto_ciclo ? 'rgba(239,68,68,0.06)' : undefined}}>
             <td><strong>{t.nombre || 'Desconocido'}</strong></td>
             <td><span className="badge badge-gray">{modalidadEtiqueta(t)}</span></td>
@@ -16881,6 +16918,7 @@ function ControlAsistencia() {
       {/* Grilla Mensual para Régimen Minero */}
       {vistaMensualSubTab === 'visual' && <div style={{padding: '0 16px 16px 16px'}}>
         <h4 style={{marginBottom:10}}>Calendario mensual — Régimen Minero</h4>
+        <div className="alert alert-info" style={{marginBottom:12, fontSize:12}}>“Incidencia justificada” es un estado de asistencia. No equivale a “Pendientes” del Roster Minero: ese indicador solo representa una marcación incompleta o ausente en un día de subida esperado.</div>
         {trabajadoresMinerosVisibles.length === 0 ? <div className="text-muted" style={{padding:'20px 0'}}>No hay trabajadores mineros para los filtros seleccionados.</div> : <>
         <div style={{overflowX:'auto'}}>
           <table className="tbl" style={{minWidth:1000}}>
@@ -17002,7 +17040,7 @@ function ControlAsistencia() {
               <div>
                 <p><strong>Trabajador:</strong> {resumenTrabajador.nombre}</p>
                 <p><strong>Modalidad:</strong> {modalidadEtiqueta(resumenTrabajador)}</p>
-                <p><strong>Régimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : calc.regimen_jornada === 'general' ? resumenTurno?.nombre || 'General' : calc.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×')}</p>
+                <p><strong>Régimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : formatearRegimenLabel(calc.regimen_jornada)}</p>
                 <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? '—' : calc.dias_laborables}</p>
                 <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? '—' : calc.dias_computables != null ? `${calc.dias_asistidos} (días trab. ciclo)` : calc.dias_asistidos}</p>
                 <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? '—' : calc.tardanzas}</p>
@@ -17140,7 +17178,7 @@ function ControlAsistencia() {
           </div>
           <div className="grid-2" style={{gap:16, padding:16}}>
             <div className="table-wrap"><table className="tbl"><thead><tr><th>Trabajador</th><th>Modalidad</th><th>Operacion</th><th>Estado</th><th>Hora</th></tr></thead><tbody>
-              {sarRowsVisibles.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`} onClick={()=>setSarSeleccionado(r.asignacion.id)} style={{cursor:'pointer', background: sarSeleccionado===r.asignacion.id ? 'var(--bg-hover, rgba(6,182,212,.08))' : undefined}}><td><strong>{r.persona.nombre}</strong></td><td><span className="badge badge-gray">{modalidadEtiqueta(r.persona)}</span></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
+              {sarRowsVisibles.map(r => <tr key={`${r.asignacion.id}_${sarFecha}`} onClick={()=>setSarSeleccionado(r.asignacion.id)} style={{cursor:'pointer', background: sarSeleccionado===r.asignacion.id ? 'var(--bg-hover, rgba(6,182,212,.08))' : undefined}}><td><strong>{r.persona.nombre}</strong></td><td><span className="badge badge-gray">{modalidadEtiqueta(r.persona)}</span></td><td>{r.geocerca.nombre}</td><td><span className={'badge '+(r.estado==='dentro'?'badge-green':r.estado==='no_marcado'?'badge-red':r.estado==='fuera'?'badge-orange':'badge-gray')}>{r.estado === 'error' ? 'No disponible' : r.estado === 'cargando' ? 'Cargando...' : r.estado}</span></td><td>{r.registro?.hora_entrada || '-'}</td></tr>)}
               {!sarRowsVisibles.length && <tr><td colSpan={5} className="text-muted" style={{padding:16}}>Sin trabajadores para la modalidad seleccionada.</td></tr>}
             </tbody></table></div>
             <GeoMiniMapa lat={geocercas[0]?.latitud} lng={geocercas[0]?.longitud} radio={geocercas[0]?.radio_m || 600} mostrarRadio={geocercas[0]?.tipo !== 'poligono'} puntos={sarPuntosMapa} seleccionado={sarSeleccionado} onSeleccionar={setSarSeleccionado} altura={480}/>
@@ -17174,8 +17212,7 @@ function ControlAsistencia() {
                     : estadoCiclo.estaEnInduccion ? 'Inducción'
                     : estadoCiclo.estado === 'en_mina' ? 'En mina'
                     : 'En descanso';
-                  const regimenDisplay = t.regimen_jornada === 'minero_2x1' ? 'Minero 2×1'
-                    : t.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×');
+                  const regimenDisplay = formatearRegimenLabel(t.regimen_jornada);
                   return <tr key={t.id} style={estiloSinContratoVigente(t)}>
                     <td>
                       <strong>{t.nombre}</strong>
@@ -17223,7 +17260,7 @@ function ControlAsistencia() {
             <div className="side-panel-backdrop" onClick={()=>setDetalleMineroId(null)} />
             <div className="side-panel" style={{width:'min(520px,96vw)'}}>
               <div className="side-panel-head">
-                <div><div className="eyebrow">Detalle del ciclo</div><div style={{fontWeight:700, fontSize:18}}>{t.nombre}</div><div className="text-muted" style={{fontSize:12}}>{t.regimen_jornada.replace('minero_','Minero ').replace('x','×')} · {diasT}×{diasD}</div></div>
+                <div><div className="eyebrow">Detalle del ciclo</div><div style={{fontWeight:700, fontSize:18}}>{t.nombre}</div><div className="text-muted" style={{fontSize:12}}>{formatearRegimenLabel(t.regimen_jornada)} · {diasT}×{diasD}</div></div>
                 <button className="icon-btn" onClick={()=>setDetalleMineroId(null)}>{I.x}</button>
               </div>
               <div className="side-panel-body">
@@ -17308,6 +17345,7 @@ function ControlAsistencia() {
           {rosterVista === 'totales' && <>
             <div className="alert alert-info" style={{marginBottom:12, fontSize:12}}>
               <strong>Totales de roster:</strong> son un snapshot del balance de rotación (mina, descansos y pendientes) calculado al presionar “Calcular / Recalcular”. No equivalen a las asistencias ni a los días de subida usados por Nómina.
+              <br />“Pendientes” no incluye faltas justificadas: solo marcaciones incompletas o ausentes en un día de subida esperado.
             </div>
             {/* KPIs del roster */}
             {rosterRowsVisibles.length > 0 && <div className="kpi-grid" style={{marginBottom:16}}>
@@ -17329,7 +17367,7 @@ function ControlAsistencia() {
                       <th title="Días efectivos para calcular descanso">Efectivos</th>
                       <th title="Días de descanso ganados por días en mina">Ganados</th>
                       <th title="Días de descanso o bajada gozados">Gozados</th>
-                      <th title="Incompleto, o sin registro en un día que el ciclo esperaba trabajo — pendiente de un ajuste o de marcar falta en Asistencia">Pendientes</th>
+                      <th title="Marcación incompleta o ausente en un día que el ciclo esperaba trabajo; no incluye faltas justificadas.">Pendientes</th>
                       <th title="Balance del período: ganados - gozados">Bal. período</th>
                       <th title="Balance acumulado incluyendo períodos anteriores">Bal. acumulado</th>
                       <th>Acción</th>
@@ -17708,7 +17746,7 @@ function ControlAsistencia() {
         <div className="side-panel-head"><div><div className="eyebrow">Registro Ciclo Minero</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{trabajadoresMineros.find(t=>t.id===formMinero.personal_id)?.nombre}</div></div><button className="icon-btn" onClick={()=>setPanelMinero(false)}>{I.x}</button></div>
         <form className="side-panel-body" onSubmit={guardarCicloMinero}>
           <div className="grid-2" style={{gap:12}}>
-            <div className="input-group"><label>Régimen (desde Jornada)</label><input type="text" className="input" readOnly value={formMinero.regimen_jornada ? formMinero.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×') : ''}/></div>
+            <div className="input-group"><label>Régimen (desde Jornada)</label><input type="text" className="input" readOnly value={formMinero.regimen_jornada ? formatearRegimenLabel(formMinero.regimen_jornada) : ''}/></div>
             <div className="input-group"><label>Fecha inicio de ciclo (desde Jornada)</label><input type="date" className="input" readOnly value={formMinero.fecha_inicio_ciclo}/></div>
             <div className="input-group"><label>Días de trabajo</label><input type="number" className="input" readOnly value={formMinero.dias_ciclo_trabajo || ''}/></div>
             <div className="input-group"><label>Días de descanso</label><input type="number" className="input" readOnly value={formMinero.dias_ciclo_descanso || ''}/></div>
@@ -17864,7 +17902,7 @@ function ControlAsistencia() {
             <div className="side-panel-head"><div><div className="eyebrow">Resumen del mes — {mesNombreCap}</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{t.nombre}</div></div><button className="icon-btn" onClick={()=>setResumenPanelId(null)}>{I.x}</button></div>
             <div className="side-panel-body">
               {!calc ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin datos de asistencia para este periodo.</div> : <>
-                <p><strong>Régimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : calc.regimen_jornada === 'general' ? trn?.nombre || 'General' : calc.regimen_jornada.replace('minero_', 'Minero ').replace('x', '×')}</p>
+                <p><strong>Régimen/Turno:</strong> {calc.incompleto_ciclo ? 'Sin fecha ciclo' : formatearRegimenLabel(calc.regimen_jornada)}</p>
                 <p><strong>Dias esperados (lab.):</strong> {calc.incompleto_ciclo ? '—' : calc.dias_laborables}</p>
                 <p><strong>Dias asistidos:</strong> {calc.incompleto_ciclo ? '—' : calc.dias_computables != null ? `${calc.dias_asistidos} (días trab. ciclo)` : calc.dias_asistidos}</p>
                 <p><strong>Dias con tardanza:</strong> {calc.incompleto_ciclo ? '—' : calc.tardanzas}</p>
@@ -19227,7 +19265,7 @@ function Nomina() {
                 {calculos.map(c => (
                   <tr key={c.trabajador_id} style={{cursor:'pointer', background: (c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.incompleto_q1 && <span className="badge badge-red" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>Q1 pendiente</span>}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_asignacion_minera ? <span className="badge badge-red" style={{fontSize:10}}>Falta asignación</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_asignacion_minera ? <span className="badge badge-red" style={{fontSize:10}}>Falta asignación · {formatearRegimenLabel(c.regimen_jornada)}</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{formatearRegimenLabel(c.regimen_jornada)}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{formatearRegimenLabel(c.regimen_jornada)}</span> : <span className="badge badge-gray">{formatearRegimenLabel(c.regimen_jornada)}</span>}</td>
                     {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
                     <td title={c.dias_computables != null ? "Asistencias sobre los días programados de subida a mina." : "Asistencias registradas"}>
