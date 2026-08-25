@@ -23921,7 +23921,7 @@ function RRHH_Operativo() {
                       <div className="input-group"><label>Días de trabajo en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_trabajo} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_trabajo:e.target.value}))}/></div>
                       <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" min="1" value={formAlta.dias_ciclo_descanso} readOnly style={{background:'var(--bg-subtle)'}} onChange={e=>setFormAlta(v=>({...v,dias_ciclo_descanso:e.target.value}))}/></div>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
-                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}> Cálculo proporcional por días computables en cada período.</div>
+                      <div className="card" style={{gridColumn:'1/-1',padding:'8px 12px',background:'rgba(6,182,212,0.08)',fontSize:12,color:'var(--cyan)'}}>⛏ Este trabajador cobra su sueldo mensual completo. El roster minero controla la asistencia y el descanso, no el monto de pago.</div>
                     </>}
                   </div>
 
