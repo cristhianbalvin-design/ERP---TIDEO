@@ -258,6 +258,34 @@ export const nominaService = {
     return data;
   },
 
+  listarOverridesGratificacionDiscrecional: async (empresaId, periodoId, sociedadId = null) => {
+    const supabase = await getSupabaseClient();
+    const multi = await obtenerEstadoMultisociedad(supabase, empresaId);
+    const { data, error } = await supabase.rpc('listar_overrides_gratificacion_discrecional', {
+      p_empresa_id: empresaId,
+      p_periodo_id: periodoId,
+      ...(multi ? { p_sociedad_id: sociedadId } : {}),
+    });
+    if (error) throw error;
+    return data || [];
+  },
+
+  crearOverrideGratificacionDiscrecional: async (empresaId, periodoId, trabajadorId, trabajadorTipo, factorAplicado, motivo, sociedadId = null) => {
+    const supabase = await getSupabaseClient();
+    const multi = await obtenerEstadoMultisociedad(supabase, empresaId);
+    const { data, error } = await supabase.rpc('crear_override_gratificacion_discrecional', {
+      p_empresa_id: empresaId,
+      p_periodo_id: periodoId,
+      p_trabajador_id: trabajadorId,
+      p_trabajador_tipo: trabajadorTipo,
+      p_factor_aplicado: factorAplicado,
+      p_motivo: motivo,
+      ...(multi ? { p_sociedad_id: sociedadId } : {}),
+    });
+    if (error) throw error;
+    return data;
+  },
+
   // ─── Config nómina en empresa_config ─────────────────────────
   getNominaConfig: async (empresaId) => {
     if (!empresaId) return {};
