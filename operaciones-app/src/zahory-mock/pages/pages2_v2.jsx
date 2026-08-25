@@ -473,7 +473,7 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
 // ── Partes Diarios — datos mock ────────────────────────────────────────────
 const OT_PAGE_SIZE = 25;
 const OT_COLUMNS = [
-  'id', 'numero', 'estado', 'fecha_programada', 'cuenta_id', 'os_cliente_id',
+  'id', 'numero', 'estado', 'fecha_inicio_real', 'fecha_programada', 'cuenta_id', 'os_cliente_id',
   'contrato_alquiler_id', 'equipo_id', 'tipo_trabajo', 'cargo_financiero',
   'motivo_rework', 'tecnico_responsable_id', 'avance_pct', 'costo_estimado',
   'costo_real', 'centro_costo_id', 'horometro_actual', 'direccion_ejecucion',
@@ -508,7 +508,7 @@ const consultaAuxiliarOT = (consulta, ids) => ids.length ? consulta.in('id', ids
 
 export const OTsListadoPage = () => {
   const sesionOperativa = useSesionOperativa();
-  const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
+  const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, permiteEscritura, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
   const [filtros, setFiltros] = useS2({ numero: '', estado: '', tecnicoId: '', retrabajos: false });
   const [pagina, setPagina] = useS2(1);
   const [filas, setFilas] = useS2([]);
@@ -518,6 +518,7 @@ export const OTsListadoPage = () => {
   const [error, setError] = useS2('');
   const [errorTecnicos, setErrorTecnicos] = useS2('');
   const [aviso, setAviso] = useS2('');
+  const [iniciandoId, setIniciandoId] = useS2(null);
   const solicitudRef = useRef(0);
 
   const actualizarFiltro = useCallback((campo, valor) => {
@@ -634,8 +635,53 @@ export const OTsListadoPage = () => {
   const totalPaginas = Math.max(1, Math.ceil(total / OT_PAGE_SIZE));
   const sinSesion = !cargandoSesion && estadoSesion !== 'listo';
   const mostrarAvisoDetalle = () => {
-    setAviso('El detalle real de OT estará disponible próximamente. Esta Bandeja es solo lectura por ahora.');
+    setAviso('El detalle real de OT estará disponible próximamente.');
     window.setTimeout(() => setAviso(''), 4000);
+  };
+
+  const iniciarOT = async (ot) => {
+    if (!permiteEscritura) {
+      setAviso('La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.');
+      return;
+    }
+    if (!ot.tecnico_responsable_id) {
+      setAviso('Asigna un técnico responsable antes de iniciar la OT.');
+      return;
+    }
+    if (!ot.centro_costo_id) {
+      setAviso('Asigna un centro de costo antes de iniciar la OT.');
+      return;
+    }
+
+    setIniciandoId(ot.id);
+    setAviso('');
+    try {
+      const fechaInicioReal = new Date().toISOString();
+      const { data: otActualizada, error: actualizacionError } = await getSupabaseClient()
+        .from('ordenes_trabajo')
+        .update({ estado: 'ejecucion', fecha_inicio_real: fechaInicioReal })
+        .eq('id', ot.id)
+        .eq('empresa_id', empresaId)
+        .eq('estado', 'programada')
+        .select('id, estado, fecha_inicio_real')
+        .maybeSingle();
+
+      if (actualizacionError) throw actualizacionError;
+      if (!otActualizada) {
+        throw new Error('La OT ya no está programada o no tienes permiso para iniciarla. Actualiza la Bandeja e inténtalo nuevamente.');
+      }
+
+      setFilas(actual => actual.map(fila => fila.id === otActualizada.id ? {
+        ...fila,
+        estado: otActualizada.estado,
+        fecha_inicio_real: otActualizada.fecha_inicio_real,
+      } : fila));
+      setAviso(`OT ${ot.numero || ''} iniciada correctamente.`);
+    } catch (actualizacionError) {
+      setAviso(`No se pudo iniciar la OT: ${actualizacionError?.message || 'Error desconocido.'}`);
+    } finally {
+      setIniciandoId(actual => actual === ot.id ? null : actual);
+    }
   };
 
   return (
@@ -688,6 +734,15 @@ export const OTsListadoPage = () => {
                       ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
                       : ot.equipo_id || 'Sin equipo';
                     const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
+                    const estaIniciando = iniciandoId === ot.id;
+                    const inicioSoloLectura = !permiteEscritura;
+                    const tituloInicio = inicioSoloLectura
+                      ? 'La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.'
+                      : !ot.tecnico_responsable_id
+                        ? 'Asigna un técnico responsable antes de iniciar la OT.'
+                        : !ot.centro_costo_id
+                          ? 'Asigna un centro de costo antes de iniciar la OT.'
+                          : 'Iniciar esta OT.';
                     return <tr key={ot.id} className="clickable" aria-disabled="true" title="El detalle real estará disponible próximamente."
                       style={{ cursor: 'not-allowed' }} onClick={mostrarAvisoDetalle}>
                       <td><div className="ot-code">{ot.numero}</div><div className="muted" style={{ fontSize: 11 }}>{formatoFechaOT(ot.fecha_programada)}</div></td>
@@ -699,7 +754,19 @@ export const OTsListadoPage = () => {
                       <td>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</td>
                       <td style={{ textAlign: 'right' }}><strong>{formatoMontoOT(ot.costo_real)}</strong><div className="muted" style={{ fontSize: 10 }}>est. {formatoMontoOT(ot.costo_estimado)}</div></td>
                       <td>{Number(ot.avance_pct || 0).toFixed(0)}%</td>
-                      <td onClick={event => event.stopPropagation()}><button className="btn btn-secondary btn-sm" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button></td>
+                      <td onClick={event => event.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {ot.estado === 'programada' && <span title={tituloInicio}>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              disabled={inicioSoloLectura || estaIniciando}
+                              title={tituloInicio}
+                              onClick={() => iniciarOT(ot)}
+                            >{estaIniciando ? 'Iniciando…' : 'Iniciar OT'}</button>
+                          </span>}
+                          <button className="btn btn-secondary btn-sm" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button>
+                        </div>
+                      </td>
                     </tr>;
                   })}
                 </tbody>
