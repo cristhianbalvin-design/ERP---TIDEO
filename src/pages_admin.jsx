@@ -14243,7 +14243,7 @@ function RRHHAdmin() {
                   <div className="input-group"><label>Días de descanso en el ciclo</label><input className="input" type="number" value={formAlta.dias_ciclo_descanso} readOnly/></div>
                   <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>Ciclo de {(Number(formAlta.dias_ciclo_trabajo)||0) + (Number(formAlta.dias_ciclo_descanso)||0)} días: {Number(formAlta.dias_ciclo_trabajo)||0} en campo + {Number(formAlta.dias_ciclo_descanso)||0} de descanso.</div>
                   <div className="input-group" style={{gridColumn:'1/-1'}}><label>Bonificación por altitud (S/)</label><input className="input" type="number" min="0" step="0.01" value={formAlta.bonif_altitud} onChange={e=>setFormAlta(v=>({...v,bonif_altitud:e.target.value}))} placeholder="0 si no aplica"/></div>
-                  <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>⛏ Este trabajador usa cálculo proporcional por días computables en cada período.</div>
+                  <div className="card" style={{gridColumn:'1/-1', padding:'8px 12px', background:'rgba(6,182,212,0.08)', fontSize:12, color:'var(--cyan)'}}>⛏ Este trabajador cobra su sueldo mensual completo. El roster minero controla la asistencia y el descanso, no el monto de pago.</div>
                 </>}
               </div>
 
