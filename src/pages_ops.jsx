@@ -18004,6 +18004,10 @@ function Nomina() {
   const [errorGratificacion, setErrorGratificacion] = useState('');
   const [confirmarGratificacionModal, setConfirmarGratificacionModal] = useState(false);
   const [confirmandoGratificacion, setConfirmandoGratificacion] = useState(false);
+  const [overridesGratificacion, setOverridesGratificacion] = useState([]);
+  const [overrideGratificacionModal, setOverrideGratificacionModal] = useState(null);
+  const [guardandoOverrideGratificacion, setGuardandoOverrideGratificacion] = useState(false);
+  const [errorOverrideGratificacion, setErrorOverrideGratificacion] = useState('');
 
   const empresaCfg = {
     regimen_laboral_empresa: empresaConfig?.regimen_laboral_empresa || 'general',
@@ -18516,9 +18520,15 @@ function Nomina() {
     if (!periodoGratificacion || !periodo?.id || !empresa?.id) return;
     setCargandoGratificacion(true); setErrorGratificacion('');
     try {
-      setPrevisualizacionGratificacion(await nominaService.previsualizarGratificacionReal(empresa.id, periodo.id, periodo.sociedad_id || null));
+      const [previsualizacion, overrides] = await Promise.all([
+        nominaService.previsualizarGratificacionReal(empresa.id, periodo.id, periodo.sociedad_id || null),
+        nominaService.listarOverridesGratificacionDiscrecional(empresa.id, periodo.id, periodo.sociedad_id || null),
+      ]);
+      setPrevisualizacionGratificacion(previsualizacion);
+      setOverridesGratificacion(overrides);
     } catch (error) {
       setPrevisualizacionGratificacion(null);
+      setOverridesGratificacion([]);
       setErrorGratificacion(error?.message || 'No se pudo cargar la previsualización.');
     } finally { setCargandoGratificacion(false); }
   }, [periodoGratificacion, periodo?.id, periodo?.sociedad_id, empresa?.id]);
@@ -18541,6 +18551,54 @@ function Nomina() {
     } catch (error) {
       setErrorGratificacion(error?.message || 'No se pudo confirmar la gratificación real.');
     } finally { setConfirmandoGratificacion(false); }
+  };
+
+  const obtenerOverrideActivoGratificacion = row => overridesGratificacion.find(override => (
+    override.estado === 'activo'
+    && String(override.trabajador_id) === String(row.trabajador_id)
+    && override.trabajador_tipo === row.trabajador_tipo
+  ));
+
+  const obtenerFactorLegalGratificacion = row => {
+    const snapshot = detalleSnapshotPeriodo.find(detalle => (
+      String(detalle.trabajador_id) === String(row.trabajador_id)
+      && detalle.trabajador_tipo === row.trabajador_tipo
+    ));
+    const calculo = calculos.find(item => String(item.trabajador_id) === String(row.trabajador_id));
+    const regimen = snapshot?.regimen_empresa_snap || calculo?.regimen_empresa;
+    return regimen === 'pequena_empresa' ? 0.5 : 1;
+  };
+
+  const abrirOverrideGratificacion = row => {
+    const factorLegal = obtenerFactorLegalGratificacion(row);
+    if (!row.elegible || factorLegal >= 1 || periodo?.gratificacion_real_confirmada) return;
+    setErrorOverrideGratificacion('');
+    setOverrideGratificacionModal({ row, factorLegal, factorAplicado: Math.min(1, Math.max(0.75, factorLegal + 0.01)), motivo: '' });
+  };
+
+  const crearOverrideGratificacion = async () => {
+    if (!overrideGratificacionModal || !empresa?.id || !periodo?.id || guardandoOverrideGratificacion) return;
+    const { row, factorLegal, factorAplicado, motivo } = overrideGratificacionModal;
+    const factor = Number(factorAplicado);
+    if (!motivo.trim()) {
+      setErrorOverrideGratificacion('El motivo de la sobretasa discrecional es obligatorio.');
+      return;
+    }
+    if (!Number.isFinite(factor) || factor <= factorLegal || factor > 1) {
+      setErrorOverrideGratificacion(`El factor debe ser mayor a ${(factorLegal * 100).toFixed(0)}% y no superar 100%.`);
+      return;
+    }
+    setGuardandoOverrideGratificacion(true); setErrorOverrideGratificacion('');
+    try {
+      await nominaService.crearOverrideGratificacionDiscrecional(
+        empresa.id, periodo.id, row.trabajador_id, row.trabajador_tipo, factor, motivo.trim(), periodo.sociedad_id || null,
+      );
+      setOverrideGratificacionModal(null);
+      await cargarPrevisualizacionGratificacion();
+      addToast('Sobretasa discrecional autorizada.', 'success');
+    } catch (error) {
+      setErrorOverrideGratificacion(error?.message || 'No se pudo autorizar la sobretasa discrecional.');
+    } finally { setGuardandoOverrideGratificacion(false); }
   };
 
   const solicitudesAprobadasCobertura = useMemo(() => (solicitudesRRHH || []).filter(s =>
@@ -19501,7 +19559,21 @@ function Nomina() {
         <div className="card" style={{padding:20}}>
           <div className="card-head"><div><h3>Gratificación real — {periodo.periodo}</h3><div className="text-muted" style={{fontSize:12}}>Cálculo sobre la nómina procesada; la confirmación actualiza bruto, IR y neto.</div></div>{periodo.gratificacion_real_confirmada ? <span className="badge badge-green">Confirmada</span> : <button className="btn btn-primary" disabled={cargandoGratificacion || !previsualizacionGratificacion} onClick={()=>setConfirmarGratificacionModal(true)}>Confirmar gratificación real</button>}</div>
           {errorGratificacion && <div className="alert alert-danger" style={{marginBottom:12}}>{errorGratificacion}</div>}
-          {cargandoGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>Calculando previsualización…</div> : !previsualizacionGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>No hay previsualización disponible.</div> : <><div className="table-wrap"><table className="tbl" style={{fontSize:12}}><thead><tr><th>Trabajador</th><th>Elegible</th><th>Meses</th><th>Gratificación</th><th>Bonif. extra</th><th>IR 5ta</th><th>Neto</th></tr></thead><tbody>{(previsualizacionGratificacion.detalle || []).map(row=><tr key={`${row.trabajador_tipo}:${row.trabajador_id}`}><td><strong>{row.trabajador_nombre || row.trabajador_id}</strong></td><td>{row.elegible ? <span className="badge badge-green">Sí</span> : <><span className="badge badge-gray">No</span><div className="text-muted" style={{marginTop:4}}>{row.motivo_no_elegible || 'No elegible'}</div></>}</td><td className="num">{row.elegible ? row.meses_completos : '—'}</td><td className="num">{row.elegible ? money(row.gratificacion_pagada) : '—'}</td><td className="num">{row.elegible ? money(row.bonif_extraordinaria_pagada) : '—'}</td><td className="num">{row.elegible ? money(row.retencion_ir_nueva) : '—'}</td><td className="num">{row.elegible ? <strong>{money(row.neto_nuevo)}</strong> : '—'}</td></tr>)}{!previsualizacionGratificacion.detalle?.length && <tr><td colSpan={7} style={{padding:28,textAlign:'center'}} className="text-muted">No hay trabajadores en el snapshot.</td></tr>}</tbody></table></div><div className="row" style={{justifyContent:'flex-end',marginTop:12,fontWeight:700}}>Total a pagar: {money(previsualizacionGratificacion.totales?.monto_total || 0)}</div></>}
+          {cargandoGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>Calculando previsualización…</div> : !previsualizacionGratificacion ? <div className="text-muted" style={{padding:24,textAlign:'center'}}>No hay previsualización disponible.</div> : <><div className="table-wrap"><table className="tbl" style={{fontSize:12}}><thead><tr><th>Trabajador</th><th>Elegible</th><th>Meses</th><th>Gratificación</th><th>Bonif. extra</th><th>IR 5ta</th><th>Neto</th><th>Acción</th></tr></thead><tbody>{(previsualizacionGratificacion.detalle || []).map(row => {
+            const override = obtenerOverrideActivoGratificacion(row);
+            const factorLegal = Number(override?.factor_legal ?? obtenerFactorLegalGratificacion(row));
+            const puedeAutorizar = row.elegible && !periodo.gratificacion_real_confirmada && !override && factorLegal < 1;
+            return <tr key={`${row.trabajador_tipo}:${row.trabajador_id}`}>
+              <td><strong>{row.trabajador_nombre || row.trabajador_id}</strong></td>
+              <td>{row.elegible ? <span className="badge badge-green">Sí</span> : <><span className="badge badge-gray">No</span><div className="text-muted" style={{marginTop:4}}>{row.motivo_no_elegible || 'No elegible'}</div></>}</td>
+              <td className="num">{row.elegible ? row.meses_completos : '—'}</td>
+              <td className="num">{row.elegible ? <><div>{money(row.gratificacion_pagada)}</div>{override && <span className="badge badge-orange" style={{fontSize:10, marginTop:4}} title={`Factor legal: ${(Number(override.factor_legal) * 100).toFixed(0)}%\nAutorizado por: ${override.autorizado_por}\nMotivo: ${override.motivo}`}>Sobretasa {(Number(override.factor_aplicado) * 100).toFixed(0)}%</span>}</> : '—'}</td>
+              <td className="num">{row.elegible ? money(row.bonif_extraordinaria_pagada) : '—'}</td>
+              <td className="num">{row.elegible ? money(row.retencion_ir_nueva) : '—'}</td>
+              <td className="num">{row.elegible ? <strong>{money(row.neto_nuevo)}</strong> : '—'}</td>
+              <td>{puedeAutorizar ? <button className="btn btn-sm btn-secondary" onClick={()=>abrirOverrideGratificacion(row)}>Autorizar sobretasa</button> : row.elegible && !override && factorLegal >= 1 ? <span className="text-muted" style={{fontSize:11}}>100% legal</span> : '—'}</td>
+            </tr>;
+          })}{!previsualizacionGratificacion.detalle?.length && <tr><td colSpan={8} style={{padding:28,textAlign:'center'}} className="text-muted">No hay trabajadores en el snapshot.</td></tr>}</tbody></table></div><div className="row" style={{justifyContent:'flex-end',marginTop:12,fontWeight:700}}>Total a pagar: {money(previsualizacionGratificacion.totales?.monto_total || 0)}</div></>}
         </div>
       )}
 
@@ -19697,6 +19769,36 @@ function Nomina() {
 
       {/* Modal cierre */}
       {confirmarGratificacionModal && <div className="modal-backdrop" onClick={()=>!confirmandoGratificacion&&setConfirmarGratificacionModal(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Confirmar gratificación real</h3><button className="icon-btn" disabled={confirmandoGratificacion} onClick={()=>setConfirmarGratificacionModal(false)}>{I.x}</button></div><div className="modal-body"><p>Se aplicará el pago real de gratificación y bonificación extraordinaria a la nómina procesada. También se recalculará la retención de IR de quinta categoría.</p><p><strong>Total a pagar: {money(previsualizacionGratificacion?.totales?.monto_total || 0)}</strong></p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" disabled={confirmandoGratificacion} onClick={()=>setConfirmarGratificacionModal(false)}>Cancelar</button><button className="btn btn-primary" disabled={confirmandoGratificacion} onClick={confirmarGratificacionReal}>{confirmandoGratificacion ? 'Confirmando...' : 'Confirmar pago real'}</button></div></div></div></div>}
+      {overrideGratificacionModal && (() => {
+        const { row, factorLegal, factorAplicado, motivo } = overrideGratificacionModal;
+        const factorPropuesto = Number(factorAplicado) || 0;
+        const multiplicador = factorLegal > 0 ? factorPropuesto / factorLegal : 1;
+        const gratificacionLegal = Number(row.gratificacion_pagada) || 0;
+        const bonificacionLegal = Number(row.bonif_extraordinaria_pagada) || 0;
+        const gratificacionPropuesta = gratificacionLegal * multiplicador;
+        const bonificacionPropuesta = bonificacionLegal * multiplicador;
+        const factorValido = factorPropuesto > factorLegal && factorPropuesto <= 1;
+        return <div className="modal-backdrop" onClick={()=>!guardandoOverrideGratificacion && (setOverrideGratificacionModal(null), setErrorOverrideGratificacion(''))}>
+          <div className="modal" style={{maxWidth:520}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head"><h3>Autorizar sobretasa discrecional</h3><button className="icon-btn" disabled={guardandoOverrideGratificacion} onClick={()=>{setOverrideGratificacionModal(null);setErrorOverrideGratificacion('');}}>{I.x}</button></div>
+            <div className="modal-body">
+              <p>Trabajador: <strong>{row.trabajador_nombre || row.trabajador_id}</strong></p>
+              <div className="card" style={{padding:12, margin:'12px 0', background:'var(--bg-subtle)', fontSize:13}}>
+                <div>Factor legal: <strong>{(factorLegal * 100).toFixed(0)}%</strong></div>
+                <div style={{marginTop:6}}>Pago legal: <strong>{money(gratificacionLegal + bonificacionLegal)}</strong></div>
+                <div style={{marginTop:6}}>Pago con sobretasa: <strong>{money(gratificacionPropuesta + bonificacionPropuesta)}</strong></div>
+              </div>
+              <div className="input-group"><label>Factor a aplicar *</label><input className="input" type="number" min={factorLegal + 0.01} max="1" step="0.01" value={factorAplicado} onChange={e=>setOverrideGratificacionModal(actual=>({...actual, factorAplicado:e.target.value}))}/><div className="text-muted" style={{fontSize:12, marginTop:4}}>Debe ser mayor al {(factorLegal * 100).toFixed(0)}% legal y no superar 100%.</div><div className="row" style={{gap:6, marginTop:8}}>{[0.75, 1].filter(valor=>valor>factorLegal).map(valor=><button key={valor} type="button" className="btn btn-sm btn-secondary" onClick={()=>setOverrideGratificacionModal(actual=>({...actual, factorAplicado:valor}))}>{(valor * 100).toFixed(0)}%</button>)}</div></div>
+              <div className="input-group"><label>Motivo *</label><textarea className="input" rows="3" value={motivo} onChange={e=>setOverrideGratificacionModal(actual=>({...actual, motivo:e.target.value}))} placeholder="Explica la decisión de pago discrecional."/></div>
+              {errorOverrideGratificacion && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0}}>{errorOverrideGratificacion}</div>}
+            </div>
+            <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
+              <button className="btn btn-secondary" disabled={guardandoOverrideGratificacion} onClick={()=>{setOverrideGratificacionModal(null);setErrorOverrideGratificacion('');}}>Cancelar</button>
+              <button className="btn btn-primary" disabled={guardandoOverrideGratificacion || !motivo.trim() || !factorValido} onClick={crearOverrideGratificacion}>{guardandoOverrideGratificacion ? 'Autorizando...' : 'Autorizar sobretasa'}</button>
+            </div>
+          </div>
+        </div>;
+      })()}
       {cierre && <div className="modal-backdrop" onClick={()=>setCierre(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Cerrar período — {periodo?.periodo}</h3><button className="icon-btn" onClick={()=>setCierre(false)}>{I.x}</button></div><div className="modal-body"><p>Al cerrar se registrará un egreso de planilla por <strong>{money(resumen.total_neto)}</strong> y otro de cargas sociales por <strong>{money(resumen.total_cargas_empresa)}</strong> en Compras y Gastos.</p><p>El reporte PLAME quedará disponible.</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setCierre(false)}>Cancelar</button><button className="btn btn-primary" onClick={cerrarPeriodo} disabled={cerrandoPeriodo}>{cerrandoPeriodo ? 'Cerrando...' : 'Confirmar cierre'}</button></div></div></div></div>}
       {advertenciaCorte && <div className="modal-backdrop" onClick={()=>setAdvertenciaCorte(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Fecha de corte no alcanzada</h3><button className="icon-btn" onClick={()=>setAdvertenciaCorte(false)}>{I.x}</button></div><div className="modal-body"><p>Aún no llega la fecha de corte configurada ({periodo?.fecha_corte}). ¿Deseas procesar de todos modos?</p><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>setAdvertenciaCorte(false)}>Cancelar</button><button className="btn btn-primary" onClick={confirmarProcesarPeseACorte}>Procesar de todos modos</button></div></div></div></div>}
       {nuevoPeriodoPanel && <div className="modal-backdrop" onClick={()=>setNuevoPeriodoPanel(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><h3>Nuevo período de nómina</h3><button className="icon-btn" onClick={()=>setNuevoPeriodoPanel(false)}>{I.x}</button></div><form className="modal-body" onSubmit={crearPeriodoManual}>{!modoVistaSociedadNomina.permiteEscritura && <div style={{padding:'10px 14px', borderRadius:8, background:'rgba(245,158,11,0.10)', color:'var(--orange)', fontSize:13, marginBottom:14}}>{mensajeSeleccionSociedad}</div>}<div className="input-group"><label>Mes *</label><input className="input" type="month" value={nuevoPeriodoForm.mes} onChange={e=>setNuevoPeriodoForm(f=>({...f,mes:e.target.value}))} required /></div><SociedadFormField value={nuevoPeriodoForm.sociedad_id} onChange={sociedad_id=>setNuevoPeriodoForm(f=>({...f,sociedad_id}))} /><div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={()=>setNuevoPeriodoPanel(false)}>Cancelar</button><button className="btn btn-primary" title={!modoVistaSociedadNomina.permiteEscritura ? mensajeSeleccionSociedad : 'Crear período'} disabled={creandoPeriodo || !modoVistaSociedadNomina.permiteEscritura}>{creandoPeriodo?'Creando...':'Crear período'}</button></div></form></div></div>}
