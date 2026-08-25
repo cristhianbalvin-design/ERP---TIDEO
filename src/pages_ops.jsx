@@ -13925,16 +13925,15 @@ function calcularFcjmmsTrabajador(remuneracionBruta, { esMinero = false, tramos 
   const baseMensual = Math.max(0, Number(remuneracionBruta) || 0);
 
   if (Array.isArray(tramos)) {
-    const diasDelPeriodo = tramos.reduce((total, tramo) => total + (Number(tramo.diasCal) || 0), 0);
-    const diasBajoRegimenMinero = tramos
+    // Cada tramo ya trae el sueldo contractual repartido y la sobretasa de sus
+    // propios feriados. Tomar solo los tramos mineros evita diluir conceptos que
+    // pertenecen íntegramente a minería al mezclarlos con días generales.
+    const baseMinera = tramos
       .filter(tramo => esRegimenMinero(tramo.tipo))
-      .reduce((total, tramo) => total + (Number(tramo.diasCal) || 0), 0);
-
-    // Régimen mixto: mientras no exista una regla específica, se atribuye la remuneración
-    // bruta mensual a minería según los días calendario de los tramos mineros. Este bloque
-    // queda aislado para ajustarlo si el asesor laboral define otro criterio de prorrateo.
-    const proporcionMinera = diasDelPeriodo > 0 ? diasBajoRegimenMinero / diasDelPeriodo : 0;
-    return baseMensual * proporcionMinera * 0.005;
+      .reduce((total, tramo) => total
+        + (Number(tramo.sueldoTramo) || 0)
+        + (Number(tramo.sobretasa_feriado) || 0), 0);
+    return Math.max(0, baseMinera) * 0.005;
   }
 
   return esMinero ? baseMensual * 0.005 : 0;
