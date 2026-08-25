@@ -13628,10 +13628,15 @@ function diasComputablesEnRango(asignacion, fechaIni, fechaFin) {
 // Retorna: null (sin asignaciones en el mes), { error, detail } (hueco/solapamiento),
 //          o array de { asignacion, fechaSegIni, fechaSegFin }.
 function segmentarMesPorAsignaciones(asigs, periodo, trabajador = {}) {
-  const { inicio: primerDiaOriginal, fin: ultimoDia } = rangoDiasPeriodo(periodo);
+  const { inicio: primerDiaOriginal, fin: finPeriodo } = rangoDiasPeriodo(periodo);
   const _ing = trabajador.fecha_ingreso || null;
   const _dtIng = _ing ? new Date(`${_ing}T00:00:00`) : null;
+  const _cese = trabajador.fecha_cese || null;
+  const _dtCese = _cese ? new Date(`${_cese}T00:00:00`) : null;
   const primerDia = (_dtIng && _dtIng > primerDiaOriginal) ? _dtIng : primerDiaOriginal;
+  const ultimoDia = (_dtCese && _dtCese < finPeriodo) ? _dtCese : finPeriodo;
+
+  if (primerDia > ultimoDia) return null;
 
   const solapadas = (asigs || [])
     .filter(a => {
@@ -13690,6 +13695,23 @@ function rangoDiasPeriodo(periodo) {
   const inicio = periodo?.fecha_inicio ? new Date(`${periodo.fecha_inicio}T00:00:00`) : new Date(anio, mes - 1, 1);
   const fin = periodo?.fecha_fin ? new Date(`${periodo.fecha_fin}T00:00:00`) : new Date(anio, mes, 0);
   return { inicio, fin };
+}
+
+// Proporcionalidad contractual por ingreso/cese, independiente del regimen de jornada.
+function factorProporcionalPeriodo(trabajador, periodo) {
+  const { inicio: inicioPeriodo, fin: finPeriodo } = rangoDiasPeriodo(periodo);
+  const fechaIngreso = trabajador?.fecha_ingreso ? new Date(`${trabajador.fecha_ingreso}T00:00:00`) : null;
+  const fechaCese = trabajador?.fecha_cese ? new Date(`${trabajador.fecha_cese}T00:00:00`) : null;
+  const esProporcional = Boolean(
+    (fechaIngreso && fechaIngreso > inicioPeriodo) ||
+    (fechaCese && fechaCese < finPeriodo)
+  );
+  if (!esProporcional) return { factorProp: 1, diasEfectivos: 30, esProporcional: false };
+
+  const desde = fechaIngreso && fechaIngreso > inicioPeriodo ? fechaIngreso : inicioPeriodo;
+  const hasta = fechaCese && fechaCese < finPeriodo ? fechaCese : finPeriodo;
+  const diasEfectivos = Math.max(0, Math.min(30, hasta.getDate()) - Math.max(1, desde.getDate()) + 1);
+  return { factorProp: diasEfectivos / 30, diasEfectivos, esProporcional: true };
 }
 
 const FERIADOS_PERU = [
@@ -13796,7 +13818,7 @@ function calcularSobretasaFeriados({ registros = [], valorDia = 0, trabajador, d
 }
 
 // Calcula remuneración de un tramo (sin AFP/IR/cargas — se aplican sobre el total)
-function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados = {}) {
+function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados = {}, sueldoTramoAsignado = null) {
   const { asignacion, fechaSegIni, fechaSegFin } = seg;
   const iniStr = _isoDate(fechaSegIni);
   const finStr = _isoDate(fechaSegFin);
@@ -13866,15 +13888,13 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(regsTramo, valorHora);
   const sobretasa = calcularSobretasaFeriados({ registros: regsTramo, valorDia, trabajador: null, datosNomina: asignacion, asignaciones: [asignacion], configuracionFeriados });
 
-  let sueldoTramo;
   let diasComp = null;
   if (asignacion.regimen_jornada === 'ciclo_acumulativo') {
-    diasComp    = diasComputablesEnRango(asignacion, fechaSegIni, fechaSegFin);
-    sueldoTramo = sueldoBase * (diasComp / 30);
-  } else {
-    // General: valor día × días calendario del tramo (divisor canónico 30)
-    sueldoTramo = valorDia * diasCal;
+    diasComp = diasComputablesEnRango(asignacion, fechaSegIni, fechaSegFin);
   }
+  // El orquestador asigna el sueldo contractual por tramo. Los días de ciclo
+  // quedan como control del roster y nunca reducen ni multiplican ese sueldo.
+  const sueldoTramo = sueldoTramoAsignado ?? (valorDia * diasCal);
 
   return {
     tipo: asignacion.regimen_jornada || 'general',
@@ -13986,16 +14006,75 @@ function incompletoPorFaltaDeQ1(trabajador, datosNomina, turno, periodo, regimen
   };
 }
 
-// Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresión) si no.
-function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0, configuracionFeriados = {}) {
-  if (!asigsTrabajador || asigsTrabajador.length === 0) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, []);
-  }
+function bloquearNominaPorAsignacionMineraIncompleta(base) {
+  return {
+    ...base,
+    incompleto_ciclo: false,
+    incompleto_q1: false,
+    incompleto_asignacion_minera: true,
+    dias_computables: null,
+    dias_computables_display: '—',
+    dias_laborables: 0,
+    dias_asistidos: 0,
+    faltas_injustificadas: 0,
+    faltas_justificadas: 0,
+    faltas_roster: 0,
+    tardanzas: 0,
+    minutos_tardanza_total: 0,
+    horas_extra_total_min: 0,
+    horas_extra_tramo1_min: 0,
+    horas_extra_tramo2_min: 0,
+    add_tramo1: 0,
+    add_tramo2: 0,
+    sueldo_proporcional: 0,
+    valor_dia: 0,
+    valor_hora: 0,
+    desc_faltas: 0,
+    desc_tardanzas: 0,
+    add_horas_extra: 0,
+    sobretasa_feriado: 0,
+    detalle_sobretasa_feriado: [],
+    ausencias_politica_feriado: [],
+    asignacion_familiar: 0,
+    bonif_altitud: 0,
+    remuneracion_bruta: 0,
+    ingreso_extra_remunerativo: 0,
+    otros_ingresos: 0,
+    aporte_afp: 0,
+    comision_flujo: 0,
+    prima_seguro: 0,
+    desc_onp: 0,
+    fcjmms_trabajador: 0,
+    desc_pensiones: 0,
+    desc_prestamo: 0,
+    desc_anticipo: 0,
+    desc_judicial: 0,
+    desc_extraordinario: 0,
+    retencion_ir: 0,
+    total_descuentos: 0,
+    neto: 0,
+    essalud: 0,
+    cts_mensualizado: 0,
+    gratificacion_mensualizada: 0,
+    bonif_extraordinaria: 0,
+    vacaciones_mensualizadas: 0,
+    total_cargas: 0,
+    costo_real_empresa: 0,
+    costo_hora_real: 0,
+  };
+}
 
-  const segmentos = segmentarMesPorAsignaciones(asigsTrabajador, periodo, trabajador);
+// Orquestador: usa historial si existe; cae en calcularNominaTrabajador (sin regresión) si no.
+function calcularNominaConTramosInternal(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0, configuracionFeriados = {}) {
+  const segmentos = (!asigsTrabajador || asigsTrabajador.length === 0) ? null : segmentarMesPorAsignaciones(asigsTrabajador, periodo, trabajador);
 
   if (!segmentos) {
-    return calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador);
+    const base = calcularNominaTrabajador(trabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador);
+    // `undefined` también se bloquea: sin contrato ni ficha que confirmen “general”,
+    // no se debe asumir una jornada general y pagar un trabajador potencialmente minero.
+    const regimenEsperado = datosNomina?.regimen_jornada ?? trabajador?.regimen_jornada;
+    if (base && regimenEsperado !== 'general') return bloquearNominaPorAsignacionMineraIncompleta(base);
+    return base;
   }
 
   if (segmentos.error) {
@@ -14014,7 +14093,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     const result = calcularNominaTrabajador(workerAdaptado, { ...datosNomina, ...workerAdaptado }, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados, asigsTrabajador);
     if (!result) return null;
     const sb = Number(datosNomina?.sueldo_base || trabajador.remuneracion || 3000);
-    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno, configuracionFeriados)], multi_tramo: false };
+    return { ...result, tramos: [calcularRemuneracionTramo(segmentos[0], sb, result.valor_dia, result.valor_hora, registros, turno, configuracionFeriados, result.sueldo_proporcional)], multi_tramo: false };
   }
 
   // ── Multi-tramo ───────────────────────────────────────────────────────────────
@@ -14028,6 +14107,7 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
   const esQ1 = periodo?.quincena === 1;
   const esQ2 = periodo?.quincena === 2;
   const factorQuincena = esQ1 ? Number(pct_quincena_1) / 100 : 1;
+  const { factorProp } = factorProporcionalPeriodo(trabajador, periodo);
 
   if (esQ2) {
     const q1Row = q1Snapshot?.disponible ? q1Snapshot.porTrabajador[trabajador.id] : null;
@@ -14048,7 +14128,18 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     }
   }
 
-  const tramosCalc = segmentos.map(seg => calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados));
+  // Todos los tramos cubiertos comparten un único sueldo contractual. Los
+  // segmentos solo reparten ese monto por días calendario; no son pagos extra.
+  const diasSegmentados = segmentos.reduce((total, seg) => (
+    total + diasCalendarioEnRango(seg.fechaSegIni, seg.fechaSegFin)
+  ), 0);
+  const tramosCalc = segmentos.map(seg => {
+    const diasCal = diasCalendarioEnRango(seg.fechaSegIni, seg.fechaSegFin);
+    const sueldoTramoAsignado = seg.asignacion.tipo_tramo === 'suspension_perfecta' || diasSegmentados <= 0
+      ? 0
+      : sueldoBase * factorProp * (diasCal / diasSegmentados);
+    return calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registros, turno, configuracionFeriados, sueldoTramoAsignado);
+  });
 
   const sueldoProporcional   = tramosCalc.reduce((s, t) => s + t.sueldoTramo, 0) * factorQuincena;
   const descFaltasTotal      = tramosCalc.reduce((s, t) => s + t.descFaltas, 0);
@@ -14159,6 +14250,27 @@ function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno
     es_proporcional: true, dias_efectivos_periodo: 30,
     tramos: tramosCalc, multi_tramo: true,
   };
+}
+
+// Punto único de convergencia para normalizar la representación interna del régimen.
+// Todas las rutas internas (un tramo, varios, suspensión, Q1/Q2) retornan por aquí.
+function calcularNominaConTramos(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot = null, montoIngresoRemunerativo = 0, configuracionFeriados = {}) {
+  const result = calcularNominaConTramosInternal(trabajador, asigsTrabajador, datosNomina, turno, registros, periodo, empresaCfg, q1Snapshot, montoIngresoRemunerativo, configuracionFeriados);
+  if (!result) return result;
+
+  if (result.regimen_jornada !== 'ciclo_acumulativo') return result;
+
+  const { inicio, fin } = rangoDiasPeriodo(periodo);
+  const inicioPeriodo = _isoDate(inicio);
+  const finPeriodo = _isoDate(fin);
+  const asignacionActiva = (asigsTrabajador || [])
+    .filter(a => a?.tipo_tramo !== 'suspension_perfecta'
+      && a?.fecha_inicio <= finPeriodo
+      && (!a?.fecha_fin || a.fecha_fin >= inicioPeriodo))
+    .sort((a, b) => String(b.fecha_inicio || '').localeCompare(String(a.fecha_inicio || '')))[0];
+  const regimenLegible = asignacionActiva ? regimenDesdeAsignacion(asignacionActiva) : null;
+
+  return regimenLegible ? { ...result, regimen_jornada: regimenLegible } : result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14287,24 +14399,12 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const diasBase = esMinero ? diasComputables : diasLaborables;
   let diasComputablesDisplay = esMinero ? (diasComputables ?? '—') : '—';
 
-  // Proporcionalidad por ingreso o cese dentro del período
-  const _fechaCese = trabajador.fecha_cese || null;
-  const _dtCese = _fechaCese ? new Date(`${_fechaCese}T00:00:00`) : null;
-  let diasEfectivos = 30;
-  let esProporcional = false;
-  if (_dtIng  && _dtIng  > _pIniOriginal) esProporcional = true;
-  if (_dtCese && _dtCese < _pFin) esProporcional = true;
-  if (esProporcional) {
-    const desdeEf = (_dtIng && _dtIng > _pIniOriginal) ? _dtIng : _pIniOriginal;
-    const hastaEf = (_dtCese && _dtCese < _pFin) ? _dtCese : _pFin;
-    diasEfectivos = Math.max(0, Math.min(30, hastaEf.getDate()) - Math.max(1, desdeEf.getDate()) + 1);
-  }
-  const factorProp = esProporcional ? diasEfectivos / 30 : 1;
+  const { diasEfectivos, esProporcional, factorProp } = factorProporcionalPeriodo(trabajador, periodo);
 
   // ── Enrutamiento por régimen ─────────────────────────────────────────────────
   // GENERAL: sueldo base mensual completo; divisor 30 siempre; proporcionalización
   //          solo si ingresó/cesó en el período (factorProp). Sin proporcionalizar por días.
-  // MINERO:  proporcionalización por diasComputables del ciclo en sueldoProporcional;
+  // MINERO:  mismo sueldo base mensual; los días de ciclo solo controlan roster.
   //          valorDia y valorHora usan el mismo divisor 30 (consistente con Liq. por Cese).
   const valorDia = sueldoBase / 30;
   const valorHora = sueldoBase / (30 * horasEfectivas);
@@ -14363,8 +14463,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const asignacionFamiliar = asignacionFamiliarBase * factorProp * factorQuincena;
   const bonifAltitud = (Number(datosNomina?.bonif_altitud || trabajador.bonif_altitud) || 0) * (esMinero ? (diasBase / 30) : 1) * factorProp * factorQuincena;
 
-  // Remuneración proporcional para minero si no completó ciclo
-  const sueldoProporcional = (esMinero ? sueldoBase * (diasBase / 30) * factorProp : sueldoBase * factorProp) * factorQuincena;
+  const sueldoProporcional = sueldoBase * factorProp * factorQuincena;
   const remuneracionBruta = sueldoProporcional - descFaltas - descTardanzas + addHorasExtra + sobretasa.sobretasaFeriado + asignacionFamiliar + bonifAltitud + Number(montoIngresoRemunerativo || 0);
 
   // ── Sistema previsional ──
@@ -18265,6 +18364,7 @@ function Nomina() {
         : ingresoInfo.remunerativo;
       const base = calcularNominaConTramos(t, asigsTrabajador, datos, turno, regs, periodo, empresaCfgPeriodo, q1Snapshot, montoIngresoRemunerativo, configuracionFeriadosNomina);
       if (!base) return base;
+      if (base.incompleto_asignacion_minera) return base;
       const descExtra = Number(descExtraPorTrabajador[t.id] || 0);
       const ingresoNoRemunerativo = ingresoInfo.noRemunerativo;
       // El motor devuelve ingreso_extra_remunerativo como el total del mes combinado en
@@ -18294,7 +18394,7 @@ function Nomina() {
     const porTrabajador = new Map(detalleSnapshotPeriodo.map(row => [row.trabajador_id, row]));
     return calculosMotor.map(calculo => {
       const snapshot = porTrabajador.get(calculo.trabajador_id);
-      return snapshot ? { ...calculo,
+      return snapshot && !calculo.incompleto_asignacion_minera ? { ...calculo,
         remuneracion_bruta: Number(snapshot.remuneracion_bruta), retencion_ir: Number(snapshot.retencion_ir),
         total_descuentos: Number(snapshot.total_descuentos), neto: Number(snapshot.neto),
         gratificacion_pagada: Number(snapshot.gratificacion_pagada) || 0,
@@ -18435,6 +18535,14 @@ function Nomina() {
         const nombres = incompletos.map(c => c.trabajador?.nombre || c.trabajador_id).join(', ');
         addToast(`No se puede procesar: falta completar datos de ciclo minero para ${incompletos.length} trabajador(es): ${nombres}.`, 'error');
         addNotificacion(`Procesamiento de nómina bloqueado: ciclo incompleto para ${nombres}.`);
+        return;
+      }
+
+      const sinAsignacionMinera = calculos.filter(c => c.incompleto_asignacion_minera);
+      if (sinAsignacionMinera.length > 0) {
+        const nombres = sinAsignacionMinera.map(c => c.trabajador?.nombre || c.trabajador_id).join(', ');
+        addToast(`No se puede procesar: falta crear la asignación física de jornada para ${sinAsignacionMinera.length} trabajador(es): ${nombres}.`, 'error');
+        addNotificacion(`Procesamiento de nómina bloqueado: falta asignación física de jornada para ${nombres}.`);
         return;
       }
 
@@ -18949,14 +19057,15 @@ function Nomina() {
               className="btn btn-primary"
               data-local-form="true"
               onClick={calcularNomina}
-              disabled={periodo?.estado === 'cerrado' || procesandoNomina || !asistenciaNominaLista || !configuracionFeriadosLista}
+              disabled={periodo?.estado === 'cerrado' || procesandoNomina || !asistenciaNominaLista || !configuracionFeriadosLista || calculos.some(c => c.incompleto_asignacion_minera)}
               title={cargaAsistenciaNomina.error
                 ? 'No se pudieron cargar todas las asistencias del período.'
                 : cargaConfiguracionFeriados.error ? 'No se pudo cargar la configuración de feriados del período.'
                 : !asistenciaNominaLista ? 'Cargando asistencias completas del período...'
-                : !configuracionFeriadosLista ? 'Cargando la configuración de feriados del período...' : ''}
+                : !configuracionFeriadosLista ? 'Cargando la configuración de feriados del período...'
+                : calculos.some(c => c.incompleto_asignacion_minera) ? 'Completa la asignación física de jornada de los trabajadores mineros antes de procesar.' : ''}
             >{procesandoNomina ? 'Procesando...' : 'Procesar'}</button>
-            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo) || (periodoGratificacion && periodo.gratificacion_real_confirmada !== true)} title={periodoGratificacion && periodo.gratificacion_real_confirmada !== true ? 'Confirma la gratificación real antes de cerrar el período.' : ''} onClick={() => setCierre(true)}>Cerrar</button>
+            <button className="btn btn-secondary" disabled={periodo?.estado !== 'en_proceso' || calculos.some(c => c.incompleto_ciclo || c.incompleto_asignacion_minera) || (periodoGratificacion && periodo.gratificacion_real_confirmada !== true)} title={periodoGratificacion && periodo.gratificacion_real_confirmada !== true ? 'Confirma la gratificación real antes de cerrar el período.' : ''} onClick={() => setCierre(true)}>Cerrar</button>
           </div>
         )}
       </div>
@@ -19056,6 +19165,11 @@ function Nomina() {
               <strong>Datos de ciclo incompletos:</strong> {calculos.filter(c=>c.incompleto_ciclo).map(c=>c.trabajador.nombre).join(', ')} — completar fecha de inicio de ciclo en la ficha del trabajador para procesar su pago.
             </div>
           )}
+          {calculos.some(c => c.incompleto_asignacion_minera) && (
+            <div className="alert alert-warning" style={{margin:'0 16px 12px',fontSize:12}}>
+              <strong>Sin asignación minera vigente:</strong> {calculos.filter(c=>c.incompleto_asignacion_minera).map(c=>c.trabajador.nombre).join(', ')} - el contrato indica régimen minero pero no existe asignación física para este período. Crear la asignación en Personal Operativo → Jornada antes de procesar su pago.
+            </div>
+          )}
           {advertenciasPoliticaFeriado.length > 0 && (
             <div className="alert alert-warning" style={{margin:'0 16px 12px', fontSize:12}}>
               <strong>Feriados trabajados sin política de pago configurada:</strong> se aplicó <em>Sin pago adicional</em> por ausencia de configuración.
@@ -19100,13 +19214,13 @@ function Nomina() {
               <tbody>
                 {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>{!asistenciaNominaLista ? 'Cargando asistencias completas del período...' : 'Sin trabajadores registrados.'}</td></tr>}
                 {calculos.map(c => (
-                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: (c.incompleto_ciclo || c.incompleto_q1) ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
+                  <tr key={c.trabajador_id} style={{cursor:'pointer', background: (c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? 'rgba(239,68,68,0.06)' : undefined}} onClick={()=>setDetallePanel(c)}>
                     <td><strong>{c.trabajador.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{c.trabajador.cargo}{c.incompleto_q1 && <span className="badge badge-red" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>Q1 pendiente</span>}{c.es_proporcional && <span className="badge badge-cyan" style={{marginLeft:6,fontSize:10,verticalAlign:'middle'}}>{c.dias_efectivos_periodo}d</span>}</div></td>
-                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
+                    <td>{c.incompleto_q1 ? <span className="badge badge-red" style={{fontSize:10}}>Q1 sin procesar</span> : c.incompleto_asignacion_minera ? <span className="badge badge-red" style={{fontSize:10}}>Falta asignación</span> : c.incompleto_ciclo ? <span className="badge badge-red" style={{fontSize:10}}>Sin fecha de ciclo</span> : c.regimen_jornada.startsWith('Mixto') ? <span className="badge badge-purple">{c.regimen_jornada}</span> : c.regimen_jornada !== 'general' ? <span className="badge badge-orange">{c.regimen_jornada.replace('minero_','Minero ').replace('x','×')}</span> : <span className="badge badge-gray">General</span>}</td>
                     {hayMineros && <td>{c.dias_computables_display ?? (c.dias_computables ?? '—')}</td>}
                     <td style={{fontSize:11}}>{c.turno?.nombre || '—'}</td>
                     <td title={c.dias_computables != null ? "Asistencias sobre los días programados de subida a mina." : "Asistencias registradas"}>
-                      {(c.incompleto_ciclo || c.incompleto_q1) ? (c.incompleto_q1 ? <span className="text-muted" title="No se puede calcular Q2 hasta procesar la primera quincena.">Q1 pendiente</span> : '—') : c.dias_computables != null ? (
+                      {(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? (c.incompleto_q1 ? <span className="text-muted" title="No se puede calcular Q2 hasta procesar la primera quincena.">Q1 pendiente</span> : '—') : c.dias_computables != null ? (
                         <div style={{lineHeight: 1.2}}>
                           <div>{c.dias_asistidos}/{c.dias_laborables}</div>
                           <div style={{fontSize: 9, color: 'var(--fg-muted)'}}>días de subida</div>
@@ -19115,14 +19229,14 @@ function Nomina() {
                         `${c.dias_asistidos}/${c.dias_laborables}`
                       )}
                     </td>
-                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : c.faltas_roster > 0 ? <span className="text-muted" title={`${c.faltas_roster} incidencia(s) gestionada(s) en el balance del roster minero`}>Roster</span> : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
-                    <td>{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
-                    <td className="num">{c.incompleto_q1 ? '—' : money(c.sueldo_base)}</td>
-                    <td className="num">{money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
-                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
-                    <td className="num">{(c.incompleto_ciclo || c.incompleto_q1) ? '—' : money(c.total_descuentos)}</td>
-                    <td className="num"><strong>{(c.incompleto_ciclo || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
-                    <td>{!c.incompleto_ciclo && !c.incompleto_q1 && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? '—' : c.faltas_roster > 0 ? <span className="text-muted" title={`${c.faltas_roster} incidencia(s) gestionada(s) en el balance del roster minero`}>Roster</span> : (c.faltas_injustificadas > 0 ? <span style={{color:'var(--danger)'}}>{c.faltas_injustificadas}</span> : '0')}</td>
+                    <td>{(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? '—' : minutesToLabel(c.horas_extra_total_min)}</td>
+                    <td className="num">{(c.incompleto_asignacion_minera || c.incompleto_q1) ? '—' : money(c.sueldo_base)}</td>
+                    <td className="num">{c.incompleto_asignacion_minera ? '—' : money(comisionPorTrabajador[c.trabajador_id] || 0)}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.remuneracion_bruta)}</td>
+                    <td className="num">{(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? '—' : money(c.total_descuentos)}</td>
+                    <td className="num"><strong>{(c.incompleto_ciclo || c.incompleto_asignacion_minera || c.incompleto_q1) ? <span style={{color:'var(--danger)'}}>—</span> : money(c.neto)}</strong></td>
+                    <td>{!c.incompleto_ciclo && !c.incompleto_asignacion_minera && !c.incompleto_q1 && <button className="btn btn-sm btn-secondary" onClick={e=>{e.stopPropagation();setBoleta(c);}}>Boleta</button>}</td>
                   </tr>
                 ))}
               </tbody>
