@@ -15660,13 +15660,15 @@ function ControlAsistencia() {
     && !registrosMensualPeriodo?.cargando
     && !registrosMensualPeriodo?.error;
   const registrosPeriodoCache = registrosAsistencia.filter(r => r.fecha.startsWith(currentMonth) && trabajadores.some(t => t.id === r.trabajador_id));
+  // Resumen por trabajador y Mensual exponen indicadores de todo el mes: ambos
+  // deben partir del mismo snapshot completo, nunca de la caché de días visitados.
+  const requiereAsistenciaMesCompleto = tab === 'mensual' || tab === 'resumen' || tab === 'minero';
 
-  // La vista mensual necesita el mes completo. La caché global se hidrata por
-  // fecha visitada en las vistas diarias y dejaba la grilla minera incompleta.
-  // Por eso esta pantalla tiene su propia carga paginada y no infiere días
-  // vacíos como asistencia o falta mientras la consulta está pendiente.
+  // La caché global se hidrata por fecha visitada en las vistas diarias y puede
+  // estar incompleta. Las vistas que resumen un mes cargan su snapshot completo
+  // y no infieren días vacíos como asistencia o falta mientras está pendiente.
   useEffect(() => {
-    if (tab !== 'mensual' || !empresa?.id || !currentMonth) return undefined;
+    if (!requiereAsistenciaMesCompleto || !empresa?.id || !currentMonth) return undefined;
     const [anio, mes] = currentMonth.split('-').map(Number);
     const inicio = `${currentMonth}-01`;
     const fin = `${currentMonth}-${String(new Date(anio, mes, 0).getDate()).padStart(2, '0')}`;
@@ -15682,9 +15684,9 @@ function ControlAsistencia() {
         if (!cancelado) setRegistrosMensualPeriodo({ periodo: currentMonth, registros: [], cargando: false, error });
       });
     return () => { cancelado = true; };
-  }, [tab, empresa?.id, currentMonth]);
+  }, [requiereAsistenciaMesCompleto, empresa?.id, currentMonth]);
 
-  const registrosPeriodo = tab === 'mensual'
+  const registrosPeriodo = requiereAsistenciaMesCompleto
     ? (registrosMensualListos ? registrosMensualPeriodo.registros.filter(r => trabajadores.some(t => t.id === r.trabajador_id)) : [])
     : registrosPeriodoCache;
 
@@ -15746,7 +15748,7 @@ function ControlAsistencia() {
   };
 
   const periodoFiltro = { anio: parseInt(currentMonth.split('-')[0]), mes: parseInt(currentMonth.split('-')[1]) };
-  const calculosAsistencia = (tab === 'mensual' && !registrosMensualListos) ? [] : trabajadores.map(t => {
+  const calculosAsistencia = (requiereAsistenciaMesCompleto && !registrosMensualListos) ? [] : trabajadores.map(t => {
     const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === t.id);
     const regs = registrosPeriodo.filter(r => r.trabajador_id === t.id);
     return calcularNominaConTramos(t, asigsTrabajador, {}, workerTurno(turnos, t), regs, periodoFiltro, empresa?.configuracion || {});
@@ -15789,8 +15791,7 @@ function ControlAsistencia() {
         ajustes: ajustesRoster,
       }) : [];
       const faltasEnSubida = dias.filter(d => d.registro?.estado === 'falta' && d.teorico?.estado === 'en_mina').length;
-      const asistenciasReales = dias.filter(d => ['completo', 'tardanza', 'horas_extra'].includes(d.registro?.estado)).length;
-      resumen.set(t.id, { dias, asistenciasReales, faltasEnSubida });
+      resumen.set(t.id, { dias, faltasEnSubida });
     });
     return resumen;
   }, [registrosMensualListos, registrosPeriodo, currentMonth, trabajadoresMineros, asignacionesJornada, ciclosMineros, ajustesRoster]);
@@ -15803,9 +15804,9 @@ function ControlAsistencia() {
 
   const kpis = {
     total: trabajadoresKpi.length,
-    completos: calculosKpi.reduce((s, c) => s + (tab === 'mensual' && resumenMensualMineroPorId.has(c.trabajador_id)
-      ? resumenMensualMineroPorId.get(c.trabajador_id).asistenciasReales
-      : (c.dias_asistidos || 0)), 0),
+    // `calculosAsistencia` es la única fuente para asistencias: usa el
+    // snapshot mensual completo en Mensual/Resumen y el mismo motor de Nómina.
+    completos: calculosKpi.reduce((s, c) => s + (c.dias_asistidos || 0), 0),
     tardanzas: calculosKpi.reduce((s, c) => s + (c.tardanzas || 0), 0),
     faltas: calculosKpi.reduce((s, c) => s + (tab === 'mensual' && resumenMensualMineroPorId.has(c.trabajador_id)
       ? resumenMensualMineroPorId.get(c.trabajador_id).faltasEnSubida
@@ -16989,7 +16990,7 @@ function ControlAsistencia() {
 
       </div>}
 
-      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head" style={{flexWrap:'wrap', gap:10}}><div className="row" style={{gap:16, alignItems:'center'}}><h3>Resumen por trabajador - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>
+      {tab === 'resumen' && <div className="card" style={{padding:20}}><div className="card-head" style={{flexWrap:'wrap', gap:10}}><div className="row" style={{gap:16, alignItems:'center'}}><h3>Resumen por trabajador - {mesNombreCap}</h3><input type="month" className="input" style={{width: 160}} value={currentMonth} onChange={e => { if (e.target.value) setFecha(e.target.value + '-01'); }} /></div><button className="btn btn-secondary btn-sm">{I.download} Exportar Excel</button></div>{registrosMensualPeriodo?.cargando && <div className="alert alert-warning" style={{margin:'0 0 16px', fontSize:12}}>Cargando todas las asistencias del mes para sincronizar el resumen con Nómina...</div>}{registrosMensualPeriodo?.error && <div className="alert alert-danger" style={{margin:'0 0 16px', fontSize:12}}>No se pudo cargar el mes completo. No se mostrarán indicadores parciales hasta reintentar.</div>}
         <div className="row" style={{gap:12, alignItems:'end', flexWrap:'wrap', marginBottom:20}}><div className="input-group" style={{minWidth:300, margin:0}}><label>Seleccionar Trabajador</label><select className="select" value={resumenTrabajador?.id || ''} onChange={e=>setForm(v=>({...v,trabajador_id:e.target.value}))}>{trabajadoresVisibles.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></div>{filtroModalidadControl()}</div>
         {!resumenTrabajador ? <div style={{padding:24, textAlign:'center', color:'var(--fg-muted)'}}>Sin trabajadores registrados.</div> :
         (() => {
@@ -17013,7 +17014,7 @@ function ControlAsistencia() {
                 <p><strong>Horas efectivas:</strong> {calc.incompleto_ciclo ? '—' : minutesToLabel(resumenRegs.reduce((s,r)=>s+(r.horas_trabajadas_min||0),0))}</p>
                 <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? '—' : minutesToLabel(calc.horas_extra_total_min)}</p>
                 <p><strong>Impacto nomina:</strong> {calc.incompleto_ciclo ? 'Pendiente' : 'Días laborables y descuentos por faltas/tardanzas.'}</p>
-                <p className="text-muted">Cálculo sincronizado con la lógica oficial de Nómina.</p>
+                <p className="text-muted">Días asistidos calculados con el mismo motor y la misma carga completa mensual de Nómina.</p>
               </div>
             </div>
           );
@@ -17211,6 +17212,10 @@ function ControlAsistencia() {
           if (!t) return null;
           const { t: diasT, d: diasD } = getCicloDias(t.regimen_jornada, t);
           const regsT = registrosPeriodo.filter(r => r.trabajador_id === t.id);
+          // La HE mostrada en el detalle no usa el campo manual del ciclo:
+          // comparte el motor y el snapshot mensual completo de Nómina.
+          const calculoMes = calculosAsistencia.find(x => x.trabajador_id === t.id);
+          const heRegistradasMes = calculoMes?.horas_extra_total_min;
           const diasDelMes = new Date(parseInt(currentMonth.split('-')[0]), parseInt(currentMonth.split('-')[1]), 0).getDate();
           const ESTADO_COLORS = { completo:'#e6f4ea', descanso:'var(--bg-muted)', falta:'#fce8e6', falta_justificada:'#fef7e0', induccion:'#ede7f6', bajada:'#e3f2fd' };
           const ESTADO_BORDER = { completo:'var(--green)', descanso:'var(--slate)', falta:'var(--danger)', falta_justificada:'var(--orange)', induccion:'var(--purple)', bajada:'var(--cyan)' };
@@ -17247,7 +17252,7 @@ function ControlAsistencia() {
                 </div>
                 {/* Datos del ciclo */}
                 {c && <div className="grid-2" style={{gap:10}}>
-                  {[['Inicio ciclo', c.fecha_inicio_ciclo], ['Fin ciclo', c.fecha_fin_ciclo], ['Estado', c.estado_ciclo], ['HE ciclo', `${c.horas_extra_ciclo}h`]].map(([label, val]) => (
+                  {[['Inicio ciclo', c.fecha_inicio_ciclo], ['Fin ciclo', c.fecha_fin_ciclo], ['Estado', c.estado_ciclo], ['HE registradas del mes', registrosMensualListos ? minutesToLabel(heRegistradasMes || 0) : 'Cargando...']].map(([label, val]) => (
                     <div key={label} style={{padding:'10px 12px', background:'var(--bg-subtle)', borderRadius:6}}>
                       <div className="text-muted" style={{fontSize:10, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3}}>{label}</div>
                       <div style={{fontWeight:600, fontSize:13}}>{val || '—'}</div>
@@ -17301,6 +17306,9 @@ function ControlAsistencia() {
           {rosterPeriodo?.estado === 'cerrado' && <div className="alert alert-warning" style={{marginBottom:12}}>Este período está cerrado. No se puede recalcular.</div>}
 
           {rosterVista === 'totales' && <>
+            <div className="alert alert-info" style={{marginBottom:12, fontSize:12}}>
+              <strong>Totales de roster:</strong> son un snapshot del balance de rotación (mina, descansos y pendientes) calculado al presionar “Calcular / Recalcular”. No equivalen a las asistencias ni a los días de subida usados por Nómina.
+            </div>
             {/* KPIs del roster */}
             {rosterRowsVisibles.length > 0 && <div className="kpi-grid" style={{marginBottom:16}}>
               <div className="kpi-card"><div className="kpi-label">Trabajadores en mina</div><div className="kpi-value">{rosterRowsVisibles.filter(r => r.dias_en_mina > 0).length}</div></div>
@@ -17316,7 +17324,7 @@ function ControlAsistencia() {
                       <th>Trabajador</th>
                       <th>Modalidad</th>
                       <th>Régimen</th>
-                      <th title="Días trabajados en mina (excluye inducción)">En mina</th>
+                      <th title="Días en mina del último snapshot de roster; no equivale a asistencias ni a días de subida de Nómina.">En mina</th>
                       <th title="Días de inducción (pagados, no generan descanso)">Inducción</th>
                       <th title="Días efectivos para calcular descanso">Efectivos</th>
                       <th title="Días de descanso ganados por días en mina">Ganados</th>
@@ -17339,7 +17347,7 @@ function ControlAsistencia() {
                           <td><strong>{r.personal_nombre}</strong>{badgeSinContratoVigente(trabajadorSnapshot)}<div className="text-muted" style={{fontSize:11}}>{r.personal_tipo}</div>{cesadosPorId.has(r.personal_id) && <span className="badge badge-gray" style={{fontSize:10, marginTop:4, display:'inline-block'}} title={`Cesado el ${cesadosPorId.get(r.personal_id).fecha_cese || '-'}`}>Cesado — datos de un cálculo anterior a su cese</span>}</td>
                           <td><span className="badge badge-gray" style={{fontSize:11}}>{modalidadEtiqueta(trabajadorSnapshot)}</span></td>
                           <td><span className="badge badge-orange" style={{fontSize:11}}>{r.dias_ciclo_trabajo}×{r.dias_ciclo_descanso}</span></td>
-                          <td>{r.dias_en_mina}</td>
+                          <td title="Valor del último snapshot de roster"><div>{r.dias_en_mina}</div><div className="text-muted" style={{fontSize:9, whiteSpace:'nowrap'}}>Snap.: {r.calculado_en ? new Date(r.calculado_en).toLocaleString('es-PE') : '—'}</div></td>
                           <td>{r.dias_induccion > 0 ? <span className="badge badge-purple" style={{fontSize:11}}>{r.dias_induccion}</span> : '—'}</td>
                           <td>{r.dias_efectivos_descanso}</td>
                           <td>{Number(r.dias_descanso_ganados).toFixed(1)}</td>
@@ -17709,7 +17717,7 @@ function ControlAsistencia() {
           <div className="input-group" style={{marginTop:12}}><label>Estado del Ciclo</label><select className="select" value={formMinero.estado_ciclo} onChange={e=>setFormMinero(v=>({...v, estado_ciclo:e.target.value}))}>
             <option value="completo">Completo</option><option value="incompleto">Incompleto</option><option value="con_incidencias">Con incidencias</option>
           </select></div>
-          <div className="input-group" style={{marginTop:12}}><label>Horas Extra del Ciclo Totales</label><input type="number" step="0.5" className="input" value={formMinero.horas_extra_ciclo} onChange={e=>setFormMinero(v=>({...v, horas_extra_ciclo:e.target.value}))}/></div>
+          <div className="input-group" style={{marginTop:12}}><label>HE manual del ciclo (referencial)</label><input type="number" step="0.5" className="input" value={formMinero.horas_extra_ciclo} onChange={e=>setFormMinero(v=>({...v, horas_extra_ciclo:e.target.value}))}/><small className="text-muted">No se usa para HE mensual ni Nómina; estas se calculan desde las asistencias registradas.</small></div>
 
           {/* Inducción inicial */}
           <div style={{marginTop:16, padding:'12px 14px', background:'rgba(103,58,183,0.06)', borderRadius:8, borderLeft:'3px solid var(--purple)'}}>
@@ -17869,7 +17877,7 @@ function ControlAsistencia() {
                 <p><strong>Horas extra:</strong> {calc.incompleto_ciclo ? '—' : minutesToLabel(calc.horas_extra_total_min)}</p>
                 {!calc.incompleto_ciclo && calc.horas_extra_total_min > 0 && <div style={{padding:'4px 0 10px'}}><div className="text-subtle" style={{fontSize:11, marginBottom:4}}>Fechas con HE:</div><div style={{display:'flex', gap:6, flexWrap:'wrap'}}>{regsT.filter(r => (r.horas_extra_min||0) > 0).map(r => <span key={r.fecha} className="badge badge-cyan" style={{fontSize:11}}>{r.fecha.slice(-2)}/{r.fecha.slice(5,7)} ({minutesToLabel(r.horas_extra_min)})</span>)}</div></div>}
                 <p><strong>Impacto nomina:</strong> {calc.incompleto_ciclo ? 'Pendiente' : 'Días laborables y descuentos por faltas/tardanzas.'}</p>
-                <p className="text-muted">Cálculo sincronizado con la lógica oficial de Nómina.</p>
+                <p className="text-muted">Días asistidos calculados con el mismo motor y la misma carga completa mensual de Nómina.</p>
               </>}
             </div>
           </div>
@@ -19206,10 +19214,13 @@ function Nomina() {
               </ul>
             </div>
           )}
+          {hayMineros && <div className="alert alert-info" style={{margin:'0 16px 12px', fontSize:12, padding:'10px 12px'}}>
+            <strong>Días comp. y asistencias mineras:</strong> son los días programados de subida y sus marcaciones para Nómina. No son el balance “En mina” del snapshot de Roster Minero.
+          </div>}
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr>
-                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th>Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas nómina</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
+                <th>Trabajador</th><th>Régimen</th>{hayMineros && <th title="Días programados de subida para Nómina; no es el balance del snapshot de Roster Minero.">Días comp.</th>}<th>Turno</th><th>Asist.</th><th>Faltas nómina</th><th>H. Extra</th><th>Sueldo base</th><th>Comisión</th><th>Bruto</th><th>Desc.</th><th>Neto</th><th></th>
               </tr></thead>
               <tbody>
                 {calculos.length === 0 && <tr><td colSpan={12} style={{textAlign:'center',color:'var(--fg-muted)',padding:28}}>{!asistenciaNominaLista ? 'Cargando asistencias completas del período...' : 'Sin trabajadores registrados.'}</td></tr>}
