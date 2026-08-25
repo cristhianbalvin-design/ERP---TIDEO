@@ -6,10 +6,10 @@ import {
   OTsListadoPage,
   GestionPartesTallerPage,
   HistorialMinaPage,
-  CierreConformidad,
   ProgramacionPM,
   DisponibilidadMecanica,
 } from '../pages/pages2_v2.jsx';
+import { CierreConformidadPage } from '../pages/CierreConformidadPage.jsx';
 import { ReporteMinaPage, ParteTallerPage } from '../pages/pages3.jsx';
 import { SchedulerDespacho } from '../pages/TransportePages.jsx';
 import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
@@ -47,7 +47,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'mina':
     case 'mis-reportes': return <HistorialMinaPage onNav={onNavigate} />;
     case 'nuevo-reporte': return <ReporteMinaPage onNav={onNavigate} />;
-    case 'cierre-conformidad': return <><AdministrativeAppLinkPage title="Cierre y Conformidad" adminRoute="cierre" /><CierreConformidad /></>;
+    case 'cierre-conformidad': return <CierreConformidadPage />;
     case 'scheduler-despacho': return <SchedulerDespacho setCurrent={onNavigate} />;
 
     case 'hse-dashboard': return <HSEDashboard setCurrent={onNavigate} />;
