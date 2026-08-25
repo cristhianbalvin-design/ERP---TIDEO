@@ -13555,6 +13555,18 @@ function calcularIR5ta(remuneracionBrutaMensual, UIT = 5500, mesesRestantes = 12
   return pendiente / Math.max(1, mesesRestantes);
 }
 
+// La proyección de quinta no usa la provisión mensual de gratificación (base/12):
+// debe sumar las dos gratificaciones anuales completas y sus bonificaciones de 9%.
+// En pequeña empresa cada gratificación equivale a media remuneración; en micro no
+// existe este beneficio. El valor se entrega separado a calcularIR5ta para no
+// contaminar las bases de AFP/ONP/EsSalud ni los costos mensuales.
+function calcularIngresoAnualGratificaciones(baseComputable, { tieneGratificacion, esPequena = false } = {}) {
+  if (!tieneGratificacion) return 0;
+  const gratificacionSemestral = Math.max(0, Number(baseComputable) || 0) / (esPequena ? 2 : 1);
+  const gratificacionesAnuales = gratificacionSemestral * 2;
+  return gratificacionesAnuales * 1.09;
+}
+
 // Calcular horas extra split: primeras 2h/día al 25%, desde 3ra h/día al 35%
 function calcularHorasExtra(registros, valorHora) {
   let tramo1Min = 0;
@@ -13915,7 +13927,7 @@ function calcularFcjmmsTrabajador(remuneracionBruta, { esMinero = false, tramos 
   if (Array.isArray(tramos)) {
     const diasDelPeriodo = tramos.reduce((total, tramo) => total + (Number(tramo.diasCal) || 0), 0);
     const diasBajoRegimenMinero = tramos
-      .filter(tramo => tramo.tipo === 'ciclo_acumulativo')
+      .filter(tramo => esRegimenMinero(tramo.tipo))
       .reduce((total, tramo) => total + (Number(tramo.diasCal) || 0), 0);
 
     // Régimen mixto: mientras no exista una regla específica, se atribuye la remuneración
@@ -13946,12 +13958,13 @@ function reconciliarQ2(resultadoMesCompleto, q1Row) {
     desc_tardanzas: restar('desc_tardanzas'),
     add_horas_extra: restar('add_horas_extra'),
     sobretasa_feriado: restar('sobretasa_feriado'),
+    ingreso_extra_remunerativo: restar('ingreso_extra_remunerativo'),
     asignacion_familiar: restar('asignacion_familiar'),
     bonif_altitud: restar('bonif_altitud'),
     remuneracion_bruta: restar('remuneracion_bruta'),
-    // sueldo_proporcional no se persiste en nomina_detalle; se deriva como residual para
-    // que el desglose mostrado siga sumando exactamente a remuneracion_bruta reconciliada.
-    sueldo_proporcional: restar('remuneracion_bruta') - restar('asignacion_familiar') - restar('bonif_altitud') - restar('sobretasa_feriado') + restar('desc_faltas') + restar('desc_tardanzas') - restar('add_horas_extra'),
+    // Se guarda desde snapshot v2; se conserva este residual para snapshots v1 que no
+    // tenían el campo, incluyendo el ingreso remunerativo en el cuadrado contable.
+    sueldo_proporcional: restar('remuneracion_bruta') - restar('asignacion_familiar') - restar('bonif_altitud') - restar('sobretasa_feriado') - restar('ingreso_extra_remunerativo') + restar('desc_faltas') + restar('desc_tardanzas') - restar('add_horas_extra'),
     aporte_afp: restar('aporte_afp'),
     comision_flujo: restar('comision_flujo', 'comision_afp_flujo'),
     prima_seguro: restar('prima_seguro', 'prima_seguro_afp'),
@@ -14189,8 +14202,10 @@ function calcularNominaConTramosInternal(trabajador, asigsTrabajador, datosNomin
   const baseComputable      = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion       = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
-  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
-  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const ingresoAnualGratificacion = calcularIngresoAnualGratificaciones(baseComputable, {
+    tieneGratificacion: tieneGratif,
+    esPequena,
+  });
   const retencionIR      = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
   const totalDescuentos  = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR + fcjmmsTrabajador;
   const neto = remuneracionBruta - totalDescuentos;
@@ -14500,8 +14515,10 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
   const baseComputable = sueldoProporcional + asignacionFamiliar + bonifAltitud;
   const gratificacion = tieneGratif && !esQ1 ? baseComputable / (esPequena ? 24 : 12) : 0;
   const bonifExtraordinaria = tieneGratif && !esQ1 ? gratificacion * 0.09 : 0;
-  // IR 5ta proyecta las dos gratificaciones y sus bonificaciones extraordinarias anuales.
-  const ingresoAnualGratificacion = (gratificacion + bonifExtraordinaria) * 2;
+  const ingresoAnualGratificacion = calcularIngresoAnualGratificaciones(baseComputable, {
+    tieneGratificacion: tieneGratif,
+    esPequena,
+  });
   const retencionIR = esQ1 ? 0 : calcularIR5ta(remuneracionBruta, Number(uit_vigente), 12, 0, ingresoAnualGratificacion);
   const totalDescuentos = descPensiones + descPrestamo + descAnticipo + descJudicial + retencionIR + fcjmmsTrabajador;
   const neto = remuneracionBruta - totalDescuentos;
@@ -18440,12 +18457,54 @@ function Nomina() {
     const porTrabajador = new Map(detalleSnapshotPeriodo.map(row => [row.trabajador_id, row]));
     return calculosMotor.map(calculo => {
       const snapshot = porTrabajador.get(calculo.trabajador_id);
-      return snapshot && !calculo.incompleto_asignacion_minera ? { ...calculo,
+      if (!snapshot || calculo.incompleto_asignacion_minera) return calculo;
+      // Las filas previas a v2 no contienen todos los componentes: conservar su
+      // comportamiento visual histórico, sin presentar ceros como si fueran datos
+      // persistidos. Los snapshots v2 son la fuente de verdad completa.
+      if (Number(snapshot.snapshot_version || 1) < 2) return { ...calculo,
         remuneracion_bruta: Number(snapshot.remuneracion_bruta), retencion_ir: Number(snapshot.retencion_ir),
         total_descuentos: Number(snapshot.total_descuentos), neto: Number(snapshot.neto),
         gratificacion_pagada: Number(snapshot.gratificacion_pagada) || 0,
         bonif_extraordinaria_pagada: Number(snapshot.bonif_extraordinaria_pagada) || 0,
-      } : calculo;
+      };
+      const numero = campo => Number(snapshot[campo] || 0);
+      const aporteAfp = numero('aporte_afp');
+      const comisionFlujo = numero('comision_afp_flujo');
+      const primaSeguro = numero('prima_seguro_afp');
+      const descOnp = numero('desc_onp');
+      return {
+        ...calculo,
+        sistema_pensionario: snapshot.sistema_pensionario || calculo.sistema_pensionario,
+        regimen_jornada: snapshot.regimen_jornada_snap || calculo.regimen_jornada,
+        regimen_empresa: snapshot.regimen_empresa_snap || calculo.regimen_empresa,
+        dias_laborables: snapshot.dias_laborables,
+        dias_asistidos: snapshot.dias_laborados,
+        dias_computables: snapshot.dias_computables,
+        horas_extra_tramo1_min: numero('horas_extra_tramo1_min'),
+        horas_extra_tramo2_min: numero('horas_extra_tramo2_min'),
+        horas_extra_total_min: numero('horas_extra_tramo1_min') + numero('horas_extra_tramo2_min'),
+        sueldo_base: numero('sueldo_base'),
+        sueldo_proporcional: numero('sueldo_proporcional'),
+        remuneracion_bruta: numero('remuneracion_bruta'),
+        asignacion_familiar: numero('asignacion_familiar'),
+        add_horas_extra: numero('add_horas_extra'),
+        sobretasa_feriado: numero('sobretasa_feriado'),
+        bonif_altitud: numero('bonif_altitud'),
+        ingreso_extra_remunerativo: numero('ingreso_extra_remunerativo'),
+        otros_ingresos: numero('otros_ingresos'),
+        desc_faltas: numero('desc_faltas'), desc_tardanzas: numero('desc_tardanzas'),
+        aporte_afp: aporteAfp, comision_flujo: comisionFlujo, prima_seguro: primaSeguro, desc_onp: descOnp,
+        fcjmms_trabajador: numero('fcjmms_trabajador'),
+        desc_pensiones: aporteAfp + comisionFlujo + primaSeguro + descOnp,
+        desc_prestamo: numero('desc_prestamo'), desc_anticipo: numero('desc_anticipo'),
+        desc_judicial: numero('desc_judicial'), desc_extraordinario: numero('desc_extraordinario'),
+        retencion_ir: numero('retencion_ir'), total_descuentos: numero('total_descuentos'), neto: numero('neto'),
+        essalud: numero('essalud'), cts_mensualizado: numero('cts_mensualizado'), tiene_cts: Boolean(snapshot.tiene_cts),
+        gratificacion_mensualizada: numero('gratificacion_mensualizada'), bonif_extraordinaria: numero('bonif_extraordinaria'),
+        tiene_gratificacion: Boolean(snapshot.tiene_gratificacion), vacaciones_mensualizadas: numero('vacaciones_mensualizadas'),
+        total_cargas: numero('total_cargas'), costo_real_empresa: numero('costo_real_empresa'),
+        gratificacion_pagada: numero('gratificacion_pagada'), bonif_extraordinaria_pagada: numero('bonif_extraordinaria_pagada'),
+      };
     });
   }, [calculosMotor, detalleSnapshotPeriodo]);
 
@@ -18534,7 +18593,8 @@ function Nomina() {
     return [...unicas.values()];
   }, [calculos]);
 
-  const hayMineros = calculos.some(c => c.regimen_jornada !== 'general');
+  const esNominaMinera = regimen => esRegimenMinero(regimen) || String(regimen || '').startsWith('Mixto');
+  const hayMineros = calculos.some(c => esNominaMinera(c.regimen_jornada));
 
   const resumen = calculos.reduce((acc, c) => ({
     total_trabajadores: acc.total_trabajadores + 1,
@@ -18608,6 +18668,8 @@ function Nomina() {
       if (isSupabaseConfigured() && empresa?.id) {
         const filas = calculosMotor.map(c => mapCalculoANominaDetalle(c, periodo, empresaCfgPeriodo));
         const guardadas = await nominaService.guardarDetalle(empresa.id, periodo.id, filas, periodo.sociedad_id || null);
+        const snapshotActualizado = await nominaService.getDetalle(periodo.id);
+        setDetalleSnapshotPeriodo(snapshotActualizado);
         const actualizado = await nominaService.upsertPeriodo(empresa.id, { id: periodo.id, estado: 'en_proceso' });
         setPeriodosNomina(prev => prev.map(p => p.id === periodo.id ? { ...p, ...actualizado, total_trabajadores:resumenMotor.total_trabajadores, masa_salarial_bruta:resumenMotor.masa_salarial_bruta, total_neto:resumenMotor.total_neto, total_cargas_empresa:resumenMotor.total_cargas_empresa } : p));
         addToast(`Nómina ${periodo.periodo} procesada: ${guardadas} trabajador(es) guardados.`, 'success');
@@ -19513,7 +19575,7 @@ function Nomina() {
           ) : (<>
             <div className="table-wrap">
               <table className="tbl" style={{fontSize:12}}>
-                <thead><tr><th>Tipo doc</th><th>N° doc</th><th>Apellidos y nombres</th><th>Tipo</th><th>Rem. básica</th><th>Total ingresos</th><th>Sistema prev.</th><th>Aporte AFP/ONP</th><th>Prima seguro</th><th>FCJMMS</th><th>IR 5ta</th><th>ESSALUD</th><th>Neto</th><th>Período</th></tr></thead>
+                <thead><tr><th>Tipo doc</th><th>N° doc</th><th>Apellidos y nombres</th><th>Tipo</th><th>Rem. básica</th><th>Total ingresos</th><th>Sistema prev.</th><th>Aporte AFP/ONP</th><th>Prima seguro</th>{hayMineros && <th>FCJMMS</th>}<th>IR 5ta</th><th>ESSALUD</th><th>Neto</th><th>Período</th></tr></thead>
                 <tbody>
                   {(plameVerTodos ? calculos : calculos.slice(0, 5)).map(c => (
                     <tr key={c.trabajador_id}>
@@ -19526,7 +19588,7 @@ function Nomina() {
                       <td>{c.sistema_pensionario === 'AFP' ? `AFP ${c.afp_nombre}` : 'ONP'}</td>
                       <td className="num">{money(c.aporte_afp + c.desc_onp)}</td>
                       <td className="num">{money(c.prima_seguro)}</td>
-                      <td className="num">{Number(c.fcjmms_trabajador) > 0 ? money(c.fcjmms_trabajador) : '—'}</td>
+                      {hayMineros && <td className="num">{esNominaMinera(c.regimen_jornada) && Number(c.fcjmms_trabajador) > 0 ? money(c.fcjmms_trabajador) : '—'}</td>}
                       <td className="num">{money(c.retencion_ir)}</td>
                       <td className="num">{money(c.essalud)}</td>
                       <td className="num"><strong>{money(c.neto)}</strong></td>
@@ -19581,7 +19643,7 @@ function Nomina() {
               <p>{detallePanel.tipo_comision_afp==='flujo'?`Comision flujo: ${money(detallePanel.comision_flujo)}`:'Comision mixta: S/ 0.00 (fondo)'}</p>
               <p>Prima seguro: {money(detallePanel.prima_seguro)}</p>
             </>:<p>ONP (13%): {money(detallePanel.desc_onp)}</p>}
-            {detallePanel.fcjmms_trabajador>0&&<p>FCJMMS: {money(detallePanel.fcjmms_trabajador)}</p>}
+            {esNominaMinera(detallePanel.regimen_jornada) && detallePanel.fcjmms_trabajador>0&&<p>FCJMMS: {money(detallePanel.fcjmms_trabajador)}</p>}
             {detallePanel.retencion_ir>0&&<p>IR 5ta: {money(detallePanel.retencion_ir)}</p>}
             {detallePanel.desc_prestamo>0&&<p>Prestamo: {money(detallePanel.desc_prestamo)}</p>}
             {detallePanel.desc_extraordinario>0&&<p>Extraordinario: {money(detallePanel.desc_extraordinario)}</p>}
@@ -19602,7 +19664,7 @@ function Nomina() {
 
 
       {/* Boleta */}
-      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{emisorBoleta?.razon_social || emisorBoleta?.nombre}</strong>{emisorBoleta?.ruc&&<><br/><span className="text-muted" style={{fontSize:11}}>RUC {emisorBoleta.ruc}</span></>}</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{boleta.sobretasa_feriado>0&&<p>Sobretasa por feriado: {money(boleta.sobretasa_feriado)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}{(Number(boleta.gratificacion_pagada) || 0)>0&&<p>Gratificación real: {money(boleta.gratificacion_pagada)}</p>}{(Number(boleta.bonif_extraordinaria_pagada) || 0)>0&&<p>Bonif. extraordinaria: {money(boleta.bonif_extraordinaria_pagada)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{boleta.fcjmms_trabajador>0&&<p>FCJMMS: -{money(boleta.fcjmms_trabajador)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={descargarBoletaPdf}>{I.download} Descargar boleta PDF</button></div></div></>}
+      {boleta && <><div className="side-panel-backdrop" onClick={()=>setBoleta(null)}/><div className="side-panel" style={{width:'min(620px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Boleta de pago</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{boleta.trabajador.nombre}</div></div><button className="icon-btn" onClick={()=>setBoleta(null)}>{I.x}</button></div><div className="side-panel-body"><div className="card" style={{padding:20,border:'1px solid var(--border)'}}><h3 style={{textAlign:'center'}}>BOLETA DE PAGO</h3><p style={{textAlign:'center'}}><strong>{emisorBoleta?.razon_social || emisorBoleta?.nombre}</strong>{emisorBoleta?.ruc&&<><br/><span className="text-muted" style={{fontSize:11}}>RUC {emisorBoleta.ruc}</span></>}</p><hr/><p>Trabajador: <strong>{boleta.trabajador.nombre}</strong></p><p>Cargo: {boleta.trabajador.cargo} · Período: {periodo?.periodo}</p><hr/><p><strong>Ingresos</strong></p><p>Sueldo base: {money(boleta.sueldo_base)}</p>{boleta.asignacion_familiar>0&&<p>Asig. familiar: {money(boleta.asignacion_familiar)}</p>}{boleta.add_horas_extra>0&&<p>Horas extra: {money(boleta.add_horas_extra)}</p>}{boleta.sobretasa_feriado>0&&<p>Sobretasa por feriado: {money(boleta.sobretasa_feriado)}</p>}{(comisionPorTrabajador[boleta.trabajador_id]||0)>0&&<p>Comision: {money(comisionPorTrabajador[boleta.trabajador_id])}</p>}{boleta.ingreso_extra_remunerativo>0&&<p>Ingreso extraordinario (remunerativo): {money(boleta.ingreso_extra_remunerativo)}</p>}{(Number(boleta.gratificacion_pagada) || 0)>0&&<p>Gratificación real: {money(boleta.gratificacion_pagada)}</p>}{(Number(boleta.bonif_extraordinaria_pagada) || 0)>0&&<p>Bonif. extraordinaria: {money(boleta.bonif_extraordinaria_pagada)}</p>}<p><strong>Total bruto: {money(boleta.remuneracion_bruta)}</strong></p>{boleta.otros_ingresos>0&&<><hr/><p><strong>Otros ingresos no remunerativos</strong> <span className="text-muted" style={{fontSize:11}}>(no afectan AFP/EsSalud/CTS)</span></p><p>+{money(boleta.otros_ingresos)}</p></>}<hr/><p><strong>Descuentos</strong></p>{boleta.sistema_pensionario==='AFP'?<><p>Aporte AFP (10%): -{money(boleta.aporte_afp)}</p><p>Prima seguro: -{money(boleta.prima_seguro)}</p></>:<p>ONP (13%): -{money(boleta.desc_onp)}</p>}{esNominaMinera(boleta.regimen_jornada) && boleta.fcjmms_trabajador>0&&<p>FCJMMS: -{money(boleta.fcjmms_trabajador)}</p>}{boleta.retencion_ir>0&&<p>IR 5ta: -{money(boleta.retencion_ir)}</p>}{boleta.desc_prestamo>0&&<p>Prestamo: -{money(boleta.desc_prestamo)}</p>}{boleta.desc_extraordinario>0&&<p>Extraordinario: -{money(boleta.desc_extraordinario)}</p>}<h3 style={{color:'var(--green)', marginTop:12}}>Neto a pagar: {money(boleta.neto)}</h3><p className="text-muted" style={{fontSize:11, marginTop:12}}>Los calculos son referenciales. Generado por TIDEO ERP. Valida con tu contador antes de procesar pagos.</p></div><button className="btn btn-primary mt-6" data-local-form="true" onClick={descargarBoletaPdf}>{I.download} Descargar boleta PDF</button></div></div></>}
 
       {descPanel && <><div className="side-panel-backdrop" onClick={()=>setDescPanel(false)}/><div className="side-panel" style={{width:'min(560px,96vw)'}}>
         <div className="side-panel-head"><div><div className="eyebrow">Nomina</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nuevo descuento</div></div><button className="icon-btn" onClick={()=>setDescPanel(false)}>{I.x}</button></div>

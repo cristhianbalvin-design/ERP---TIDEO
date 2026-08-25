@@ -111,7 +111,11 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
     remuneracion_bruta: Number(c.remuneracion_bruta) || 0,
     asignacion_familiar: Number(c.asignacion_familiar) || 0,
     add_horas_extra: Number(c.add_horas_extra) || 0,
+    sobretasa_feriado: Number(c.sobretasa_feriado) || 0,
     bonif_altitud: Number(c.bonif_altitud) || 0,
+    // Ya está incluido en remuneracion_bruta; se conserva como desglose inmutable
+    // para Boleta/PLAME al volver a leer el snapshot.
+    ingreso_extra_remunerativo: Number(c.ingreso_extra_remunerativo) || 0,
     // Suma de ingresos_extraordinarios NO remunerativos aprobados (Frente 4). Los
     // remunerativos NO se repiten aca: ya estan dentro de remuneracion_bruta.
     otros_ingresos: Number(c.otros_ingresos) || 0,
@@ -140,6 +144,9 @@ export function mapCalculoANominaDetalle(c, periodo, empresaCfgResuelta = {}) {
     costo_real_empresa: Number(c.costo_real_empresa) || 0,
     es_quincena: quincena != null,
     quincena,
+    // v2 guarda todos los componentes monetarios que consume la UI. Las filas
+    // históricas v1 siguen siendo legibles mediante el fallback de Nomina().
+    snapshot_version: 2,
     // Refleja el % efectivamente aplicado por el motor (Rama Q1), no un valor recalculado
     // aparte. Q2 hoy todavia calcula al 100% (factorQuincena=1, Rama Q2 aun no implementada):
     // guardar 50/50 teorico seria incorrecto y no coincidiria con lo que el motor uso.

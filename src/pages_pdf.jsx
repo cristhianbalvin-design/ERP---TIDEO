@@ -104,6 +104,8 @@ const montoBoleta = value => `S/ ${Number(value || 0).toLocaleString('es-PE', { 
 
 export function BoletaPagoPDF({ calculo, periodo, emisor }) {
   const trabajador = calculo?.trabajador || {};
+  const regimen = String(calculo?.regimen_jornada || '');
+  const esNominaMinera = regimen === 'ciclo_acumulativo' || regimen.startsWith('minero_') || regimen.startsWith('Mixto');
   const ingresos = [
     ['Sueldo base', calculo?.sueldo_base],
     ['Asignación familiar', calculo?.asignacion_familiar],
@@ -124,7 +126,7 @@ export function BoletaPagoPDF({ calculo, periodo, emisor }) {
     ['Comisión AFP', calculo?.comision_flujo],
     ['Prima de seguro AFP', calculo?.prima_seguro],
     ['ONP', calculo?.desc_onp],
-    ['FCJMMS', calculo?.fcjmms_trabajador],
+    ...(esNominaMinera ? [['FCJMMS', calculo?.fcjmms_trabajador]] : []),
     ['IR 5ta categoría', calculo?.retencion_ir],
     ['Préstamos', calculo?.desc_prestamo],
     ['Otros descuentos', calculo?.desc_extraordinario],
