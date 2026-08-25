@@ -299,10 +299,6 @@ function AsistenciaMobileView({ screen, setScreen }) {
   
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
-  if (!trabajadorActual?.turno_id) {
-    return <MobileAccessMessage text="Tu ficha de colaborador no tiene un turno asignado. Contacta a RRHH para habilitar las marcaciones." />;
-  }
-  
   const hoy = new Date();
   const today = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
   const trabajadorId = trabajadorActual?.id || '';
@@ -708,6 +704,13 @@ function AsistenciaMobileView({ screen, setScreen }) {
     setLoading(false);
     setGeoEstado('');
   };
+
+  // Esta validación debe ejecutarse después de declarar todos los hooks. La
+  // ficha llega de forma asíncrona; retornar antes hacía que React alternase
+  // entre distintas cantidades de hooks (error #310) al terminar la carga.
+  if (!trabajadorActual?.turno_id) {
+    return <MobileAccessMessage text="Tu ficha de colaborador no tiene un turno asignado. Contacta a RRHH para habilitar las marcaciones." />;
+  }
 
   return <>
     <div className="mobile-header">
