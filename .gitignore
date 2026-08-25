@@ -11,3 +11,4 @@ vite-dev.err.log
 vite-dev.out.log
 diag2.cjs
 diag3.cjs
+.claude/
