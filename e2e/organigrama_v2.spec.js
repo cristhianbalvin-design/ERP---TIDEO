@@ -56,6 +56,7 @@ let fixturePositions = {};
 let createPair;
 let matrizId;
 let destinoReasignacionUo;
+let cargoSinNivelId;
 
 const required = (value, label) => {
   if (!value) throw new Error(`Falta ${label}; configúralo en .env.e2e.local o en el entorno.`);
@@ -188,11 +189,14 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     });
     matrizId = matriz.id;
 
-    const [unidades, cargos, colocaciones] = await Promise.all([
+    const [unidades, cargos, colocaciones, cargosSinNivel] = await Promise.all([
       rest(request, 'unidades_organizacionales', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
       rest(request, 'cargos_empresa', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
       rest(request, 'cargo_colocaciones', `select=id,unidad_organizacional_id,cargo_id,nivel_jerarquico_id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
+      rest(request, 'cargos_empresa', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo&categoria_nivel=is.null&limit=1`),
     ]);
+    cargoSinNivelId = cargosSinNivel[0]?.id;
+    expect(cargoSinNivelId).toBeTruthy();
     createPair = unidades
       .flatMap(unidad => cargos.map(cargo => ({ unidadId: unidad.id, cargoId: cargo.id })))
       .find(pair => !colocaciones.some(colocacion => colocacion.unidad_organizacional_id === pair.unidadId && colocacion.cargo_id === pair.cargoId));
@@ -231,7 +235,16 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await screenshot(page, '00-cursor-y-encuadre-inicial');
   });
 
-  test('1. persiste la posición visual tras arrastrar y recargar', async ({ page }) => {
+  test('1. exige nivel manual cuando el cargo no tiene categoria_nivel', async ({ page }) => {
+    await page.getByTestId(`ov2-create-colocacion-${fixtures.direccion.unidadId}`).evaluate(button => button.click());
+    await page.getByTestId('ov2-create-cargo').selectOption(cargoSinNivelId);
+    await expect(page.getByTestId('ov2-create-nivel')).toHaveValue('');
+    await expect(page.getByTestId('ov2-create-rol')).toHaveValue('');
+    await expect(page.getByText('Selecciona un nivel para continuar.')).toBeVisible();
+    await expect(page.getByTestId('ov2-create-submit')).toBeDisabled();
+  });
+
+  test('2. persiste la posición visual tras arrastrar y recargar', async ({ page }) => {
     const card = page.getByTestId(`ov2-node-ccol-${fixtures.direccion.id}`);
     const wrapper = page.locator('.react-flow__node').filter({ has: card }).first();
     const before = await wrapper.getAttribute('style');

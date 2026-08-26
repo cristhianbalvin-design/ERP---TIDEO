@@ -8,8 +8,14 @@ const EMPRESA_VALIDACION_ID = 'emp_20609996464';
 const errorText = error => error?.message || error?.details || 'No se pudo completar la operación.';
 
 const sugerirRol = (niveles, roles, nivelId) => {
+  if (!nivelId) return '';
   const nivel = niveles.find(item => item.id === nivelId);
   return roles.find(rol => rol.nivel_jerarquico === nivel?.codigo)?.id || roles[0]?.id || '';
+};
+
+const nivelIdDelCargo = (cargos, niveles, cargoId) => {
+  const categoriaNivel = cargos.find(cargo => cargo.id === cargoId)?.categoria_nivel;
+  return categoriaNivel ? niveles.find(nivel => nivel.codigo === categoriaNivel)?.id || '' : '';
 };
 
 const tienePermiso = (role, accion, pantalla) => {
@@ -72,12 +78,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
   const puedeEditarOrganigrama = tienePermiso(role, 'editar', 'organigrama');
   const puedeCrearUO = puedeEditarOrganigrama && tienePermiso(role, 'crear', 'maestros');
   const abrirCrear = useCallback(unidad => {
-    const nivelId = catalogos.niveles[0]?.id || '';
+    const cargoId = catalogos.cargos[0]?.id || '';
+    const nivelId = nivelIdDelCargo(catalogos.cargos, catalogos.niveles, cargoId);
     setPanel({
       modo: 'crear',
       unidad,
       form: {
-        cargoId: catalogos.cargos[0]?.id || '',
+        cargoId,
         nivelJerarquicoId: nivelId,
         rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelId),
         cantidadPosiciones: 1,
@@ -376,10 +383,11 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           {panel?.modo === 'crear' && (
             <Panel title={`Nuevo cargo en ${panel.unidad.nombre}`} onClose={() => setPanel(null)}>
               <form data-testid="ov2-create-form" onSubmit={guardarPanel} style={{ display: 'grid', gap: 10 }}>
-                <div className="input-group"><label>Cargo</label><select data-testid="ov2-create-cargo" className="select" value={panel.form.cargoId} disabled={guardando} onChange={event => setForm({ cargoId: event.target.value })}>{catalogos.cargos.map(cargo => <option key={cargo.id} value={cargo.id}>{cargo.nombre}</option>)}</select></div>
-                <div className="input-group"><label>Nivel</label><select data-testid="ov2-create-nivel" className="select" value={panel.form.nivelJerarquicoId} disabled={guardando} onChange={event => { const nivelJerarquicoId = event.target.value; setForm({ nivelJerarquicoId, rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelJerarquicoId) }); }}>{catalogos.niveles.map(nivel => <option key={nivel.id} value={nivel.id}>{nivel.nombre}</option>)}</select></div>
-                <div className="input-group"><label>Rol sugerido (editable)</label><select data-testid="ov2-create-rol" className="select" value={panel.form.rolId} disabled={guardando} onChange={event => setForm({ rolId: event.target.value })}>{rolesSugeridos.map(rol => <option key={rol.id} value={rol.id}>{rol.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Cargo</label><select data-testid="ov2-create-cargo" className="select" value={panel.form.cargoId} disabled={guardando} onChange={event => { const cargoId = event.target.value; const nivelJerarquicoId = nivelIdDelCargo(catalogos.cargos, catalogos.niveles, cargoId); setForm({ cargoId, nivelJerarquicoId, rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelJerarquicoId) }); }}>{catalogos.cargos.map(cargo => <option key={cargo.id} value={cargo.id}>{cargo.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Nivel</label><select data-testid="ov2-create-nivel" className="select" value={panel.form.nivelJerarquicoId} disabled={guardando} onChange={event => { const nivelJerarquicoId = event.target.value; setForm({ nivelJerarquicoId, rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelJerarquicoId) }); }}><option value="">Selecciona un nivel</option>{catalogos.niveles.map(nivel => <option key={nivel.id} value={nivel.id}>{nivel.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Rol sugerido (editable)</label><select data-testid="ov2-create-rol" className="select" value={panel.form.rolId} disabled={guardando} onChange={event => setForm({ rolId: event.target.value })}><option value="">Selecciona un rol</option>{rolesSugeridos.map(rol => <option key={rol.id} value={rol.id}>{rol.nombre}</option>)}</select></div>
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-create-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
+                {(!panel.form.nivelJerarquicoId || !panel.form.rolId) && <div className="alert alert-warning" style={{ margin: 0, fontSize: 12 }}>{!panel.form.nivelJerarquicoId ? 'Selecciona un nivel para continuar.' : 'Selecciona un rol para continuar.'}</div>}
                 <div className="text-muted" style={{ fontSize: 12 }}>Al guardar se crearán la cargo-colocación y sus sillas vacantes.</div>
                 <button data-testid="ov2-create-submit" type="submit" className="btn btn-primary" disabled={guardando || !panel.form.cargoId || !panel.form.nivelJerarquicoId || !panel.form.rolId}>{guardando ? 'Guardando…' : 'Crear cargo y posiciones'}</button>
               </form>
