@@ -40,6 +40,26 @@ export const normalizarTipoContratoDuracion = (value = '', modalidad = 'planilla
   return CONTRATO_DURACION_DEFAULT;
 };
 
+// `tipo_contrato` conserva la clasificación histórica que consumen nómina y
+// validaciones. El código del maestro (SUNAT o propio de cada empresa) se
+// guarda aparte; de otro modo contratos distintos como 1001 y 1002 se reducen
+// ambos a `plazo_fijo` y el formulario siempre vuelve a la primera opción.
+export const resolverCodigoTipoContratoCatalogo = (persona = {}, tiposContrato = []) => {
+  const codigoGuardado = String(persona.tipo_contrato_catalogo_codigo || '').trim();
+  if (codigoGuardado && tiposContrato.some(tipo => String(tipo.codigo) === codigoGuardado)) return codigoGuardado;
+
+  const valorLegado = String(persona.tipo_contrato || '').trim();
+  if (tiposContrato.some(tipo => String(tipo.codigo) === valorLegado)) return valorLegado;
+
+  const categoria = normalizarTipoContratoDuracion(
+    valorLegado,
+    persona.modalidad_contrato || persona.modalidad || valorLegado,
+  );
+  return tiposContrato.find(tipo => (
+    normalizarTipoContratoDuracion(tipo.nombre || tipo.codigo, 'planilla') === categoria
+  ))?.codigo || '';
+};
+
 export const requiereFechaFinContrato = (tipoContrato = '') => {
   return ['plazo_fijo', 'obra_determinada', 'por_encargo'].includes(String(tipoContrato || '').toLowerCase());
 };
@@ -289,6 +309,7 @@ const normalizarPersonalOperativo = (p = {}) => ({
   perfil_campo: p.perfil_campo || null,
   modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
   tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
+  tipo_contrato_catalogo_codigo: p.tipo_contrato_catalogo_codigo || null,
   afp_nombre: p.afp_nombre || null,
   tiene_hijos: Boolean(p.tiene_hijos),
   // Deprecated: regimen_laboral individual ya no gobierna calculos; usar empresa_config.regimen_laboral_empresa.
@@ -351,6 +372,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   tarifa_hora: calcularTarifaHora(persona.monto_mensual ?? persona.sueldo_base, persona.horas_base_mes),
   modalidad_contrato: normalizarModalidadContrato(persona.modalidad_contrato || persona.tipo_contrato),
   tipo_contrato: normalizarTipoContratoDuracion(persona.tipo_contrato, persona.modalidad_contrato || persona.tipo_contrato),
+  tipo_contrato_catalogo_codigo: persona.tipo_contrato_catalogo_codigo || null,
   afp_nombre: persona.afp_nombre || null,
   tiene_hijos: persona.tiene_hijos ?? false,
   // Deprecated: fuente de verdad de regimen laboral es empresa_config.regimen_laboral_empresa.
@@ -397,7 +419,7 @@ const toPersonalOperativoUpdate = (cambios = {}) => {
     'area', 'turno_id', 'telefono', 'email', 'sede', 'supervisor_id', 'supervisor',
     'fecha_ingreso', 'sueldo_base', 'moneda', 'sistema_pensionario',
     'metodo_pago', 'monto_mensual', 'horas_base_mes', 'tarifa_hora',
-    'modalidad_contrato', 'tipo_contrato', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
+    'modalidad_contrato', 'tipo_contrato', 'tipo_contrato_catalogo_codigo', 'afp_nombre', 'tiene_hijos', 'regimen_laboral',
     'cuota_prestamo_mes', 'descuento_judicial',
     'horas_diarias_pactadas',
     'cargo_confianza', 'bonif_altitud', 'tipo_comision_afp', 'pct_comision_afp_flujo',
@@ -440,6 +462,7 @@ const normalizarPersonalAdmin = (p = {}) => ({
   tarifa_hora_referencial: p.tarifa_hora_referencial != null ? Number(p.tarifa_hora_referencial) : null,
   modalidad_contrato: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
   tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
+  tipo_contrato_catalogo_codigo: p.tipo_contrato_catalogo_codigo || null,
   modalidad: p.modalidad || 'Presencial',
   sede: p.sede || '',
   turno_id: p.turno_id || '',
@@ -505,6 +528,7 @@ const toPersonalAdminRow = (empresaId, persona = {}) => ({
   turno_id: persona.turno_id || null,
   modalidad_contrato: normalizarModalidadContrato(persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
   tipo_contrato: normalizarTipoContratoDuracion(persona.tipo_contrato, persona.modalidad_contrato || persona.tipo_contrato || persona.modalidad),
+  tipo_contrato_catalogo_codigo: persona.tipo_contrato_catalogo_codigo || null,
   fecha_ingreso: persona.fecha_ingreso || persona.fecha_inicio || null,
   sueldo_base: Number(persona.sueldo_base ?? persona.remuneracion ?? 0),
   remuneracion: Number(persona.remuneracion ?? persona.sueldo_base ?? 0),
@@ -572,7 +596,7 @@ const toPersonalAdminUpdate = (cambios = {}) => {
   const allowed = new Set([
     'codigo', 'nombre', 'documento', 'dni', 'fecha_nacimiento', 'direccion',
     'cargo', 'cargo_id', 'posicion_id', 'area', 'telefono', 'email', 'supervisor', 'sede', 'turno_id',
-    'modalidad_contrato', 'tipo_contrato', 'fecha_ingreso',
+    'modalidad_contrato', 'tipo_contrato', 'tipo_contrato_catalogo_codigo', 'fecha_ingreso',
     'sueldo_base', 'remuneracion', 'moneda', 'metodo_pago', 'monto_mensual',
     'horas_base_mes', 'tarifa_hora', 'sistema_pensionario', 'modalidad',
     'afp_nombre', 'tiene_hijos', 'regimen_laboral', 'cuota_prestamo_mes',
@@ -727,6 +751,7 @@ export const rrhhService = {
     return data || [];
   },
   crearTipoContrato: async (empresaId, payload) => {
+    if (!String(payload?.codigo || '').trim()) throw new Error('El código del tipo de contrato es obligatorio.');
     const supabase = await getSupabaseClient();
     const id = 'tcon_' + Math.random().toString(36).substr(2, 9);
     const { data, error } = await supabase.from('tipos_contrato').insert([{ id, empresa_id: empresaId, ...payload }]).select().single();
@@ -734,6 +759,9 @@ export const rrhhService = {
     return data;
   },
   actualizarTipoContrato: async (id, payload) => {
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'codigo') && !String(payload.codigo || '').trim()) {
+      throw new Error('El código del tipo de contrato es obligatorio.');
+    }
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.from('tipos_contrato').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) throw error;

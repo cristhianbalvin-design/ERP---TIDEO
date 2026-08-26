@@ -56,6 +56,7 @@ import {
   getTipoFiscalizacion,
   normalizarModalidadContrato,
   normalizarTipoContratoDuracion,
+  resolverCodigoTipoContratoCatalogo,
   rrhhService,
   retencionIrHonorariosLabel,
 } from './services/rrhhService.js';
@@ -10963,7 +10964,7 @@ function RRHHAdmin() {
   const tipoContratoAlta = esHonorariosAlta
     ? 'honorarios'
     : (tiposContrato.length > 0
-        ? (tiposContrato.some(c => c.codigo === formAlta.tipo_contrato) ? formAlta.tipo_contrato : (tiposContrato[0]?.codigo || ''))
+        ? (resolverCodigoTipoContratoCatalogo(formAlta, tiposContrato) || tiposContrato[0]?.codigo || '')
         : normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta));
   const asignacionFamiliar = asignacionFamiliarMonto(empresaConfig);
   const tipoFiscalizacionAlta = getTipoFiscalizacion({
@@ -11310,7 +11311,7 @@ function RRHHAdmin() {
       turno_id: turnoActualId,
       centro_costo_id: p.centro_costo_id || '',
       modalidad: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
-      tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
+      tipo_contrato: p.tipo_contrato_catalogo_codigo || normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
       fecha_inicio: p.fecha_ingreso || '',
       remuneracion: String(p.remuneracion ?? p.sueldo_base ?? ''),
       moneda: p.moneda || 'PEN',
@@ -11434,6 +11435,7 @@ function RRHHAdmin() {
       nivel_estudios: '', especialidad: '', institucion: '',
       modalidad_contrato: modalidad,
       tipo_contrato: tipoContrato,
+      tipo_contrato_catalogo_codigo: modalidad === 'honorarios' ? null : (tipoContratoAlta || null),
       remuneracion: Number(formAlta.remuneracion) || 0,
       moneda: formAlta.moneda || 'PEN',
       metodo_pago: formAlta.metodo_pago || 'mensual',
@@ -14130,7 +14132,7 @@ function RRHHAdmin() {
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008" style={{fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Puedes editarlo si lo necesitas.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}

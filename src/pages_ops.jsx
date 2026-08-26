@@ -24,6 +24,7 @@ import {
   getTipoFiscalizacion,
   normalizarModalidadContrato,
   normalizarTipoContratoDuracion,
+  resolverCodigoTipoContratoCatalogo,
   retencionIrHonorariosLabel,
 } from './services/rrhhService.js';
 import * as ticketsService from './services/ticketsService.js';
@@ -20840,7 +20841,7 @@ function RRHH_Operativo() {
   const tipoContratoAlta = esHonorarios
     ? 'honorarios'
     : (tiposContrato.length > 0
-        ? (tiposContrato.some(c => c.codigo === formAlta.tipo_contrato) ? formAlta.tipo_contrato : (tiposContrato[0]?.codigo || ''))
+        ? (resolverCodigoTipoContratoCatalogo(formAlta, tiposContrato) || tiposContrato[0]?.codigo || '')
         : normalizarTipoContratoDuracion(formAlta.tipo_contrato, modalidadAlta));
   const horasBaseForm = Number(formAlta.horas_base_mes || 0);
   const tarifaHoraForm = Math.round((horasBaseForm > 0 ? Number(formAlta.monto_mensual || 0) / horasBaseForm : 0) * 100) / 100;
@@ -20985,7 +20986,7 @@ function RRHH_Operativo() {
       centro_costo_id: p.centro_costo_id || '',
       fecha_ingreso: p.fecha_ingreso || '',
       modalidad: normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato),
-      tipo_contrato: normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
+      tipo_contrato: p.tipo_contrato_catalogo_codigo || normalizarTipoContratoDuracion(p.tipo_contrato, p.modalidad_contrato || p.tipo_contrato),
       moneda: p.moneda || 'PEN',
       metodo_pago: p.metodo_pago || 'mensual',
       monto_mensual: String(p.monto_mensual ?? p.sueldo_base ?? ''),
@@ -21117,6 +21118,7 @@ function RRHH_Operativo() {
       fecha_ingreso: formAlta.fecha_ingreso || null,
       modalidad_contrato: modalidad,
       tipo_contrato: tipoContrato,
+      tipo_contrato_catalogo_codigo: modalidad === 'honorarios' ? null : (tipoContratoAlta || null),
       sueldo_base: modalidad === 'honorarios' ? 0 : Number(formAlta.sueldo_base || formAlta.monto_mensual) || 0,
       sistema_pensionario: modalidad === 'honorarios' ? null : formAlta.sistema_pensionario,
       afp_nombre: modalidad === 'honorarios' ? null : formAlta.afp_nombre,
@@ -23766,7 +23768,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder={`TEC-00${personalOperativo.length+1}`}/></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato)}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
-              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
+              <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorarios} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorarios ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorarios} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
