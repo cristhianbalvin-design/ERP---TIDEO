@@ -9,6 +9,7 @@ import { ApplicationWelcome } from './ApplicationWelcome.jsx';
 // usuario navega al módulo correspondiente.
 
 // Core CRM / BI
+const OrganigramaV2 = lazy(() => import('./pages_organigrama_v2.jsx'));
 const Dashboard       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Dashboard })));
 const Leads           = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Leads })));
 const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Pipeline })));
@@ -318,6 +319,13 @@ function MainLayout({ onShowApplicationWelcome }) {
   }
 
   const Page = () => {
+    if (import.meta.env.DEV) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('ov2preview') === '1') {
+        return <OrganigramaV2 preview empresaIdOverride={params.get('empresa') || undefined} />;
+      }
+    }
+
     switch (active) {
       case 'dashboard':        return <Dashboard role={role}/>;
       case 'bi_comercial':     return <BIComercial />;
@@ -356,7 +364,9 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'facturacion':      return <Facturacion/>;
       case 'roles':            return <Roles/>;
       case 'usuarios':         return <Usuarios/>;
-      case 'organigrama':      return <Organigrama/>;
+      case 'organigrama':
+        return empresa?.organigrama_v2_habilitado
+          ? <OrganigramaV2 /> : <Organigrama/>;
       case 'tenants':          return isSuperadmin ? <Tenants/> : <Dashboard role={role}/>;
       case 'planes':           return isSuperadmin ? <Planes/> : <Dashboard role={role}/>;
       case 'actividades':      return <Actividades/>;

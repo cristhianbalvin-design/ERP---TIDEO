@@ -942,7 +942,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, obtenerRolSugeridoPorPosicion, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
   const [visibleUserColumns, setVisibleUserColumns] = useState(() => USER_TABLE_COLUMNS.map(column => column.key));
@@ -1660,7 +1660,18 @@ function Usuarios() {
               </div>
               <PosicionSelector
                 value={editForm.posicion_id}
-                onChange={posicionId => setEditForm(p => ({...p, posicion_id: posicionId}))}
+                onChange={async posicionId => {
+                  const rolAntes = editForm.rol;
+                  setEditForm(p => ({ ...p, posicion_id: posicionId }));
+                  try {
+                    const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
+                    if (rolSugerido) setEditForm(p => (
+                      p.posicion_id === posicionId && p.rol === rolAntes ? { ...p, rol: rolSugerido } : p
+                    ));
+                  } catch (error) {
+                    console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                  }
+                }}
                 posiciones={posiciones}
                 posicionesUsuarios={posicionesUsuarios}
                 unidadesOrganizacionales={unidadesOrganizacionales}
@@ -1879,7 +1890,18 @@ function Usuarios() {
               </div>
               <PosicionSelector
                 value={nuevoForm.posicion_id}
-                onChange={posicionId => setNuevoForm(p => ({...p, posicion_id: posicionId}))}
+                onChange={async posicionId => {
+                  const rolAntes = nuevoForm.rol;
+                  setNuevoForm(p => ({ ...p, posicion_id: posicionId }));
+                  try {
+                    const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
+                    if (rolSugerido) setNuevoForm(p => (
+                      p.posicion_id === posicionId && p.rol === rolAntes ? { ...p, rol: rolSugerido } : p
+                    ));
+                  } catch (error) {
+                    console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                  }
+                }}
                 posiciones={posiciones}
                 posicionesUsuarios={posicionesUsuarios}
                 unidadesOrganizacionales={unidadesOrganizacionales}
@@ -10752,7 +10774,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -14389,7 +14411,18 @@ function RRHHAdmin() {
                       <div style={{gridColumn:'1/-1'}}>
                         <PosicionSelector
                           value={usuarioSistemaFormAdmin.posicion_id}
-                          onChange={posicionId => setUsuarioSistemaFormAdmin(v=>({...v,posicion_id:posicionId}))}
+                          onChange={async posicionId => {
+                            const rolAntes = usuarioSistemaFormAdmin.rol;
+                            setUsuarioSistemaFormAdmin(v => ({ ...v, posicion_id: posicionId }));
+                            try {
+                              const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
+                              if (rolSugerido) setUsuarioSistemaFormAdmin(v => (
+                                v.posicion_id === posicionId && v.rol === rolAntes ? { ...v, rol: rolSugerido } : v
+                              ));
+                            } catch (error) {
+                              console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                            }
+                          }}
                           posiciones={posiciones}
                           posicionesUsuarios={posicionesUsuarios}
                           unidadesOrganizacionales={unidadesOrganizacionales}
