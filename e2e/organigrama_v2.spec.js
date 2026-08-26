@@ -57,6 +57,7 @@ let createPair;
 let matrizId;
 let destinoReasignacionUo;
 let cargoSinNivelId;
+let rolesDelTenant = [];
 
 const required = (value, label) => {
   if (!value) throw new Error(`Falta ${label}; configúralo en .env.e2e.local o en el entorno.`);
@@ -189,12 +190,14 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     });
     matrizId = matriz.id;
 
-    const [unidades, cargos, colocaciones, cargosSinNivel] = await Promise.all([
+    const [unidades, cargos, colocaciones, cargosSinNivel, roles] = await Promise.all([
       rest(request, 'unidades_organizacionales', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
       rest(request, 'cargos_empresa', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
       rest(request, 'cargo_colocaciones', `select=id,unidad_organizacional_id,cargo_id,nivel_jerarquico_id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo`),
       rest(request, 'cargos_empresa', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}&estado=eq.activo&categoria_nivel=is.null&limit=1`),
+      rest(request, 'roles', `select=id&empresa_id=eq.${EMPRESA_PRUEBA}`),
     ]);
+    rolesDelTenant = roles;
     cargoSinNivelId = cargosSinNivel[0]?.id;
     expect(cargoSinNivelId).toBeTruthy();
     createPair = unidades
@@ -242,6 +245,15 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await expect(page.getByTestId('ov2-create-rol')).toHaveValue('');
     await expect(page.getByText('Selecciona un nivel para continuar.')).toBeVisible();
     await expect(page.getByTestId('ov2-create-submit')).toBeDisabled();
+  });
+
+  test('1a. permite elegir cualquier rol del tenant aunque no coincida con el nivel sugerido', async ({ page }) => {
+    await page.getByTestId(`ov2-create-colocacion-${fixtures.direccion.unidadId}`).evaluate(button => button.click());
+    await page.getByTestId('ov2-create-nivel').selectOption(fixtures.operativo.nivelId);
+    const rolesVisibles = await page.getByTestId('ov2-create-rol').locator('option:not([value=""])').evaluateAll(options => options.map(option => option.value));
+    expect(rolesVisibles.sort()).toEqual(rolesDelTenant.map(rol => rol.id).sort());
+    await page.getByTestId('ov2-create-rol').selectOption(fixtures.jefatura.rolId);
+    await expect(page.getByTestId('ov2-create-rol')).toHaveValue(fixtures.jefatura.rolId);
   });
 
   test('2. persiste la posición visual tras arrastrar y recargar', async ({ page }) => {
