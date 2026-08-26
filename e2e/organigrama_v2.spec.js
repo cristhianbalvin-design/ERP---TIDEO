@@ -109,15 +109,16 @@ const dragNode = async (page, testId, deltaX, deltaY) => {
   await page.locator('.react-flow__controls-fitview').click({ force: true });
   await page.waitForTimeout(120);
   const card = page.getByTestId(testId);
+  const node = page.locator('.react-flow__node').filter({ has: card }).first();
   const box = await card.boundingBox();
-  const startX = box.x + 16;
-  const startY = box.y + box.height - 12;
+  const startX = box.x + 12;
+  const startY = box.y + 12;
   if (!box) throw new Error(`No se encontró la tarjeta arrastrable para ${testId}.`);
-  await card.hover();
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   await page.waitForTimeout(80);
   await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 12 });
+  await expect(node).toHaveClass(/dragging/);
   await page.waitForTimeout(80);
   await page.mouse.up();
 };
@@ -139,6 +140,16 @@ const connectUntil = async (page, sourceTestId, targetTestId, handles, expected,
 };
 
 const transformOf = style => style?.match(/transform:\s*([^;]+);/)?.[1] || '';
+
+const nodePosition = async (page, testId) => page
+  .locator('.react-flow__node')
+  .filter({ has: page.getByTestId(testId) })
+  .first()
+  .evaluate(element => {
+    const match = element.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+    if (!match) throw new Error(`No se pudo leer la posición React Flow: ${element.style.transform}`);
+    return { x: Number(match[1]), y: Number(match[2]) };
+  });
 
 test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
   test.beforeAll(async ({ request }) => {
@@ -237,6 +248,18 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     const afterReload = await page.locator('.react-flow__node').filter({ has: card }).first().getAttribute('style');
     expect(transformOf(afterReload)).not.toBe(transformOf(before));
     await screenshot(page, '01-layout-recargado');
+  });
+
+  test('1b. conserva la posición al cambiar modos de conexión sin recargar', async ({ page }) => {
+    const testId = `ov2-node-ccol-${fixtures.direccion.id}`;
+    await dragNode(page, testId, 125, 70);
+    await expect(page.getByText('Posición visual guardada.')).toBeVisible();
+    const afterDrag = await nodePosition(page, testId);
+
+    for (const mode of [/Jerarquía/, /Matricial/, /Todos/]) {
+      await page.getByRole('button', { name: mode }).click();
+      await expect.poll(() => nodePosition(page, testId)).toEqual(afterDrag);
+    }
   });
 
   test('2. crea jerarquía y muestra el error de ciclo', async ({ page }) => {

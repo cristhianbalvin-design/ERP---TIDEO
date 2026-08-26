@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import dagre from '@dagrejs/dagre';
 import {
   Background,
@@ -20,6 +20,7 @@ const DIMENSIONS = {
   posicion: { width: 190, height: 62 },
 };
 const EMPTY_POSITION = { x: 40, y: 40 };
+const CanvasNodeContext = createContext({ modoConexion: 'todos' });
 const CANVAS_INTERACTION_STYLES = `
   .ov2-canvas .react-flow__node { cursor: grab; }
   .ov2-canvas .ov2-drag-handle:active,
@@ -78,11 +79,12 @@ const handleClassName = (modoConexion, tipoConexion, extra = '') => (
 );
 
 export const UnidadOrganizacionalNode = ({ data, dragging }) => {
+  const { modoConexion, onCrearColocacion } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
-  const asignarUoHabilitado = handleEnabled(data.modoConexion, 'uo');
+  const asignarUoHabilitado = handleEnabled(modoConexion, 'uo');
   return (
   <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
-    <Handle id="uo-source" type="source" position={Position.Bottom} isConnectable={asignarUoHabilitado} className={handleClassName(data.modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
+    <Handle id="uo-source" type="source" position={Position.Bottom} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
     <NodeHeader color="#0f766e">UO {data.codigo && `· ${data.codigo}`}</NodeHeader>
     <div style={{ fontWeight: 850, fontSize: 17, lineHeight: 1.18 }}>{data.nombre}</div>
     <button
@@ -90,7 +92,7 @@ export const UnidadOrganizacionalNode = ({ data, dragging }) => {
       className="nodrag btn btn-secondary"
       data-testid={`ov2-create-colocacion-${data.record.id}`}
       style={{ marginTop: 7, padding: '3px 7px', fontSize: 10 }}
-      onClick={event => { event.stopPropagation(); data.onCrearColocacion?.(data.record); }}
+      onClick={event => { event.stopPropagation(); onCrearColocacion?.(data.record); }}
     >
       + Cargo
     </button>
@@ -99,9 +101,10 @@ export const UnidadOrganizacionalNode = ({ data, dragging }) => {
 };
 
 export const CargoColocacionNode = ({ data, dragging }) => {
+  const { modoConexion, onEditarColocacion } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
-  const asignarUoHabilitado = handleEnabled(data.modoConexion, 'uo');
-  const jerarquiaHabilitada = handleEnabled(data.modoConexion, 'jerarquia');
+  const asignarUoHabilitado = handleEnabled(modoConexion, 'uo');
+  const jerarquiaHabilitada = handleEnabled(modoConexion, 'jerarquia');
   return (
   <div
     className="ov2-drag-handle"
@@ -109,13 +112,13 @@ export const CargoColocacionNode = ({ data, dragging }) => {
     role="button"
     tabIndex={0}
     title="Haz clic para editar. Arrastra desde este nodo hacia su cargo padre para definir jerarquía."
-    onClick={() => data.onEditarColocacion?.(data.record)}
-    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') data.onEditarColocacion?.(data.record); }}
+    onClick={() => onEditarColocacion?.(data.record)}
+    onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') onEditarColocacion?.(data.record); }}
     onPointerDown={dragCursor.onPointerDown}
     style={{ ...nodeShell('#2563eb', 'var(--card)'), width: DIMENSIONS.colocacion.width, padding: '10px 12px', borderWidth: 2, cursor: dragCursor.cursor }}
   >
-    <Handle id="uo-target" type="target" position={Position.Top} isConnectable={asignarUoHabilitado} className={handleClassName(data.modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
-    <Handle id="jerarquia-target" type="target" position={Position.Left} isConnectable={jerarquiaHabilitada} className={handleClassName(data.modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
+    <Handle id="uo-target" type="target" position={Position.Top} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
+    <Handle id="jerarquia-target" type="target" position={Position.Left} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
     <NodeHeader color="#2563eb">Cargo-colocación</NodeHeader>
     <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{data.cargoNombre}</div>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
@@ -123,20 +126,21 @@ export const CargoColocacionNode = ({ data, dragging }) => {
       <span style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', borderRadius: 99, fontSize: 10, padding: '2px 6px' }}>{data.rolNombre}</span>
       <span style={{ background: '#1d4ed8', color: '#fff', borderRadius: 99, fontSize: 10, fontWeight: 800, padding: '2px 6px' }}>{data.ocupadas}/{data.cantidadPosiciones}</span>
     </div>
-    <Handle id="jerarquia-source" type="source" position={Position.Right} isConnectable={jerarquiaHabilitada} className={handleClassName(data.modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
+    <Handle id="jerarquia-source" type="source" position={Position.Right} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
   </div>
   );
 };
 
 export const PosicionNode = ({ data, dragging }) => {
+  const { modoConexion } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
-  const matricialHabilitada = handleEnabled(data.modoConexion, 'matricial');
+  const matricialHabilitada = handleEnabled(modoConexion, 'matricial');
   return (
   <div className="ov2-drag-handle" data-testid={`ov2-node-pos-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#94a3b8', 'var(--bg-subtle)'), width: DIMENSIONS.posicion.width, padding: '7px 9px', boxShadow: 'none', cursor: dragCursor.cursor }}>
-    <Handle id="matricial-target" type="target" position={Position.Left} isConnectable={matricialHabilitada} className={handleClassName(data.modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
+    <Handle id="matricial-target" type="target" position={Position.Left} isConnectable={matricialHabilitada} className={handleClassName(modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
     <div style={{ fontWeight: 750, fontSize: 12 }}>{data.ocupanteNombre || 'Vacante'}</div>
     <div style={{ color: 'var(--fg-muted)', fontSize: 10, marginTop: 2 }}>{data.estadoLabel}</div>
-    <Handle id="matricial-source" type="source" position={Position.Right} isConnectable={matricialHabilitada} className={handleClassName(data.modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
+    <Handle id="matricial-source" type="source" position={Position.Right} isConnectable={matricialHabilitada} className={handleClassName(modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
   </div>
   );
 };
@@ -282,7 +286,7 @@ const AutoFitView = () => {
   return null;
 };
 
-const buildGraph = (datos, onCrearColocacion, onEditarColocacion, modoConexion) => {
+const buildGraph = datos => {
   const unidades = [...(datos.unidadesOrganizacionales || [])].sort(sortByName);
   const colocaciones = [...(datos.cargoColocaciones || [])]
     .filter(colocacion => colocacion.estado === 'activo')
@@ -308,7 +312,7 @@ const buildGraph = (datos, onCrearColocacion, onEditarColocacion, modoConexion) 
   unidades.forEach(unidad => nodes.push({
     id: toFlowNodeId('uo', unidad.id), type: 'unidad', position: EMPTY_POSITION,
     dragHandle: '.ov2-drag-handle',
-    data: { ...unidad, record: unidad, persistencia: { tipoNodo: 'uo', nodoId: unidad.id }, onCrearColocacion, modoConexion },
+    data: { ...unidad, record: unidad, persistencia: { tipoNodo: 'uo', nodoId: unidad.id } },
   }));
 
   colocaciones.forEach(colocacion => {
@@ -324,8 +328,6 @@ const buildGraph = (datos, onCrearColocacion, onEditarColocacion, modoConexion) 
         rolNombre: colocacion.rol?.nombre || colocacion.rol_id,
         cantidadPosiciones: colocacion.cantidad_posiciones || 0,
         ocupadas: posicionesDeColocacion.filter(posicion => (ocupacionesPorPosicionId.get(posicion.id) || []).length > 0).length,
-        onEditarColocacion,
-        modoConexion,
       },
     });
     edges.push({
@@ -333,7 +335,7 @@ const buildGraph = (datos, onCrearColocacion, onEditarColocacion, modoConexion) 
       source: toFlowNodeId('uo', colocacion.unidad_organizacional_id),
       target: toFlowNodeId('cargo_colocacion', colocacion.id),
       sourceHandle: 'uo-source', targetHandle: 'uo-target',
-      type: 'smoothstep', style: { stroke: '#14b8a6', strokeWidth: 2.25 }, selectable: false, focusable: false,
+      type: 'smoothstep', style: { stroke: '#14b8a6', strokeWidth: 2.25, strokeDasharray: '4 3' }, selectable: false, focusable: false,
       data: { layoutOnly: true },
     });
 
@@ -347,7 +349,6 @@ const buildGraph = (datos, onCrearColocacion, onEditarColocacion, modoConexion) 
           persistencia: { tipoNodo: 'posicion', nodoId: posicion.id },
           ocupanteNombre: ocupaciones.map(ocupacion => ocupacion.ocupante?.nombre).filter(Boolean).join(' · '),
           estadoLabel: ocupaciones.length ? `${ocupaciones.length} ocupante${ocupaciones.length === 1 ? '' : 's'} activo${ocupaciones.length === 1 ? '' : 's'}` : 'Vacante',
-          modoConexion,
         },
       });
       edges.push({
@@ -439,7 +440,7 @@ export default function OrganigramaCanvas({
   onEliminarRelacionMatricial,
   onError,
 }) {
-  const graph = useMemo(() => buildGraph(datos, onCrearColocacion, onEditarColocacion, modoConexion), [datos, modoConexion, onCrearColocacion, onEditarColocacion]);
+  const graph = useMemo(() => buildGraph(datos), [datos]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
 
@@ -496,6 +497,7 @@ export default function OrganigramaCanvas({
   return (
     <div className="ov2-canvas" style={{ height: '100%', minHeight: 0, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card, var(--bg))' }}>
       <style>{CANVAS_INTERACTION_STYLES}</style>
+      <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -518,6 +520,7 @@ export default function OrganigramaCanvas({
         <Background gap={18} size={1} color="var(--border)" />
         <Controls showInteractive />
       </ReactFlow>
+      </CanvasNodeContext.Provider>
     </div>
   );
 }
