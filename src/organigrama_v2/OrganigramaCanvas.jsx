@@ -71,7 +71,7 @@ const useNodeDragCursor = dragging => {
 };
 
 const handleEnabled = (modoConexion, tipoConexion) => (
-  modoConexion === 'todos' || modoConexion === tipoConexion
+  modoConexion === 'todos' || (Array.isArray(tipoConexion) ? tipoConexion : [tipoConexion]).includes(modoConexion)
 );
 
 const handleClassName = (modoConexion, tipoConexion, extra = '') => (
@@ -81,10 +81,12 @@ const handleClassName = (modoConexion, tipoConexion, extra = '') => (
 export const UnidadOrganizacionalNode = ({ data, dragging }) => {
   const { modoConexion, onCrearColocacion } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
-  const asignarUoHabilitado = handleEnabled(modoConexion, 'uo');
+  const uoSourceHabilitado = handleEnabled(modoConexion, ['uo', 'uo_padre']);
+  const jerarquiaUoHabilitada = handleEnabled(modoConexion, 'uo_padre');
   return (
   <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
-    <Handle id="uo-source" type="source" position={Position.Bottom} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
+    <Handle id="uo-padre-target" type="target" position={Position.Top} isConnectable={jerarquiaUoHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-padre')} style={{ background: '#0F6E56' }} />
+    <Handle id="uo-source" type="source" position={Position.Bottom} isConnectable={uoSourceHabilitado} className={handleClassName(modoConexion, ['uo', 'uo_padre'], 'ov2-handle-uo')} style={{ background: '#14b8a6' }} />
     <NodeHeader color="#0f766e">UO {data.codigo && `· ${data.codigo}`}</NodeHeader>
     <div style={{ fontWeight: 850, fontSize: 17, lineHeight: 1.18 }}>{data.nombre}</div>
     <button
@@ -155,16 +157,32 @@ const tipoConexion = (connection, nodes) => {
   const target = nodes.find(node => node.id === connection.target);
   if (!source || !target || source.id === target.id) return null;
   if (source.type === 'unidad' && connection.sourceHandle === 'uo-source' && target.type === 'colocacion' && connection.targetHandle === 'uo-target') return 'uo';
+  if (source.type === 'unidad' && connection.sourceHandle === 'uo-source' && target.type === 'unidad' && connection.targetHandle === 'uo-padre-target') return 'uo_padre';
   if (source.type === 'colocacion' && connection.sourceHandle === 'jerarquia-source' && target.type === 'colocacion' && connection.targetHandle === 'jerarquia-target') return 'jerarquia';
   if (source.type === 'posicion' && connection.sourceHandle === 'matricial-source' && target.type === 'posicion' && connection.targetHandle === 'matricial-target') return 'matricial';
   return null;
 };
 
 const hintConexion = ({ handleId, node }) => {
-  if (node?.type === 'unidad' && handleId === 'uo-source') return 'Suelta sobre una cargo-colocación para asignarla a esta UO.';
+  if (node?.type === 'unidad' && handleId === 'uo-source') return 'Suelta sobre una cargo-colocación para asignarla a esta UO, o sobre una UO padre para definir su jerarquía.';
   if (node?.type === 'colocacion' && handleId === 'jerarquia-source') return 'Suelta sobre la cargo-colocación padre para definir jerarquía.';
   if (node?.type === 'posicion' && handleId === 'matricial-source') return 'Suelta sobre la posición jefe para crear la relación matricial.';
   return 'Selecciona un punto de conexión válido.';
+};
+
+const errorCicloUO = (connection, nodes) => {
+  const source = nodes.find(node => node.id === connection.source);
+  const target = nodes.find(node => node.id === connection.target);
+  if (source?.type !== 'unidad' || target?.type !== 'unidad' || connection.sourceHandle !== 'uo-source' || connection.targetHandle !== 'uo-padre-target') return '';
+  const hijaId = source.data.record.id;
+  if (hijaId === target.data.record.id) return 'Una unidad organizacional no puede ser su propia UO padre.';
+  const unidadPorId = new Map(nodes.filter(node => node.type === 'unidad').map(node => [node.data.record.id, node.data.record]));
+  let ancestroId = target.data.record.id;
+  while (ancestroId) {
+    if (ancestroId === hijaId) return 'La conexión generaría un ciclo en la jerarquía de unidades organizacionales.';
+    ancestroId = unidadPorId.get(ancestroId)?.unidad_padre_id || null;
+  }
+  return '';
 };
 
 const dagrePositions = (nodes, edges) => {
@@ -315,6 +333,20 @@ const buildGraph = datos => {
     data: { ...unidad, record: unidad, persistencia: { tipoNodo: 'uo', nodoId: unidad.id } },
   }));
 
+  const unidadPorId = new Map(unidades.map(unidad => [unidad.id, unidad]));
+  unidades.forEach(unidad => {
+    if (!unidad.unidad_padre_id || !unidadPorId.has(unidad.unidad_padre_id)) return;
+    edges.push({
+      id: `uo-padre:${unidad.id}:${unidad.unidad_padre_id}`,
+      source: toFlowNodeId('uo', unidad.id), target: toFlowNodeId('uo', unidad.unidad_padre_id),
+      sourceHandle: 'uo-source', targetHandle: 'uo-padre-target',
+      type: 'smoothstep', label: 'UO padre', labelStyle: { fill: '#0F6E56', fontSize: 10, fontWeight: 700 },
+      style: { stroke: '#0F6E56', strokeWidth: 2.25 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#0F6E56', width: 16, height: 16 }, selectable: false, focusable: false,
+      data: { layoutOnly: true },
+    });
+  });
+
   colocaciones.forEach(colocacion => {
     const posicionesDeColocacion = posicionesPorColocacionId.get(colocacion.id) || [];
     nodes.push({
@@ -399,7 +431,7 @@ const buildGraph = datos => {
     const layoutEdges = edges
       .filter(edge => edge.data?.kind !== 'matricial')
       // La arista visible es hija → padre; para el árbol, dagre coloca padre → hija.
-      .map(edge => edge.id.startsWith('jerarquia:') ? { ...edge, source: edge.target, target: edge.source } : edge);
+      .map(edge => (edge.id.startsWith('jerarquia:') || edge.id.startsWith('uo-padre:')) ? { ...edge, source: edge.target, target: edge.source } : edge);
     const positions = dagrePositions(nodes, layoutEdges);
     nodes.forEach(node => { node.position = positions.get(node.id) || EMPTY_POSITION; });
     ordenarRaicesDeUoPorNivel(nodes, colocaciones, posiciones);
@@ -435,6 +467,7 @@ export default function OrganigramaCanvas({
   modoConexion = 'todos',
   onConnectionHint,
   onReasignarUO,
+  onAsignarUOPadre,
   onCrearJerarquia,
   onCrearRelacionMatricial,
   onEliminarRelacionMatricial,
@@ -443,6 +476,7 @@ export default function OrganigramaCanvas({
   const graph = useMemo(() => buildGraph(datos), [datos]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
+  const conexionInvalidaRef = useRef('');
 
   useEffect(() => { setNodes(graph.nodes); }, [graph.nodes, setNodes]);
   useEffect(() => { setEdges(graph.edges); }, [graph.edges, setEdges]);
@@ -455,13 +489,27 @@ export default function OrganigramaCanvas({
 
   const isValidConnection = useCallback(connection => {
     const tipo = tipoConexion(connection, nodes);
-    return Boolean(tipo && (modoConexion === 'todos' || modoConexion === tipo));
+    const errorCiclo = errorCicloUO(connection, nodes);
+    if (errorCiclo) {
+      conexionInvalidaRef.current = errorCiclo;
+      return false;
+    }
+    const valida = Boolean(tipo && (modoConexion === 'todos' || modoConexion === tipo));
+    conexionInvalidaRef.current = valida ? '' : conexionInvalidaRef.current;
+    return valida;
   }, [modoConexion, nodes]);
 
   const onConnectStart = useCallback((_, params) => {
+    conexionInvalidaRef.current = '';
     const source = nodes.find(node => node.id === params.nodeId);
     onConnectionHint?.(hintConexion({ handleId: params.handleId, node: source }));
   }, [nodes, onConnectionHint]);
+
+  const onConnectEnd = useCallback(() => {
+    if (!conexionInvalidaRef.current) return;
+    onError?.(new Error(conexionInvalidaRef.current));
+    conexionInvalidaRef.current = '';
+  }, [onError]);
 
   const onConnect = useCallback(connection => {
     const source = nodes.find(node => node.id === connection.source);
@@ -476,6 +524,10 @@ export default function OrganigramaCanvas({
       Promise.resolve(onReasignarUO?.({ unidad: source.data.record, colocacion: target.data.record })).catch(error => onError?.(error));
       return;
     }
+    if (tipo === 'uo_padre') {
+      Promise.resolve(onAsignarUOPadre?.({ hija: source.data.record, padre: target.data.record })).catch(error => onError?.(error));
+      return;
+    }
     if (tipo === 'jerarquia') {
       Promise.resolve(onCrearJerarquia?.({ hija: source.data.record, padre: target.data.record })).catch(error => onError?.(error));
       return;
@@ -484,8 +536,8 @@ export default function OrganigramaCanvas({
       Promise.resolve(onCrearRelacionMatricial?.({ subordinada: source.data.record, jefe: target.data.record })).catch(error => onError?.(error));
       return;
     }
-    onError?.(new Error('Conecta cargo-colocación con cargo-colocación, o posición con posición.'));
-  }, [modoConexion, nodes, onConnectionHint, onCrearJerarquia, onCrearRelacionMatricial, onError, onReasignarUO]);
+    onError?.(new Error('Conecta una UO con una cargo-colocación o UO padre, cargo-colocación con cargo-colocación, o posición con posición.'));
+  }, [modoConexion, nodes, onAsignarUOPadre, onConnectionHint, onCrearJerarquia, onCrearRelacionMatricial, onError, onReasignarUO]);
 
   const onEdgeClick = useCallback((event, edge) => {
     if (edge.data?.kind !== 'matricial') return;
@@ -507,6 +559,7 @@ export default function OrganigramaCanvas({
         onNodeDragStop={onNodeDragStop}
         isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onConnect={onConnect}
         onEdgeClick={onEdgeClick}
         nodesDraggable

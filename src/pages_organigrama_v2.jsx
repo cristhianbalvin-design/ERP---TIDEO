@@ -45,7 +45,7 @@ const Panel = ({ title, children, onClose }) => (
 );
 
 export default function OrganigramaV2Page({ empresaIdOverride, preview = false }) {
-  const { empresa, role, crearUnidadOrganizacional } = useApp();
+  const { empresa, role, crearUnidadOrganizacional, actualizarUnidadOrganizacional } = useApp();
   const empresaId = preview ? (empresaIdOverride || EMPRESA_VALIDACION_ID) : empresa?.id;
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
@@ -189,6 +189,29 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     }
   }, [cargar, datos?.unidadesOrganizacionales, empresaId]);
 
+  const asignarUOPadre = useCallback(async ({ hija, padre }) => {
+    const unidades = datos?.unidadesOrganizacionales || [];
+    const hijaValida = unidades.some(unidad => unidad.id === hija?.id && unidad.empresa_id === empresaId);
+    const padreValida = unidades.some(unidad => unidad.id === padre?.id && unidad.empresa_id === empresaId);
+    if (!hijaValida || !padreValida) throw new Error('Las unidades organizacionales deben pertenecer al tenant activo.');
+    if (hija.id === padre.id) throw new Error('Una unidad organizacional no puede ser su propia UO padre.');
+    if (hija.unidad_padre_id === padre.id) {
+      setNotice(`${hija.nombre} ya reporta a ${padre.nombre}.`);
+      return null;
+    }
+    try {
+      setGuardando(true);
+      await actualizarUnidadOrganizacional(hija.id, { unidad_padre_id: padre.id });
+      setNotice(`${hija.nombre} ahora reporta a la UO padre ${padre.nombre}.`);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+      throw causa;
+    } finally {
+      setGuardando(false);
+    }
+  }, [actualizarUnidadOrganizacional, cargar, datos?.unidadesOrganizacionales, empresaId]);
+
   const crearMatricial = useCallback(async ({ subordinada, jefe }) => {
     try {
       setGuardando(true);
@@ -310,7 +333,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>Organigrama v2</h1>
         <p className="text-muted" style={{ margin: '6px 0 0' }}>
-          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
+          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO hija → UO padre, cargo-colocación hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
         </p>
       </div>
 
@@ -321,6 +344,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           ['uo', 'Asignar UO'],
           ['jerarquia', 'Jerarquía'],
           ['matricial', 'Matricial'],
+          ['uo_padre', 'UO padre'],
         ].map(([modo, etiqueta]) => (
           <button
             key={modo}
@@ -367,6 +391,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             modoConexion={modoConexion}
             onConnectionHint={setConexionHint}
             onReasignarUO={reasignarUO}
+            onAsignarUOPadre={asignarUOPadre}
             onCrearJerarquia={crearJerarquia}
             onCrearRelacionMatricial={crearMatricial}
             onEliminarRelacionMatricial={eliminarMatricial}

@@ -368,4 +368,49 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     expect(unidades).toEqual([{ id: expect.any(String), nombre, codigo }]);
     await screenshot(page, '08-alta-uo');
   });
+
+  test('9. conecta UO hija con UO padre y rechaza ciclos', async ({ page, request }) => {
+    const stamp = Date.now();
+    const crearUo = async tipo => {
+      const codigo = `UO-REL-${tipo}-${stamp}`;
+      const nombre = `UO relación ${tipo} ${stamp}`;
+      await page.getByTestId('ov2-new-uo').click();
+      await page.getByTestId('ov2-create-uo-nombre').fill(nombre);
+      await page.getByTestId('ov2-create-uo-codigo').fill(codigo);
+      await page.getByTestId('ov2-create-uo-submit').click();
+      await expect(page.getByText(`Unidad organizacional ${nombre} creada.`)).toBeVisible();
+      const unidades = await rest(request, 'unidades_organizacionales', `select=id,nombre,unidad_padre_id&empresa_id=eq.${EMPRESA_PRUEBA}&codigo=eq.${encodeURIComponent(codigo)}`);
+      expect(unidades).toHaveLength(1);
+      return unidades[0];
+    };
+
+    const hija = await crearUo('HIJA');
+    const padre = await crearUo('PADRE');
+    await page.reload();
+    await page.getByRole('button', { name: 'Administración' }).click();
+    await page.getByRole('button', { name: 'UO padre' }).click();
+    await expect(page.getByTestId(`ov2-node-uo-${hija.id}`)).toBeVisible();
+    await expect(page.getByTestId(`ov2-node-uo-${padre.id}`)).toBeVisible();
+
+    await connect(
+      page,
+      `ov2-node-uo-${hija.id}`,
+      `ov2-node-uo-${padre.id}`,
+      { sourceHandle: 'uo-source', targetHandle: 'uo-padre-target' },
+      { force: false },
+    );
+    await expect(page.getByText(new RegExp(`${hija.nombre} ahora reporta a la UO padre ${padre.nombre}`))).toBeVisible();
+    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${hija.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: hija.id, unidad_padre_id: padre.id }]);
+
+    await connect(
+      page,
+      `ov2-node-uo-${padre.id}`,
+      `ov2-node-uo-${hija.id}`,
+      { sourceHandle: 'uo-source', targetHandle: 'uo-padre-target' },
+      { force: false },
+    );
+    await expect(page.locator('.alert-danger')).toContainText(/ciclo en la jerarquía de unidades organizacionales/i);
+    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${padre.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: padre.id, unidad_padre_id: null }]);
+    await screenshot(page, '09-uo-padre-y-ciclo');
+  });
 });
