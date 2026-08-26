@@ -202,7 +202,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     try {
       setGuardando(true);
       await actualizarUnidadOrganizacional(hija.id, { unidad_padre_id: padre.id });
-      setNotice(`${hija.nombre} ahora reporta a la UO padre ${padre.nombre}.`);
+      setNotice(`${padre.nombre} ahora es UO padre de ${hija.nombre}.`);
       await cargar();
     } catch (causa) {
       setError(errorText(causa));
@@ -333,7 +333,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>Organigrama v2</h1>
         <p className="text-muted" style={{ margin: '6px 0 0' }}>
-          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO hija → UO padre, cargo-colocación hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
+          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO padre → UO hija (arrastra desde el jefe hacia el subordinado), cargo-colocación hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
         </p>
       </div>
 

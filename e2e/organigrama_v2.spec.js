@@ -369,48 +369,71 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await screenshot(page, '08-alta-uo');
   });
 
-  test('9. conecta UO hija con UO padre y rechaza ciclos', async ({ page, request }) => {
-    const stamp = Date.now();
-    const crearUo = async tipo => {
-      const codigo = `UO-REL-${tipo}-${stamp}`;
-      const nombre = `UO relación ${tipo} ${stamp}`;
-      await page.getByTestId('ov2-new-uo').click();
-      await page.getByTestId('ov2-create-uo-nombre').fill(nombre);
-      await page.getByTestId('ov2-create-uo-codigo').fill(codigo);
-      await page.getByTestId('ov2-create-uo-submit').click();
-      await expect(page.getByText(`Unidad organizacional ${nombre} creada.`)).toBeVisible();
-      const unidades = await rest(request, 'unidades_organizacionales', `select=id,nombre,unidad_padre_id&empresa_id=eq.${EMPRESA_PRUEBA}&codigo=eq.${encodeURIComponent(codigo)}`);
-      expect(unidades).toHaveLength(1);
-      return unidades[0];
+  test('9. conecta una UO padre con varios hijos, reemplaza un padre y rechaza ciclos', async ({ page, request }) => {
+    const actualizarPadre = async (unidadId, unidadPadreId) => {
+      const response = await request.patch(`${required(supabaseUrl, 'VITE_SUPABASE_URL')}/rest/v1/unidades_organizacionales?id=eq.${unidadId}`, {
+        headers: { ...authHeaders(), Prefer: 'return=representation' },
+        data: { unidad_padre_id: unidadPadreId },
+      });
+      if (!response.ok()) throw new Error(`actualizar UO: ${response.status()} ${await response.text()}`);
     };
-
-    const hija = await crearUo('HIJA');
-    const padre = await crearUo('PADRE');
+    const [direccion, administracion, comercial] = await Promise.all([
+      rest(request, 'unidades_organizacionales', `select=id,nombre,unidad_padre_id&id=eq.${fixtures.direccion.unidadId}&empresa_id=eq.${EMPRESA_PRUEBA}`),
+      rest(request, 'unidades_organizacionales', `select=id,nombre,unidad_padre_id&id=eq.${fixtures.jefatura.unidadId}&empresa_id=eq.${EMPRESA_PRUEBA}`),
+      rest(request, 'unidades_organizacionales', `select=id,nombre,unidad_padre_id&id=eq.${fixtures.operativo.unidadId}&empresa_id=eq.${EMPRESA_PRUEBA}`),
+    ]).then(resultados => resultados.map(([unidad]) => unidad));
+    expect([direccion, administracion, comercial].every(Boolean)).toBeTruthy();
+    await Promise.all([
+      actualizarPadre(direccion.id, null),
+      actualizarPadre(administracion.id, null),
+      actualizarPadre(comercial.id, null),
+    ]);
     await page.reload();
     await page.getByRole('button', { name: 'Administración' }).click();
     await page.getByRole('button', { name: 'UO padre' }).click();
-    await expect(page.getByTestId(`ov2-node-uo-${hija.id}`)).toBeVisible();
-    await expect(page.getByTestId(`ov2-node-uo-${padre.id}`)).toBeVisible();
+
+    const conectarPadreConHija = async (padre, hija) => {
+      await connect(
+        page,
+        `ov2-node-uo-${padre.id}`,
+        `ov2-node-uo-${hija.id}`,
+        { sourceHandle: 'uo-padre-source', targetHandle: 'uo-hijo-target' },
+        { force: true },
+      );
+      await expect(page.getByText(new RegExp(`${padre.nombre} ahora es UO padre de ${hija.nombre}`))).toBeVisible();
+      await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${hija.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: hija.id, unidad_padre_id: padre.id }]);
+    };
+
+    await conectarPadreConHija(direccion, administracion);
+    await conectarPadreConHija(direccion, comercial);
+    await expect(page.getByTestId(`rf__edge-uo-padre:${administracion.id}:${direccion.id}`)).toBeVisible();
+    await expect(page.getByTestId(`rf__edge-uo-padre:${comercial.id}:${direccion.id}`)).toBeVisible();
+
+    const relacionesIniciales = await rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&empresa_id=eq.${EMPRESA_PRUEBA}&id=in.(${administracion.id},${comercial.id})`);
+    expect(relacionesIniciales).toEqual(expect.arrayContaining([
+      { id: administracion.id, unidad_padre_id: direccion.id },
+      { id: comercial.id, unidad_padre_id: direccion.id },
+    ]));
+
+    await conectarPadreConHija(comercial, administracion);
+    await expect(page.getByTestId(`rf__edge-uo-padre:${administracion.id}:${direccion.id}`)).toHaveCount(0);
+    await expect(page.getByTestId(`rf__edge-uo-padre:${administracion.id}:${comercial.id}`)).toBeVisible();
+    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${administracion.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: administracion.id, unidad_padre_id: comercial.id }]);
 
     await connect(
       page,
-      `ov2-node-uo-${hija.id}`,
-      `ov2-node-uo-${padre.id}`,
-      { sourceHandle: 'uo-source', targetHandle: 'uo-padre-target' },
-      { force: false },
-    );
-    await expect(page.getByText(new RegExp(`${hija.nombre} ahora reporta a la UO padre ${padre.nombre}`))).toBeVisible();
-    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${hija.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: hija.id, unidad_padre_id: padre.id }]);
-
-    await connect(
-      page,
-      `ov2-node-uo-${padre.id}`,
-      `ov2-node-uo-${hija.id}`,
-      { sourceHandle: 'uo-source', targetHandle: 'uo-padre-target' },
-      { force: false },
+      `ov2-node-uo-${administracion.id}`,
+      `ov2-node-uo-${direccion.id}`,
+      { sourceHandle: 'uo-padre-source', targetHandle: 'uo-hijo-target' },
+      { force: true },
     );
     await expect(page.locator('.alert-danger')).toContainText(/ciclo en la jerarquía de unidades organizacionales/i);
-    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${padre.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: padre.id, unidad_padre_id: null }]);
-    await screenshot(page, '09-uo-padre-y-ciclo');
+    await expect.poll(async () => rest(request, 'unidades_organizacionales', `select=id,unidad_padre_id&id=eq.${direccion.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([{ id: direccion.id, unidad_padre_id: null }]);
+    await Promise.all([
+      actualizarPadre(direccion.id, null),
+      actualizarPadre(administracion.id, null),
+      actualizarPadre(comercial.id, null),
+    ]);
+    await screenshot(page, '09-uo-padre-multiples-hijos');
   });
 });
