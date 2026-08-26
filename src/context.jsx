@@ -1406,7 +1406,7 @@ export function AppProvider({ children }) {
         supabase.rpc('get_mis_permisos_efectivos', { p_empresa_id: mem.empresa_id }),
         supabase
           .from('empresas')
-          .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado')
+          .select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado, organigrama_v2_habilitado')
           .eq('id', mem.empresa_id)
           .single(),
       ]);
@@ -1525,7 +1525,7 @@ export function AppProvider({ children }) {
         const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
 
         const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
-          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado').in('id', empresaIds),
+          supabase.from('empresas').select('id, razon_social, nombre_comercial, ruc, moneda_base, plan_id, estado, es_plataforma, multisociedad_habilitado, modulo_operativo_habilitado, organigrama_v2_habilitado').in('id', empresaIds),
           supabase.from('roles').select('id, nombre, es_admin_empresa, es_superadmin').in('id', rolIds),
         ]);
 
@@ -4466,6 +4466,23 @@ export function AppProvider({ children }) {
       throw err;
     }
   };
+
+  const obtenerRolSugeridoPorPosicion = async (posicionId) => {
+    const posicion = posiciones.find(p => p.id === posicionId);
+    if (!posicion?.cargo_colocacion_id || !isSupabaseConfigured() || !empresa?.id) return null;
+    if (posicion.empresa_id !== empresa.id) return null;
+
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cargo_colocaciones')
+      .select('rol_id')
+      .eq('id', posicion.cargo_colocacion_id)
+      .eq('empresa_id', empresa.id)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.rol_id || null;
+  };
+
   const eliminarUsuario = async (id, empresaIdOverride = null) => {
     const previous = usuarios;
     const empresaId = empresaIdOverride || empresa?.id;
@@ -10533,6 +10550,7 @@ export function AppProvider({ children }) {
     actualizarUsuarioAcceso,
     reasignarRolUsuario,
     crearUsuarioConAcceso,
+    obtenerRolSugeridoPorPosicion,
     asignarPasswordTemporal,
     marcarContrasenaActualizada,
     registrarActividad,

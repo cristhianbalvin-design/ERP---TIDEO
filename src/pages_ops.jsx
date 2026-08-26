@@ -20553,7 +20553,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -23982,7 +23982,18 @@ function RRHH_Operativo() {
                       <div style={{gridColumn:'1/-1'}}>
                         <PosicionSelector
                           value={usuarioSistemaForm.posicion_id}
-                          onChange={posicionId => setUsuarioSistemaForm(v=>({...v,posicion_id:posicionId}))}
+                          onChange={async posicionId => {
+                            const rolAntes = usuarioSistemaForm.rol;
+                            setUsuarioSistemaForm(v => ({ ...v, posicion_id: posicionId }));
+                            try {
+                              const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
+                              if (rolSugerido) setUsuarioSistemaForm(v => (
+                                v.posicion_id === posicionId && v.rol === rolAntes ? { ...v, rol: rolSugerido } : v
+                              ));
+                            } catch (error) {
+                              console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                            }
+                          }}
                           posiciones={posiciones}
                           posicionesUsuarios={posicionesUsuarios}
                           unidadesOrganizacionales={unidadesOrganizacionales}
