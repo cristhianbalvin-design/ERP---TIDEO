@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { PosicionOrganigramaInfo } from './components/PosicionOrganigramaInfo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
@@ -20642,6 +20643,7 @@ function RRHH_Operativo() {
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
+  const [cuentaTemporalOperativo, setCuentaTemporalOperativo] = useState(null);
   const [showFormAsig, setShowFormAsig] = useState(false);
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', fecha_fin: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
@@ -20930,7 +20932,7 @@ function RRHH_Operativo() {
     setAltaError('');
     setFormDatosBancarios([]);
     setCrearUsuarioSistema(false);
-    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, perfil_campo:'tecnico' });
+    setUsuarioSistemaForm({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
   };
   const horasBaseParaTurno = (turnoId) => {
     const turno = turnosOptions.find(t => t.id === turnoId);
@@ -21151,16 +21153,38 @@ function RRHH_Operativo() {
         await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
         addNotificacion('Tecnico actualizado.');
       } else {
-        await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
+        const fichaGuardada = await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
         addNotificacion('Tecnico creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
-      }
-      if (!editandoId && crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
-        try {
-          const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol;
-          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: usuarioSistemaForm.posicion_id || null, campo: usuarioSistemaForm.acceso_campo, campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [] });
-          addNotificacion('Usuario de sistema creado.');
-        } catch (userErr) {
-          addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+        const posicionAcceso = posiciones.find(posicion => posicion.id === usuarioSistemaForm.posicion_id);
+        const esPosicionV2 = Boolean(posicionAcceso?.cargo_colocacion_id);
+        if (crearUsuarioSistema && esPosicionV2 && !fichaGuardada?.auth_user_id && empresa?.organigrama_v2_habilitado === true && crearUsuarioConAcceso) {
+          const emailFicha = fichaGuardada?.email || fichaGuardada?.email_personal || '';
+          if (!emailFicha) {
+            addNotificacion(`No se pudo crear la cuenta de acceso automáticamente: falta un correo en la ficha de ${nuevo.nombre}. Complétalo y créala manualmente después.`, 'warning');
+          } else try {
+            const resultado = await crearUsuarioConAcceso({
+              nombre: nuevo.nombre,
+              email: emailFicha,
+              posicion_id: usuarioSistemaForm.posicion_id,
+              modo_automatico: true,
+              personal_tipo: 'operativo',
+              personal_id: fichaGuardada.id,
+              campo: usuarioSistemaForm.acceso_campo,
+              campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [],
+            });
+            if (resultado?.temporaryPassword) setCuentaTemporalOperativo({ nombre: nuevo.nombre, password: resultado.temporaryPassword });
+            addNotificacion('Usuario de sistema creado y vinculado a la ficha.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
+        } else if (crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
+          try {
+            const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol;
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: usuarioSistemaForm.posicion_id || null, campo: usuarioSistemaForm.acceso_campo, campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [] });
+            addNotificacion('Usuario de sistema creado.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
         }
       }
       cerrarPanelTecnico();
@@ -23585,6 +23609,10 @@ function RRHH_Operativo() {
                   return true;
                 }).map(p => {
                   const esHon = esModalidadHonorarios(p);
+                  const cuentaPendienteSinCorreo = !p.auth_user_id
+                    && !String(p.email || '').trim()
+                    && !String(p.email_personal || '').trim()
+                    && Boolean(posiciones.find(posicion => posicion.id === p.posicion_id)?.cargo_colocacion_id);
                   const turnoNombre = workerTurno(turnosOptions, p).nombre;
                   const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
                   const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
@@ -23600,6 +23628,7 @@ function RRHH_Operativo() {
                             {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && (
                               <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
                             )}
+                            {cuentaPendienteSinCorreo && <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Cuenta pendiente · falta correo</span>}
                           </div>
                         </div>
                       </td>}
@@ -24004,6 +24033,7 @@ function RRHH_Operativo() {
                           onCrearPosicion={crearPosicion}
                         />
                       </div>
+                      <PosicionOrganigramaInfo posicionId={usuarioSistemaForm.posicion_id} posiciones={posiciones} unidadesOrganizacionales={unidadesOrganizacionales} style={{gridColumn:'1/-1'}} />
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
@@ -24018,6 +24048,16 @@ function RRHH_Operativo() {
           </form>
         </div>
       </>}
+      {cuentaTemporalOperativo && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Contraseña temporal">
+        <div className="modal" style={{maxWidth:460}}>
+          <div className="modal-head"><h3>Cuenta creada</h3></div>
+          <div className="modal-body col" style={{gap:12}}>
+            <p>Contraseña temporal de <strong>{cuentaTemporalOperativo.nombre}</strong>. Entrégala en persona: no podrá volver a consultarse.</p>
+            <input className="input" value={cuentaTemporalOperativo.password} readOnly aria-label="Contraseña temporal" />
+            <div className="row" style={{justifyContent:'flex-end'}}><button className="btn btn-primary" onClick={()=>setCuentaTemporalOperativo(null)}>Entendido</button></div>
+          </div>
+        </div>
+      </div>}
     </>
   );
 }

@@ -19,6 +19,7 @@ import {
 import { resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { PosicionOrganigramaInfo } from './components/PosicionOrganigramaInfo.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
 import { ROLE_CATEGORIES, getUserHierarchyLevel, getPrimaryPosicion } from './lib/hierarchy.js';
@@ -1681,6 +1682,7 @@ function Usuarios() {
                 onCrearPosicion={crearPosicion}
                 currentUserId={editando?.id}
               />
+              <PosicionOrganigramaInfo posicionId={editForm.posicion_id} posiciones={posiciones} unidadesOrganizacionales={unidadesOrganizacionales} />
               {renderAlcanceSocietario({ form: editForm, setForm: setEditForm, esEdicion: true })}
               {renderAsignacionesAvanzadas({
                 items: editForm.asignaciones,
@@ -1910,6 +1912,7 @@ function Usuarios() {
                 usuarios={usuarios}
                 onCrearPosicion={crearPosicion}
               />
+              <PosicionOrganigramaInfo posicionId={nuevoForm.posicion_id} posiciones={posiciones} unidadesOrganizacionales={unidadesOrganizacionales} />
               {renderAlcanceSocietario({ form: nuevoForm, setForm: setNuevoForm })}
               {renderAsignacionesAvanzadas({
                 items: nuevoForm.asignaciones,
@@ -10863,6 +10866,7 @@ function RRHHAdmin() {
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
+  const [cuentaTemporalAdmin, setCuentaTemporalAdmin] = useState(null);
   // Estados para subida de documentos en tab Documentos
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -11262,7 +11266,7 @@ function RRHHAdmin() {
     setAltaError('');
     setFormDatosBancariosAdmin([]);
     setCrearUsuarioSistemaAdmin(false);
-    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
   };
   const horasBaseParaTurno = (turnoId) => {
     const turno = turnosOptions.find(t => t.id === turnoId);
@@ -11483,9 +11487,31 @@ function RRHHAdmin() {
         await actualizarAdminPersonalCtx(editandoId, nuevo);
         addNotificacion('Colaborador actualizado.');
       } else {
-        await crearAdminPersonalCtx(nuevo);
+        const fichaGuardada = await crearAdminPersonalCtx(nuevo);
         addNotificacion('Colaborador creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
-        if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
+        const posicionAcceso = posiciones.find(posicion => posicion.id === usuarioSistemaFormAdmin.posicion_id);
+        const esPosicionV2 = Boolean(posicionAcceso?.cargo_colocacion_id);
+        if (crearUsuarioSistemaAdmin && esPosicionV2 && !fichaGuardada?.auth_user_id && empresa?.organigrama_v2_habilitado === true && crearUsuarioConAcceso) {
+          const emailFicha = fichaGuardada?.email || fichaGuardada?.email_personal || '';
+          if (!emailFicha) {
+            addNotificacion(`No se pudo crear la cuenta de acceso automáticamente: falta un correo en la ficha de ${nuevo.nombre}. Complétalo y créala manualmente después.`, 'warning');
+          } else try {
+            const resultado = await crearUsuarioConAcceso({
+              nombre: nuevo.nombre,
+              email: emailFicha,
+              posicion_id: usuarioSistemaFormAdmin.posicion_id,
+              modo_automatico: true,
+              personal_tipo: 'administrativo',
+              personal_id: fichaGuardada.id,
+              campo: usuarioSistemaFormAdmin.acceso_campo,
+              campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [],
+            });
+            if (resultado?.temporaryPassword) setCuentaTemporalAdmin({ nombre: nuevo.nombre, password: resultado.temporaryPassword });
+            addNotificacion('Usuario de sistema creado y vinculado a la ficha.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
+        } else if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
           try {
             const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol;
             await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: usuarioSistemaFormAdmin.posicion_id || null, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
@@ -13942,6 +13968,10 @@ function RRHHAdmin() {
                   return true;
                 }).map(p => {
                   const esHon = normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios';
+                  const cuentaPendienteSinCorreo = !p.auth_user_id
+                    && !String(p.email || '').trim()
+                    && !String(p.email_personal || '').trim()
+                    && Boolean(posiciones.find(posicion => posicion.id === p.posicion_id)?.cargo_colocacion_id);
                   const contratoDocFila = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
                   const contratoInfoFila = rrhhAdminContratoVencimientoInfo(contratoDocFila);
                   return (
@@ -13956,6 +13986,7 @@ function RRHHAdmin() {
                           {vistaSociedadConcretaPersonalAdmin && resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id) && (
                             <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
                           )}
+                          {cuentaPendienteSinCorreo && <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Cuenta pendiente · falta correo</span>}
                         </div>
                       </div>
                     </td>}
@@ -14433,6 +14464,7 @@ function RRHHAdmin() {
                           onCrearPosicion={crearPosicion}
                         />
                       </div>
+                      <PosicionOrganigramaInfo posicionId={usuarioSistemaFormAdmin.posicion_id} posiciones={posiciones} unidadesOrganizacionales={unidadesOrganizacionales} style={{gridColumn:'1/-1'}} />
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
@@ -14448,6 +14480,16 @@ function RRHHAdmin() {
           </form>
         </div>
       </>}
+      {cuentaTemporalAdmin && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Contraseña temporal">
+        <div className="modal" style={{maxWidth:460}}>
+          <div className="modal-head"><h3>Cuenta creada</h3></div>
+          <div className="modal-body col" style={{gap:12}}>
+            <p>Contraseña temporal de <strong>{cuentaTemporalAdmin.nombre}</strong>. Entrégala en persona: no podrá volver a consultarse.</p>
+            <input className="input" value={cuentaTemporalAdmin.password} readOnly aria-label="Contraseña temporal" />
+            <div className="row" style={{justifyContent:'flex-end'}}><button className="btn btn-primary" onClick={()=>setCuentaTemporalAdmin(null)}>Entendido</button></div>
+          </div>
+        </div>
+      </div>}
     </>
   );
 }

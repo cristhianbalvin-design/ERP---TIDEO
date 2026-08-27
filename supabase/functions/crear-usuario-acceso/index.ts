@@ -18,6 +18,26 @@ const normalizeEmail = (email: unknown) =>
   String(email || "").trim().toLowerCase();
 const PLATFORM_SUPERADMIN_EMAIL = "cristhianbalvin@gmail.com";
 
+// Fisher-Yates con crypto.getRandomValues: evita el sesgo de Array#sort(() => Math.random() - .5).
+const randomIndex = (max: number) => {
+  const limit = Math.floor(0x1_0000_0000 / max) * max;
+  let value = 0;
+  do value = crypto.getRandomValues(new Uint32Array(1))[0]; while (value >= limit);
+  return value % max;
+};
+
+const generateTemporaryPassword = () => {
+  const groups = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%*-_+"];
+  const all = groups.join("");
+  const chars = groups.map(group => group[randomIndex(group.length)]);
+  while (chars.length < 16) chars.push(all[randomIndex(all.length)]);
+  for (let index = chars.length - 1; index > 0; index -= 1) {
+    const swap = randomIndex(index + 1);
+    [chars[index], chars[swap]] = [chars[swap], chars[index]];
+  }
+  return chars.join("");
+};
+
 const isMissingTable = (error: unknown) => {
   const err = error as { code?: string; message?: string } | null;
   const message = String(err?.message || "").toLowerCase();
@@ -292,15 +312,21 @@ serve(async (req) => {
 
   const nombre = String(payload.nombre || "").trim();
   const email = normalizeEmail(payload.email);
-  const password = String(payload.password || "");
+  let password = String(payload.password || "");
   const empresaId = String(payload.empresa_id || "").trim();
-  const rolInput = String(payload.rol || "").trim();
+  let rolInput = String(payload.rol || "").trim();
   const jefeUserId = String(payload.jefe_user_id || "").trim() || null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
   const asignacionesPayload = payload.asignaciones || [];
+  const modoAutomatico = payload.modo_automatico === true;
+  const personalTipo = String(payload.personal_tipo || "").trim();
+  const personalId = String(payload.personal_id || "").trim() || null;
 
-  if (!nombre || !email || !empresaId || !rolInput) {
+  if (!nombre || !email || !empresaId || (!rolInput && !modoAutomatico)) {
     return jsonResponse({ success: false, error: "Nombre, email, empresa y rol son obligatorios." }, 400);
+  }
+  if (modoAutomatico && (!personalId || !posicionId || !["administrativo", "operativo"].includes(personalTipo))) {
+    return jsonResponse({ success: false, error: "La creación automática requiere ficha de personal y posición válidas." }, 400);
   }
 
   const userPermission = await assertUserPermission(userClient, empresaId, "crear");
@@ -326,7 +352,7 @@ serve(async (req) => {
 
   const { data: targetEmpresa, error: targetEmpresaError } = await adminClient
     .from("empresas")
-    .select("id, es_plataforma, multisociedad_habilitado")
+    .select("id, es_plataforma, multisociedad_habilitado, organigrama_v2_habilitado")
     .eq("id", empresaId)
     .maybeSingle();
   if (targetEmpresaError) return jsonResponse({ success: false, error: targetEmpresaError.message }, 500);
@@ -334,6 +360,49 @@ serve(async (req) => {
 
   if (email === PLATFORM_SUPERADMIN_EMAIL && !targetEmpresa.es_plataforma) {
     return jsonResponse({ success: false, error: "El Superadmin TIDEO solo puede pertenecer al tenant plataforma." }, 403);
+  }
+  if (modoAutomatico && targetEmpresa.organigrama_v2_habilitado !== true) {
+    return jsonResponse({ success: false, error: "La creación automática de cuenta no está habilitada para este tenant." }, 403);
+  }
+
+  let ficha: { id: string; auth_user_id: string | null; email: string | null; email_personal: string | null } | null = null;
+  let tablaPersonal: "personal_administrativo" | "personal_operativo" | null = null;
+  let posicionRow: { id: string; cargo_colocacion_id: string | null } | null = null;
+  if (posicionId) {
+    const { data, error } = await adminClient
+      .from("posiciones")
+      .select("id, cargo_colocacion_id")
+      .eq("id", posicionId)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    if (!data?.id) return jsonResponse({ success: false, error: "La posición seleccionada no existe para este tenant." }, 400);
+    posicionRow = data;
+  }
+  if (modoAutomatico) {
+    tablaPersonal = personalTipo === "administrativo" ? "personal_administrativo" : "personal_operativo";
+    const { data, error } = await adminClient
+      .from(tablaPersonal)
+      .select("id, auth_user_id, email, email_personal")
+      .eq("id", personalId)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    if (!data?.id) return jsonResponse({ success: false, error: "La ficha de personal no pertenece al tenant seleccionado." }, 400);
+    ficha = data;
+    const correosFicha = [ficha.email, ficha.email_personal].map(normalizeEmail).filter(Boolean);
+    if (!correosFicha.includes(email)) return jsonResponse({ success: false, error: "El correo debe coincidir con uno registrado en la ficha de personal." }, 400);
+    if (ficha.auth_user_id) return jsonResponse({ success: false, error: "La ficha ya tiene una cuenta de acceso vinculada." }, 409);
+    if (!posicionRow?.cargo_colocacion_id) return jsonResponse({ success: false, error: "La posición elegida no pertenece al organigrama v2." }, 400);
+    const { data: colocacion, error: colocacionError } = await adminClient
+      .from("cargo_colocaciones")
+      .select("rol_id")
+      .eq("id", posicionRow.cargo_colocacion_id)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (colocacionError) return jsonResponse({ success: false, error: colocacionError.message }, 500);
+    if (!colocacion?.rol_id) return jsonResponse({ success: false, error: "La cargo-colocación elegida no tiene un rol de sistema configurado." }, 400);
+    rolInput = colocacion.rol_id;
   }
 
   let callerIsPlatformAdmin = false;
@@ -414,20 +483,11 @@ serve(async (req) => {
     if (!jefeMembership) return jsonResponse({ success: false, error: "El jefe directo debe pertenecer al mismo tenant y estar activo." }, 400);
   }
 
-  if (posicionId) {
-    const { data: posicionRow, error: posicionError } = await adminClient
-      .from("posiciones")
-      .select("id")
-      .eq("id", posicionId)
-      .eq("empresa_id", empresaId)
-      .maybeSingle();
-    if (posicionError) return jsonResponse({ success: false, error: posicionError.message }, 500);
-    if (!posicionRow?.id) return jsonResponse({ success: false, error: "La posicion seleccionada no existe para este tenant." }, 400);
-  }
-
   let alreadyExists = false;
   let membershipOverwritten = false;
   let uid: string | null = null;
+  let createdNewAccount = false;
+  let temporaryPassword: string | null = null;
 
   let existingAuthUser;
   try {
@@ -446,6 +506,10 @@ serve(async (req) => {
     });
     if (reactivateError) return jsonResponse({ success: false, error: reactivateError.message }, 400);
   } else {
+    if (modoAutomatico && !password) {
+      password = generateTemporaryPassword();
+      temporaryPassword = password;
+    }
     if (!password) {
       return jsonResponse({ success: false, error: "La contrasena temporal es obligatoria solo para usuarios nuevos." }, 400);
     }
@@ -476,12 +540,33 @@ serve(async (req) => {
       }
     } else {
       uid = createdUser.user?.id || null;
+      createdNewAccount = Boolean(uid);
     }
   }
 
   if (!uid) return jsonResponse({ success: false, error: "No se pudo resolver el usuario Auth creado." }, 500);
   if (jefeUserId === uid) {
     return jsonResponse({ success: false, error: "Un usuario no puede ser su propio jefe directo." }, 400);
+  }
+
+  if (modoAutomatico && ficha && tablaPersonal && personalId) {
+    const { data: linkedFicha, error: fichaLinkError } = await adminClient
+      .from(tablaPersonal)
+      .update({ auth_user_id: uid })
+      .eq("id", personalId)
+      .eq("empresa_id", empresaId)
+      .is("auth_user_id", null)
+      .select("id, auth_user_id")
+      .maybeSingle();
+    if (fichaLinkError || linkedFicha?.auth_user_id !== uid) {
+      if (createdNewAccount) {
+        await adminClient.auth.admin.deleteUser(uid);
+      }
+      return jsonResponse({
+        success: false,
+        error: "No se pudo enlazar la cuenta recién creada con la ficha. La creación fue compensada; inténtalo nuevamente.",
+      }, 500);
+    }
   }
 
   // Detectar si ya existe una membresía activa para este usuario en este tenant
@@ -600,6 +685,7 @@ serve(async (req) => {
     success: true,
     alreadyExists,
     membershipOverwritten,
+    temporaryPassword,
     user: {
       ...(savedUser || usuario),
       rol_nombre: roleRow.nombre,

@@ -353,6 +353,7 @@ const toPersonalOperativoRow = (empresaId, persona = {}) => ({
   cargo: persona.cargo || 'Tecnico de Campo',
   cargo_id: persona.cargo_id || null,
   posicion_id: persona.posicion_id || null,
+  auth_user_id: persona.auth_user_id || null,
   especialidad: persona.especialidad || 'General',
   especialidad2: persona.especialidad2 || null,
   area: persona.area || null,

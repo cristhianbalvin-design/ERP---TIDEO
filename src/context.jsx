@@ -4452,7 +4452,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, posicion_id = null, asignaciones = [], alcance_tipo, sociedades_ids, campo = false, campoModulos = [] }) => {
+  const crearUsuarioConAcceso = async ({ nombre, email, password, rol, jefe_user_id = null, posicion_id = null, asignaciones = [], alcance_tipo, sociedades_ids, campo = false, campoModulos = [], modo_automatico = false, personal_tipo = null, personal_id = null }) => {
     if (!isSupabaseConfigured()) {
       addNotificacion('Se requiere Supabase para crear usuarios con acceso.', 'error');
       return;
@@ -4474,6 +4474,9 @@ export function AppProvider({ children }) {
           jefe_user_id: jefe_user_id || null,
           posicion_id: posicion_id || null,
           asignaciones,
+          modo_automatico: modo_automatico === true,
+          personal_tipo: personal_tipo || null,
+          personal_id: personal_id || null,
           ...(alcance_tipo ? { alcance_tipo, sociedades_ids: sociedades_ids ?? null } : {}),
           empresa_id: empresa.id,
         },
@@ -4528,7 +4531,7 @@ export function AppProvider({ children }) {
           ? `El usuario ${nombre} ya tenia cuenta. Se agrego al tenant actual y usara su contrasena actual.`
           : `Usuario ${nombre} creado. Ya puede ingresar con la contrasena temporal.`
       );
-      return nuevoUsuario;
+      return { ...nuevoUsuario, temporaryPassword: data.temporaryPassword || null, alreadyExists: Boolean(data.alreadyExists) };
     } catch (err) {
       addNotificacion('Error al crear usuario: ' + (err.message || 'Error desconocido'), 'error');
       throw err;
