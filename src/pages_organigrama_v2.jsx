@@ -283,6 +283,40 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     }
   }, [cargar]);
 
+  const eliminarUnidad = useCallback(async unidad => {
+    if (!unidad?.id) return;
+    if (!window.confirm(`¿Eliminar la UO "${unidad.nombre}"? Se borrará físicamente y de forma permanente.`)) return;
+    try {
+      setGuardando(true);
+      setError('');
+      const resultado = await organigramaV2Service.eliminarUnidadOrganizacional(unidad.id);
+      setNotice(`Unidad organizacional ${resultado.nombre || unidad.nombre} eliminada.`);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+    } finally {
+      setGuardando(false);
+    }
+  }, [cargar]);
+
+  const eliminarColocacion = useCallback(async colocacion => {
+    if (!colocacion?.id) return;
+    const cargoNombre = colocacion.cargo?.nombre || colocacion.cargo_id;
+    if (!window.confirm(`¿Eliminar el cargo "${cargoNombre}"? Se borrará la cargo-colocación y sus posiciones vacantes asociadas de forma permanente.`)) return;
+    try {
+      setGuardando(true);
+      setError('');
+      const resultado = await organigramaV2Service.eliminarCargoColocacion(colocacion.id);
+      setNotice(`Cargo-colocación eliminada; posiciones vacantes eliminadas: ${resultado.posiciones_eliminadas || 0}.`);
+      setPanel(null);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+    } finally {
+      setGuardando(false);
+    }
+  }, [cargar]);
+
   const reintentarGeneracion = useCallback(async () => {
     if (!generacionPendienteId) return;
     try {
@@ -426,6 +460,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             datos={datos}
             onCrearColocacion={abrirCrear}
             onEditarColocacion={abrirEditar}
+            onEliminarUnidad={eliminarUnidad}
             onGuardarPosicion={guardarLayout}
             modoConexion={modoConexion}
             onConnectionHint={setConexionHint}
@@ -473,6 +508,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-edit-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
                 <div className="text-muted" style={{ fontSize: 12 }}>Cambiar el rol de esta colocación no altera los roles vigentes de sus ocupantes.</div>
                 <button data-testid="ov2-edit-submit" type="submit" className="btn btn-primary" disabled={guardando || !panel.form.rolId}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+                <button data-testid="ov2-edit-delete" type="button" className="btn btn-danger" disabled={guardando} onClick={() => eliminarColocacion(panel.colocacion)}>Eliminar cargo</button>
               </form>
             </Panel>
           )}

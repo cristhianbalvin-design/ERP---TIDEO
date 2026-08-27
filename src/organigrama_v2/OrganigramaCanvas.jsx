@@ -104,7 +104,7 @@ const descripcionArista = edge => {
 };
 
 export const UnidadOrganizacionalNode = ({ data, dragging }) => {
-  const { modoConexion, onCrearColocacion } = useContext(CanvasNodeContext);
+  const { modoConexion, onCrearColocacion, onEliminarUnidad } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
   const asignarUoHabilitado = handleEnabled(modoConexion, 'uo');
   const jerarquiaUoSourceHabilitada = handleEnabled(modoConexion, 'uo_padre');
@@ -116,15 +116,26 @@ export const UnidadOrganizacionalNode = ({ data, dragging }) => {
     <Handle id="uo-source" type="source" position={Position.Right} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '66%' }} />
     <NodeHeader color="#0f766e">UO {data.codigo && `· ${data.codigo}`}</NodeHeader>
     <div style={{ fontWeight: 850, fontSize: 17, lineHeight: 1.18 }}>{data.nombre}</div>
-    <button
-      type="button"
-      className="nodrag btn btn-secondary"
-      data-testid={`ov2-create-colocacion-${data.record.id}`}
-      style={{ marginTop: 7, padding: '3px 7px', fontSize: 10 }}
-      onClick={event => { event.stopPropagation(); onCrearColocacion?.(data.record); }}
-    >
-      + Cargo
-    </button>
+    <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
+      <button
+        type="button"
+        className="nodrag btn btn-secondary"
+        data-testid={`ov2-create-colocacion-${data.record.id}`}
+        style={{ padding: '3px 7px', fontSize: 10 }}
+        onClick={event => { event.stopPropagation(); onCrearColocacion?.(data.record); }}
+      >
+        + Cargo
+      </button>
+      <button
+        type="button"
+        className="nodrag btn btn-danger"
+        data-testid={`ov2-delete-uo-${data.record.id}`}
+        style={{ padding: '3px 7px', fontSize: 10 }}
+        onClick={event => { event.stopPropagation(); onEliminarUnidad?.(data.record); }}
+      >
+        Eliminar UO
+      </button>
+    </div>
   </div>
   );
 };
@@ -503,6 +514,7 @@ export default function OrganigramaCanvas({
   datos,
   onCrearColocacion,
   onEditarColocacion,
+  onEliminarUnidad,
   onGuardarPosicion,
   modoConexion = 'todos',
   onConnectionHint,
@@ -649,7 +661,7 @@ export default function OrganigramaCanvas({
   return (
     <div ref={canvasRef} className="ov2-canvas" style={{ position: 'relative', height: '100%', minHeight: 0, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', backgroundColor: 'color-mix(in srgb, var(--bg-card, var(--bg)) 92%, #dbeafe)', backgroundImage: 'radial-gradient(color-mix(in srgb, var(--fg) 17%, transparent) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
       <style>{CANVAS_INTERACTION_STYLES}</style>
-      <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion }}>
+      <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion, onEliminarUnidad }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

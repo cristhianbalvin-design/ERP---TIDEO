@@ -188,6 +188,22 @@ export const organigramaV2Service = {
     return data;
   },
 
+  async eliminarUnidadOrganizacional(id) {
+    if (!id) throw new Error('Falta la unidad organizacional a eliminar.');
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('eliminar_unidad_organizacional', { p_id: id });
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarCargoColocacion(id) {
+    if (!id) throw new Error('Falta la cargo-colocación a eliminar.');
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('eliminar_cargo_colocacion', { p_id: id });
+    if (error) throw error;
+    return data;
+  },
+
   async guardarPosicionNodo({ empresaId, tipoNodo, nodoId, x, y }) {
     requireEmpresaId(empresaId);
     const supabase = await getSupabaseClient();
