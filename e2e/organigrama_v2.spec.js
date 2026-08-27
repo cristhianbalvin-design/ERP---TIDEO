@@ -287,10 +287,13 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     }
   });
 
-  test('2. crea jerarquía y muestra el error de ciclo', async ({ page }) => {
-    await connectUntil(page, `ov2-node-ccol-${fixtures.jefatura.id}`, `ov2-node-ccol-${fixtures.direccion.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.getByText('reporta a'), { force: false });
-    await connectUntil(page, `ov2-node-ccol-${fixtures.direccion.id}`, `ov2-node-ccol-${fixtures.jefatura.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.locator('.alert-danger'), { force: false });
-    await expect(page.locator('.alert-danger')).toContainText(/generaria un ciclo/i);
+  test('2. conecta jerarquía padre → hijo y muestra el error de ciclo', async ({ page, request }) => {
+    await connectUntil(page, `ov2-node-ccol-${fixtures.direccion.id}`, `ov2-node-ccol-${fixtures.jefatura.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.getByText('es padre de'), { force: false });
+    await expect.poll(async () => rest(request, 'cargo_colocaciones', `select=id,reporta_a_cargo_colocacion_id&id=eq.${fixtures.jefatura.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([
+      { id: fixtures.jefatura.id, reporta_a_cargo_colocacion_id: fixtures.direccion.id },
+    ]);
+    await connectUntil(page, `ov2-node-ccol-${fixtures.jefatura.id}`, `ov2-node-ccol-${fixtures.direccion.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.locator('.alert-danger'), { force: false });
+    await expect(page.locator('.alert-danger')).toContainText(/generar.?.? un ciclo/i);
     await screenshot(page, '02-jerarquia-y-ciclo');
   });
 
@@ -311,7 +314,7 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await page.getByRole('button', { name: 'Administración' }).click();
     const edge = page.getByTestId(`rf__edge-jerarquia:${fixtures.jefatura.id}:${fixtures.direccion.id}`);
     await expect(edge).toBeVisible();
-    await edge.getByText('reporta a').click({ force: true });
+    await edge.getByText('es padre de').click({ force: true });
     await expect(page.getByTestId('ov2-edge-popover')).toContainText(/Jerarquía:/i);
     page.once('dialog', confirmation => confirmation.accept());
     await page.getByTestId('ov2-delete-edge').click();

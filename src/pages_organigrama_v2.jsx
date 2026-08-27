@@ -145,7 +145,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         estado: hija.estado,
         reportaACargoColocacionId: padre.id,
       });
-      setNotice(`Jerarquía guardada para ${hija.cargo?.nombre || hija.cargo_id} (${resultado.id}).`);
+      setNotice(`${padre.cargo?.nombre || padre.cargo_id} ahora es padre de ${hija.cargo?.nombre || hija.cargo_id}.`);
       await cargar();
     } catch (causa) {
       setError(errorText(causa));
@@ -406,7 +406,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>Organigrama v2</h1>
         <p className="text-muted" style={{ margin: '6px 0 0' }}>
-          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO padre → UO hija (arrastra desde el jefe hacia el subordinado), cargo-colocación hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
+          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO padre → UO hija (arrastra desde el jefe hacia el subordinado), cargo-colocación padre → hija para jerarquía y posición subordinada → posición jefe para relación matricial.
         </p>
       </div>
 
@@ -471,6 +471,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             onEliminarJerarquia={eliminarJerarquia}
             onCrearRelacionMatricial={crearMatricial}
             onEliminarRelacionMatricial={eliminarMatricial}
+            onPaneClick={() => { setPanel(null); setConexionHint(''); }}
             onError={causa => setError(errorText(causa))}
           />
 
