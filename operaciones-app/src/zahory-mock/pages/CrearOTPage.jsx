@@ -70,6 +70,14 @@ const CATEGORIAS_NO_FLOTA = new Set([
 const esActivoDeFlota = (activo) => !CATEGORIAS_NO_FLOTA.has(String(activo?.tipo_categoria || '').trim().toUpperCase());
 const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
 const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const generarIdEquipoCliente = () => `act_cli_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const generarCodigoEquipoCliente = () => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  const sufijo = uuid
+    ? uuid.slice(0, 8).toUpperCase()
+    : Math.floor(Math.random() * 100000000).toString(36).toUpperCase();
+  return `CLI-${new Date().getFullYear().toString().slice(-2)}-${sufijo}`;
+};
 
 const esErrorNumeroDuplicado = (error) =>
   error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '');
@@ -694,6 +702,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [centrosBeneficioReales, setCentrosBeneficioReales] = useState([]);
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
+  const [equiposClienteReales, setEquiposClienteReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
   const [cuadrillasReales, setCuadrillasReales] = useState([]);
   const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
@@ -703,6 +712,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [cargandoCentrosBeneficio, setCargandoCentrosBeneficio] = useState(false);
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
+  const [cargandoEquiposCliente, setCargandoEquiposCliente] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
   const [cargandoCuadrillas, setCargandoCuadrillas] = useState(false);
   const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
@@ -712,11 +722,18 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorCentrosBeneficio, setErrorCentrosBeneficio] = useState(null);
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
+  const [errorEquiposCliente, setErrorEquiposCliente] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
   const [errorCuadrillas, setErrorCuadrillas] = useState(null);
   const [errorTiposServicio, setErrorTiposServicio] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
+  const [altaEquipoClienteAbierta, setAltaEquipoClienteAbierta] = useState(false);
+  const [guardandoEquipoCliente, setGuardandoEquipoCliente] = useState(false);
+  const [errorAltaEquipoCliente, setErrorAltaEquipoCliente] = useState(null);
+  const [formEquipoCliente, setFormEquipoCliente] = useState({
+    nombre: '', marca: '', modelo: '', placa_serie: '',
+  });
 
   const [form, setForm] = useState({
     lineaNegocio: '',
@@ -939,6 +956,7 @@ export const CrearOTPage = ({ onNav }) => {
       .from('activos')
       .select('id,codigo,nombre,marca,modelo,tipo_categoria,centro_costo_id')
       .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('propietario_tipo', 'propio')
       .neq('estado', 'dado_baja')
       .order('codigo')
       .then(({ data, error }) => {
@@ -962,6 +980,56 @@ export const CrearOTPage = ({ onNav }) => {
 
     return () => { vigente = false; };
   }, [
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      objetoCostoTipo !== 'os_cliente'
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+      || !form.clienteId
+    ) {
+      setEquiposClienteReales([]);
+      setCargandoEquiposCliente(false);
+      return () => { vigente = false; };
+    }
+
+    setCargandoEquiposCliente(true);
+    setErrorEquiposCliente(null);
+    getSupabaseClient()
+      .from('activos')
+      .select('id,codigo,nombre,marca,modelo,placa_serie,estado')
+      .eq('empresa_id', sesionOperativa.empresaId)
+      .eq('propietario_tipo', 'cliente')
+      .eq('cliente_propietario_id', form.clienteId)
+      .neq('estado', 'dado_baja')
+      .order('codigo')
+      .then(({ data, error }) => {
+        if (!vigente) return;
+        if (error) {
+          setEquiposClienteReales([]);
+          setErrorEquiposCliente(error.message);
+        } else {
+          setEquiposClienteReales(data || []);
+        }
+      })
+      .catch(error => {
+        if (vigente) {
+          setEquiposClienteReales([]);
+          setErrorEquiposCliente(error.message);
+        }
+      })
+      .finally(() => {
+        if (vigente) setCargandoEquiposCliente(false);
+      });
+
+    return () => { vigente = false; };
+  }, [
+    form.clienteId,
     objetoCostoTipo,
     sesionOperativa.empresaId,
     sesionOperativa.permiteEscritura,
@@ -1215,8 +1283,10 @@ export const CrearOTPage = ({ onNav }) => {
   const equipo = useMemo(() => (
     objetoCostoTipo === 'equipo_interno'
       ? equiposInternosReales.find(e => e.id === form.equipo)
-      : D.equipos.find(e => e.cod === form.equipo)
-  ), [equiposInternosReales, form.equipo, objetoCostoTipo]);
+      : objetoCostoTipo === 'os_cliente'
+        ? equiposClienteReales.find(e => e.id === form.equipo)
+        : D.equipos.find(e => e.cod === form.equipo)
+  ), [equiposClienteReales, equiposInternosReales, form.equipo, objetoCostoTipo]);
   const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
     || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
@@ -1273,6 +1343,8 @@ export const CrearOTPage = ({ onNav }) => {
 
   const changeObjetoCostoTipo = (tipo) => {
     setObjetoCostoTipo(tipo);
+    setAltaEquipoClienteAbierta(false);
+    setErrorAltaEquipoCliente(null);
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
       clienteId: '', contratoId: '', equipo: '',
@@ -1283,6 +1355,8 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const setCliente = (clienteId) => {
+    setAltaEquipoClienteAbierta(false);
+    setErrorAltaEquipoCliente(null);
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
       unidadMinera: '', centro_costo: null, centro_beneficio_id: null, objeto_costo_id: null, horometroApertura: '',
@@ -1293,6 +1367,8 @@ export const CrearOTPage = ({ onNav }) => {
 
   const setContrato = (contratoId) => {
     const next = objetosCostoFiltrados.find(c => c.id === contratoId);
+    setAltaEquipoClienteAbierta(false);
+    setErrorAltaEquipoCliente(null);
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
@@ -1307,7 +1383,9 @@ export const CrearOTPage = ({ onNav }) => {
   const handleEquipoChange = (cod) => {
     const eq = objetoCostoTipo === 'equipo_interno'
       ? equiposInternosReales.find(e => e.id === cod)
-      : D.equipos.find(e => e.cod === cod);
+      : objetoCostoTipo === 'os_cliente'
+        ? equiposClienteReales.find(e => e.id === cod)
+        : D.equipos.find(e => e.cod === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
     const extra = objetoCostoTipo === 'equipo_interno' ? { objeto_costo_id: cod } : {};
@@ -1318,6 +1396,64 @@ export const CrearOTPage = ({ onNav }) => {
     }));
     if (objetoCostoTipo === 'equipo_interno') heredarCC('equipo_interno', cod);
     setBacklogs([]);
+  };
+
+  const abrirAltaEquipoCliente = () => {
+    setErrorAltaEquipoCliente(null);
+    setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '' });
+    setAltaEquipoClienteAbierta(true);
+  };
+
+  const registrarEquipoCliente = async () => {
+    const nombre = formEquipoCliente.nombre.trim();
+    if (!nombre || !sesionOperativa.empresaId || !form.clienteId) {
+      setErrorAltaEquipoCliente('Indica el nombre del equipo y selecciona primero el cliente de la OS.');
+      return;
+    }
+
+    setGuardandoEquipoCliente(true);
+    setErrorAltaEquipoCliente(null);
+    try {
+      let creado = null;
+      let ultimoError = null;
+      for (let intento = 0; intento < 5; intento += 1) {
+        const { data, error } = await getSupabaseClient()
+          .from('activos')
+          .insert({
+            id: generarIdEquipoCliente(),
+            empresa_id: sesionOperativa.empresaId,
+            codigo: generarCodigoEquipoCliente(),
+            nombre,
+            marca: formEquipoCliente.marca.trim() || null,
+            modelo: formEquipoCliente.modelo.trim() || null,
+            placa_serie: formEquipoCliente.placa_serie.trim() || null,
+            tipo_categoria: 'equipo',
+            estado: 'operativo',
+            propietario_tipo: 'cliente',
+            cliente_propietario_id: form.clienteId,
+          })
+          .select('id,codigo,nombre,marca,modelo,placa_serie,estado')
+          .single();
+        if (!error) {
+          creado = data;
+          break;
+        }
+        ultimoError = error;
+        if (error.code !== '23505') throw error;
+      }
+      if (!creado) throw ultimoError || new Error('No se pudo registrar un código único para el equipo.');
+
+      setEquiposClienteReales(prev => [...prev, creado].sort((a, b) => a.codigo.localeCompare(b.codigo)));
+      setForm(prev => ({ ...prev, equipo: creado.id, horometroApertura: '' }));
+      setHorometroSugerido(null);
+      setBacklogs([]);
+      setAltaEquipoClienteAbierta(false);
+      setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '' });
+    } catch (error) {
+      setErrorAltaEquipoCliente(error.message || 'No se pudo registrar el equipo de cliente.');
+    } finally {
+      setGuardandoEquipoCliente(false);
+    }
   };
 
   const setLugarEjecucion = (lugarEjecucion) =>
@@ -1391,7 +1527,7 @@ export const CrearOTPage = ({ onNav }) => {
       empresa_id: sesionOperativa.empresaId,
       os_cliente_id: esOTDesdeOS ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
-      equipo_id: objetoCostoTipo === 'equipo_interno' ? form.equipo : null,
+      equipo_id: ['equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
       cuenta_id: form.clienteId || null,
       // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
       // separado: la descripción técnica es el servicio registrado en esta fase.
@@ -1754,6 +1890,82 @@ export const CrearOTPage = ({ onNav }) => {
                       )}
                       </div>
                     )}
+                    {objetoCostoTipo === 'os_cliente' && (
+                      <div className="ot-form-field">
+                        <div className="label" style={{ fontSize: 12 }}>Equipo del cliente *</div>
+                        <select className="input" value={form.equipo}
+                          disabled={!form.contratoId || cargandoEquiposCliente || !sesionOperativa.permiteEscritura}
+                          onChange={e => handleEquipoChange(e.target.value)}
+                          style={{
+                            marginTop: 4,
+                            background: !form.contratoId || cargandoEquiposCliente || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined,
+                            borderColor: fieldErrors.equipo ? '#E53935' : undefined,
+                          }}>
+                          <option value="">
+                            {!form.contratoId
+                              ? 'Seleccione primero una OS'
+                              : cargandoEquiposCliente
+                                ? 'Cargando equipos del cliente...'
+                                : '-- Seleccionar equipo del cliente --'}
+                          </option>
+                          {equiposClienteReales.map(equipoCliente => (
+                            <option key={equipoCliente.id} value={equipoCliente.id}>
+                              {[equipoCliente.codigo, equipoCliente.nombre, equipoCliente.placa_serie].filter(Boolean).join(' · ')}
+                            </option>
+                          ))}
+                        </select>
+                        {errorEquiposCliente && (
+                          <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                            No se pudieron cargar los equipos del cliente: {errorEquiposCliente}
+                          </div>
+                        )}
+                        {fieldErrors.equipo?.[0] && (
+                          <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
+                        )}
+
+                        {!altaEquipoClienteAbierta ? (
+                          <button type="button" className="btn btn-secondary btn-sm"
+                            disabled={!form.contratoId || !sesionOperativa.permiteEscritura}
+                            onClick={abrirAltaEquipoCliente}
+                            style={{ marginTop: 8 }}>
+                            <Icon name="plus" size={12} /> Registrar nuevo equipo de cliente
+                          </button>
+                        ) : (
+                          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--card-border)', borderRadius: 6, background: 'rgba(255,255,255,0.03)' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Nuevo equipo de cliente</div>
+                            <div className="ot-form-grid" style={{ gap: 8 }}>
+                              <input className="input" value={formEquipoCliente.nombre}
+                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, nombre: e.target.value }))}
+                                placeholder="Nombre del equipo *" />
+                              <input className="input" value={formEquipoCliente.marca}
+                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, marca: e.target.value }))}
+                                placeholder="Marca" />
+                              <input className="input" value={formEquipoCliente.modelo}
+                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, modelo: e.target.value }))}
+                                placeholder="Modelo" />
+                              <input className="input" value={formEquipoCliente.placa_serie}
+                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, placa_serie: e.target.value }))}
+                                placeholder="N.° de serie / placa" />
+                            </div>
+                            {errorAltaEquipoCliente && (
+                              <div style={{ fontSize: 11, color: '#E53935', marginTop: 6 }}>{errorAltaEquipoCliente}</div>
+                            )}
+                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                              <button type="button" className="btn btn-primary btn-sm"
+                                disabled={guardandoEquipoCliente || !formEquipoCliente.nombre.trim()}
+                                onClick={registrarEquipoCliente}>
+                                {guardandoEquipoCliente ? 'Registrando...' : 'Registrar y seleccionar'}
+                              </button>
+                              <button type="button" className="btn btn-secondary btn-sm"
+                                disabled={guardandoEquipoCliente}
+                                onClick={() => setAltaEquipoClienteAbierta(false)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2090,7 +2302,7 @@ export const CrearOTPage = ({ onNav }) => {
                 <textarea className="input" rows={4} value={form.descripcion}
                   onChange={e => set('descripcion', e.target.value)}
                   style={{ resize: 'vertical', width: '100%' }}
-                  placeholder={equipo ? `Describe el trabajo sobre ${equipo.cod}...` : 'Selecciona un equipo y describe el trabajo...'} />
+                  placeholder={equipo ? `Describe el trabajo sobre ${equipo.codigo || equipo.cod}...` : 'Selecciona un equipo y describe el trabajo...'} />
                 <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }}
                   disabled={!form.equipo}
                   onClick={() => setDrawerOpen(true)}>
