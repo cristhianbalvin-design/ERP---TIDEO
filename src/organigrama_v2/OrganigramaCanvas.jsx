@@ -19,8 +19,7 @@ const DIMENSIONS = {
   colocacion: { width: 264, height: 116 },
   posicion: { width: 190, height: 62 },
 };
-const SAFE_NODE_TOP = 160;
-const EMPTY_POSITION = { x: 40, y: SAFE_NODE_TOP };
+const EMPTY_POSITION = { x: 40, y: 40 };
 const CanvasNodeContext = createContext({ modoConexion: 'todos' });
 const CANVAS_INTERACTION_STYLES = `
   .ov2-canvas .react-flow__node { cursor: grab; }
@@ -218,7 +217,7 @@ const errorCicloUO = (connection, nodes) => {
 const dagrePositions = (nodes, edges) => {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: SAFE_NODE_TOP });
+  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: 28 });
   nodes.forEach(node => {
     const dimension = DIMENSIONS[node.type] || DIMENSIONS.posicion;
     graph.setNode(node.id, dimension);
@@ -467,6 +466,7 @@ const buildGraph = datos => {
   const persistedNodes = nodes.filter(node => layouts.has(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId)));
   const hasPersistedLayout = persistedNodes.length > 0;
 
+  // Los handles son puramente visuales: Dagre solo se usa si el tenant no tiene ningún layout persistido.
   if (!hasPersistedLayout) {
     const layoutEdges = edges
       .filter(edge => edge.data?.kind !== 'matricial')
@@ -476,26 +476,22 @@ const buildGraph = datos => {
     nodes.forEach(node => { node.position = positions.get(node.id) || EMPTY_POSITION; });
     ordenarRaicesDeUoPorNivel(nodes, colocaciones, posiciones);
   } else {
-    persistedNodes.forEach(node => {
-      const position = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId));
-      node.position = { ...position, y: Math.max(SAFE_NODE_TOP, position.y) };
-    });
+    persistedNodes.forEach(node => { node.position = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId)); });
     nodes.filter(node => !persistedNodes.includes(node)).forEach(node => {
       const record = node.data.record;
-      let preferred = { x: 40, y: SAFE_NODE_TOP };
+      let preferred = { x: 40, y: 40 };
       if (node.type === 'colocacion') {
         const unidad = persistedNodes.find(item => item.id === toFlowNodeId('uo', record.unidad_organizacional_id));
         const padre = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.reporta_a_cargo_colocacion_id));
-        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: SAFE_NODE_TOP };
+        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: 40 };
       } else if (node.type === 'posicion') {
         const colocacion = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.cargo_colocacion_id));
-        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: SAFE_NODE_TOP };
+        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: 40 };
       } else {
         const rightmost = persistedNodes.reduce((max, item) => Math.max(max, item.position.x), 0);
-        preferred = { x: rightmost + 320, y: SAFE_NODE_TOP };
+        preferred = { x: rightmost + 320, y: 40 };
       }
-      const position = findFreePosition(preferred, node, nodes.filter(item => item !== node && item.position !== EMPTY_POSITION));
-      node.position = { ...position, y: Math.max(SAFE_NODE_TOP, position.y) };
+      node.position = findFreePosition(preferred, node, nodes.filter(item => item !== node && item.position !== EMPTY_POSITION));
     });
   }
 
@@ -672,7 +668,6 @@ export default function OrganigramaCanvas({
         nodesConnectable
         elementsSelectable
         panOnDrag
-        nodeExtent={[[0, SAFE_NODE_TOP], [Infinity, Infinity]]}
         proOptions={{ hideAttribution: true }}
       >
         <AutoFitView />
