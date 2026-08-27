@@ -14,13 +14,36 @@ export const normalizarRucCxc = value => texto(value).replace(/\D/g, '');
 export const normalizarCodigoCxc = value => texto(value).toUpperCase();
 export const normalizarNumeroCxc = value => texto(value).replace(/\s+/g, ' ').toLowerCase();
 
+// Excel puede entregar valores como numero o como texto. Cuando llegan como texto,
+// no se puede asumir que coma sea siempre decimal: "15,000" y "15.000" son miles.
 const numero = value => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
-  const raw = texto(value);
+  const raw = texto(value).replace(/\s/g, '');
   if (!raw) return 0;
-  return Number(raw.includes(',') && raw.includes('.')
-    ? raw.replace(/\./g, '').replace(',', '.')
-    : raw.replace(',', '.'));
+
+  const ultimoPunto = raw.lastIndexOf('.');
+  const ultimaComa = raw.lastIndexOf(',');
+  const separadoresDistintos = ultimoPunto >= 0 && ultimaComa >= 0;
+  let normalizado = raw;
+
+  if (separadoresDistintos) {
+    // El ultimo separador es el decimal; el otro agrupa miles.
+    if (ultimoPunto > ultimaComa) normalizado = raw.replace(/,/g, '');
+    else normalizado = raw.replace(/\./g, '').replace(',', '.');
+  } else {
+    const separador = ultimoPunto >= 0 ? '.' : ultimaComa >= 0 ? ',' : null;
+    if (separador) {
+      const partes = raw.split(separador);
+      const gruposDeMiles = partes.length > 1 && partes.slice(1).every(grupo => /^\d{3}$/.test(grupo));
+      // Con un unico separador, tres digitos a la derecha representan miles
+      // para importes monetarios (p. ej. 15,000 o 15.000), no decimales.
+      normalizado = gruposDeMiles
+        ? partes.join('')
+        : separador === ',' ? raw.replace(',', '.') : raw;
+    }
+  }
+
+  return Number(normalizado);
 };
 
 export const normalizarFechaCxc = value => {
@@ -104,7 +127,9 @@ export function leerPlantillaCxcMasiva(file) {
         const workbook = XLSX.read(event.target.result, { type: 'array', cellDates: true });
         const sheet = workbook.Sheets[CXC_MASSIVE_SHEET];
         if (!sheet) throw new Error(`El archivo debe incluir la hoja "${CXC_MASSIVE_SHEET}".`);
-        resolve(XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false, dateNF: 'yyyy-mm-dd' }));
+        // raw:true conserva el valor real (15000) y evita depender del formato
+        // de visualizacion de Excel ("15,000" / "15.000").
+        resolve(XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true, dateNF: 'yyyy-mm-dd' }));
       } catch (error) { reject(error); }
     };
     reader.readAsArrayBuffer(file);
