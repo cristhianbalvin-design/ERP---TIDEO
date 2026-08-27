@@ -12,6 +12,7 @@ const ACTIVO_FIELDS = [
   'ubicacion', 'estado', 'centro_costo_id', 'responsable_id', 'responsable_nombre',
   'fecha_alta', 'valor_adquisicion', 'moneda', 'vida_util_anos',
   'documentos', 'observacion', 'compras_gasto_id',
+  'propietario_tipo', 'cliente_propietario_id',
 ];
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -21,7 +22,9 @@ export const getActivos = async (empresaId) => {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from('activos').select('*')
-    .eq('empresa_id', empresaId).order('codigo');
+    .eq('empresa_id', empresaId)
+    .eq('propietario_tipo', 'propio')
+    .order('codigo');
   if (error) { console.error('getActivos:', error); return []; }
   return data || [];
 };
@@ -118,7 +121,7 @@ export const importarActivosMasivo = async (empresaId, filas) => {
 
   const [cecosRes, activosRes] = await Promise.all([
     supabase.from('centros_costo').select('id,codigo,nombre').eq('empresa_id', empresaId),
-    supabase.from('activos').select('id,codigo').eq('empresa_id', empresaId),
+    supabase.from('activos').select('id,codigo').eq('empresa_id', empresaId).eq('propietario_tipo', 'propio'),
   ]);
   if (cecosRes.error) throw cecosRes.error;
 
@@ -185,7 +188,8 @@ export const importarActivosMasivo = async (empresaId, filas) => {
       if (existente) {
         const { error } = await supabase.from('activos')
           .update({ ...payload, updated_at: new Date().toISOString() })
-          .eq('id', existente.id);
+          .eq('id', existente.id)
+          .eq('propietario_tipo', 'propio');
         if (error) throw error;
         actualizados.push(codigo);
       } else {

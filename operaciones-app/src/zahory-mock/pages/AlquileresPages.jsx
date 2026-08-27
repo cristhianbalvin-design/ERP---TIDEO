@@ -514,6 +514,7 @@ export const FlotaRentalPage = ({ onNav }) => {
           .from('activos')
           .select('id,codigo,nombre,tipo_categoria,marca,modelo,ubicacion,estado')
           .eq('empresa_id', sesionOperativa.empresaId)
+          .eq('propietario_tipo', 'propio')
           .neq('estado', 'dado_baja')
           .order('codigo');
         let contratosQuery = supabase
@@ -1051,7 +1052,7 @@ export const ContratosRentalPage = ({ onNav }) => {
           supabase.from('sedes').select('id,codigo,nombre')
             .eq('empresa_id', sesion.empresaId).eq('tipo', 'unidad_minera').eq('estado', 'activo').order('nombre'),
           supabase.from('activos').select('id,codigo,nombre,marca,modelo,estado')
-            .eq('empresa_id', sesion.empresaId).eq('estado', 'operativo').order('codigo'),
+            .eq('empresa_id', sesion.empresaId).eq('propietario_tipo', 'propio').eq('estado', 'operativo').order('codigo'),
           supabase.from('centros_costo').select('id,nombre,codigo')
             .eq('empresa_id', sesion.empresaId).eq('sociedad_id', sesion.sociedadId).eq('estado', 'activo').order('nombre'),
           supabase.from('centros_beneficio').select('id,nombre,codigo')
