@@ -23,6 +23,11 @@ const EMPTY_POSITION = { x: 40, y: 40 };
 const CanvasNodeContext = createContext({ modoConexion: 'todos' });
 const CANVAS_INTERACTION_STYLES = `
   .ov2-canvas .react-flow__node { cursor: grab; }
+  .ov2-canvas .react-flow__nodes { z-index: 2; }
+  .ov2-canvas .react-flow__viewport { z-index: 2; }
+  .ov2-canvas .react-flow__pane { z-index: 1; }
+  .ov2-canvas .react-flow__node { z-index: 2 !important; }
+  .ov2-canvas .react-flow__handle { z-index: 4 !important; pointer-events: auto; }
   .ov2-canvas .ov2-drag-handle:active,
   .ov2-canvas .ov2-drag-handle:active * { cursor: grabbing !important; }
   .ov2-canvas .react-flow__node.dragging,
@@ -62,28 +67,7 @@ const NodeHeader = ({ color, children }) => (
   </div>
 );
 
-const useNodeDragCursor = dragging => {
-  const [pointerDown, setPointerDown] = useState(false);
-
-  useEffect(() => {
-    if (!pointerDown) return undefined;
-    const clearPointerDown = () => setPointerDown(false);
-    window.addEventListener('pointerup', clearPointerDown, { once: true });
-    window.addEventListener('pointercancel', clearPointerDown, { once: true });
-    return () => {
-      window.removeEventListener('pointerup', clearPointerDown);
-      window.removeEventListener('pointercancel', clearPointerDown);
-    };
-  }, [pointerDown]);
-
-  return {
-    cursor: dragging || pointerDown ? 'grabbing' : 'grab',
-    onPointerDown: event => {
-      if (event.target.closest?.('.nodrag, .react-flow__handle')) return;
-      setPointerDown(true);
-    },
-  };
-};
+const useNodeDragCursor = dragging => ({ cursor: dragging ? 'grabbing' : 'grab' });
 
 const handleEnabled = (modoConexion, tipoConexion) => (
   modoConexion === 'todos' || (Array.isArray(tipoConexion) ? tipoConexion : [tipoConexion]).includes(modoConexion)
@@ -111,7 +95,7 @@ export const UnidadOrganizacionalNode = ({ data, dragging }) => {
   const jerarquiaUoSourceHabilitada = handleEnabled(modoConexion, 'uo_padre');
   const jerarquiaUoHabilitada = handleEnabled(modoConexion, 'uo_padre');
   return (
-  <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
+  <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
     <Handle id="uo-hijo-target" type="target" position={Position.Top} isConnectable={jerarquiaUoHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-hijo')} style={{ background: '#0F6E56' }} />
     <Handle id="uo-padre-source" type="source" position={Position.Bottom} isConnectable={jerarquiaUoSourceHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-padre')} style={{ background: '#0F6E56', left: '34%' }} />
     <Handle id="uo-source" type="source" position={Position.Right} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '66%' }} />
@@ -155,7 +139,6 @@ export const CargoColocacionNode = ({ data, dragging }) => {
     title="Haz clic para editar. Arrastra desde este cargo padre hacia su cargo hijo para definir jerarquía."
     onClick={() => onEditarColocacion?.(data.record)}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') onEditarColocacion?.(data.record); }}
-    onPointerDown={dragCursor.onPointerDown}
     style={{ ...nodeShell('#2563eb', 'var(--card)'), width: DIMENSIONS.colocacion.width, padding: '10px 12px', borderWidth: 2, cursor: dragCursor.cursor }}
   >
     <Handle id="uo-target" type="target" position={Position.Left} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '28%' }} />
@@ -177,7 +160,7 @@ export const PosicionNode = ({ data, dragging }) => {
   const dragCursor = useNodeDragCursor(dragging);
   const matricialHabilitada = handleEnabled(modoConexion, 'matricial');
   return (
-  <div className="ov2-drag-handle" data-testid={`ov2-node-pos-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#94a3b8', 'var(--bg-subtle)'), width: DIMENSIONS.posicion.width, padding: '7px 9px', boxShadow: 'none', cursor: dragCursor.cursor }}>
+  <div className="ov2-drag-handle" data-testid={`ov2-node-pos-${data.record.id}`} style={{ ...nodeShell('#94a3b8', 'var(--bg-subtle)'), width: DIMENSIONS.posicion.width, padding: '7px 9px', boxShadow: 'none', cursor: dragCursor.cursor }}>
     <Handle id="matricial-target" type="target" position={Position.Left} isConnectable={matricialHabilitada} className={handleClassName(modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
     <div style={{ fontWeight: 750, fontSize: 12 }}>{data.ocupanteNombre || 'Vacante'}</div>
     <div style={{ color: 'var(--fg-muted)', fontSize: 10, marginTop: 2 }}>{data.estadoLabel}</div>
@@ -244,10 +227,10 @@ const errorCicloJerarquia = (connection, nodes) => {
 
 const errorCicloConexion = (connection, nodes) => errorCicloUO(connection, nodes) || errorCicloJerarquia(connection, nodes);
 
-const dagrePositions = (nodes, edges) => {
+const dagrePositions = (nodes, edges, margenSuperiorSeguro = 0) => {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: 28 });
+  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: Math.max(28, margenSuperiorSeguro + 24) });
   nodes.forEach(node => {
     const dimension = DIMENSIONS[node.type] || DIMENSIONS.posicion;
     graph.setNode(node.id, dimension);
@@ -340,30 +323,57 @@ const findFreePosition = (preferred, node, existing) => {
   return candidate;
 };
 
-const AutoFitView = () => {
-  const { fitView } = useReactFlow();
+const ajustarViewportSuperiorSeguro = ({ getNodes, getViewport, setViewport }) => {
+  const viewport = getViewport();
+  const nodos = getNodes();
+  const minimoY = nodos.reduce((minimo, node) => Math.min(minimo, node.position.y), Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(minimoY)) return;
+  // El origen del lienzo ya está debajo de la cabecera medida en la página.
+  // Reservamos una franja local para que los handles no queden sobre ese borde.
+  const bordeSuperiorVisible = 36;
+  const yActual = (minimoY * viewport.zoom) + viewport.y;
+  setViewport({ ...viewport, y: viewport.y + bordeSuperiorVisible - yActual }, { duration: 0 });
+};
+
+const CanvasControls = () => {
+  const { getNodes, getViewport, setViewport } = useReactFlow();
+  const protegerTrasFitView = useCallback(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ajustarViewportSuperiorSeguro({ getNodes, getViewport, setViewport });
+    }));
+  }, [getNodes, getViewport, setViewport]);
+
+  return <Controls showInteractive onFitView={protegerTrasFitView} />;
+};
+
+const AutoFitView = ({ margenSuperiorSeguro }) => {
+  const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
-  const hasFittedRef = useRef(false);
+  const ultimoMargenRef = useRef(null);
 
   useEffect(() => {
-    if (!nodesInitialized || hasFittedRef.current) return undefined;
-    hasFittedRef.current = true;
+    if (!nodesInitialized || ultimoMargenRef.current === margenSuperiorSeguro) return undefined;
+    ultimoMargenRef.current = margenSuperiorSeguro;
     let secondFrame;
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
-        fitView({ padding: 0.2, duration: 180, maxZoom: 1.15 });
+        // El encuadre debe reservar arriba la misma zona segura calculada para el contenido del encabezado.
+        const padding = Math.min(0.48, 0.2 + margenSuperiorSeguro / 900);
+        Promise.resolve(fitView({ padding, duration: 0, maxZoom: 1.15 })).then(() => {
+          ajustarViewportSuperiorSeguro({ getNodes, getViewport, setViewport });
+        });
       });
     });
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
     };
-  }, [fitView, nodesInitialized]);
+  }, [fitView, getNodes, getViewport, margenSuperiorSeguro, nodesInitialized, setViewport]);
 
   return null;
 };
 
-const buildGraph = datos => {
+const buildGraph = (datos, margenSuperiorSeguro = 0) => {
   const unidades = [...(datos.unidadesOrganizacionales || [])].sort(sortByName);
   const colocaciones = [...(datos.cargoColocaciones || [])]
     .filter(colocacion => colocacion.estado === 'activo')
@@ -499,24 +509,27 @@ const buildGraph = datos => {
   // Los handles son puramente visuales: Dagre solo se usa si el tenant no tiene ningún layout persistido.
   if (!hasPersistedLayout) {
     const layoutEdges = edges.filter(edge => edge.data?.kind !== 'matricial');
-    const positions = dagrePositions(nodes, layoutEdges);
+    const positions = dagrePositions(nodes, layoutEdges, margenSuperiorSeguro);
     nodes.forEach(node => { node.position = positions.get(node.id) || EMPTY_POSITION; });
     ordenarRaicesDeUoPorNivel(nodes, colocaciones, posiciones);
   } else {
-    persistedNodes.forEach(node => { node.position = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId)); });
+    persistedNodes.forEach(node => {
+      const posicionPersistida = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId));
+      node.position = { ...posicionPersistida, y: Math.max(margenSuperiorSeguro, posicionPersistida.y) };
+    });
     nodes.filter(node => !persistedNodes.includes(node)).forEach(node => {
       const record = node.data.record;
       let preferred = { x: 40, y: 40 };
       if (node.type === 'colocacion') {
         const unidad = persistedNodes.find(item => item.id === toFlowNodeId('uo', record.unidad_organizacional_id));
         const padre = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.reporta_a_cargo_colocacion_id));
-        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: 40 };
+        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: margenSuperiorSeguro };
       } else if (node.type === 'posicion') {
         const colocacion = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.cargo_colocacion_id));
-        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: 40 };
+        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: margenSuperiorSeguro };
       } else {
         const rightmost = persistedNodes.reduce((max, item) => Math.max(max, item.position.x), 0);
-        preferred = { x: rightmost + 320, y: 40 };
+        preferred = { x: rightmost + 320, y: margenSuperiorSeguro };
       }
       node.position = findFreePosition(preferred, node, nodes.filter(item => item !== node && item.position !== EMPTY_POSITION));
     });
@@ -528,6 +541,7 @@ const buildGraph = datos => {
 
 export default function OrganigramaCanvas({
   datos,
+  margenSuperiorSeguro = 0,
   onCrearColocacion,
   onEditarColocacion,
   onEliminarUnidad,
@@ -544,7 +558,7 @@ export default function OrganigramaCanvas({
   onPaneClick,
   onError,
 }) {
-  const graph = useMemo(() => buildGraph(datos), [datos]);
+  const graph = useMemo(() => buildGraph(datos, margenSuperiorSeguro), [datos, margenSuperiorSeguro]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [edgePopover, setEdgePopover] = useState(null);
@@ -564,6 +578,7 @@ export default function OrganigramaCanvas({
     };
     return { stroke: colorPorModo[modoConexion] || '#0f766e', strokeWidth: 4, strokeDasharray: '9 5', opacity: .98 };
   }, [modoConexion]);
+  const fitViewPadding = useMemo(() => Math.min(0.48, 0.2 + margenSuperiorSeguro / 900), [margenSuperiorSeguro]);
 
   useEffect(() => { setNodes(graph.nodes); }, [graph.nodes, setNodes]);
   useEffect(() => { setEdges(graph.edges); }, [graph.edges, setEdges]);
@@ -622,13 +637,13 @@ export default function OrganigramaCanvas({
     const meta = node.data?.persistencia;
     if (!meta) return;
     const snap = snapAlignmentRef.current?.nodeId === node.id ? snapAlignmentRef.current.position : null;
-    const position = snap || node.position;
+    const position = { ...(snap || node.position), y: Math.max(margenSuperiorSeguro, (snap || node.position).y) };
     if (snap) setNodes(current => current.map(item => item.id === node.id ? { ...item, position } : item));
     if (alignmentGuidesSignatureRef.current) setAlignmentGuides([]);
     alignmentGuidesSignatureRef.current = '';
     snapAlignmentRef.current = null;
     Promise.resolve(onGuardarPosicion?.({ ...meta, x: position.x, y: position.y })).catch(error => onError?.(error));
-  }, [onGuardarPosicion, onError, setNodes]);
+  }, [margenSuperiorSeguro, onGuardarPosicion, onError, setNodes]);
 
   const isValidConnection = useCallback(connection => {
     const tipo = tipoConexion(connection, nodes);
@@ -749,7 +764,7 @@ export default function OrganigramaCanvas({
   }, [edgePopover, onEliminarJerarquia, onEliminarRelacionMatricial, onEliminarUOPadre, onError]);
 
   return (
-    <div ref={canvasRef} className="ov2-canvas" style={{ position: 'relative', height: '100%', minHeight: 0, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', backgroundColor: 'color-mix(in srgb, var(--bg-card, var(--bg)) 92%, #dbeafe)', backgroundImage: 'radial-gradient(color-mix(in srgb, var(--fg) 17%, transparent) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
+    <div ref={canvasRef} className="ov2-canvas" style={{ position: 'relative', height: '100%', minHeight: 0, boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', backgroundColor: 'color-mix(in srgb, var(--bg-card, var(--bg)) 92%, #dbeafe)', backgroundImage: 'radial-gradient(color-mix(in srgb, var(--fg) 17%, transparent) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
       <style>{CANVAS_INTERACTION_STYLES}</style>
       <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion, onEliminarUnidad }}>
       <ReactFlow
@@ -765,8 +780,10 @@ export default function OrganigramaCanvas({
         onConnectEnd={onConnectEnd}
         onConnect={onConnect}
         connectionLineStyle={connectionLineStyle}
+        fitViewOptions={{ padding: fitViewPadding, maxZoom: 1.15 }}
         onEdgeClick={onEdgeClick}
         onPaneClick={cerrarSobreLienzo}
+        nodeExtent={[[-1000000, margenSuperiorSeguro], [1000000, 1000000]]}
         nodesDraggable
         nodeDragThreshold={0}
         nodesConnectable
@@ -774,9 +791,9 @@ export default function OrganigramaCanvas({
         panOnDrag
         proOptions={{ hideAttribution: true }}
       >
-        <AutoFitView />
+        <AutoFitView margenSuperiorSeguro={margenSuperiorSeguro} />
         <Background gap={18} size={1} color="var(--border)" />
-        <Controls showInteractive />
+        <CanvasControls />
       </ReactFlow>
       </CanvasNodeContext.Provider>
       {edgePopover && (
