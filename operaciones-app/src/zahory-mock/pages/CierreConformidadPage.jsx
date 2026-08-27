@@ -114,8 +114,9 @@ export const CierreConformidadPage = () => {
           return;
         }
 
-        // MITIGACIÓN CLIENTE: partes_diarios no tiene sociedad_id ni RLS con alcance societario.
-        // El join y filtro por la sociedad de la OT reducen esta superficie en Operativo; no sustituyen RLS real.
+        // Filtro de sociedad en cliente conservado como defensa en profundidad.
+        // RLS real ya existe a nivel de BD (migración 461): partes_diarios tiene
+        // sociedad_id derivado por trigger + policies con alcance societario.
         let consultaPartes = sb
           .from('partes_diarios')
           .select('id,orden_trabajo_id,fecha,horas_normales,estado,actividad,ordenes_trabajo!inner(id,sociedad_id)')
