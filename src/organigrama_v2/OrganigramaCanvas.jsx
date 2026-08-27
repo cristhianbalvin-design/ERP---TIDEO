@@ -113,7 +113,7 @@ export const UnidadOrganizacionalNode = ({ data, dragging }) => {
   <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
     <Handle id="uo-hijo-target" type="target" position={Position.Top} isConnectable={jerarquiaUoHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-hijo')} style={{ background: '#0F6E56' }} />
     <Handle id="uo-padre-source" type="source" position={Position.Bottom} isConnectable={jerarquiaUoSourceHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-padre')} style={{ background: '#0F6E56', left: '34%' }} />
-    <Handle id="uo-source" type="source" position={Position.Bottom} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', left: '66%' }} />
+    <Handle id="uo-source" type="source" position={Position.Right} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '66%' }} />
     <NodeHeader color="#0f766e">UO {data.codigo && `· ${data.codigo}`}</NodeHeader>
     <div style={{ fontWeight: 850, fontSize: 17, lineHeight: 1.18 }}>{data.nombre}</div>
     <button
@@ -146,7 +146,7 @@ export const CargoColocacionNode = ({ data, dragging }) => {
     onPointerDown={dragCursor.onPointerDown}
     style={{ ...nodeShell('#2563eb', 'var(--card)'), width: DIMENSIONS.colocacion.width, padding: '10px 12px', borderWidth: 2, cursor: dragCursor.cursor }}
   >
-    <Handle id="uo-target" type="target" position={Position.Right} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '28%' }} />
+    <Handle id="uo-target" type="target" position={Position.Left} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '28%' }} />
     <Handle id="jerarquia-target" type="target" position={Position.Left} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
     <NodeHeader color="#2563eb">Cargo-colocación</NodeHeader>
     <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{data.cargoNombre}</div>
