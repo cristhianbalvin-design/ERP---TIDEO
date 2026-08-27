@@ -294,6 +294,33 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await screenshot(page, '02-jerarquia-y-ciclo');
   });
 
+  test('2b. muestra y elimina una jerarquía desde su arista', async ({ page, request }) => {
+    await rpc(request, 'crear_o_actualizar_cargo_colocacion', {
+      p_id: fixtures.jefatura.id,
+      p_empresa_id: EMPRESA_PRUEBA,
+      p_sociedad_id: null,
+      p_unidad_organizacional_id: fixtures.jefatura.unidadId,
+      p_cargo_id: fixtures.jefatura.cargoId,
+      p_nivel_jerarquico_id: fixtures.jefatura.nivelId,
+      p_rol_id: fixtures.jefatura.rolId,
+      p_cantidad_posiciones: 1,
+      p_estado: 'activo',
+      p_reporta_a_cargo_colocacion_id: fixtures.direccion.id,
+    });
+    await page.reload();
+    await page.getByRole('button', { name: 'Administración' }).click();
+    const edge = page.getByTestId(`rf__edge-jerarquia:${fixtures.jefatura.id}:${fixtures.direccion.id}`);
+    await expect(edge).toBeVisible();
+    await edge.getByText('reporta a').click({ force: true });
+    await expect(page.getByTestId('ov2-edge-popover')).toContainText(/Jerarquía:/i);
+    page.once('dialog', confirmation => confirmation.accept());
+    await page.getByTestId('ov2-delete-edge').click();
+    await expect(page.getByText(/Jerarquía eliminada/i)).toBeVisible();
+    await expect.poll(async () => rest(request, 'cargo_colocaciones', `select=id,reporta_a_cargo_colocacion_id&id=eq.${fixtures.jefatura.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([
+      { id: fixtures.jefatura.id, reporta_a_cargo_colocacion_id: null },
+    ]);
+  });
+
   test('3. rechaza una relación matricial con rango inválido', async ({ page }) => {
     await connectUntil(page, `ov2-node-pos-${fixturePositions[fixtures.direccion.id]}`, `ov2-node-pos-${fixturePositions[fixtures.jefatura.id]}`, { sourceHandle: 'matricial-source', targetHandle: 'matricial-target' }, page.locator('.alert-danger'));
     await expect(page.locator('.alert-danger')).toContainText(/rango estrictamente superior/i);

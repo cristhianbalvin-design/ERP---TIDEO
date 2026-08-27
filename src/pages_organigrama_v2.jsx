@@ -155,6 +155,31 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     }
   }, [cargar, empresaId]);
 
+  const eliminarJerarquia = useCallback(async hija => {
+    try {
+      setGuardando(true);
+      await organigramaV2Service.crearOActualizarCargoColocacion({
+        id: hija.id,
+        empresaId,
+        sociedadId: hija.sociedad_id,
+        unidadOrganizacionalId: hija.unidad_organizacional_id,
+        cargoId: hija.cargo_id,
+        nivelJerarquicoId: hija.nivel_jerarquico_id,
+        rolId: hija.rol_id,
+        cantidadPosiciones: hija.cantidad_posiciones,
+        estado: hija.estado,
+        reportaACargoColocacionId: null,
+      });
+      setNotice(`Jerarquía eliminada para ${hija.cargo?.nombre || hija.cargo_id}.`);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+      throw causa;
+    } finally {
+      setGuardando(false);
+    }
+  }, [cargar, empresaId]);
+
   const reasignarUO = useCallback(async ({ colocacion, unidad }) => {
     const unidadValida = (datos?.unidadesOrganizacionales || []).some(item => (
       item.id === unidad?.id && item.empresa_id === empresaId
@@ -211,6 +236,20 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       setGuardando(false);
     }
   }, [actualizarUnidadOrganizacional, cargar, datos?.unidadesOrganizacionales, empresaId]);
+
+  const eliminarUOPadre = useCallback(async hija => {
+    try {
+      setGuardando(true);
+      await actualizarUnidadOrganizacional(hija.id, { unidad_padre_id: null });
+      setNotice(`${hija.nombre} ya no tiene UO padre.`);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+      throw causa;
+    } finally {
+      setGuardando(false);
+    }
+  }, [actualizarUnidadOrganizacional, cargar]);
 
   const crearMatricial = useCallback(async ({ subordinada, jefe }) => {
     try {
@@ -337,7 +376,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         </p>
       </div>
 
-      <div className="card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: 10, marginBottom: 12 }}>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: 10, marginBottom: 12, pointerEvents: 'none' }}>
         <span className="text-muted" style={{ fontSize: 12, fontWeight: 700, marginRight: 2 }}>Conectar:</span>
         {[
           ['todos', 'Todos'],
@@ -350,7 +389,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             key={modo}
             type="button"
             className={modoConexion === modo ? 'btn btn-primary' : 'btn btn-secondary'}
-            style={{ padding: '5px 9px', fontSize: 12 }}
+            style={{ padding: '5px 9px', fontSize: 12, pointerEvents: 'auto' }}
             onClick={() => setModoConexion(modo)}
             aria-pressed={modoConexion === modo}
           >
@@ -362,7 +401,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           type="button"
           className="btn btn-secondary"
           data-testid="ov2-new-uo"
-          style={{ padding: '5px 9px', fontSize: 12 }}
+          style={{ padding: '5px 9px', fontSize: 12, pointerEvents: 'auto' }}
           disabled={!puedeCrearUO || guardando}
           title={puedeCrearUO ? 'Crear una nueva unidad organizacional' : 'Requiere los permisos Organigrama: editar y Maestros Base: crear.'}
           onClick={abrirCrearUO}
@@ -393,6 +432,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             onReasignarUO={reasignarUO}
             onAsignarUOPadre={asignarUOPadre}
             onCrearJerarquia={crearJerarquia}
+            onEliminarUOPadre={eliminarUOPadre}
+            onEliminarJerarquia={eliminarJerarquia}
             onCrearRelacionMatricial={crearMatricial}
             onEliminarRelacionMatricial={eliminarMatricial}
             onError={causa => setError(errorText(causa))}
