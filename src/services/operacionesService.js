@@ -97,6 +97,7 @@ export async function actualizarOT(supabase, otId, datos) {
   if (datos.sede !== undefined || datos.direccion_ejecucion !== undefined) row.direccion_ejecucion = datos.sede || datos.direccion_ejecucion || null;
   if (datos.fecha_inicio !== undefined || datos.fecha_programada !== undefined) row.fecha_programada = datos.fecha_inicio || datos.fecha_programada || null;
   if (datos.fecha_fin !== undefined) row.fecha_fin = datos.fecha_fin || null;
+  if (datos.fecha_inicio_real !== undefined) row.fecha_inicio_real = datos.fecha_inicio_real || null;
   if (datos.tecnico_responsable_id !== undefined) row.tecnico_responsable_id = datos.tecnico_responsable_id || null;
   if (datos.supervisor !== undefined) row.supervisor = datos.supervisor || null;
   if (datos.estado !== undefined) {
