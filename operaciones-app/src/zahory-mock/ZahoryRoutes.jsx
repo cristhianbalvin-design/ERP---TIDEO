@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isSupabaseMode } from '../../../src/lib/dataMode.js';
 import { DashboardPage } from './pages/pages1.jsx';
 import MisOTsPage from './pages/MisOTsPage.jsx';
 import { MapaCampo } from './pages/TransportePages.jsx';
@@ -69,7 +70,7 @@ export function ZahoryRoutes({ route, onNavigate }) {
 
   return (
     <div className="zahory-mock-root" data-zahory-route={route} data-current-ot={currentOT}>
-      <MockBackendBanner />
+      {!isSupabaseMode() && <MockBackendBanner />}
       {content}
     </div>
   );
