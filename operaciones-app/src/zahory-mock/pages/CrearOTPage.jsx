@@ -693,6 +693,7 @@ export const CrearOTPage = ({ onNav }) => {
 
   // ── Estado DBS (C1, C2, C5, C6) ────────────────────────────────────────
   const [objetoCostoTipo, setObjetoCostoTipo] = useState('contrato');
+  const [propietarioEquipoOS, setPropietarioEquipoOS] = useState('cliente');
   const [errorDBS, setErrorDBS] = useState(null);
   const [horometroSugerido, setHorometroSugerido] = useState(null);
   const [clientesReales, setClientesReales] = useState([]);
@@ -732,7 +733,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [guardandoEquipoCliente, setGuardandoEquipoCliente] = useState(false);
   const [errorAltaEquipoCliente, setErrorAltaEquipoCliente] = useState(null);
   const [formEquipoCliente, setFormEquipoCliente] = useState({
-    nombre: '', marca: '', modelo: '', placa_serie: '',
+    nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '',
   });
 
   const [form, setForm] = useState({
@@ -942,6 +943,7 @@ export const CrearOTPage = ({ onNav }) => {
     let vigente = true;
     if (
       objetoCostoTipo !== 'equipo_interno'
+      && !(objetoCostoTipo === 'os_cliente' && propietarioEquipoOS === 'propio')
       || !sesionOperativa.empresaId
       || !sesionOperativa.permiteEscritura
     ) {
@@ -981,6 +983,7 @@ export const CrearOTPage = ({ onNav }) => {
     return () => { vigente = false; };
   }, [
     objetoCostoTipo,
+    propietarioEquipoOS,
     sesionOperativa.empresaId,
     sesionOperativa.permiteEscritura,
   ]);
@@ -1276,17 +1279,22 @@ export const CrearOTPage = ({ onNav }) => {
     form.centro_beneficio_id,
   ]);
   const equiposFiltrados = useMemo(() => {
-    if (objetoCostoTipo === 'equipo_interno') return equiposInternosReales;
+    if (
+      objetoCostoTipo === 'equipo_interno'
+      || (objetoCostoTipo === 'os_cliente' && propietarioEquipoOS === 'propio')
+    ) return equiposInternosReales;
     if (!contrato) return [];
     return D.equipos.filter(e => contrato.equiposScope?.includes(e.cod));
-  }, [contrato, equiposInternosReales, objetoCostoTipo]);
+  }, [contrato, equiposInternosReales, objetoCostoTipo, propietarioEquipoOS]);
   const equipo = useMemo(() => (
     objetoCostoTipo === 'equipo_interno'
       ? equiposInternosReales.find(e => e.id === form.equipo)
       : objetoCostoTipo === 'os_cliente'
-        ? equiposClienteReales.find(e => e.id === form.equipo)
+        ? propietarioEquipoOS === 'propio'
+          ? equiposInternosReales.find(e => e.id === form.equipo)
+          : equiposClienteReales.find(e => e.id === form.equipo)
         : D.equipos.find(e => e.cod === form.equipo)
-  ), [equiposClienteReales, equiposInternosReales, form.equipo, objetoCostoTipo]);
+  ), [equiposClienteReales, equiposInternosReales, form.equipo, objetoCostoTipo, propietarioEquipoOS]);
   const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
     || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
@@ -1343,6 +1351,7 @@ export const CrearOTPage = ({ onNav }) => {
 
   const changeObjetoCostoTipo = (tipo) => {
     setObjetoCostoTipo(tipo);
+    setPropietarioEquipoOS('cliente');
     setAltaEquipoClienteAbierta(false);
     setErrorAltaEquipoCliente(null);
     setForm(f => ({
@@ -1380,11 +1389,22 @@ export const CrearOTPage = ({ onNav }) => {
     setBacklogs([]);
   };
 
+  const cambiarPropietarioEquipoOS = (propietario) => {
+    setPropietarioEquipoOS(propietario);
+    setAltaEquipoClienteAbierta(false);
+    setErrorAltaEquipoCliente(null);
+    setForm(f => ({ ...f, equipo: '', horometroApertura: '' }));
+    setHorometroSugerido(null);
+    setBacklogs([]);
+  };
+
   const handleEquipoChange = (cod) => {
     const eq = objetoCostoTipo === 'equipo_interno'
       ? equiposInternosReales.find(e => e.id === cod)
       : objetoCostoTipo === 'os_cliente'
-        ? equiposClienteReales.find(e => e.id === cod)
+        ? propietarioEquipoOS === 'propio'
+          ? equiposInternosReales.find(e => e.id === cod)
+          : equiposClienteReales.find(e => e.id === cod)
         : D.equipos.find(e => e.cod === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
@@ -1398,9 +1418,53 @@ export const CrearOTPage = ({ onNav }) => {
     setBacklogs([]);
   };
 
+  const renderSelectorEquipoPropio = ({ requiereOS = false, mensajeSinEquipos } = {}) => {
+    const bloqueado = (requiereOS && !form.contratoId)
+      || cargandoEquiposInternos
+      || !sesionOperativa.permiteEscritura;
+    return (
+      <>
+        <select className="input" value={form.equipo}
+          disabled={bloqueado}
+          onChange={e => handleEquipoChange(e.target.value)}
+          style={{
+            marginTop: 4,
+            background: bloqueado ? '#ECEFF1' : undefined,
+            borderColor: fieldErrors.equipo ? '#E53935' : undefined,
+          }}>
+          <option value="">
+            {requiereOS && !form.contratoId
+              ? 'Seleccione primero una OS'
+              : cargandoEquiposInternos
+                ? 'Cargando equipos propios...'
+                : '-- Seleccionar equipo propio --'}
+          </option>
+          {equiposInternosReales.map(equipoPropio => (
+            <option key={equipoPropio.id} value={equipoPropio.id}>
+              {equipoPropio.codigo} - {equipoPropio.nombre}
+            </option>
+          ))}
+        </select>
+        {errorEquiposInternos && (
+          <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+            No se pudieron cargar los equipos propios: {errorEquiposInternos}
+          </div>
+        )}
+        {!cargandoEquiposInternos && !errorEquiposInternos && (!requiereOS || form.contratoId) && equiposInternosReales.length === 0 && (
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+            {mensajeSinEquipos || 'No hay equipos operativos de flota disponibles para esta empresa.'}
+          </div>
+        )}
+        {fieldErrors.equipo?.[0] && (
+          <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
+        )}
+      </>
+    );
+  };
+
   const abrirAltaEquipoCliente = () => {
     setErrorAltaEquipoCliente(null);
-    setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '' });
+    setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '' });
     setAltaEquipoClienteAbierta(true);
   };
 
@@ -1431,8 +1495,9 @@ export const CrearOTPage = ({ onNav }) => {
             estado: 'operativo',
             propietario_tipo: 'cliente',
             cliente_propietario_id: form.clienteId,
+            activo_padre_id: formEquipoCliente.activo_padre_id || null,
           })
-          .select('id,codigo,nombre,marca,modelo,placa_serie,estado')
+          .select('id,codigo,nombre,marca,modelo,placa_serie,estado,activo_padre_id')
           .single();
         if (!error) {
           creado = data;
@@ -1448,7 +1513,7 @@ export const CrearOTPage = ({ onNav }) => {
       setHorometroSugerido(null);
       setBacklogs([]);
       setAltaEquipoClienteAbierta(false);
-      setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '' });
+      setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '' });
     } catch (error) {
       setErrorAltaEquipoCliente(error.message || 'No se pudo registrar el equipo de cliente.');
     } finally {
@@ -1798,28 +1863,7 @@ export const CrearOTPage = ({ onNav }) => {
                   <>
                   <div className="ot-form-field" style={{ marginBottom: 12 }}>
                     <div className="label" style={{ fontSize: 12 }}>Equipo (activo propio de la plataforma) *</div>
-                    <select className="input" value={form.equipo}
-                      disabled={cargandoEquiposInternos || !sesionOperativa.permiteEscritura}
-                      onChange={e => handleEquipoChange(e.target.value)}
-                      style={{ marginTop: 4, background: cargandoEquiposInternos || !sesionOperativa.permiteEscritura ? '#ECEFF1' : undefined, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
-                      <option value="">{cargandoEquiposInternos ? 'Cargando equipos...' : '-- Seleccionar equipo --'}</option>
-                      {equiposFiltrados.map(eq => (
-                        <option key={eq.id} value={eq.id}>{eq.codigo} - {eq.nombre}</option>
-                      ))}
-                    </select>
-                    {errorEquiposInternos && (
-                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
-                        No se pudieron cargar los equipos: {errorEquiposInternos}
-                      </div>
-                    )}
-                    {!cargandoEquiposInternos && !errorEquiposInternos && equiposFiltrados.length === 0 && (
-                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-                        No hay equipos operativos de flota disponibles para esta empresa.
-                      </div>
-                    )}
-                    {fieldErrors.equipo?.[0] && (
-                      <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
-                    )}
+                    {renderSelectorEquipoPropio()}
                   </div>
                   </>
                 ) : (
@@ -1892,7 +1936,28 @@ export const CrearOTPage = ({ onNav }) => {
                     )}
                     {objetoCostoTipo === 'os_cliente' && (
                       <div className="ot-form-field">
-                        <div className="label" style={{ fontSize: 12 }}>Equipo del cliente *</div>
+                        <div className="label" style={{ fontSize: 12 }}>Equipo *</div>
+                        <div role="radiogroup" aria-label="Propietario del equipo" style={{ display: 'flex', gap: 12, marginTop: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                          {[
+                            { value: 'propio', label: 'Propio de la empresa' },
+                            { value: 'cliente', label: 'Del cliente' },
+                          ].map(opcion => (
+                            <label key={opcion.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: sesionOperativa.permiteEscritura ? 'pointer' : 'default', fontSize: 12 }}>
+                              <input type="radio" name="propietario-equipo-os" value={opcion.value}
+                                checked={propietarioEquipoOS === opcion.value}
+                                disabled={!sesionOperativa.permiteEscritura}
+                                onChange={() => cambiarPropietarioEquipoOS(opcion.value)} />
+                              {opcion.label}
+                            </label>
+                          ))}
+                        </div>
+                        {propietarioEquipoOS === 'propio' ? (
+                          renderSelectorEquipoPropio({
+                            requiereOS: true,
+                            mensajeSinEquipos: 'No hay equipos propios disponibles. Regístralo primero en Activos Fijos y vuelve a esta OT.',
+                          })
+                        ) : (
+                          <>
                         <select className="input" value={form.equipo}
                           disabled={!form.contratoId || cargandoEquiposCliente || !sesionOperativa.permiteEscritura}
                           onChange={e => handleEquipoChange(e.target.value)}
@@ -1946,6 +2011,19 @@ export const CrearOTPage = ({ onNav }) => {
                               <input className="input" value={formEquipoCliente.placa_serie}
                                 onChange={e => setFormEquipoCliente(prev => ({ ...prev, placa_serie: e.target.value }))}
                                 placeholder="N.° de serie / placa" />
+                              <div className="ot-form-field" style={{ gridColumn: '1 / -1' }}>
+                                <div className="label" style={{ fontSize: 11 }}>Equipo padre (si aplica)</div>
+                                <select className="input" value={formEquipoCliente.activo_padre_id}
+                                  onChange={e => setFormEquipoCliente(prev => ({ ...prev, activo_padre_id: e.target.value }))}
+                                  style={{ marginTop: 4 }}>
+                                  <option value="">Sin equipo padre</option>
+                                  {equiposClienteReales.map(equipoPadre => (
+                                    <option key={equipoPadre.id} value={equipoPadre.id}>
+                                      {[equipoPadre.codigo, equipoPadre.nombre, equipoPadre.placa_serie].filter(Boolean).join(' · ')}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
                             {errorAltaEquipoCliente && (
                               <div style={{ fontSize: 11, color: '#E53935', marginTop: 6 }}>{errorAltaEquipoCliente}</div>
@@ -1963,6 +2041,8 @@ export const CrearOTPage = ({ onNav }) => {
                               </button>
                             </div>
                           </div>
+                        )}
+                          </>
                         )}
                       </div>
                     )}
