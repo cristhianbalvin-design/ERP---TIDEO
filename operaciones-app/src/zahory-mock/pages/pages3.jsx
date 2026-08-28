@@ -3,8 +3,20 @@ import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA as MOCK } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageService.js';
 
 const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const generarIdActividad = () => `act_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const crearActividad = (valores = {}) => ({
+  id: generarIdActividad(),
+  descripcion: '',
+  hora_inicio: '',
+  hora_fin: '',
+  horometro_inicio: '',
+  horometro_fin: '',
+  fotos: [],
+  ...valores,
+});
 
 const IndicadorPendienteConexion = () => (
   <span className="badge orange" style={{ marginLeft: 8, fontSize: 10 }}>Pendiente de conexión real</span>
@@ -633,8 +645,8 @@ export const ReporteMinaPage = ({ onNav }) => {
 // ---------- Parte diario de taller ----------
 export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const sesionOperativa = useSesionOperativa();
-  const [formData, setFormData] = useS3({
-    id: 'PD-2026-112',
+  const [formData, setFormData] = useS3(() => ({
+    id: generarIdParte(),
     ot_id: '',
     tarea_id: '',
     fecha: new Date().toISOString().slice(0, 10),
@@ -649,8 +661,8 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     equipo_id: 'JB-24',
     avance_ot_pct: 45,
     actividades: [
-      { id: 'ACT-001', descripcion: 'Desmontaje de sistema hidráulico. Cambio de sellos internos y prueba de presión.', hora_inicio: '08:00', hora_fin: '11:30', horometro_inicio: 3450, horometro_fin: 3453 },
-      { id: 'ACT-002', descripcion: 'Engrase general del equipo. Limpieza de filtros y reemplazo de bandas.', hora_inicio: '13:00', hora_fin: '17:00', horometro_inicio: 3453, horometro_fin: 3458 }
+      crearActividad({ descripcion: 'Desmontaje de sistema hidráulico. Cambio de sellos internos y prueba de presión.', hora_inicio: '08:00', hora_fin: '11:30', horometro_inicio: 3450, horometro_fin: 3453 }),
+      crearActividad({ descripcion: 'Engrase general del equipo. Limpieza de filtros y reemplazo de bandas.', hora_inicio: '13:00', hora_fin: '17:00', horometro_inicio: 3453, horometro_fin: 3458 }),
     ],
     repuestos_consumidos: [
       { item_id: 'REP-CAT-0441', descripcion: 'Sello hidráulico kit completo', cantidad: 2, unidad: 'kit', costo_unitario: 145.00 }
@@ -662,7 +674,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     trabajos_pendientes: '',
     observaciones: '',
     backlog_generado_id: null
-  });
+  }));
 
   const [ordenesReales, setOrdenesReales] = useS3([]);
   const [tareasReales, setTareasReales] = useS3([]);
@@ -673,6 +685,8 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const [cargandoTecnicos, setCargandoTecnicos] = useS3(false);
   const [errorDatosReales, setErrorDatosReales] = useS3('');
   const [guardandoParte, setGuardandoParte] = useS3(false);
+  const [actividadSubiendoFotoId, setActividadSubiendoFotoId] = useS3('');
+  const [errorFotoActividad, setErrorFotoActividad] = useS3('');
   const [errorGuardadoParte, setErrorGuardadoParte] = useS3('');
   const [parteGuardado, setParteGuardado] = useS3(null);
   const [showBacklogModal, setShowBacklogModal] = useS3(false);
@@ -900,6 +914,77 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     setFormData({ ...formData, actividades: newAct });
   };
 
+  const subirFotoActividad = async (actividadId, file) => {
+    if (!file || actividadSubiendoFotoId) return;
+    if (!sesionOperativa.permiteEscritura || !sesionOperativa.empresaId) {
+      setErrorFotoActividad('Selecciona una sociedad operativa para adjuntar fotos.');
+      return;
+    }
+
+    const actividadActual = formData.actividades.find(actividad => actividad.id === actividadId);
+    if (!actividadActual) return;
+
+    setActividadSubiendoFotoId(actividadId);
+    setErrorFotoActividad('');
+    try {
+      const adjunto = await subirAdjunto({
+        empresaId: sesionOperativa.empresaId,
+        entidadTipo: 'partes_diarios',
+        entidadId: formData.id,
+        file,
+        categoria: 'evidencia_actividad',
+        descripcion: `Foto de actividad: ${actividadActual.descripcion?.trim() || actividadActual.id}`,
+        subidoPor: sesionOperativa.usuario?.id || null,
+      });
+
+      const foto = {
+        id: adjunto.id,
+        bucket: adjunto.bucket,
+        storage_path: adjunto.storage_path,
+        url: adjunto.url,
+        nombre_original: adjunto.nombre_original,
+        mime_type: adjunto.mime_type,
+        tamano_bytes: adjunto.tamano_bytes,
+      };
+      setFormData(prev => ({
+        ...prev,
+        actividades: prev.actividades.map(actividad => (
+          actividad.id === actividadId
+            ? { ...actividad, fotos: [...(actividad.fotos || []), foto] }
+            : actividad
+        )),
+      }));
+    } catch (error) {
+      setErrorFotoActividad(error?.message || 'No se pudo adjuntar la foto de la actividad.');
+    } finally {
+      setActividadSubiendoFotoId('');
+    }
+  };
+
+  const quitarFotoActividad = async (actividadId, fotoId) => {
+    const actividad = formData.actividades.find(item => item.id === actividadId);
+    const foto = actividad?.fotos?.find(item => item.id === fotoId);
+    if (!foto || actividadSubiendoFotoId) return;
+
+    setActividadSubiendoFotoId(actividadId);
+    setErrorFotoActividad('');
+    try {
+      await eliminarAdjunto(foto.id);
+      setFormData(prev => ({
+        ...prev,
+        actividades: prev.actividades.map(item => (
+          item.id === actividadId
+            ? { ...item, fotos: (item.fotos || []).filter(fotoActual => fotoActual.id !== fotoId) }
+            : item
+        )),
+      }));
+    } catch (error) {
+      setErrorFotoActividad(error?.message || 'No se pudo quitar la foto de la actividad.');
+    } finally {
+      setActividadSubiendoFotoId('');
+    }
+  };
+
   const actualizarRepuesto = (idx, campo, valor) => {
     const newRep = [...formData.repuestos_consumidos];
     newRep[idx] = { ...newRep[idx], [campo]: valor };
@@ -964,6 +1049,21 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
         cantidad: Number(item.cantidad || 0), unidad: item.unidad,
       })),
     ];
+    const actividadesDetalle = formData.actividades.map(item => ({
+      id: item.id,
+      descripcion: item.descripcion?.trim() || '',
+      hora_inicio: item.hora_inicio || '',
+      hora_fin: item.hora_fin || '',
+      fotos: (item.fotos || []).map(foto => ({
+        id: foto.id,
+        bucket: foto.bucket,
+        storage_path: foto.storage_path,
+        url: foto.url,
+        nombre_original: foto.nombre_original,
+        mime_type: foto.mime_type,
+        tamano_bytes: foto.tamano_bytes,
+      })),
+    }));
 
     setGuardandoParte(true);
     setErrorGuardadoParte('');
@@ -975,7 +1075,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
       if (errorNumero) throw errorNumero;
 
       const payload = {
-        id: generarIdParte(),
+        id: formData.id,
         numero: numeroGenerado || null,
         empresa_id: sesionOperativa.empresaId,
         orden_trabajo_id: formData.ot_id,
@@ -991,13 +1091,14 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
         tarea_id: formData.tarea_id || null,
         materiales,
         evidencias: [],
+        actividades_detalle: actividadesDetalle,
         origen_registro: 'operativo_taller',
         estado: 'en_revision',
       };
       const { data, error } = await supabase.from('partes_diarios').insert(payload).select('id,numero').single();
       if (error) throw error;
       setParteGuardado(data || payload);
-      setFormData(prev => ({ ...prev, id: data?.numero || data?.id || prev.id }));
+      setFormData(prev => ({ ...prev, id: data?.id || prev.id }));
     } catch (error) {
       setErrorGuardadoParte(error?.message || 'No se pudo guardar el parte diario.');
     } finally {
@@ -1021,6 +1122,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
         </div>
       )}
       {errorDatosReales && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#B91C1C' }}>{errorDatosReales}</div>}
+      {errorFotoActividad && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#B91C1C' }}>{errorFotoActividad}</div>}
       {errorGuardadoParte && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#B91C1C' }}>{errorGuardadoParte}</div>}
       {parteGuardado && <div className="card" style={{ marginBottom: 14, padding: 14, color: '#15803D' }}>Parte {parteGuardado.numero || parteGuardado.id} enviado a revisión.</div>}
 
@@ -1175,11 +1277,49 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
         {/* Actividades */}
         <Accordion title="Actividades realizadas" icon="workshop" defaultOpen={true} badge={<span className="chip" style={{ marginLeft: 8 }}>{formData.actividades.length} actividades</span>}>
           {formData.actividades.map((a, i) => (
-            <div key={i} style={{ border: "1px solid var(--card-border)", borderRadius: 8, padding: 12, marginBottom: 10 }}>
+            <div key={a.id} style={{ border: "1px solid var(--card-border)", borderRadius: 8, padding: 12, marginBottom: 10 }}>
               <div className="muted" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4 }}>ACTIVIDAD #{i + 1}</div>
               <div className="mic-field-wrap" style={{ marginTop: 6 }}>
                 <textarea value={a.descripcion} onChange={e => actualizarActividad(i, 'descripcion', e.target.value)}/>
                 <button className="mic-btn"><Icon name="mic" size={18}/></button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <label
+                  className={`mic-btn${actividadSubiendoFotoId === a.id ? ' rec' : ''}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: actividadSubiendoFotoId ? 'wait' : 'pointer' }}
+                  title="Tomar foto o cargar imagen para esta actividad"
+                >
+                  <Icon name="camera" size={18}/>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    disabled={Boolean(actividadSubiendoFotoId) || !sesionOperativa.permiteEscritura}
+                    style={{ display: 'none' }}
+                    onClick={e => { e.currentTarget.value = ''; }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) subirFotoActividad(a.id, file);
+                    }}
+                  />
+                </label>
+                <span className="muted" style={{ fontSize: 11 }}>
+                  {actividadSubiendoFotoId === a.id
+                    ? 'Subiendo foto...'
+                    : a.fotos?.length ? `${a.fotos.length} foto${a.fotos.length === 1 ? '' : 's'} adjunta${a.fotos.length === 1 ? '' : 's'}` : 'Foto opcional'}
+                </span>
+                {(a.fotos || []).map(foto => (
+                  <div key={foto.id} style={{ position: 'relative', width: 54, height: 54, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--card-border)', background: 'var(--row-alt)' }}>
+                    <img src={foto.url} alt={foto.nombre_original} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                    <button
+                      type="button"
+                      disabled={Boolean(actividadSubiendoFotoId)}
+                      title="Quitar foto"
+                      onClick={() => quitarFotoActividad(a.id, foto.id)}
+                      style={{ position: 'absolute', top: 2, right: 2, width: 17, height: 17, borderRadius: '50%', background: 'rgba(0,0,0,0.65)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}
+                    >×</button>
+                  </div>
+                ))}
               </div>
               <div className="grid-2" style={{ marginTop: 10 }}>
                 <div className="field">
@@ -1256,7 +1396,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
             </div>
           ) : null}
 
-          <button className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setFormData({...formData, actividades: [...formData.actividades, { id:`ACT-00${formData.actividades.length+1}`, descripcion:'', hora_inicio:'', hora_fin:'', horometro_inicio:'', horometro_fin:'' }]})}>
+          <button className="btn btn-secondary" style={{ width: "100%", justifyContent: "center" }} onClick={() => setFormData({...formData, actividades: [...formData.actividades, crearActividad()]})}>
             <Icon name="plus" size={14}/> Agregar actividad
           </button>
         </Accordion>
