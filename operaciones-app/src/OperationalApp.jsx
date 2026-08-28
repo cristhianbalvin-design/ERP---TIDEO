@@ -18,9 +18,15 @@ const routes = {
   actividad: { label: 'Actividad', icon: 'activity', title: 'Actividad diaria', description: 'Placeholder para registrar y consultar la actividad operativa.' },
 };
 
-function readRoute() {
-  const route = window.location.hash.replace('#/', '') || 'inicio';
-  return routes[route] || availableZahoryRoutes.has(route) ? route : 'inicio';
+function readLocation() {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  const [routeCandidate = 'inicio', queryString = ''] = hash.split('?');
+  const route = routeCandidate || 'inicio';
+
+  return {
+    route: routes[route] || availableZahoryRoutes.has(route) ? route : 'inicio',
+    params: Object.fromEntries(new URLSearchParams(queryString)),
+  };
 }
 
 const zahoryNavigation = getZahoryNavigation(availableZahoryRoutes);
@@ -40,21 +46,28 @@ function NavEntry({ item, route, navigate }) {
 
 export function OperationalApp() {
   const sesionOperativa = useSesionOperativa();
-  const [route, setRoute] = useState(readRoute);
+  const [location, setLocation] = useState(readLocation);
+  const route = location.route;
+  const routeParams = location.params;
   const [openGroupIds, setOpenGroupIds] = useState(() => {
-    const activeGroup = findGroupForRoute(readRoute(), zahoryNavigation);
+    const activeGroup = findGroupForRoute(readLocation().route, zahoryNavigation);
     const openGroups = new Set(['flota-alquileres']);
     if (activeGroup) openGroups.add(activeGroup);
     return openGroups;
   });
-  const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readRoute(), zahoryNavigation));
+  const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   useEffect(() => {
-    const updateRoute = () => setRoute(readRoute());
+    const updateRoute = () => setLocation(readLocation());
     window.addEventListener('hashchange', updateRoute);
     return () => window.removeEventListener('hashchange', updateRoute);
   }, []);
 
-  const navigate = key => { window.location.hash = `/${key}`; };
+  const navigate = (key, params = {}) => {
+    const queryString = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+    ).toString();
+    window.location.hash = `/${key}${queryString ? `?${queryString}` : ''}`;
+  };
   const page = routes[route];
   const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
   const estadoSesion = !isSupabaseConfigured()
@@ -197,7 +210,7 @@ export function OperationalApp() {
           </main>
         ) : (
           <main className="ops-imported-main">
-            <ZahoryScreenHost route={route} onNavigate={navigate} />
+            <ZahoryScreenHost route={route} routeParams={routeParams} onNavigate={navigate} />
           </main>
         )}
       </section>

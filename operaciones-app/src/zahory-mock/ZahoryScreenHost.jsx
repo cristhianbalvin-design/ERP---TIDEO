@@ -41,7 +41,7 @@ const integrationStyles = `
   }
 `;
 
-export function ZahoryScreenHost({ route, onNavigate }) {
+export function ZahoryScreenHost({ route, routeParams, onNavigate }) {
   const hostRef = useRef(null);
   const [shadowRoot, setShadowRoot] = useState(null);
 
@@ -56,7 +56,7 @@ export function ZahoryScreenHost({ route, onNavigate }) {
         <>
           <style>{shadowZahoryStyles}</style>
           <style>{integrationStyles}</style>
-          <ZahoryRoutes route={route} onNavigate={onNavigate} />
+          <ZahoryRoutes route={route} routeParams={routeParams} onNavigate={onNavigate} />
         </>,
         shadowRoot,
       )}
