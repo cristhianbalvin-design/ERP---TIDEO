@@ -90,6 +90,9 @@ const mensajeErrorGuardadoOT = (error) => {
   if (error?.code === '23503') {
     return 'La OS, contrato, CECO o CEBE seleccionado ya no es válido para esta empresa o sociedad.';
   }
+  if (/ordenes_trabajo_horometro_raiz_equipo_chk/i.test(mensaje)) {
+    return 'El horómetro actual es obligatorio cuando la OT tiene un contrato o equipo asociado.';
+  }
   if (error?.code === '23514' || /ordenes_trabajo_(tipo_trabajo|cargo_financiero|combinacion_dbs|motivo_rework|horometro|raiz_costo)/i.test(mensaje)) {
     return 'La combinación de datos DBS no es válida. Revisa la clasificación, raíz de costo y horómetro.';
   }
@@ -1560,8 +1563,11 @@ export const CrearOTPage = ({ onNav }) => {
   });
   const fieldErrors = validation.fieldErrors;
   const hasCentroCosto = Boolean(form.centro_costo || form.centro_beneficio_id);
-  const horometroRaizEquipoValido = !['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+  const requiereHorometroRaiz = ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+    || (objetoCostoTipo === 'os_cliente' && Boolean(form.equipo));
+  const horometroRaizEquipoValido = !requiereHorometroRaiz
     || (String(form.horometroApertura || '').trim() !== '' && Number(form.horometroApertura) >= 0);
+  const horometroObligatorio = form.lugarEjecucion === 'Campo_Mina' || requiereHorometroRaiz;
   const valid = sesionOperativa.permiteEscritura && validation.success && !errorDBS && hasCentroCosto
     && horometroRaizEquipoValido
     && !(form.tipoCargo === 'Reclamo_Rework' && !form.motivoRetrabajo?.trim())
@@ -1577,7 +1583,7 @@ export const CrearOTPage = ({ onNav }) => {
     (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)
       && '- El horómetro de apertura es obligatorio para OTs en campo.',
     !horometroRaizEquipoValido
-      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato o sobre equipo interno.',
+      && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato, sobre equipo interno o desde una OS con equipo asociado.',
   ].filter(Boolean);
 
   const guardarOT = async () => {
@@ -1612,7 +1618,7 @@ export const CrearOTPage = ({ onNav }) => {
       cargo_financiero: form.tipoCargo,
       tecnico_responsable_id: form.tecnico || null,
       motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
-      horometro_actual: ['contrato', 'equipo_interno'].includes(objetoCostoTipo)
+      horometro_actual: requiereHorometroRaiz
         ? Number(form.horometroApertura) : null,
     };
 
@@ -2199,7 +2205,7 @@ export const CrearOTPage = ({ onNav }) => {
               {/* C2 — Horómetro de apertura */}
               <div style={{ padding: '12px 12px 8px' }}>
                 <div className="label" style={{ fontSize: 12 }}>
-                  Horómetro actual del equipo{(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) ? <span style={{ color: '#ef4444' }}> *</span> : ''}
+                  Horómetro actual del equipo{horometroObligatorio ? <span style={{ color: '#ef4444' }}> *</span> : ''}
                 </div>
                 {horometroSugerido != null && (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '2px 0 4px' }}>
@@ -2215,7 +2221,7 @@ export const CrearOTPage = ({ onNav }) => {
                     style={{
                       width: 200, fontFamily: 'monospace',
                       background: !form.equipo ? '#ECEFF1' : undefined,
-                      borderColor: (form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura
+                      borderColor: horometroObligatorio && form.equipo && !form.horometroApertura
                         ? '#E53935' : undefined,
                     }}
                   />
@@ -2223,9 +2229,9 @@ export const CrearOTPage = ({ onNav }) => {
                     horas — registrar el horómetro físico al iniciar la OT
                   </span>
                 </div>
-                {(form.lugarEjecucion === 'Campo_Mina' || ['contrato', 'equipo_interno'].includes(objetoCostoTipo)) && form.equipo && !form.horometroApertura && (
+                {horometroObligatorio && form.equipo && !form.horometroApertura && (
                   <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
-                    El horómetro actual es obligatorio para OTs en campo, bajo contrato o sobre equipo interno.
+                    El horómetro actual es obligatorio para OTs en campo, bajo contrato o con equipo asociado a la OT.
                   </div>
                 )}
               </div>
