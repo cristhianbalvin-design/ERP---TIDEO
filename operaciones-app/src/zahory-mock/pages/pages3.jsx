@@ -631,7 +631,7 @@ export const ReporteMinaPage = ({ onNav }) => {
 };
 
 // ---------- Parte diario de taller ----------
-export const ParteTallerPage = ({ onNav }) => {
+export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const sesionOperativa = useSesionOperativa();
   const [formData, setFormData] = useS3({
     id: 'PD-2026-112',
@@ -667,6 +667,7 @@ export const ParteTallerPage = ({ onNav }) => {
   const [ordenesReales, setOrdenesReales] = useS3([]);
   const [tareasReales, setTareasReales] = useS3([]);
   const [tecnicosReales, setTecnicosReales] = useS3([]);
+  const [tecnicoLogueado, setTecnicoLogueado] = useS3(null);
   const [cargandoOTs, setCargandoOTs] = useS3(false);
   const [cargandoTareas, setCargandoTareas] = useS3(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useS3(false);
@@ -685,6 +686,21 @@ export const ParteTallerPage = ({ onNav }) => {
       return consulta.in('sociedad_id', sesionOperativa.sociedadesIdsAlcance);
     }
     return consulta;
+  };
+
+  const seleccionarOT = (otId) => {
+    const ot = ordenesReales.find(item => item.id === otId);
+    setTareasReales([]);
+    setFormData(prev => ({
+      ...prev,
+      ot_id: otId,
+      tarea_id: '',
+      tecnico_id: '',
+      tecnico_nombre: '',
+      contrato_id: ot?.contrato_alquiler_id || '',
+      centro_costo: ot?.centro_costo_id || '',
+      equipo_id: ot?.equipo_id || '',
+    }));
   };
 
   useEffect(() => {
@@ -723,10 +739,24 @@ export const ParteTallerPage = ({ onNav }) => {
     return () => { vigente = false; };
   }, [sesionOperativa.empresaId, sesionOperativa.sociedadId, sesionOperativa.vistaConsolidada, sesionOperativa.sociedadesIdsAlcance, sesionOperativa.permiteEscritura]);
 
+  const otPreseleccionadaId = String(routeParams?.ot || '').trim();
+  const otPreseleccionada = Boolean(
+    otPreseleccionadaId
+    && formData.ot_id === otPreseleccionadaId
+    && ordenesReales.some(ot => ot.id === otPreseleccionadaId),
+  );
+
+  useEffect(() => {
+    if (!otPreseleccionadaId || formData.ot_id === otPreseleccionadaId) return;
+    if (!ordenesReales.some(ot => ot.id === otPreseleccionadaId)) return;
+    seleccionarOT(otPreseleccionadaId);
+  }, [otPreseleccionadaId, ordenesReales, formData.ot_id]);
+
   useEffect(() => {
     let vigente = true;
     if (!sesionOperativa.empresaId || !sesionOperativa.permiteEscritura) {
       setTecnicosReales([]);
+      setTecnicoLogueado(null);
       setCargandoTecnicos(false);
       return () => { vigente = false; };
     }
@@ -736,12 +766,31 @@ export const ParteTallerPage = ({ onNav }) => {
       try {
         const { data, error } = await getSupabaseClient()
           .from('personal_operativo')
-          .select('id,nombre,codigo,especialidad,estado,tarifa_hora')
+          .select('id,nombre,codigo,especialidad,supervisor,auth_user_id,estado,tarifa_hora')
           .eq('empresa_id', sesionOperativa.empresaId)
           .eq('estado', 'disponible')
           .order('nombre');
         if (error) throw error;
-        if (vigente) setTecnicosReales(data || []);
+        const { data: perfilActual, error: perfilActualError } = await getSupabaseClient()
+          .from('personal_operativo')
+          .select('id,nombre,especialidad,supervisor,auth_user_id')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .eq('auth_user_id', sesionOperativa.usuario?.id)
+          .maybeSingle();
+        if (perfilActualError) throw perfilActualError;
+        if (vigente) {
+          const tecnicos = data || [];
+          const perfilPropio = perfilActual || tecnicos.find(tecnico => tecnico.auth_user_id === sesionOperativa.usuario?.id) || null;
+          setTecnicosReales(tecnicos);
+          setTecnicoLogueado(perfilPropio);
+          if (perfilPropio?.especialidad || perfilPropio?.supervisor) {
+            setFormData(prev => ({
+              ...prev,
+              especialidad: perfilPropio.especialidad || prev.especialidad,
+              supervisor: perfilPropio.supervisor || prev.supervisor,
+            }));
+          }
+        }
       } catch (error) {
         if (vigente) setErrorDatosReales(error?.message || 'No se pudo cargar el catálogo de técnicos.');
       } finally {
@@ -751,7 +800,7 @@ export const ParteTallerPage = ({ onNav }) => {
 
     cargarTecnicos();
     return () => { vigente = false; };
-  }, [sesionOperativa.empresaId, sesionOperativa.permiteEscritura]);
+  }, [sesionOperativa.empresaId, sesionOperativa.usuario?.id, sesionOperativa.permiteEscritura]);
 
   useEffect(() => {
     let vigente = true;
@@ -823,21 +872,6 @@ export const ParteTallerPage = ({ onNav }) => {
   const tecnicoTareaNombre = tareaSeleccionada?.tecnico_nombre
     || tecnicosReales.find(tecnico => tecnico.id === tareaSeleccionada?.tecnico_id)?.nombre
     || (tareaSeleccionada?.tecnico_id ? `Técnico asignado (${tareaSeleccionada.tecnico_id})` : '');
-
-  const seleccionarOT = (otId) => {
-    const ot = ordenesReales.find(item => item.id === otId);
-    setTareasReales([]);
-    setFormData(prev => ({
-      ...prev,
-      ot_id: otId,
-      tarea_id: '',
-      tecnico_id: '',
-      tecnico_nombre: '',
-      contrato_id: ot?.contrato_alquiler_id || '',
-      centro_costo: ot?.centro_costo_id || '',
-      equipo_id: ot?.equipo_id || '',
-    }));
-  };
 
   const seleccionarTarea = (tareaId) => {
     const tarea = tareasReales.find(item => item.id === tareaId);
@@ -1005,11 +1039,12 @@ export const ParteTallerPage = ({ onNav }) => {
                 </div>
               </div>
               <div className="field">
-                <label>Especialidad <IndicadorPendienteConexion/></label>
+                <label>Especialidad</label>
                 <div className="toggle-pills">
                   <button className={"toggle-pill " + (formData.especialidad === "Mecánico" ? "active" : "")} onClick={() => setFormData({...formData, especialidad: "Mecánico"})}>⚙️ Mecánico</button>
                   <button className={"toggle-pill " + (formData.especialidad === "Eléctrico" ? "active" : "")} onClick={() => setFormData({...formData, especialidad: "Eléctrico"})}>⚡ Eléctrico</button>
                 </div>
+                {tecnicoLogueado?.especialidad && <div className="hint" style={{ marginTop: 6 }}>Precargada desde tu perfil operativo: {tecnicoLogueado.especialidad}</div>}
               </div>
               <div className="field">
                 <label>Fecha *</label>
@@ -1027,17 +1062,27 @@ export const ParteTallerPage = ({ onNav }) => {
                 )}
               </div>
               <div className="field" style={{ gridColumn: '1 / -1' }}>
-                <label>Supervisor * <IndicadorPendienteConexion/></label>
+                <label>Supervisor *</label>
                 <input className="input input-lg" value={formData.supervisor} onChange={e => setFormData({...formData, supervisor: e.target.value})} placeholder="Supervisor del taller"/>
+                {tecnicoLogueado?.supervisor && <div className="hint" style={{ marginTop: 6 }}>Precargado desde tu perfil operativo.</div>}
               </div>
             </div>
 
             <div className="field mt-md" style={{ padding: 14, border: "2px solid var(--navy)", borderRadius: 8, background: "#F5F7FB", position: "relative" }}>
               <label style={{ color: "var(--navy)", fontWeight: 700 }}>OT asociada *</label>
-              <select className="select input-lg" value={formData.ot_id} disabled={cargandoOTs || !sesionOperativa.permiteEscritura} onChange={e => seleccionarOT(e.target.value)}>
-                <option value="">{cargandoOTs ? 'Cargando OTs...' : '-- Seleccionar OT programada o en ejecución --'}</option>
-                {ordenesReales.map(ot => <option key={ot.id} value={ot.id}>{ot.numero} — {ot.servicio || ot.descripcion || ot.estado}</option>)}
-              </select>
+              {otPreseleccionada ? (
+                <div className="input input-lg" style={{ display: 'flex', alignItems: 'center', background: 'rgba(6,182,212,0.08)', color: 'var(--text)' }}>
+                  <Icon name="check" size={15} />
+                  <span style={{ marginLeft: 8 }}>
+                    {ordenesReales.find(ot => ot.id === formData.ot_id)?.numero || formData.ot_id} — OT preseleccionada desde Mis OTs del día
+                  </span>
+                </div>
+              ) : (
+                <select className="select input-lg" value={formData.ot_id} disabled={cargandoOTs || !sesionOperativa.permiteEscritura} onChange={e => seleccionarOT(e.target.value)}>
+                  <option value="">{cargandoOTs ? 'Cargando OTs...' : '-- Seleccionar OT programada o en ejecución --'}</option>
+                  {ordenesReales.map(ot => <option key={ot.id} value={ot.id}>{ot.numero} — {ot.servicio || ot.descripcion || ot.estado}</option>)}
+                </select>
+              )}
               <div style={{ marginTop: 6 }}><span className={formData.ot_id ? 'badge cyan' : 'badge slate'}><span className="dot"/>{formData.ot_id ? 'Vinculado' : 'Pendiente de seleccionar'}</span></div>
 
               {formData.ot_id && (() => {

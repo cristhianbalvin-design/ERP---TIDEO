@@ -34,14 +34,14 @@ export const workshopOperationsRouteIds = new Set([
 ]);
 
 export function renderWorkshopOperationsRoute(route, context) {
-  const { onNavigate, currentOT, setCurrentOT } = context;
+  const { onNavigate, currentOT, setCurrentOT, routeParams } = context;
 
   switch (route) {
     case 'ots': return <OTsListadoPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
     case 'crear-ot': return <CrearOTPage onNav={onNavigate} />;
     case 'ot-detalle': return <OTDetallePage onNav={onNavigate} code={currentOT} />;
     case 'taller':
-    case 'crear-parte-taller': return <ParteTallerPage onNav={onNavigate} />;
+    case 'crear-parte-taller': return <ParteTallerPage onNav={onNavigate} routeParams={routeParams} />;
     case 'partes-taller': return <GestionPartesTallerPage onNav={onNavigate} />;
     case 'partes-mina':
     case 'mina':

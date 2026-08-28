@@ -18,7 +18,7 @@ export const availableZahoryRoutes = new Set([
   ...supplyAdministrationRouteIds,
 ]);
 
-export function ZahoryRoutes({ route, onNavigate }) {
+export function ZahoryRoutes({ route, routeParams, onNavigate }) {
   const [currentOT, setCurrentOT] = useState('OT-2026-050');
   const [currentOF, setCurrentOF] = useState('OF-2026-018');
   const [currentOV, setCurrentOV] = useState('OV-2026-001');
@@ -36,7 +36,7 @@ export function ZahoryRoutes({ route, onNavigate }) {
       break;
     case 'mis-ots-hoy':
     case 'mis-ots':
-      content = <MisOTsPage setCurrent={onNavigate} />;
+      content = <MisOTsPage onNavigate={onNavigate} />;
       break;
     case 'mapa-campo':
       content = <MapaCampo setCurrent={onNavigate} />;
@@ -56,6 +56,7 @@ export function ZahoryRoutes({ route, onNavigate }) {
       if (!content) {
         content = renderWorkshopOperationsRoute(route, {
           onNavigate,
+          routeParams,
           currentOT,
           setCurrentOT,
         });
