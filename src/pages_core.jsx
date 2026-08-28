@@ -4745,10 +4745,10 @@ function OSCliente() {
     osClientes, cuentas, cotizaciones, hojasCosteo, ots, valorizaciones, facturas, cxc,
     activeParams, navigate, searchQuery, usuarios,
     cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
-    actualizarOSCliente, centrosBeneficio,
+    actualizarOSCliente, crearOSClienteManual, centrosBeneficio,
     partes, personalOperativo, personalAdmin, inventario, role,
     ordenesCompra, ordenesServicio, comprasGastos,
-    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], monedasActivas = [],
   } = useApp();
   const modoVistaSociedadOSCliente = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -4795,6 +4795,29 @@ function OSCliente() {
   const [editandoNombre, setEditandoNombre] = useState(false);
   const [nombreTemp, setNombreTemp] = useState('');
   const [tareosOverheadOS, setTareosOverheadOS] = useState([]);
+  const hoyOS = new Date().toISOString().slice(0, 10);
+  const formularioOSBase = os => ({
+    numero: os?.numero || '',
+    cuenta_id: os?.cuenta_id || '',
+    sociedad_id: os?.sociedad_id || modoVistaSociedadOSCliente.sociedadIdEscritura || '',
+    nombre: os?.nombre || '',
+    numero_doc_cliente: os?.numero_doc_cliente || '',
+    monto_aprobado: os?.monto_aprobado ?? '',
+    moneda: os?.moneda || empresa?.moneda || 'PEN',
+    condicion_pago: os?.condicion_pago || '',
+    fecha_emision: os?.fecha_emision || hoyOS,
+    fecha_inicio: os?.fecha_inicio || '',
+    fecha_fin: os?.fecha_fin || '',
+    sla: os?.sla || '',
+    estado: os?.estado || 'en_ejecucion',
+    centro_beneficio_id: os?.centro_beneficio_id || '',
+    responsable_comercial_id: os?.responsable_comercial_id || '',
+    observaciones: os?.observaciones || '',
+  });
+  const [modalFormularioOS, setModalFormularioOS] = useState(null);
+  const [formularioOS, setFormularioOS] = useState(() => formularioOSBase());
+  const [errorFormularioOS, setErrorFormularioOS] = useState('');
+  const [guardandoFormularioOS, setGuardandoFormularioOS] = useState(false);
 
   useEffect(() => {
     setEditandoNumCliente(false);
@@ -4832,6 +4855,118 @@ function OSCliente() {
       (!filtroEstado || os.estado === filtroEstado) &&
       (!filtroCliente || os.cuenta_id === filtroCliente);
   }), [osClientes, query, filtroEstado, filtroCliente, cuentas]);
+
+  const actualizarFormularioOS = (campo, valor) => setFormularioOS(actual => ({ ...actual, [campo]: valor }));
+  const abrirNuevaOS = () => {
+    setFormularioOS(formularioOSBase());
+    setErrorFormularioOS('');
+    setModalFormularioOS('crear');
+  };
+  const abrirEditarOS = os => {
+    setFormularioOS(formularioOSBase(os));
+    setErrorFormularioOS('');
+    setModalFormularioOS(os);
+  };
+  const guardarFormularioOS = async event => {
+    event.preventDefault();
+    if (guardandoFormularioOS) return;
+    const editandoOS = modalFormularioOS && modalFormularioOS !== 'crear';
+    const monto = Number(formularioOS.monto_aprobado || 0);
+    if (!formularioOS.cuenta_id) return setErrorFormularioOS('Selecciona el cliente de la OS.');
+    if (!formularioOS.nombre.trim()) return setErrorFormularioOS('Ingresa el nombre o alcance de la OS.');
+    if (!Number.isFinite(monto) || monto < 0) return setErrorFormularioOS('El monto aprobado debe ser un importe válido.');
+    if (formularioOS.fecha_inicio && formularioOS.fecha_fin && formularioOS.fecha_fin < formularioOS.fecha_inicio) {
+      return setErrorFormularioOS('La fecha de cierre no puede ser anterior a la fecha de inicio.');
+    }
+    const sociedadId = formularioOS.sociedad_id || modoVistaSociedadOSCliente.sociedadIdEscritura || null;
+    if (!editandoOS && empresa?.multisociedad_habilitado && !sociedadId) {
+      return setErrorFormularioOS('Selecciona la sociedad que emitirá esta OS.');
+    }
+    const responsable = (usuarios || []).find(u => u.id === formularioOS.responsable_comercial_id);
+    const datos = {
+      cuenta_id: formularioOS.cuenta_id,
+      nombre: formularioOS.nombre.trim(),
+      numero_doc_cliente: formularioOS.numero_doc_cliente.trim() || null,
+      monto_aprobado: monto,
+      moneda: formularioOS.moneda,
+      condicion_pago: formularioOS.condicion_pago.trim() || null,
+      fecha_emision: formularioOS.fecha_emision || null,
+      fecha_inicio: formularioOS.fecha_inicio || null,
+      fecha_fin: formularioOS.fecha_fin || null,
+      sla: formularioOS.sla.trim() || null,
+      estado: formularioOS.estado,
+      centro_beneficio_id: formularioOS.centro_beneficio_id || null,
+      responsable_comercial_id: formularioOS.responsable_comercial_id || null,
+      responsable_comercial: responsable?.nombre || null,
+      observaciones: formularioOS.observaciones.trim() || null,
+    };
+    if (editandoOS) {
+      const anterior = modalFormularioOS;
+      const montoAnterior = Number(anterior.monto_aprobado || 0);
+      const consumoEjecutar = Math.max(0, montoAnterior - Number(anterior.saldo_por_ejecutar || 0));
+      const consumoValorizar = Math.max(0, montoAnterior - Number(anterior.saldo_por_valorizar || 0));
+      const consumoFacturar = Math.max(0, montoAnterior - Number(anterior.saldo_por_facturar || 0));
+      const minimoPermitido = Math.max(consumoEjecutar, consumoValorizar, consumoFacturar, Number(anterior.monto_facturado || 0));
+      if (monto < minimoPermitido - 0.01) {
+        return setErrorFormularioOS(`El monto no puede ser menor que lo ya ejecutado, valorizado o facturado (${moneyCurrency(minimoPermitido, anterior.moneda)}).`);
+      }
+      datos.saldo_por_ejecutar = Math.max(0, monto - consumoEjecutar);
+      datos.saldo_por_valorizar = Math.max(0, monto - consumoValorizar);
+      datos.saldo_por_facturar = Math.max(0, monto - consumoFacturar);
+    } else {
+      datos.numero = formularioOS.numero.trim() || undefined;
+      datos.sociedad_id = sociedadId;
+    }
+    setGuardandoFormularioOS(true);
+    try {
+      if (editandoOS) await actualizarOSCliente(modalFormularioOS.id, datos);
+      else await crearOSClienteManual(datos);
+      setModalFormularioOS(null);
+    } catch (error) {
+      setErrorFormularioOS(error?.message || 'No se pudo guardar la OS Cliente.');
+    } finally {
+      setGuardandoFormularioOS(false);
+    }
+  };
+
+  const sociedadFormularioOS = formularioOS.sociedad_id || modoVistaSociedadOSCliente.sociedadIdEscritura || null;
+  const cebesFormularioOS = filtrarOpcionesPorSociedadEscritura(
+    (centrosBeneficio || []).filter(c => c.estado === 'activo'),
+    sociedadFormularioOS,
+  );
+  const dialogoFormularioOS = modalFormularioOS && (
+    <div className="modal-backdrop">
+      <div className="modal" style={{maxWidth:760, width:'calc(100vw - 32px)', maxHeight:'90vh', overflow:'auto'}}>
+        <div className="modal-head">
+          <div><h2>{modalFormularioOS === 'crear' ? 'Nueva OS Cliente' : 'Editar OS Cliente'}</h2><div className="text-muted" style={{fontSize:12}}>La cotización es opcional. Los saldos se inicializan desde el monto aprobado.</div></div>
+          <button className="icon-btn" onClick={() => setModalFormularioOS(null)} disabled={guardandoFormularioOS}>{I.x}</button>
+        </div>
+        <form onSubmit={guardarFormularioOS}>
+          <div className="modal-body">
+            {errorFormularioOS && <div className="alert alert-danger" style={{marginBottom:14}}>{errorFormularioOS}</div>}
+            <div className="grid-2" style={{gap:14}}>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Cliente *</label><select className="select" value={formularioOS.cuenta_id} onChange={e => actualizarFormularioOS('cuenta_id', e.target.value)} required><option value="">Selecciona un cliente</option>{(cuentas || []).filter(c => c.estado !== 'inactivo').map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial || c.id}</option>)}</select></div>
+              {modalFormularioOS === 'crear' && <div className="input-group"><label>N° OS interno</label><input className="input" value={formularioOS.numero} onChange={e => actualizarFormularioOS('numero', e.target.value)} placeholder="Automático si se deja vacío" /></div>}
+              <div className="input-group"><label>N° OS del cliente</label><input className="input" value={formularioOS.numero_doc_cliente} onChange={e => actualizarFormularioOS('numero_doc_cliente', e.target.value)} placeholder="Opcional" /></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Nombre / alcance de la OS *</label><input className="input" value={formularioOS.nombre} onChange={e => actualizarFormularioOS('nombre', e.target.value)} placeholder="Ej. Alquiler de equipo" required autoFocus /></div>
+              {modalFormularioOS === 'crear' && empresa?.multisociedad_habilitado && <div className="input-group"><label>Sociedad *</label><select className="select" value={formularioOS.sociedad_id} onChange={e => actualizarFormularioOS('sociedad_id', e.target.value)} required><option value="">Selecciona una sociedad</option>{(sociedadesDisponibles || []).filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div>}
+              <div className="input-group"><label>Monto aprobado</label><input className="input" type="number" min="0" step="0.01" value={formularioOS.monto_aprobado} onChange={e => actualizarFormularioOS('monto_aprobado', e.target.value)} /></div>
+              <div className="input-group"><label>Moneda</label><select className="select" value={formularioOS.moneda} onChange={e => actualizarFormularioOS('moneda', e.target.value)}>{(monedasActivas.length ? monedasActivas : [{codigo:'PEN',nombre:'Soles'}, {codigo:'USD',nombre:'Dólares'}]).map(m => <option key={m.codigo} value={m.codigo}>{m.codigo} — {m.nombre || m.codigo}</option>)}</select></div>
+              <div className="input-group"><label>Fecha de emisión</label><input className="input" type="date" value={formularioOS.fecha_emision} onChange={e => actualizarFormularioOS('fecha_emision', e.target.value)} /></div>
+              <div className="input-group"><label>Inicio</label><input className="input" type="date" value={formularioOS.fecha_inicio} onChange={e => actualizarFormularioOS('fecha_inicio', e.target.value)} /></div>
+              <div className="input-group"><label>Cierre estimado</label><input className="input" type="date" value={formularioOS.fecha_fin} onChange={e => actualizarFormularioOS('fecha_fin', e.target.value)} /></div>
+              <div className="input-group"><label>Condición de pago</label><input className="input" value={formularioOS.condicion_pago} onChange={e => actualizarFormularioOS('condicion_pago', e.target.value)} placeholder="Ej. Crédito 30 días" /></div>
+              <div className="input-group"><label>CEBE</label><select className="select" value={formularioOS.centro_beneficio_id} onChange={e => actualizarFormularioOS('centro_beneficio_id', e.target.value)}><option value="">Sin asignar</option>{cebesFormularioOS.map(c => <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Responsable comercial</label><select className="select" value={formularioOS.responsable_comercial_id} onChange={e => actualizarFormularioOS('responsable_comercial_id', e.target.value)}><option value="">Sin asignar</option>{(usuarios || []).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select></div>
+              <div className="input-group"><label>Estado</label><select className="select" value={formularioOS.estado} onChange={e => actualizarFormularioOS('estado', e.target.value)}><option value="en_ejecucion">Activa</option><option value="en_pausa">En pausa</option><option value="cerrada">Cerrada</option><option value="anulada">Anulada</option></select></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Observaciones</label><textarea className="input" rows="3" value={formularioOS.observaciones} onChange={e => actualizarFormularioOS('observaciones', e.target.value)} /></div>
+            </div>
+          </div>
+          <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={() => setModalFormularioOS(null)} disabled={guardandoFormularioOS}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={guardandoFormularioOS}>{guardandoFormularioOS ? 'Guardando...' : modalFormularioOS === 'crear' ? 'Crear OS' : 'Guardar cambios'}</button></div>
+        </form>
+      </div>
+    </div>
+  );
 
   if (activeParams?.detail) {
     const os = osClientes.find(o => o.id === activeParams.detail);
@@ -5067,6 +5202,7 @@ function OSCliente() {
           </div>
           <div className="row" style={{gap:8, flexWrap:'wrap', alignSelf:'flex-start'}}>
             {os.cotizacion_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { detail: os.cotizacion_id })}>{I.file} Ver cotización</button>}
+            {!cerrada && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => abrirEditarOS(os)}>{I.edit} Editar OS</button>}
             {!cerrada && <>
               {os.estado !== 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => setModalEstado({ tipo: 'en_pausa' })}>Pausar</button>}
               {os.estado === 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={async () => { setSaving(true); await cambiarEstadoOS(os.id, 'activa', ''); setSaving(false); }}>Reactivar</button>}
@@ -5463,6 +5599,7 @@ function OSCliente() {
         {nuevoHito !== null && (
           <NuevoHitoModal moneda={os.moneda} onClose={() => setNuevoHito(null)} onSave={handleAddHito} />
         )}
+        {dialogoFormularioOS}
       </>
     );
   }
@@ -5478,6 +5615,7 @@ function OSCliente() {
           <h1 className="page-title">Órdenes de Servicio Cliente</h1>
           <div className="page-sub">Contratos aprobados y su ejecución</div>
         </div>
+        <button className="btn btn-primary" onClick={abrirNuevaOS}>{I.plus} Nueva OS</button>
       </div>
 
       <div style={{padding:'0 32px 16px'}}>
@@ -5549,7 +5687,7 @@ function OSCliente() {
                   <td className="num" style={{color:'var(--orange)'}}>{moneyCurrency(os.saldo_por_facturar || 0, os.moneda)}</td>
                   <td><span className={'badge ' + (BADGE[os.estado] || 'badge-gray')}>{LABEL[os.estado] || os.estado}</span></td>
                   <td className="text-muted">{os.fecha_fin || '-'}</td>
-                  <td><button className="icon-btn">{I.chev}</button></td>
+                  <td onClick={e => e.stopPropagation()}><div className="row" style={{gap:4}}><button className="btn btn-secondary btn-sm" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button><button className="icon-btn" onClick={() => navigate('os_cliente', { detail: os.id })}>{I.chev}</button></div></td>
                 </tr>
               ))}
               {filtered.length === 0 && (
@@ -5559,6 +5697,7 @@ function OSCliente() {
           </table>
         </div>
       </div>
+      {dialogoFormularioOS}
     </>
   );
 }

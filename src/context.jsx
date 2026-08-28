@@ -3051,7 +3051,9 @@ export function AppProvider({ children }) {
       cuenta_id: datos.cuenta_id || null,
       cotizacion_id: datos.cotizacion_id || null,
       oportunidad_id: datos.oportunidad_id || null,
+      sociedad_id: datos.sociedad_id || null,
       numero_doc_cliente: datos.numero_doc_cliente || null,
+      nombre: datos.nombre || null,
       monto_aprobado: monto,
       moneda: datos.moneda || empresa?.moneda || 'PEN',
       condicion_pago: datos.condicion_pago || null,
@@ -3061,6 +3063,10 @@ export function AppProvider({ children }) {
       sla: datos.sla || null,
       estado: datos.estado || 'en_ejecucion',
       centro_beneficio_id: datos.centro_beneficio_id || null,
+      responsable_comercial_id: datos.responsable_comercial_id || null,
+      responsable_comercial: datos.responsable_comercial || null,
+      observaciones: datos.observaciones || null,
+      hitos_facturacion: datos.hitos_facturacion || [],
       saldo_por_ejecutar: datos.saldo_por_ejecutar ?? monto,
       saldo_por_valorizar: datos.saldo_por_valorizar ?? monto,
       saldo_por_facturar: datos.saldo_por_facturar ?? monto,
@@ -4785,6 +4791,59 @@ export function AppProvider({ children }) {
     const numero = datos.numero || (serieDoc
       ? `${serieDoc.serie}-${String(Number(serieDoc.siguiente_correlativo)).padStart(4,'0')}`
       : `F001-${String((facturas||[]).length+1).padStart(4,'0')}`);
+
+    // En Supabase la factura y su CxC se persisten juntas. No se debe usar
+    // emitirFactura + generarCxC por separado: ambas escrituras compiten y la
+    // CxC puede llegar antes que su factura, violando la clave foranea.
+    if (isSupabaseConfigured()) {
+      const resultado = await finanzasService.emitirFacturaConCxCAtomica({
+        empresa_id: empresa.id,
+        factura_id: generateId('fac'),
+        cxc_id: generateId('cxc'),
+        tipo_documento: datos.tipo_documento || 'factura',
+        cuenta_id: datos.cuenta_id,
+        os_cliente_id: datos.os_cliente_id || null,
+        valorizacion_id: datos.valorizacion_id || null,
+        centro_beneficio_id: centroBeneficioId,
+        sociedad_id: empresa?.multisociedad_habilitado ? datos.sociedad_id : null,
+        items: datos.items || [],
+        numero,
+        fecha_emision: fechaEmision,
+        fecha_vencimiento: fechaVencimiento,
+        condicion_pago: condicionPago,
+        subtotal: datos.subtotal,
+        igv: datos.igv,
+        total: datos.total,
+        moneda: datos.moneda || 'PEN',
+        glosa: datos.glosa || null,
+        notas: datos.notas || null,
+        aplica_retencion: datos.aplica_retencion || false,
+        monto_retencion: datos.monto_retencion || 0,
+      });
+      const facturaCreada = resultado?.factura;
+      const cxcCreada = resultado?.cxc;
+      if (!facturaCreada?.id || !cxcCreada?.id) throw new Error('La emisión no devolvió la factura y la CxC creadas.');
+
+      setFacturas(prev => [facturaCreada, ...prev]);
+      setCxc(prev => [cxcCreada, ...prev]);
+      if (datos.valorizacion_id) {
+        setValorizaciones(prev => prev.map(v => v.id === datos.valorizacion_id ? { ...v, estado: 'facturada' } : v));
+      }
+      if (resultado.os?.id) setOsClientes(prev => prev.map(os => os.id === resultado.os.id ? resultado.os : os));
+      if (serieDoc) {
+        const nextCorr = Number(serieDoc.siguiente_correlativo) + 1;
+        setSeriesDocumentarias(prev => prev.map(s => s.id === serieDoc.id ? { ...s, siguiente_correlativo: nextCorr } : s));
+        getSupabaseClient().then(sb =>
+          sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDoc.id)
+            .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
+        );
+      }
+      auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: facturaCreada.id, accion: 'emitir', valor_nuevo: facturaCreada });
+      auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcCreada.id, accion: 'crear', valor_nuevo: cxcCreada });
+      if (vencimientoCxC.usoFallback) addNotificacion(mensajeFallbackCondicionPagoCxC);
+      addNotificacion(`Factura ${numero} emitida y CxC generada.`);
+      return facturaCreada.id;
+    }
 
     const facturaId = await emitirFactura({
       tipo_documento: datos.tipo_documento || 'factura',
