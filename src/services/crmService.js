@@ -390,7 +390,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'fecha_envio', 'token_activo', 'token_aceptacion',
     'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
-    'centro_beneficio_id', 'responsable_id', 'sociedad_id',
+    'centro_beneficio_id', 'responsable_id', 'sociedad_id', 'os_cliente_id',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -508,6 +508,13 @@ export async function actualizarOSCliente(supabase, oscId, datos) {
 
 export async function vincularCotizacionAOS(supabase, cotId, osId) {
   return supabase.from('cotizaciones').update({ os_cliente_id: osId }).eq('id', cotId);
+}
+
+export async function eliminarOSClienteReabrirCotizacion(supabase, empresaId, osId) {
+  return supabase.rpc('eliminar_os_cliente_reabrir_cotizacion', {
+    p_empresa_id: empresaId,
+    p_os_id: osId,
+  });
 }
 
 export async function persistirHojaCosteo(supabase, empresaId, hc) {

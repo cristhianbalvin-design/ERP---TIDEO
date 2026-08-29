@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -3026,7 +3026,7 @@ export function AppProvider({ children }) {
       await crmPersist(async sb => {
         const osResult = await persistirOSCliente(sb, empresa.id, osc);
         if (osResult?.error) throw osResult.error;
-        const cotResult = await svcActualizarCotizacion(sb, cotId, { estado: 'convertida' });
+        const cotResult = await svcActualizarCotizacion(sb, cotId, { estado: 'convertida', os_cliente_id: osc.id });
         if (cotResult?.error) throw cotResult.error;
       });
     } catch (error) {
@@ -3035,7 +3035,7 @@ export function AppProvider({ children }) {
       throw error;
     }
     setOsClientes(prev => [...prev, osc]);
-    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, estado: 'convertida' } : c));
+    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, estado: 'convertida', os_cliente_id: osc.id } : c));
     auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osc.id, accion: 'crear', valor_nuevo: osc });
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'convertir_os', valor_anterior: cot, valor_nuevo: { estado: 'convertida', os_cliente_id: osc.id } });
     addNotificacion(`Orden de Servicio ${osc.numero} registrada.`);
@@ -3096,9 +3096,71 @@ export function AppProvider({ children }) {
   };
 
   const vincularCotizacionOS = async (cotizacionId, osId) => {
+    const cotizacion = cotizaciones.find(c => c.id === cotizacionId);
+    const os = osClientes.find(o => o.id === osId);
+    if (!cotizacion || !os) throw new Error('No se encontró la cotización u OS a vincular.');
+    try {
+      await crmPersist(async sb => {
+        const osResult = await svcActualizarOSCliente(sb, osId, { cotizacion_id: cotizacionId });
+        if (osResult?.error) throw osResult.error;
+        const cotResult = await svcActualizarCotizacion(sb, cotizacionId, { os_cliente_id: osId });
+        if (cotResult?.error) throw cotResult.error;
+      });
+    } catch (error) {
+      addNotificacion(`No se pudo vincular la cotización: ${error?.message || error}`);
+      throw error;
+    }
     setOsClientes(prev => prev.map(o => o.id === osId ? { ...o, cotizacion_id: cotizacionId } : o));
-    crmSync(sb => svcActualizarOSCliente(sb, osId, { cotizacion_id: cotizacionId }));
+    setCotizaciones(prev => prev.map(c => c.id === cotizacionId ? { ...c, os_cliente_id: osId } : c));
+    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotizacionId, accion: 'vincular_os', valor_anterior: { os_cliente_id: cotizacion.os_cliente_id || null }, valor_nuevo: { os_cliente_id: osId } });
     addNotificacion('Cotización vinculada a la OS.');
+  };
+
+  const eliminarOSCliente = async (osId) => {
+    const os = osClientes.find(o => o.id === osId);
+    if (!os) throw new Error('OS Cliente no encontrada.');
+
+    let resultado;
+    if (isSupabaseConfigured()) {
+      const sb = await getSupabaseClient();
+      const { data, error } = await eliminarOSClienteReabrirCotizacion(sb, empresa.id, osId);
+      if (error) throw error;
+      resultado = data;
+    } else {
+      const valorizacionesOS = valorizaciones.filter(v => v.os_cliente_id === osId);
+      const idsValorizaciones = new Set(valorizacionesOS.map(v => v.id));
+      const facturasOS = facturas.filter(f => f.os_cliente_id === osId || idsValorizaciones.has(f.valorizacion_id));
+      const idsFacturas = new Set(facturasOS.map(f => f.id));
+      const dependencias = {
+        ordenes_trabajo: ots.filter(ot => ot.os_cliente_id === osId).length,
+        backlog: backlog.filter(b => b.os_cliente_id === osId).length,
+        tareos_administrativos: 0,
+        valorizaciones: valorizacionesOS.length,
+        facturas: facturasOS.length,
+        cuentas_por_cobrar: cxc.filter(c => c.os_cliente_id === osId || idsFacturas.has(c.factura_id)).length,
+        comisiones: comisiones.filter(c => c.os_cliente_id === osId).length,
+      };
+      const tieneDependencias = Object.values(dependencias).some(Number);
+      resultado = tieneDependencias
+        ? { eliminada: false, motivo: 'No se puede eliminar la OS porque ya tiene registros relacionados.', dependencias }
+        : { eliminada: true, os_id: osId, cotizacion_origen_id: os.cotizacion_id || null, dependencias };
+    }
+
+    if (!resultado?.eliminada) return resultado;
+
+    const cotizacionOrigenId = resultado.cotizacion_origen_id || os.cotizacion_id || null;
+    setOsClientes(prev => prev.filter(o => o.id !== osId));
+    setCotizaciones(prev => prev.map(c => {
+      if (c.id === cotizacionOrigenId) return { ...c, estado: 'borrador', os_cliente_id: null, token_activo: false };
+      if (c.os_cliente_id === osId) return { ...c, os_cliente_id: null };
+      return c;
+    }));
+    auditSync({
+      modulo: 'comercial', entidad: 'os_clientes', entidad_id: osId, accion: 'eliminar_reabrir_cotizacion',
+      valor_anterior: os,
+      valor_nuevo: { cotizacion_origen_id: cotizacionOrigenId, dependencias: resultado.dependencias || {} },
+    });
+    return resultado;
   };
 
   const registrarActividad = (datos) => {
@@ -10603,7 +10665,7 @@ export function AppProvider({ children }) {
     probabilidadPorEtapaOpp, forecastPorEtapaOpp,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
-    crearOSCliente, crearOSClienteManual, vincularCotizacionOS,
+    crearOSCliente, crearOSClienteManual, vincularCotizacionOS, eliminarOSCliente,
     registrarUsuario,
     eliminarUsuario,
     actualizarUsuarioAcceso,

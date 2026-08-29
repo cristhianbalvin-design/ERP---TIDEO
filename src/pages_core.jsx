@@ -4745,7 +4745,7 @@ function OSCliente() {
     osClientes, cuentas, cotizaciones, hojasCosteo, ots, valorizaciones, facturas, cxc,
     activeParams, navigate, searchQuery, usuarios,
     cambiarEstadoOS, actualizarHitosFacturacion, vincularCotizacionOS, actualizarOT, eliminarOT,
-    actualizarOSCliente, crearOSClienteManual, centrosBeneficio,
+    actualizarOSCliente, eliminarOSCliente, crearOSClienteManual, centrosBeneficio,
     partes, personalOperativo, personalAdmin, inventario, role,
     ordenesCompra, ordenesServicio, comprasGastos,
     empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], monedasActivas = [],
@@ -4818,6 +4818,8 @@ function OSCliente() {
   const [formularioOS, setFormularioOS] = useState(() => formularioOSBase());
   const [errorFormularioOS, setErrorFormularioOS] = useState('');
   const [guardandoFormularioOS, setGuardandoFormularioOS] = useState(false);
+  const [modalEliminarOS, setModalEliminarOS] = useState(null);
+  const [eliminandoOS, setEliminandoOS] = useState(false);
 
   useEffect(() => {
     setEditandoNumCliente(false);
@@ -4928,6 +4930,75 @@ function OSCliente() {
       setGuardandoFormularioOS(false);
     }
   };
+
+  const abrirEliminarOS = os => setModalEliminarOS({ os, resultado: null, error: null });
+  const confirmarEliminarOS = async () => {
+    const os = modalEliminarOS?.os;
+    if (!os || eliminandoOS) return;
+    setEliminandoOS(true);
+    try {
+      const resultado = await eliminarOSCliente(os.id);
+      if (resultado?.eliminada) {
+        setModalEliminarOS(null);
+        navigate('os_cliente');
+        return;
+      }
+      setModalEliminarOS(actual => ({ ...actual, resultado, error: null }));
+    } catch (error) {
+      setModalEliminarOS(actual => ({ ...actual, error: error?.message || 'No se pudo eliminar la OS.' }));
+    } finally {
+      setEliminandoOS(false);
+    }
+  };
+
+  const etiquetasDependenciasOS = {
+    ordenes_trabajo: 'Órdenes de trabajo',
+    backlog: 'Registros de backlog',
+    tareos_administrativos: 'Tareos administrativos',
+    valorizaciones: 'Valorizaciones',
+    facturas: 'Facturas',
+    cuentas_por_cobrar: 'Cuentas por cobrar',
+    comisiones: 'Comisiones',
+  };
+  const dependenciasEliminarOS = Object.entries(modalEliminarOS?.resultado?.dependencias || {})
+    .filter(([, cantidad]) => Number(cantidad) > 0)
+    .map(([tipo, cantidad]) => ({ tipo, cantidad: Number(cantidad), etiqueta: etiquetasDependenciasOS[tipo] || tipo }));
+  const dialogoEliminarOS = modalEliminarOS && (
+    <div className="modal-backdrop">
+      <div className="modal" style={{maxWidth:530}}>
+        <div className="modal-head">
+          <div>
+            <h2>{modalEliminarOS.resultado ? 'No se puede eliminar la OS' : 'Eliminar OS Cliente'}</h2>
+            <div className="text-muted" style={{fontSize:12}}>{modalEliminarOS.os.numero} {modalEliminarOS.os.nombre ? `— ${modalEliminarOS.os.nombre}` : ''}</div>
+          </div>
+          <button className="icon-btn" onClick={() => setModalEliminarOS(null)} disabled={eliminandoOS}>{I.x}</button>
+        </div>
+        <div className="modal-body">
+          {modalEliminarOS.error ? (
+            <div className="alert alert-danger">{modalEliminarOS.error}</div>
+          ) : modalEliminarOS.resultado ? (
+            <>
+              <div className="alert alert-warning" style={{marginBottom:14}}>{modalEliminarOS.resultado.motivo || 'La OS tiene relaciones que impiden su eliminación.'}</div>
+              <div style={{fontSize:13, marginBottom:8}}>Esta OS ya cuenta con:</div>
+              <ul style={{margin:'0 0 0 18px', padding:0, lineHeight:1.8}}>
+                {dependenciasEliminarOS.map(({ tipo, cantidad, etiqueta }) => <li key={tipo}><strong>{cantidad}</strong> {etiqueta}</li>)}
+              </ul>
+              <div className="text-muted" style={{fontSize:12, marginTop:14}}>Debes regularizar o anular esos registros antes de eliminar la OS.</div>
+            </>
+          ) : (
+            <div className="col" style={{gap:10}}>
+              <div>Se validará que la OS no tenga OT, valorizaciones, facturas, CxC, comisiones, tareos ni backlog relacionados.</div>
+              <div className="alert alert-warning">Si está limpia, se eliminará la OS y su cotización de origen volverá a borrador para que puedas editarla.</div>
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="btn btn-secondary" onClick={() => setModalEliminarOS(null)} disabled={eliminandoOS}>{modalEliminarOS.resultado || modalEliminarOS.error ? 'Cerrar' : 'Cancelar'}</button>
+          {!modalEliminarOS.resultado && !modalEliminarOS.error && <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={confirmarEliminarOS} disabled={eliminandoOS}>{I.trash} {eliminandoOS ? 'Eliminando...' : 'Eliminar OS'}</button>}
+        </div>
+      </div>
+    </div>
+  );
 
   const sociedadFormularioOS = formularioOS.sociedad_id || modoVistaSociedadOSCliente.sociedadIdEscritura || null;
   const cebesFormularioOS = filtrarOpcionesPorSociedadEscritura(
@@ -5203,6 +5274,7 @@ function OSCliente() {
           <div className="row" style={{gap:8, flexWrap:'wrap', alignSelf:'flex-start'}}>
             {os.cotizacion_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { detail: os.cotizacion_id })}>{I.file} Ver cotización</button>}
             {!cerrada && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => abrirEditarOS(os)}>{I.edit} Editar OS</button>}
+            <button className="icon-btn" title="Eliminar OS" style={{color:'var(--danger)'}} onClick={() => abrirEliminarOS(os)}>{I.trash}</button>
             {!cerrada && <>
               {os.estado !== 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => setModalEstado({ tipo: 'en_pausa' })}>Pausar</button>}
               {os.estado === 'en_pausa' && <button className="btn btn-secondary" style={{fontSize:12}} onClick={async () => { setSaving(true); await cambiarEstadoOS(os.id, 'activa', ''); setSaving(false); }}>Reactivar</button>}
@@ -5600,6 +5672,7 @@ function OSCliente() {
           <NuevoHitoModal moneda={os.moneda} onClose={() => setNuevoHito(null)} onSave={handleAddHito} />
         )}
         {dialogoFormularioOS}
+        {dialogoEliminarOS}
       </>
     );
   }
@@ -5687,7 +5760,7 @@ function OSCliente() {
                   <td className="num" style={{color:'var(--orange)'}}>{moneyCurrency(os.saldo_por_facturar || 0, os.moneda)}</td>
                   <td><span className={'badge ' + (BADGE[os.estado] || 'badge-gray')}>{LABEL[os.estado] || os.estado}</span></td>
                   <td className="text-muted">{os.fecha_fin || '-'}</td>
-                  <td onClick={e => e.stopPropagation()}><div className="row" style={{gap:4}}><button className="btn btn-secondary btn-sm" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button><button className="icon-btn" onClick={() => navigate('os_cliente', { detail: os.id })}>{I.chev}</button></div></td>
+                  <td onClick={e => e.stopPropagation()}><div className="row" style={{gap:4}}><button className="btn btn-secondary btn-sm" onClick={() => abrirEditarOS(os)}>{I.edit} Editar</button><button className="icon-btn" title="Eliminar OS" style={{color:'var(--danger)'}} onClick={() => abrirEliminarOS(os)}>{I.trash}</button><button className="icon-btn" onClick={() => navigate('os_cliente', { detail: os.id })}>{I.chev}</button></div></td>
                 </tr>
               ))}
               {filtered.length === 0 && (
@@ -5698,6 +5771,7 @@ function OSCliente() {
         </div>
       </div>
       {dialogoFormularioOS}
+      {dialogoEliminarOS}
     </>
   );
 }
