@@ -8654,6 +8654,7 @@ function Compras() {
           </div>
         </div>
       </>}
+
     </>
   );
 }
@@ -20643,6 +20644,7 @@ function RRHH_Operativo() {
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
+  const [cuentaTemporalOperativa, setCuentaTemporalOperativa] = useState(null);
   const [showFormAsig, setShowFormAsig] = useState(false);
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', fecha_fin: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
@@ -20916,6 +20918,15 @@ function RRHH_Operativo() {
     [posiciones, formAlta.posicion_id]
   );
   const usaOrganigramaV2 = empresa?.organigrama_v2_habilitado === true;
+  const aplicaCreacionAutomaticaV2 = Boolean(
+    !editandoId
+    && usaOrganigramaV2
+    && posicionSeleccionadaAlta?.cargo_colocacion_id
+    && !formAlta.auth_user_id
+  );
+  const ayudaAsistenciaOperativa = aplicaCreacionAutomaticaV2
+    ? "Control de asistencia queda activado automáticamente. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+    : "Control de asistencia requiere que el 'Email de acceso' de abajo coincida exactamente con el correo de esta ficha (Email corporativo o Correo personal), y que tenga un turno asignado.";
   const posicionesOrganigramaV2 = React.useMemo(
     () => posiciones.filter(p => p.cargo_colocacion_id),
     [posiciones]
@@ -21201,22 +21212,47 @@ function RRHH_Operativo() {
         await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
         addNotificacion('Tecnico actualizado.');
       } else {
-        await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
+        const fichaGuardada = await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
         addNotificacion('Tecnico creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
-      }
-      if (!editandoId && crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
-        try {
-          const rolId = usaOrganigramaV2
-            ? rolDerivadoPosicionId
-            : (Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol);
-          const posicionIdUsuario = usaOrganigramaV2 ? (formAlta.posicion_id || null) : (usuarioSistemaForm.posicion_id || null);
-          const campoModulos = usuarioSistemaForm.acceso_campo
-            ? [...new Set([...(usuarioSistemaForm.campo_modulos || []), 'asistencia'])]
-            : [];
-          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaForm.acceso_campo, campoModulos });
-          addNotificacion('Usuario de sistema creado.');
-        } catch (userErr) {
-          addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+        const posicionAcceso = posiciones.find(posicion => posicion.id === formAlta.posicion_id);
+        const esPosicionV2 = Boolean(posicionAcceso?.cargo_colocacion_id);
+        if (esPosicionV2 && !fichaGuardada?.auth_user_id && empresa?.organigrama_v2_habilitado === true && crearUsuarioConAcceso) {
+          const emailFicha = fichaGuardada?.email || fichaGuardada?.email_personal || '';
+          if (!emailFicha) {
+            addNotificacion(`No se pudo crear la cuenta de acceso automáticamente: falta un correo en la ficha de ${nuevo.nombre}. Complétalo y créala manualmente después.`, 'warning');
+          } else try {
+            const campoModulos = usuarioSistemaForm.acceso_campo
+              ? [...new Set([...(usuarioSistemaForm.campo_modulos || []), 'asistencia'])]
+              : [];
+            const resultado = await crearUsuarioConAcceso({
+              nombre: nuevo.nombre,
+              email: emailFicha,
+              posicion_id: formAlta.posicion_id,
+              modo_automatico: true,
+              personal_tipo: 'operativo',
+              personal_id: fichaGuardada.id,
+              campo: usuarioSistemaForm.acceso_campo,
+              campoModulos,
+            });
+            if (resultado?.temporaryPassword) setCuentaTemporalOperativa({ nombre: nuevo.nombre, password: resultado.temporaryPassword });
+            addNotificacion('Usuario de sistema creado y vinculado a la ficha.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
+        } else if (crearUsuarioSistema && usuarioSistemaForm.email && crearUsuarioConAcceso) {
+          try {
+            const rolId = usaOrganigramaV2
+              ? rolDerivadoPosicionId
+              : (Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol);
+            const posicionIdUsuario = usaOrganigramaV2 ? (formAlta.posicion_id || null) : (usuarioSistemaForm.posicion_id || null);
+            const campoModulos = usuarioSistemaForm.acceso_campo
+              ? [...new Set([...(usuarioSistemaForm.campo_modulos || []), 'asistencia'])]
+              : [];
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaForm.acceso_campo, campoModulos });
+            addNotificacion('Usuario de sistema creado.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
         }
       }
       cerrarPanelTecnico();
@@ -24064,8 +24100,9 @@ function RRHH_Operativo() {
                           onChange={campo_modulos=>setUsuarioSistemaForm(v=>({...v,campo_modulos}))}
                           disabled={!usuarioSistemaForm.acceso_campo}
                           requiredModule="asistencia"
+                          helpText={ayudaAsistenciaOperativa}
                         />
-                        <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                        {usuarioSistemaForm.acceso_campo && !formAlta.turno_id && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>⚠ Sin turno asignado, esta persona no podrá marcar asistencia todavía.</div>}
                         {usuarioSistemaForm.campo_modulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                       </div>
                       {!usaOrganigramaV2 && <div style={{gridColumn:'1/-1'}}>
@@ -24104,6 +24141,17 @@ function RRHH_Operativo() {
           </form>
         </div>
       </>}
+
+      {cuentaTemporalOperativa && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cuenta-temporal-operativa-titulo">
+        <div className="modal" style={{maxWidth:480}}>
+          <div className="modal-head"><h3 id="cuenta-temporal-operativa-titulo">Cuenta creada</h3></div>
+          <div className="modal-body col" style={{gap:12}}>
+            <p style={{margin:0}}>Cuenta creada para <strong>{cuentaTemporalOperativa.nombre}</strong>. Entrega esta contraseña temporal en persona: no podrás verla de nuevo.</p>
+            <input className="input mono" aria-label="Contraseña temporal" value={cuentaTemporalOperativa.password} readOnly />
+          </div>
+          <div className="modal-foot"><button type="button" className="btn btn-primary" onClick={() => setCuentaTemporalOperativa(null)}>Entendido</button></div>
+        </div>
+      </div>}
     </>
   );
 }

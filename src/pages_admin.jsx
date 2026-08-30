@@ -939,6 +939,7 @@ function Roles() {
           </div>
         </div>
       </>}
+
     </>
   );
 }
@@ -10809,6 +10810,7 @@ function RRHHAdmin() {
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
   const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
+  const [cuentaTemporalAdmin, setCuentaTemporalAdmin] = useState(null);
   // Estados para subida de documentos en tab Documentos
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -10947,6 +10949,15 @@ function RRHHAdmin() {
     [posiciones, formAlta.posicion_id]
   );
   const usaOrganigramaV2 = empresa?.organigrama_v2_habilitado === true;
+  const aplicaCreacionAutomaticaV2 = Boolean(
+    !editandoId
+    && usaOrganigramaV2
+    && posicionSeleccionadaAlta?.cargo_colocacion_id
+    && !formAlta.auth_user_id
+  );
+  const ayudaAsistenciaAdmin = aplicaCreacionAutomaticaV2
+    ? "Control de asistencia queda activado automáticamente. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+    : "Control de asistencia requiere que el 'Email de acceso' de abajo coincida exactamente con el correo de esta ficha (Email corporativo o Correo personal), y que tenga un turno asignado.";
   const posicionesOrganigramaV2 = React.useMemo(
     () => posiciones.filter(p => p.cargo_colocacion_id),
     [posiciones]
@@ -11478,9 +11489,34 @@ function RRHHAdmin() {
         await actualizarAdminPersonalCtx(editandoId, nuevo);
         addNotificacion('Colaborador actualizado.');
       } else {
-        await crearAdminPersonalCtx(nuevo);
+        const fichaGuardada = await crearAdminPersonalCtx(nuevo);
         addNotificacion('Colaborador creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
-        if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
+        const posicionAcceso = posiciones.find(posicion => posicion.id === formAlta.posicion_id);
+        const esPosicionV2 = Boolean(posicionAcceso?.cargo_colocacion_id);
+        if (esPosicionV2 && !fichaGuardada?.auth_user_id && empresa?.organigrama_v2_habilitado === true && crearUsuarioConAcceso) {
+          const emailFicha = fichaGuardada?.email || fichaGuardada?.email_personal || '';
+          if (!emailFicha) {
+            addNotificacion(`No se pudo crear la cuenta de acceso automáticamente: falta un correo en la ficha de ${nuevo.nombre}. Complétalo y créala manualmente después.`, 'warning');
+          } else try {
+            const campoModulos = usuarioSistemaFormAdmin.acceso_campo
+              ? [...new Set([...(usuarioSistemaFormAdmin.campo_modulos || []), 'asistencia'])]
+              : [];
+            const resultado = await crearUsuarioConAcceso({
+              nombre: nuevo.nombre,
+              email: emailFicha,
+              posicion_id: formAlta.posicion_id,
+              modo_automatico: true,
+              personal_tipo: 'administrativo',
+              personal_id: fichaGuardada.id,
+              campo: usuarioSistemaFormAdmin.acceso_campo,
+              campoModulos,
+            });
+            if (resultado?.temporaryPassword) setCuentaTemporalAdmin({ nombre: nuevo.nombre, password: resultado.temporaryPassword });
+            addNotificacion('Usuario de sistema creado y vinculado a la ficha.');
+          } catch (userErr) {
+            addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
+          }
+        } else if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
           try {
             const rolId = usaOrganigramaV2
               ? rolDerivadoPosicionId
@@ -14438,8 +14474,9 @@ function RRHHAdmin() {
                           onChange={campo_modulos=>setUsuarioSistemaFormAdmin(v=>({...v,campo_modulos}))}
                           disabled={!usuarioSistemaFormAdmin.acceso_campo}
                           requiredModule="asistencia"
+                          helpText={ayudaAsistenciaAdmin}
                         />
-                        <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                        {usuarioSistemaFormAdmin.acceso_campo && !formAlta.turno_id && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>⚠ Sin turno asignado, esta persona no podrá marcar asistencia todavía.</div>}
                         {usuarioSistemaFormAdmin.campo_modulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                       </div>
                       {!usaOrganigramaV2 && <div style={{gridColumn:'1/-1'}}>
@@ -14479,6 +14516,17 @@ function RRHHAdmin() {
           </form>
         </div>
       </>}
+
+      {cuentaTemporalAdmin && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cuenta-temporal-admin-titulo">
+        <div className="modal" style={{maxWidth:480}}>
+          <div className="modal-head"><h3 id="cuenta-temporal-admin-titulo">Cuenta creada</h3></div>
+          <div className="modal-body col" style={{gap:12}}>
+            <p style={{margin:0}}>Cuenta creada para <strong>{cuentaTemporalAdmin.nombre}</strong>. Entrega esta contraseña temporal en persona: no podrás verla de nuevo.</p>
+            <input className="input mono" aria-label="Contraseña temporal" value={cuentaTemporalAdmin.password} readOnly />
+          </div>
+          <div className="modal-foot"><button type="button" className="btn btn-primary" onClick={() => setCuentaTemporalAdmin(null)}>Entendido</button></div>
+        </div>
+      </div>}
     </>
   );
 }
