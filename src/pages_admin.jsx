@@ -10952,6 +10952,7 @@ function RRHHAdmin() {
   const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const [rolDerivadoPosicionId, setRolDerivadoPosicionId] = useState('');
   const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
   const [historialDniAlta, setHistorialDniAlta] = useState(null);
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -10999,6 +11000,41 @@ function RRHHAdmin() {
     () => posiciones.find(p => p.id === formAlta.posicion_id) || null,
     [posiciones, formAlta.posicion_id]
   );
+  const usaOrganigramaV2 = empresa?.organigrama_v2_habilitado === true;
+  const posicionesOrganigramaV2 = React.useMemo(
+    () => posiciones.filter(p => p.cargo_colocacion_id),
+    [posiciones]
+  );
+  const cargoSeleccionadoOrganigramaV2 = React.useMemo(
+    () => cargos.find(c => c.id === posicionSeleccionadaAlta?.cargo_id) || null,
+    [cargos, posicionSeleccionadaAlta]
+  );
+  const seleccionarPosicionOrganigramaV2 = (posicionId) => {
+    const posicion = posiciones.find(p => p.id === posicionId) || null;
+    const cargo = cargos.find(c => c.id === posicion?.cargo_id) || null;
+    setRolDerivadoPosicionId('');
+    setFormAlta(v => ({
+      ...v,
+      posicion_id: posicionId || '',
+      cargo_id: posicion?.cargo_id || '',
+      cargo: cargo?.nombre || '',
+      area: posicion ? (unidadNombrePorId.get(posicion.unidad_organizacional_id) || '') : '',
+    }));
+  };
+  React.useEffect(() => {
+    let cancelado = false;
+    if (!usaOrganigramaV2 || !formAlta.posicion_id) {
+      setRolDerivadoPosicionId('');
+      return undefined;
+    }
+    obtenerRolSugeridoPorPosicion(formAlta.posicion_id)
+      .then(rolId => { if (!cancelado) setRolDerivadoPosicionId(rolId || ''); })
+      .catch(error => {
+        console.error('No se pudo obtener el rol derivado de la posición:', error);
+        if (!cancelado) setRolDerivadoPosicionId('');
+      });
+    return () => { cancelado = true; };
+  }, [usaOrganigramaV2, formAlta.posicion_id, posiciones]);
   const verificarDniAlta = async (dni) => {
     const clean = String(dni || '').trim();
     if (clean.length < 8 || !empresa?.id) { setHistorialDniAlta(null); return; }
@@ -11412,6 +11448,19 @@ function RRHHAdmin() {
       setAltaError('La posición seleccionada ya no está disponible. Selecciona otra o deja la ficha sin posición.');
       return;
     }
+    const posicionOcupadaPorOtraPersona = usaOrganigramaV2 && formAlta.posicion_id && posicionesUsuarios.some(asignacion => (
+      asignacion.posicion_id === formAlta.posicion_id
+      && !asignacion.fecha_fin
+      && asignacion.user_id !== formAlta.auth_user_id
+    ));
+    if (posicionOcupadaPorOtraPersona) {
+      setAltaError('La posición organizacional elegida ya está ocupada por otra persona. Selecciona una posición vacante antes de guardar.');
+      return;
+    }
+    if (usaOrganigramaV2 && !editandoId && crearUsuarioSistemaAdmin && (!formAlta.posicion_id || !rolDerivadoPosicionId)) {
+      setAltaError('Para crear un usuario de sistema, selecciona una posición organizacional V2 con un rol configurado.');
+      return;
+    }
     setAltaSaving(true);
     setAltaError('');
     const idx = todosPersonal.length + 1;
@@ -11487,8 +11536,11 @@ function RRHHAdmin() {
         addNotificacion('Colaborador creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
         if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && crearUsuarioConAcceso) {
           try {
-            const rolId = Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol;
-            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: usuarioSistemaFormAdmin.posicion_id || null, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
+            const rolId = usaOrganigramaV2
+              ? rolDerivadoPosicionId
+              : (Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol);
+            const posicionIdUsuario = usaOrganigramaV2 ? (formAlta.posicion_id || null) : (usuarioSistemaFormAdmin.posicion_id || null);
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
             addNotificacion('Usuario de sistema creado.');
           } catch (userErr) {
             addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
@@ -14133,6 +14185,25 @@ function RRHHAdmin() {
               <div className="input-group"><label>Código de empleado *</label><input className="input" value={formAlta.codigo} onChange={e=>setFormAlta(v=>({...v,codigo:e.target.value}))} placeholder="ADM-008" style={{fontWeight:700}}/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Autogenerado por correlativo. Puedes editarlo si lo necesitas.</div></div>
               <div className="input-group"><label>Modalidad</label><select className="select" value={formAlta.modalidad} onChange={e=>setFormAlta(v=>{ const modalidad = normalizarModalidadContrato(e.target.value); return {...v, modalidad, tipo_contrato: modalidad === 'honorarios' ? 'por_encargo' : (v.tipo_contrato === 'por_encargo' ? 'indefinido' : v.tipo_contrato), ruc_colaborador: modalidad === 'honorarios' ? v.ruc_colaborador : ''}; })}><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
               <div className="input-group"><label>Tipo de contrato</label><select className="select" value={tipoContratoAlta} disabled={esHonorariosAlta} onChange={e=>setFormAlta(v=>({...v,tipo_contrato:e.target.value}))}>{opcionesTipoContratoAlta.map(([value,label])=><option key={`${value}-${label}`} value={value}>{label}</option>)}</select></div>
+              {usaOrganigramaV2 ? <>
+                <div style={{gridColumn:'1/-1'}}>
+                  <PosicionSelector
+                    label="Posición organizacional"
+                    value={formAlta.posicion_id}
+                    onChange={seleccionarPosicionOrganigramaV2}
+                    posiciones={posicionesOrganigramaV2}
+                    posicionesUsuarios={posicionesUsuarios}
+                    unidadesOrganizacionales={unidadesOrganizacionales}
+                    cargos={cargos}
+                    usuarios={usuarios}
+                    allowCrear={false}
+                    currentUserId={formAlta.auth_user_id || null}
+                  />
+                </div>
+                <div className="input-group"><label>Cargo</label><input className="input" readOnly value={cargoSeleccionadoOrganigramaV2?.nombre || ''} placeholder="Se deriva de la posición" style={{background:'var(--bg-subtle)'}}/></div>
+                <div className="input-group"><label>Unidad organizacional</label><input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : ''} placeholder="Se deriva de la posición" style={{background:'var(--bg-subtle)'}}/></div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}><label>Rol que se asignará si se activa acceso al sistema</label><input className="input" readOnly value={rolesCtx[rolDerivadoPosicionId]?.nombre || ''} placeholder={formAlta.posicion_id ? 'Cargando rol de la posición…' : 'Se deriva de la posición'} style={{background:'var(--bg-subtle)'}}/></div>
+              </> : <>
               <div className="input-group"><label>Cargo</label>
                 <select className="select" value={formAlta.cargo_id} onChange={e=>{
                   if(e.target.value==='__nuevo__'){setFormAlta(v=>({...v,cargo_id:'__nuevo__'}));setNuevoCargoTextoAdmin('');return;}
@@ -14165,6 +14236,7 @@ function RRHHAdmin() {
                 <label>Unidad organizacional</label>
                 <input className="input" readOnly value={posicionSeleccionadaAlta ? (unidadNombrePorId.get(posicionSeleccionadaAlta.unidad_organizacional_id) || 'Sin unidad asignada') : (formAlta.area || 'Se deriva de la posición')} style={{background:'var(--bg-subtle)'}}/>
               </div>
+              </>}
               <div className="input-group"><label>Sede asignada</label><select className="select" value={formAlta.sede} onChange={e=>setFormAlta(v=>({...v,sede:e.target.value}))}><option value="">Sin sede asignada</option>{sedesOptions.map(s=><option key={s.nombre} value={s.nombre}>{s.nombre}</option>)}</select></div>
               <div className="input-group"><label>CECO *</label><select className="select" required value={formAlta.centro_costo_id} onChange={e=>setFormAlta(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecosActivosEscritura.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecosActivosEscritura.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select></div>
               <div className="input-group"><label>Turno asignado {esHonorariosAlta ? <span className="text-muted">(opcional, requerido para tomar asistencia)</span> : '*'}</label><select className="select" required={!esHonorariosAlta} value={formAlta.turno_id} onChange={e=>{ setHorasBaseOverride(false); setFormAlta(v=>({...v,turno_id:e.target.value,horas_base_mes:horasBaseParaTurno(e.target.value)})); }}><option value="">Seleccionar turno...</option>{turnosOptions.map(t=><option key={t.id} value={t.id}>{t.nombre} ({t.hora_entrada} - {t.hora_salida})</option>)}</select>{!turnosOptions.length && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Primero crea un turno en RRHH &gt; Turnos y Horarios.</div>}</div>
@@ -14408,9 +14480,9 @@ function RRHHAdmin() {
                   {crearUsuarioSistemaAdmin && (
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
-                      <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>
+                      {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
                       <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaFormAdmin.perfil_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,perfil_campo:e.target.value}))}><option value="administrativo">Administrativo</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="vendedor">Vendedor</option><option value="comprador">Comprador</option></select></div>
-                      <div style={{gridColumn:'1/-1'}}>
+                      {!usaOrganigramaV2 && <div style={{gridColumn:'1/-1'}}>
                         <PosicionSelector
                           value={usuarioSistemaFormAdmin.posicion_id}
                           onChange={async posicionId => {
@@ -14432,7 +14504,7 @@ function RRHHAdmin() {
                           usuarios={usuarios}
                           onCrearPosicion={crearPosicion}
                         />
-                      </div>
+                      </div>}
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
