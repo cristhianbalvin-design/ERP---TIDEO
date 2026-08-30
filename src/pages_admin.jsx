@@ -1078,7 +1078,7 @@ function Usuarios() {
   const [confirmacionAlcance, setConfirmacionAlcance] = useState(null);
   const [filtroTenant, setFiltroTenant] = useState('');
   const [filtroUsuario, setFiltroUsuario] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('Activo');
   const normalizarEmail = (value) => String(value || '').trim().toLowerCase();
   const nuevoEmailNormalizado = normalizarEmail(nuevoForm.email);
   const nuevoEmailExistente = Boolean(nuevoEmailNormalizado) && usuarios.some(u => normalizarEmail(u.email) === nuevoEmailNormalizado);
