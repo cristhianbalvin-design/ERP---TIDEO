@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
@@ -20641,7 +20642,7 @@ function RRHH_Operativo() {
   const [fichaTab, setFichaTab] = useState('ficha');
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
-  const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'tecnico' });
+  const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
   const [showFormAsig, setShowFormAsig] = useState(false);
   const [formAsig, setFormAsig] = useState({ tipo_tramo: 'normal', fecha_inicio: '', fecha_fin: '', regimen_jornada: 'general', fecha_inicio_ciclo: '', motivo: '' });
   const [savingAsig, setSavingAsig] = useState(false);
@@ -20966,7 +20967,7 @@ function RRHH_Operativo() {
     setAltaError('');
     setFormDatosBancarios([]);
     setCrearUsuarioSistema(false);
-    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, perfil_campo:'tecnico' });
+    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, campo_modulos:[] });
   };
   const horasBaseParaTurno = (turnoId) => {
     const turno = turnosOptions.find(t => t.id === turnoId);
@@ -20988,7 +20989,7 @@ function RRHH_Operativo() {
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '' });
     setFormDatosBancarios([]);
     setCrearUsuarioSistema(false);
-    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, perfil_campo:'tecnico' });
+    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, campo_modulos:[] });
     setPanelAlta(true);
   };
   const abrirEditarTecnico = (p) => {
@@ -21056,7 +21057,7 @@ function RRHH_Operativo() {
     });
     setFormDatosBancarios(Array.isArray(p.datos_bancarios) ? p.datos_bancarios : []);
     setCrearUsuarioSistema(false);
-    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, perfil_campo:'tecnico' });
+    setUsuarioSistemaForm({ email:'', rol:'', acceso_campo:false, campo_modulos:[] });
     setPanelAlta(true);
   };
   useEffect(() => {
@@ -21209,7 +21210,10 @@ function RRHH_Operativo() {
             ? rolDerivadoPosicionId
             : (Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaForm.rol) || usuarioSistemaForm.rol);
           const posicionIdUsuario = usaOrganigramaV2 ? (formAlta.posicion_id || null) : (usuarioSistemaForm.posicion_id || null);
-          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaForm.acceso_campo, campoModulos: usuarioSistemaForm.acceso_campo ? [usuarioSistemaForm.perfil_campo] : [] });
+          const campoModulos = usuarioSistemaForm.acceso_campo
+            ? [...new Set([...(usuarioSistemaForm.campo_modulos || []), 'asistencia'])]
+            : [];
+          await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaForm.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaForm.acceso_campo, campoModulos });
           addNotificacion('Usuario de sistema creado.');
         } catch (userErr) {
           addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
@@ -24052,7 +24056,18 @@ function RRHH_Operativo() {
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
-                      <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaForm.perfil_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,perfil_campo:e.target.value}))}><option value="tecnico">Técnico</option><option value="comprador">Comprador</option><option value="vendedor">Vendedor</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="administrativo">Administrativo</option></select></div>
+                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>Acceso a app de campo</label>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
+                        <label>Módulos de campo habilitados</label>
+                        <SelectorModulosCampo
+                          value={usuarioSistemaForm.campo_modulos}
+                          onChange={campo_modulos=>setUsuarioSistemaForm(v=>({...v,campo_modulos}))}
+                          disabled={!usuarioSistemaForm.acceso_campo}
+                          requiredModule="asistencia"
+                        />
+                        <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                        {usuarioSistemaForm.campo_modulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
+                      </div>
                       {!usaOrganigramaV2 && <div style={{gridColumn:'1/-1'}}>
                         <PosicionSelector
                           value={usuarioSistemaForm.posicion_id}
@@ -24076,7 +24091,6 @@ function RRHH_Operativo() {
                           onCrearPosicion={crearPosicion}
                         />
                       </div>}
-                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
                 </>

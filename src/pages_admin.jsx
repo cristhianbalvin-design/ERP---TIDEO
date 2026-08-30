@@ -19,6 +19,7 @@ import {
 import { resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
+import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 import { AsignacionCargosModal } from './components/AsignacionCargosModal.jsx';
 import { buildOcupantesPorPosicion, getPosicionesSinCargo, contarRespaldoPrincipal } from './lib/posicionesHelpers.js';
 import { ROLE_CATEGORIES, getUserHierarchyLevel, getPrimaryPosicion } from './lib/hierarchy.js';
@@ -963,16 +964,6 @@ function Usuarios() {
   const [nuevoError, setNuevoError] = useState('');
   const [editando, setEditando] = useState(null);
   const [fichaUsuario, setFichaUsuario] = useState({ loading: false, error: '', tieneFicha: false, tieneTurno: false, ficha: null, tipo: null });
-  const mobileModuleOptions = [
-    { id: 'tecnico', label: 'Tecnico' },
-    { id: 'logistica', label: 'Logistica' },
-    { id: 'vendedor', label: 'Vendedor' },
-    { id: 'compras', label: 'Compras' },
-    { id: 'supervisor', label: 'Supervisor' },
-    { id: 'gerencia', label: 'Gerencia' },
-    { id: 'asistencia', label: 'Control de asistencia' },
-    { id: 'mi_espacio', label: 'Mi espacio' },
-  ];
   const legacyModuloCampo = (perfil) => {
     const value = String(perfil || '').toLowerCase();
     if (value.includes('vendedor')) return 'vendedor';
@@ -1576,7 +1567,7 @@ function Usuarios() {
                         {getCampoModulos(u).map(modulo => (
                           <span key={modulo} className="badge badge-cyan">
                             <span className="users-field-badge-icon">{I.mobile}</span>
-                            {modulo === 'solicitudes' ? 'Solicitudes' : (mobileModuleOptions.find(x => x.id === modulo)?.label || modulo)}
+                            {modulo === 'solicitudes' ? 'Solicitudes' : (CAMPO_MODULE_OPTIONS.find(x => x.id === modulo)?.label || modulo)}
                           </span>
                         ))}
                       </div>
@@ -1702,42 +1693,11 @@ function Usuarios() {
               {editForm.campo && (
                 <div className="input-group">
                   <label>Modulos moviles habilitados</label>
-                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                    {mobileModuleOptions.map(mod => {
-                      const restriccion = getRestriccionModulo(mod.id);
-                      const checked = editForm.campoModulos.includes(mod.id) && !restriccion.disabled;
-                      return (
-                      <label
-                        key={mod.id}
-                        className="row"
-                        title={restriccion.tooltip}
-                        style={{
-                          gap:8,
-                          fontSize:13,
-                          padding:'8px 10px',
-                          border:'1px solid var(--border)',
-                          borderRadius:8,
-                          opacity: restriccion.disabled ? 0.55 : 1,
-                          cursor: restriccion.disabled ? 'not-allowed' : 'pointer',
-                          background: restriccion.disabled ? 'var(--bg-subtle)' : undefined,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          className="checkbox"
-                          disabled={restriccion.disabled}
-                          checked={checked}
-                          onChange={e => setEditForm(p => ({
-                            ...p,
-                            campoModulos: e.target.checked
-                              ? [...new Set([...p.campoModulos, mod.id])]
-                              : p.campoModulos.filter(x => x !== mod.id)
-                          }))}
-                        />
-                        {mod.label}
-                      </label>
-                    )})}
-                  </div>
+                  <SelectorModulosCampo
+                    value={editForm.campoModulos}
+                    onChange={campoModulos => setEditForm(p => ({ ...p, campoModulos }))}
+                    getRestriction={getRestriccionModulo}
+                  />
                   {editForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                   {fichaUsuario.loading && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Verificando ficha RRHH por email...</div>}
                   {fichaUsuario.error && <div className="text-muted" style={{fontSize:12, marginTop:6, color: 'var(--danger)'}}>Error consultando ficha: {fichaUsuario.error}</div>}
@@ -1922,24 +1882,10 @@ function Usuarios() {
               {nuevoForm.campo && (
                 <div className="input-group">
                   <label>Modulos moviles habilitados</label>
-                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
-                    {mobileModuleOptions.map(mod => (
-                      <label key={mod.id} className="row" style={{gap:8, fontSize:13, padding:'8px 10px', border:'1px solid var(--border)', borderRadius:8}}>
-                        <input
-                          type="checkbox"
-                          className="checkbox"
-                          checked={nuevoForm.campoModulos.includes(mod.id)}
-                          onChange={e => setNuevoForm(p => ({
-                            ...p,
-                            campoModulos: e.target.checked
-                              ? [...new Set([...p.campoModulos, mod.id])]
-                              : p.campoModulos.filter(x => x !== mod.id)
-                          }))}
-                        />
-                        {mod.label}
-                      </label>
-                    ))}
-                  </div>
+                  <SelectorModulosCampo
+                    value={nuevoForm.campoModulos}
+                    onChange={campoModulos => setNuevoForm(p => ({ ...p, campoModulos }))}
+                  />
                   <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
                   {nuevoForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
                 </div>
@@ -10862,7 +10808,7 @@ function RRHHAdmin() {
   }, [empresa?.multisociedad_habilitado, personalAdmin, personalDocumentos, tiposDocumento, sociedadesContratosPersonalAdminKey, fechaVigenciaPersonalAdmin, vistaSociedadConcretaPersonalAdmin, mostrarBadgeSociedadPersonalAdmin]);
   const [formDatosBancariosAdmin, setFormDatosBancariosAdmin] = useState([]);
   const [crearUsuarioSistemaAdmin, setCrearUsuarioSistemaAdmin] = useState(false);
-  const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, perfil_campo:'administrativo' });
+  const [usuarioSistemaFormAdmin, setUsuarioSistemaFormAdmin] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
   // Estados para subida de documentos en tab Documentos
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
@@ -11298,7 +11244,7 @@ function RRHHAdmin() {
     setAltaError('');
     setFormDatosBancariosAdmin([]);
     setCrearUsuarioSistemaAdmin(false);
-    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, campo_modulos:[] });
   };
   const horasBaseParaTurno = (turnoId) => {
     const turno = turnosOptions.find(t => t.id === turnoId);
@@ -11319,7 +11265,7 @@ function RRHHAdmin() {
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas });
     setFormDatosBancariosAdmin([]);
     setCrearUsuarioSistemaAdmin(false);
-    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, perfil_campo:'administrativo' });
+    setUsuarioSistemaFormAdmin({ email:'', rol:'', acceso_campo:false, campo_modulos:[] });
     setPanelAlta(true);
   };
   const abrirEditarColaborador = (p) => {
@@ -11540,7 +11486,10 @@ function RRHHAdmin() {
               ? rolDerivadoPosicionId
               : (Object.keys(rolesCtx).find(k => rolesCtx[k]?.nombre === usuarioSistemaFormAdmin.rol) || usuarioSistemaFormAdmin.rol);
             const posicionIdUsuario = usaOrganigramaV2 ? (formAlta.posicion_id || null) : (usuarioSistemaFormAdmin.posicion_id || null);
-            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos: usuarioSistemaFormAdmin.acceso_campo ? [usuarioSistemaFormAdmin.perfil_campo] : [] });
+            const campoModulos = usuarioSistemaFormAdmin.acceso_campo
+              ? [...new Set([...(usuarioSistemaFormAdmin.campo_modulos || []), 'asistencia'])]
+              : [];
+            await crearUsuarioConAcceso({ nombre: nuevo.nombre, email: usuarioSistemaFormAdmin.email, rol: rolId, posicion_id: posicionIdUsuario, campo: usuarioSistemaFormAdmin.acceso_campo, campoModulos });
             addNotificacion('Usuario de sistema creado.');
           } catch (userErr) {
             addNotificacion(`Colaborador creado. Error al crear usuario: ${userErr?.message || 'error desconocido'}`, 'warning');
@@ -14481,7 +14430,18 @@ function RRHHAdmin() {
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
-                      <div className="input-group"><label>Perfil de campo</label><select className="select" value={usuarioSistemaFormAdmin.perfil_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,perfil_campo:e.target.value}))}><option value="administrativo">Administrativo</option><option value="supervisor">Supervisor</option><option value="gerencia">Gerencia</option><option value="vendedor">Vendedor</option><option value="comprador">Comprador</option></select></div>
+                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>Acceso a app de campo</label>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
+                        <label>Módulos de campo habilitados</label>
+                        <SelectorModulosCampo
+                          value={usuarioSistemaFormAdmin.campo_modulos}
+                          onChange={campo_modulos=>setUsuarioSistemaFormAdmin(v=>({...v,campo_modulos}))}
+                          disabled={!usuarioSistemaFormAdmin.acceso_campo}
+                          requiredModule="asistencia"
+                        />
+                        <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
+                        {usuarioSistemaFormAdmin.campo_modulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
+                      </div>
                       {!usaOrganigramaV2 && <div style={{gridColumn:'1/-1'}}>
                         <PosicionSelector
                           value={usuarioSistemaFormAdmin.posicion_id}
@@ -14505,7 +14465,6 @@ function RRHHAdmin() {
                           onCrearPosicion={crearPosicion}
                         />
                       </div>}
-                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,acceso_campo:e.target.checked}))}/>Acceso a app de campo</label>
                     </div>
                   )}
                 </>
