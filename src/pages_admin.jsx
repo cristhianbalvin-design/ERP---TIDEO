@@ -946,6 +946,7 @@ function Roles() {
 
 function Usuarios() {
   const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, obtenerRolSugeridoPorPosicion, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
+  const usaOrganigramaV2Usuarios = empresa?.organigrama_v2_habilitado === true;
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
   const [visibleUserColumns, setVisibleUserColumns] = useState(() => USER_TABLE_COLUMNS.map(column => column.key));
@@ -1080,6 +1081,17 @@ function Usuarios() {
   const [filtroUsuario, setFiltroUsuario] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('Activo');
   const normalizarEmail = (value) => String(value || '').trim().toLowerCase();
+  const obtenerRolDerivadoV2 = async (posicionId) => {
+    const posicion = posiciones.find(item => item.id === posicionId);
+    if (!posicionId || !posicion?.cargo_colocacion_id) {
+      throw new Error('Selecciona una posición organizacional V2 antes de guardar.');
+    }
+    const rolId = await obtenerRolSugeridoPorPosicion(posicionId);
+    if (!rolId) {
+      throw new Error('La posición organizacional elegida no tiene un rol de sistema configurado.');
+    }
+    return rolId;
+  };
   const nuevoEmailNormalizado = normalizarEmail(nuevoForm.email);
   const nuevoEmailExistente = Boolean(nuevoEmailNormalizado) && usuarios.some(u => normalizarEmail(u.email) === nuevoEmailNormalizado);
 
@@ -1178,7 +1190,10 @@ function Usuarios() {
     try {
       const alcance = normalizarAlcanceForm(nuevoForm);
       const { alcance_tipo: _alcanceTipo, alcance_modo: _alcanceModo, sociedades_ids: _sociedadesIds, ...datosUsuario } = nuevoForm;
-      await crearUsuarioConAcceso({ ...datosUsuario, ...alcance });
+      const rolId = usaOrganigramaV2Usuarios
+        ? await obtenerRolDerivadoV2(nuevoForm.posicion_id)
+        : nuevoForm.rol;
+      await crearUsuarioConAcceso({ ...datosUsuario, ...alcance, rol: rolId });
       setCreando(false);
       setMostrarPasswordNuevo(false);
       setNuevoForm({ nombre: '', email: '', rol: 'vendedor', jefe_user_id: '', posicion_id: '', password: '', asignaciones: [], ...alcanceFormInicial, campo: false, campoModulos: [] });
@@ -1195,6 +1210,7 @@ function Usuarios() {
   };
 
   const abrirEditarUsuario = (usuario) => {
+    const posicionId = getPrimaryPosicion(usuario)?.posicion_id || '';
     const alcanceEfectivo = resolverAlcanceEfectivoUsuario(usuario.asignaciones || []);
     setEditError('');
     setConfirmacionAlcance(null);
@@ -1206,7 +1222,7 @@ function Usuarios() {
       email: usuario.email || '',
       rol: usuario.rol || '',
       jefe_user_id: usuario.jefe_user_id || '',
-      posicion_id: getPrimaryPosicion(usuario)?.posicion_id || '',
+      posicion_id: posicionId,
       alcance_tipo: 'grupo',
       alcance_modo: alcanceEfectivo == null ? 'todas' : 'especificas',
       sociedades_ids: alcanceEfectivo == null ? [] : alcanceEfectivo,
@@ -1222,6 +1238,11 @@ function Usuarios() {
       campoModulos: getCampoModulos(usuario),
       estado: usuario.estado || 'Activo',
     });
+    if (usaOrganigramaV2Usuarios && posiciones.find(posicion => posicion.id === posicionId)?.cargo_colocacion_id) {
+      obtenerRolSugeridoPorPosicion(posicionId)
+        .then(rolId => setEditForm(form => form.posicion_id === posicionId ? { ...form, rol: rolId || '' } : form))
+        .catch(error => console.error('No se pudo obtener el rol derivado de la posición:', error));
+    }
     consultarFichaUsuario({ email: usuario.email || '', empresaId: usuario.empresa_id || empresa?.id, userId: usuario.id });
   };
 
@@ -1234,11 +1255,16 @@ function Usuarios() {
         ? editForm.campoModulos.filter(mod => !getRestriccionModulo(mod).disabled)
         : [];
       const { alcance_tipo: _alcanceTipo, alcance_modo: _alcanceModo, sociedades_ids: _sociedadesIds, ...datosUsuario } = editForm;
+      const rolId = usaOrganigramaV2Usuarios
+        ? await obtenerRolDerivadoV2(editForm.posicion_id)
+        : editForm.rol;
       await actualizarUsuarioAcceso(editando.id, {
         ...datosUsuario,
         ...alcance,
         empresa_id: editando.empresa_id,
+        rol: rolId,
         campoModulos,
+        modo_automatico: usaOrganigramaV2Usuarios,
       });
       setEditando(null);
       setConfirmacionAlcance(null);
@@ -1643,9 +1669,19 @@ function Usuarios() {
               </div>
               <div className="input-group">
                 <label>Rol</label>
-                <select className="input" value={editForm.rol} onChange={e => setEditForm(p => ({...p, rol: e.target.value}))}>
-                  {rolesEditOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
-                </select>
+                {usaOrganigramaV2Usuarios ? (
+                  <input
+                    className="input"
+                    readOnly
+                    value={rolesCtx?.[editForm.rol]?.nombre || ''}
+                    placeholder="Se deriva de la posición organizacional"
+                    style={{background:'var(--bg-subtle)', color:'var(--fg-muted)'}}
+                  />
+                ) : (
+                  <select className="input" value={editForm.rol} onChange={e => setEditForm(p => ({...p, rol: e.target.value}))}>
+                    {rolesEditOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
+                  </select>
+                )}
               </div>
               <div className="row" style={{gap:8, flexWrap:'wrap', fontSize:12}}>
                 <span className="badge badge-gray">Categoria: {editRoleMeta.categoriaLabel}</span>
@@ -1655,11 +1691,13 @@ function Usuarios() {
                 value={editForm.posicion_id}
                 onChange={async posicionId => {
                   const rolAntes = editForm.rol;
-                  setEditForm(p => ({ ...p, posicion_id: posicionId }));
+                  const esPosicionV2 = Boolean(posiciones.find(posicion => posicion.id === posicionId)?.cargo_colocacion_id);
+                  setEditForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '' } : {}) }));
+                  if (usaOrganigramaV2Usuarios && !esPosicionV2) return;
                   try {
                     const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
                     if (rolSugerido) setEditForm(p => (
-                      p.posicion_id === posicionId && p.rol === rolAntes ? { ...p, rol: rolSugerido } : p
+                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? { ...p, rol: rolSugerido } : p
                     ));
                   } catch (error) {
                     console.error('No se pudo obtener el rol sugerido de la posición:', error);
@@ -1842,9 +1880,19 @@ function Usuarios() {
               )}
               <div className="input-group">
                 <label>Rol</label>
-                <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
-                  {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
-                </select>
+                {usaOrganigramaV2Usuarios ? (
+                  <input
+                    className="input"
+                    readOnly
+                    value={rolesCtx?.[nuevoForm.rol]?.nombre || ''}
+                    placeholder="Se deriva de la posición organizacional"
+                    style={{background:'var(--bg-subtle)', color:'var(--fg-muted)'}}
+                  />
+                ) : (
+                  <select className="input" value={nuevoForm.rol} onChange={e => setNuevoForm(p => ({...p, rol: e.target.value}))}>
+                    {rolesOpciones.map(([id, r]) => <option key={id} value={id}>{roleOptionText({ ...r, id })}</option>)}
+                  </select>
+                )}
               </div>
               <div className="row" style={{gap:8, flexWrap:'wrap', fontSize:12}}>
                 <span className="badge badge-gray">Categoria: {nuevoRoleMeta.categoriaLabel}</span>
@@ -1854,11 +1902,13 @@ function Usuarios() {
                 value={nuevoForm.posicion_id}
                 onChange={async posicionId => {
                   const rolAntes = nuevoForm.rol;
-                  setNuevoForm(p => ({ ...p, posicion_id: posicionId }));
+                  const esPosicionV2 = Boolean(posiciones.find(posicion => posicion.id === posicionId)?.cargo_colocacion_id);
+                  setNuevoForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '' } : {}) }));
+                  if (usaOrganigramaV2Usuarios && !esPosicionV2) return;
                   try {
                     const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
                     if (rolSugerido) setNuevoForm(p => (
-                      p.posicion_id === posicionId && p.rol === rolAntes ? { ...p, rol: rolSugerido } : p
+                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? { ...p, rol: rolSugerido } : p
                     ));
                   } catch (error) {
                     console.error('No se pudo obtener el rol sugerido de la posición:', error);
@@ -10722,7 +10772,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -10737,6 +10787,7 @@ function RRHHAdmin() {
   const [altaSaving, setAltaSaving] = useState(false);
   const [altaError, setAltaError] = useState('');
   const paramsHandledRef = useRef('');
+  const posicionOriginalEdicionRef = useRef('');
   const canFinanzasAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonalAdmin = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -11250,6 +11301,7 @@ function RRHHAdmin() {
   const cerrarPanelColaborador = () => {
     setPanelAlta(false);
     setEditandoId(null);
+    posicionOriginalEdicionRef.current = '';
     setFormAlta(formAltaBase);
     setHorasBaseOverride(false);
     setAltaError('');
@@ -11272,6 +11324,7 @@ function RRHHAdmin() {
   };
   const abrirNuevoColaborador = () => {
     setEditandoId(null);
+    posicionOriginalEdicionRef.current = '';
     setHorasBaseOverride(false);
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas });
     setFormDatosBancariosAdmin([]);
@@ -11281,6 +11334,7 @@ function RRHHAdmin() {
   };
   const abrirEditarColaborador = (p) => {
     setEditandoId(p.id);
+    posicionOriginalEdicionRef.current = p.posicion_id || '';
     const turnoActualId = turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId;
     const horasDerivadas = horasBaseParaTurno(turnoActualId);
     const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
@@ -11361,6 +11415,7 @@ function RRHHAdmin() {
     }
     if (activeParams.action === 'new') {
       setEditandoId(null);
+      posicionOriginalEdicionRef.current = '';
       setHorasBaseOverride(false);
       setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas, email: activeParams.email || '', nombre: activeParams.nombre || '', dni: activeParams.dni || '', telefono: activeParams.telefono || '' });
       setPanelAlta(true);
@@ -11486,8 +11541,39 @@ function RRHHAdmin() {
     };
     try {
       if (editandoId) {
-        await actualizarAdminPersonalCtx(editandoId, nuevo);
+        const fichaGuardada = await actualizarAdminPersonalCtx(editandoId, nuevo);
         addNotificacion('Colaborador actualizado.');
+        const debeReasignarCuenta = Boolean(
+          usaOrganigramaV2
+          && fichaGuardada?.auth_user_id
+          && formAlta.posicion_id
+          && formAlta.posicion_id !== posicionOriginalEdicionRef.current
+          && posicionSeleccionadaAlta?.cargo_colocacion_id
+        );
+        if (debeReasignarCuenta) {
+          try {
+            const rolId = await obtenerRolSugeridoPorPosicion(formAlta.posicion_id);
+            if (!rolId) throw new Error('La nueva posición no tiene un rol de sistema configurado.');
+            const cuenta = usuarios.find(usuario => usuario.id === fichaGuardada.auth_user_id && usuario.empresa_id === empresa?.id)
+              || usuarios.find(usuario => usuario.id === fichaGuardada.auth_user_id);
+            if (!cuenta?.email) throw new Error('No se encontró el email de acceso de la cuenta vinculada.');
+            await actualizarUsuarioAcceso(fichaGuardada.auth_user_id, {
+              empresa_id: empresa?.id,
+              nombre: cuenta.nombre || fichaGuardada.nombre,
+              email: cuenta.email,
+              rol: rolId,
+              posicion_id: formAlta.posicion_id,
+              jefe_user_id: cuenta.jefe_user_id || null,
+              asignaciones: cuenta.asignaciones || [],
+              campo: Boolean(cuenta.campo),
+              campoModulos: cuenta.campoModulos || cuenta.campo_modulos || [],
+              estado: cuenta.estado || 'Activo',
+              modo_automatico: true,
+            });
+          } catch (userErr) {
+            addNotificacion(`Colaborador actualizado, pero no se pudo sincronizar su posición y rol de sistema: ${userErr?.message || 'error desconocido'}. Revísalo desde Usuarios.`, 'warning');
+          }
+        }
       } else {
         const fichaGuardada = await crearAdminPersonalCtx(nuevo);
         addNotificacion('Colaborador creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');

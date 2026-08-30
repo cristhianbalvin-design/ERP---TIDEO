@@ -4643,6 +4643,7 @@ export function AppProvider({ children }) {
         perfil_campo: nextUser.campoPerfil,
         campo_modulos: campoModulos,
         estado: nextUser.estado || 'Activo',
+        modo_automatico: Boolean(datos.modo_automatico),
       });
       const mergedSavedUser = {
         ...nextUser,

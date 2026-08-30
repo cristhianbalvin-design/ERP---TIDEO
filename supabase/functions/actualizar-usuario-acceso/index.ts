@@ -328,7 +328,8 @@ serve(async (req) => {
   const empresaId = String(payload.empresa_id || "").trim();
   const nombre = String(payload.nombre || "").trim();
   const email = normalizeEmail(payload.email);
-  const rolId = String(payload.rol || "").trim();
+  let rolId = String(payload.rol || "").trim();
+  const modoAutomatico = payload.modo_automatico === true;
   const jefeUserIdRaw = String(payload.jefe_user_id || "").trim();
   const jefeUserId = jefeUserIdRaw || null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
@@ -348,8 +349,11 @@ serve(async (req) => {
   const estadoPerfil = estadoToProfile(String(payload.estado || "Activo"));
   const estadoMembership = estadoToMembership(estadoPerfil);
 
-  if (!userId || !empresaId || !nombre || !email || !rolId) {
+  if (!userId || !empresaId || !nombre || !email || (!rolId && !modoAutomatico)) {
     return jsonResponse({ success: false, error: "Usuario, empresa, nombre, email y rol son obligatorios." }, 400);
+  }
+  if (modoAutomatico && !posicionId) {
+    return jsonResponse({ success: false, error: "La reasignacion automatica requiere una posicion organizacional V2." }, 400);
   }
 
   const userPermission = await assertUserPermission(userClient, empresaId, "editar");
@@ -373,14 +377,48 @@ serve(async (req) => {
 
   const { data: targetEmpresa, error: targetEmpresaError } = await adminClient
     .from("empresas")
-    .select("id, es_plataforma, multisociedad_habilitado")
+    .select("id, es_plataforma, multisociedad_habilitado, organigrama_v2_habilitado")
     .eq("id", empresaId)
     .maybeSingle();
   if (targetEmpresaError) return jsonResponse({ success: false, error: targetEmpresaError.message }, 500);
   if (!targetEmpresa?.id) return jsonResponse({ success: false, error: "El tenant seleccionado no existe." }, 400);
 
+  if (modoAutomatico && targetEmpresa.organigrama_v2_habilitado !== true) {
+    return jsonResponse({ success: false, error: "La reasignacion automatica de posicion no esta habilitada para este tenant." }, 403);
+  }
+
   if (email === PLATFORM_SUPERADMIN_EMAIL && !targetEmpresa.es_plataforma) {
     return jsonResponse({ success: false, error: "El Superadmin TIDEO solo puede pertenecer al tenant plataforma." }, 403);
+  }
+
+  let posicionRow: { id: string; cargo_colocacion_id: string | null } | null = null;
+  if (posicionId) {
+    const { data, error } = await adminClient
+      .from("posiciones")
+      .select("id, cargo_colocacion_id")
+      .eq("id", posicionId)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (error) return jsonResponse({ success: false, error: error.message }, 500);
+    if (!data?.id) return jsonResponse({ success: false, error: "La posicion seleccionada no existe para este tenant." }, 400);
+    posicionRow = data;
+  }
+
+  if (modoAutomatico) {
+    if (!posicionRow?.cargo_colocacion_id) {
+      return jsonResponse({ success: false, error: "La posicion elegida no pertenece al organigrama v2." }, 400);
+    }
+    const { data: colocacion, error: colocacionError } = await adminClient
+      .from("cargo_colocaciones")
+      .select("rol_id")
+      .eq("id", posicionRow.cargo_colocacion_id)
+      .eq("empresa_id", empresaId)
+      .maybeSingle();
+    if (colocacionError) return jsonResponse({ success: false, error: colocacionError.message }, 500);
+    if (!colocacion?.rol_id) {
+      return jsonResponse({ success: false, error: "La cargo-colocacion elegida no tiene un rol de sistema configurado." }, 400);
+    }
+    rolId = colocacion.rol_id;
   }
 
   let callerIsPlatformAdmin = false;
@@ -460,17 +498,6 @@ serve(async (req) => {
       .maybeSingle();
     if (jefeError) return jsonResponse({ success: false, error: jefeError.message }, 500);
     if (!jefeMembership) return jsonResponse({ success: false, error: "El jefe directo debe pertenecer al mismo tenant y estar activo." }, 400);
-  }
-
-  if (posicionId) {
-    const { data: posicionRow, error: posicionError } = await adminClient
-      .from("posiciones")
-      .select("id")
-      .eq("id", posicionId)
-      .eq("empresa_id", empresaId)
-      .maybeSingle();
-    if (posicionError) return jsonResponse({ success: false, error: posicionError.message }, 500);
-    if (!posicionRow?.id) return jsonResponse({ success: false, error: "La posicion seleccionada no existe para este tenant." }, 400);
   }
 
   const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(userId, {

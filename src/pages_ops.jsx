@@ -20556,7 +20556,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -20839,6 +20839,7 @@ function RRHH_Operativo() {
   const [altaSaving, setAltaSaving] = useState(false);
   const [historialDniAlta, setHistorialDniAlta] = useState(null);
   const paramsHandledRef = useRef('');
+  const posicionOriginalEdicionRef = useRef('');
   const modalidadAlta = normalizarModalidadContrato(formAlta.modalidad);
   const esHonorarios = modalidadAlta === 'honorarios';
   const opcionesTipoContratoAlta = esHonorarios ? [['honorarios', 'Honorarios']] : (tiposContrato.length > 0 ? tiposContrato.map(c => [c.codigo, c.nombre]) : CONTRATO_DURACION_OPCIONES);
@@ -20972,6 +20973,7 @@ function RRHH_Operativo() {
   const cerrarPanelTecnico = () => {
     setPanelAlta(false);
     setEditandoId(null);
+    posicionOriginalEdicionRef.current = '';
     setFormAlta(formAltaBase);
     setHorasBaseOverride(false);
     setCostoExtraOverride(false);
@@ -20995,6 +20997,7 @@ function RRHH_Operativo() {
   };
   const abrirNuevoTecnico = () => {
     setEditandoId(null);
+    posicionOriginalEdicionRef.current = '';
     setHorasBaseOverride(false);
     setCostoExtraOverride(false);
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '' });
@@ -21005,6 +21008,7 @@ function RRHH_Operativo() {
   };
   const abrirEditarTecnico = (p) => {
     setEditandoId(p.id);
+    posicionOriginalEdicionRef.current = p.posicion_id || '';
     const turnoActualId = turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId;
     const horasDerivadas = horasBaseParaTurno(turnoActualId);
     const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
@@ -21087,6 +21091,7 @@ function RRHH_Operativo() {
     }
     if (activeParams.action === 'new') {
       setEditandoId(null);
+      posicionOriginalEdicionRef.current = '';
       setHorasBaseOverride(false);
       setCostoExtraOverride(false);
       setFormAlta({ ...formAltaBase, codigo: codigoSugeridoTecnico(), turno_id: '', horas_base_mes: '', email: activeParams.email || '', nombre: activeParams.nombre || '', dni: activeParams.dni || '', telefono: activeParams.telefono || '' });
@@ -21209,8 +21214,39 @@ function RRHH_Operativo() {
     };
     try {
       if (editandoId) {
-        await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
+        const fichaGuardada = await actualizarTecnicoCtx(editandoId, { ...nuevo, id: editandoId, empresa_id: empresa?.id });
         addNotificacion('Tecnico actualizado.');
+        const debeReasignarCuenta = Boolean(
+          usaOrganigramaV2
+          && fichaGuardada?.auth_user_id
+          && formAlta.posicion_id
+          && formAlta.posicion_id !== posicionOriginalEdicionRef.current
+          && posicionSeleccionadaAlta?.cargo_colocacion_id
+        );
+        if (debeReasignarCuenta) {
+          try {
+            const rolId = await obtenerRolSugeridoPorPosicion(formAlta.posicion_id);
+            if (!rolId) throw new Error('La nueva posición no tiene un rol de sistema configurado.');
+            const cuenta = usuarios.find(usuario => usuario.id === fichaGuardada.auth_user_id && usuario.empresa_id === empresa?.id)
+              || usuarios.find(usuario => usuario.id === fichaGuardada.auth_user_id);
+            if (!cuenta?.email) throw new Error('No se encontró el email de acceso de la cuenta vinculada.');
+            await actualizarUsuarioAcceso(fichaGuardada.auth_user_id, {
+              empresa_id: empresa?.id,
+              nombre: cuenta.nombre || fichaGuardada.nombre,
+              email: cuenta.email,
+              rol: rolId,
+              posicion_id: formAlta.posicion_id,
+              jefe_user_id: cuenta.jefe_user_id || null,
+              asignaciones: cuenta.asignaciones || [],
+              campo: Boolean(cuenta.campo),
+              campoModulos: cuenta.campoModulos || cuenta.campo_modulos || [],
+              estado: cuenta.estado || 'Activo',
+              modo_automatico: true,
+            });
+          } catch (userErr) {
+            addNotificacion(`Técnico actualizado, pero no se pudo sincronizar su posición y rol de sistema: ${userErr?.message || 'error desconocido'}. Revísalo desde Usuarios.`, 'warning');
+          }
+        }
       } else {
         const fichaGuardada = await crearTecnicoCtx({ ...nuevo, empresa_id: empresa?.id });
         addNotificacion('Tecnico creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
