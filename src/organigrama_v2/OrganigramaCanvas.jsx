@@ -143,6 +143,7 @@ export const CargoColocacionNode = ({ data, dragging }) => {
   >
     <Handle id="uo-target" type="target" position={Position.Left} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '28%' }} />
     <Handle id="jerarquia-target" type="target" position={Position.Top} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
+    <Handle id="ocupacion-source" type="source" position={Position.Right} isConnectable={false} className="ov2-connect-handle" style={{ background: '#94a3b8' }} />
     <NodeHeader color="#2563eb">Cargo-colocación</NodeHeader>
     <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{data.cargoNombre}</div>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
@@ -455,8 +456,8 @@ const buildGraph = (datos, margenSuperiorSeguro = 0) => {
       edges.push({
       id: `ocupacion:${colocacion.id}:${posicion.id}`,
       source: toFlowNodeId('cargo_colocacion', colocacion.id), target: toFlowNodeId('posicion', posicion.id),
-      sourceHandle: 'jerarquia-source', targetHandle: 'matricial-target',
-        type: 'smoothstep', style: { stroke: '#94a3b8', strokeWidth: 2 }, selectable: false, focusable: false,
+      sourceHandle: 'ocupacion-source', targetHandle: 'matricial-target',
+        type: 'default', style: { stroke: '#94a3b8', strokeWidth: 2 }, selectable: false, focusable: false,
         data: { layoutOnly: true },
       });
     });
