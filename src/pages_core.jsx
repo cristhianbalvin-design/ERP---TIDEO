@@ -4748,7 +4748,7 @@ function OSCliente() {
     actualizarOSCliente, eliminarOSCliente, crearOSClienteManual, centrosBeneficio,
     partes, personalOperativo, personalAdmin, inventario, role,
     ordenesCompra, ordenesServicio, comprasGastos,
-    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], monedasActivas = [],
+    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], seleccionarSociedad, monedasActivas = [],
   } = useApp();
   const modoVistaSociedadOSCliente = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -4757,6 +4757,12 @@ function OSCliente() {
     sociedadesIdsAlcance,
     sociedadesDisponibles,
   });
+  const sociedadesIdsVistaOSKey = modoVistaSociedadOSCliente.sociedadesIds.join('|');
+  const osClientesAlcance = useMemo(() => {
+    if (modoVistaSociedadOSCliente.sinFiltro) return osClientes;
+    const permitidas = new Set(modoVistaSociedadOSCliente.sociedadesIds);
+    return osClientes.filter(os => os.sociedad_id && permitidas.has(os.sociedad_id));
+  }, [osClientes, modoVistaSociedadOSCliente.sinFiltro, sociedadesIdsVistaOSKey]);
 
   const calcCostoRealLiveOS = (ot) => {
     const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
@@ -4833,12 +4839,12 @@ function OSCliente() {
       setTareosOverheadOS([]);
       return;
     }
-    const empresaId = osClientes.find(o => o.id === activeParams.detail)?.empresa_id;
+    const empresaId = osClientesAlcance.find(o => o.id === activeParams.detail)?.empresa_id;
     if (!empresaId) return;
     tareosAdminService.cargarTareos(empresaId, { osId: activeParams.detail })
       .then(rows => setTareosOverheadOS((rows || []).filter(t => !t.ot_id && t.estado === 'enviado')))
       .catch(() => setTareosOverheadOS([]));
-  }, [activeParams?.detail, osClientes]);
+  }, [activeParams?.detail, osClientesAlcance]);
 
   const getNombre = id => cuentas.find(c => c.id === id)?.razon_social || id;
   const query = searchQuery.toLowerCase();
@@ -4846,9 +4852,9 @@ function OSCliente() {
   const BADGE = { activa:'badge-green', en_ejecucion:'badge-green', en_pausa:'badge-orange', cerrada:'badge-gray', facturada:'badge-gray', por_facturar:'badge-cyan', anulada:'badge-red' };
   const LABEL = { activa:'Activa', en_ejecucion:'Activa', en_pausa:'En pausa', cerrada:'Cerrada', facturada:'Cerrada', por_facturar:'Pendiente', anulada:'Anulada' };
 
-  const clientesConOS = useMemo(() => [...new Set(osClientes.map(o => o.cuenta_id).filter(Boolean))].map(id => ({ id, nombre: getNombre(id) })), [osClientes, cuentas]);
+  const clientesConOS = useMemo(() => [...new Set(osClientesAlcance.map(o => o.cuenta_id).filter(Boolean))].map(id => ({ id, nombre: getNombre(id) })), [osClientesAlcance, cuentas]);
 
-  const filtered = useMemo(() => osClientes.filter(os => {
+  const filtered = useMemo(() => osClientesAlcance.filter(os => {
     const matchQ = (os.numero || '').toLowerCase().includes(query) ||
       (os.nombre || '').toLowerCase().includes(query) ||
       (os.numero_doc_cliente || '').toLowerCase().includes(query) ||
@@ -4856,7 +4862,7 @@ function OSCliente() {
     return matchQ &&
       (!filtroEstado || os.estado === filtroEstado) &&
       (!filtroCliente || os.cuenta_id === filtroCliente);
-  }), [osClientes, query, filtroEstado, filtroCliente, cuentas]);
+  }), [osClientesAlcance, query, filtroEstado, filtroCliente, cuentas]);
 
   const actualizarFormularioOS = (campo, valor) => setFormularioOS(actual => ({ ...actual, [campo]: valor }));
   const abrirNuevaOS = () => {
@@ -5040,8 +5046,22 @@ function OSCliente() {
   );
 
   if (activeParams?.detail) {
-    const os = osClientes.find(o => o.id === activeParams.detail);
-    if (!os) return <div className="p-4">OS no encontrada</div>;
+    const os = osClientesAlcance.find(o => o.id === activeParams.detail);
+    if (!os) {
+      const osOtraSociedad = osClientes.find(o => o.id === activeParams.detail);
+      if (!osOtraSociedad) return <div className="p-4">OS no encontrada</div>;
+      const sociedadOS = sociedadesDisponibles.find(s => s.id === osOtraSociedad.sociedad_id);
+      const puedeCambiarASociedadOS = Boolean(sociedadOS && seleccionarSociedad);
+      return (
+        <div className="p-4">
+          <div className="alert alert-warning" style={{maxWidth:620}}>
+            Esta OS pertenece a {sociedadOS?.razon_social || sociedadOS?.nombre || 'otra sociedad'} y no está disponible en la sociedad seleccionada.
+          </div>
+          {puedeCambiarASociedadOS && <button className="btn btn-primary" onClick={() => seleccionarSociedad(osOtraSociedad.sociedad_id)}>Cambiar a {sociedadOS?.codigo || sociedadOS?.nombre || 'su sociedad'}</button>}
+          <button className="btn btn-secondary" style={{marginLeft:8}} onClick={() => navigate('os_cliente')}>Volver a la lista</button>
+        </div>
+      );
+    }
 
     if (activeParams?.crear_ot) {
       return (
@@ -5677,7 +5697,7 @@ function OSCliente() {
     );
   }
 
-  const osActivas = osClientes.filter(o => ['activa', 'en_ejecucion'].includes(o.estado));
+  const osActivas = osClientesAlcance.filter(o => ['activa', 'en_ejecucion'].includes(o.estado));
   const totalesPorMoneda = osActivas.reduce((acc, o) => { const m = o.moneda || 'PEN'; acc[m] = (acc[m] || 0) + Number(o.monto_aprobado || 0); return acc; }, {});
   const pendientesPorMoneda = osActivas.reduce((acc, o) => { const m = o.moneda || 'PEN'; acc[m] = (acc[m] || 0) + Number(o.saldo_por_facturar || 0); return acc; }, {});
 
@@ -5764,7 +5784,7 @@ function OSCliente() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan="11" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{osClientes.length === 0 ? 'No hay OS Cliente registradas.' : 'Sin resultados para los filtros seleccionados.'}</td></tr>
+                <tr><td colSpan="11" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{osClientesAlcance.length === 0 ? 'No hay OS Cliente para la sociedad seleccionada.' : 'Sin resultados para los filtros seleccionados.'}</td></tr>
               )}
             </tbody>
           </table>
