@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from './context.jsx';
 import OrganigramaCanvas from './organigrama_v2/OrganigramaCanvas.jsx';
 import { organigramaV2Service } from './services/organigramaV2Service.js';
@@ -55,6 +55,37 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
   const [generacionPendienteId, setGeneracionPendienteId] = useState('');
   const [modoConexion, setModoConexion] = useState('todos');
   const [conexionHint, setConexionHint] = useState('');
+  const [margenSuperiorLienzo, setMargenSuperiorLienzo] = useState(0);
+  const paginaRef = useRef(null);
+  const contenedorLienzoRef = useRef(null);
+
+  const medirMargenSuperiorLienzo = useCallback(() => {
+    const pagina = paginaRef.current;
+    const lienzo = contenedorLienzoRef.current;
+    if (!pagina || !lienzo) return;
+    const paginaRect = pagina.getBoundingClientRect();
+    const lienzoRect = lienzo.getBoundingClientRect();
+    // Medimos el bloque completo previo al lienzo (título, descripción, modos y avisos).
+    // Las coordenadas de React Flow son locales al lienzo: convertimos ese límite global
+    // a su sistema de coordenadas para no sumar la cabecera dos veces.
+    const altoContenidoSuperior = Math.ceil(lienzoRect.top - paginaRect.top);
+    const limiteSeguroEnPagina = paginaRect.top + altoContenidoSuperior + 24;
+    const siguienteMargen = Math.max(24, Math.ceil(limiteSeguroEnPagina - lienzoRect.top));
+    setMargenSuperiorLienzo(actual => actual === siguienteMargen ? actual : siguienteMargen);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!datos) return undefined;
+    const frame = requestAnimationFrame(medirMargenSuperiorLienzo);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medirMargenSuperiorLienzo);
+    if (contenedorLienzoRef.current) observer?.observe(contenedorLienzoRef.current);
+    window.addEventListener('resize', medirMargenSuperiorLienzo);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('resize', medirMargenSuperiorLienzo);
+    };
+  }, [datos, error, notice, conexionHint, generacionPendienteId, medirMargenSuperiorLienzo]);
 
   const cargar = useCallback(async () => {
     if (!empresaId) return null;
@@ -145,7 +176,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         estado: hija.estado,
         reportaACargoColocacionId: padre.id,
       });
-      setNotice(`Jerarquía guardada para ${hija.cargo?.nombre || hija.cargo_id} (${resultado.id}).`);
+      setNotice(`${padre.cargo?.nombre || padre.cargo_id} ahora es padre de ${hija.cargo?.nombre || hija.cargo_id}.`);
       await cargar();
     } catch (causa) {
       setError(errorText(causa));
@@ -283,6 +314,40 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     }
   }, [cargar]);
 
+  const eliminarUnidad = useCallback(async unidad => {
+    if (!unidad?.id) return;
+    if (!window.confirm(`¿Eliminar la UO "${unidad.nombre}"? Se borrará físicamente y de forma permanente.`)) return;
+    try {
+      setGuardando(true);
+      setError('');
+      const resultado = await organigramaV2Service.eliminarUnidadOrganizacional(unidad.id);
+      setNotice(`Unidad organizacional ${resultado.nombre || unidad.nombre} eliminada.`);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+    } finally {
+      setGuardando(false);
+    }
+  }, [cargar]);
+
+  const eliminarColocacion = useCallback(async colocacion => {
+    if (!colocacion?.id) return;
+    const cargoNombre = colocacion.cargo?.nombre || colocacion.cargo_id;
+    if (!window.confirm(`¿Eliminar el cargo "${cargoNombre}"? Se borrará la cargo-colocación y sus posiciones vacantes asociadas de forma permanente.`)) return;
+    try {
+      setGuardando(true);
+      setError('');
+      const resultado = await organigramaV2Service.eliminarCargoColocacion(colocacion.id);
+      setNotice(`Cargo-colocación eliminada; posiciones vacantes eliminadas: ${resultado.posiciones_eliminadas || 0}.`);
+      setPanel(null);
+      await cargar();
+    } catch (causa) {
+      setError(errorText(causa));
+    } finally {
+      setGuardando(false);
+    }
+  }, [cargar]);
+
   const reintentarGeneracion = useCallback(async () => {
     if (!generacionPendienteId) return;
     try {
@@ -368,11 +433,11 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
   }
 
   return (
-    <section style={{ height: '100%', minHeight: 0, boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 24, maxWidth: 1680, margin: '0 auto' }}>
+    <section ref={paginaRef} style={{ height: '100%', minHeight: 0, boxSizing: 'border-box', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 24, maxWidth: 1680, margin: '0 auto' }}>
       <div style={{ marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 24 }}>Organigrama v2</h1>
         <p className="text-muted" style={{ margin: '6px 0 0' }}>
-          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO padre → UO hija (arrastra desde el jefe hacia el subordinado), cargo-colocación hija → padre para jerarquía y posición subordinada → posición jefe para relación matricial.
+          Validación interactiva para {empresaId}. Conecta UO → cargo-colocación para asignar unidad, UO padre → UO hija (arrastra desde el jefe hacia el subordinado), cargo-colocación padre → hija para jerarquía y posición subordinada → posición jefe para relación matricial.
         </p>
       </div>
 
@@ -421,11 +486,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       )}
       {!error && !datos && <div className="card" style={{ padding: 24 }}>Cargando organigrama…</div>}
       {datos && (
-        <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <div ref={contenedorLienzoRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
           <OrganigramaCanvas
             datos={datos}
+            margenSuperiorSeguro={margenSuperiorLienzo}
             onCrearColocacion={abrirCrear}
             onEditarColocacion={abrirEditar}
+            onEliminarUnidad={eliminarUnidad}
             onGuardarPosicion={guardarLayout}
             modoConexion={modoConexion}
             onConnectionHint={setConexionHint}
@@ -436,6 +503,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
             onEliminarJerarquia={eliminarJerarquia}
             onCrearRelacionMatricial={crearMatricial}
             onEliminarRelacionMatricial={eliminarMatricial}
+            onPaneClick={() => { setPanel(null); setConexionHint(''); }}
             onError={causa => setError(errorText(causa))}
           />
 
@@ -473,6 +541,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-edit-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
                 <div className="text-muted" style={{ fontSize: 12 }}>Cambiar el rol de esta colocación no altera los roles vigentes de sus ocupantes.</div>
                 <button data-testid="ov2-edit-submit" type="submit" className="btn btn-primary" disabled={guardando || !panel.form.rolId}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+                <button data-testid="ov2-edit-delete" type="button" className="btn btn-danger" disabled={guardando} onClick={() => eliminarColocacion(panel.colocacion)}>Eliminar cargo</button>
               </form>
             </Panel>
           )}

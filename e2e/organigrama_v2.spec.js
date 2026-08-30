@@ -108,8 +108,6 @@ const openPreview = async page => {
 const screenshot = (page, name) => page.screenshot({ path: path.join(screenshotsDir, `${name}.png`), fullPage: true });
 
 const dragNode = async (page, testId, deltaX, deltaY) => {
-  await page.locator('.react-flow__controls-fitview').click({ force: true });
-  await page.waitForTimeout(120);
   const card = page.getByTestId(testId);
   const node = page.locator('.react-flow__node').filter({ has: card }).first();
   const box = await card.boundingBox();
@@ -120,14 +118,11 @@ const dragNode = async (page, testId, deltaX, deltaY) => {
   await page.mouse.down();
   await page.waitForTimeout(80);
   await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 12 });
-  await expect(node).toHaveClass(/dragging/);
   await page.waitForTimeout(80);
   await page.mouse.up();
 };
 
 const connect = async (page, sourceTestId, targetTestId, { sourceHandle, targetHandle }, { force = true } = {}) => {
-  await page.locator('.react-flow__controls-fitview').click({ force: true });
-  await page.waitForTimeout(120);
   const source = page.getByTestId(sourceTestId).locator(`[data-handleid="${sourceHandle}"]`);
   const target = page.getByTestId(targetTestId).locator(`[data-handleid="${targetHandle}"]`);
   await source.dragTo(target, { force });
@@ -174,9 +169,12 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
       [fixtures.direccion.id, 380, 120],
       [fixtures.jefatura.id, 380, 330],
       [fixtures.operativo.id, 380, 540],
-    ].map(([nodoId, x, y]) => rpc(request, 'guardar_posicion_nodo_organigrama', {
+      [fixturePositions[fixtures.direccion.id], 730, 120, 'posicion'],
+      [fixturePositions[fixtures.jefatura.id], 730, 330, 'posicion'],
+      [fixturePositions[fixtures.operativo.id], 730, 540, 'posicion'],
+    ].map(([nodoId, x, y, tipoNodo = 'cargo_colocacion']) => rpc(request, 'guardar_posicion_nodo_organigrama', {
       p_empresa_id: EMPRESA_PRUEBA,
-      p_tipo_nodo: 'cargo_colocacion',
+      p_tipo_nodo: tipoNodo,
       p_nodo_id: nodoId,
       p_x: x,
       p_y: y,
@@ -275,7 +273,20 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await screenshot(page, '01-layout-recargado');
   });
 
-  test('1b. conserva la posición al cambiar modos de conexión sin recargar', async ({ page }) => {
+  test('1b. conserva la posición al cambiar modos de conexión sin recargar', async ({ page, request }) => {
+    await Promise.all([
+      [fixtures.direccion.id, 380, 120],
+      [fixtures.jefatura.id, 380, 330],
+      [fixtures.operativo.id, 380, 540],
+    ].map(([nodoId, x, y]) => rpc(request, 'guardar_posicion_nodo_organigrama', {
+      p_empresa_id: EMPRESA_PRUEBA,
+      p_tipo_nodo: 'cargo_colocacion',
+      p_nodo_id: nodoId,
+      p_x: x,
+      p_y: y,
+    })));
+    await page.reload();
+    await page.getByRole('button', { name: 'Administración' }).click();
     const testId = `ov2-node-ccol-${fixtures.direccion.id}`;
     await dragNode(page, testId, 125, 70);
     await expect(page.getByText('Posición visual guardada.')).toBeVisible();
@@ -287,10 +298,13 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     }
   });
 
-  test('2. crea jerarquía y muestra el error de ciclo', async ({ page }) => {
-    await connectUntil(page, `ov2-node-ccol-${fixtures.jefatura.id}`, `ov2-node-ccol-${fixtures.direccion.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.getByText('reporta a'), { force: false });
-    await connectUntil(page, `ov2-node-ccol-${fixtures.direccion.id}`, `ov2-node-ccol-${fixtures.jefatura.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.locator('.alert-danger'), { force: false });
-    await expect(page.locator('.alert-danger')).toContainText(/generaria un ciclo/i);
+  test('2. conecta jerarquía padre → hijo y muestra el error de ciclo', async ({ page, request }) => {
+    await connectUntil(page, `ov2-node-ccol-${fixtures.direccion.id}`, `ov2-node-ccol-${fixtures.jefatura.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.getByText('es padre de'), { force: false });
+    await expect.poll(async () => rest(request, 'cargo_colocaciones', `select=id,reporta_a_cargo_colocacion_id&id=eq.${fixtures.jefatura.id}&empresa_id=eq.${EMPRESA_PRUEBA}`)).toEqual([
+      { id: fixtures.jefatura.id, reporta_a_cargo_colocacion_id: fixtures.direccion.id },
+    ]);
+    await connectUntil(page, `ov2-node-ccol-${fixtures.jefatura.id}`, `ov2-node-ccol-${fixtures.direccion.id}`, { sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target' }, page.locator('.alert-danger'), { force: false });
+    await expect(page.locator('.alert-danger')).toContainText(/generar.?.? un ciclo/i);
     await screenshot(page, '02-jerarquia-y-ciclo');
   });
 
@@ -311,7 +325,7 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await page.getByRole('button', { name: 'Administración' }).click();
     const edge = page.getByTestId(`rf__edge-jerarquia:${fixtures.jefatura.id}:${fixtures.direccion.id}`);
     await expect(edge).toBeVisible();
-    await edge.getByText('reporta a').click({ force: true });
+    await edge.locator('.react-flow__edge-path').click({ force: true });
     await expect(page.getByTestId('ov2-edge-popover')).toContainText(/Jerarquía:/i);
     page.once('dialog', confirmation => confirmation.accept());
     await page.getByTestId('ov2-delete-edge').click();
@@ -321,23 +335,67 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     ]);
   });
 
-  test('3. rechaza una relación matricial con rango inválido', async ({ page }) => {
-    await connectUntil(page, `ov2-node-pos-${fixturePositions[fixtures.direccion.id]}`, `ov2-node-pos-${fixturePositions[fixtures.jefatura.id]}`, { sourceHandle: 'matricial-source', targetHandle: 'matricial-target' }, page.locator('.alert-danger'));
+  test('3. rechaza una relación matricial con rango inválido', async ({ page, request }) => {
+    await Promise.all([
+      [fixtures.direccion.id, 380, 120],
+      [fixtures.jefatura.id, 380, 330],
+      [fixtures.operativo.id, 380, 540],
+    ].map(([nodoId, x, y]) => rpc(request, 'guardar_posicion_nodo_organigrama', {
+      p_empresa_id: EMPRESA_PRUEBA,
+      p_tipo_nodo: 'cargo_colocacion',
+      p_nodo_id: nodoId,
+      p_x: x,
+      p_y: y,
+    })));
+    await page.reload();
+    await page.getByRole('button', { name: 'Administración' }).click();
+    await page.getByRole('button', { name: 'Fit View' }).click();
+    await page.waitForTimeout(100);
+    await connectUntil(page, `ov2-node-pos-${fixturePositions[fixtures.direccion.id]}`, `ov2-node-pos-${fixturePositions[fixtures.jefatura.id]}`, { sourceHandle: 'matricial-source', targetHandle: 'matricial-target' }, page.locator('.alert-danger'), { force: false });
     await expect(page.locator('.alert-danger')).toContainText(/rango estrictamente superior/i);
     await screenshot(page, '03-matricial-rango-invalido');
   });
 
-  test('4. confirma antes de eliminar una relación matricial existente', async ({ page }) => {
+  test('4. confirma antes de eliminar una relación matricial existente', async ({ page, request }) => {
+    const matriz = await rpc(request, 'crear_relacion_matricial', {
+      p_empresa_id: EMPRESA_PRUEBA,
+      p_posicion_subordinada_id: fixturePositions[fixtures.operativo.id],
+      p_posicion_jefe_id: fixturePositions[fixtures.direccion.id],
+      p_sociedad_id: null,
+    });
+    matrizId = matriz.id;
+    await page.reload();
+    await page.getByRole('button', { name: 'Administración' }).click();
     const edge = page.getByTestId(`rf__edge-matricial:${matrizId}`);
     await expect(edge.getByText('matricial')).toBeVisible();
+    await page.getByRole('button', { name: 'Fit View' }).click();
+    await page.waitForTimeout(100);
+    const puntoEnLaLinea = await edge.locator('.react-flow__edge-interaction').evaluate(path => {
+      const arista = path.closest('.react-flow__edge');
+      const svg = path.ownerSVGElement;
+      for (const fraccion of [.12, .24, .36, .5, .64, .76, .88]) {
+        const puntoLocal = path.getPointAtLength(path.getTotalLength() * fraccion);
+        const puntoSvg = svg.createSVGPoint();
+        puntoSvg.x = puntoLocal.x;
+        puntoSvg.y = puntoLocal.y;
+        const puntoPantalla = puntoSvg.matrixTransform(path.getScreenCTM());
+        if (document.elementFromPoint(puntoPantalla.x, puntoPantalla.y)?.closest('.react-flow__edge') === arista) {
+          return { x: puntoPantalla.x, y: puntoPantalla.y };
+        }
+      }
+      return null;
+    });
+    expect(puntoEnLaLinea).not.toBeNull();
+    await page.mouse.click(puntoEnLaLinea.x, puntoEnLaLinea.y);
+    await expect(page.getByTestId('ov2-edge-popover')).toContainText(/relación matricial/i);
     let confirmationMessage = '';
     page.once('dialog', confirmation => {
       expect(confirmation.type()).toBe('confirm');
       confirmationMessage = confirmation.message();
       confirmation.dismiss();
     });
-    await edge.locator('.react-flow__edge-textbg').click({ force: true });
-    expect(confirmationMessage).toMatch(/eliminar esta relación matricial/i);
+    await page.getByTestId('ov2-delete-edge').click();
+    expect(confirmationMessage).toMatch(/eliminar esta relación/i);
     await screenshot(page, '04-confirmacion-eliminar-matricial');
   });
 

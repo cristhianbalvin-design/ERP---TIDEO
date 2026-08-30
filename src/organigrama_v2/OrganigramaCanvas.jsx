@@ -23,6 +23,11 @@ const EMPTY_POSITION = { x: 40, y: 40 };
 const CanvasNodeContext = createContext({ modoConexion: 'todos' });
 const CANVAS_INTERACTION_STYLES = `
   .ov2-canvas .react-flow__node { cursor: grab; }
+  .ov2-canvas .react-flow__nodes { z-index: 2; }
+  .ov2-canvas .react-flow__viewport { z-index: 2; }
+  .ov2-canvas .react-flow__pane { z-index: 1; }
+  .ov2-canvas .react-flow__node { z-index: 2 !important; }
+  .ov2-canvas .react-flow__handle { z-index: 4 !important; pointer-events: auto; }
   .ov2-canvas .ov2-drag-handle:active,
   .ov2-canvas .ov2-drag-handle:active * { cursor: grabbing !important; }
   .ov2-canvas .react-flow__node.dragging,
@@ -62,28 +67,7 @@ const NodeHeader = ({ color, children }) => (
   </div>
 );
 
-const useNodeDragCursor = dragging => {
-  const [pointerDown, setPointerDown] = useState(false);
-
-  useEffect(() => {
-    if (!pointerDown) return undefined;
-    const clearPointerDown = () => setPointerDown(false);
-    window.addEventListener('pointerup', clearPointerDown, { once: true });
-    window.addEventListener('pointercancel', clearPointerDown, { once: true });
-    return () => {
-      window.removeEventListener('pointerup', clearPointerDown);
-      window.removeEventListener('pointercancel', clearPointerDown);
-    };
-  }, [pointerDown]);
-
-  return {
-    cursor: dragging || pointerDown ? 'grabbing' : 'grab',
-    onPointerDown: event => {
-      if (event.target.closest?.('.nodrag, .react-flow__handle')) return;
-      setPointerDown(true);
-    },
-  };
-};
+const useNodeDragCursor = dragging => ({ cursor: dragging ? 'grabbing' : 'grab' });
 
 const handleEnabled = (modoConexion, tipoConexion) => (
   modoConexion === 'todos' || (Array.isArray(tipoConexion) ? tipoConexion : [tipoConexion]).includes(modoConexion)
@@ -97,34 +81,46 @@ const etiquetaColocacion = colocacion => colocacion?.cargo?.nombre || colocacion
 const etiquetaPosicion = posicion => posicion?.etiqueta || posicion?.ocupante?.nombre || posicion?.id || 'Posición';
 
 const descripcionArista = edge => {
+  if (edge.data?.kind === 'uo') return `Asignación de UO: ${etiquetaColocacion(edge.data.colocacion)} pertenece a ${edge.data.unidad?.nombre || 'la UO seleccionada'}.`;
   if (edge.data?.kind === 'uo_padre') return `${edge.data.padre?.nombre || 'UO padre'} es padre de ${edge.data.hija?.nombre || 'UO hija'}.`;
-  if (edge.data?.kind === 'jerarquia') return `Jerarquía: ${etiquetaColocacion(edge.data.hija)} reporta a ${etiquetaColocacion(edge.data.padre)}.`;
+  if (edge.data?.kind === 'jerarquia') return `Jerarquía: ${etiquetaColocacion(edge.data.padre)} es padre de ${etiquetaColocacion(edge.data.hija)}.`;
   if (edge.data?.kind === 'matricial') return `Relación matricial: ${etiquetaPosicion(edge.data.subordinada)} ↔ ${etiquetaPosicion(edge.data.jefe)}.`;
   return '';
 };
 
 export const UnidadOrganizacionalNode = ({ data, dragging }) => {
-  const { modoConexion, onCrearColocacion } = useContext(CanvasNodeContext);
+  const { modoConexion, onCrearColocacion, onEliminarUnidad } = useContext(CanvasNodeContext);
   const dragCursor = useNodeDragCursor(dragging);
   const asignarUoHabilitado = handleEnabled(modoConexion, 'uo');
   const jerarquiaUoSourceHabilitada = handleEnabled(modoConexion, 'uo_padre');
   const jerarquiaUoHabilitada = handleEnabled(modoConexion, 'uo_padre');
   return (
-  <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
+  <div className="ov2-drag-handle" data-testid={`ov2-node-uo-${data.record.id}`} style={{ ...nodeShell('#0f766e', 'color-mix(in srgb, #14b8a6 9%, var(--card))'), width: DIMENSIONS.unidad.width, padding: '13px 15px', borderWidth: 2, cursor: dragCursor.cursor }}>
     <Handle id="uo-hijo-target" type="target" position={Position.Top} isConnectable={jerarquiaUoHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-hijo')} style={{ background: '#0F6E56' }} />
     <Handle id="uo-padre-source" type="source" position={Position.Bottom} isConnectable={jerarquiaUoSourceHabilitada} className={handleClassName(modoConexion, 'uo_padre', 'ov2-handle-uo-padre')} style={{ background: '#0F6E56', left: '34%' }} />
     <Handle id="uo-source" type="source" position={Position.Right} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '66%' }} />
     <NodeHeader color="#0f766e">UO {data.codigo && `· ${data.codigo}`}</NodeHeader>
     <div style={{ fontWeight: 850, fontSize: 17, lineHeight: 1.18 }}>{data.nombre}</div>
-    <button
-      type="button"
-      className="nodrag btn btn-secondary"
-      data-testid={`ov2-create-colocacion-${data.record.id}`}
-      style={{ marginTop: 7, padding: '3px 7px', fontSize: 10 }}
-      onClick={event => { event.stopPropagation(); onCrearColocacion?.(data.record); }}
-    >
-      + Cargo
-    </button>
+    <div style={{ display: 'flex', gap: 6, marginTop: 7 }}>
+      <button
+        type="button"
+        className="nodrag btn btn-secondary"
+        data-testid={`ov2-create-colocacion-${data.record.id}`}
+        style={{ padding: '3px 7px', fontSize: 10 }}
+        onClick={event => { event.stopPropagation(); onCrearColocacion?.(data.record); }}
+      >
+        + Cargo
+      </button>
+      <button
+        type="button"
+        className="nodrag btn btn-danger"
+        data-testid={`ov2-delete-uo-${data.record.id}`}
+        style={{ padding: '3px 7px', fontSize: 10 }}
+        onClick={event => { event.stopPropagation(); onEliminarUnidad?.(data.record); }}
+      >
+        Eliminar UO
+      </button>
+    </div>
   </div>
   );
 };
@@ -140,14 +136,13 @@ export const CargoColocacionNode = ({ data, dragging }) => {
     data-testid={`ov2-node-ccol-${data.record.id}`}
     role="button"
     tabIndex={0}
-    title="Haz clic para editar. Arrastra desde este nodo hacia su cargo padre para definir jerarquía."
+    title="Haz clic para editar. Arrastra desde este cargo padre hacia su cargo hijo para definir jerarquía."
     onClick={() => onEditarColocacion?.(data.record)}
     onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') onEditarColocacion?.(data.record); }}
-    onPointerDown={dragCursor.onPointerDown}
     style={{ ...nodeShell('#2563eb', 'var(--card)'), width: DIMENSIONS.colocacion.width, padding: '10px 12px', borderWidth: 2, cursor: dragCursor.cursor }}
   >
     <Handle id="uo-target" type="target" position={Position.Left} isConnectable={asignarUoHabilitado} className={handleClassName(modoConexion, 'uo', 'ov2-handle-uo')} style={{ background: '#14b8a6', top: '28%' }} />
-    <Handle id="jerarquia-target" type="target" position={Position.Left} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
+    <Handle id="jerarquia-target" type="target" position={Position.Top} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
     <NodeHeader color="#2563eb">Cargo-colocación</NodeHeader>
     <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{data.cargoNombre}</div>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
@@ -155,7 +150,7 @@ export const CargoColocacionNode = ({ data, dragging }) => {
       <span style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)', borderRadius: 99, fontSize: 10, padding: '2px 6px' }}>{data.rolNombre}</span>
       <span style={{ background: '#1d4ed8', color: '#fff', borderRadius: 99, fontSize: 10, fontWeight: 800, padding: '2px 6px' }}>{data.ocupadas}/{data.cantidadPosiciones}</span>
     </div>
-    <Handle id="jerarquia-source" type="source" position={Position.Right} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb', top: '72%' }} />
+    <Handle id="jerarquia-source" type="source" position={Position.Bottom} isConnectable={jerarquiaHabilitada} className={handleClassName(modoConexion, 'jerarquia', 'ov2-handle-jerarquia')} style={{ background: '#2563eb' }} />
   </div>
   );
 };
@@ -165,7 +160,7 @@ export const PosicionNode = ({ data, dragging }) => {
   const dragCursor = useNodeDragCursor(dragging);
   const matricialHabilitada = handleEnabled(modoConexion, 'matricial');
   return (
-  <div className="ov2-drag-handle" data-testid={`ov2-node-pos-${data.record.id}`} onPointerDown={dragCursor.onPointerDown} style={{ ...nodeShell('#94a3b8', 'var(--bg-subtle)'), width: DIMENSIONS.posicion.width, padding: '7px 9px', boxShadow: 'none', cursor: dragCursor.cursor }}>
+  <div className="ov2-drag-handle" data-testid={`ov2-node-pos-${data.record.id}`} style={{ ...nodeShell('#94a3b8', 'var(--bg-subtle)'), width: DIMENSIONS.posicion.width, padding: '7px 9px', boxShadow: 'none', cursor: dragCursor.cursor }}>
     <Handle id="matricial-target" type="target" position={Position.Left} isConnectable={matricialHabilitada} className={handleClassName(modoConexion, 'matricial', 'ov2-handle-matricial')} style={{ background: '#7c3aed' }} />
     <div style={{ fontWeight: 750, fontSize: 12 }}>{data.ocupanteNombre || 'Vacante'}</div>
     <div style={{ color: 'var(--fg-muted)', fontSize: 10, marginTop: 2 }}>{data.estadoLabel}</div>
@@ -193,7 +188,7 @@ const tipoConexion = (connection, nodes) => {
 const hintConexion = ({ handleId, node }) => {
   if (node?.type === 'unidad' && handleId === 'uo-source') return 'Suelta sobre una cargo-colocación para asignarla a esta UO.';
   if (node?.type === 'unidad' && handleId === 'uo-padre-source') return 'Suelta sobre una UO hija para definir la jerarquía.';
-  if (node?.type === 'colocacion' && handleId === 'jerarquia-source') return 'Suelta sobre la cargo-colocación padre para definir jerarquía.';
+  if (node?.type === 'colocacion' && handleId === 'jerarquia-source') return 'Suelta sobre la cargo-colocación hija para definir jerarquía.';
   if (node?.type === 'posicion' && handleId === 'matricial-source') return 'Suelta sobre la posición jefe para crear la relación matricial.';
   return 'Selecciona un punto de conexión válido.';
 };
@@ -214,10 +209,28 @@ const errorCicloUO = (connection, nodes) => {
   return '';
 };
 
-const dagrePositions = (nodes, edges) => {
+const errorCicloJerarquia = (connection, nodes) => {
+  const source = nodes.find(node => node.id === connection.source);
+  const target = nodes.find(node => node.id === connection.target);
+  if (source?.type !== 'colocacion' || target?.type !== 'colocacion' || connection.sourceHandle !== 'jerarquia-source' || connection.targetHandle !== 'jerarquia-target') return '';
+  const padreId = source.data.record.id;
+  const hijaId = target.data.record.id;
+  if (padreId === hijaId) return 'Una cargo-colocación no puede ser su propio padre jerárquico.';
+  const colocacionPorId = new Map(nodes.filter(node => node.type === 'colocacion').map(node => [node.data.record.id, node.data.record]));
+  let ancestroId = padreId;
+  while (ancestroId) {
+    if (ancestroId === hijaId) return 'La conexión generaría un ciclo en la jerarquía de cargos.';
+    ancestroId = colocacionPorId.get(ancestroId)?.reporta_a_cargo_colocacion_id || null;
+  }
+  return '';
+};
+
+const errorCicloConexion = (connection, nodes) => errorCicloUO(connection, nodes) || errorCicloJerarquia(connection, nodes);
+
+const dagrePositions = (nodes, edges, margenSuperiorSeguro = 0) => {
   const graph = new dagre.graphlib.Graph();
   graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: 28 });
+  graph.setGraph({ rankdir: 'LR', nodesep: 52, ranksep: 118, marginx: 28, marginy: Math.max(28, margenSuperiorSeguro + 24) });
   nodes.forEach(node => {
     const dimension = DIMENSIONS[node.type] || DIMENSIONS.posicion;
     graph.setNode(node.id, dimension);
@@ -310,30 +323,57 @@ const findFreePosition = (preferred, node, existing) => {
   return candidate;
 };
 
-const AutoFitView = () => {
-  const { fitView } = useReactFlow();
+const ajustarViewportSuperiorSeguro = ({ getNodes, getViewport, setViewport }) => {
+  const viewport = getViewport();
+  const nodos = getNodes();
+  const minimoY = nodos.reduce((minimo, node) => Math.min(minimo, node.position.y), Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(minimoY)) return;
+  // El origen del lienzo ya está debajo de la cabecera medida en la página.
+  // Reservamos una franja local para que los handles no queden sobre ese borde.
+  const bordeSuperiorVisible = 36;
+  const yActual = (minimoY * viewport.zoom) + viewport.y;
+  setViewport({ ...viewport, y: viewport.y + bordeSuperiorVisible - yActual }, { duration: 0 });
+};
+
+const CanvasControls = () => {
+  const { getNodes, getViewport, setViewport } = useReactFlow();
+  const protegerTrasFitView = useCallback(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ajustarViewportSuperiorSeguro({ getNodes, getViewport, setViewport });
+    }));
+  }, [getNodes, getViewport, setViewport]);
+
+  return <Controls showInteractive onFitView={protegerTrasFitView} />;
+};
+
+const AutoFitView = ({ margenSuperiorSeguro }) => {
+  const { fitView, getNodes, getViewport, setViewport } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
-  const hasFittedRef = useRef(false);
+  const ultimoMargenRef = useRef(null);
 
   useEffect(() => {
-    if (!nodesInitialized || hasFittedRef.current) return undefined;
-    hasFittedRef.current = true;
+    if (!nodesInitialized || ultimoMargenRef.current === margenSuperiorSeguro) return undefined;
+    ultimoMargenRef.current = margenSuperiorSeguro;
     let secondFrame;
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
-        fitView({ padding: 0.2, duration: 180, maxZoom: 1.15 });
+        // El encuadre debe reservar arriba la misma zona segura calculada para el contenido del encabezado.
+        const padding = Math.min(0.48, 0.2 + margenSuperiorSeguro / 900);
+        Promise.resolve(fitView({ padding, duration: 0, maxZoom: 1.15 })).then(() => {
+          ajustarViewportSuperiorSeguro({ getNodes, getViewport, setViewport });
+        });
       });
     });
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
     };
-  }, [fitView, nodesInitialized]);
+  }, [fitView, getNodes, getViewport, margenSuperiorSeguro, nodesInitialized, setViewport]);
 
   return null;
 };
 
-const buildGraph = datos => {
+const buildGraph = (datos, margenSuperiorSeguro = 0) => {
   const unidades = [...(datos.unidadesOrganizacionales || [])].sort(sortByName);
   const colocaciones = [...(datos.cargoColocaciones || [])]
     .filter(colocacion => colocacion.estado === 'activo')
@@ -396,8 +436,8 @@ const buildGraph = datos => {
       source: toFlowNodeId('uo', colocacion.unidad_organizacional_id),
       target: toFlowNodeId('cargo_colocacion', colocacion.id),
       sourceHandle: 'uo-source', targetHandle: 'uo-target',
-      type: 'default', style: { stroke: '#14b8a6', strokeWidth: 2.25, strokeDasharray: '4 3' }, selectable: false, focusable: false,
-      data: { layoutOnly: true },
+      type: 'default', style: { stroke: '#14b8a6', strokeWidth: 2.25, strokeDasharray: '4 3' }, selectable: true, focusable: true,
+      data: { kind: 'uo', unidad: unidadPorId.get(colocacion.unidad_organizacional_id), colocacion },
     });
 
     posicionesDeColocacion.forEach(posicion => {
@@ -428,9 +468,9 @@ const buildGraph = datos => {
     // La interacción es hijo → padre y el sentido de la flecha conserva esa semántica.
     edges.push({
       id: `jerarquia:${colocacion.id}:${padre}`,
-      source: toFlowNodeId('cargo_colocacion', colocacion.id), target: toFlowNodeId('cargo_colocacion', padre),
+      source: toFlowNodeId('cargo_colocacion', padre), target: toFlowNodeId('cargo_colocacion', colocacion.id),
       sourceHandle: 'jerarquia-source', targetHandle: 'jerarquia-target',
-      type: 'smoothstep', label: 'reporta a', labelStyle: { fill: '#1d4ed8', fontSize: 10, fontWeight: 700 },
+      type: 'smoothstep', label: 'es padre de', labelStyle: { fill: '#1d4ed8', fontSize: 10, fontWeight: 700 },
       style: { stroke: '#2563eb', strokeWidth: 2.25 },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#2563eb', width: 16, height: 16 }, selectable: true, focusable: true,
       data: { kind: 'jerarquia', hija: colocacion, padre: colocacionPorId.get(padre) },
@@ -468,28 +508,28 @@ const buildGraph = datos => {
 
   // Los handles son puramente visuales: Dagre solo se usa si el tenant no tiene ningún layout persistido.
   if (!hasPersistedLayout) {
-    const layoutEdges = edges
-      .filter(edge => edge.data?.kind !== 'matricial')
-      // La arista visible es hija → padre; para el árbol, dagre coloca padre → hija.
-      .map(edge => edge.id.startsWith('jerarquia:') ? { ...edge, source: edge.target, target: edge.source } : edge);
-    const positions = dagrePositions(nodes, layoutEdges);
+    const layoutEdges = edges.filter(edge => edge.data?.kind !== 'matricial');
+    const positions = dagrePositions(nodes, layoutEdges, margenSuperiorSeguro);
     nodes.forEach(node => { node.position = positions.get(node.id) || EMPTY_POSITION; });
     ordenarRaicesDeUoPorNivel(nodes, colocaciones, posiciones);
   } else {
-    persistedNodes.forEach(node => { node.position = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId)); });
+    persistedNodes.forEach(node => {
+      const posicionPersistida = layouts.get(nodeKey(node.data.persistencia.tipoNodo, node.data.persistencia.nodoId));
+      node.position = { ...posicionPersistida, y: Math.max(margenSuperiorSeguro, posicionPersistida.y) };
+    });
     nodes.filter(node => !persistedNodes.includes(node)).forEach(node => {
       const record = node.data.record;
       let preferred = { x: 40, y: 40 };
       if (node.type === 'colocacion') {
         const unidad = persistedNodes.find(item => item.id === toFlowNodeId('uo', record.unidad_organizacional_id));
         const padre = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.reporta_a_cargo_colocacion_id));
-        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: 40 };
+        preferred = padre ? { x: padre.position.x + 330, y: padre.position.y } : unidad ? { x: unidad.position.x + 330, y: unidad.position.y } : { x: 40, y: margenSuperiorSeguro };
       } else if (node.type === 'posicion') {
         const colocacion = persistedNodes.find(item => item.id === toFlowNodeId('cargo_colocacion', record.cargo_colocacion_id));
-        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: 40 };
+        preferred = colocacion ? { x: colocacion.position.x + 310, y: colocacion.position.y } : { x: 40, y: margenSuperiorSeguro };
       } else {
         const rightmost = persistedNodes.reduce((max, item) => Math.max(max, item.position.x), 0);
-        preferred = { x: rightmost + 320, y: 40 };
+        preferred = { x: rightmost + 320, y: margenSuperiorSeguro };
       }
       node.position = findFreePosition(preferred, node, nodes.filter(item => item !== node && item.position !== EMPTY_POSITION));
     });
@@ -501,8 +541,10 @@ const buildGraph = datos => {
 
 export default function OrganigramaCanvas({
   datos,
+  margenSuperiorSeguro = 0,
   onCrearColocacion,
   onEditarColocacion,
+  onEliminarUnidad,
   onGuardarPosicion,
   modoConexion = 'todos',
   onConnectionHint,
@@ -513,16 +555,20 @@ export default function OrganigramaCanvas({
   onEliminarJerarquia,
   onCrearRelacionMatricial,
   onEliminarRelacionMatricial,
+  onPaneClick,
   onError,
 }) {
-  const graph = useMemo(() => buildGraph(datos), [datos]);
+  const graph = useMemo(() => buildGraph(datos, margenSuperiorSeguro), [datos, margenSuperiorSeguro]);
   const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
   const [edgePopover, setEdgePopover] = useState(null);
+  const [alignmentGuides, setAlignmentGuides] = useState([]);
   const canvasRef = useRef(null);
   const conexionInvalidaRef = useRef('');
   const conexionInvalidaNotificadaRef = useRef(false);
   const conexionInicioRef = useRef(null);
+  const snapAlignmentRef = useRef(null);
+  const alignmentGuidesSignatureRef = useRef('');
   const connectionLineStyle = useMemo(() => {
     const colorPorModo = {
       uo: '#0f9f9a',
@@ -532,19 +578,76 @@ export default function OrganigramaCanvas({
     };
     return { stroke: colorPorModo[modoConexion] || '#0f766e', strokeWidth: 4, strokeDasharray: '9 5', opacity: .98 };
   }, [modoConexion]);
+  const fitViewPadding = useMemo(() => Math.min(0.48, 0.2 + margenSuperiorSeguro / 900), [margenSuperiorSeguro]);
 
   useEffect(() => { setNodes(graph.nodes); }, [graph.nodes, setNodes]);
   useEffect(() => { setEdges(graph.edges); }, [graph.edges, setEdges]);
 
+  const onNodeDrag = useCallback((_, node) => {
+    const matches = nodes
+      .filter(other => other.id !== node.id && !other.hidden)
+      .map(other => ({
+        other,
+        xDistance: Math.abs(other.position.x - node.position.x),
+        yDistance: Math.abs(other.position.y - node.position.y),
+      }));
+    const xMatch = matches.filter(match => match.xDistance <= 5).sort((a, b) => a.xDistance - b.xDistance)[0];
+    const yMatch = matches.filter(match => match.yDistance <= 5).sort((a, b) => a.yDistance - b.yDistance)[0];
+    const guides = [
+      xMatch && {
+        id: `ov2-guide-x:${node.id}:${xMatch.other.id}`,
+        source: node.id,
+        target: xMatch.other.id,
+        sourcePosition: Position.Top,
+        targetPosition: Position.Bottom,
+        type: 'straight',
+        style: { stroke: '#64748b', strokeWidth: 1.25, strokeDasharray: '4 4', opacity: .8 },
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+      },
+      yMatch && {
+        id: `ov2-guide-y:${node.id}:${yMatch.other.id}`,
+        source: node.id,
+        target: yMatch.other.id,
+        sourcePosition: Position.Left,
+        targetPosition: Position.Right,
+        type: 'straight',
+        style: { stroke: '#64748b', strokeWidth: 1.25, strokeDasharray: '4 4', opacity: .8 },
+        selectable: false,
+        focusable: false,
+        interactionWidth: 0,
+      },
+    ].filter(Boolean);
+    snapAlignmentRef.current = (xMatch || yMatch) ? {
+      nodeId: node.id,
+      position: {
+        x: xMatch ? xMatch.other.position.x : node.position.x,
+        y: yMatch ? yMatch.other.position.y : node.position.y,
+      },
+    } : null;
+    const signature = guides.map(guide => guide.id).join('|');
+    if (signature !== alignmentGuidesSignatureRef.current) {
+      alignmentGuidesSignatureRef.current = signature;
+      setAlignmentGuides(guides);
+    }
+  }, [nodes]);
+
   const onNodeDragStop = useCallback((_, node) => {
     const meta = node.data?.persistencia;
     if (!meta) return;
-    Promise.resolve(onGuardarPosicion?.({ ...meta, x: node.position.x, y: node.position.y })).catch(error => onError?.(error));
-  }, [onGuardarPosicion, onError]);
+    const snap = snapAlignmentRef.current?.nodeId === node.id ? snapAlignmentRef.current.position : null;
+    const position = { ...(snap || node.position), y: Math.max(margenSuperiorSeguro, (snap || node.position).y) };
+    if (snap) setNodes(current => current.map(item => item.id === node.id ? { ...item, position } : item));
+    if (alignmentGuidesSignatureRef.current) setAlignmentGuides([]);
+    alignmentGuidesSignatureRef.current = '';
+    snapAlignmentRef.current = null;
+    Promise.resolve(onGuardarPosicion?.({ ...meta, x: position.x, y: position.y })).catch(error => onError?.(error));
+  }, [margenSuperiorSeguro, onGuardarPosicion, onError, setNodes]);
 
   const isValidConnection = useCallback(connection => {
     const tipo = tipoConexion(connection, nodes);
-    const errorCiclo = errorCicloUO(connection, nodes);
+    const errorCiclo = errorCicloConexion(connection, nodes);
     if (errorCiclo) {
       conexionInvalidaRef.current = errorCiclo;
       if (!conexionInvalidaNotificadaRef.current) {
@@ -578,7 +681,7 @@ export default function OrganigramaCanvas({
     const target = connectionState?.toNode?.id || targetHandle?.dataset.nodeid;
     const targetHandleId = connectionState?.toHandle?.id || targetHandle?.dataset.handleid;
     if (!conexionInvalidaRef.current && source && target) {
-      const errorCiclo = errorCicloUO({
+      const errorCiclo = errorCicloConexion({
         source,
         sourceHandle,
         target,
@@ -610,7 +713,7 @@ export default function OrganigramaCanvas({
       return;
     }
     if (tipo === 'jerarquia') {
-      Promise.resolve(onCrearJerarquia?.({ hija: source.data.record, padre: target.data.record })).catch(error => onError?.(error));
+      Promise.resolve(onCrearJerarquia?.({ padre: source.data.record, hija: target.data.record })).catch(error => onError?.(error));
       return;
     }
     if (tipo === 'matricial') {
@@ -626,10 +729,24 @@ export default function OrganigramaCanvas({
     const rect = canvasRef.current?.getBoundingClientRect();
     setEdgePopover({
       edge,
+      unidadId: edge.data?.kind === 'uo' ? edge.data.unidad?.id || '' : '',
       x: Math.max(12, (event.clientX || rect?.width / 2) - (rect?.left || 0)),
       y: Math.max(12, (event.clientY || rect?.height / 2) - (rect?.top || 0)),
     });
   }, []);
+
+  const reasignarDesdeArista = useCallback(() => {
+    const edge = edgePopover?.edge;
+    const unidad = nodes.find(node => node.type === 'unidad' && node.data.record.id === edgePopover?.unidadId)?.data.record;
+    if (!edge || edge.data?.kind !== 'uo' || !unidad || unidad.id === edge.data.unidad?.id) return;
+    setEdgePopover(null);
+    Promise.resolve(onReasignarUO?.({ unidad, colocacion: edge.data.colocacion })).catch(error => onError?.(error));
+  }, [edgePopover, nodes, onError, onReasignarUO]);
+
+  const cerrarSobreLienzo = useCallback(() => {
+    setEdgePopover(null);
+    onPaneClick?.();
+  }, [onPaneClick]);
 
   const eliminarArista = useCallback(() => {
     const edge = edgePopover?.edge;
@@ -647,22 +764,26 @@ export default function OrganigramaCanvas({
   }, [edgePopover, onEliminarJerarquia, onEliminarRelacionMatricial, onEliminarUOPadre, onError]);
 
   return (
-    <div ref={canvasRef} className="ov2-canvas" style={{ position: 'relative', height: '100%', minHeight: 0, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', backgroundColor: 'color-mix(in srgb, var(--bg-card, var(--bg)) 92%, #dbeafe)', backgroundImage: 'radial-gradient(color-mix(in srgb, var(--fg) 17%, transparent) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
+    <div ref={canvasRef} className="ov2-canvas" style={{ position: 'relative', height: '100%', minHeight: 0, boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', backgroundColor: 'color-mix(in srgb, var(--bg-card, var(--bg)) 92%, #dbeafe)', backgroundImage: 'radial-gradient(color-mix(in srgb, var(--fg) 17%, transparent) 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
       <style>{CANVAS_INTERACTION_STYLES}</style>
-      <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion }}>
+      <CanvasNodeContext.Provider value={{ modoConexion, onCrearColocacion, onEditarColocacion, onEliminarUnidad }}>
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={[...edges, ...alignmentGuides]}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         isValidConnection={isValidConnection}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onConnect={onConnect}
         connectionLineStyle={connectionLineStyle}
+        fitViewOptions={{ padding: fitViewPadding, maxZoom: 1.15 }}
         onEdgeClick={onEdgeClick}
+        onPaneClick={cerrarSobreLienzo}
+        nodeExtent={[[-1000000, margenSuperiorSeguro], [1000000, 1000000]]}
         nodesDraggable
         nodeDragThreshold={0}
         nodesConnectable
@@ -670,17 +791,27 @@ export default function OrganigramaCanvas({
         panOnDrag
         proOptions={{ hideAttribution: true }}
       >
-        <AutoFitView />
+        <AutoFitView margenSuperiorSeguro={margenSuperiorSeguro} />
         <Background gap={18} size={1} color="var(--border)" />
-        <Controls showInteractive />
+        <CanvasControls />
       </ReactFlow>
       </CanvasNodeContext.Provider>
       {edgePopover && (
         <div className="card nodrag nopan" data-testid="ov2-edge-popover" style={{ position: 'absolute', left: Math.min(edgePopover.x, 620), top: Math.min(edgePopover.y, 420), zIndex: 10, width: 270, padding: 10, boxShadow: '0 10px 24px rgba(15,23,42,.22)' }} onPointerDown={event => event.stopPropagation()}>
           <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.35 }}>{descripcionArista(edgePopover.edge)}</div>
+          {edgePopover.edge.data?.kind === 'uo' && (
+            <div className="input-group" style={{ marginTop: 9 }}>
+              <label htmlFor="ov2-reassign-uo">Reasignar a otra UO</label>
+              <select id="ov2-reassign-uo" data-testid="ov2-reassign-edge-uo" className="select" value={edgePopover.unidadId} onChange={event => setEdgePopover(current => ({ ...current, unidadId: event.target.value }))}>
+                {nodes.filter(node => node.type === 'unidad' && node.data.record.estado === 'activo').map(node => <option key={node.data.record.id} value={node.data.record.id}>{node.data.record.nombre}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 7, marginTop: 9 }}>
             <button type="button" className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => setEdgePopover(null)}>Cerrar</button>
-            <button type="button" className="btn btn-danger" data-testid="ov2-delete-edge" style={{ padding: '4px 8px', fontSize: 11 }} onClick={eliminarArista}>Eliminar relación</button>
+            {edgePopover.edge.data?.kind === 'uo'
+              ? <button type="button" className="btn btn-primary" data-testid="ov2-confirm-reassign-edge-uo" style={{ padding: '4px 8px', fontSize: 11 }} disabled={!edgePopover.unidadId || edgePopover.unidadId === edgePopover.edge.data.unidad?.id} onClick={reasignarDesdeArista}>Reasignar a otra UO</button>
+              : <button type="button" className="btn btn-danger" data-testid="ov2-delete-edge" style={{ padding: '4px 8px', fontSize: 11 }} onClick={eliminarArista}>Eliminar relación</button>}
           </div>
         </div>
       )}
