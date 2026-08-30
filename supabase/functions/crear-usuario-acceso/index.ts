@@ -38,6 +38,41 @@ const generateTemporaryPassword = () => {
   return chars.join("");
 };
 
+const allowedCampoModulos = new Set([
+  "tecnico", "logistica", "vendedor", "compras", "supervisor",
+  "gerencia", "asistencia", "mi_espacio", "solicitudes",
+]);
+
+const moduloToPerfil = (modulo: string | null) => {
+  const map: Record<string, string> = {
+    tecnico: "Tecnico",
+    logistica: "Logistica",
+    vendedor: "Vendedor",
+    compras: "Compras",
+    supervisor: "Supervisor",
+    gerencia: "Gerencia",
+    asistencia: "Asistencia",
+    mi_espacio: "Empleado",
+  };
+  return modulo ? (map[modulo] || "Tecnico") : null;
+};
+
+const normalizarCampoDeColocacion = (campoHabilitado: unknown, modulos: unknown) => {
+  if (campoHabilitado !== true) {
+    return { accesoCampo: false, campoModulos: [] as string[], perfilCampo: null };
+  }
+  const campoModulos = [...new Set((Array.isArray(modulos) ? modulos : [])
+    .map(modulo => String(modulo || "").trim().toLowerCase())
+    .filter(modulo => allowedCampoModulos.has(modulo)))];
+  if (!campoModulos.includes("asistencia")) campoModulos.push("asistencia");
+  if (campoModulos.includes("mi_espacio") && !campoModulos.includes("solicitudes")) {
+    campoModulos.push("solicitudes");
+  }
+  const moduloPerfil = campoModulos.find(modulo => modulo !== "asistencia" && modulo !== "solicitudes")
+    || "asistencia";
+  return { accesoCampo: true, campoModulos, perfilCampo: moduloToPerfil(moduloPerfil) };
+};
+
 const isMissingTable = (error: unknown) => {
   const err = error as { code?: string; message?: string } | null;
   const message = String(err?.message || "").toLowerCase();
@@ -321,6 +356,9 @@ serve(async (req) => {
   const modoAutomatico = payload.modo_automatico === true;
   const personalTipo = String(payload.personal_tipo || "").trim();
   const personalId = String(payload.personal_id || "").trim() || null;
+  let accesoCampo = false;
+  let campoModulos: string[] = [];
+  let perfilCampo: string | null = null;
 
   if (!nombre || !email || !empresaId || (!rolInput && !modoAutomatico)) {
     return jsonResponse({ success: false, error: "Nombre, email, empresa y rol son obligatorios." }, 400);
@@ -394,13 +432,17 @@ serve(async (req) => {
     if (!posicionRow?.cargo_colocacion_id) return jsonResponse({ success: false, error: "La posición elegida no pertenece al organigrama v2." }, 400);
     const { data: colocacion, error: colocacionError } = await adminClient
       .from("cargo_colocaciones")
-      .select("rol_id")
+      .select("rol_id, campo_habilitado, campo_modulos")
       .eq("id", posicionRow.cargo_colocacion_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
     if (colocacionError) return jsonResponse({ success: false, error: colocacionError.message }, 500);
     if (!colocacion?.rol_id) return jsonResponse({ success: false, error: "La cargo-colocación elegida no tiene un rol de sistema configurado." }, 400);
     rolInput = colocacion.rol_id;
+    ({ accesoCampo, campoModulos, perfilCampo } = normalizarCampoDeColocacion(
+      colocacion.campo_habilitado,
+      colocacion.campo_modulos,
+    ));
   }
 
   let callerIsPlatformAdmin = false;
@@ -592,9 +634,9 @@ serve(async (req) => {
       empresa_id: empresaId,
       rol_id: roleRow.id,
       jefe_user_id: jefeUserId,
-      acceso_campo: false,
-      perfil_campo: null,
-      campo_modulos: [],
+      acceso_campo: accesoCampo,
+      perfil_campo: perfilCampo,
+      campo_modulos: campoModulos,
       estado: "activo",
     }], { onConflict: "user_id,empresa_id" });
 

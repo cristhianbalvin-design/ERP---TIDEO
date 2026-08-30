@@ -20556,7 +20556,7 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
 }
 
 function RRHH_Operativo() {
-  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
+  const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonal = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -20919,14 +20919,10 @@ function RRHH_Operativo() {
     [posiciones, formAlta.posicion_id]
   );
   const usaOrganigramaV2 = empresa?.organigrama_v2_habilitado === true;
-  const aplicaCreacionAutomaticaV2 = Boolean(
-    !editandoId
-    && usaOrganigramaV2
-    && posicionSeleccionadaAlta?.cargo_colocacion_id
-    && !formAlta.auth_user_id
-  );
-  const ayudaAsistenciaOperativa = aplicaCreacionAutomaticaV2
-    ? "Control de asistencia queda activado automáticamente. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+  const ayudaAsistenciaOperativa = usaOrganigramaV2
+    ? (usuarioSistemaForm.acceso_campo
+      ? "Los módulos se derivan de la posición organizacional. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+      : "Esta posición no tiene acceso a la app de campo habilitado. Configúralo desde su cargo-colocación en el Organigrama v2.")
     : "Control de asistencia requiere un 'Email de acceso' y que la ficha tenga un turno asignado.";
   const posicionesOrganigramaV2 = React.useMemo(
     () => posiciones.filter(p => p.cargo_colocacion_id),
@@ -20952,13 +20948,27 @@ function RRHH_Operativo() {
     let cancelado = false;
     if (!usaOrganigramaV2 || !formAlta.posicion_id) {
       setRolDerivadoPosicionId('');
+      if (usaOrganigramaV2) {
+        setUsuarioSistemaForm(v => ({ ...v, acceso_campo: false, campo_modulos: [] }));
+      }
       return undefined;
     }
-    obtenerRolSugeridoPorPosicion(formAlta.posicion_id)
-      .then(rolId => { if (!cancelado) setRolDerivadoPosicionId(rolId || ''); })
+    obtenerConfiguracionOrganigramaPorPosicion(formAlta.posicion_id)
+      .then(configuracion => {
+        if (cancelado) return;
+        setRolDerivadoPosicionId(configuracion?.rolId || '');
+        setUsuarioSistemaForm(v => ({
+          ...v,
+          acceso_campo: configuracion?.campoHabilitado === true,
+          campo_modulos: configuracion?.campoModulos || [],
+        }));
+      })
       .catch(error => {
-        console.error('No se pudo obtener el rol derivado de la posición:', error);
-        if (!cancelado) setRolDerivadoPosicionId('');
+        console.error('No se pudo obtener la configuración derivada de la posición:', error);
+        if (!cancelado) {
+          setRolDerivadoPosicionId('');
+          setUsuarioSistemaForm(v => ({ ...v, acceso_campo: false, campo_modulos: [] }));
+        }
       });
     return () => { cancelado = true; };
   }, [usaOrganigramaV2, formAlta.posicion_id, posiciones]);
@@ -24128,14 +24138,15 @@ function RRHH_Operativo() {
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" required value={usuarioSistemaForm.email} onChange={e=>setUsuarioSistemaForm(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaForm.rol} onChange={e=>setUsuarioSistemaForm(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
-                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} onChange={e=>setUsuarioSistemaForm(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>Acceso a app de campo</label>
+                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaForm.acceso_campo} disabled={usaOrganigramaV2} onChange={e=>setUsuarioSistemaForm(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>{usaOrganigramaV2 ? 'Acceso a app de campo (derivado de la posición)' : 'Acceso a app de campo'}</label>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
                         <label>Módulos de campo habilitados</label>
                         <SelectorModulosCampo
                           value={usuarioSistemaForm.campo_modulos}
-                          onChange={campo_modulos=>setUsuarioSistemaForm(v=>({...v,campo_modulos}))}
-                          disabled={!usuarioSistemaForm.acceso_campo}
-                          requiredModule="asistencia"
+                           onChange={campo_modulos=>setUsuarioSistemaForm(v=>({...v,campo_modulos}))}
+                           disabled={!usuarioSistemaForm.acceso_campo}
+                           readOnly={usaOrganigramaV2}
+                           requiredModule="asistencia"
                           helpText={ayudaAsistenciaOperativa}
                         />
                         {usuarioSistemaForm.acceso_campo && !formAlta.turno_id && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>⚠ Sin turno asignado, esta persona no podrá marcar asistencia todavía.</div>}

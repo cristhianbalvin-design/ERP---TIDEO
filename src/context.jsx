@@ -4540,7 +4540,7 @@ export function AppProvider({ children }) {
     }
   };
 
-  const obtenerRolSugeridoPorPosicion = async (posicionId) => {
+  const obtenerConfiguracionOrganigramaPorPosicion = async (posicionId) => {
     const posicion = posiciones.find(p => p.id === posicionId);
     if (!posicion?.cargo_colocacion_id || !isSupabaseConfigured() || !empresa?.id) return null;
     if (posicion.empresa_id !== empresa.id) return null;
@@ -4548,12 +4548,22 @@ export function AppProvider({ children }) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('cargo_colocaciones')
-      .select('rol_id')
+      .select('rol_id, campo_habilitado, campo_modulos')
       .eq('id', posicion.cargo_colocacion_id)
       .eq('empresa_id', empresa.id)
       .maybeSingle();
     if (error) throw error;
-    return data?.rol_id || null;
+    if (!data?.rol_id) return null;
+    return {
+      rolId: data.rol_id,
+      campoHabilitado: data.campo_habilitado === true,
+      campoModulos: Array.isArray(data.campo_modulos) ? data.campo_modulos : [],
+    };
+  };
+
+  const obtenerRolSugeridoPorPosicion = async (posicionId) => {
+    const configuracion = await obtenerConfiguracionOrganigramaPorPosicion(posicionId);
+    return configuracion?.rolId || null;
   };
 
   const eliminarUsuario = async (id, empresaIdOverride = null) => {
@@ -10677,6 +10687,7 @@ export function AppProvider({ children }) {
     actualizarUsuarioAcceso,
     reasignarRolUsuario,
     crearUsuarioConAcceso,
+    obtenerConfiguracionOrganigramaPorPosicion,
     obtenerRolSugeridoPorPosicion,
     asignarPasswordTemporal,
     marcarContrasenaActualizada,

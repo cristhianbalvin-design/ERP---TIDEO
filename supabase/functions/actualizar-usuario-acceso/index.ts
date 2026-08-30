@@ -109,6 +109,22 @@ const moduloToPerfil = (modulo: string | null) => {
   return modulo ? (map[modulo] || "Tecnico") : null;
 };
 
+const normalizarCampoDeColocacion = (campoHabilitado: unknown, modulos: unknown) => {
+  if (campoHabilitado !== true) {
+    return { accesoCampo: false, campoModulos: [] as string[], perfilCampo: null };
+  }
+  const campoModulos = [...new Set((Array.isArray(modulos) ? modulos : [])
+    .map((modulo) => String(modulo || "").trim().toLowerCase())
+    .filter((modulo) => allowedCampoModulos.has(modulo)))];
+  if (!campoModulos.includes("asistencia")) campoModulos.push("asistencia");
+  if (campoModulos.includes("mi_espacio") && !campoModulos.includes("solicitudes")) {
+    campoModulos.push("solicitudes");
+  }
+  const moduloPerfil = campoModulos.find((modulo) => modulo !== "asistencia" && modulo !== "solicitudes")
+    || "asistencia";
+  return { accesoCampo: true, campoModulos, perfilCampo: moduloToPerfil(moduloPerfil) };
+};
+
 const normalizeAssignments = (value: unknown) =>
   (Array.isArray(value) ? value : [])
     .map((item) => item && typeof item === "object" ? item as Record<string, unknown> : null)
@@ -334,7 +350,7 @@ serve(async (req) => {
   const jefeUserId = jefeUserIdRaw || null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
   const asignacionesPayload = payload.asignaciones || [];
-  const accesoCampo = Boolean(payload.acceso_campo);
+  let accesoCampo = Boolean(payload.acceso_campo);
   const campoModulosFiltrados = accesoCampo
     ? [...new Set((Array.isArray(payload.campo_modulos) ? payload.campo_modulos : [legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))])
       .map((m) => String(m || "").trim().toLowerCase())
@@ -342,10 +358,10 @@ serve(async (req) => {
     : [];
   // "Mi portal" (mi_espacio) incluye Solicitudes como funcionalidad base; se asigna
   // automaticamente para que RRHH no tenga que marcar dos modulos por separado.
-  const campoModulos = campoModulosFiltrados.includes("mi_espacio") && !campoModulosFiltrados.includes("solicitudes")
+  let campoModulos = campoModulosFiltrados.includes("mi_espacio") && !campoModulosFiltrados.includes("solicitudes")
     ? [...campoModulosFiltrados, "solicitudes"]
     : campoModulosFiltrados;
-  const perfilCampo = accesoCampo ? moduloToPerfil(campoModulos[0] || legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))) : null;
+  let perfilCampo = accesoCampo ? moduloToPerfil(campoModulos[0] || legacyPerfilToModulo(String(payload.perfil_campo || "Tecnico"))) : null;
   const estadoPerfil = estadoToProfile(String(payload.estado || "Activo"));
   const estadoMembership = estadoToMembership(estadoPerfil);
 
@@ -410,7 +426,7 @@ serve(async (req) => {
     }
     const { data: colocacion, error: colocacionError } = await adminClient
       .from("cargo_colocaciones")
-      .select("rol_id")
+      .select("rol_id, campo_habilitado, campo_modulos")
       .eq("id", posicionRow.cargo_colocacion_id)
       .eq("empresa_id", empresaId)
       .maybeSingle();
@@ -419,6 +435,10 @@ serve(async (req) => {
       return jsonResponse({ success: false, error: "La cargo-colocacion elegida no tiene un rol de sistema configurado." }, 400);
     }
     rolId = colocacion.rol_id;
+    ({ accesoCampo, campoModulos, perfilCampo } = normalizarCampoDeColocacion(
+      colocacion.campo_habilitado,
+      colocacion.campo_modulos,
+    ));
   }
 
   let callerIsPlatformAdmin = false;

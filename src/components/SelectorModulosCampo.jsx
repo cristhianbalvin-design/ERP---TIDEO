@@ -15,6 +15,7 @@ export function SelectorModulosCampo({
   value = [],
   onChange,
   disabled = false,
+  readOnly = false,
   requiredModule = null,
   getRestriction,
   helpText = null,
@@ -34,7 +35,7 @@ export function SelectorModulosCampo({
         {CAMPO_MODULE_OPTIONS.map(module => {
           const restriction = getRestriction?.(module.id) || { disabled: false, tooltip: '' };
           const required = module.id === requiredModule;
-          const moduleDisabled = Boolean(disabled || restriction.disabled);
+          const moduleDisabled = Boolean(disabled || readOnly || restriction.disabled);
           const checked = selected.includes(module.id) || (required && !disabled);
           return (
             <label
@@ -49,10 +50,10 @@ export function SelectorModulosCampo({
                 borderColor: required && !disabled ? 'var(--cyan)' : 'var(--border)',
                 borderRadius:8,
                 opacity: restriction.disabled ? 0.55 : 1,
-                cursor: required ? 'default' : (moduleDisabled ? 'not-allowed' : 'pointer'),
+                cursor: required || readOnly ? 'default' : (moduleDisabled ? 'not-allowed' : 'pointer'),
                 background: required && !disabled
                   ? 'rgba(20,184,166,0.10)'
-                  : (restriction.disabled || disabled ? 'var(--bg-subtle)' : undefined),
+                  : (restriction.disabled || disabled || readOnly ? 'var(--bg-subtle)' : undefined),
               }}
             >
               <input

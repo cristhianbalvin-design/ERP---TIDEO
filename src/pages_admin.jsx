@@ -945,7 +945,7 @@ function Roles() {
 }
 
 function Usuarios() {
-  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, obtenerRolSugeridoPorPosicion, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
+  const { usuarios, setUsuarios, addNotificacion, empresa, empresasPlataforma, todasMembresias, crearUsuarioConAcceso, eliminarUsuario, actualizarUsuarioAcceso, asignarPasswordTemporal, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx, accessDebug, navigate, authUser, sociedadesIdsAlcance, personalAdmin = [], personalOperativo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [], crearPosicion, nivelesJerarquicos = [] } = useApp();
   const usaOrganigramaV2Usuarios = empresa?.organigrama_v2_habilitado === true;
   const [resetting, setResetting] = useState(null);
   const [tempPass, setTempPass] = useState('');
@@ -1094,6 +1094,48 @@ function Usuarios() {
   };
   const nuevoEmailNormalizado = normalizarEmail(nuevoForm.email);
   const nuevoEmailExistente = Boolean(nuevoEmailNormalizado) && usuarios.some(u => normalizarEmail(u.email) === nuevoEmailNormalizado);
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!usaOrganigramaV2Usuarios || !editando?.id || !editForm.posicion_id) return undefined;
+    const posicion = posiciones.find(item => item.id === editForm.posicion_id);
+    if (!posicion?.cargo_colocacion_id) {
+      setEditForm(p => ({ ...p, rol: '', campo: false, campoModulos: [] }));
+      return undefined;
+    }
+    obtenerConfiguracionOrganigramaPorPosicion(editForm.posicion_id)
+      .then(configuracion => {
+        if (!cancelado) setEditForm(p => ({
+          ...p,
+          rol: configuracion?.rolId || '',
+          campo: configuracion?.campoHabilitado === true,
+          campoModulos: configuracion?.campoModulos || [],
+        }));
+      })
+      .catch(error => console.error('No se pudo obtener la configuración de campo de la posición:', error));
+    return () => { cancelado = true; };
+  }, [usaOrganigramaV2Usuarios, editando?.id, editForm.posicion_id, posiciones]);
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!usaOrganigramaV2Usuarios || !creando || !nuevoForm.posicion_id) return undefined;
+    const posicion = posiciones.find(item => item.id === nuevoForm.posicion_id);
+    if (!posicion?.cargo_colocacion_id) {
+      setNuevoForm(p => ({ ...p, rol: '', campo: false, campoModulos: [] }));
+      return undefined;
+    }
+    obtenerConfiguracionOrganigramaPorPosicion(nuevoForm.posicion_id)
+      .then(configuracion => {
+        if (!cancelado) setNuevoForm(p => ({
+          ...p,
+          rol: configuracion?.rolId || '',
+          campo: configuracion?.campoHabilitado === true,
+          campoModulos: configuracion?.campoModulos || [],
+        }));
+      })
+      .catch(error => console.error('No se pudo obtener la configuración de campo de la posición:', error));
+    return () => { cancelado = true; };
+  }, [usaOrganigramaV2Usuarios, creando, nuevoForm.posicion_id, posiciones]);
 
   useEffect(() => {
     let mounted = true;
@@ -1692,15 +1734,24 @@ function Usuarios() {
                 onChange={async posicionId => {
                   const rolAntes = editForm.rol;
                   const esPosicionV2 = Boolean(posiciones.find(posicion => posicion.id === posicionId)?.cargo_colocacion_id);
-                  setEditForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '' } : {}) }));
+                  setEditForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '', campo: false, campoModulos: [] } : {}) }));
                   if (usaOrganigramaV2Usuarios && !esPosicionV2) return;
                   try {
-                    const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
-                    if (rolSugerido) setEditForm(p => (
-                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? { ...p, rol: rolSugerido } : p
+                    const configuracion = usaOrganigramaV2Usuarios
+                      ? await obtenerConfiguracionOrganigramaPorPosicion(posicionId)
+                      : { rolId: await obtenerRolSugeridoPorPosicion(posicionId) };
+                    if (configuracion?.rolId) setEditForm(p => (
+                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? {
+                        ...p,
+                        rol: configuracion.rolId,
+                        ...(usaOrganigramaV2Usuarios ? {
+                          campo: configuracion.campoHabilitado === true,
+                          campoModulos: configuracion.campoModulos || [],
+                        } : {}),
+                      } : p
                     ));
                   } catch (error) {
-                    console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                    console.error('No se pudo obtener la configuración sugerida de la posición:', error);
                   }
                 }}
                 posiciones={posiciones}
@@ -1726,8 +1777,8 @@ function Usuarios() {
                 </select>
               </div>
               <label className="row" style={{gap:8, fontSize:13}}>
-                <input type="checkbox" className="checkbox" checked={editForm.campo} onChange={e => setEditForm(p => ({...p, campo: e.target.checked}))} />
-                Acceso a campo movil
+                <input type="checkbox" className="checkbox" checked={editForm.campo} disabled={usaOrganigramaV2Usuarios} onChange={e => setEditForm(p => ({...p, campo: e.target.checked}))} />
+                {usaOrganigramaV2Usuarios ? 'Acceso a campo movil (derivado de la posición)' : 'Acceso a campo movil'}
               </label>
               {editForm.campo && (
                 <div className="input-group">
@@ -1735,6 +1786,7 @@ function Usuarios() {
                   <SelectorModulosCampo
                     value={editForm.campoModulos}
                     onChange={campoModulos => setEditForm(p => ({ ...p, campoModulos }))}
+                    readOnly={usaOrganigramaV2Usuarios}
                     getRestriction={getRestriccionModulo}
                   />
                   {editForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
@@ -1903,15 +1955,24 @@ function Usuarios() {
                 onChange={async posicionId => {
                   const rolAntes = nuevoForm.rol;
                   const esPosicionV2 = Boolean(posiciones.find(posicion => posicion.id === posicionId)?.cargo_colocacion_id);
-                  setNuevoForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '' } : {}) }));
+                  setNuevoForm(p => ({ ...p, posicion_id: posicionId, ...(usaOrganigramaV2Usuarios ? { rol: '', campo: false, campoModulos: [] } : {}) }));
                   if (usaOrganigramaV2Usuarios && !esPosicionV2) return;
                   try {
-                    const rolSugerido = await obtenerRolSugeridoPorPosicion(posicionId);
-                    if (rolSugerido) setNuevoForm(p => (
-                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? { ...p, rol: rolSugerido } : p
+                    const configuracion = usaOrganigramaV2Usuarios
+                      ? await obtenerConfiguracionOrganigramaPorPosicion(posicionId)
+                      : { rolId: await obtenerRolSugeridoPorPosicion(posicionId) };
+                    if (configuracion?.rolId) setNuevoForm(p => (
+                      p.posicion_id === posicionId && (usaOrganigramaV2Usuarios || p.rol === rolAntes) ? {
+                        ...p,
+                        rol: configuracion.rolId,
+                        ...(usaOrganigramaV2Usuarios ? {
+                          campo: configuracion.campoHabilitado === true,
+                          campoModulos: configuracion.campoModulos || [],
+                        } : {}),
+                      } : p
                     ));
                   } catch (error) {
-                    console.error('No se pudo obtener el rol sugerido de la posición:', error);
+                    console.error('No se pudo obtener la configuración sugerida de la posición:', error);
                   }
                 }}
                 posiciones={posiciones}
@@ -1927,8 +1988,8 @@ function Usuarios() {
                 setItems: next => setNuevoForm(p => ({ ...p, asignaciones: next })),
               })}
               <label className="row" style={{gap:8, fontSize:13}}>
-                <input type="checkbox" className="checkbox" checked={nuevoForm.campo} onChange={e => setNuevoForm(p => ({...p, campo: e.target.checked}))} />
-                Acceso a campo movil
+                <input type="checkbox" className="checkbox" checked={nuevoForm.campo} disabled={usaOrganigramaV2Usuarios} onChange={e => setNuevoForm(p => ({...p, campo: e.target.checked}))} />
+                {usaOrganigramaV2Usuarios ? 'Acceso a campo movil (derivado de la posición)' : 'Acceso a campo movil'}
               </label>
               {nuevoForm.campo && (
                 <div className="input-group">
@@ -1936,6 +1997,7 @@ function Usuarios() {
                   <SelectorModulosCampo
                     value={nuevoForm.campoModulos}
                     onChange={campoModulos => setNuevoForm(p => ({ ...p, campoModulos }))}
+                    readOnly={usaOrganigramaV2Usuarios}
                   />
                   <div className="text-muted" style={{fontSize:12, marginTop:6}}>Control de asistencia requiere una ficha de colaborador con el mismo email y turno asignado.</div>
                   {nuevoForm.campoModulos.includes('mi_espacio') && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Mi espacio incluye automáticamente Solicitudes, sin necesidad de marcarlo por separado.</div>}
@@ -10772,7 +10834,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], aprobarVacacion, turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
@@ -11000,14 +11062,10 @@ function RRHHAdmin() {
     [posiciones, formAlta.posicion_id]
   );
   const usaOrganigramaV2 = empresa?.organigrama_v2_habilitado === true;
-  const aplicaCreacionAutomaticaV2 = Boolean(
-    !editandoId
-    && usaOrganigramaV2
-    && posicionSeleccionadaAlta?.cargo_colocacion_id
-    && !formAlta.auth_user_id
-  );
-  const ayudaAsistenciaAdmin = aplicaCreacionAutomaticaV2
-    ? "Control de asistencia queda activado automáticamente. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+  const ayudaAsistenciaAdmin = usaOrganigramaV2
+    ? (usuarioSistemaFormAdmin.acceso_campo
+      ? "Los módulos se derivan de la posición organizacional. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
+      : "Esta posición no tiene acceso a la app de campo habilitado. Configúralo desde su cargo-colocación en el Organigrama v2.")
     : "Control de asistencia requiere un 'Email de acceso' y que la ficha tenga un turno asignado.";
   const posicionesOrganigramaV2 = React.useMemo(
     () => posiciones.filter(p => p.cargo_colocacion_id),
@@ -11033,13 +11091,27 @@ function RRHHAdmin() {
     let cancelado = false;
     if (!usaOrganigramaV2 || !formAlta.posicion_id) {
       setRolDerivadoPosicionId('');
+      if (usaOrganigramaV2) {
+        setUsuarioSistemaFormAdmin(v => ({ ...v, acceso_campo: false, campo_modulos: [] }));
+      }
       return undefined;
     }
-    obtenerRolSugeridoPorPosicion(formAlta.posicion_id)
-      .then(rolId => { if (!cancelado) setRolDerivadoPosicionId(rolId || ''); })
+    obtenerConfiguracionOrganigramaPorPosicion(formAlta.posicion_id)
+      .then(configuracion => {
+        if (cancelado) return;
+        setRolDerivadoPosicionId(configuracion?.rolId || '');
+        setUsuarioSistemaFormAdmin(v => ({
+          ...v,
+          acceso_campo: configuracion?.campoHabilitado === true,
+          campo_modulos: configuracion?.campoModulos || [],
+        }));
+      })
       .catch(error => {
-        console.error('No se pudo obtener el rol derivado de la posición:', error);
-        if (!cancelado) setRolDerivadoPosicionId('');
+        console.error('No se pudo obtener la configuración derivada de la posición:', error);
+        if (!cancelado) {
+          setRolDerivadoPosicionId('');
+          setUsuarioSistemaFormAdmin(v => ({ ...v, acceso_campo: false, campo_modulos: [] }));
+        }
       });
     return () => { cancelado = true; };
   }, [usaOrganigramaV2, formAlta.posicion_id, posiciones]);
@@ -14552,13 +14624,14 @@ function RRHHAdmin() {
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" required value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
-                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>Acceso a app de campo</label>
+                      <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} disabled={usaOrganigramaV2} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>{usaOrganigramaV2 ? 'Acceso a app de campo (derivado de la posición)' : 'Acceso a app de campo'}</label>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
                         <label>Módulos de campo habilitados</label>
                         <SelectorModulosCampo
                           value={usuarioSistemaFormAdmin.campo_modulos}
                           onChange={campo_modulos=>setUsuarioSistemaFormAdmin(v=>({...v,campo_modulos}))}
                           disabled={!usuarioSistemaFormAdmin.acceso_campo}
+                          readOnly={usaOrganigramaV2}
                           requiredModule="asistencia"
                           helpText={ayudaAsistenciaAdmin}
                         />

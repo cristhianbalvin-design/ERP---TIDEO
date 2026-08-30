@@ -34,6 +34,7 @@ export const organigramaV2Service = {
       rolesResult,
       personalOperativoResult,
       personalAdministrativoResult,
+      empresaResult,
     ] = await Promise.all([
       supabase
         .from('unidades_organizacionales')
@@ -45,7 +46,7 @@ export const organigramaV2Service = {
         .select(`
           id, empresa_id, sociedad_id, unidad_organizacional_id, cargo_id,
           nivel_jerarquico_id, rol_id, cantidad_posiciones, estado,
-          reporta_a_cargo_colocacion_id, created_at, updated_at,
+          reporta_a_cargo_colocacion_id, campo_habilitado, campo_modulos, created_at, updated_at,
           cargo:cargos_empresa(id, codigo, nombre, categoria_nivel),
           nivel:niveles_jerarquicos(id, codigo, nombre, orden),
           rol:roles(id, nombre, categoria, nivel_jerarquico)
@@ -99,6 +100,11 @@ export const organigramaV2Service = {
         .from('personal_administrativo')
         .select('id, empresa_id, auth_user_id, nombre')
         .eq('empresa_id', empresaId),
+      supabase
+        .from('empresas')
+        .select('id, organigrama_v2_habilitado')
+        .eq('id', empresaId)
+        .maybeSingle(),
     ]);
 
     const ocupantePorUsuarioId = new Map(
@@ -107,6 +113,7 @@ export const organigramaV2Service = {
     );
 
     return {
+      empresa: throwIfError(empresaResult),
       unidadesOrganizacionales: throwIfError(unidadesResult),
       cargoColocaciones: throwIfError(colocacionesResult),
       posiciones: throwIfError(posicionesResult),
@@ -138,6 +145,8 @@ export const organigramaV2Service = {
     cantidadPosiciones,
     estado = 'activo',
     reportaACargoColocacionId = null,
+    campoHabilitado = false,
+    campoModulos = [],
   }) {
     requireEmpresaId(empresaId);
     const supabase = await getSupabaseClient();
@@ -152,6 +161,8 @@ export const organigramaV2Service = {
       p_cantidad_posiciones: cantidadPosiciones,
       p_estado: estado,
       p_reporta_a_cargo_colocacion_id: reportaACargoColocacionId,
+      p_campo_habilitado: Boolean(campoHabilitado),
+      p_campo_modulos: Array.isArray(campoModulos) ? campoModulos : [],
     });
     if (error) throw error;
     return data;

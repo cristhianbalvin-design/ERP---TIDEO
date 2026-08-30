@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useApp } from './context.jsx';
 import OrganigramaCanvas from './organigrama_v2/OrganigramaCanvas.jsx';
 import { organigramaV2Service } from './services/organigramaV2Service.js';
+import { SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 
 const EMPRESA_VALIDACION_ID = 'emp_20609996464';
 
@@ -106,6 +107,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
   }, [cargar, empresaId]);
 
   const catalogos = datos?.catalogos || { cargos: [], niveles: [], roles: [] };
+  const campoPorCargoHabilitado = datos?.empresa?.organigrama_v2_habilitado === true;
   const puedeEditarOrganigrama = tienePermiso(role, 'editar', 'organigrama');
   const puedeCrearUO = puedeEditarOrganigrama && tienePermiso(role, 'crear', 'maestros');
   const abrirCrear = useCallback(unidad => {
@@ -119,6 +121,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         nivelJerarquicoId: nivelId,
         rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelId),
         cantidadPosiciones: 1,
+        campoHabilitado: false,
+        campoModulos: [],
       },
     });
   }, [catalogos]);
@@ -130,6 +134,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       form: {
         rolId: colocacion.rol_id || '',
         cantidadPosiciones: colocacion.cantidad_posiciones || 1,
+        campoHabilitado: colocacion.campo_habilitado === true,
+        campoModulos: Array.isArray(colocacion.campo_modulos) ? colocacion.campo_modulos : [],
       },
     });
   }, []);
@@ -175,6 +181,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         cantidadPosiciones: hija.cantidad_posiciones,
         estado: hija.estado,
         reportaACargoColocacionId: padre.id,
+        campoHabilitado: hija.campo_habilitado,
+        campoModulos: hija.campo_modulos,
       });
       setNotice(`${padre.cargo?.nombre || padre.cargo_id} ahora es padre de ${hija.cargo?.nombre || hija.cargo_id}.`);
       await cargar();
@@ -200,6 +208,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         cantidadPosiciones: hija.cantidad_posiciones,
         estado: hija.estado,
         reportaACargoColocacionId: null,
+        campoHabilitado: hija.campo_habilitado,
+        campoModulos: hija.campo_modulos,
       });
       setNotice(`Jerarquía eliminada para ${hija.cargo?.nombre || hija.cargo_id}.`);
       await cargar();
@@ -233,6 +243,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         cantidadPosiciones: colocacion.cantidad_posiciones,
         estado: colocacion.estado,
         reportaACargoColocacionId: colocacion.reporta_a_cargo_colocacion_id,
+        campoHabilitado: colocacion.campo_habilitado,
+        campoModulos: colocacion.campo_modulos,
       });
       setNotice(`${colocacion.cargo?.nombre || colocacion.cargo_id} se asignó a ${unidad.nombre}; sus posiciones vinculadas se actualizaron.`);
       await cargar();
@@ -392,6 +404,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           nivelJerarquicoId: panel.form.nivelJerarquicoId,
           rolId: panel.form.rolId,
           cantidadPosiciones: Number(panel.form.cantidadPosiciones),
+          campoHabilitado: panel.form.campoHabilitado,
+          campoModulos: panel.form.campoModulos,
         });
         try {
           const generadas = await organigramaV2Service.generarPosicionesDesdeColocacion(creada.id);
@@ -416,6 +430,8 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           cantidadPosiciones: Number(panel.form.cantidadPosiciones),
           estado: colocacion.estado,
           reportaACargoColocacionId: colocacion.reporta_a_cargo_colocacion_id,
+          campoHabilitado: panel.form.campoHabilitado,
+          campoModulos: panel.form.campoModulos,
         });
         setNotice(`Cargo-colocación ${resultado.id} actualizada.`);
         setPanel(null);
@@ -426,7 +442,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     } finally {
       setGuardando(false);
     }
-  }, [cargar, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO]);
+  }, [cargar, campoPorCargoHabilitado, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO]);
 
   if (!empresaId) {
     return <section style={{ padding: 24 }}><div className="card" style={{ padding: 24 }}>Cargando empresa activa…</div></section>;
@@ -513,6 +529,10 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
                 <div className="input-group"><label>Cargo</label><select data-testid="ov2-create-cargo" className="select" value={panel.form.cargoId} disabled={guardando} onChange={event => { const cargoId = event.target.value; const nivelJerarquicoId = nivelIdDelCargo(catalogos.cargos, catalogos.niveles, cargoId); setForm({ cargoId, nivelJerarquicoId, rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelJerarquicoId) }); }}>{catalogos.cargos.map(cargo => <option key={cargo.id} value={cargo.id}>{cargo.nombre}</option>)}</select></div>
                 <div className="input-group"><label>Nivel</label><select data-testid="ov2-create-nivel" className="select" value={panel.form.nivelJerarquicoId} disabled={guardando} onChange={event => { const nivelJerarquicoId = event.target.value; setForm({ nivelJerarquicoId, rolId: sugerirRol(catalogos.niveles, catalogos.roles, nivelJerarquicoId) }); }}><option value="">Selecciona un nivel</option>{catalogos.niveles.map(nivel => <option key={nivel.id} value={nivel.id}>{nivel.nombre}</option>)}</select></div>
                 <div className="input-group"><label>Rol sugerido (editable)</label><select data-testid="ov2-create-rol" className="select" value={panel.form.rolId} disabled={guardando} onChange={event => setForm({ rolId: event.target.value })}><option value="">Selecciona un rol</option>{catalogos.roles.map(rol => <option key={rol.id} value={rol.id}>{rol.nombre}</option>)}</select></div>
+                {campoPorCargoHabilitado && <>
+                  <label className="row" style={{ gap: 8, alignItems: 'center' }}><input type="checkbox" checked={panel.form.campoHabilitado} disabled={guardando} onChange={event => setForm({ campoHabilitado: event.target.checked, campoModulos: event.target.checked ? [...new Set([...(panel.form.campoModulos || []), 'asistencia'])] : [] })} />Acceso a app de campo</label>
+                  <div className="input-group"><label>Módulos de campo habilitados</label><SelectorModulosCampo value={panel.form.campoModulos} onChange={campoModulos => setForm({ campoModulos })} disabled={guardando || !panel.form.campoHabilitado} requiredModule="asistencia" /></div>
+                </>}
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-create-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
                 {(!panel.form.nivelJerarquicoId || !panel.form.rolId) && <div className="alert alert-warning" style={{ margin: 0, fontSize: 12 }}>{!panel.form.nivelJerarquicoId ? 'Selecciona un nivel para continuar.' : 'Selecciona un rol para continuar.'}</div>}
                 <div className="text-muted" style={{ fontSize: 12 }}>Al guardar se crearán la cargo-colocación y sus sillas vacantes.</div>
@@ -538,6 +558,10 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
               <form data-testid="ov2-edit-form" onSubmit={guardarPanel} style={{ display: 'grid', gap: 10 }}>
                 <div className="text-muted" style={{ fontSize: 12 }}>{panel.colocacion.cargo?.nombre || panel.colocacion.cargo_id}</div>
                 <div className="input-group"><label>Rol</label><select data-testid="ov2-edit-rol" className="select" value={panel.form.rolId} disabled={guardando} onChange={event => setForm({ rolId: event.target.value })}>{catalogos.roles.map(rol => <option key={rol.id} value={rol.id}>{rol.nombre}</option>)}</select></div>
+                {campoPorCargoHabilitado && <>
+                  <label className="row" style={{ gap: 8, alignItems: 'center' }}><input type="checkbox" checked={panel.form.campoHabilitado} disabled={guardando} onChange={event => setForm({ campoHabilitado: event.target.checked, campoModulos: event.target.checked ? [...new Set([...(panel.form.campoModulos || []), 'asistencia'])] : [] })} />Acceso a app de campo</label>
+                  <div className="input-group"><label>Módulos de campo habilitados</label><SelectorModulosCampo value={panel.form.campoModulos} onChange={campoModulos => setForm({ campoModulos })} disabled={guardando || !panel.form.campoHabilitado} requiredModule="asistencia" /></div>
+                </>}
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-edit-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
                 <div className="text-muted" style={{ fontSize: 12 }}>Cambiar el rol de esta colocación no altera los roles vigentes de sus ocupantes.</div>
                 <button data-testid="ov2-edit-submit" type="submit" className="btn btn-primary" disabled={guardando || !panel.form.rolId}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
