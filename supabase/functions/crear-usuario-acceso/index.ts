@@ -365,7 +365,7 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "La creación automática de cuenta no está habilitada para este tenant." }, 403);
   }
 
-  let ficha: { id: string; auth_user_id: string | null; email: string | null; email_personal: string | null } | null = null;
+  let ficha: { id: string; auth_user_id: string | null } | null = null;
   let tablaPersonal: "personal_administrativo" | "personal_operativo" | null = null;
   let posicionRow: { id: string; cargo_colocacion_id: string | null } | null = null;
   if (posicionId) {
@@ -383,15 +383,13 @@ serve(async (req) => {
     tablaPersonal = personalTipo === "administrativo" ? "personal_administrativo" : "personal_operativo";
     const { data, error } = await adminClient
       .from(tablaPersonal)
-      .select("id, auth_user_id, email, email_personal")
+      .select("id, auth_user_id")
       .eq("id", personalId)
       .eq("empresa_id", empresaId)
       .maybeSingle();
     if (error) return jsonResponse({ success: false, error: error.message }, 500);
     if (!data?.id) return jsonResponse({ success: false, error: "La ficha de personal no pertenece al tenant seleccionado." }, 400);
     ficha = data;
-    const correosFicha = [ficha.email, ficha.email_personal].map(normalizeEmail).filter(Boolean);
-    if (!correosFicha.includes(email)) return jsonResponse({ success: false, error: "El correo debe coincidir con uno registrado en la ficha de personal." }, 400);
     if (ficha.auth_user_id) return jsonResponse({ success: false, error: "La ficha ya tiene una cuenta de acceso vinculada." }, 409);
     if (!posicionRow?.cargo_colocacion_id) return jsonResponse({ success: false, error: "La posición elegida no pertenece al organigrama v2." }, 400);
     const { data: colocacion, error: colocacionError } = await adminClient

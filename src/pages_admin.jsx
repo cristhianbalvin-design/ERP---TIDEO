@@ -10957,7 +10957,7 @@ function RRHHAdmin() {
   );
   const ayudaAsistenciaAdmin = aplicaCreacionAutomaticaV2
     ? "Control de asistencia queda activado automáticamente. Verifica que el campo 'Turno asignado' de arriba tenga un valor — sin turno, la persona no podrá marcar su asistencia desde la app."
-    : "Control de asistencia requiere que el 'Email de acceso' de abajo coincida exactamente con el correo de esta ficha (Email corporativo o Correo personal), y que tenga un turno asignado.";
+    : "Control de asistencia requiere un 'Email de acceso' y que la ficha tenga un turno asignado.";
   const posicionesOrganigramaV2 = React.useMemo(
     () => posiciones.filter(p => p.cargo_colocacion_id),
     [posiciones]
@@ -11493,17 +11493,17 @@ function RRHHAdmin() {
         addNotificacion('Colaborador creado. Sube el contrato firmado en Documentos para activar alertas de vencimiento.');
         const posicionAcceso = posiciones.find(posicion => posicion.id === formAlta.posicion_id);
         const esPosicionV2 = Boolean(posicionAcceso?.cargo_colocacion_id);
-        if (esPosicionV2 && !fichaGuardada?.auth_user_id && empresa?.organigrama_v2_habilitado === true && crearUsuarioConAcceso) {
-          const emailFicha = fichaGuardada?.email || fichaGuardada?.email_personal || '';
-          if (!emailFicha) {
-            addNotificacion(`No se pudo crear la cuenta de acceso automáticamente: falta un correo en la ficha de ${nuevo.nombre}. Complétalo y créala manualmente después.`, 'warning');
-          } else try {
+        if (crearUsuarioSistemaAdmin && usuarioSistemaFormAdmin.email && esPosicionV2
+          && !fichaGuardada?.auth_user_id
+          && empresa?.organigrama_v2_habilitado === true
+          && crearUsuarioConAcceso) {
+          try {
             const campoModulos = usuarioSistemaFormAdmin.acceso_campo
               ? [...new Set([...(usuarioSistemaFormAdmin.campo_modulos || []), 'asistencia'])]
               : [];
             const resultado = await crearUsuarioConAcceso({
               nombre: nuevo.nombre,
-              email: emailFicha,
+              email: usuarioSistemaFormAdmin.email,
               posicion_id: formAlta.posicion_id,
               modo_automatico: true,
               personal_tipo: 'administrativo',
@@ -14464,7 +14464,7 @@ function RRHHAdmin() {
                   <div className="text-muted" style={{fontSize:12, marginBottom:crearUsuarioSistemaAdmin?12:0}}>Activa esto solo si este colaborador necesita acceder al ERP. No todo el personal administrativo requiere acceso al sistema.</div>
                   {crearUsuarioSistemaAdmin && (
                     <div className="grid-2" style={{gap:12}}>
-                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email de acceso <span style={{color:'var(--danger)'}}>*</span></label><input className="input" type="email" required value={usuarioSistemaFormAdmin.email} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,email:e.target.value}))} placeholder="colaborador@empresa.com"/></div>
                       {!usaOrganigramaV2 && <div className="input-group"><label>Rol de sistema</label><select className="select" value={usuarioSistemaFormAdmin.rol} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v,rol:e.target.value}))}><option value="">Seleccionar rol</option>{Object.entries(rolesCtx).map(([k,r])=><option key={k} value={k}>{r.nombre||k}</option>)}</select></div>}
                       <label className="row" style={{gap:8, alignItems:'center', gridColumn:'1/-1'}}><input type="checkbox" checked={usuarioSistemaFormAdmin.acceso_campo} onChange={e=>setUsuarioSistemaFormAdmin(v=>({...v, acceso_campo:e.target.checked, campo_modulos:e.target.checked ? [...new Set([...(v.campo_modulos || []), 'asistencia'])] : v.campo_modulos}))}/>Acceso a app de campo</label>
                       <div className="input-group" style={{gridColumn:'1/-1'}}>
