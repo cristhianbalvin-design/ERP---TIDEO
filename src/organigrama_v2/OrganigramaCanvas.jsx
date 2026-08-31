@@ -584,9 +584,10 @@ export default function OrganigramaCanvas({
   useEffect(() => { setNodes(graph.nodes); }, [graph.nodes, setNodes]);
   useEffect(() => { setEdges(graph.edges); }, [graph.edges, setEdges]);
 
-  const onNodeDrag = useCallback((_, node) => {
+  const onNodeDrag = useCallback((_, node, nodosArrastrados = [node]) => {
+    const idsSeleccionados = new Set(nodosArrastrados.map(nodoArrastrado => nodoArrastrado.id));
     const matches = nodes
-      .filter(other => other.id !== node.id && !other.hidden)
+      .filter(other => other.id !== node.id && !other.hidden && !idsSeleccionados.has(other.id))
       .map(other => ({
         other,
         xDistance: Math.abs(other.position.x - node.position.x),
@@ -634,16 +635,34 @@ export default function OrganigramaCanvas({
     }
   }, [nodes]);
 
-  const onNodeDragStop = useCallback((_, node) => {
-    const meta = node.data?.persistencia;
-    if (!meta) return;
+  const onNodeDragStop = useCallback((_, node, nodosArrastrados = [node]) => {
     const snap = snapAlignmentRef.current?.nodeId === node.id ? snapAlignmentRef.current.position : null;
-    const position = { ...(snap || node.position), y: Math.max(margenSuperiorSeguro, (snap || node.position).y) };
-    if (snap) setNodes(current => current.map(item => item.id === node.id ? { ...item, position } : item));
+    const posicionLider = { ...(snap || node.position), y: Math.max(margenSuperiorSeguro, (snap || node.position).y) };
+    const deltaSnap = {
+      x: posicionLider.x - node.position.x,
+      y: posicionLider.y - node.position.y,
+    };
+    const posicionesFinales = nodosArrastrados
+      .map(nodoArrastrado => ({
+        id: nodoArrastrado.id,
+        meta: nodoArrastrado.data?.persistencia,
+        position: {
+          x: nodoArrastrado.position.x + deltaSnap.x,
+          y: Math.max(margenSuperiorSeguro, nodoArrastrado.position.y + deltaSnap.y),
+        },
+      }))
+      .filter(nodoArrastrado => nodoArrastrado.meta);
+
+    if (snap) {
+      const posicionesPorId = new Map(posicionesFinales.map(nodoArrastrado => [nodoArrastrado.id, nodoArrastrado.position]));
+      setNodes(current => current.map(item => posicionesPorId.has(item.id)
+        ? { ...item, position: posicionesPorId.get(item.id) }
+        : item));
+    }
     if (alignmentGuidesSignatureRef.current) setAlignmentGuides([]);
     alignmentGuidesSignatureRef.current = '';
     snapAlignmentRef.current = null;
-    Promise.resolve(onGuardarPosicion?.({ ...meta, x: position.x, y: position.y })).catch(error => onError?.(error));
+    Promise.all(posicionesFinales.map(({ meta, position }) => Promise.resolve(onGuardarPosicion?.({ ...meta, x: position.x, y: position.y })))).catch(error => onError?.(error));
   }, [margenSuperiorSeguro, onGuardarPosicion, onError, setNodes]);
 
   const isValidConnection = useCallback(connection => {
@@ -789,7 +808,10 @@ export default function OrganigramaCanvas({
         nodeDragThreshold={0}
         nodesConnectable
         elementsSelectable
-        panOnDrag
+        panOnDrag={true}
+        selectionOnDrag={false}
+        selectionKeyCode="Shift"
+        multiSelectionKeyCode={['Control', 'Meta']}
         proOptions={{ hideAttribution: true }}
       >
         <AutoFitView margenSuperiorSeguro={margenSuperiorSeguro} />
