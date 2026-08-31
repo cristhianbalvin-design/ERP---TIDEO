@@ -7215,21 +7215,29 @@ export function AppProvider({ children }) {
     setPosiciones(prev => prev.filter(p => p.id !== id));
   };
 
-  // Vuelve a cargar posiciones/posicionesUsuarios/unidadesOrganizacionales y recompone
-  // usuario.posiciones. Se llama tras crear/editar un usuario con posicion_id, porque esa
-  // operacion escribe posiciones_usuarios en el backend sin que el estado local se entere.
+  // Vuelve a cargar usuarios, posiciones, posicionesUsuarios y unidadesOrganizacionales.
+  // Se llama tras crear/editar un usuario con posicion_id, porque esa operacion escribe
+  // posiciones_usuarios en el backend y puede actualizar una cuenta que el estado local
+  // aun no contenia o tenia desactualizada.
   const refrescarPosiciones = async () => {
     if (!empresa?.id) return;
     try {
-      const [posicionesData, posicionesUsuariosData, unidadesData] = await Promise.all([
+      const [usuariosData, posicionesData, posicionesUsuariosData, unidadesData] = await Promise.all([
+        usuariosService.getUsuarios(empresa.id),
         posicionesService.getPosiciones(empresa.id),
         posicionesService.getPosicionesUsuarios(empresa.id),
         posicionesService.getUnidadesOrganizacionales(empresa.id),
       ]);
+      const usuariosConPosiciones = construirUsuariosConPosiciones(
+        usuariosData,
+        posicionesData,
+        posicionesUsuariosData,
+        unidadesData,
+      );
+      setUsuarios(usuariosConPosiciones);
       setPosiciones(posicionesData);
       setPosicionesUsuarios(posicionesUsuariosData);
       setUnidadesOrganizacionales(unidadesData);
-      setUsuarios(prev => construirUsuariosConPosiciones(prev, posicionesData, posicionesUsuariosData, unidadesData));
     } catch (error) {
       console.error('Error refrescando posiciones:', error);
     }

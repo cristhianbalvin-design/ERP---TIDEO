@@ -39,6 +39,7 @@
   --fg-subtle: var(--slate-400);
   --border: var(--slate-200);
   --border-subtle: var(--slate-100);
+  --organigrama-canvas-dot: var(--slate);
   --sidebar-bg: var(--navy);
   --sidebar-fg: rgba(255,255,255,0.78);
   --sidebar-fg-active: #fff;
@@ -60,6 +61,7 @@
   --fg-subtle: #607D8B;
   --border: #243554;
   --border-subtle: #1C2A46;
+  --organigrama-canvas-dot: var(--border);
   --sidebar-bg: #0A1524;
   --sidebar-fg: rgba(232,237,245,0.72);
   --sidebar-fg-active: #fff;

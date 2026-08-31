@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
-import { SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
+import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr, formatearRegimenLabel } from './utils/rrhhLabels.js';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
@@ -20831,6 +20831,17 @@ function RRHH_Operativo() {
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
   const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const cuentaUsuarioVinculada = usuariosEmpresa.find(usuario => usuario.id === formAlta.auth_user_id) || null;
+  const modulosCuentaVinculada = cuentaUsuarioVinculada?.campo
+    ? (Array.isArray(cuentaUsuarioVinculada.campoModulos) && cuentaUsuarioVinculada.campoModulos.length
+      ? cuentaUsuarioVinculada.campoModulos
+      : (Array.isArray(cuentaUsuarioVinculada.campo_modulos) && cuentaUsuarioVinculada.campo_modulos.length
+        ? cuentaUsuarioVinculada.campo_modulos
+        : [cuentaUsuarioVinculada.campoPerfil || cuentaUsuarioVinculada.campo_perfil].filter(Boolean)))
+    : [];
+  const modulosCuentaVinculadaTexto = modulosCuentaVinculada
+    .map(modulo => modulo === 'solicitudes' ? 'Solicitudes' : (CAMPO_MODULE_OPTIONS.find(item => item.id === modulo)?.label || modulo))
+    .join(' · ');
   const [rolDerivadoPosicionId, setRolDerivadoPosicionId] = useState('');
   const [nuevoCargoTextoOp, setNuevoCargoTextoOp] = useState('');
   const [horasBaseOverride, setHorasBaseOverride] = useState(false);
@@ -24126,6 +24137,10 @@ function RRHH_Operativo() {
                     {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
                   </select>
                   <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este técnico a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
+                  <div className="grid-2" style={{ gap: 12, marginTop: 12 }}>
+                    <div className="input-group"><label>Rol actual del sistema</label><input className="input" readOnly value={cuentaUsuarioVinculada?.rol_nombre || rolesCtx[cuentaUsuarioVinculada?.rol]?.nombre || cuentaUsuarioVinculada?.rol || ''} placeholder="Sin cuenta vinculada" style={{ background:'var(--bg-subtle)' }}/></div>
+                    <div className="input-group"><label>Módulos de campo habilitados</label><input className="input" readOnly value={cuentaUsuarioVinculada ? (cuentaUsuarioVinculada.campo ? (modulosCuentaVinculadaTexto || 'Sin módulos configurados') : 'Sin acceso móvil') : ''} placeholder="Sin cuenta vinculada" style={{ background:'var(--bg-subtle)' }}/></div>
+                  </div>
                 </div>
               ) : (
                 <>

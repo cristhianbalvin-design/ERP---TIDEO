@@ -793,7 +793,7 @@ export default function OrganigramaCanvas({
         proOptions={{ hideAttribution: true }}
       >
         <AutoFitView margenSuperiorSeguro={margenSuperiorSeguro} />
-        <Background gap={18} size={1} color="var(--border)" />
+        <Background gap={18} size={1} color="var(--organigrama-canvas-dot)" />
         <CanvasControls />
       </ReactFlow>
       </CanvasNodeContext.Provider>

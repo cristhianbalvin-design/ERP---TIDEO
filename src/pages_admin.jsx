@@ -11013,6 +11013,17 @@ function RRHHAdmin() {
   const formAltaBase = { nombre:'', dni:'', fecha_nacimiento:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', area:'', sede:'', turno_id:'', centro_costo_id:'', modalidad:'planilla', tipo_contrato:'indefinido', fecha_inicio:'', remuneracion:'', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', dias_vacaciones:vacacionesSugeridas, estado:'activo', auth_user_id:'', tiene_comisiones:false, porcentaje_comision:'', modalidad_comision:'Planilla', ruc_vendedor:'', retencion_ir_comision:'8', ruc_colaborador:'', sistema_pensionario:'AFP', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_laboral:'general', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', tarifa_hora_referencial:'' };
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const [formAlta, setFormAlta] = useState(formAltaBase);
+  const cuentaUsuarioVinculada = usuariosEmpresa.find(usuario => usuario.id === formAlta.auth_user_id) || null;
+  const modulosCuentaVinculada = cuentaUsuarioVinculada?.campo
+    ? (Array.isArray(cuentaUsuarioVinculada.campoModulos) && cuentaUsuarioVinculada.campoModulos.length
+      ? cuentaUsuarioVinculada.campoModulos
+      : (Array.isArray(cuentaUsuarioVinculada.campo_modulos) && cuentaUsuarioVinculada.campo_modulos.length
+        ? cuentaUsuarioVinculada.campo_modulos
+        : [cuentaUsuarioVinculada.campoPerfil || cuentaUsuarioVinculada.campo_perfil].filter(Boolean)))
+    : [];
+  const modulosCuentaVinculadaTexto = modulosCuentaVinculada
+    .map(modulo => modulo === 'solicitudes' ? 'Solicitudes' : (CAMPO_MODULE_OPTIONS.find(item => item.id === modulo)?.label || modulo))
+    .join(' · ');
   const [rolDerivadoPosicionId, setRolDerivadoPosicionId] = useState('');
   const [nuevoCargoTextoAdmin, setNuevoCargoTextoAdmin] = useState('');
   const [historialDniAlta, setHistorialDniAlta] = useState(null);
@@ -14612,6 +14623,10 @@ function RRHHAdmin() {
                     {usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email} — {u.email}</option>)}
                   </select>
                   <div className="text-muted" style={{fontSize:11, marginTop:5}}>Vincula este colaborador a su cuenta de inicio de sesión para que las políticas de visibilidad se apliquen correctamente.</div>
+                  <div className="grid-2" style={{ gap: 12, marginTop: 12 }}>
+                    <div className="input-group"><label>Rol actual del sistema</label><input className="input" readOnly value={cuentaUsuarioVinculada?.rol_nombre || rolesCtx[cuentaUsuarioVinculada?.rol]?.nombre || cuentaUsuarioVinculada?.rol || ''} placeholder="Sin cuenta vinculada" style={{ background:'var(--bg-subtle)' }}/></div>
+                    <div className="input-group"><label>Módulos de campo habilitados</label><input className="input" readOnly value={cuentaUsuarioVinculada ? (cuentaUsuarioVinculada.campo ? (modulosCuentaVinculadaTexto || 'Sin módulos configurados') : 'Sin acceso móvil') : ''} placeholder="Sin cuenta vinculada" style={{ background:'var(--bg-subtle)' }}/></div>
+                  </div>
                 </div>
               ) : (
                 <>
