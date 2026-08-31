@@ -1160,7 +1160,11 @@ export const rrhhService = {
   crearPrestamoPersonal: async (empresaId, prestamo) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('prestamos_personal').insert([{ ...prestamo, empresa_id: empresaId }]).select().single();
+      .from('prestamos_personal').insert([{
+        ...prestamo,
+        id: prestamo?.id || generateTextId('pre'),
+        empresa_id: empresaId,
+      }]).select().single();
     if (error) throw error;
     return data;
   },
