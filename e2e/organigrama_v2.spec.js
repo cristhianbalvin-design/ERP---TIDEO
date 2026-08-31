@@ -412,9 +412,9 @@ test.describe.serial('Organigrama v2 — PRUEBA solamente', () => {
     await screenshot(page, '05-alta-colocacion-dos-sillas');
   });
 
-  test('6. edita cantidad y rol, mostrando la advertencia sobre ocupantes', async ({ page }) => {
+  test('6. edita cantidad y rol, informando que sincroniza ocupantes', async ({ page }) => {
     await page.getByTestId(`ov2-node-ccol-${fixtures.jefatura.id}`).click();
-    await expect(page.getByText('Cambiar el rol de esta colocación no altera los roles vigentes de sus ocupantes.')).toBeVisible();
+    await expect(page.getByText('Al guardar, el rol y los módulos se aplican a los ocupantes activos de esta posición.')).toBeVisible();
     await page.getByTestId('ov2-edit-rol').selectOption('rol_emp_2000000000_ops_jefe');
     await page.getByTestId('ov2-edit-cantidad').fill('2');
     await page.getByTestId('ov2-edit-submit').click();

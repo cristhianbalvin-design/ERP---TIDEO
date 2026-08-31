@@ -71,7 +71,14 @@ const Panel = ({ title, children, onClose }) => (
 );
 
 export default function OrganigramaV2Page({ empresaIdOverride, preview = false }) {
-  const { empresa, role, crearUnidadOrganizacional, actualizarUnidadOrganizacional } = useApp();
+  const {
+    empresa,
+    role,
+    usuarios = [],
+    actualizarUsuarioAcceso,
+    crearUnidadOrganizacional,
+    actualizarUnidadOrganizacional,
+  } = useApp();
   const empresaId = preview ? (empresaIdOverride || EMPRESA_VALIDACION_ID) : empresa?.id;
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
@@ -181,6 +188,52 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
   const setForm = useCallback(cambio => {
     setPanel(actual => actual ? { ...actual, form: { ...actual.form, ...cambio } } : actual);
   }, []);
+
+  const sincronizarOcupantesDeColocacion = useCallback(async ({ colocacionId, rolId, campoHabilitado, campoModulos }) => {
+    if (preview || !colocacionId) return 0;
+
+    const posicionesIds = new Set(
+      (datos?.posicionesVinculadas || [])
+        .filter(posicion => posicion.cargo_colocacion_id === colocacionId)
+        .map(posicion => posicion.id),
+    );
+    const ocupacionPorUsuario = new Map();
+    (datos?.ocupacionesActivas || []).forEach(ocupacion => {
+      if (posicionesIds.has(ocupacion.posicion_id) && !ocupacionPorUsuario.has(ocupacion.user_id)) {
+        ocupacionPorUsuario.set(ocupacion.user_id, ocupacion);
+      }
+    });
+
+    const fallos = [];
+    for (const [userId, ocupacion] of ocupacionPorUsuario) {
+      const usuario = usuarios.find(item => item.id === userId && item.empresa_id === empresaId)
+        || usuarios.find(item => item.id === userId);
+      if (!usuario?.email) {
+        fallos.push(`No se encontró la cuenta de acceso para el ocupante ${ocupacion.ocupante?.nombre || userId}.`);
+        continue;
+      }
+      try {
+        await actualizarUsuarioAcceso(userId, {
+          empresa_id: empresaId,
+          nombre: usuario.nombre || ocupacion.ocupante?.nombre || usuario.email,
+          email: usuario.email,
+          rol: rolId,
+          posicion_id: ocupacion.posicion_id,
+          jefe_user_id: usuario.jefe_user_id || null,
+          asignaciones: usuario.asignaciones || [],
+          campo: campoHabilitado === true,
+          campoModulos: campoHabilitado === true ? campoModulos : [],
+          estado: usuario.estado || 'Activo',
+          modo_automatico: true,
+        });
+      } catch (causa) {
+        fallos.push(`${usuario.nombre || usuario.email}: ${errorText(causa)}`);
+      }
+    }
+
+    if (fallos.length) throw new Error(`No se pudo sincronizar todos los ocupantes. ${fallos.join(' ')}`);
+    return ocupacionPorUsuario.size;
+  }, [actualizarUsuarioAcceso, datos?.ocupacionesActivas, datos?.posicionesVinculadas, empresaId, preview, usuarios]);
 
   const guardarLayout = useCallback(async ({ tipoNodo, nodoId, x, y }) => {
     try {
@@ -444,6 +497,9 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         }
       } else {
         const colocacion = panel.colocacion;
+        const cambioAcceso = colocacion.rol_id !== panel.form.rolId
+          || colocacion.campo_habilitado !== (panel.form.campoHabilitado === true)
+          || JSON.stringify([...(colocacion.campo_modulos || [])].sort()) !== JSON.stringify([...(panel.form.campoModulos || [])].sort());
         const resultado = await organigramaV2Service.crearOActualizarCargoColocacion({
           id: colocacion.id,
           empresaId,
@@ -458,7 +514,15 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
           campoHabilitado: panel.form.campoHabilitado,
           campoModulos: panel.form.campoModulos,
         });
-        setNotice(`Cargo-colocación ${resultado.id} actualizada.`);
+        const ocupantesSincronizados = cambioAcceso
+          ? await sincronizarOcupantesDeColocacion({
+            colocacionId: resultado.id,
+            rolId: panel.form.rolId,
+            campoHabilitado: panel.form.campoHabilitado,
+            campoModulos: panel.form.campoModulos,
+          })
+          : 0;
+        setNotice(`Cargo-colocación ${resultado.id} actualizada${cambioAcceso ? `; ocupantes sincronizados: ${ocupantesSincronizados}.` : '.'}`);
         setPanel(null);
       }
       await cargar();
@@ -467,7 +531,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     } finally {
       setGuardando(false);
     }
-  }, [cargar, campoPorCargoHabilitado, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO]);
+  }, [cargar, campoPorCargoHabilitado, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO, sincronizarOcupantesDeColocacion]);
 
   if (!empresaId) {
     return <section style={{ padding: 24 }}><div className="card" style={{ padding: 24 }}>Cargando empresa activa…</div></section>;
@@ -588,7 +652,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
                   <div className="input-group"><label>Módulos de campo habilitados</label><SelectorModulosCampo value={panel.form.campoModulos} onChange={campoModulos => setForm({ campoModulos })} disabled={guardando || !panel.form.campoHabilitado} requiredModule="asistencia" /></div>
                 </>}
                 <div className="input-group"><label>Cantidad de posiciones</label><input data-testid="ov2-edit-cantidad" className="input" type="number" min="1" required value={panel.form.cantidadPosiciones} disabled={guardando} onChange={event => setForm({ cantidadPosiciones: event.target.value })} /></div>
-                <div className="text-muted" style={{ fontSize: 12 }}>Cambiar el rol de esta colocación no altera los roles vigentes de sus ocupantes.</div>
+                <div className="text-muted" style={{ fontSize: 12 }}>Al guardar, el rol y los módulos se aplican a los ocupantes activos de esta posición.</div>
                 <button data-testid="ov2-edit-submit" type="submit" className="btn btn-primary" disabled={guardando || !panel.form.rolId}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
                 <button data-testid="ov2-edit-delete" type="button" className="btn btn-danger" disabled={guardando} onClick={() => eliminarColocacion(panel.colocacion)}>Eliminar cargo</button>
               </form>

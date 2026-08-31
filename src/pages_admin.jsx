@@ -10850,6 +10850,7 @@ function RRHHAdmin() {
   const [altaError, setAltaError] = useState('');
   const paramsHandledRef = useRef('');
   const posicionOriginalEdicionRef = useRef('');
+  const cuentaOriginalEdicionRef = useRef('');
   const canFinanzasAdmin = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
   const modoVistaSociedadPersonalAdmin = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -11385,6 +11386,7 @@ function RRHHAdmin() {
     setPanelAlta(false);
     setEditandoId(null);
     posicionOriginalEdicionRef.current = '';
+    cuentaOriginalEdicionRef.current = '';
     setFormAlta(formAltaBase);
     setHorasBaseOverride(false);
     setAltaError('');
@@ -11408,6 +11410,7 @@ function RRHHAdmin() {
   const abrirNuevoColaborador = () => {
     setEditandoId(null);
     posicionOriginalEdicionRef.current = '';
+    cuentaOriginalEdicionRef.current = '';
     setHorasBaseOverride(false);
     setFormAlta({ ...formAltaBase, codigo: codigoSugeridoAdmin(), turno_id: '', horas_base_mes: '', dias_vacaciones: vacacionesSugeridas });
     setFormDatosBancariosAdmin([]);
@@ -11418,6 +11421,7 @@ function RRHHAdmin() {
   const abrirEditarColaborador = (p) => {
     setEditandoId(p.id);
     posicionOriginalEdicionRef.current = p.posicion_id || '';
+    cuentaOriginalEdicionRef.current = p.auth_user_id || '';
     const turnoActualId = turnosOptions.some(t => t.id === p.turno_id) ? p.turno_id : defaultTurnoId;
     const horasDerivadas = horasBaseParaTurno(turnoActualId);
     const horasActuales = p.horas_base_mes != null ? String(p.horas_base_mes) : horasDerivadas;
@@ -11626,14 +11630,29 @@ function RRHHAdmin() {
       if (editandoId) {
         const fichaGuardada = await actualizarAdminPersonalCtx(editandoId, nuevo);
         addNotificacion('Colaborador actualizado.');
-        const debeReasignarCuenta = Boolean(
+        const posicionCambio = formAlta.posicion_id !== posicionOriginalEdicionRef.current;
+        const cuentaCambio = fichaGuardada?.auth_user_id !== cuentaOriginalEdicionRef.current;
+        const posicionSinOcupacionActiva = Boolean(
+          fichaGuardada?.auth_user_id
+          && formAlta.posicion_id
+          && !posicionesUsuarios.some(asignacion => (
+            asignacion.posicion_id === formAlta.posicion_id
+            && asignacion.user_id === fichaGuardada.auth_user_id
+            && !asignacion.fecha_fin
+          ))
+        );
+        // La ficha, la ocupación de la posición y el acceso efectivo son una sola
+        // decisión de negocio. Antes solo se sincronizaba al cambiar `posicion_id`;
+        // por eso una cuenta vinculada después (o una ocupación faltante) quedaba
+        // con permisos antiguos aunque su ficha ya tuviera una posición V2.
+        const debeSincronizarCuenta = Boolean(
           usaOrganigramaV2
           && fichaGuardada?.auth_user_id
           && formAlta.posicion_id
-          && formAlta.posicion_id !== posicionOriginalEdicionRef.current
           && posicionSeleccionadaAlta?.cargo_colocacion_id
+          && (posicionCambio || cuentaCambio || posicionSinOcupacionActiva)
         );
-        if (debeReasignarCuenta) {
+        if (debeSincronizarCuenta) {
           try {
             const rolId = await obtenerRolSugeridoPorPosicion(formAlta.posicion_id);
             if (!rolId) throw new Error('La nueva posición no tiene un rol de sistema configurado.');
