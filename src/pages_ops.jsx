@@ -15700,7 +15700,10 @@ function ControlAsistencia() {
   }, [empresaConfig]);
 
   const trabajador = trabajadoresGenerales.find(t => t.id === form.trabajador_id) || trabajadoresGenerales[0];
-  const trabajadorBloqueado = Boolean(trabajador?.asistencia_bloqueada);
+  // El flag es una foto de la vigencia actual; la autorización real se valida
+  // contra la fecha elegida al guardar. Por eso no puede deshabilitar el
+  // formulario completo: una fecha histórica puede estar cubierta.
+  const trabajadorBloqueado = false;
   const turno = workerTurno(turnos, trabajador || {}, form.fecha);
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
@@ -15875,10 +15878,6 @@ function ControlAsistencia() {
       addNotificacion('El colaborador no tiene un turno real asignado. Crea un turno y asignalo en Personal antes de registrar asistencia.');
       return;
     }
-    if (trabajadorBloqueado) {
-      addNotificacion(`No se puede registrar asistencia: el contrato de ${trabajador?.nombre || 'el colaborador'} esta vencido. Regularice el contrato en Documentos.`);
-      return;
-    }
     if (getTipoFiscalizacion(trabajador) !== 'diaria') return;
     if (esFeriadoGeneral && form.descanso_sustitutorio_otorgado && !form.descanso_sustitutorio_fecha) {
       addNotificacion('Indica la fecha del descanso sustitutorio otorgado.');
@@ -15910,9 +15909,8 @@ function ControlAsistencia() {
       }
       addNotificacion('Registro de asistencia guardado en BD.');
     } catch(err) {
-      const fb = {...nuevo, id: existente?.id || `asis_${Date.now()}`};
-      setRegistrosAsistencia(prev => [fb, ...prev.filter(r => !(r.trabajador_id === nuevo.trabajador_id && r.fecha === nuevo.fecha))]);
-      addNotificacion(`Error BD: ${err.message || JSON.stringify(err)}`);
+      addNotificacion(`No se pudo guardar la asistencia: ${err.message || JSON.stringify(err)}`);
+      return;
     }
     setPanel(false);
   };
@@ -16062,9 +16060,8 @@ function ControlAsistencia() {
       }
       addNotificacion(`Marcación de ${tipo} registrada en BD.`);
     } catch(err) {
-      const fb = {...nuevoRegistro, id: existente?.id || `asis_${Date.now()}`};
-      setRegistrosAsistencia(prev => [fb, ...prev.filter(r => !(r.trabajador_id === nuevoRegistro.trabajador_id && r.fecha === nuevoRegistro.fecha))]);
-      addNotificacion(`Error BD: ${err.message || JSON.stringify(err)}`);
+      addNotificacion(`No se pudo registrar la marcacion: ${err.message || JSON.stringify(err)}`);
+      return;
     }
 
     setKiosk(false);
@@ -16177,9 +16174,7 @@ function ControlAsistencia() {
   };
 
   const guardarMasivo = async () => {
-    const bloqueados = trabajadoresGenerales.filter(t => t.asistencia_bloqueada);
-    if (bloqueados.length) addNotificacion(`${bloqueados.length} colaborador(es) con bloqueo por contrato (sin contrato, vencido o rechazado) fueron omitidos del registro masivo.`);
-    const ops = trabajadoresGenerales.filter(t => !t.asistencia_bloqueada).map(t => {
+    const ops = trabajadoresGenerales.map(t => {
       const trn = workerTurno(turnos, t, fecha);
       const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };
       const esFalta = d.estado === 'falta' || d.estado === 'falta_justificada';
@@ -16187,18 +16182,23 @@ function ControlAsistencia() {
       const turno_id = turnos.some(x => x.id === trn.id) ? trn.id : null;
       return { empresa_id: empresa.id, trabajador_id: t.id, fecha, turno_id, hora_entrada: esFalta ? null : d.hora_entrada, hora_salida: esFalta ? null : d.hora_salida, horas_trabajadas_min: calc.horas_trabajadas_min, tardanza_min: calc.tardanza_min || 0, horas_extra_min: calc.horas_extra_min, estado: d.estado, es_falta: esFalta, justificada: d.estado === 'falta_justificada', motivo_falta: null, notas: 'Registro masivo', regimen_jornada: 'general' };
     });
-    const guardados = await Promise.all(ops.map(async registro => {
+    let omitidos = 0;
+    const resultados = await Promise.all(ops.map(async registro => {
       const existente = registrosAsistencia.find(r => r.trabajador_id === registro.trabajador_id && r.fecha === fecha);
       try {
         if (existente?.id) return await rrhhService.actualizarAsistencia(existente.id, registro);
         return await rrhhService.registrarAsistencia(empresa.id, registro);
       } catch {
-        return { ...registro, id: existente?.id || `asis_${Date.now()}_${registro.trabajador_id}` };
+        omitidos += 1;
+        return null;
       }
     }));
+    const guardados = resultados.filter(Boolean);
     const ids = new Set(guardados.map(r => r.trabajador_id));
     setRegistrosAsistencia(prev => [...guardados, ...prev.filter(r => !(r.fecha === fecha && ids.has(r.trabajador_id)))]);
-    addNotificacion('Registro masivo guardado correctamente.');
+    addNotificacion(omitidos
+      ? `Registro masivo guardado. ${omitidos} colaborador(es) no tenían cobertura contractual para ${fecha}.`
+      : 'Registro masivo guardado correctamente.');
     setMasivo(false);
   };
 

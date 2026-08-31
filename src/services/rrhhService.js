@@ -643,23 +643,44 @@ async function buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro =
   const tabla = inferirTrabajadorTipo(registro) === 'administrativo' ? 'personal_administrativo' : 'personal_operativo';
   const { data } = await supabase
     .from(tabla)
-    .select('id,nombre,asistencia_bloqueada,asistencia_bloqueada_motivo')
+    .select('id,nombre,cargo_confianza')
     .eq('empresa_id', empresaId)
     .eq('id', registro.trabajador_id)
     .maybeSingle();
   return data || null;
 }
 
-function mensajeAsistenciaBloqueada(personal) {
+function errorAsistenciaSinCobertura(personal, fecha, estadoValidacion = '') {
   const nombre = personal.nombre || 'el colaborador';
-  const motivo = personal.asistencia_bloqueada_motivo || '';
-  if (motivo === 'Contrato rechazado') {
+  if (estadoValidacion === 'rechazado') {
     return `No se puede registrar asistencia: el contrato de ${nombre} fue rechazado en la validacion. Regularice el contrato en Documentos.`;
   }
-  if (motivo === 'Sin contrato digital registrado' || motivo === 'job_diario_sin_contrato') {
-    return `No se puede registrar asistencia: ${nombre} no tiene contrato digital registrado. Regularice el contrato en Documentos.`;
+  return `No se puede registrar asistencia para ${fecha}: el contrato de ${nombre} no cubre esa fecha. Regularice el contrato en Documentos.`;
+}
+
+async function validarCoberturaContractualAsistencia(supabase, empresaId, registro = {}) {
+  const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro);
+  if (!personal || personal.cargo_confianza) return personal;
+
+  if (!registro.fecha) {
+    throw new Error('La fecha es obligatoria para validar la cobertura contractual de la asistencia.');
   }
-  return `No se puede registrar asistencia: el contrato de ${nombre} esta vencido. Regularice el contrato en Documentos.`;
+
+  const { data, error } = await supabase.rpc('vigencia_efectiva', {
+    p_empresa_id: empresaId,
+    p_fecha: registro.fecha,
+    p_personal_id: registro.trabajador_id,
+    p_personal_tipo: inferirTrabajadorTipo(registro),
+  });
+  if (error) throw error;
+
+  const vigencia = Array.isArray(data) ? data[0] : data;
+  if (!vigencia?.vigente || vigencia.estado_validacion === 'rechazado') {
+    const validationError = new Error(errorAsistenciaSinCobertura(personal, registro.fecha, vigencia?.estado_validacion));
+    validationError.code = 'ASISTENCIA_SIN_COBERTURA_CONTRACTUAL';
+    throw validationError;
+  }
+  return personal;
 }
 
 async function enriquecerAsistenciaHorasExtra(supabase, empresaId, registro = {}) {
@@ -986,10 +1007,7 @@ export const rrhhService = {
   },
   registrarAsistencia: async (empresaId, registro) => {
     const supabase = await getSupabaseClient();
-    const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, registro);
-    if (personal?.asistencia_bloqueada) {
-      throw new Error(mensajeAsistenciaBloqueada(personal));
-    }
+    const personal = await validarCoberturaContractualAsistencia(supabase, empresaId, registro);
     const registroFinal = await enriquecerAsistenciaHorasExtra(supabase, empresaId, registro);
     const { data, error } = await supabase
       .from('registros_asistencia').insert([toAsistenciaRow(empresaId, registroFinal)]).select().single();
@@ -1009,10 +1027,7 @@ export const rrhhService = {
     const supabase = await getSupabaseClient();
     const empresaId = cambios.empresa_id;
     if (empresaId && cambios.trabajador_id) {
-      const personal = await buscarPersonalAsistenciaBloqueada(supabase, empresaId, cambios);
-      if (personal?.asistencia_bloqueada) {
-        throw new Error(mensajeAsistenciaBloqueada(personal));
-      }
+      await validarCoberturaContractualAsistencia(supabase, empresaId, cambios);
       cambios = await enriquecerAsistenciaHorasExtra(supabase, empresaId, cambios);
     }
     const row = empresaId
