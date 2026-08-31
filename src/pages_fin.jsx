@@ -468,6 +468,8 @@ function CxC() {
       await registrarCobroCxC(cobroSel.id, monto, formCobro);
       setPanelCobro(false);
       setCobroSel(null);
+    } catch (error) {
+      setMontoError(error?.message || 'No se pudo registrar el cobro. No se realizaron cambios.');
     } finally {
       setSavingCobro(false);
     }

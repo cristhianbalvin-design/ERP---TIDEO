@@ -5403,120 +5403,84 @@ export function AppProvider({ children }) {
   const registrarCobroCxC = async (cxcId, monto, datos = {}) => {
     if (cobrosEnProceso.current.has(cxcId)) return;
     cobrosEnProceso.current.add(cxcId);
-    const cuentaCobrar = cxc.find(c => c.id === cxcId);
-    const montoCobrado = Number(monto || 0);
-    const montoMora = Number(datos.monto_mora || 0);
-    const totalCuenta = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
-    const retencionCuenta = Number(cuentaCobrar?.monto_retencion || 0);
-    const netoSnapshot = Number(cuentaCobrar?.monto_neto_cobrable || cuentaCobrar?.facturas?.monto_neto_cobrable || 0);
-    const montoNetoCobrable = netoSnapshot > 0 ? netoSnapshot : Math.max(0, totalCuenta - retencionCuenta);
-    const pagadoActual = Number(cuentaCobrar?.monto_pagado || cuentaCobrar?.pagado || 0);
-    const nuevoMontoPagado = pagadoActual + montoCobrado;
-    const nuevoSaldo = Math.max(0, montoNetoCobrable - nuevoMontoPagado);
-    const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
-    setCxc(prev => prev.map(c => {
-      if (c.id === cxcId) {
-        if (c?.factura_id) {
-          const estadoFac = nuevoEstado === 'cobrada' ? 'cobrada' : 'cobro_parcial';
-          setFacturas(fPrev => fPrev.map(f => f.id === c.factura_id ? { ...f, estado: estadoFac, monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo } : f));
-          if (isSupabaseConfigured()) {
-            finSync(async () => {
-              const sb = await getSupabaseClient();
-              await sb.from('facturas').update({ estado: estadoFac }).eq('id', c.factura_id);
-            });
-          }
-        }
+    try {
+      const cuentaCobrar = cxc.find(c => c.id === cxcId);
+      if (!cuentaCobrar) throw new Error('La cuenta por cobrar ya no está disponible. Actualiza la página e inténtalo nuevamente.');
 
-        if (c?.os_cliente_id) {
-          setOsClientes(prev => prev.map(o => o.id === c.os_cliente_id ? {
-            ...o, cobrado: Number(o.cobrado || 0) + montoCobrado,
-          } : o));
-        }
+      const montoCobrado = Number(monto || 0);
+      const montoMora = Number(datos.monto_mora || 0);
+      const totalCuenta = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
+      const retencionCuenta = Number(cuentaCobrar?.monto_retencion || 0);
+      const netoSnapshot = Number(cuentaCobrar?.monto_neto_cobrable || cuentaCobrar?.facturas?.monto_neto_cobrable || 0);
+      const montoNetoCobrable = netoSnapshot > 0 ? netoSnapshot : Math.max(0, totalCuenta - retencionCuenta);
+      const pagadoActual = Number(cuentaCobrar?.monto_pagado || cuentaCobrar?.pagado || 0);
+      const nuevoMontoPagado = pagadoActual + montoCobrado;
+      const nuevoSaldo = Math.max(0, montoNetoCobrable - nuevoMontoPagado);
+      const nuevoEstado = nuevoSaldo <= 0 ? 'cobrada' : 'cobro_parcial';
+      const fecha = datos.fecha_cobro || datos.fecha || new Date().toISOString().split('T')[0];
+      const facturaCobro = cuentaCobrar?.facturas ||
+        facturas.find(f => f.id === cuentaCobrar?.factura_id) ||
+        (cuentaCobrar?.factura_id ? await fetchRegistroSupabase('facturas', cuentaCobrar.factura_id) : null);
+      const facturaTexto = String(cuentaCobrar?.factura || '').trim();
+      const facturaTextoLegible = facturaTexto && !/^fac_/i.test(facturaTexto) ? facturaTexto : null;
+      const facturaNumero = facturaCobro?.numero || cuentaCobrar?.factura_numero || facturaTextoLegible || 'factura';
+      const monedaCobro = cuentaCobrar?.moneda || facturaCobro?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN';
+      const cobro = {
+        id: generateId('cob'), empresa_id: empresa.id, cxc_id: cxcId,
+        factura_id: cuentaCobrar?.factura_id || null, cuenta_id: cuentaCobrar?.cuenta_id || null,
+        monto_capital: montoCobrado, monto_mora: montoMora, medio_pago: datos.medio_pago || 'Efectivo',
+        cuenta_bancaria: datos.cuenta_bancaria || null, numero_operacion: datos.numero_operacion || datos.referencia || null,
+        fecha_cobro: fecha, notas: datos.notas || null, registrado_por: authUser?.email || 'Sistema', creado_en: new Date().toISOString(),
+      };
+      const movimiento = {
+        id: generateId('tes'), empresa_id: empresa.id, tipo: 'ingreso', descripcion: `Cobro ${facturaNumero}`,
+        monto: montoCobrado + montoMora, moneda: monedaCobro, fecha,
+        cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal', cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
+        tc_aplicado: datos.tc_aplicado ?? null, monto_en_moneda_cuenta: datos.monto_en_moneda_cuenta ?? null,
+        referencia: datos.numero_operacion || datos.referencia || '', vinculo_tipo: 'cxc', vinculo_id: cxcId, estado: 'registrado',
+      };
+      const comision = await construirComisionDesdeCobro({ cuentaCobrar, cobro, montoCobrado, fecha });
+      const resultado = isSupabaseConfigured()
+        ? await finanzasService.registrarCobroCxCAtomico({ empresaId: empresa.id, cxcId, cobro, movimiento, comision })
+        : {
+            cxc: { ...cuentaCobrar, monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo, estado: nuevoEstado },
+            factura: cuentaCobrar?.factura_id ? { id: cuentaCobrar.factura_id, estado: nuevoEstado, monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo } : null,
+            cobro, movimiento, comision,
+          };
+      const cxcGuardada = resultado?.cxc || { ...cuentaCobrar, monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo, estado: nuevoEstado };
+      const facturaGuardada = resultado?.factura || null;
+      const cobroGuardado = resultado?.cobro || cobro;
+      const movimientoGuardado = resultado?.movimiento || movimiento;
+      const comisionGuardada = resultado?.comision || comision;
 
-        return { ...c, monto_pagado: nuevoMontoPagado, pagado: nuevoMontoPagado, monto_neto_cobrable: montoNetoCobrable, saldo: nuevoSaldo, saldo_neto_cobranza: nuevoSaldo, estado: nuevoEstado };
+      setCxc(prev => prev.map(c => c.id === cxcId ? { ...c, ...cxcGuardada, pagado: Number(cxcGuardada.monto_pagado || 0) } : c));
+      if (facturaGuardada?.id) {
+        setFacturas(prev => prev.map(f => f.id === facturaGuardada.id ? { ...f, ...facturaGuardada } : f));
       }
-      return c;
-    }));
+      setCobrosHistorial(prev => [cobroGuardado, ...prev]);
+      setMovimientosTesoreria(prev => [movimientoGuardado, ...prev]);
+      if (cuentaCobrar?.cuenta_id) {
+        setCuentas(prev => prev.map(c => c.id === cuentaCobrar.cuenta_id ? {
+          ...c, saldo_cxc: Math.max(0, Number(c.saldo_cxc || 0) - montoCobrado),
+        } : c));
+      }
+      if (cuentaCobrar?.os_cliente_id) {
+        setOsClientes(prev => prev.map(o => o.id === cuentaCobrar.os_cliente_id ? {
+          ...o, cobrado: Number(o.cobrado || 0) + montoCobrado,
+        } : o));
+      }
+      if (comisionGuardada) {
+        setComisiones(prev => prev.some(c => c.cobro_cxc_id === comisionGuardada.cobro_cxc_id) ? prev : [comisionGuardada, ...prev]);
+        if (comisionGuardada.nota_acuerdo) addNotificacion(`Comision generada. ${comisionGuardada.nota_acuerdo}`);
+      }
 
-    const fecha = datos.fecha_cobro || datos.fecha || new Date().toISOString().split('T')[0];
-    const cobroId = generateId('cob');
-    const facturaCobro = cuentaCobrar?.facturas ||
-      facturas.find(f => f.id === cuentaCobrar?.factura_id) ||
-      (cuentaCobrar?.factura_id ? await fetchRegistroSupabase('facturas', cuentaCobrar.factura_id) : null);
-    const facturaTexto = String(cuentaCobrar?.factura || '').trim();
-    const facturaTextoLegible = facturaTexto && !/^fac_/i.test(facturaTexto) ? facturaTexto : null;
-    const facturaNumero = facturaCobro?.numero || cuentaCobrar?.factura_numero || facturaTextoLegible || 'factura';
-    const monedaCobro = cuentaCobrar?.moneda || facturaCobro?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN';
-
-    const cobro = {
-      id: cobroId,
-      empresa_id: empresa.id,
-      cxc_id: cxcId,
-      factura_id: cuentaCobrar?.factura_id || null,
-      cuenta_id: cuentaCobrar?.cuenta_id || null,
-      monto_capital: montoCobrado,
-      monto_mora: montoMora,
-      medio_pago: datos.medio_pago || 'Efectivo',
-      cuenta_bancaria: datos.cuenta_bancaria || null,
-      numero_operacion: datos.numero_operacion || datos.referencia || null,
-      fecha_cobro: fecha,
-      notas: datos.notas || null,
-      registrado_por: authUser?.email || 'Sistema',
-      creado_en: new Date().toISOString(),
-    };
-    setCobrosHistorial(prev => [cobro, ...prev]);
-
-    const movimiento = {
-      id: generateId('tes'),
-      empresa_id: empresa.id,
-      tipo: 'ingreso',
-      descripcion: `Cobro ${facturaNumero}`,
-      monto: montoCobrado + montoMora,
-      moneda: monedaCobro,
-      fecha,
-      cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
-      cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
-      tc_aplicado: datos.tc_aplicado ?? null,
-      monto_en_moneda_cuenta: datos.monto_en_moneda_cuenta ?? null,
-      referencia: datos.numero_operacion || datos.referencia || '',
-      vinculo_tipo: 'cxc',
-      vinculo_id: cxcId,
-      estado: 'registrado',
-    };
-    setMovimientosTesoreria(prev => [movimiento, ...prev]);
-
-    if (cuentaCobrar?.cuenta_id) {
-      setCuentas(prev => prev.map(c => c.id === cuentaCobrar.cuenta_id ? {
-        ...c, saldo_cxc: Math.max(0, Number(c.saldo_cxc || 0) - montoCobrado),
-      } : c));
+      const estadoFinal = cxcGuardada.estado || nuevoEstado;
+      auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'cobrar', valor_anterior: cuentaCobrar, valor_nuevo: { monto: montoCobrado, estado: estadoFinal } });
+      addNotificacion(`Cobro de ${facturaNumero} registrado. Nuevo estado: ${estadoFinal === 'cobrada' ? 'Cobrada' : 'Cobro parcial'}.`);
+      return movimientoGuardado;
+    } finally {
+      cobrosEnProceso.current.delete(cxcId);
     }
-
-
-    const comision = await construirComisionDesdeCobro({
-      cuentaCobrar,
-      cobro,
-      montoCobrado,
-      fecha,
-    });
-
-    if (comision) {
-      setComisiones(prev => prev.some(c => c.cobro_cxc_id === comision.cobro_cxc_id) ? prev : [comision, ...prev]);
-      if (comision.nota_acuerdo) addNotificacion(`Comision generada. ${comision.nota_acuerdo}`);
-    }
-
-    if (isSupabaseConfigured()) {
-      finSync(async () => {
-        await finanzasService.registrarCobroCxC(cxcId, montoCobrado);
-        await finanzasService.registrarCobroDetalle(cobro);
-        await finanzasService.registrarMovimientoTesoreria(movimiento);
-        if (comision) await finanzasService.registrarComision(comision);
-      });
-    }
-
-    auditSync({ modulo: 'finanzas', entidad: 'cxc', entidad_id: cxcId, accion: 'cobrar', valor_anterior: cuentaCobrar || null, valor_nuevo: { monto: montoCobrado, estado: nuevoEstado } });
-    addNotificacion(`Cobro de ${facturaNumero} registrado. Nuevo estado: ${nuevoEstado === 'cobrada' ? 'Cobrada' : 'Cobro parcial'}.`);
-    cobrosEnProceso.current.delete(cxcId);
-    return movimiento;
   };
 
   const reconciliarComisionesPendientes = async ({ silencioso = false } = {}) => {

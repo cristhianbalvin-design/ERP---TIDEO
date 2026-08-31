@@ -770,6 +770,19 @@ export const finanzasService = {
     return normalizarCxC(data);
   },
 
+  async registrarCobroCxCAtomico({ empresaId, cxcId, cobro, movimiento, comision = null }) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_cobro_cxc_atomico', {
+      p_empresa_id: empresaId,
+      p_cxc_id: cxcId,
+      p_cobro: cobro,
+      p_movimiento: movimiento,
+      p_comision: comision,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async registrarMovimientoTesoreria(payload) {
     const supabase = await getSupabaseClient();
     const movimiento = await normalizarMovimientoTesoreriaCobro(supabase, payload);
