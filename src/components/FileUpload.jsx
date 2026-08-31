@@ -12,6 +12,7 @@ export const FileUpload = forwardRef(function FileUpload({
   subidoPor = null,
   deferUpload = false,
   disabled = false,
+  readOnly = false,
   soloImagenes = false,
   soloUltimo = false,
   onUploaded,
@@ -191,9 +192,11 @@ export const FileUpload = forwardRef(function FileUpload({
           <span className="text-muted" style={{display:'block', fontSize:11}}>{storageService.formatoTamano(adjunto.tamano_bytes)} - {adjunto.categoria || 'adjunto'}</span>
         </span>
       </button>
-      <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={disabled || deletingId === adjunto.id}>
-        {I.trash}
-      </button>
+      {!readOnly && (
+        <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={disabled || deletingId === adjunto.id}>
+          {I.trash}
+        </button>
+      )}
     </div>
   ));
 
@@ -226,7 +229,7 @@ export const FileUpload = forwardRef(function FileUpload({
         <span className="badge badge-gray">{totalAdjuntos}</span>
       </div>
       <div style={{padding:16}}>
-        <div
+        {!readOnly && <div
           role="button"
           tabIndex={0}
           onClick={abrirSelector}
@@ -261,7 +264,7 @@ export const FileUpload = forwardRef(function FileUpload({
             }}
             style={{display:'none'}}
           />
-        </div>
+        </div>}
 
         {error && <div style={{color:'var(--danger)', fontSize:12, marginTop:8}}>{error}</div>}
         {progressBlock}
@@ -269,7 +272,7 @@ export const FileUpload = forwardRef(function FileUpload({
 
         <div className="row" style={{justifyContent:'space-between', marginTop:12}}>
           <div className="text-muted" style={{fontSize:11}}>{loading ? 'Cargando adjuntos...' : soloUltimo ? 'Archivo vigente' : 'Archivos vinculados'}</div>
-          {uploadButton}
+          {!readOnly && uploadButton}
         </div>
         <div style={{marginTop:4}}>{adjuntosBlock}</div>
       </div>

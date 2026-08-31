@@ -42,6 +42,7 @@ import {
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
@@ -7710,6 +7711,7 @@ function CxP() {
               {[
                 {id:'pago',label:'Registrar pago'},
                 {id:'historial',label:`Historial (${pagosDe(sel.id).length})`},
+                ...((selGastoOrigen || sel.archivo_factura_url) ? [{id:'comprobantes',label:'Comprobantes'}] : []),
               ].map(t => (
                 <div key={t.id} className={'tab '+(fichaTab===t.id?'active':'')} onClick={() => setFichaTab(t.id)}>{t.label}</div>
               ))}
@@ -7837,6 +7839,23 @@ function CxP() {
                       <strong>{money(pagosDe(sel.id).reduce((s,p) => s + Number(p.monto||0), 0), symOf(sel.moneda))}</strong>
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {fichaTab === 'comprobantes' && (
+              <div className="side-panel-body">
+                {selGastoOrigen ? (
+                  <FileUpload
+                    entidadTipo="compras_gastos"
+                    entidadId={selGastoOrigen.id}
+                    empresaId={empresa?.id}
+                    readOnly
+                  />
+                ) : (
+                  <a href={sel.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}}>
+                    {I.file} Abrir comprobante
+                  </a>
                 )}
               </div>
             )}

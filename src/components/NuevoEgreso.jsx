@@ -746,8 +746,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           entidadId={gastoId}
           empresaId={empresa?.id}
           categoria="comprobante"
+          multiple
           deferUpload={false}
           onUploaded={(adjuntos) => {
+            // La tabla adjuntos conserva todos los comprobantes. Esta URL queda
+            // solo como compatibilidad para vistas históricas de archivo único.
             const url = adjuntos?.[0]?.url || '';
             setArchivoUrl(url);
           }}
