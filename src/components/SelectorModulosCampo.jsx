@@ -31,7 +31,7 @@ export function SelectorModulosCampo({
 
   return (
     <div>
-      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, opacity: disabled ? 0.55 : 1}}>
+      <div style={{display:'grid', gridTemplateColumns:'minmax(0, 1fr) minmax(0, 1fr)', gap:8, opacity: disabled ? 0.55 : 1}}>
         {CAMPO_MODULE_OPTIONS.map(module => {
           const restriction = getRestriction?.(module.id) || { disabled: false, tooltip: '' };
           const required = module.id === requiredModule;
@@ -46,6 +46,8 @@ export function SelectorModulosCampo({
                 gap:8,
                 fontSize:13,
                 padding:'8px 10px',
+                minWidth:0,
+                alignItems:'flex-start',
                 border:'1px solid var(--border)',
                 borderColor: required && !disabled ? 'var(--cyan)' : 'var(--border)',
                 borderRadius:8,
@@ -59,13 +61,14 @@ export function SelectorModulosCampo({
               <input
                 type="checkbox"
                 className="checkbox"
+                style={{ marginTop: 2, flex: '0 0 auto' }}
                 disabled={moduleDisabled}
                 aria-disabled={required || moduleDisabled}
                 checked={checked}
                 onChange={event => actualizar(module.id, event.target.checked)}
               />
-              <span>{module.label}</span>
-              {required && !disabled && <span style={{marginLeft:'auto', color:'var(--cyan)', fontSize:11, fontWeight:600}}>✓ Incluido automáticamente</span>}
+              <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{module.label}</span>
+              {required && !disabled && <span style={{ marginLeft:'auto', minWidth:0, color:'var(--cyan)', fontSize:11, fontWeight:600, textAlign:'right', overflowWrap:'anywhere' }}>✓ Incluido automáticamente</span>}
             </label>
           );
         })}

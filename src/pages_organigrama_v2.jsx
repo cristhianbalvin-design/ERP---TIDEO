@@ -36,13 +36,38 @@ const sugerirCodigoUO = (unidades = []) => {
 };
 
 const Panel = ({ title, children, onClose }) => (
-  <aside className="card" style={{ position: 'absolute', top: 16, right: 16, zIndex: 6, width: 330, maxWidth: 'calc(100% - 32px)', padding: 16, boxShadow: '0 14px 32px rgba(15,23,42,.18)' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-      <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
-      <button type="button" className="btn btn-secondary" style={{ padding: '3px 7px', fontSize: 12 }} onClick={onClose}>Cerrar</button>
-    </div>
-    {children}
-  </aside>
+  <>
+    <div
+      aria-hidden="true"
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,.5)' }}
+    />
+    <aside
+      className="card"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        zIndex: 101,
+        width: 460,
+        maxWidth: 'calc(100vw - 32px)',
+        maxHeight: '85vh',
+        overflowY: 'auto',
+        padding: 20,
+        transform: 'translate(-50%, -50%)',
+        boxShadow: '0 20px 48px rgba(15,23,42,.32)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
+        <button type="button" className="btn btn-secondary" style={{ padding: '3px 7px', fontSize: 12 }} onClick={onClose}>Cerrar</button>
+      </div>
+      {children}
+    </aside>
+  </>
 );
 
 export default function OrganigramaV2Page({ empresaIdOverride, preview = false }) {
