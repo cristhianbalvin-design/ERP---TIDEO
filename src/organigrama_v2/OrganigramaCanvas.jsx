@@ -804,6 +804,7 @@ export default function OrganigramaCanvas({
         onEdgeClick={onEdgeClick}
         onPaneClick={cerrarSobreLienzo}
         nodeExtent={[[-1000000, margenSuperiorSeguro], [1000000, 1000000]]}
+        minZoom={0.1}
         nodesDraggable
         nodeDragThreshold={0}
         nodesConnectable
