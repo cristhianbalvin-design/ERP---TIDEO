@@ -14858,6 +14858,31 @@ function ControlAsistencia() {
   // Control de asistencia solo trabaja con personas que ya tienen una jornada
   // vigente para la fecha consultada. El valor espejo de personal_* no es una
   // asignación: la única fuente es personal_asignaciones_jornada.
+  const obtenerAsignacionJornadaEnFecha = (personalId, trabajadorTipo, fechaConsulta) => (
+    asignacionesJornada
+      .filter(a => a.personal_id === personalId
+        && a.tipo_tramo === 'normal'
+        && (!a.personal_tipo || !trabajadorTipo || a.personal_tipo === trabajadorTipo)
+        && a.fecha_inicio <= fechaConsulta
+        && (!a.fecha_fin || a.fecha_fin >= fechaConsulta))
+      .sort((a, b) => String(b.fecha_inicio).localeCompare(String(a.fecha_inicio)))[0] || null
+  );
+  const trabajadorConJornadaEnFecha = (persona, fechaConsulta, defaults = {}) => {
+    if (!persona) return persona;
+    const trabajadorTipo = persona.trabajador_tipo || defaults.trabajador_tipo || 'operativo';
+    const asignacion = obtenerAsignacionJornadaEnFecha(persona.id, trabajadorTipo, fechaConsulta);
+    return {
+      ...persona,
+      ...defaults,
+      trabajador_tipo: trabajadorTipo,
+      turno_id: asignacion?.turno_id || persona.turno_id || defaults.turno_id,
+      regimen_jornada: asignacion ? regimenDesdeAsignacion(asignacion) : (persona.regimen_jornada || defaults.regimen_jornada),
+      asignacion_jornada_vigente: asignacion,
+    };
+  };
+  const turnoTrabajadorEnFecha = (persona, fechaConsulta, defaults = {}) => (
+    workerTurno(turnos, trabajadorConJornadaEnFecha(persona, fechaConsulta, defaults), fechaConsulta)
+  );
   const asignacionVigentePorPersonal = new Map(
     asignacionesJornada
       .filter(a => a.tipo_tramo === 'normal' && a.fecha_inicio <= fecha && (!a.fecha_fin || a.fecha_fin >= fecha))
@@ -15704,7 +15729,7 @@ function ControlAsistencia() {
   // contra la fecha elegida al guardar. Por eso no puede deshabilitar el
   // formulario completo: una fecha histórica puede estar cubierta.
   const trabajadorBloqueado = false;
-  const turno = workerTurno(turnos, trabajador || {}, form.fecha);
+  const turno = turnoTrabajadorEnFecha(trabajador || {}, form.fecha);
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
   const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
   const esFeriadoGeneral = form.asistio === 'si' && fechasFeriado.has(form.fecha);
@@ -15773,7 +15798,7 @@ function ControlAsistencia() {
     const reg = registrosAsistencia
       .filter(r => r.trabajador_id === t.id && r.fecha === fecha)
       .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
-    const trn = workerTurno(turnos, t, fecha);
+    const trn = turnoTrabajadorEnFecha(t, fecha);
     const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada) : null;
     return { trabajador:t, turno:trn, registro:reg, calc };
   });
@@ -16165,7 +16190,7 @@ function ControlAsistencia() {
   const abrirMasivo = () => {
     const init = {};
     trabajadoresGenerales.forEach(t => {
-      const trn = workerTurno(turnos, t, fecha);
+      const trn = turnoTrabajadorEnFecha(t, fecha);
       const reg = registrosAsistencia.find(r => r.trabajador_id === t.id && r.fecha === fecha);
       init[t.id] = { estado: reg?.estado || 'completo', hora_entrada: reg?.hora_entrada || trn.hora_entrada, hora_salida: reg?.hora_salida || trn.hora_salida };
     });
@@ -16175,7 +16200,7 @@ function ControlAsistencia() {
 
   const guardarMasivo = async () => {
     const ops = trabajadoresGenerales.map(t => {
-      const trn = workerTurno(turnos, t, fecha);
+      const trn = turnoTrabajadorEnFecha(t, fecha);
       const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };
       const esFalta = d.estado === 'falta' || d.estado === 'falta_justificada';
       const calc = esFalta ? { horas_trabajadas_min: 0, tardanza_min: 0, horas_extra_min: 0 } : calcularResultadoAsistencia(d.hora_entrada, d.hora_salida, trn, false, false);
@@ -16307,12 +16332,15 @@ function ControlAsistencia() {
       for (let i = 0; i < importables.length; i += CONCURRENCIA) {
         const lote_filas = importables.slice(i, i + CONCURRENCIA);
         const resultados = await Promise.all(lote_filas.map(async (row) => {
-          const trn = workerTurno(turnos, row.trabajador, row.fecha);
+          // La importaciÃ³n puede abarcar fechas pasadas: el turno debe salir de
+          // la asignaciÃ³n vigente ese dÃ­a, nunca de la ficha actual del trabajador.
+          const trabajadorEnFecha = trabajadorConJornadaEnFecha(row.trabajador, row.fecha);
+          const trn = workerTurno(turnos, trabajadorEnFecha, row.fecha);
           const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
           const registro = {
             empresa_id: empresa?.id || 'emp_001',
             trabajador_id: row.trabajador.id,
-            trabajador_tipo: row.trabajador.trabajador_tipo || 'operativo',
+            trabajador_tipo: trabajadorEnFecha.trabajador_tipo || 'operativo',
             fecha: row.fecha,
             turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
             hora_entrada: row.hora_entrada,
@@ -16324,7 +16352,7 @@ function ControlAsistencia() {
             es_falta: false,
             justificada: false,
             notas: `Importacion biometrica ${bioPreview.fileName}`,
-            regimen_jornada: 'general',
+            regimen_jornada: trabajadorEnFecha.regimen_jornada || 'general',
             origen_registro: 'biometrico_importacion',
             importacion_biometrica_lote_id: lote.id,
             marcas_biometricas: row.marcas,
@@ -17012,17 +17040,18 @@ function ControlAsistencia() {
                     const calculo = registro ? calcularResultadoAsistencia(
                       registro.hora_entrada,
                       registro.hora_salida,
-                      workerTurno(turnos, t, fechaBuscada),
+                      turnoTrabajadorEnFecha(t, fechaBuscada),
                       esFalta,
                       esFaltaJustificada,
                       registro.refrigerio_tomado_minutos,
                     ) : null;
-                    const estado = registro?.estado || calculo?.estado;
+                    const estado = calculo?.estado || registro?.estado;
+                    const tardanzaMin = calculo?.tardanza_min ?? registro?.tardanza_min ?? 0;
                     let col = 'var(--bg-subtle)', bg = 'transparent', titulo = 'Sin registro';
                     if (registro) {
                       if (esFaltaJustificada) { col = '#b86500'; bg = '#f5a524'; titulo = 'Falta justificada'; }
                       else if (esFalta) { col = '#b4232a'; bg = '#e5484d'; titulo = 'Falta injustificada'; }
-                      else if (estado === 'tardanza') { col = '#b86500'; bg = '#f5a524'; titulo = `Tardanza${registro.tardanza_min ? `: ${registro.tardanza_min} min` : ''}`; }
+                      else if (estado === 'tardanza') { col = '#b86500'; bg = '#f5a524'; titulo = `Tardanza${tardanzaMin ? `: ${tardanzaMin} min` : ''}`; }
                       else if (estado === 'horas_extra') { col = '#0b7285'; bg = '#66d9e8'; titulo = 'Horas extra'; }
                       else if (estado === 'incompleto' || estado === 'sin_turno') { col = '#566b84'; bg = '#9aa9bc'; titulo = estado === 'sin_turno' ? 'Sin turno asignado' : 'Marcación incompleta'; }
                       else { col = '#187a36'; bg = '#55c975'; titulo = 'Asistencia completa'; }
