@@ -261,23 +261,53 @@ async function cambiarEstado(solicitudId, empresaId, nuevoEstado, campos = {}) {
   return data;
 }
 
+export async function procesarSolicitudRrhh(solicitudId, empresaId, accion, comentario = null) {
+  if (getDataMode() === 'supabase') {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('aprobar_solicitud_rrhh', {
+      p_solicitud_id: solicitudId,
+      p_empresa_id: empresaId,
+      p_accion: accion,
+      p_comentario: comentario || null,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  const solicitud = mockSolicitudes.find(s => s.id === solicitudId && s.empresa_id === empresaId);
+  if (!solicitud) throw new Error('Solicitud no encontrada');
+  const texto = comentario?.trim() || null;
+  if (['rechazar_jefe', 'rechazar_rrhh', 'anular'].includes(accion) && !texto) {
+    throw new Error('El comentario es obligatorio para esta acción');
+  }
+  if (accion === 'aprobar_jefe') {
+    return cambiarEstado(solicitudId, empresaId, 'aprobada_jefe', { comentario_jefe: texto, fecha_aprobacion_jefe: new Date().toISOString() });
+  }
+  if (accion === 'rechazar_jefe') return cambiarEstado(solicitudId, empresaId, 'rechazada_jefe', { comentario_jefe: texto });
+  if (accion === 'confirmar_rrhh') {
+    const impacto = calcularImpactoNomina(solicitud.tipo, solicitud.dias_habiles || 0, mockConfig.dias_licencia_empresa, solicitud.clasificacion_pago || null);
+    return cambiarEstado(solicitudId, empresaId, 'confirmada_rrhh', {
+      ...impacto, comentario_rrhh: texto, fecha_confirmacion: new Date().toISOString(),
+      numero_correlativo: solicitud.numero_correlativo || mockCorrelativoPM(empresaId),
+    });
+  }
+  if (accion === 'rechazar_rrhh') return cambiarEstado(solicitudId, empresaId, 'rechazada_rrhh', { comentario_rrhh: texto });
+  if (accion === 'anular') return cambiarEstado(solicitudId, empresaId, 'anulada', { motivo_anulacion: texto });
+  throw new Error('Acción de solicitud no válida');
+}
+
 export async function aprobarJefe(solicitudId, empresaId, opts = {}) {
-  return cambiarEstado(solicitudId, empresaId, 'aprobada_jefe', {
-    comentario_jefe: opts.comentario || null,
-    fecha_aprobacion_jefe: new Date().toISOString(),
-    _usuario: opts.usuario,
-  });
+  return procesarSolicitudRrhh(solicitudId, empresaId, 'aprobar_jefe', opts.comentario);
 }
 
 export async function rechazarJefe(solicitudId, empresaId, comentario, usuario) {
-  if (!comentario?.trim()) throw new Error('El comentario es obligatorio para rechazar');
-  return cambiarEstado(solicitudId, empresaId, 'rechazada_jefe', {
-    comentario_jefe: comentario.trim(),
-    _usuario: usuario,
-  });
+  return procesarSolicitudRrhh(solicitudId, empresaId, 'rechazar_jefe', comentario);
 }
 
 export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
+  if (getDataMode() === 'supabase') {
+    return procesarSolicitudRrhh(solicitudId, empresaId, 'confirmar_rrhh', opts.comentario);
+  }
   const isMock = getDataMode() !== 'supabase';
   const supabase = isMock ? null : await getSupabaseClient();
   let solicitud = isMock ? mockSolicitudes.find(s => s.id === solicitudId) : null;
@@ -344,19 +374,11 @@ export async function confirmarRrhh(solicitudId, empresaId, opts = {}) {
 }
 
 export async function rechazarRrhh(solicitudId, empresaId, comentario, usuario) {
-  if (!comentario?.trim()) throw new Error('El comentario es obligatorio para rechazar');
-  return cambiarEstado(solicitudId, empresaId, 'rechazada_rrhh', {
-    comentario_rrhh: comentario.trim(),
-    _usuario: usuario,
-  });
+  return procesarSolicitudRrhh(solicitudId, empresaId, 'rechazar_rrhh', comentario);
 }
 
 export async function anularSolicitud(solicitudId, empresaId, motivo, usuario) {
-  if (!motivo?.trim()) throw new Error('El motivo es obligatorio para anular');
-  return cambiarEstado(solicitudId, empresaId, 'anulada', {
-    motivo_anulacion: motivo.trim(),
-    _usuario: usuario,
-  });
+  return procesarSolicitudRrhh(solicitudId, empresaId, 'anular', motivo);
 }
 
 /**

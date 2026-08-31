@@ -24845,28 +24845,16 @@ export function SolicitudesRrhh() {
       return;
     }
     setAccionSaving(true);
-    const usuario = role?.nombre || authUser?.email || '';
     try {
       let updated;
       const sol = solicitudes.find(s => s.id === accionSolId);
-      if (accionTipo === 'aprobar_jefe') {
-        updated = await solicitudesRrhhService.aprobarJefe(accionSolId, empresa.id, { comentario: accionComentario, usuario });
-      } else if (accionTipo === 'rechazar_jefe') {
-        updated = await solicitudesRrhhService.rechazarJefe(accionSolId, empresa.id, accionComentario, usuario);
-      } else if (accionTipo === 'confirmar_rrhh') {
-        updated = await solicitudesRrhhService.confirmarRrhh(accionSolId, empresa.id, {
-          tipo: sol?.tipo, diasHabiles: sol?.dias_habiles,
-          diasLicenciaEmpresa: config.dias_licencia_empresa,
-          confirmadoPor: usuario, comentario: accionComentario, usuario,
-          multisociedadHabilitado: empresa?.multisociedad_habilitado,
-          documentos: personalDocumentos,
-          tiposDocumento,
-          sociedades: sociedadesDisponibles,
-        });
-      } else if (accionTipo === 'rechazar_rrhh') {
-        updated = await solicitudesRrhhService.rechazarRrhh(accionSolId, empresa.id, accionComentario, usuario);
-      } else if (accionTipo === 'anular') {
-        updated = await solicitudesRrhhService.anularSolicitud(accionSolId, empresa.id, accionComentario, usuario);
+      if (['aprobar_jefe', 'rechazar_jefe', 'confirmar_rrhh', 'rechazar_rrhh', 'anular'].includes(accionTipo)) {
+        updated = await solicitudesRrhhService.procesarSolicitudRrhh(
+          accionSolId,
+          empresa.id,
+          accionTipo,
+          accionComentario,
+        );
       } else if (accionTipo === 'aplicar_asistencia') {
         const resultado = await solicitudesRrhhService.aplicarSolicitudAsistencia(empresa.id, accionSolId, {
           confirmarReemplazo: aplicarConflictos.length > 0,

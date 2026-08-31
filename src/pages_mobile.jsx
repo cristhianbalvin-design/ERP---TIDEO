@@ -3891,13 +3891,15 @@ function SolicitudesMovilView() {
       return;
     }
     setAccionSaving(true);
-    const usuario = role?.nombre || authUser?.email || '';
     try {
       let updated;
-      if (accionTipo === 'aprobar_jefe') {
-        updated = await solicitudesRrhhService.aprobarJefe(accionSolId, empresa.id, { comentario: accionComentario, usuario });
-      } else if (accionTipo === 'rechazar_jefe') {
-        updated = await solicitudesRrhhService.rechazarJefe(accionSolId, empresa.id, accionComentario, usuario);
+      if (['aprobar_jefe', 'rechazar_jefe'].includes(accionTipo)) {
+        updated = await solicitudesRrhhService.procesarSolicitudRrhh(
+          accionSolId,
+          empresa.id,
+          accionTipo,
+          accionComentario,
+        );
       }
       if (updated) setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
       addNotificacion('Acción aplicada.');
