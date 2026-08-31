@@ -62,13 +62,62 @@ function contratoEsSuperado(contrato, candidatos, tiposPorId) {
   );
 }
 
+function lineaPeriodosContrato(contrato, documentos) {
+  const periodoInicial = contrato?.contrato_periodo_id;
+  if (!periodoInicial) return new Set();
+
+  // Un período contractual se representa por el contrato raíz (sin referencia
+  // a otro contrato). Las adendas comparten su período, pero no son el nodo
+  // que define la cadena de renovaciones.
+  const raizPorPeriodo = new Map();
+  (documentos || []).forEach(doc => {
+    if (!doc?.contrato_periodo_id || doc.contrato_referencia_id) return;
+    const actual = raizPorPeriodo.get(doc.contrato_periodo_id);
+    if (!actual || String(doc.created_at || doc.creado_en || '') > String(actual.created_at || actual.creado_en || '')) {
+      raizPorPeriodo.set(doc.contrato_periodo_id, doc);
+    }
+  });
+
+  const periodos = new Set();
+  let periodoActual = periodoInicial;
+  while (periodoActual && !periodos.has(periodoActual)) {
+    periodos.add(periodoActual);
+    periodoActual = raizPorPeriodo.get(periodoActual)?.contrato_periodo_predecesor_id || null;
+  }
+  return periodos;
+}
+
 function aplicarAdendas(contrato, documentos, periodo) {
   const fechaLimite = periodo?.fecha_fin || null;
+  const fechaInicioContrato = contrato?.periodo_fecha_inicio || contrato?.fecha_emision || null;
+  const periodoContrato = contrato?.contrato_periodo_id || null;
+  const documentosPorId = new Map((documentos || []).map(doc => [doc.id, doc]));
+  const periodosLinea = lineaPeriodosContrato(contrato, documentos);
+  const contratosLinea = new Set(
+    (documentos || [])
+      .filter(doc => periodosLinea.has(doc?.contrato_periodo_id) && !doc.contrato_referencia_id)
+      .map(doc => doc.id)
+  );
   const adendas = documentos
-    .filter(doc => doc.contrato_referencia_id === contrato.id)
     .filter(doc => doc.sociedad_id === contrato.sociedad_id)
-    .filter(doc => doc.activo === true && doc.estado_validacion === 'aprobado' && doc.periodo_estado !== 'archivado')
-    .filter(doc => !fechaLimite || !doc.fecha_vigencia_cambio || doc.fecha_vigencia_cambio <= fechaLimite)
+    .filter(doc => doc.estado_validacion === 'aprobado')
+    .filter(doc => {
+      if (!doc.contrato_referencia_id) return false;
+      const contratoReferido = documentosPorId.get(doc.contrato_referencia_id);
+      const periodoOrigen = doc.contrato_periodo_id || contratoReferido?.contrato_periodo_id || null;
+      const perteneceALinea = doc.contrato_referencia_id === contrato.id
+        || contratosLinea.has(doc.contrato_referencia_id)
+        || periodosLinea.has(periodoOrigen);
+      if (!perteneceALinea) return false;
+
+      const esAdendaDePeriodoAnterior = Boolean(periodoOrigen && periodoContrato && periodoOrigen !== periodoContrato);
+      const vigencia = doc.fecha_vigencia_cambio || doc.fecha_emision || null;
+      // Una renovación ya posee su propio snapshot. Desde un período anterior
+      // solo se heredan adendas con vigencia posterior al inicio de la
+      // renovación; las anteriores debieron quedar consolidadas en ese snapshot.
+      if (esAdendaDePeriodoAnterior && fechaInicioContrato && vigencia && vigencia < fechaInicioContrato) return false;
+      return !fechaLimite || !vigencia || vigencia <= fechaLimite;
+    })
     .sort((a, b) => String(a.fecha_vigencia_cambio || a.fecha_emision || a.creado_en || '')
       .localeCompare(String(b.fecha_vigencia_cambio || b.fecha_emision || b.creado_en || '')));
 
@@ -92,6 +141,17 @@ function aplicarAdendas(contrato, documentos, periodo) {
   });
 
   return { ...contrato, condiciones_laborales: condiciones, adendas_aplicadas: adendas };
+}
+
+// Se usa al preparar una renovación: la ficha personal no es fuente de
+// condiciones en multisociedad. El contrato previo y sus adendas vigentes son
+// la única base válida para proponer los valores del nuevo período.
+export function resolverContratoConAdendasEnFecha({ contrato, documentos = [], fecha } = {}) {
+  if (!contrato) return null;
+  return aplicarAdendas(contrato, documentos, {
+    fecha_inicio: fecha || null,
+    fecha_fin: fecha || null,
+  });
 }
 
 export function resolverContratosNominaSociedad({

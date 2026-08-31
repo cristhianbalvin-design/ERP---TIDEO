@@ -16,7 +16,7 @@ import {
   listarSociedadesAdministracion,
   resolverFiltroSociedadesVista,
 } from './services/sociedadesService.js';
-import { resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { resolverContratoConAdendasEnFecha, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
@@ -12777,18 +12777,24 @@ function RRHHAdmin() {
                   }
                 } else {
                   const tPredecesorParaFill = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
-                  const predecessor = tPredecesorParaFill ? docsList.find(d => d.activo && d.estado_validacion === 'aprobado' && (d.tipo_documento_id === tPredecesorParaFill.id || d.tipo_doc === tPredecesorParaFill.nombre || d.tipo_doc === tPredecesorParaFill.codigo)) : null;
-                  if (predecessor && predecessor.condiciones_laborales) {
-                    pCargoFirma = predecessor.condiciones_laborales.cargo || predecessor.condiciones_laborales.cargo_nombre || '';
-                    pRemuneracion = predecessor.condiciones_laborales.remuneracion_base || '';
-                    pModalidad = predecessor.condiciones_laborales.modalidad || '';
-                    pSedeId = predecessor.condiciones_laborales.sede_id || '';
-                    pSedeFirma = predecessor.condiciones_laborales.sede || predecessor.condiciones_laborales.sede_nombre || '';
-                    pAreaId = predecessor.condiciones_laborales.area_id || '';
-                    pAreaFirma = predecessor.condiciones_laborales.area_nombre || '';
-                    pRegimen = predecessor.condiciones_laborales.regimen_jornada || '';
-                    pTipoContrato = predecessor.condiciones_laborales.tipo_contrato || '';
-                    origenPrefill = predecessor.tipo_doc || 'Documento anterior';
+                  const predecessor = (forceModo === 'nuevo_contrato' && req.doc?.contrato_periodo_id)
+                    ? req.doc
+                    : (tPredecesorParaFill ? docsList.find(d => d.activo && d.estado_validacion === 'aprobado' && (d.tipo_documento_id === tPredecesorParaFill.id || d.tipo_doc === tPredecesorParaFill.nombre || d.tipo_doc === tPredecesorParaFill.codigo)) : null);
+                  const fechaRenovacion = req.doc?.periodo_fecha_fin
+                    ? new Date(new Date(`${req.doc.periodo_fecha_fin}T00:00:00`).getTime() + 86400000).toISOString().slice(0, 10)
+                    : new Date().toISOString().slice(0, 10);
+                  const condicionesPredecesor = resolverContratoConAdendasEnFecha({ contrato: predecessor, documentos: docsList, fecha: fechaRenovacion })?.condiciones_laborales;
+                  if (predecessor && condicionesPredecesor) {
+                    pCargoFirma = condicionesPredecesor.cargo || condicionesPredecesor.cargo_nombre || '';
+                    pRemuneracion = condicionesPredecesor.remuneracion_base || '';
+                    pModalidad = condicionesPredecesor.modalidad || '';
+                    pSedeId = condicionesPredecesor.sede_id || '';
+                    pSedeFirma = condicionesPredecesor.sede || condicionesPredecesor.sede_nombre || '';
+                    pAreaId = condicionesPredecesor.area_id || '';
+                    pAreaFirma = condicionesPredecesor.area_nombre || '';
+                    pRegimen = condicionesPredecesor.regimen_jornada || '';
+                    pTipoContrato = condicionesPredecesor.tipo_contrato || '';
+                    origenPrefill = `${predecessor.tipo_doc || 'Documento anterior'} con adendas vigentes`;
                   } else if (pContext) {
                     pCargoFirma = pContext.cargo || '';
                     pRemuneracion = pContext.salario || pContext.monto_mensual || '';
@@ -12800,7 +12806,7 @@ function RRHHAdmin() {
                   }
                 }
               }
-              const c = req.doc?.condiciones_laborales || {};
+              const c = forceModo === 'nuevo_contrato' ? {} : (req.doc?.condiciones_laborales || {});
               setInlineUploadForm({
                 ...inlineUploadFormBase,
                 _origenPrefill: origenPrefill,
@@ -12822,7 +12828,7 @@ function RRHHAdmin() {
                 descripcionCambio: c.descripcion_cambio || '',
                 fechaVigenciaCambio: c.fecha_vigencia_cambio || '',
                 modoSubida: forceModo || 'nueva_version',
-                periodoIdAnterior: req.doc?.periodo_id || null,
+                periodoIdAnterior: req.doc?.contrato_periodo_id || req.doc?.periodo_id || null,
                 esIndefinido: req.doc?.es_indefinido || false
               });
               setInlineUploadFile(null);
