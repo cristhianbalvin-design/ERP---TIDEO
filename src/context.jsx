@@ -4654,6 +4654,7 @@ export function AppProvider({ children }) {
         campo_modulos: campoModulos,
         estado: nextUser.estado || 'Activo',
         modo_automatico: Boolean(datos.modo_automatico),
+        reemplazar_usuario_id: datos.reemplazar_usuario_id || null,
       });
       const mergedSavedUser = {
         ...nextUser,

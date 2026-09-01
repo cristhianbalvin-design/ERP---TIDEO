@@ -62,6 +62,56 @@ const upsertGlobalProfile = async (
   if (error) throw error;
 };
 
+const revocarAccesoReemplazado = async (
+  adminClient: ReturnType<typeof createClient>,
+  params: { empresaId: string; anteriorUserId: string; callerId: string },
+) => {
+  if (!params.anteriorUserId || params.anteriorUserId === params.callerId) {
+    throw new Error("No puedes reemplazar ni revocar tu propia cuenta desde esta operación.");
+  }
+
+  const { data: membership, error: membershipLookupError } = await adminClient
+    .from("usuarios_empresas")
+    .select("user_id, rol_id, estado, roles(id, es_superadmin)")
+    .eq("user_id", params.anteriorUserId)
+    .eq("empresa_id", params.empresaId)
+    .maybeSingle();
+  if (membershipLookupError) throw membershipLookupError;
+  if (!membership) return false;
+
+  const role = Array.isArray(membership.roles) ? membership.roles[0] : membership.roles;
+  if (role?.es_superadmin || membership.rol_id === "rol_tideo_super") {
+    throw new Error("No se puede reemplazar la cuenta del Superadmin TIDEO.");
+  }
+
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  const { error: assignmentsError } = await adminClient
+    .from("usuarios_asignaciones")
+    .update({ activo: false, fecha_fin: today, updated_at: now })
+    .eq("empresa_id", params.empresaId)
+    .eq("user_id", params.anteriorUserId)
+    .eq("activo", true);
+  if (assignmentsError && !isMissingTable(assignmentsError)) throw assignmentsError;
+
+  const { error: positionsError } = await adminClient
+    .from("posiciones_usuarios")
+    .update({ fecha_fin: today, updated_at: now })
+    .eq("empresa_id", params.empresaId)
+    .eq("user_id", params.anteriorUserId)
+    .is("fecha_fin", null);
+  if (positionsError && !isMissingTable(positionsError)) throw positionsError;
+
+  const { error: membershipUpdateError } = await adminClient
+    .from("usuarios_empresas")
+    .update({ estado: "inactivo", updated_at: now })
+    .eq("user_id", params.anteriorUserId)
+    .eq("empresa_id", params.empresaId);
+  if (membershipUpdateError) throw membershipUpdateError;
+
+  return true;
+};
+
 const estadoToMembership = (estado: string) => {
   const value = estado.trim().toLowerCase();
   if (value === "activo" || value === "activa") return "activo";
@@ -349,6 +399,8 @@ serve(async (req) => {
   const jefeUserIdRaw = String(payload.jefe_user_id || "").trim();
   const jefeUserId = jefeUserIdRaw || null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
+  const reemplazarUserIdRaw = String(payload.reemplazar_usuario_id || "").trim();
+  const reemplazarUserId = reemplazarUserIdRaw && reemplazarUserIdRaw !== userId ? reemplazarUserIdRaw : null;
   const asignacionesPayload = payload.asignaciones || [];
   let accesoCampo = Boolean(payload.acceso_campo);
   const campoModulosFiltrados = accesoCampo
@@ -507,6 +559,9 @@ serve(async (req) => {
   if (jefeUserId === userId) {
     return jsonResponse({ success: false, error: "Un usuario no puede ser su propio jefe directo." }, 400);
   }
+  if (reemplazarUserId === caller.id) {
+    return jsonResponse({ success: false, error: "No puedes reemplazar ni revocar tu propia cuenta." }, 400);
+  }
 
   if (jefeUserId) {
     const { data: jefeMembership, error: jefeError } = await adminClient
@@ -629,6 +684,22 @@ serve(async (req) => {
     return jsonResponse({ success: false, error: "[asignaciones] " + (error instanceof Error ? error.message : "Error desconocido") }, 500);
   }
 
+  let accesoAnteriorRevocado = false;
+  if (reemplazarUserId) {
+    try {
+      accesoAnteriorRevocado = await revocarAccesoReemplazado(adminClient, {
+        empresaId,
+        anteriorUserId: reemplazarUserId,
+        callerId: caller.id,
+      });
+    } catch (error) {
+      return jsonResponse({
+        success: false,
+        error: "[reemplazo-cuenta] " + (error instanceof Error ? error.message : "No se pudo revocar el acceso anterior."),
+      }, 500);
+    }
+  }
+
   try {
     await syncAsistenciaMovilFlag(adminClient, {
       empresaId,
@@ -649,6 +720,7 @@ serve(async (req) => {
       campoModulos,
       jefe_user_id: (principalAsignacion?.jefe_user_id as string | null | undefined) ?? jefeUserId,
       asignaciones,
+      accesoAnteriorRevocado,
     },
   });
 });

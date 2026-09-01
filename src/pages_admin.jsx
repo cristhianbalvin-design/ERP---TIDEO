@@ -154,6 +154,19 @@ function Roles() {
   const [sel, setSel] = useState(rolKeys.includes('comercial') ? 'comercial' : rolKeys[0] || '');
   const [tab, setTab] = useState('permisos');
   const role = roles[sel];
+  // Roles muestra acceso vigente; las membresías inactivas permanecen en
+  // Usuarios para auditoría, pero no son asignaciones activas del rol.
+  const usuariosActivosPorRol = useMemo(() => {
+    const agrupados = new Map();
+    usuarios.forEach((usuario) => {
+      if (String(usuario?.estado || '').trim().toLowerCase() !== 'activo') return;
+      const asignados = agrupados.get(usuario.rol) || [];
+      asignados.push(usuario);
+      agrupados.set(usuario.rol, asignados);
+    });
+    return agrupados;
+  }, [usuarios]);
+  const usuariosRolSeleccionado = usuariosActivosPorRol.get(sel) || [];
   const allowed = useMemo(() => new Set(role?.permisos?.ver || []), [role?.permisos?.ver]);
   const [preview, setPreview] = useState(false);
 
@@ -526,7 +539,7 @@ function Roles() {
                 style={{flex:'0 0 auto', minWidth:150, padding:'10px 12px', borderRadius:8, border:sel === key ? '1px solid var(--cyan)' : '1px solid var(--border)', background:sel === key ? 'var(--surface-hover)' : 'var(--surface)', color:'var(--fg)', cursor:'pointer', textAlign:'left'}}
               >
                 <strong style={{display:'block', fontSize:13}}>{item.nombre}</strong>
-                <span className="text-muted" style={{display:'block', fontSize:11, marginTop:3}}>{item.assigned_count ?? usuarios.filter(user => user.rol === key).length} usuarios</span>
+                <span className="text-muted" style={{display:'block', fontSize:11, marginTop:3}}>{(usuariosActivosPorRol.get(key) || []).length} usuarios</span>
               </button>
             ))}
           </div>
@@ -768,10 +781,10 @@ function Roles() {
               <table className="tbl">
                 <thead><tr><th>Usuario</th><th>Email</th><th>Último acceso</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
                 <tbody>
-                  {usuarios.filter(u=>u.rol===sel).length === 0 && (
+                  {usuariosRolSeleccionado.length === 0 && (
                     <tr><td colSpan={4} style={{textAlign:'center',color:'var(--fg-muted)',padding:24}}>Ningún usuario asignado a este rol.</td></tr>
                   )}
-                  {usuarios.filter(u=>u.rol===sel).map(u=>(
+                  {usuariosRolSeleccionado.map(u=>(
                     <tr key={u.id}>
                       <td><strong>{u.nombre}</strong></td>
                       <td className="text-muted">{u.email}</td>
@@ -11547,14 +11560,23 @@ function RRHHAdmin() {
       setAltaError('La posición seleccionada ya no está disponible. Selecciona otra o deja la ficha sin posición.');
       return;
     }
-    const posicionOcupadaPorOtraPersona = usaOrganigramaV2 && formAlta.posicion_id && posicionesUsuarios.some(asignacion => (
-      asignacion.posicion_id === formAlta.posicion_id
-      && !asignacion.fecha_fin
-      && asignacion.user_id !== formAlta.auth_user_id
-    ));
-    if (posicionOcupadaPorOtraPersona) {
-      setAltaError('La posición organizacional elegida ya está ocupada por otra persona. Selecciona una posición vacante antes de guardar.');
-      return;
+    const ocupacionActivaEnPosicion = usaOrganigramaV2 && formAlta.posicion_id
+      ? posicionesUsuarios.find(asignacion => asignacion.posicion_id === formAlta.posicion_id && !asignacion.fecha_fin)
+      : null;
+    let reemplazarUsuarioId = '';
+    if (ocupacionActivaEnPosicion && ocupacionActivaEnPosicion.user_id !== formAlta.auth_user_id) {
+      if (!formAlta.auth_user_id) {
+        setAltaError('La posición está ocupada. Vincula primero la cuenta de usuario que debe asumirla.');
+        return;
+      }
+      const usuarioAnterior = usuarios.find(usuario => usuario.id === ocupacionActivaEnPosicion.user_id);
+      const confirmarTransferencia = window.confirm(
+        `La posición está ocupada por ${usuarioAnterior?.nombre || usuarioAnterior?.email || 'otra cuenta'}. `
+        + '¿Deseas transferir esta posición y sus accesos a la cuenta seleccionada? '
+        + 'El acceso anterior quedará inactivo solo en este tenant.',
+      );
+      if (!confirmarTransferencia) return;
+      reemplazarUsuarioId = ocupacionActivaEnPosicion.user_id;
     }
     if (usaOrganigramaV2 && !editandoId && crearUsuarioSistemaAdmin && (!formAlta.posicion_id || !rolDerivadoPosicionId)) {
       setAltaError('Para crear un usuario de sistema, selecciona una posición organizacional V2 con un rol configurado.');
@@ -11628,10 +11650,15 @@ function RRHHAdmin() {
     };
     try {
       if (editandoId) {
+        const cuentaAnteriorId = cuentaOriginalEdicionRef.current;
+        const cuentaCambio = Boolean(
+          cuentaAnteriorId
+          && formAlta.auth_user_id
+          && formAlta.auth_user_id !== cuentaAnteriorId
+        );
         const fichaGuardada = await actualizarAdminPersonalCtx(editandoId, nuevo);
         addNotificacion('Colaborador actualizado.');
         const posicionCambio = formAlta.posicion_id !== posicionOriginalEdicionRef.current;
-        const cuentaCambio = fichaGuardada?.auth_user_id !== cuentaOriginalEdicionRef.current;
         const posicionSinOcupacionActiva = Boolean(
           fichaGuardada?.auth_user_id
           && formAlta.posicion_id
@@ -11671,6 +11698,7 @@ function RRHHAdmin() {
               campoModulos: cuenta.campoModulos || cuenta.campo_modulos || [],
               estado: cuenta.estado || 'Activo',
               modo_automatico: true,
+              reemplazar_usuario_id: reemplazarUsuarioId || (cuentaCambio ? cuentaAnteriorId : null),
             });
           } catch (userErr) {
             addNotificacion(`Colaborador actualizado, pero no se pudo sincronizar su posición y rol de sistema: ${userErr?.message || 'error desconocido'}. Revísalo desde Usuarios.`, 'warning');
