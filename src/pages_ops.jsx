@@ -13742,7 +13742,7 @@ function esFeriado(fechaDate) {
 // Es puramente informativo: no descuenta ni afecta remuneracionBruta/descFaltas.
 const SOLICITUD_TIPOS_JUSTIFICAN_AUSENCIA = ['vacaciones', 'permiso_con_goce', 'permiso_sin_goce', 'licencia_medica', 'licencia_maternidad', 'licencia_paternidad'];
 const SOLICITUD_ESTADOS_APROBADOS = ['aprobada_jefe', 'confirmada_rrhh'];
-function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, solicitudesAprobadas, hastaFecha = null) {
+function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, solicitudesAprobadas, hastaFecha = null, feriadoPorFecha = new Map()) {
   if (periodo?.anio == null || periodo?.mes == null) return [];
   // Los cargos de dirección o confianza no están sujetos a fiscalización de
   // horario. Esta auditoría es solo informativa, pero debe usar el mismo
@@ -13762,8 +13762,11 @@ function detectarDiasSinCobertura(trabajador, turno, registrosPeriodo, periodo, 
 
   const faltantes = [];
   for (let dia = new Date(pIni); dia <= pFinEfectivo; dia.setDate(dia.getDate() + 1)) {
-    if (!diasLaborablesSemana.includes(mapDias[dia.getDay()]) || esFeriado(dia)) continue;
     const iso = _isoDate(dia);
+    // La alerta de cobertura debe usar el mismo calendario por empresa que la
+    // nómina. FERIADOS_PERU es solo el legado nacional y no incluye feriados
+    // locales o regionales configurados por el tenant.
+    if (!diasLaborablesSemana.includes(mapDias[dia.getDay()]) || feriadoPorFecha.has(iso)) continue;
     if (registrosPeriodo.some(r => r.fecha === iso)) continue;
     const cubierto = solicitudesAprobadas.some(s => s.personal_id === trabajador.id && s.fecha_inicio && iso >= s.fecha_inicio && iso <= (s.fecha_fin || s.fecha_inicio));
     if (!cubierto) faltantes.push(iso);
@@ -13900,7 +13903,12 @@ function calcularRemuneracionTramo(seg, sueldoBase, valorDia, valorHora, registr
   const minutosTardanza = regsTramo.reduce((s, r) => s + (Number(r.tardanza_min) || 0), 0);
   const descFaltas      = esTramoMinero ? 0 : contarDiasDescontablesAsistencia(regsTramo) * valorDia;
   const descTardanzas   = minutosTardanza * valorMinuto;
-  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = calcularHorasExtra(regsTramo, valorHora);
+  // El ciclo minero se compensa en su roster, no por diferencias horarias
+  // diarias. Nunca convertir una salida tardía de un tramo minero en HE.
+  const horasExtraTramo = esRegimenMinero(asignacion.regimen_jornada)
+    ? { tramo1Min: 0, tramo2Min: 0, addHorasExtra: 0, addTramo1: 0, addTramo2: 0 }
+    : calcularHorasExtra(regsTramo, valorHora);
+  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = horasExtraTramo;
   const sobretasa = calcularSobretasaFeriados({ registros: regsTramo, valorDia, trabajador: null, datosNomina: asignacion, asignaciones: [asignacion], configuracionFeriados });
 
   let diasComp = null;
@@ -14458,7 +14466,7 @@ function calcularNominaTrabajador(trabajador, datosNomina, turno, registros, per
 
   const descFaltas = esMinero ? 0 : contarDiasDescontablesAsistencia(registrosNomina) * valorDia;
   const descTardanzas = minutosTardanza * valorMinuto;
-  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = sinFiscalizacionDiaria
+  const { tramo1Min, tramo2Min, addHorasExtra, addTramo1, addTramo2 } = (sinFiscalizacionDiaria || esRegimenMinero(regimenJornada))
     ? { tramo1Min: 0, tramo2Min: 0, addHorasExtra: 0, addTramo1: 0, addTramo2: 0 }
     : calcularHorasExtra(registrosNomina, valorHora);
   const horasExtraMin = tramo1Min + tramo2Min;
@@ -18665,11 +18673,11 @@ function Nomina() {
       .map(t => {
       const turno = workerTurno(turnos, t);
       const regs = registrosParaNomina.filter(r => r.trabajador_id === t.id);
-      const fechas = detectarDiasSinCobertura(t, turno, regs, periodo, solicitudesAprobadasCobertura, hoy);
+      const fechas = detectarDiasSinCobertura(t, turno, regs, periodo, solicitudesAprobadasCobertura, hoy, configuracionFeriadosNomina.feriadoPorFecha);
       return { trabajador_id: t.id, nombre: t.nombre, fechas };
       })
       .filter(x => x.fechas.length > 0);
-  }, [trabajadores, turnos, asistenciaNominaLista, registrosParaNomina, periodo?.id, solicitudesAprobadasCobertura, trabajadoresMinerosEnPeriodoNomina]);
+  }, [trabajadores, turnos, asistenciaNominaLista, registrosParaNomina, periodo?.id, solicitudesAprobadasCobertura, trabajadoresMinerosEnPeriodoNomina, configuracionFeriadosNomina]);
   const totalDiasSinCobertura = diasSinCoberturaPorTrabajador.reduce((s, x) => s + x.fechas.length, 0);
 
   const advertenciasPoliticaFeriado = useMemo(() => {
