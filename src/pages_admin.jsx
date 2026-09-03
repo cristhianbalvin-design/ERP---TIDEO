@@ -3396,7 +3396,15 @@ function MaterialesMaestro({ onClose }) {
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const columnasObligatorias = ['cod grupo', 'cod familia', 'cod sub-familia', 'descripcion', 'um'];
+      const hojaMateriales = wb.SheetNames.find(nombre => String(nombre).trim().toLocaleLowerCase('es-PE') === 'materiales')
+        || wb.SheetNames.find(nombre => {
+          const [encabezados = []] = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '' });
+          const columnas = new Set(encabezados.map(encabezado => String(encabezado).trim().toLocaleLowerCase('es-PE')));
+          return columnasObligatorias.every(columna => columnas.has(columna));
+        })
+        || wb.SheetNames[0];
+      const ws = wb.Sheets[hojaMateriales];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       const encabezados = Object.keys(rows[0] || {});
       const tieneAlternativos = [1, 2, 3, 4].some(n => encabezados.includes(`Nro Parte Alternativo ${n}`) || encabezados.includes(`nro_parte_alternativo_${n}`) || encabezados.includes(`Precio Referencial Alternativo ${n}`) || encabezados.includes(`precio_referencial_alternativo_${n}`));
