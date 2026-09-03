@@ -78,6 +78,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     actualizarUsuarioAcceso,
     crearUnidadOrganizacional,
     actualizarUnidadOrganizacional,
+    refrescarPosiciones,
   } = useApp();
   const empresaId = preview ? (empresaIdOverride || EMPRESA_VALIDACION_ID) : empresa?.id;
   const [datos, setDatos] = useState(null);
@@ -132,6 +133,15 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       return null;
     }
   }, [empresaId]);
+
+  // El lienzo usa su propia fuente de datos, mientras que las fichas de personal
+  // consumen el estado global del contexto. Tras cambiar una cargo-colocación,
+  // sincronizamos ambos para que las nuevas vacantes estén disponibles sin recargar
+  // el navegador.
+  const recargarDatos = useCallback(async () => {
+    await cargar();
+    if (!preview && empresaId === empresa?.id) await refrescarPosiciones();
+  }, [cargar, empresa?.id, empresaId, preview, refrescarPosiciones]);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -263,14 +273,14 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         campoModulos: hija.campo_modulos,
       });
       setNotice(`${padre.cargo?.nombre || padre.cargo_id} ahora es padre de ${hija.cargo?.nombre || hija.cargo_id}.`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [cargar, empresaId]);
+  }, [empresaId, recargarDatos]);
 
   const eliminarJerarquia = useCallback(async hija => {
     try {
@@ -290,14 +300,14 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         campoModulos: hija.campo_modulos,
       });
       setNotice(`Jerarquía eliminada para ${hija.cargo?.nombre || hija.cargo_id}.`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [cargar, empresaId]);
+  }, [empresaId, recargarDatos]);
 
   const reasignarUO = useCallback(async ({ colocacion, unidad }) => {
     const unidadValida = (datos?.unidadesOrganizacionales || []).some(item => (
@@ -325,7 +335,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         campoModulos: colocacion.campo_modulos,
       });
       setNotice(`${colocacion.cargo?.nombre || colocacion.cargo_id} se asignó a ${unidad.nombre}; sus posiciones vinculadas se actualizaron.`);
-      await cargar();
+      await recargarDatos();
       return resultado;
     } catch (causa) {
       setError(errorText(causa));
@@ -333,7 +343,7 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     } finally {
       setGuardando(false);
     }
-  }, [cargar, datos?.unidadesOrganizacionales, empresaId]);
+  }, [datos?.unidadesOrganizacionales, empresaId, recargarDatos]);
 
   const asignarUOPadre = useCallback(async ({ hija, padre }) => {
     const unidades = datos?.unidadesOrganizacionales || [];
@@ -349,28 +359,28 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       setGuardando(true);
       await actualizarUnidadOrganizacional(hija.id, { unidad_padre_id: padre.id });
       setNotice(`${padre.nombre} ahora es UO padre de ${hija.nombre}.`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [actualizarUnidadOrganizacional, cargar, datos?.unidadesOrganizacionales, empresaId]);
+  }, [actualizarUnidadOrganizacional, datos?.unidadesOrganizacionales, empresaId, recargarDatos]);
 
   const eliminarUOPadre = useCallback(async hija => {
     try {
       setGuardando(true);
       await actualizarUnidadOrganizacional(hija.id, { unidad_padre_id: null });
       setNotice(`${hija.nombre} ya no tiene UO padre.`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [actualizarUnidadOrganizacional, cargar]);
+  }, [actualizarUnidadOrganizacional, recargarDatos]);
 
   const crearMatricial = useCallback(async ({ subordinada, jefe }) => {
     try {
@@ -381,28 +391,28 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         posicionJefeId: jefe.id,
       });
       setNotice(`Relación matricial guardada (${resultado.id}).`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [cargar, empresaId]);
+  }, [empresaId, recargarDatos]);
 
   const eliminarMatricial = useCallback(async id => {
     try {
       setGuardando(true);
       await organigramaV2Service.eliminarRelacionMatricial(id);
       setNotice('Relación matricial eliminada.');
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
       throw causa;
     } finally {
       setGuardando(false);
     }
-  }, [cargar]);
+  }, [recargarDatos]);
 
   const eliminarUnidad = useCallback(async unidad => {
     if (!unidad?.id) return;
@@ -412,13 +422,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       setError('');
       const resultado = await organigramaV2Service.eliminarUnidadOrganizacional(unidad.id);
       setNotice(`Unidad organizacional ${resultado.nombre || unidad.nombre} eliminada.`);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
     } finally {
       setGuardando(false);
     }
-  }, [cargar]);
+  }, [recargarDatos]);
 
   const eliminarColocacion = useCallback(async colocacion => {
     if (!colocacion?.id) return;
@@ -430,13 +440,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       const resultado = await organigramaV2Service.eliminarCargoColocacion(colocacion.id);
       setNotice(`Cargo-colocación eliminada; posiciones vacantes eliminadas: ${resultado.posiciones_eliminadas || 0}.`);
       setPanel(null);
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
     } finally {
       setGuardando(false);
     }
-  }, [cargar]);
+  }, [recargarDatos]);
 
   const reintentarGeneracion = useCallback(async () => {
     if (!generacionPendienteId) return;
@@ -446,13 +456,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
       setNotice(`Posiciones generadas para ${generacionPendienteId}: ${JSON.stringify(resultado)}.`);
       setError('');
       setGeneracionPendienteId('');
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(`La cargo-colocación ${generacionPendienteId} existe, pero sigue sin poder generar posiciones: ${errorText(causa)}`);
     } finally {
       setGuardando(false);
     }
-  }, [cargar, generacionPendienteId]);
+  }, [generacionPendienteId, recargarDatos]);
 
   const guardarPanel = useCallback(async event => {
     event.preventDefault();
@@ -525,13 +535,13 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
         setNotice(`Cargo-colocación ${resultado.id} actualizada${cambioAcceso ? `; ocupantes sincronizados: ${ocupantesSincronizados}.` : '.'}`);
         setPanel(null);
       }
-      await cargar();
+      await recargarDatos();
     } catch (causa) {
       setError(errorText(causa));
     } finally {
       setGuardando(false);
     }
-  }, [cargar, campoPorCargoHabilitado, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO, sincronizarOcupantesDeColocacion]);
+  }, [campoPorCargoHabilitado, crearUnidadOrganizacional, empresaId, panel, puedeCrearUO, recargarDatos, sincronizarOcupantesDeColocacion]);
 
   if (!empresaId) {
     return <section style={{ padding: 24 }}><div className="card" style={{ padding: 24 }}>Cargando empresa activa…</div></section>;

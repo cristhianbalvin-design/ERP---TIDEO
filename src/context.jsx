@@ -10619,7 +10619,7 @@ export function AppProvider({ children }) {
     // Maestros Base Data
     areasEmpresa, setAreasEmpresa,
     crearUnidadOrganizacional, actualizarUnidadOrganizacional, eliminarUnidadOrganizacional, reasignarUnidadDePosicion,
-    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, reasignarPadreDePosicion,
+    crearPosicion, archivarPosicion, eliminarPosicion, reasignarCargoDePosicion, reasignarPadreDePosicion, refrescarPosiciones,
     cargos, setCargos, actualizarCargo, eliminarCargo, fusionarCargos,
     tiposContrato, setTiposContrato, crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
     tiposDocumento, setTiposDocumento, crearTipoDocumento, actualizarTipoDocumento, importarPlantillaTiposDoc,
