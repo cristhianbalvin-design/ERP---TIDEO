@@ -518,7 +518,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                 <View style={{ flex: 1 }}>
                   {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
                     <View key={clave || index}>
-                      <Text style={S.condKey}>{titulo}</Text>
+                      <Text style={S.condKey}>{titulo.toUpperCase()}</Text>
                       <Text style={S.condVal}>{renderComercial(contenido)}</Text>
                     </View>
                   ))}
@@ -526,7 +526,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                 <View style={{ flex: 1 }}>
                   {CONDS.slice(Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
                     <View key={clave || index}>
-                      <Text style={S.condKey}>{titulo}</Text>
+                      <Text style={S.condKey}>{titulo.toUpperCase()}</Text>
                       <Text style={S.condVal}>{renderComercial(contenido)}</Text>
                     </View>
                   ))}
