@@ -53,11 +53,18 @@ export const rolesService = {
 
   async actualizarPermisos(rolId, permisos) {
     const supabase = await getSupabaseClient();
-    // upsert handles insert or update based on (rol_id, pantalla) unique constraint
-    const { error } = await supabase
+    const payload = permisos.map(p => ({ ...p, rol_id: rolId }));
+    // El `select` posterior hace verificable el guardado. Un 2xx sin cuerpo no
+    // permite distinguir una escritura efectiva de una respuesta vacia por RLS.
+    const { data, error } = await supabase
       .from('permisos_roles')
-      .upsert(permisos.map(p => ({ ...p, rol_id: rolId })), { onConflict: 'rol_id,pantalla' });
+      .upsert(payload, { onConflict: 'rol_id,pantalla' })
+      .select('rol_id, pantalla');
     if (error) throw error;
+    if ((data || []).length !== payload.length) {
+      throw new Error('No se confirmaron todos los permisos guardados. Intenta nuevamente.');
+    }
+    return data || [];
   },
 
   async actualizarRol(rolId, datos) {

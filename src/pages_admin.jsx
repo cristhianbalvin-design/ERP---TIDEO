@@ -292,6 +292,10 @@ function Roles() {
         if (newId) setSel(newId);
       }
       cerrarModalNuevo();
+    } catch (error) {
+      const message = `No se pudo guardar el rol: ${error?.message || 'Error desconocido'}`;
+      setRoleActionError(message);
+      addNotificacion(message, 'error');
     } finally {
       setGuardandoRol(false);
     }
