@@ -9917,14 +9917,16 @@ export function AppProvider({ children }) {
     });
   };
 
-  const guardarPermisosRol = async (rolId) => {
+  const guardarPermisosRol = async (rolId, permisosVisibles = null) => {
     const rol = rolesCtx[rolId];
     if (!rol) throw new Error('Rol no encontrado.');
     if (!isSupabaseConfigured()) {
       addNotificacion('Permisos guardados localmente.');
       return true;
     }
-    const permisosPorGuardar = permisosPendientesPorRolRef.current[rolId] || rol.permisos;
+    // El boton entrega una instantanea de la grilla que el usuario acaba de
+    // editar. El ref queda como respaldo para llamadas que no vienen de UI.
+    const permisosPorGuardar = permisosVisibles || permisosPendientesPorRolRef.current[rolId] || rol.permisos;
     const payload = buildPermisosPayload(permisosPorGuardar);
     await rolesService.actualizarPermisos(rolId, payload);
     // La fuente de verdad es la lectura posterior del servidor. Asi no se

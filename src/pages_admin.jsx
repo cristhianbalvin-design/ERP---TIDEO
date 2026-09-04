@@ -390,7 +390,9 @@ function Roles() {
     setRoleActionSuccess('');
     setGuardandoPermisos(true);
     try {
-      await guardarPermisosRol(sel);
+      // Enviamos exactamente el estado renderizado de la grilla. Asi una
+      // recarga asincrona anterior no puede sustituir el lote que se guarda.
+      await guardarPermisosRol(sel, role.permisos);
       setPermisosDirty(false);
       setRoleActionSuccess(`Permisos de "${role.nombre}" guardados.`);
     } catch (error) {
