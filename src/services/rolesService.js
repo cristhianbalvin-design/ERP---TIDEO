@@ -54,12 +54,14 @@ export const rolesService = {
   async actualizarPermisos(rolId, permisos) {
     const supabase = await getSupabaseClient();
     const payload = permisos.map(p => ({ ...p, rol_id: rolId }));
-    // El `select` posterior hace verificable el guardado. Un 2xx sin cuerpo no
-    // permite distinguir una escritura efectiva de una respuesta vacia por RLS.
+    // El guardado se resuelve en el servidor como una transaccion autorizada.
+    // Esto evita que un UPSERT masivo quede sujeto a politicas RLS distintas
+    // para INSERT y UPDATE en cada fila del lote.
     const { data, error } = await supabase
-      .from('permisos_roles')
-      .upsert(payload, { onConflict: 'rol_id,pantalla' })
-      .select('rol_id, pantalla');
+      .rpc('guardar_permisos_rol', {
+        p_rol_id: rolId,
+        p_permisos: payload,
+      });
     if (error) throw error;
     if ((data || []).length !== payload.length) {
       throw new Error('No se confirmaron todos los permisos guardados. Intenta nuevamente.');
