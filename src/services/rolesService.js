@@ -54,19 +54,14 @@ export const rolesService = {
   async actualizarPermisos(rolId, permisos) {
     const supabase = await getSupabaseClient();
     const payload = permisos.map(p => ({ ...p, rol_id: rolId }));
-    // El guardado se resuelve en el servidor como una transaccion autorizada.
-    // Esto evita que un UPSERT masivo quede sujeto a politicas RLS distintas
-    // para INSERT y UPDATE en cada fila del lote.
-    const { data, error } = await supabase
-      .rpc('guardar_permisos_rol', {
-        p_rol_id: rolId,
-        p_permisos: payload,
-      });
+    // El Edge Function usa el JWT validado en servidor, ejecuta la RPC atomica
+    // y vuelve a leer cada fila antes de confirmar exito al navegador.
+    const { data, error } = await supabase.functions.invoke('guardar-permisos-rol-acceso', {
+      body: { rol_id: rolId, permisos: payload },
+    });
     if (error) throw error;
-    if ((data || []).length !== payload.length) {
-      throw new Error('No se confirmaron todos los permisos guardados. Intenta nuevamente.');
-    }
-    return data || [];
+    if (!data?.success) throw new Error(data?.error || 'No se confirmaron los permisos guardados.');
+    return data.permisos || [];
   },
 
   async actualizarRol(rolId, datos) {
