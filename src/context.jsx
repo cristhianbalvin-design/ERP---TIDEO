@@ -9927,19 +9927,26 @@ export function AppProvider({ children }) {
     const permisosPorGuardar = permisosPendientesPorRolRef.current[rolId] || rol.permisos;
     const payload = buildPermisosPayload(permisosPorGuardar);
     await rolesService.actualizarPermisos(rolId, payload);
+    // La fuente de verdad es la lectura posterior del servidor. Asi no se
+    // confirma un guardado solo por el estado local ni por una respuesta
+    // intermedia que no haya persistido los cambios.
+    const rolesRecargados = await cargarRolesAcceso();
+    const permisosPersistidos = rolesRecargados[rolId]?.permisos;
+    if (!permisosPersistidos) {
+      throw new Error('El servidor no devolvio los permisos del rol despues de guardarlos.');
+    }
+    const payloadPersistido = buildPermisosPayload(permisosPersistidos);
+    const persistenciaCoincide = payload.length === payloadPersistido.length
+      && payload.every((permiso, index) => JSON.stringify(permiso) === JSON.stringify(payloadPersistido[index]));
+    if (!persistenciaCoincide) {
+      throw new Error('Supabase no confirmo los mismos valores enviados. Los permisos fueron recargados desde el servidor.');
+    }
     if (membresiaActiva?.rol_id === rolId) {
       setMembresiaActiva(prev => prev ? {
         ...prev,
-        permisos_rows: payload.map(row => ({ ...row, rol_id: rolId })),
+        permisos_rows: payloadPersistido.map(row => ({ ...row, rol_id: rolId })),
       } : prev);
     }
-    // La RPC confirma cada fila escrita. Reflejamos exactamente ese lote en la
-    // grilla en lugar de sustituirlo con una lectura asincrona que puede llegar
-    // desde una carga anterior de roles.
-    const permisosPersistidos = rolesConPermisosAObjeto(
-      [{ ...rol, id: rolId }],
-      payload.map(row => ({ ...row, rol_id: rolId })),
-    )[rolId]?.permisos || permisosPorGuardar;
     setRolesCtx(prev => ({
       ...prev,
       [rolId]: { ...prev[rolId], permisos: permisosPersistidos },

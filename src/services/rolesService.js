@@ -54,14 +54,18 @@ export const rolesService = {
   async actualizarPermisos(rolId, permisos) {
     const supabase = await getSupabaseClient();
     const payload = permisos.map(p => ({ ...p, rol_id: rolId }));
-    // El Edge Function usa el JWT validado en servidor, ejecuta la RPC atomica
-    // y vuelve a leer cada fila antes de confirmar exito al navegador.
-    const { data, error } = await supabase.functions.invoke('guardar-permisos-rol-acceso', {
-      body: { rol_id: rolId, permisos: payload },
+    // La funcion de Postgres es transaccional y aplica la autorizacion con el
+    // JWT de la sesion actual. No usamos un intermediario Edge: si este no
+    // recibe el JWT, puede aparentar exito en la UI sin escribir en la base.
+    const { data, error } = await supabase.rpc('guardar_permisos_rol', {
+      p_rol_id: rolId,
+      p_permisos: payload,
     });
     if (error) throw error;
-    if (!data?.success) throw new Error(data?.error || 'No se confirmaron los permisos guardados.');
-    return data.permisos || [];
+    if (!Array.isArray(data) || data.length !== payload.length) {
+      throw new Error('La base de datos no confirmo todas las pantallas del rol.');
+    }
+    return data;
   },
 
   async actualizarRol(rolId, datos) {
