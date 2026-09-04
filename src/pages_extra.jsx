@@ -1203,6 +1203,15 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     ['integraciones',    'Integraciones externas'],
     ['confidencialidad', 'Confidencialidad'],
   ];
+  const condicionesSnapshot = [
+    { clave: 'cond_forma_pago', titulo: 'Forma de Pago y Datos Bancarios', contenido: conds.forma_pago || cfg.cond_forma_pago || '' },
+    { clave: 'cond_validez', titulo: 'Validez de la Oferta', contenido: conds.validez || cfg.cond_validez || '' },
+    { clave: 'cond_penalidad', titulo: 'Penalidad por Mora', contenido: conds.penalidad || cfg.cond_penalidad || '' },
+    { clave: 'cond_inicio_proyecto', titulo: 'Inicio del Proyecto', contenido: conds.inicio_proyecto || cfg.cond_inicio_proyecto || '' },
+    { clave: 'cond_alcance', titulo: 'Alcance y Exclusiones', contenido: conds.alcance || cfg.cond_alcance || '' },
+    { clave: 'cond_integraciones', titulo: 'Integraciones Externas', contenido: conds.integraciones || cfg.cond_integraciones || '' },
+    { clave: 'cond_confidencialidad', titulo: 'Confidencialidad', contenido: conds.confidencialidad || cfg.cond_confidencialidad || '' },
+  ];
 
   // ── Guardar ──────────────────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false);
@@ -1252,6 +1261,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
         hitos_activos: hitosActivos,
         hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
         glosa_factura:         glosa || null,
+        condiciones_snapshot: condicionesSnapshot,
         cond_forma_pago:       conds.forma_pago       || null,
         cond_validez:          conds.validez          || null,
         cond_penalidad:        conds.penalidad        || null,

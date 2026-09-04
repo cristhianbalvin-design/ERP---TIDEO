@@ -301,15 +301,19 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
   const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, contacto, cotizacion: cot, oportunidad: opp };
   const renderComercial = texto => renderTextoComercial(texto, textoCtx);
   const glosa = renderComercial(cot.glosa_factura || cfg?.cond_glosa_factura);
-  const CONDS = [
-    ['cond_forma_pago',       'Forma de pago y datos bancarios'],
-    ['cond_validez',          'Validez de la oferta'],
-    ['cond_penalidad',        'Penalidad por mora'],
-    ['cond_inicio_proyecto',  'Inicio del proyecto'],
-    ['cond_alcance',          'Alcance y exclusiones'],
-    ['cond_integraciones',    'Integraciones externas'],
-    ['cond_confidencialidad', 'Confidencialidad'],
-  ].filter(([k]) => cot[k] || cfg?.[k]);
+  const fallbackConditions = [
+    { clave: 'cond_forma_pago', titulo: 'Forma de Pago y Datos Bancarios', contenido: cot.cond_forma_pago || cfg?.cond_forma_pago || '' },
+    { clave: 'cond_validez', titulo: 'Validez de la Oferta', contenido: cot.cond_validez || cfg?.cond_validez || '' },
+    { clave: 'cond_penalidad', titulo: 'Penalidad por Mora', contenido: cot.cond_penalidad || cfg?.cond_penalidad || '' },
+    { clave: 'cond_inicio_proyecto', titulo: 'Inicio del Proyecto', contenido: cot.cond_inicio_proyecto || cfg?.cond_inicio_proyecto || '' },
+    { clave: 'cond_alcance', titulo: 'Alcance y Exclusiones', contenido: cot.cond_alcance || cfg?.cond_alcance || '' },
+    { clave: 'cond_integraciones', titulo: 'Integraciones Externas', contenido: cot.cond_integraciones || cfg?.cond_integraciones || '' },
+    { clave: 'cond_confidencialidad', titulo: 'Confidencialidad', contenido: cot.cond_confidencialidad || cfg?.cond_confidencialidad || '' },
+  ];
+  const condicionesSnapshot = Array.isArray(cot.condiciones_snapshot)
+    ? cot.condiciones_snapshot
+    : fallbackConditions;
+  const CONDS = condicionesSnapshot.filter(cond => cond?.contenido);
   const hasPage2 = hayHitos || glosa || CONDS.length > 0;
   const closingText = `Quedamos atentos a cualquier consulta. La presente cotización tiene validez ${validezTexto.toLowerCase()}. Para formalizar la contratación puede aceptarla digitalmente escaneando el código QR adjunto o comunicarse con su ejecutivo asignado.`;
 
@@ -512,18 +516,18 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
               )}
               <View style={[S.twoCol, { gap: 24 }]}>
                 <View style={{ flex: 1 }}>
-                  {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map(([k, label]) => (
-                    <View key={k}>
-                      <Text style={S.condKey}>{label.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{renderComercial(cot[k] || cfg?.[k])}</Text>
+                  {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
+                    <View key={clave || index}>
+                      <Text style={S.condKey}>{titulo}</Text>
+                      <Text style={S.condVal}>{renderComercial(contenido)}</Text>
                     </View>
                   ))}
                 </View>
                 <View style={{ flex: 1 }}>
-                  {CONDS.slice(Math.ceil(CONDS.length / 2)).map(([k, label]) => (
-                    <View key={k}>
-                      <Text style={S.condKey}>{label.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{renderComercial(cot[k] || cfg?.[k])}</Text>
+                  {CONDS.slice(Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
+                    <View key={clave || index}>
+                      <Text style={S.condKey}>{titulo}</Text>
+                      <Text style={S.condVal}>{renderComercial(contenido)}</Text>
                     </View>
                   ))}
                 </View>
