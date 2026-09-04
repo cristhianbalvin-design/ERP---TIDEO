@@ -9,6 +9,7 @@ import { SIDEBAR } from './shell.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
+import { CatalogoDocumentosCondiciones } from './components/CatalogoDocumentosCondiciones.jsx';
 import {
   actualizarSociedad,
   crearSociedad,
@@ -9428,6 +9429,7 @@ function Parametros() {
       : []),
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
+    { key: 'catalogo_documentos', title: 'Catálogo documental', description: 'Tipos de cotización y versiones de condiciones generales por sociedad.' },
     { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
     { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
     { key: 'flujos', title: 'Flujos', description: 'Estados por documento, transiciones y reglas de alerta para cada modulo.' },
@@ -9470,6 +9472,8 @@ function Parametros() {
             <strong>{activeParamSection.title}</strong>
             <span>{activeParamSection.description}</span>
           </div>
+
+          <CatalogoDocumentosCondiciones active={paramSection === 'catalogo_documentos'} />
 
       {/* ── Datos de la empresa ── */}
       <div className="card params-card mb-6 params-section params-section-identidad">
@@ -10243,7 +10247,7 @@ function Parametros() {
             <SociedadesAdmin />
           )}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && (
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && paramSection !== 'catalogo_documentos' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
