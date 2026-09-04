@@ -188,6 +188,7 @@ function Roles() {
   const [reasignarRolId, setReasignarRolId] = useState('');
   const [guardandoReasignacion, setGuardandoReasignacion] = useState(false);
   const [roleActionError, setRoleActionError] = useState('');
+  const [roleActionSuccess, setRoleActionSuccess] = useState('');
   const [guardandoPermisos, setGuardandoPermisos] = useState(false);
   const [permisosDirty, setPermisosDirty] = useState(false);
   const [applicationView, setApplicationView] = useState(null);
@@ -218,7 +219,12 @@ function Roles() {
   useEffect(() => {
     setPermisosDirty(false);
     setRoleActionError('');
+    setRoleActionSuccess('');
   }, [sel]);
+
+  useEffect(() => {
+    if (permisosDirty) setRoleActionSuccess('');
+  }, [permisosDirty]);
 
   useEffect(() => {
     const firstActiveApplication = ROLE_APPLICATIONS.find(application => {
@@ -379,11 +385,14 @@ function Roles() {
   };
 
   const handleGuardarPermisos = async () => {
+    if (guardandoPermisos) return;
     setRoleActionError('');
+    setRoleActionSuccess('');
     setGuardandoPermisos(true);
     try {
       await guardarPermisosRol(sel);
       setPermisosDirty(false);
+      setRoleActionSuccess(`Permisos de "${role.nombre}" guardados y verificados.`);
     } catch (error) {
       const message = `No se pudieron guardar los permisos: ${error?.message || 'Error desconocido'}`;
       setRoleActionError(message);
@@ -524,6 +533,11 @@ function Roles() {
           {roleActionError}
         </div>
       )}
+      {roleActionSuccess && (
+        <div className="alert alert-success" style={{marginBottom:16}}>
+          {roleActionSuccess}
+        </div>
+      )}
 
       <div className="card" style={{marginBottom:20}}>
         <div className="card-head"><h3>Roles</h3></div>
@@ -570,6 +584,7 @@ function Roles() {
             </div>
             <div className="row" style={{gap:8, flex:'0 0 auto', alignSelf:'flex-start'}}>
               <button
+                type="button"
                 className="btn btn-primary btn-sm"
                 onClick={handleGuardarPermisos}
                 disabled={guardandoPermisos}
