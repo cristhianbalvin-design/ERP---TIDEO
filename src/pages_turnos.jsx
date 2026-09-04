@@ -68,7 +68,7 @@ export function TurnosHorarios() {
   const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo', requiere_autorizacion_he: '', modo_refrigerio: 'declarado', refrigerio_pares_esperados: 1, refrigerio_ventana_inicio: '', refrigerio_ventana_fin: '', refrigerio_tolerancia_minutos: 0, refrigerio_tratamiento_exceso: 'alertar', refrigerio_tratamiento_defecto: 'ignorar', refrigerio_origenes_permitidos: ['kiosco', 'backoffice'], detalle_dias: DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: ['lun','mar','mie','jue','vie'].includes(d), hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, refrigerio_minutos:60 }}), {}) };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, horas_feriado_sobretasa:'', descripcion:'', estado:'activo', requiere_autorizacion_he: '', modo_refrigerio: 'declarado', refrigerio_pares_esperados: 1, refrigerio_ventana_inicio: '', refrigerio_ventana_fin: '', refrigerio_tolerancia_minutos: 0, refrigerio_tratamiento_exceso: 'alertar', refrigerio_tratamiento_defecto: 'ignorar', refrigerio_origenes_permitidos: ['kiosco', 'backoffice'], detalle_dias: DIAS_ORDER.reduce((acc, d) => ({...acc, [d]: { activo: ['lun','mar','mie','jue','vie'].includes(d), hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, refrigerio_minutos:60 }}), {}) };
   const [form, setForm] = useState(formBase);
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -126,6 +126,7 @@ export function TurnosHorarios() {
       dias_laborables: t.dias_laborables || ['lun','mar','mie','jue','vie'],
       dias_variables: t.dias_variables || false,
       refrigerio_minutos: t.refrigerio_minutos ?? 60,
+      horas_feriado_sobretasa: t.horas_feriado_sobretasa ?? '',
       descripcion: t.descripcion || '',
       estado: t.estado || 'activo',
       requiere_autorizacion_he: t.requiere_autorizacion_he === true ? 'true' : t.requiere_autorizacion_he === false ? 'false' : '',
@@ -176,15 +177,17 @@ export function TurnosHorarios() {
       return;
     }
 
-    const payload = { 
-      ...form, 
-      hora_entrada: fallbackEntrada, 
-      hora_salida: fallbackSalida, 
-      tolerancia_minutos: Number(fallbackTol), 
-      refrigerio_minutos: Number(fallbackRef), 
-      cruza_medianoche: fallbackCruza, 
-      codigo: form.codigo, 
-      horas_efectivas: horas, 
+    const horasFeriadoSobretasa = String(form.horas_feriado_sobretasa ?? '').trim();
+    const payload = {
+      ...form,
+      hora_entrada: fallbackEntrada,
+      hora_salida: fallbackSalida,
+      tolerancia_minutos: Number(fallbackTol),
+      refrigerio_minutos: Number(fallbackRef),
+      cruza_medianoche: fallbackCruza,
+      codigo: form.codigo,
+      horas_efectivas: horas,
+      horas_feriado_sobretasa: horasFeriadoSobretasa === '' ? null : Number(horasFeriadoSobretasa),
       requiere_autorizacion_he: form.requiere_autorizacion_he === 'true' ? true : form.requiere_autorizacion_he === 'false' ? false : null,
       refrigerio_pares_esperados: Number(form.refrigerio_pares_esperados),
       refrigerio_ventana_inicio: form.refrigerio_ventana_inicio || null,
@@ -296,7 +299,12 @@ export function TurnosHorarios() {
                     <span className="text-muted">Horas efectivas calculadas: </span><strong style={{color:'var(--cyan)'}}>{horasPreview}</strong>
                     <span className="text-muted" style={{marginLeft:8,fontSize:11}}>(entrada → salida − refrigerio)</span>
                   </div>
-      
+                  <div className="input-group" style={{marginTop:14}}>
+                    <label>Horas para sobretasa de feriado (opcional)</label>
+                    <input className="input" type="number" min="0" step="0.25" value={form.horas_feriado_sobretasa} onChange={e=>upd('horas_feriado_sobretasa', e.target.value)}/>
+                    <small className="text-muted">Si se deja vacío, se usará el mismo valor de Horas Efectivas del turno. Configúralo solo si las horas de un feriado trabajado deben calcularse distinto (ej. turnos mineros con jornadas atípicas).</small>
+                  </div>
+
                   <div style={{marginTop:16}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
                       <input type="checkbox" checked={form.cruza_medianoche} onChange={e=>upd('cruza_medianoche',e.target.checked)}/>
