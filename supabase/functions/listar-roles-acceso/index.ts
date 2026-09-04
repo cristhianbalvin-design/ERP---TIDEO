@@ -72,11 +72,26 @@ serve(async (req) => {
   if (rolesError) return jsonResponse({ success: false, error: rolesError.message }, 500);
 
   const roleIds = (roles || []).map((role) => role.id);
-  const { data: permisos, error: permisosError } = roleIds.length
-    ? await adminClient.from("permisos_roles").select("*").in("rol_id", roleIds)
-    : { data: [], error: null };
+  // PostgREST limita cada respuesta a 1,000 filas. Un tenant con decenas de
+  // roles supera facilmente ese limite, dejando permisos parciales y haciendo
+  // que la UI aparente que los checks se reinician despues de guardar.
+  const permisos: Record<string, unknown>[] = [];
+  if (roleIds.length) {
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: permisosPage, error: permisosError } = await adminClient
+        .from("permisos_roles")
+        .select("*")
+        .in("rol_id", roleIds)
+        .order("rol_id", { ascending: true })
+        .order("pantalla", { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-  if (permisosError) return jsonResponse({ success: false, error: permisosError.message }, 500);
+      if (permisosError) return jsonResponse({ success: false, error: permisosError.message }, 500);
+      permisos.push(...(permisosPage || []));
+      if ((permisosPage || []).length < pageSize) break;
+    }
+  }
 
   const { data: assignedRows, error: assignedError } = roleIds.length
     ? await adminClient.from("usuarios_empresas").select("rol_id").in("rol_id", roleIds).eq("estado", "activo")
@@ -94,5 +109,5 @@ serve(async (req) => {
     assigned_count: assignedCounts.get(role.id) || 0,
   }));
 
-  return jsonResponse({ success: true, roles: rolesWithCounts, permisos: permisos || [] });
+  return jsonResponse({ success: true, roles: rolesWithCounts, permisos });
 });
