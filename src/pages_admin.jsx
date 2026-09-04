@@ -392,7 +392,7 @@ function Roles() {
     try {
       await guardarPermisosRol(sel);
       setPermisosDirty(false);
-      setRoleActionSuccess(`Permisos de "${role.nombre}" guardados y verificados.`);
+      setRoleActionSuccess(`Permisos de "${role.nombre}" guardados.`);
     } catch (error) {
       const message = `No se pudieron guardar los permisos: ${error?.message || 'Error desconocido'}`;
       setRoleActionError(message);

@@ -9897,24 +9897,6 @@ export function AppProvider({ children }) {
     });
   };
 
-  const permisosGuardadosCoinciden = (esperados, recibidos, rolId) => {
-    const porPantalla = new Map((recibidos || [])
-      .filter(row => row.rol_id === rolId)
-      .map(row => [row.pantalla, row]));
-    const campos = [
-      'puede_ver', 'puede_crear', 'puede_editar', 'puede_anular',
-      'puede_aprobar', 'puede_exportar', 'puede_ver_costos', 'puede_ver_finanzas',
-    ];
-    return esperados.every(esperado => {
-      const recibido = porPantalla.get(esperado.pantalla);
-      if (!recibido) return false;
-      if (campos.some(campo => Boolean(recibido[campo]) !== Boolean(esperado[campo]))) return false;
-      const esperadoExtra = esperado.permisos_extra || {};
-      const recibidoExtra = recibido.permisos_extra || {};
-      return Object.keys(esperadoExtra).every(campo => recibidoExtra[campo] === esperadoExtra[campo]);
-    });
-  };
-
   const guardarPermisosRol = async (rolId) => {
     const rol = rolesCtx[rolId];
     if (!rol) throw new Error('Rol no encontrado.');
@@ -9931,10 +9913,17 @@ export function AppProvider({ children }) {
         permisos_rows: payload.map(row => ({ ...row, rol_id: rolId })),
       } : prev);
     }
-    const recarga = await cargarRolesAcceso();
-    if (!permisosGuardadosCoinciden(payload, recarga.permisos, rolId)) {
-      throw new Error('Supabase no confirmó los mismos valores enviados. Los permisos fueron recargados; revisa e intenta nuevamente.');
-    }
+    // La RPC confirma cada fila escrita. Reflejamos exactamente ese lote en la
+    // grilla en lugar de sustituirlo con una lectura asincrona que puede llegar
+    // desde una carga anterior de roles.
+    const permisosPersistidos = rolesConPermisosAObjeto(
+      [{ ...rol, id: rolId }],
+      payload.map(row => ({ ...row, rol_id: rolId })),
+    )[rolId]?.permisos || permisosPorGuardar;
+    setRolesCtx(prev => ({
+      ...prev,
+      [rolId]: { ...prev[rolId], permisos: permisosPersistidos },
+    }));
     delete permisosPendientesPorRolRef.current[rolId];
     addNotificacion(`Permisos de "${rol.nombre}" guardados.`);
     return true;
@@ -9951,7 +9940,7 @@ export function AppProvider({ children }) {
       return rolRefrescado ? { ...prev, rol: rolRefrescado } : prev;
     });
     setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoading: false, rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
-    return { roles: rolesObj, permisos: permisosData };
+    return rolesObj;
   };
 
   useEffect(() => {
