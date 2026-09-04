@@ -350,7 +350,9 @@ serve(async (req) => {
   let password = String(payload.password || "");
   const empresaId = String(payload.empresa_id || "").trim();
   let rolInput = String(payload.rol || "").trim();
-  const jefeUserId = String(payload.jefe_user_id || "").trim() || null;
+  // La jefatura no se recibe desde el formulario: siempre se deriva de la
+  // posicion asignada y su padre en el organigrama.
+  const jefeUserId = null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
   const asignacionesPayload = payload.asignaciones || [];
   const modoAutomatico = payload.modo_automatico === true;
@@ -726,6 +728,13 @@ serve(async (req) => {
   }
 
   const principalAsignacion = asignaciones.find((a) => a.principal) || null;
+  const jefeDerivado = (principalAsignacion?.jefe_user_id as string | null | undefined) ?? null;
+  const { error: jefeCompatError } = await adminClient
+    .from("usuarios_empresas")
+    .update({ jefe_user_id: jefeDerivado, updated_at: new Date().toISOString() })
+    .eq("user_id", uid)
+    .eq("empresa_id", empresaId);
+  if (jefeCompatError) return jsonResponse({ success: false, error: "[jefe-compat] " + jefeCompatError.message }, 500);
 
   return jsonResponse({
     success: true,
@@ -737,7 +746,7 @@ serve(async (req) => {
       rol_nombre: roleRow.nombre,
       rol_categoria: roleRow.categoria,
       nivel_jerarquico: roleRow.nivel_jerarquico,
-      jefe_user_id: (principalAsignacion?.jefe_user_id as string | null | undefined) ?? jefeUserId,
+      jefe_user_id: jefeDerivado,
       asignaciones,
     },
   });

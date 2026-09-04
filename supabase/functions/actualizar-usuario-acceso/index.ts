@@ -396,8 +396,9 @@ serve(async (req) => {
   const email = normalizeEmail(payload.email);
   let rolId = String(payload.rol || "").trim();
   const modoAutomatico = payload.modo_automatico === true;
-  const jefeUserIdRaw = String(payload.jefe_user_id || "").trim();
-  const jefeUserId = jefeUserIdRaw || null;
+  // La jefatura no se recibe desde el formulario: siempre se deriva de la
+  // posicion asignada y su padre en el organigrama.
+  const jefeUserId = null;
   const posicionId = String(payload.posicion_id || "").trim() || null;
   const reemplazarUserIdRaw = String(payload.reemplazar_usuario_id || "").trim();
   const reemplazarUserId = reemplazarUserIdRaw && reemplazarUserIdRaw !== userId ? reemplazarUserIdRaw : null;
@@ -711,6 +712,13 @@ serve(async (req) => {
   }
 
   const principalAsignacion = asignaciones.find((a) => a.principal) || null;
+  const jefeDerivado = (principalAsignacion?.jefe_user_id as string | null | undefined) ?? null;
+  const { error: jefeCompatError } = await adminClient
+    .from("usuarios_empresas")
+    .update({ jefe_user_id: jefeDerivado, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("empresa_id", empresaId);
+  if (jefeCompatError) return jsonResponse({ success: false, error: "[jefe-compat] " + jefeCompatError.message }, 500);
 
   return jsonResponse({
     success: true,
@@ -718,7 +726,7 @@ serve(async (req) => {
       ...(savedUser || profile),
       campoPerfil: perfilCampo,
       campoModulos,
-      jefe_user_id: (principalAsignacion?.jefe_user_id as string | null | undefined) ?? jefeUserId,
+      jefe_user_id: jefeDerivado,
       asignaciones,
       accesoAnteriorRevocado,
     },

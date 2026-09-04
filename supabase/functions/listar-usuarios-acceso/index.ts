@@ -302,6 +302,49 @@ serve(async (req) => {
     if (assignmentsError && !isMissingTable(assignmentsError)) throw assignmentsError;
     const assignments = assignmentsRaw || [];
 
+    // El organigrama es la fuente de verdad de las jefaturas. No usamos
+    // usuarios_empresas.jefe_user_id ni usuarios_asignaciones.jefe_user_id para
+    // decidir la jerarquia: esos campos existen solo para compatibilidad con
+    // consumidores historicos y pueden haber quedado desfasados.
+    let posicionesQuery = adminClient
+      .from("posiciones")
+      .select("id, empresa_id, reporta_a_posicion_id, origen_asignacion_id")
+      .eq("activa", true);
+    if (!scopeAllEmpresas) posicionesQuery = posicionesQuery.in("empresa_id", scopeEmpresaIds);
+    const { data: posicionesRaw, error: posicionesError } = await posicionesQuery;
+    if (posicionesError) throw posicionesError;
+
+    let ocupacionesQuery = adminClient
+      .from("posiciones_usuarios")
+      .select("empresa_id, posicion_id, user_id, fecha_inicio")
+      .is("fecha_fin", null)
+      .order("fecha_inicio", { ascending: true });
+    if (!scopeAllEmpresas) ocupacionesQuery = ocupacionesQuery.in("empresa_id", scopeEmpresaIds);
+    const { data: ocupacionesRaw, error: ocupacionesError } = await ocupacionesQuery;
+    if (ocupacionesError) throw ocupacionesError;
+
+    const posicionPorId = new Map((posicionesRaw || []).map((posicion) => [String(posicion.id), posicion]));
+    const posicionPorAsignacion = new Map<string, Record<string, unknown>>();
+    for (const posicion of posicionesRaw || []) {
+      if (posicion.origen_asignacion_id) posicionPorAsignacion.set(String(posicion.origen_asignacion_id), posicion);
+    }
+    const ocupantesPorPosicion = new Map<string, string[]>();
+    const posicionesPorUsuarioEmpresa = new Map<string, string[]>();
+    for (const ocupacion of ocupacionesRaw || []) {
+      const posicion = posicionPorId.get(String(ocupacion.posicion_id));
+      if (!posicion) continue;
+      const posicionId = String(posicion.id);
+      const userId = String(ocupacion.user_id);
+      const empresaKey = String(ocupacion.empresa_id);
+      const ocupantes = ocupantesPorPosicion.get(posicionId) || [];
+      ocupantes.push(userId);
+      ocupantesPorPosicion.set(posicionId, ocupantes);
+      const usuarioKey = `${userId}:${empresaKey}`;
+      const posicionesUsuario = posicionesPorUsuarioEmpresa.get(usuarioKey) || [];
+      posicionesUsuario.push(posicionId);
+      posicionesPorUsuarioEmpresa.set(usuarioKey, posicionesUsuario);
+    }
+
     await fetchRolesIntoMap(adminClient, rolesById, [
       ...(memberships || []).map((membership) => String(membership.rol_id || "")),
       ...scopedLegacy.map((profile) => String(profile.rol || "")),
@@ -343,6 +386,13 @@ serve(async (req) => {
       const asignaciones = assignmentsByKey.get(key) || [];
       const principal = asignaciones.find((assignment) => assignment.principal) || asignaciones[0] || null;
       const campoModulos = Array.isArray(membership.campo_modulos) ? membership.campo_modulos : [];
+      const posicionPrincipal = principal?.id ? posicionPorAsignacion.get(String(principal.id)) : null;
+      const posicionUsuarioId = posicionPrincipal?.id || posicionesPorUsuarioEmpresa.get(key)?.[0] || null;
+      const posicionUsuario = posicionUsuarioId ? posicionPorId.get(String(posicionUsuarioId)) : null;
+      const ocupantesJefe = posicionUsuario?.reporta_a_posicion_id
+        ? (ocupantesPorPosicion.get(String(posicionUsuario.reporta_a_posicion_id)) || [])
+        : [];
+      const jefeDesdeOrganigrama = ocupantesJefe.find((ocupanteId) => ocupanteId !== userId) || null;
 
       rows.set(key, {
         id: userId,
@@ -356,7 +406,8 @@ serve(async (req) => {
         rol_nombre: role?.nombre || membership.rol_id,
         rol_categoria: principal?.categoria || role?.categoria || null,
         nivel_jerarquico: principal?.nivel_jerarquico || role?.nivel_jerarquico || null,
-        jefe_user_id: principal?.jefe_user_id || membership.jefe_user_id || null,
+        jefe_user_id: jefeDesdeOrganigrama,
+        jefe_fuente: posicionUsuario ? "organigrama" : null,
         asignaciones,
         area: legacy?.area || "",
         cargo: legacy?.cargo || "",

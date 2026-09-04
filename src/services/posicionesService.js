@@ -40,7 +40,8 @@ export const posicionesService = {
     const { data, error } = await supabase
       .from('posiciones_usuarios')
       .select('*')
-      .eq('empresa_id', empresaId);
+      .eq('empresa_id', empresaId)
+      .is('fecha_fin', null);
     if (error) { console.error('Error fetching posiciones_usuarios:', error); return []; }
     return data;
   },

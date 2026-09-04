@@ -76,8 +76,9 @@ const isPlatformSuperadminEmail = email =>
   String(email || '').trim().toLowerCase() === PLATFORM_SUPERADMIN_EMAIL;
 
 // Adjunta a cada usuario sus posiciones activas (Fase 3: modelo Unidad -> Posicion -> Persona),
-// igual que ya se le adjunta `asignaciones`. Extraida para poder recomputarla tanto en la carga
-// inicial como al refrescar posiciones tras una alta/cambio de puesto.
+// igual que ya se le adjunta `asignaciones`. La jefatura tambien se deriva aqui: el organigrama
+// (posicion -> posicion padre -> ocupante activo) es la fuente de verdad. `jefe_user_id` queda
+// solo para compatibilidad con datos antiguos y nunca decide lo que muestra la aplicacion.
 const construirUsuariosConPosiciones = (usrData, posicionesData, posicionesUsuariosData, unidadesData) => {
   const unidadNombrePorId = new Map(unidadesData.map(u => [u.id, u.nombre]));
   const unidadCategoriaPorId = new Map(unidadesData.map(u => [u.id, u.categoria || 'otro']));
@@ -87,7 +88,10 @@ const construirUsuariosConPosiciones = (usrData, posicionesData, posicionesUsuar
     if (a?.id) asignacionPorId.set(a.id, a);
   }));
   const posicionesPorUsuario = new Map();
-  posicionesUsuariosData.forEach(pu => {
+  const ocupantesPorPosicion = new Map();
+  posicionesUsuariosData
+    .filter(pu => !pu.fecha_fin)
+    .forEach(pu => {
     const posicion = posicionPorId.get(pu.posicion_id);
     if (!posicion) return;
     const asignacionOrigen = posicion.origen_asignacion_id ? asignacionPorId.get(posicion.origen_asignacion_id) : null;
@@ -101,8 +105,24 @@ const construirUsuariosConPosiciones = (usrData, posicionesData, posicionesUsuar
       principal: Boolean(asignacionOrigen?.principal),
     });
     posicionesPorUsuario.set(pu.user_id, lista);
+    const ocupantes = ocupantesPorPosicion.get(posicion.id) || [];
+    ocupantes.push(pu.user_id);
+    ocupantesPorPosicion.set(posicion.id, ocupantes);
   });
-  return usrData.map(u => ({ ...u, posiciones: posicionesPorUsuario.get(u.id) || [] }));
+  return usrData.map(u => {
+    const posicionesUsuario = posicionesPorUsuario.get(u.id) || [];
+    const posicionPrincipal = posicionesUsuario.find(posicion => posicion.principal) || posicionesUsuario[0] || null;
+    const ocupantesJefe = posicionPrincipal?.reporta_a_posicion_id
+      ? (ocupantesPorPosicion.get(posicionPrincipal.reporta_a_posicion_id) || [])
+      : [];
+    const jefeUserId = ocupantesJefe.find(userId => userId !== u.id) || null;
+    return {
+      ...u,
+      posiciones: posicionesUsuario,
+      jefe_user_id: jefeUserId,
+      jefe_fuente: posicionPrincipal ? 'organigrama' : null,
+    };
+  });
 };
 
 export function useApp() {
