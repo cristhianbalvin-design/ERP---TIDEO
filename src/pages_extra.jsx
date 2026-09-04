@@ -694,15 +694,21 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
     return cot.validez || '—';
   };
 
-  const COND_SECTIONS = [
-    ['cond_forma_pago', 'Forma de pago y datos bancarios'],
-    ['cond_validez', 'Validez de la oferta'],
-    ['cond_penalidad', 'Penalidad por mora'],
-    ['cond_inicio_proyecto', 'Inicio del proyecto'],
-    ['cond_alcance', 'Alcance y exclusiones'],
-    ['cond_integraciones', 'Integraciones externas'],
-    ['cond_confidencialidad', 'Confidencialidad'],
-  ].filter(([k]) => cot[k] || cfg[k]);
+  const COND_SECTIONS = Array.isArray(cot.condiciones_snapshot)
+    ? cot.condiciones_snapshot.map((condicion, index) => ({
+      key: condicion.segmento_id || condicion.clave || index,
+      label: condicion.titulo || `Segmento ${index + 1}`,
+      contenido: condicion.contenido ?? condicion.contenido_texto_plano ?? '',
+    })).filter(condicion => condicion.contenido)
+    : [
+      ['cond_forma_pago', 'Forma de pago y datos bancarios'],
+      ['cond_validez', 'Validez de la oferta'],
+      ['cond_penalidad', 'Penalidad por mora'],
+      ['cond_inicio_proyecto', 'Inicio del proyecto'],
+      ['cond_alcance', 'Alcance y exclusiones'],
+      ['cond_integraciones', 'Integraciones externas'],
+      ['cond_confidencialidad', 'Confidencialidad'],
+    ].filter(([key]) => cot[key] || cfg[key]).map(([key, label]) => ({ key, label, contenido:cot[key] || cfg[key] }));
 
   const historial = cot.historial_versiones || [];
 
@@ -904,8 +910,8 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
         <div className="card mt-4">
           <div className="card-body">
             <h3 style={{marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>Condiciones comerciales</h3>
-            {COND_SECTIONS.map(([key, label]) => {
-              const texto = renderComercial(cot[key] || cfg[key]);
+            {COND_SECTIONS.map(({ key, label, contenido }) => {
+              const texto = renderComercial(contenido);
               if (!texto) return null;
               const open = seccionesOpen[key] !== false;
               return (
