@@ -299,12 +299,6 @@ export function TurnosHorarios() {
                     <span className="text-muted">Horas efectivas calculadas: </span><strong style={{color:'var(--cyan)'}}>{horasPreview}</strong>
                     <span className="text-muted" style={{marginLeft:8,fontSize:11}}>(entrada → salida − refrigerio)</span>
                   </div>
-                  <div className="input-group" style={{marginTop:14}}>
-                    <label>Horas para sobretasa de feriado (opcional)</label>
-                    <input className="input" type="number" min="0" step="0.25" value={form.horas_feriado_sobretasa} onChange={e=>upd('horas_feriado_sobretasa', e.target.value)}/>
-                    <small className="text-muted">Si se deja vacío, se usará el mismo valor de Horas Efectivas del turno. Configúralo solo si las horas de un feriado trabajado deben calcularse distinto (ej. turnos mineros con jornadas atípicas).</small>
-                  </div>
-
                   <div style={{marginTop:16}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13}}>
                       <input type="checkbox" checked={form.cruza_medianoche} onChange={e=>upd('cruza_medianoche',e.target.checked)}/>
@@ -366,6 +360,12 @@ export function TurnosHorarios() {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="input-group" style={{marginTop:14}}>
+              <label>Horas para sobretasa de feriado (opcional)</label>
+              <input className="input" type="number" min="0" step="0.25" value={form.horas_feriado_sobretasa} onChange={e=>upd('horas_feriado_sobretasa', e.target.value)}/>
+              <small className="text-muted">Si se deja vacío, se usará el mismo valor de Horas Efectivas del turno. Configúralo solo si las horas de un feriado trabajado deben calcularse distinto (ej. turnos mineros con jornadas atípicas).</small>
             </div>
 
             <div className="input-group" style={{marginTop:14}}>
