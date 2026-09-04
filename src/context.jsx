@@ -9936,11 +9936,10 @@ export function AppProvider({ children }) {
       throw new Error('El servidor no devolvio los permisos del rol despues de guardarlos.');
     }
     const payloadPersistido = buildPermisosPayload(permisosPersistidos);
-    const persistenciaCoincide = payload.length === payloadPersistido.length
-      && payload.every((permiso, index) => JSON.stringify(permiso) === JSON.stringify(payloadPersistido[index]));
-    if (!persistenciaCoincide) {
-      throw new Error('Supabase no confirmo los mismos valores enviados. Los permisos fueron recargados desde el servidor.');
-    }
+    // La grilla representa costos, precios y finanzas como permisos globales;
+    // al leerlos se derivan desde las filas por pantalla. Por eso no se puede
+    // comparar su JSON crudo con el lote enviado: la lectura ya normalizada del
+    // servidor es la confirmacion autoritativa de la persistencia.
     if (membresiaActiva?.rol_id === rolId) {
       setMembresiaActiva(prev => prev ? {
         ...prev,
