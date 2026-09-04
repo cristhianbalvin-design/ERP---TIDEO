@@ -8,7 +8,7 @@ const can = (role, action) => Boolean(role?.permisos?.todo || role?.es_admin_emp
 const scopeFilter = (query, sociedadId) => sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
 
 export function CatalogoDocumentosCondiciones({ active }) {
-  const { empresa, sociedadActiva, role, authUser, addNotificacion } = useApp();
+  const { empresa, sociedadActiva, role, authUser, addNotificacion, addToast } = useApp();
   const [tipos, setTipos] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [bibliotecas, setBibliotecas] = useState([]);
@@ -19,6 +19,9 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'' });
+  const [guardandoSegmento, setGuardandoSegmento] = useState(null);
+  const [publicando, setPublicando] = useState(false);
+  const [marcandoDefaultId, setMarcandoDefaultId] = useState(null);
   const puedeCrear = can(role, 'crear');
   const puedeEditar = can(role, 'editar');
   const sociedadId = empresa?.multisociedad_habilitado ? (sociedadActiva?.id === SOCIEDAD_TODAS_ID ? null : sociedadActiva?.id || null) : null;
@@ -93,6 +96,8 @@ export function CatalogoDocumentosCondiciones({ active }) {
   };
 
   const marcarDefault = async tipo => {
+    setMarcandoDefaultId(tipo.id);
+    setError('');
     try {
       const sb = await getSupabaseClient();
       let q = sb.from('tipos_documento_electronico').update({ es_default_para_categoria:false }).eq('empresa_id', empresa.id).eq('categoria_base','cotizacion');
@@ -102,7 +107,9 @@ export function CatalogoDocumentosCondiciones({ active }) {
       const { error: setErrorDefault } = await sb.from('tipos_documento_electronico').update({ es_default_para_categoria:true }).eq('id', tipo.id);
       if (setErrorDefault) throw setErrorDefault;
       setTipos(prev => prev.map(row => ({ ...row, es_default_para_categoria: row.id === tipo.id })));
+      addToast?.(`"${tipo.nombre}" ahora es el tipo predeterminado.`, 'success');
     } catch (err) { setError(err.message || 'No se pudo actualizar el tipo default.'); }
+    finally { setMarcandoDefaultId(null); }
   };
 
   const crearBorrador = async (origen = publicada) => {
@@ -133,7 +140,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const guardarSegmento = async (bibliotecaId, segment) => {
     if (!bibliotecaId) {
       setError('No se pudo guardar el segmento: el borrador no está inicializado.');
-      return;
+      return false;
     }
     try {
       const sb = await getSupabaseClient();
@@ -142,7 +149,17 @@ export function CatalogoDocumentosCondiciones({ active }) {
       const { data, error: saveError } = await query.select().single();
       if (saveError) throw saveError;
       setSegmentos(prev => prev.map(item => item === segment || item.id === segment.id ? data : item));
-    } catch (err) { setError(err.message || 'No se pudo guardar el segmento.'); }
+      return true;
+    } catch (err) { setError(err.message || 'No se pudo guardar el segmento.'); return false; }
+  };
+
+  const guardarSegmentoConFeedback = async (bibliotecaId, segment, segmentoKey) => {
+    setGuardandoSegmento(segmentoKey);
+    setError('');
+    try {
+      const guardado = await guardarSegmento(bibliotecaId, segment);
+      if (guardado) addToast?.('Segmento guardado.', 'success');
+    } finally { setGuardandoSegmento(null); }
   };
 
   const agregarSegmento = () => setSegmentos(prev => [...prev, { titulo:'', contenido_json:normalizeRichTextDocument(null), contenido_texto_plano:'', orden:prev.length + 1 }]);
@@ -174,6 +191,8 @@ export function CatalogoDocumentosCondiciones({ active }) {
 
   const publicar = async () => {
     if (!draft) return;
+    setPublicando(true);
+    setError('');
     try {
       for (const segmento of segmentos) await guardarSegmento(draft.id, segmento);
       const sb = await getSupabaseClient();
@@ -184,8 +203,11 @@ export function CatalogoDocumentosCondiciones({ active }) {
       }
       const { error: publishError } = await sb.from('biblioteca_condiciones_generales').update({ estado:'publicada', publicada_at:new Date().toISOString(), publicada_by:authUser?.id || null }).eq('id', draft.id);
       if (publishError) throw publishError;
-      addNotificacion?.(`Versión ${draft.version} publicada.`); await cargarBibliotecas();
+      addNotificacion?.(`Versión ${draft.version} publicada.`);
+      addToast?.(`Versión ${draft.version} publicada.`, 'success');
+      await cargarBibliotecas();
     } catch (err) { setError(err.message || 'No se pudo publicar la biblioteca.'); }
+    finally { setPublicando(false); }
   };
 
   if (!active) return null;
@@ -194,10 +216,10 @@ export function CatalogoDocumentosCondiciones({ active }) {
     <div className="card"><div className="card-head"><h3>Tipos de documento para cotizaciones</h3>{puedeCrear && <span className="badge badge-cyan">Categoría: cotización</span>}</div><div className="card-body">
       {error && <div className="alert alert-danger">{error}</div>}
       {puedeCrear && <div className="grid-2" style={{gap:8, marginBottom:14}}><input className="input" placeholder="Código, ej. COTIZACION_SERVICIOS" value={nuevoTipo.codigo} onChange={e=>setNuevoTipo(p=>({...p,codigo:e.target.value}))}/><div className="row" style={{gap:8}}><input className="input" placeholder="Nombre del tipo" value={nuevoTipo.nombre} onChange={e=>setNuevoTipo(p=>({...p,nombre:e.target.value}))}/><button className="btn btn-primary" onClick={crearTipo}>Crear tipo</button></div></div>}
-      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>seleccionarTipo(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)}>Marcar default</button>}</td></tr>)}</tbody></table></div>}
+      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>seleccionarTipo(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)} disabled={Boolean(marcandoDefaultId)}>{marcandoDefaultId === tipo.id ? 'Marcando…' : 'Marcar default'}</button>}</td></tr>)}</tbody></table></div>}
     </div></div>
-    {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar}>Publicar v{draft.version}</button>}</div></div><div className="card-body">
-      {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=><div key={segmento.id || `new-${index}`} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmento(draft.id, segmento)}>Guardar</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} /></div></div>)}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
+    {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar} disabled={publicando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button>}</div></div><div className="card-body">
+      {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=>{ const segmentoKey = segmento.id || `new-${index}`; const feedbackKey = `segment-${index}`; const guardando = guardandoSegmento === feedbackKey; return <div key={segmentoKey} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmentoConFeedback(draft.id, segmento, feedbackKey)} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} /></div></div>})}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
     </div></div>}
   </div>;
 }
