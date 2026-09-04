@@ -510,6 +510,10 @@ export function AppProvider({ children }) {
       return saved ? JSON.parse(saved) : MOCK.roles;
     } catch { return MOCK.roles; }
   });
+  // Las acciones sobre checks pueden ocurrir una detrás de otra antes del
+  // siguiente render. Este ref conserva el último estado elegido para que el
+  // botón Guardar nunca serialice el estado anterior del cierre de React.
+  const permisosPendientesPorRolRef = useRef({});
   useEffect(() => {
     if (isSupabaseConfigured()) return;
     try { localStorage.setItem('tideo_roles', JSON.stringify(rolesCtx)); } catch {}
@@ -9870,21 +9874,44 @@ export function AppProvider({ children }) {
 
   const actualizarPermisosRol = (rolId, pantalla, key, value) => {
     const PER_SCREEN = ['ver', 'crear', 'editar', 'anular', 'aprobar', 'exportar'];
+    const permisosBase = permisosPendientesPorRolRef.current[rolId]
+      || rolesCtx[rolId]?.permisos
+      || { ver: [] };
+    const permisosActualizados = { ...permisosBase };
+    if (PER_SCREEN.includes(key)) {
+      const current = permisosActualizados[key];
+      let arr = Array.isArray(current)
+        ? [...current]
+        : (current === true ? MOCK.pantallasPermisos.map(p => p.key) : []);
+      if (value) { if (!arr.includes(pantalla)) arr.push(pantalla); }
+      else { arr = arr.filter(k => k !== pantalla); }
+      permisosActualizados[key] = arr;
+    } else {
+      permisosActualizados[key] = value;
+    }
+    permisosPendientesPorRolRef.current[rolId] = permisosActualizados;
     setRolesCtx(prev => {
       const r = { ...prev[rolId] };
-      if (!r.permisos) r.permisos = { ver: [] };
-      if (PER_SCREEN.includes(key)) {
-        const current = r.permisos[key];
-        let arr = Array.isArray(current)
-          ? [...current]
-          : (current === true ? MOCK.pantallasPermisos.map(p => p.key) : []);
-        if (value) { if (!arr.includes(pantalla)) arr.push(pantalla); }
-        else { arr = arr.filter(k => k !== pantalla); }
-        r.permisos = { ...r.permisos, [key]: arr };
-      } else {
-        r.permisos = { ...r.permisos, [key]: value };
-      }
+      r.permisos = permisosActualizados;
       return { ...prev, [rolId]: r };
+    });
+  };
+
+  const permisosGuardadosCoinciden = (esperados, recibidos, rolId) => {
+    const porPantalla = new Map((recibidos || [])
+      .filter(row => row.rol_id === rolId)
+      .map(row => [row.pantalla, row]));
+    const campos = [
+      'puede_ver', 'puede_crear', 'puede_editar', 'puede_anular',
+      'puede_aprobar', 'puede_exportar', 'puede_ver_costos', 'puede_ver_finanzas',
+    ];
+    return esperados.every(esperado => {
+      const recibido = porPantalla.get(esperado.pantalla);
+      if (!recibido) return false;
+      if (campos.some(campo => Boolean(recibido[campo]) !== Boolean(esperado[campo]))) return false;
+      const esperadoExtra = esperado.permisos_extra || {};
+      const recibidoExtra = recibido.permisos_extra || {};
+      return Object.keys(esperadoExtra).every(campo => recibidoExtra[campo] === esperadoExtra[campo]);
     });
   };
 
@@ -9895,7 +9922,8 @@ export function AppProvider({ children }) {
       addNotificacion('Permisos guardados localmente.');
       return true;
     }
-    const payload = buildPermisosPayload(rol.permisos);
+    const permisosPorGuardar = permisosPendientesPorRolRef.current[rolId] || rol.permisos;
+    const payload = buildPermisosPayload(permisosPorGuardar);
     await rolesService.actualizarPermisos(rolId, payload);
     if (membresiaActiva?.rol_id === rolId) {
       setMembresiaActiva(prev => prev ? {
@@ -9903,7 +9931,11 @@ export function AppProvider({ children }) {
         permisos_rows: payload.map(row => ({ ...row, rol_id: rolId })),
       } : prev);
     }
-    await cargarRolesAcceso();
+    const recarga = await cargarRolesAcceso();
+    if (!permisosGuardadosCoinciden(payload, recarga.permisos, rolId)) {
+      throw new Error('Supabase no confirmó los mismos valores enviados. Los permisos fueron recargados; revisa e intenta nuevamente.');
+    }
+    delete permisosPendientesPorRolRef.current[rolId];
     addNotificacion(`Permisos de "${rol.nombre}" guardados.`);
     return true;
   };
@@ -9919,7 +9951,7 @@ export function AppProvider({ children }) {
       return rolRefrescado ? { ...prev, rol: rolRefrescado } : prev;
     });
     setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoading: false, rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
-    return rolesObj;
+    return { roles: rolesObj, permisos: permisosData };
   };
 
   useEffect(() => {
