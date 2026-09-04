@@ -129,15 +129,21 @@ export function PaginaAceptacion({ token }) {
   const hayHitos = cot?.hitos_activos && cot?.hitos_pago?.length > 0;
   const textoCtx = { empresa: cfg, cuenta, cliente: cuenta, cotizacion: cot };
   const renderComercial = texto => renderTextoComercial(texto, textoCtx);
-  const CONDS = [
-    ['cond_forma_pago', 'Forma de pago'],
-    ['cond_validez', 'Validez de la oferta'],
-    ['cond_penalidad', 'Penalidad por mora'],
-    ['cond_inicio_proyecto', 'Inicio del proyecto'],
-    ['cond_alcance', 'Alcance y exclusiones'],
-    ['cond_integraciones', 'Integraciones externas'],
-    ['cond_confidencialidad', 'Confidencialidad'],
-  ].filter(([k]) => cot?.[k] || cfg?.[k]);
+  const CONDS = Array.isArray(cot?.condiciones_snapshot)
+    ? cot.condiciones_snapshot.map((condicion, index) => ({
+      key: condicion.segmento_id || condicion.clave || index,
+      label: condicion.titulo || `Segmento ${index + 1}`,
+      contenido: condicion.contenido ?? condicion.contenido_texto_plano ?? '',
+    })).filter(condicion => condicion.contenido)
+    : [
+      ['cond_forma_pago', 'Forma de pago'],
+      ['cond_validez', 'Validez de la oferta'],
+      ['cond_penalidad', 'Penalidad por mora'],
+      ['cond_inicio_proyecto', 'Inicio del proyecto'],
+      ['cond_alcance', 'Alcance y exclusiones'],
+      ['cond_integraciones', 'Integraciones externas'],
+      ['cond_confidencialidad', 'Confidencialidad'],
+    ].filter(([key]) => cot?.[key] || cfg?.[key]).map(([key, label]) => ({ key, label, contenido:cot?.[key] || cfg?.[key] }));
 
   return (
     <div style={styles.shell}>
@@ -282,10 +288,10 @@ export function PaginaAceptacion({ token }) {
           <div style={{ ...styles.card, marginTop: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: primary, marginBottom: 14 }}>CONDICIONES COMERCIALES</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px 24px' }}>
-              {CONDS.map(([k, label]) => (
-                <div key={k}>
+              {CONDS.map(({ key, label, contenido }) => (
+                <div key={key}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: secondary, letterSpacing: 0.5, marginBottom: 3 }}>{label.toUpperCase()}</div>
-                  <div style={{ fontSize: 13, color: '#444', lineHeight: 1.55 }}>{renderComercial(cot?.[k] || cfg?.[k])}</div>
+                  <div style={{ fontSize: 13, color: '#444', lineHeight: 1.55 }}>{renderComercial(contenido)}</div>
                 </div>
               ))}
             </div>
