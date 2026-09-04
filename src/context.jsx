@@ -1663,8 +1663,14 @@ export function AppProvider({ children }) {
     } catch { /* navegacion local: no bloquear si el storage no esta disponible */ }
   };
 
+  // El rol que llega en la membresia es una fotografia tomada al iniciar la
+  // sesion. `rolesCtx` se refresca despues de editar/guardar; priorizarlo evita
+  // que la UI siga aplicando banderas tecnicas antiguas hasta el siguiente login.
+  const rolActivoActual = (isSupabaseConfigured() && membresiaActiva)
+    ? (rolesCtx?.[membresiaActiva.rol_id] || membresiaActiva.rol)
+    : null;
   const role = (isSupabaseConfigured() && membresiaActiva)
-    ? buildRoleDePermisos(membresiaActiva.rol, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
+    ? buildRoleDePermisos(rolActivoActual, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
     : (MOCK.roles[roleKey] || MOCK.roles['admin']);
   const puedeVerConsolidadoGrupo = Boolean(role?.permisos?.todo || role?.permisos?.ver_consolidado_grupo);
 
@@ -9907,6 +9913,11 @@ export function AppProvider({ children }) {
     const { roles: rolesData, permisos: permisosData } = await rolesService.getRolesConPermisos(empresa.id);
     const rolesObj = rolesConPermisosAObjeto(rolesData, permisosData);
     setRolesCtx(rolesObj);
+    setMembresiaActiva(prev => {
+      if (!prev?.rol_id) return prev;
+      const rolRefrescado = rolesData.find(item => item.id === prev.rol_id);
+      return rolRefrescado ? { ...prev, rol: rolRefrescado } : prev;
+    });
     setAccessDebug(prev => ({ ...prev, rolesError: '', rolesLoading: false, rolesLoadedAt: new Date().toLocaleTimeString('es-PE') }));
     return rolesObj;
   };
@@ -9979,8 +9990,9 @@ export function AppProvider({ children }) {
     return true;
   };
 
-  const editarRol = (rolId, datos) => {
+  const editarRol = async (rolId, datos) => {
     const rolActual = rolesCtx[rolId];
+    if (!rolActual) throw new Error('Rol no encontrado.');
     const intentaEditarAccesoTecnico = (
       Object.prototype.hasOwnProperty.call(datos, 'es_admin_empresa')
       || Object.prototype.hasOwnProperty.call(datos, 'es_superadmin')
@@ -10011,12 +10023,22 @@ export function AppProvider({ children }) {
       }
     }
 
+    const rolPrevio = rolActual;
     setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...datosActualizados } }));
     if (isSupabaseConfigured()) {
-      rolesService.actualizarRol(rolId, datosActualizados).catch(error => {
-        addNotificacion(`No se pudo actualizar el rol en Supabase: ${error.message}`, 'error');
-      });
+      try {
+        const rolGuardado = await rolesService.actualizarRol(rolId, datosActualizados);
+        setRolesCtx(prev => ({ ...prev, [rolId]: { ...prev[rolId], ...rolGuardado } }));
+        if (membresiaActiva?.rol_id === rolId) {
+          setMembresiaActiva(prev => prev ? { ...prev, rol: { ...prev.rol, ...rolGuardado } } : prev);
+        }
+        return rolGuardado;
+      } catch (error) {
+        setRolesCtx(prev => ({ ...prev, [rolId]: rolPrevio }));
+        throw error;
+      }
     }
+    return { ...rolActual, ...datosActualizados };
   };
 
   const monedasActivas = (() => {
@@ -10543,8 +10565,8 @@ export function AppProvider({ children }) {
     jefe_user_id: usuarioActual?.jefe_user_id || null,
     nivel_jerarquico: usuarioActual?.nivel_jerarquico || membresiaActiva?.rol?.nivel_jerarquico || (esSuperadminPlataforma ? 'direccion' : undefined),
     rol_categoria: usuarioActual?.rol_categoria || membresiaActiva?.rol?.categoria || (esSuperadminPlataforma ? 'admin' : undefined),
-    es_admin_empresa: Boolean(usuarioActual?.es_admin_empresa || membresiaActiva?.rol?.es_admin_empresa),
-    es_superadmin: Boolean(usuarioActual?.es_superadmin || membresiaActiva?.rol?.es_superadmin || esSuperadminPlataforma),
+    es_admin_empresa: Boolean(usuarioActual?.es_admin_empresa || rolActivoActual?.es_admin_empresa),
+    es_superadmin: Boolean(usuarioActual?.es_superadmin || rolActivoActual?.es_superadmin || esSuperadminPlataforma),
     superadmin_plataforma: esSuperadminPlataforma,
   } : null;
 
