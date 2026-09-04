@@ -209,7 +209,9 @@ export default function OrganigramaV2Page({ empresaIdOverride, preview = false }
     );
     const ocupacionPorUsuario = new Map();
     (datos?.ocupacionesActivas || []).forEach(ocupacion => {
-      if (posicionesIds.has(ocupacion.posicion_id) && !ocupacionPorUsuario.has(ocupacion.user_id)) {
+      // Las fichas sin cuenta ERP se muestran en el organigrama, pero no deben
+      // entrar al flujo que actualiza permisos de una cuenta inexistente.
+      if (ocupacion.user_id && posicionesIds.has(ocupacion.posicion_id) && !ocupacionPorUsuario.has(ocupacion.user_id)) {
         ocupacionPorUsuario.set(ocupacion.user_id, ocupacion);
       }
     });

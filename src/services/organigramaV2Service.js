@@ -15,6 +15,10 @@ const mergeById = (...lists) => {
   return [...byId.values()];
 };
 
+const fichaSigueActiva = (persona) => ![persona?.estado, persona?.estado_laboral]
+  .filter(Boolean)
+  .some(estado => /inactiv|suspend|cesad|cese|baja|retirad|finalizad/i.test(String(estado)));
+
 // Fuente de datos y comandos del Organigrama v2. Todas las lecturas llevan el
 // filtro explícito de tenant, además del aislamiento que ya aplica RLS.
 export const organigramaV2Service = {
@@ -94,11 +98,11 @@ export const organigramaV2Service = {
         .order('nombre', { ascending: true }),
       supabase
         .from('personal_operativo')
-        .select('id, empresa_id, auth_user_id, nombre')
+        .select('id, empresa_id, auth_user_id, posicion_id, nombre, estado, estado_laboral')
         .eq('empresa_id', empresaId),
       supabase
         .from('personal_administrativo')
-        .select('id, empresa_id, auth_user_id, nombre')
+        .select('id, empresa_id, auth_user_id, posicion_id, nombre, estado, estado_laboral')
         .eq('empresa_id', empresaId),
       supabase
         .from('empresas')
@@ -107,21 +111,58 @@ export const organigramaV2Service = {
         .maybeSingle(),
     ]);
 
-    const ocupantePorUsuarioId = new Map(
-      mergeById(throwIfError(personalOperativoResult), throwIfError(personalAdministrativoResult))
+    const posicionesActivas = throwIfError(posicionesResult);
+    const posicionesActivasIds = new Set(posicionesActivas.map(posicion => posicion.id));
+    const fichasActivasConPosicion = mergeById(
+      throwIfError(personalOperativoResult),
+      throwIfError(personalAdministrativoResult),
+    ).filter(persona => persona.posicion_id && posicionesActivasIds.has(persona.posicion_id) && fichaSigueActiva(persona));
+    const fichaPorUsuarioId = new Map(
+      fichasActivasConPosicion
+        .filter(persona => persona.auth_user_id)
         .map(persona => [persona.auth_user_id, persona]),
     );
+    const ocupantePorUsuarioId = new Map(fichaPorUsuarioId);
+    const ocupacionesDeAcceso = throwIfError(ocupacionesResult)
+      // Si la ficha actual ya fue movida a otra posición, no se deja visible una
+      // ocupación anterior mientras el trigger de sincronización termina de cerrar
+      // el historial. La ficha es la fuente laboral de la ocupación actual.
+      .filter(ocupacion => {
+        const ficha = fichaPorUsuarioId.get(ocupacion.user_id);
+        return !ficha || ficha.posicion_id === ocupacion.posicion_id;
+      })
+      .map(ocupacion => ({
+        ...ocupacion,
+        ocupante: ocupantePorUsuarioId.get(ocupacion.user_id) || null,
+        fuente: 'acceso',
+      }));
+    const ocupacionesConFicha = new Set(
+      ocupacionesDeAcceso
+        .filter(ocupacion => ocupacion.user_id)
+        .map(ocupacion => `${ocupacion.user_id}:${ocupacion.posicion_id}`),
+    );
+    const ocupacionesSinAcceso = fichasActivasConPosicion
+      .filter(persona => !persona.auth_user_id || !ocupacionesConFicha.has(`${persona.auth_user_id}:${persona.posicion_id}`))
+      .map(persona => ({
+        id: `ficha:${persona.id}`,
+        empresa_id: persona.empresa_id,
+        posicion_id: persona.posicion_id,
+        user_id: persona.auth_user_id || null,
+        fecha_inicio: null,
+        fecha_fin: null,
+        ocupante: persona,
+        fuente: 'ficha',
+      }));
 
     return {
       empresa: throwIfError(empresaResult),
       unidadesOrganizacionales: throwIfError(unidadesResult),
       cargoColocaciones: throwIfError(colocacionesResult),
-      posiciones: throwIfError(posicionesResult),
-      posicionesVinculadas: throwIfError(posicionesResult).filter(posicion => posicion.cargo_colocacion_id),
-      ocupacionesActivas: throwIfError(ocupacionesResult).map(ocupacion => ({
-        ...ocupacion,
-        ocupante: ocupantePorUsuarioId.get(ocupacion.user_id) || null,
-      })),
+      posiciones: posicionesActivas,
+      posicionesVinculadas: posicionesActivas.filter(posicion => posicion.cargo_colocacion_id),
+      // Incluye fichas sin cuenta ERP: la ocupación laboral no depende de que el
+      // colaborador tenga acceso al sistema.
+      ocupacionesActivas: [...ocupacionesDeAcceso, ...ocupacionesSinAcceso],
       // Relaciones visuales nuevas. Las asignaciones adicionales de la migración 301
       // no son relaciones de reporte y deliberadamente no se cargan aquí.
       relacionesMatriciales: throwIfError(relacionesMatricialesResult),
