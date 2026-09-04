@@ -6,6 +6,7 @@ import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
+import { RichTextEditor, normalizeRichTextDocument } from './components/RichTextEditor.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
@@ -1113,7 +1114,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const [validezFecha,setValidezFecha]= useState(cotizacionBase?.validez_fecha || '');
   const [contactoId,  setContactoId]  = useState(cotizacionBase?.contacto_id || contactoPrincipalCuenta?.id || opp?.contacto_id || contactosCuenta[0]?.id || '');
   const [cebeId,      setCebeId]      = useState(cotizacionBase?.centro_beneficio_id || '');
-  const [sociedadId,  setSociedadId]  = useState(cotizacionBase?.sociedad_id || '');
+  const [sociedadId,  setSociedadId]  = useState(cotizacionBase?.sociedad_id || sociedadIdEscritura || '');
   const [descripcion, setDescripcion] = useState(cotizacionBase?.descripcion_general || '');
   const opcionesMoneda = (monedasActivas || [])
     .map(m => ({ ...m, codigo: normalizeCurrencyCode(m.codigo) }))
@@ -1182,36 +1183,66 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
   const removeHito = id => setHitos(p => p.filter(h => h.id !== id));
   const updateHito = (id, f, v) => setHitos(p => p.map(h => h.id === id ? { ...h, [f]: v } : h));
 
-  // ── Bloque 5: condiciones ────────────────────────────────────────────
-  const [conds, setConds] = useState({
-    forma_pago:       cotizacionBase?.cond_forma_pago       ?? cfg.cond_forma_pago       ?? '',
-    validez:          cotizacionBase?.cond_validez          ?? cfg.cond_validez          ?? '',
-    penalidad:        cotizacionBase?.cond_penalidad        ?? cfg.cond_penalidad        ?? '',
-    inicio_proyecto:  cotizacionBase?.cond_inicio_proyecto  ?? cfg.cond_inicio_proyecto  ?? '',
-    alcance:          cotizacionBase?.cond_alcance          ?? cfg.cond_alcance          ?? '',
-    integraciones:    cotizacionBase?.cond_integraciones    ?? cfg.cond_integraciones    ?? '',
-    confidencialidad: cotizacionBase?.cond_confidencialidad ?? cfg.cond_confidencialidad ?? '',
-  });
-  const setCond = (k, v) => setConds(p => ({ ...p, [k]: v }));
+  // ── Bloque 5: condiciones versionadas ─────────────────────────────────
+  const [tiposDocumento, setTiposDocumento] = useState([]);
+  const [tipoDocumentoId, setTipoDocumentoId] = useState(cotizacionBase?.tipo_documento_id || '');
+  const [bibliotecaCondiciones, setBibliotecaCondiciones] = useState(null);
+  const [condiciones, setCondiciones] = useState([]);
+  const [cargandoCondiciones, setCargandoCondiciones] = useState(false);
+  const [errorCondiciones, setErrorCondiciones] = useState('');
 
-  const COND_LABELS = [
-    ['forma_pago',       'Forma de pago y datos bancarios'],
-    ['validez',          'Validez de la oferta'],
-    ['penalidad',        'Penalidad por mora'],
-    ['inicio_proyecto',  'Inicio del proyecto'],
-    ['alcance',          'Alcance y exclusiones'],
-    ['integraciones',    'Integraciones externas'],
-    ['confidencialidad', 'Confidencialidad'],
-  ];
-  const condicionesSnapshot = [
-    { clave: 'cond_forma_pago', titulo: 'Forma de Pago y Datos Bancarios', contenido: conds.forma_pago || cfg.cond_forma_pago || '' },
-    { clave: 'cond_validez', titulo: 'Validez de la Oferta', contenido: conds.validez || cfg.cond_validez || '' },
-    { clave: 'cond_penalidad', titulo: 'Penalidad por Mora', contenido: conds.penalidad || cfg.cond_penalidad || '' },
-    { clave: 'cond_inicio_proyecto', titulo: 'Inicio del Proyecto', contenido: conds.inicio_proyecto || cfg.cond_inicio_proyecto || '' },
-    { clave: 'cond_alcance', titulo: 'Alcance y Exclusiones', contenido: conds.alcance || cfg.cond_alcance || '' },
-    { clave: 'cond_integraciones', titulo: 'Integraciones Externas', contenido: conds.integraciones || cfg.cond_integraciones || '' },
-    { clave: 'cond_confidencialidad', titulo: 'Confidencialidad', contenido: conds.confidencialidad || cfg.cond_confidencialidad || '' },
-  ];
+  useEffect(() => {
+    let cancelado = false;
+    const cargarTipos = async () => {
+      if (!isSupabaseConfigured() || !empresa?.id || (empresa.multisociedad_habilitado && !sociedadId)) return;
+      try {
+        const sb = await getSupabaseClient();
+        let query = sb.from('tipos_documento_electronico').select('*').eq('empresa_id', empresa.id).eq('categoria_base', 'cotizacion').eq('activo', true).order('nombre');
+        query = empresa.multisociedad_habilitado ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
+        const { data, error } = await query;
+        if (error) throw error;
+        if (cancelado) return;
+        const rows = data || [];
+        setTiposDocumento(rows);
+        setTipoDocumentoId(prev => rows.some(tipo => tipo.id === prev) ? prev : cotizacionBase?.tipo_documento_id || rows.find(tipo => tipo.es_default_para_categoria)?.id || rows[0]?.id || '');
+      } catch (err) { if (!cancelado) setErrorCondiciones(err.message || 'No se pudieron cargar los tipos de documento.'); }
+    };
+    cargarTipos();
+    return () => { cancelado = true; };
+  }, [empresa?.id, empresa?.multisociedad_habilitado, sociedadId, cotizacionBase?.tipo_documento_id]);
+
+  useEffect(() => {
+    let cancelado = false;
+    const cargarBiblioteca = async () => {
+      if (!tipoDocumentoId || !isSupabaseConfigured()) { setBibliotecaCondiciones(null); setCondiciones([]); return; }
+      setCargandoCondiciones(true); setErrorCondiciones('');
+      try {
+        const sb = await getSupabaseClient();
+        const { data: bibliotecas, error: bibliotecaError } = await sb.from('biblioteca_condiciones_generales').select('*').eq('tipo_documento_id', tipoDocumentoId).eq('estado', 'publicada').order('version', { ascending:false }).limit(1);
+        if (bibliotecaError) throw bibliotecaError;
+        const biblioteca = bibliotecas?.[0] || null;
+        if (!biblioteca) { if (!cancelado) { setBibliotecaCondiciones(null); setCondiciones([]); } return; }
+        const { data: segmentos, error: segmentosError } = await sb.from('condiciones_generales_segmentos').select('*').eq('condiciones_generales_id', biblioteca.id).eq('activo', true).order('orden');
+        if (segmentosError) throw segmentosError;
+        if (!cancelado) {
+          setBibliotecaCondiciones(biblioteca);
+          setCondiciones((segmentos || []).map(segmento => ({ ...segmento, contenido_json:normalizeRichTextDocument(segmento.contenido_json), contenido_texto_plano:segmento.contenido_texto_plano || '' })));
+        }
+      } catch (err) { if (!cancelado) { setBibliotecaCondiciones(null); setCondiciones([]); setErrorCondiciones(err.message || 'No se pudo cargar la biblioteca publicada.'); } }
+      finally { if (!cancelado) setCargandoCondiciones(false); }
+    };
+    cargarBiblioteca();
+    return () => { cancelado = true; };
+  }, [tipoDocumentoId]);
+
+  const actualizarCondicion = (index, patch) => setCondiciones(prev => prev.map((condicion, i) => i === index ? { ...condicion, ...patch } : condicion));
+  const condicionesSnapshot = condiciones.map(condicion => ({
+    segmento_id: condicion.id,
+    titulo: condicion.titulo || '',
+    contenido_json: normalizeRichTextDocument(condicion.contenido_json),
+    contenido_texto_plano: condicion.contenido_texto_plano || '',
+    orden: condicion.orden,
+  }));
 
   // ── Guardar ──────────────────────────────────────────────────────────
   const [guardando, setGuardando] = useState(false);
@@ -1261,14 +1292,9 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
         hitos_activos: hitosActivos,
         hitos_pago: hitosActivos ? hitos.map(h => ({ ...h, monto: Math.round(totalImpl * Number(h.porcentaje || 0) / 100) })) : [],
         glosa_factura:         glosa || null,
+        tipo_documento_id: tipoDocumentoId || null,
+        condiciones_generales_version_id: bibliotecaCondiciones?.id || null,
         condiciones_snapshot: condicionesSnapshot,
-        cond_forma_pago:       conds.forma_pago       || null,
-        cond_validez:          conds.validez          || null,
-        cond_penalidad:        conds.penalidad        || null,
-        cond_inicio_proyecto:  conds.inicio_proyecto  || null,
-        cond_alcance:          conds.alcance          || null,
-        cond_integraciones:    conds.integraciones    || null,
-        cond_confidencialidad: conds.confidencialidad || null,
       });
     } catch (err) {
       setErrorGuardar(err?.message || 'No se pudo guardar la cotización. Verifica tus permisos.');
@@ -1574,17 +1600,21 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
       <div className="card mt-4">
         <div className="card-body">
           <div className="eyebrow" style={{marginBottom:4}}>Condiciones comerciales</div>
-          <div className="text-muted" style={{fontSize:12, marginBottom:16}}>Pre-cargadas desde Parámetros Generales. Edita aquí para esta cotización sin afectar la plantilla general.</div>
-          {COND_LABELS.map(([key, label]) => (
-            <div className="input-group" key={key}>
-              <label style={{fontSize:13}}>{label}</label>
-              <SmartTextField
-                value={conds[key]}
-                onChange={value => setCond(key, value)}
-                diccionario={diccionarioComercial}
-                rows={3}
-                placeholder={label + '…'}
-              />
+          <div className="input-group" style={{maxWidth:520, marginBottom:12}}>
+            <label>Tipo de documento</label>
+            <select className="select" value={tipoDocumentoId} onChange={e=>setTipoDocumentoId(e.target.value)} disabled={tiposDocumento.length <= 1}>
+              {!tiposDocumento.length && <option value="">Sin tipos disponibles</option>}
+              {tiposDocumento.map(tipo => <option key={tipo.id} value={tipo.id}>{tipo.nombre} ({tipo.codigo})</option>)}
+            </select>
+          </div>
+          <div className="text-muted" style={{fontSize:12, marginBottom:16}}>Pre-cargadas desde la plantilla. Edita aquí para esta cotización sin afectar la biblioteca general.</div>
+          {errorCondiciones && <div className="alert alert-warning">{errorCondiciones}</div>}
+          {cargandoCondiciones && <div className="text-muted">Cargando condiciones…</div>}
+          {!cargandoCondiciones && tipoDocumentoId && !bibliotecaCondiciones && <div className="alert alert-warning">Este tipo no tiene una biblioteca publicada. Publica una versión desde Parámetros Generales.</div>}
+          {condiciones.map((condicion, index) => (
+            <div className="input-group" key={condicion.id || index}>
+              <label style={{fontSize:13}}>{condicion.titulo || `Segmento ${index + 1}`}</label>
+              <RichTextEditor value={condicion.contenido_json} onChange={patch => actualizarCondicion(index, patch)} placeholder={`Contenido de ${condicion.titulo || 'segmento'}…`} />
             </div>
           ))}
         </div>

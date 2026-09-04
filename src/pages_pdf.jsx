@@ -6,6 +6,32 @@ import { renderTextoComercial } from './lib/textoComercial.js';
 const fmt = (n, sym = 'S/') =>
   sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
 
+function richTextInline(nodes = [], keyPrefix = '') {
+  return nodes.filter(node => node?.type === 'text').map((node, index) => {
+    const marks = node.marks || [];
+    const has = type => marks.some(mark => mark?.type === type);
+    return <Text key={`${keyPrefix}-text-${index}`} style={{
+      ...(has('bold') ? { fontFamily:'Helvetica-Bold', fontWeight:'bold' } : {}),
+      ...(has('italic') ? { fontFamily:'Helvetica-Oblique', fontStyle:'italic' } : {}),
+      ...(has('underline') ? { textDecoration:'underline' } : {}),
+    }}>{node.text || ''}</Text>;
+  });
+}
+
+export function renderRichTextPDF(doc, style) {
+  const blocks = Array.isArray(doc?.content) ? doc.content : [];
+  const renderList = (list, ordered, key) => (list.content || []).map((item, index) => {
+    const paragraph = (item.content || []).find(node => node?.type === 'paragraph');
+    return <Text key={`${key}-item-${index}`} style={style}>{ordered ? `${index + 1}. ` : '• '}{richTextInline(paragraph?.content || [], `${key}-${index}`)}</Text>;
+  });
+  return blocks.flatMap((node, index) => {
+    if (node?.type === 'paragraph') return [<Text key={`paragraph-${index}`} style={style}>{richTextInline(node.content || [], `paragraph-${index}`)}</Text>];
+    if (node?.type === 'bulletList') return renderList(node, false, `bullet-${index}`);
+    if (node?.type === 'orderedList') return renderList(node, true, `ordered-${index}`);
+    return [];
+  });
+}
+
 function makeStyles(primary, secondary) {
   return StyleSheet.create({
     page: { fontFamily: 'Helvetica', fontSize: 9, color: '#1a1a1a', paddingTop: 32, paddingRight: 40, paddingBottom: 64, paddingLeft: 40 },
@@ -313,7 +339,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
   const condicionesSnapshot = Array.isArray(cot.condiciones_snapshot)
     ? cot.condiciones_snapshot
     : fallbackConditions;
-  const CONDS = condicionesSnapshot.filter(cond => cond?.contenido);
+  const CONDS = condicionesSnapshot.filter(cond => cond?.contenido || cond?.contenido_json);
   const hasPage2 = hayHitos || glosa || CONDS.length > 0;
   const closingText = `Quedamos atentos a cualquier consulta. La presente cotización tiene validez ${validezTexto.toLowerCase()}. Para formalizar la contratación puede aceptarla digitalmente escaneando el código QR adjunto o comunicarse con su ejecutivo asignado.`;
 
@@ -516,18 +542,22 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
               )}
               <View style={[S.twoCol, { gap: 24 }]}>
                 <View style={{ flex: 1 }}>
-                  {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
-                    <View key={clave || index}>
-                      <Text style={S.condKey}>{titulo.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{renderComercial(contenido)}</Text>
+                  {CONDS.slice(0, Math.ceil(CONDS.length / 2)).map((condicion, index) => (
+                    <View key={condicion.segmento_id || condicion.clave || index}>
+                      <Text style={S.condKey}>{(condicion.titulo || '').toUpperCase()}</Text>
+                      {condicion.contenido_json
+                        ? renderRichTextPDF(condicion.contenido_json, S.condVal)
+                        : <Text style={S.condVal}>{renderComercial(condicion.contenido)}</Text>}
                     </View>
                   ))}
                 </View>
                 <View style={{ flex: 1 }}>
-                  {CONDS.slice(Math.ceil(CONDS.length / 2)).map(({ clave, titulo, contenido }, index) => (
-                    <View key={clave || index}>
-                      <Text style={S.condKey}>{titulo.toUpperCase()}</Text>
-                      <Text style={S.condVal}>{renderComercial(contenido)}</Text>
+                  {CONDS.slice(Math.ceil(CONDS.length / 2)).map((condicion, index) => (
+                    <View key={condicion.segmento_id || condicion.clave || index}>
+                      <Text style={S.condKey}>{(condicion.titulo || '').toUpperCase()}</Text>
+                      {condicion.contenido_json
+                        ? renderRichTextPDF(condicion.contenido_json, S.condVal)
+                        : <Text style={S.condVal}>{renderComercial(condicion.contenido)}</Text>}
                     </View>
                   ))}
                 </View>
