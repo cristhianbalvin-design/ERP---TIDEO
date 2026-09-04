@@ -65,6 +65,7 @@ export function AuthGate({ children }) {
     todasMembresias,
     membresiaActiva,
     membresiaCargando,
+    membresiaError,
     seleccionarEmpresa,
     usuarios,
     marcarContrasenaActualizada,
@@ -399,6 +400,39 @@ export function AuthGate({ children }) {
             {mode === 'login' ? 'Crear usuario de prueba' : 'Ya tengo usuario'}
           </button>
         </form>
+      </div>
+    );
+  }
+
+  if (membresiaCargando) {
+    return <SplashLoading message="Verificando permisos" />;
+  }
+
+  if (membresiaError) {
+    return (
+      <div className="app-shell" style={{
+        alignItems:'center',
+        justifyContent:'center',
+        background:'#1A2B4A',
+        backgroundImage: `url('/bg_login.jpg')`,
+        backgroundRepeat:'repeat',
+        backgroundSize:'1000px',
+        padding:24
+      }}>
+        <div className="card" style={{width:'min(480px, 100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
+          <img src="/logo_tideo.png" alt="TIDEO" style={{height:80, marginBottom:24, marginLeft:'auto', marginRight:'auto'}} />
+          <div className="font-display" style={{fontSize:22, fontWeight:700, color:'var(--navy)'}}>No se pudo verificar tu acceso</div>
+          <p className="text-muted" style={{marginTop:10, lineHeight:1.5}}>{membresiaError}</p>
+          <p className="text-muted" style={{marginTop:8, fontSize:12}}>
+            Por seguridad no se habilito ninguna pantalla.
+          </p>
+          <button className="btn btn-primary" style={{marginTop:18}} onClick={() => window.location.reload()}>
+            Reintentar
+          </button>
+          <button className="btn btn-ghost" style={{marginTop:10, marginLeft:8}} onClick={signOut}>
+            Cerrar sesion
+          </button>
+        </div>
       </div>
     );
   }

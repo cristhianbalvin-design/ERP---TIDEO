@@ -43,6 +43,7 @@ import { tiposDocumentoService } from './services/tiposDocumentoService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { AFP_PARAMETROS_DEFAULT, latestAfpParametros, nominaService } from './services/nominaService.js';
 import { resolverSociedadContratoVigente, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
+import { buildRoleDePermisos } from './access/roleAccess.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
 import {
@@ -180,50 +181,6 @@ function conSolicitudesIncluido(mods = []) {
   return mods.includes('mi_espacio') && !mods.includes('solicitudes') ? [...mods, 'solicitudes'] : mods;
 }
 
-function buildRoleDePermisos(rol, permisosRows = [], acceso_campo = false, campo_modulos = []) {
-  const esSuperadmin = rol?.es_superadmin || false;
-  const esAdmin = esSuperadmin || rol?.es_admin_empresa || false;
-  const especialesExtra = permisosRows.find(p => p.pantalla === '__especiales__')?.permisos_extra || {};
-  const ver = permisosRows.filter(p => p.puede_ver).map(p => p.pantalla);
-  const crear = permisosRows.filter(p => p.puede_crear).map(p => p.pantalla);
-  const editar = permisosRows.filter(p => p.puede_editar).map(p => p.pantalla);
-  const anular = permisosRows.filter(p => p.puede_anular).map(p => p.pantalla);
-  const aprobar = permisosRows.filter(p => p.puede_aprobar).map(p => p.pantalla);
-  const exportar = permisosRows.filter(p => p.puede_exportar).map(p => p.pantalla);
-  const verFinanzas = esSuperadmin || permisosRows.some(p => p.puede_ver_finanzas);
-  const verCostos = esSuperadmin || permisosRows.some(p => p.puede_ver_costos);
-  const verPrecios = esSuperadmin || permisosRows.some(p => p.permisos_extra?.puede_ver_precios);
-  const puedeAprobar = esSuperadmin || permisosRows.some(p => p.puede_aprobar);
-  const verConsolidadoGrupo = esAdmin || especialesExtra.ver_consolidado_grupo === true;
-  return {
-    nombre: rol?.nombre || 'Usuario',
-    color: esSuperadmin ? 'navy' : esAdmin ? 'purple' : 'cyan',
-    permisos: {
-      ver,
-      crear,
-      editar,
-      anular,
-      aprobar,
-      exportar,
-      todo: esAdmin,
-      plataforma: esSuperadmin,
-      soporte_tenant: esSuperadmin,
-      tenant_admin: esAdmin,
-      ver_finanzas: verFinanzas,
-      ver_costos: verCostos,
-      ver_precios: verPrecios,
-      aprobar_descuentos: Boolean(esAdmin || especialesExtra.aprobar_descuentos || puedeAprobar),
-      anular_documentos: Boolean(esAdmin || especialesExtra.anular_documentos),
-      ver_agenda_equipo: esAdmin,
-      ver_consolidado_grupo: verConsolidadoGrupo,
-      acceso_campo: Boolean(esAdmin || especialesExtra.acceso_campo || acceso_campo),
-      monto_max_compras: especialesExtra.monto_max_compras ?? 0,
-      perfil_campo: especialesExtra.perfil_campo ?? null,
-      campo_modulos: Array.isArray(campo_modulos) ? campo_modulos : [],
-    },
-  };
-}
-
 function normalizarEmpresaSupabase(e) {
   return {
     ...e,
@@ -332,6 +289,8 @@ export function AppProvider({ children }) {
   const [todasMembresias, setTodasMembresias] = useState([]);
   const [membresiaActiva, setMembresiaActiva] = useState(null);
   const [membresiaCargando, setMembresiaCargando] = useState(isSupabaseConfigured());
+  const [membresiaError, setMembresiaError] = useState('');
+  const membresiaLoadRequestRef = useRef(0);
   const [perfilSociedad, setPerfilSociedad] = useState(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
   const [sociedadesIdsAlcance, setSociedadesIdsAlcance] = useState(null);
   const [sociedadActiva, setSociedadActiva] = useState(null);
@@ -539,28 +498,13 @@ export function AppProvider({ children }) {
     try { localStorage.setItem('tideo_roles', JSON.stringify(rolesCtx)); } catch {}
   }, [rolesCtx]);
 
+  // El catalogo editable de roles no es una fuente de autorizacion y nunca se
+  // comparte entre sesiones. La membresia activa se hidrata por separado.
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    if (!membresiaActiva?.rol_id) return;
-    if (Object.keys(rolesCtx || {}).length) return;
-
-    const rolBase = membresiaActiva.rol || {
-      id: membresiaActiva.rol_id,
-      nombre: 'Rol actual',
-      descripcion: 'Rol asignado al usuario actual',
-      es_admin_empresa: true,
-      es_superadmin: false,
-    };
-
-    setRolesCtx({
-      [membresiaActiva.rol_id]: {
-        ...rolBase,
-        id: membresiaActiva.rol_id,
-        descripcion: rolBase.descripcion || 'Rol asignado al usuario actual',
-        ...buildRoleDePermisos(rolBase, membresiaActiva.permisos_rows || [], membresiaActiva.acceso_campo, membresiaActiva.campo_modulos),
-      },
-    });
-  }, [membresiaActiva?.rol_id, rolesCtx]);
+    setRolesCtx({});
+    permisosPendientesPorRolRef.current = {};
+  }, [authUser?.id]);
 
   const [notificaciones, setNotificaciones] = useState([
     { id: 'f3_1', text: 'Health Score de Logística Altiplano bajó a 28 — riesgo crítico. Se requiere plan de retención urgente.', read: false, time: 'Hace 15 min' },
@@ -710,6 +654,12 @@ export function AppProvider({ children }) {
     await supabase.auth.signOut();
     setAuthSession(null);
     setAuthUser(null);
+    setTodasMembresias([]);
+    setMembresiaActiva(null);
+    setMembresiaError('');
+    membresiaLoadRequestRef.current += 1;
+    setRolesCtx({});
+    permisosPendientesPorRolRef.current = {};
     setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
     setSociedadActiva(null);
     setSociedadesDisponibles([]);
@@ -1405,9 +1355,12 @@ export function AppProvider({ children }) {
 
   const recargarSociedades = () => cargarSociedadesDeEmpresa(empresa);
 
-  const cargarMembresiaCompleta = async (mem) => {
+  const cargarMembresiaCompleta = async (mem, requestId = membresiaLoadRequestRef.current) => {
+    const requestSigueVigente = () => requestId === membresiaLoadRequestRef.current;
+    if (!requestSigueVigente()) return false;
     const empresaBase = mem?.empresa || null;
     const empresaBaseResuelta = empresaBase ? normalizarEmpresaSupabase(empresaBase) : null;
+    setMembresiaError('');
 
     // get_mis_membresias ya entrego una membresia valida. La conservamos como
     // contexto base mientras se refrescan empresa y permisos; antes, un fallo
@@ -1434,6 +1387,7 @@ export function AppProvider({ children }) {
           .eq('id', mem.empresa_id)
           .single(),
       ]);
+      if (!requestSigueVigente()) return false;
       if (empresaError) throw empresaError;
 
       // El contexto debe traer una fotografia completa de permisos. La
@@ -1442,11 +1396,13 @@ export function AppProvider({ children }) {
       // viera, pero los flujos de una pantalla quedaran bloqueados.
       let permisosResueltos = [];
       let rolIdEfectivo = mem.rol_id;
+      let rolResuelto = mem.rol || null;
       if (!snapshotError && snapshotPermisos) {
         permisosResueltos = Array.isArray(snapshotPermisos.permisos)
           ? snapshotPermisos.permisos
           : [];
         rolIdEfectivo = snapshotPermisos.rol_id || rolIdEfectivo;
+        rolResuelto = snapshotPermisos.rol || rolResuelto;
       } else {
         // Compatibilidad transitoria mientras se despliega la RPC. Incluso
         // este camino conserva todas las acciones: nunca sintetiza permisos.
@@ -1458,10 +1414,16 @@ export function AppProvider({ children }) {
         permisosResueltos = permisosDirectos || [];
       }
 
-      const membresiaFresca = { ...mem, empresa: empresaFresca };
+      if (!rolResuelto || rolResuelto.id !== rolIdEfectivo) {
+        throw new Error('No se pudo verificar el rol efectivo de la membresia.');
+      }
+
+      const membresiaFresca = { ...mem, empresa: empresaFresca, rol: rolResuelto, rol_id: rolIdEfectivo };
       const empresaResuelta = normalizarEmpresaSupabase(empresaFresca);
       setTodasMembresias(prev => prev.map(item => (
-        item.empresa_id === mem.empresa_id ? { ...item, empresa: empresaFresca } : item
+        item.empresa_id === mem.empresa_id
+          ? { ...item, empresa: empresaFresca, rol: rolResuelto, rol_id: rolIdEfectivo }
+          : item
       )));
       if (empresaResuelta) setEmpresa(empresaResuelta);
       setMembresiaActiva({
@@ -1483,22 +1445,24 @@ export function AppProvider({ children }) {
         empresaResuelta,
         Boolean(roleResuelto.permisos?.todo || roleResuelto.permisos?.ver_consolidado_grupo)
       );
-    } catch (_err) {
-      // Se mantiene el contexto basico de una membresia que ya fue validada
-      // por get_mis_membresias. ApplicationWelcome verifica app_* en el
-      // servidor, por lo que una recarga parcial no debe convertir permisos
-      // reales en tarjetas bloqueadas.
+      return true;
+    } catch (error) {
+      if (!requestSigueVigente()) return false;
+      // Fallo cerrado: conservar la referencia de empresa ayuda a explicar el
+      // error, pero ningun rol ni permiso se infiere localmente.
+      setMembresiaError(error?.message || 'No se pudo verificar el acceso de la membresia.');
       setMembresiaActiva({
         empresa: empresaBase,
-        rol: mem?.rol || null,
+        rol: null,
         rol_id: mem?.rol_id || null,
         acceso_campo: Boolean(mem?.acceso_campo),
         perfil_campo: mem?.perfil_campo || null,
         campo_modulos: mem?.campo_modulos || [],
         permisos_rows: [],
       });
+      return false;
     } finally {
-      setMembresiaCargando(false);
+      if (requestSigueVigente()) setMembresiaCargando(false);
     }
   };
 
@@ -1506,8 +1470,13 @@ export function AppProvider({ children }) {
     const mem = todasMembresias.find(m => m.empresa_id === empresaId);
     if (!mem) return;
     try { localStorage.setItem('last_empresa_id', empresaId); } catch {}
+    setRolesCtx({});
+    permisosPendientesPorRolRef.current = {};
+    setMembresiaError('');
     setMembresiaCargando(true);
-    await cargarMembresiaCompleta(mem);
+    const requestId = ++membresiaLoadRequestRef.current;
+    const membresiaCargada = await cargarMembresiaCompleta(mem, requestId);
+    if (!membresiaCargada) return;
     if (isSupabaseConfigured() && mem.rol?.es_superadmin && !mem.empresa?.es_plataforma) {
       getSupabaseClient().then(sb => sb.from('superadmin_accesos').insert({
         user_id: authUser.id,
@@ -1520,8 +1489,10 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (!isSupabaseConfigured() || !authUser?.id) {
       if (isSupabaseConfigured()) {
+        membresiaLoadRequestRef.current += 1;
         setTodasMembresias([]);
         setMembresiaActiva(null);
+        setMembresiaError('');
         setPerfilSociedad(PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
         setSociedadActiva(null);
         setSociedadesDisponibles([]);
@@ -1531,17 +1502,23 @@ export function AppProvider({ children }) {
     }
 
     let mounted = true;
+    const requestId = ++membresiaLoadRequestRef.current;
     setMembresiaCargando(true);
 
     const loadMembresia = async () => {
       try {
+        setMembresiaError('');
         const supabase = await getSupabaseClient();
 
         const { data: ues, error: uesError } = await supabase.rpc('get_mis_membresias');
         console.log('>>> UES RPC:', { ues, uesError });
 
         if (uesError || !ues?.length) {
-          if (mounted) { setTodasMembresias([]); setMembresiaCargando(false); }
+          if (mounted) {
+            setTodasMembresias([]);
+            if (uesError) setMembresiaError(uesError.message || 'No se pudieron verificar tus membresias.');
+            setMembresiaCargando(false);
+          }
           return;
         }
 
@@ -1554,6 +1531,7 @@ export function AppProvider({ children }) {
         ]);
 
         console.log('>>> EMPRESAS:', { empresasRows, empErr }, '>>> ROLES:', { rolesRows, rolErr });
+        if (empErr) throw empErr;
 
         const memberships = ues.map(u => ({
           ...u,
@@ -1570,17 +1548,25 @@ export function AppProvider({ children }) {
         if (activas.length >= 1) {
           const lastId = localStorage.getItem('last_empresa_id');
           const mem = (lastId && activas.find(m => m.empresa_id === lastId)) || activas[0];
-          await cargarMembresiaCompleta(mem);
+          await cargarMembresiaCompleta(mem, requestId);
         } else {
           setMembresiaCargando(false);
         }
-      } catch (_err) {
-        if (mounted) { setTodasMembresias([]); setMembresiaCargando(false); }
+      } catch (error) {
+        if (mounted) {
+          setTodasMembresias([]);
+          setMembresiaActiva(null);
+          setMembresiaError(error?.message || 'No se pudo verificar el contexto de acceso.');
+          setMembresiaCargando(false);
+        }
       }
     };
 
     loadMembresia();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      if (membresiaLoadRequestRef.current === requestId) membresiaLoadRequestRef.current += 1;
+    };
   }, [authUser?.id]);
 
   // Carga notificaciones persistentes del sistema al iniciar sesión
@@ -1687,11 +1673,10 @@ export function AppProvider({ children }) {
     } catch { /* navegacion local: no bloquear si el storage no esta disponible */ }
   };
 
-  // El rol que llega en la membresia es una fotografia tomada al iniciar la
-  // sesion. `rolesCtx` se refresca despues de editar/guardar; priorizarlo evita
-  // que la UI siga aplicando banderas tecnicas antiguas hasta el siguiente login.
+  // La autorizacion de la sesion proviene solo de la membresia verificada. El
+  // catalogo rolesCtx es estado de administracion y puede estar parcial o viejo.
   const rolActivoActual = (isSupabaseConfigured() && membresiaActiva)
-    ? (rolesCtx?.[membresiaActiva.rol_id] || membresiaActiva.rol)
+    ? membresiaActiva.rol
     : null;
   const role = (isSupabaseConfigured() && membresiaActiva)
     ? buildRoleDePermisos(rolActivoActual, membresiaActiva.permisos_rows, membresiaActiva.acceso_campo, membresiaActiva.campo_modulos)
@@ -10631,7 +10616,7 @@ export function AppProvider({ children }) {
     signInWithPassword, signUpWithPassword, signOut,
     searchQuery: '',
     dataMode, supabaseStatus, reloadSupabaseFinanceData: loadSupabaseFinanceData,
-    todasMembresias, membresiaActiva, membresiaCargando, seleccionarEmpresa,
+    todasMembresias, membresiaActiva, membresiaCargando, membresiaError, seleccionarEmpresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles, seleccionarSociedad, recargarSociedades,
     empresasPlataforma, setEmpresasPlataforma, crearTenantConAdmin, actualizarTenant, eliminarTenant,
     // Data

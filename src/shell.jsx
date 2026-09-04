@@ -5,6 +5,7 @@ import { I } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
+import { puedeVerPantalla } from './access/roleAccess.js';
 
 
 const SIDEBAR = [
@@ -243,7 +244,6 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
   const effectiveCollapsed = collapsed || isMobileNav;
-  const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -254,7 +254,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items
-      .filter(it => it.key === 'mi_portal' || !allowed || allowed.has(it.key) || it.accessAnyOf?.some(key => allowed.has(key)))
+      .filter(it => puedeVerPantalla(role, it.key, it.accessAnyOf || []))
       .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
@@ -265,7 +265,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       items: visibleItems,
       active: visibleItems.some(it => it.key === active),
     };
-  }).filter(Boolean), [active, allowed, badges, isSuperadmin]);
+  }).filter(Boolean), [active, role, badges, isSuperadmin]);
   const activeGroupKey = visibleGroups.find(group => group.active)?.key || visibleGroups[0]?.key || '';
   const [openSections, setOpenSections] = useState(() => {
     try {

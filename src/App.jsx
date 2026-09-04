@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context.jsx';
 import { AuthGate } from './AuthGate.jsx';
 import { Sidebar, Header, SIDEBAR } from './shell.jsx';
 import { ApplicationWelcome } from './ApplicationWelcome.jsx';
+import { puedeVerPantalla, tieneAccesoTotal } from './access/roleAccess.js';
 
 // ─── Lazy imports ─────────────────────────────────────────────────────────────
 // Cada archivo de páginas genera un chunk separado, cargado solo cuando el
@@ -277,29 +278,28 @@ function MainLayout({ onShowApplicationWelcome }) {
   } = useApp();
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
-  const allowed = role.permisos.todo ? null : new Set(role.permisos.ver || []);
+  const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
+  const activeAllowed = puedeVerPantalla(role, active, active === 'maestros' ? ['servicios'] : []);
+  const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
     document.documentElement.className = dark ? 'dark' : '';
   }, [dark]);
 
   useEffect(() => {
-    if (active === 'campo') { setMobileMode(true); return; }
     if (!isSuperadmin && PLATFORM_PAGES.has(active)) {
       navigate('dashboard');
       return;
     }
-    
-    const activeAllowed = allowed ? (active === 'mi_portal' || allowed.has(active) || (active === 'maestros' && allowed.has('servicios'))) : true;
     if (!activeAllowed) {
       let fallback = 'mi_portal';
-      if (allowed && allowed.has('dashboard')) {
+      if (puedeVerPantalla(role, 'dashboard')) {
         fallback = 'dashboard';
-      } else if (allowed && allowed.size > 0) {
+      } else if (!tieneAccesoTotal(role) && pantallasPermitidas.length > 0) {
         // Encontrar el primer modulo permitido de acuerdo al orden del SIDEBAR
         for (const group of SIDEBAR) {
           if (group.plataforma && !isSuperadmin) continue;
-          const found = group.items.find(it => allowed.has(it.key));
+          const found = group.items.find(it => puedeVerPantalla(role, it.key, it.accessAnyOf || []));
           if (found) {
             fallback = found.key;
             break;
@@ -307,8 +307,10 @@ function MainLayout({ onShowApplicationWelcome }) {
         }
       }
       navigate(fallback);
+      return;
     }
-  }, [roleKey, active, isSuperadmin, allowed, navigate]);
+    if (active === 'campo') setMobileMode(true);
+  }, [roleKey, role, active, activeAllowed, isSuperadmin, pantallasPermitidas, navigate, setMobileMode]);
 
   if (mobileMode) {
     return (
@@ -428,7 +430,7 @@ function MainLayout({ onShowApplicationWelcome }) {
         )}
         <main className="main">
           <Suspense fallback={<PageLoader />}>
-            {Page()}
+            {routeAllowed ? Page() : <PageLoader />}
           </Suspense>
         </main>
       </div>
