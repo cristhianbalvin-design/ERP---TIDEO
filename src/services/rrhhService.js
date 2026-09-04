@@ -178,6 +178,7 @@ const toTurnoRow = (empresaId, turno = {}) => {
     dias_laborables: turno.dias_variables ? [] : (turno.dias_laborables || []),
     minutos_refrigerio: Number(turno.minutos_refrigerio ?? turno.refrigerio_minutos ?? 0),
     horas_efectivas: Number(turno.horas_efectivas || 0),
+    horas_feriado_sobretasa: turno.horas_feriado_sobretasa == null ? null : Number(turno.horas_feriado_sobretasa),
     estado: turno.estado || 'activo',
     detalle_dias: turno.dias_variables ? null : (turno.detalle_dias || null),
     requiere_autorizacion_he: turno.requiere_autorizacion_he ?? null,

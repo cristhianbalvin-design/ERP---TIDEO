@@ -13800,10 +13800,15 @@ function resolverAsignacionParaFeriado(fecha, trabajador, datosNomina, asignacio
 function minutosProgramadosEnFeriado(registro, asignacion, turno, turnosPorId = new Map()) {
   const turnoId = registro?.turno_id || asignacion?.turno_id || turno?.id;
   const turnoProgramado = turnosPorId.get(turnoId) || turno;
-  const horasProgramadas = Number(turnoProgramado?.horas_efectivas);
-  // Si no hay turno histórico con horas definidas, aplicar la jornada legal
-  // estándar de 8 h. La asistencia marcada no interviene en esta sobretasa.
-  return (horasProgramadas > 0 ? horasProgramadas : 8) * 60;
+  // Prioridad para la sobretasa: configuración específica del feriado,
+  // horas efectivas del turno como fallback, y 8 h si ninguna está definida.
+  // La asistencia marcada no interviene en esta sobretasa.
+  const horasProgramadas = turnoProgramado?.horas_feriado_sobretasa != null
+    ? Number(turnoProgramado.horas_feriado_sobretasa)
+    : turnoProgramado?.horas_efectivas != null
+      ? Number(turnoProgramado.horas_efectivas)
+      : 8;
+  return (Number.isFinite(horasProgramadas) ? horasProgramadas : 8) * 60;
 }
 
 function calcularSobretasaFeriados({ registros = [], valorHoraFeriado = 0, trabajador, datosNomina, asignaciones = [], configuracionFeriados = {}, turno = null, turnosPorId = new Map() }) {
@@ -14603,7 +14608,7 @@ function TurnosHorarios() {
   const [editandoId, setEditandoId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, descripcion:'', estado:'activo' };
+  const formBase = { nombre:'', hora_entrada:'08:00', hora_salida:'17:00', tolerancia_minutos:10, cruza_medianoche:false, dias_laborables:['lun','mar','mie','jue','vie'], dias_variables:false, refrigerio_minutos:60, horas_feriado_sobretasa:'', descripcion:'', estado:'activo' };
   const [form, setForm] = useState(formBase);
   const horasCalc = horasEfectivasTurno(form.hora_entrada, form.hora_salida, form.cruza_medianoche, form.refrigerio_minutos);
   const diasMap = [['lun','Lun'], ['mar','Mar'], ['mie','Mie'], ['jue','Jue'], ['vie','Vie'], ['sab','Sab'], ['dom','Dom']];
@@ -14612,7 +14617,7 @@ function TurnosHorarios() {
   const abrirNuevo = () => { setEditandoId(null); setForm(formBase); setError(''); setPanel(true); };
   const abrirEditar = (t) => {
     setEditandoId(t.id);
-    setForm({ nombre:t.nombre||'', hora_entrada:t.hora_entrada||'08:00', hora_salida:t.hora_salida||'17:00', tolerancia_minutos:t.tolerancia_minutos??10, cruza_medianoche:t.cruza_medianoche||false, dias_laborables:t.dias_laborables||['lun','mar','mie','jue','vie'], dias_variables:t.dias_variables||false, refrigerio_minutos:t.refrigerio_minutos??60, descripcion:t.descripcion||'', estado:t.estado||'activo' });
+    setForm({ nombre:t.nombre||'', hora_entrada:t.hora_entrada||'08:00', hora_salida:t.hora_salida||'17:00', tolerancia_minutos:t.tolerancia_minutos??10, cruza_medianoche:t.cruza_medianoche||false, dias_laborables:t.dias_laborables||['lun','mar','mie','jue','vie'], dias_variables:t.dias_variables||false, refrigerio_minutos:t.refrigerio_minutos??60, horas_feriado_sobretasa:t.horas_feriado_sobretasa ?? '', descripcion:t.descripcion||'', estado:t.estado||'activo' });
     setError(''); setPanel(true);
   };
   const cerrar = () => { setPanel(false); setEditandoId(null); setForm(formBase); setError(''); };
@@ -14623,7 +14628,8 @@ function TurnosHorarios() {
     if (!form.dias_variables && form.dias_laborables.length === 0) return;
     setSaving(true); setError('');
     const totalMin = timeToMinutesHHMM(form.hora_salida) + (form.cruza_medianoche ? 1440 : 0) - timeToMinutesHHMM(form.hora_entrada) - Number(form.refrigerio_minutos || 0);
-    const payload = { ...form, tolerancia_minutos:Number(form.tolerancia_minutos)||0, refrigerio_minutos:Number(form.refrigerio_minutos)||0, horas_efectivas:Math.max(0, totalMin/60) };
+    const horasFeriadoSobretasa = String(form.horas_feriado_sobretasa ?? '').trim();
+    const payload = { ...form, tolerancia_minutos:Number(form.tolerancia_minutos)||0, refrigerio_minutos:Number(form.refrigerio_minutos)||0, horas_efectivas:Math.max(0, totalMin/60), horas_feriado_sobretasa:horasFeriadoSobretasa === '' ? null : Number(horasFeriadoSobretasa) };
     try {
       if (editandoId) {
         await actualizarTurnoCtx(editandoId, payload);
@@ -14701,6 +14707,7 @@ function TurnosHorarios() {
               {diasMap.map(([k,l]) => <button type="button" key={k} className={'btn btn-sm '+(form.dias_laborables.includes(k) ? 'btn-primary' : 'btn-secondary')} data-local-form="true" onClick={()=>toggleDia(k)}>{l}</button>)}
             </div>}
             <div className="card" style={{padding:12, margin:'14px 0'}}><strong>Horas laborables calculadas:</strong> {horasCalc} efectivas</div>
+            <div className="input-group"><label>Horas para sobretasa de feriado (opcional)</label><input className="input" type="number" min="0" step="0.25" value={form.horas_feriado_sobretasa} onChange={e=>setForm(v=>({...v,horas_feriado_sobretasa:e.target.value}))}/><small className="text-muted">Si se deja vacío, se usará el mismo valor de Horas Efectivas del turno. Configúralo solo si las horas de un feriado trabajado deben calcularse distinto (ej. turnos mineros con jornadas atípicas).</small></div>
             <div className="input-group"><label>Descripcion / notas</label><textarea className="input" rows="3" value={form.descripcion} onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))}/></div>
             <div className="input-group"><label>Estado</label><select className="select" value={form.estado} onChange={e=>setForm(v=>({...v,estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
             <div className="row mt-6" style={{justifyContent:'flex-end'}}><button type="button" className="btn btn-secondary" onClick={cerrar}>Cancelar</button><button className="btn btn-primary" data-local-form="true" type="submit" disabled={saving}>{saving ? 'Guardando...' : (editandoId ? 'Guardar cambios' : 'Crear turno')}</button></div>
