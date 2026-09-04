@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
@@ -15,6 +15,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const [draft, setDraft] = useState(null);
   const [segmentos, setSegmentos] = useState([]);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const cargaBibliotecaId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'' });
@@ -43,11 +44,16 @@ export function CatalogoDocumentosCondiciones({ active }) {
   }, [active, empresa?.id, requiereSociedad, sociedadId]);
 
   const cargarBibliotecas = useCallback(async () => {
-    if (!selectedId || !isSupabaseConfigured()) { setBibliotecas([]); setDraft(null); setSegmentos([]); return; }
+    const cargaId = ++cargaBibliotecaId.current;
+    if (!selectedId || !isSupabaseConfigured()) {
+      if (cargaId === cargaBibliotecaId.current) { setBibliotecas([]); setDraft(null); setSegmentos([]); }
+      return;
+    }
     try {
       const sb = await getSupabaseClient();
       const { data, error: queryError } = await sb.from('biblioteca_condiciones_generales').select('*').eq('tipo_documento_id', selectedId).order('version', { ascending:false });
       if (queryError) throw queryError;
+      if (cargaId !== cargaBibliotecaId.current) return;
       const rows = data || [];
       setBibliotecas(rows);
       const borrador = rows.find(row => row.estado === 'borrador') || null;
@@ -56,12 +62,23 @@ export function CatalogoDocumentosCondiciones({ active }) {
       if (!base) { setSegmentos([]); return; }
       const { data: segs, error: segError } = await sb.from('condiciones_generales_segmentos').select('*').eq('condiciones_generales_id', base.id).eq('activo', true).order('orden');
       if (segError) throw segError;
+      if (cargaId !== cargaBibliotecaId.current) return;
       setSegmentos(segs || []);
-    } catch (err) { setError(err.message || 'No se pudo cargar la biblioteca.'); }
+    } catch (err) { if (cargaId === cargaBibliotecaId.current) setError(err.message || 'No se pudo cargar la biblioteca.'); }
   }, [selectedId]);
 
   useEffect(() => { cargarTipos(); }, [cargarTipos]);
   useEffect(() => { cargarBibliotecas(); }, [cargarBibliotecas]);
+
+  const seleccionarTipo = id => {
+    if (id === selectedId) return;
+    cargaBibliotecaId.current += 1;
+    setSelectedId(id);
+    setBibliotecas([]);
+    setDraft(null);
+    setSegmentos([]);
+    setMostrarHistorial(false);
+  };
 
   const crearTipo = async () => {
     if (!nuevoTipo.codigo.trim() || !nuevoTipo.nombre.trim()) return setError('Código y nombre son obligatorios.');
@@ -177,7 +194,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
     <div className="card"><div className="card-head"><h3>Tipos de documento para cotizaciones</h3>{puedeCrear && <span className="badge badge-cyan">Categoría: cotización</span>}</div><div className="card-body">
       {error && <div className="alert alert-danger">{error}</div>}
       {puedeCrear && <div className="grid-2" style={{gap:8, marginBottom:14}}><input className="input" placeholder="Código, ej. COTIZACION_SERVICIOS" value={nuevoTipo.codigo} onChange={e=>setNuevoTipo(p=>({...p,codigo:e.target.value}))}/><div className="row" style={{gap:8}}><input className="input" placeholder="Nombre del tipo" value={nuevoTipo.nombre} onChange={e=>setNuevoTipo(p=>({...p,nombre:e.target.value}))}/><button className="btn btn-primary" onClick={crearTipo}>Crear tipo</button></div></div>}
-      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>setSelectedId(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)}>Marcar default</button>}</td></tr>)}</tbody></table></div>}
+      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>seleccionarTipo(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)}>Marcar default</button>}</td></tr>)}</tbody></table></div>}
     </div></div>
     {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar}>Publicar v{draft.version}</button>}</div></div><div className="card-body">
       {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=><div key={segmento.id || `new-${index}`} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmento(draft.id, segmento)}>Guardar</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} /></div></div>)}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
