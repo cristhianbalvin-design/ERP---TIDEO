@@ -2089,7 +2089,8 @@ body {
 .params-page[data-section="flujos"] .params-section-flujos,
 .params-page[data-section="sla"] .params-section-sla,
 .params-page[data-section="cuentas"] .params-section-cuentas,
-.params-page[data-section="evaluaciones"] .params-section-evaluaciones {
+.params-page[data-section="evaluaciones"] .params-section-evaluaciones,
+.params-page[data-section="catalogo_documentos"] .params-section-catalogo_documentos {
   display: flex;
   flex-direction: column;
 }

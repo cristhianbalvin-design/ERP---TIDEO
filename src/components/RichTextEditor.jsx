@@ -1,0 +1,65 @@
+import React, { useEffect } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import Document from '@tiptap/extension-document';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
+import Bold from '@tiptap/extension-bold';
+import Italic from '@tiptap/extension-italic';
+import Underline from '@tiptap/extension-underline';
+import BulletList from '@tiptap/extension-bullet-list';
+import OrderedList from '@tiptap/extension-ordered-list';
+import ListItem from '@tiptap/extension-list-item';
+import History from '@tiptap/extension-history';
+
+const EMPTY_DOCUMENT = { type: 'doc', content: [{ type: 'paragraph' }] };
+
+export const normalizeRichTextDocument = value => (
+  value && typeof value === 'object' && value.type === 'doc' ? value : EMPTY_DOCUMENT
+);
+
+export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110 }) {
+  const editor = useEditor({
+    extensions: [Document, Paragraph, Text, Bold, Italic, Underline, BulletList, OrderedList, ListItem, History],
+    content: normalizeRichTextDocument(value),
+    editable: !disabled,
+    editorProps: { attributes: { class: 'rich-text-editor-content', 'data-placeholder': placeholder } },
+    onUpdate: ({ editor: currentEditor }) => onChange?.({
+      contenido_json: currentEditor.getJSON(),
+      contenido_texto_plano: currentEditor.getText(),
+    }),
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const next = normalizeRichTextDocument(value);
+    if (JSON.stringify(editor.getJSON()) !== JSON.stringify(next)) {
+      editor.commands.setContent(next, { emitUpdate: false });
+    }
+  }, [editor, value]);
+
+  if (!editor) return null;
+  const command = (name, attrs) => () => editor.chain().focus()[name](attrs).run();
+  const button = (label, name, attrs, activeName = name) => (
+    <button type="button" className={`btn btn-ghost ${editor.isActive(activeName) ? 'active' : ''}`} onClick={command(name, attrs)} disabled={disabled} style={{padding:'4px 8px', minWidth:30}}>{label}</button>
+  );
+
+  return (
+    <div style={{border:'1px solid var(--border)', borderRadius:8, overflow:'hidden', background:'var(--bg)'}}>
+      {!disabled && <div className="row" style={{gap:2, padding:6, borderBottom:'1px solid var(--border)', flexWrap:'wrap'}}>
+        {button(<strong>B</strong>, 'toggleBold')}
+        {button(<em>I</em>, 'toggleItalic')}
+        {button(<u>U</u>, 'toggleUnderline')}
+        {button('• Lista', 'toggleBulletList', undefined, 'bulletList')}
+        {button('1. Lista', 'toggleOrderedList', undefined, 'orderedList')}
+        <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
+        <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
+      </div>}
+      <EditorContent editor={editor} style={{padding:'8px 10px', minHeight}} />
+    </div>
+  );
+}
