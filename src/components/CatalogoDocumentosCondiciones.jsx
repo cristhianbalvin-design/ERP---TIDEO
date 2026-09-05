@@ -101,6 +101,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
 
   const crearTipo = async () => {
     if (!nuevoTipo.codigo.trim() || !nuevoTipo.nombre.trim()) return setError('Código y nombre son obligatorios.');
+    setError('');
     try {
       const sb = await getSupabaseClient();
       const { data, error: insertError } = await sb.from('tipos_documento_electronico').insert({
@@ -108,6 +109,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
       }).select().single();
       if (insertError) throw insertError;
       setNuevoTipo({ codigo:'', nombre:'', motor_contenido:'condiciones_generales' }); setTipos(prev => [...prev, data].sort((a,b) => a.nombre.localeCompare(b.nombre))); setSelectedId(data.id);
+      setError('');
     } catch (err) { setError(err.message || 'No se pudo crear el tipo.'); }
   };
 
