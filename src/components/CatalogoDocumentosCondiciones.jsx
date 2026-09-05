@@ -4,8 +4,19 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
 import { RichTextEditor, normalizeRichTextDocument } from './RichTextEditor.jsx';
 import { VARIABLES_COMERCIALES } from '../lib/textoComercial.js';
+import { ConstructorBloquesEditor } from './ConstructorBloquesEditor.jsx';
 
-const can = (role, action) => Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.permisos?.[action]?.includes?.('parametros'));
+const modulosPorCategoria = (categoriaBase, accion) => {
+  if (categoriaBase === 'cotizacion') return ['parametros'];
+  if (categoriaBase === 'contrato_laboral' && accion === 'ver') return ['rrhh_admin', 'rrhh_operativo'];
+  if (categoriaBase === 'contrato_laboral' && ['crear', 'editar'].includes(accion)) return ['rrhh_admin'];
+  return [];
+};
+const can = (role, categoriaBase, accion) => Boolean(
+  role?.permisos?.todo
+  || role?.es_admin_empresa
+  || modulosPorCategoria(categoriaBase, accion).some(modulo => role?.permisos?.[accion]?.includes?.(modulo))
+);
 const scopeFilter = (query, sociedadId) => sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
 
 export function CatalogoDocumentosCondiciones({ active }) {
@@ -23,11 +34,15 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const [guardandoSegmento, setGuardandoSegmento] = useState(null);
   const [publicando, setPublicando] = useState(false);
   const [marcandoDefaultId, setMarcandoDefaultId] = useState(null);
-  const puedeCrear = can(role, 'crear');
-  const puedeEditar = can(role, 'editar');
+  const puedeCrearCotizacion = can(role, 'cotizacion', 'crear');
+  const puedeEditarCotizacion = can(role, 'cotizacion', 'editar');
+  const puedeCrear = puedeCrearCotizacion;
+  const puedeEditar = puedeEditarCotizacion;
   const sociedadId = empresa?.multisociedad_habilitado ? (sociedadActiva?.id === SOCIEDAD_TODAS_ID ? null : sociedadActiva?.id || null) : null;
   const requiereSociedad = Boolean(empresa?.multisociedad_habilitado && !sociedadId);
-  const tipoSeleccionado = tipos.find(tipo => tipo.id === selectedId) || null;
+  const tipoSeleccionadoReal = tipos.find(tipo => tipo.id === selectedId) || null;
+  const esConstructorBloques = tipoSeleccionadoReal?.motor_contenido === 'constructor_bloques';
+  const tipoSeleccionado = esConstructorBloques ? null : tipoSeleccionadoReal;
   const publicada = useMemo(() => bibliotecas.filter(b => b.estado === 'publicada').sort((a,b) => b.version - a.version)[0] || null, [bibliotecas]);
   const historial = useMemo(() => bibliotecas.filter(b => b.estado === 'archivada').sort((a,b) => b.version - a.version), [bibliotecas]);
 
@@ -37,7 +52,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
     try {
       const sb = await getSupabaseClient();
       const { data, error: queryError } = await scopeFilter(
-        sb.from('tipos_documento_electronico').select('*').eq('empresa_id', empresa.id).eq('categoria_base', 'cotizacion').order('nombre'),
+        sb.from('tipos_documento_electronico').select('*').eq('empresa_id', empresa.id).in('categoria_base', ['cotizacion', 'contrato_laboral']).order('nombre'),
         sociedadId,
       );
       if (queryError) throw queryError;
@@ -49,7 +64,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
 
   const cargarBibliotecas = useCallback(async () => {
     const cargaId = ++cargaBibliotecaId.current;
-    if (!selectedId || !isSupabaseConfigured()) {
+    if (!selectedId || esConstructorBloques || !isSupabaseConfigured()) {
       if (cargaId === cargaBibliotecaId.current) { setBibliotecas([]); setDraft(null); setSegmentos([]); }
       return;
     }
@@ -69,7 +84,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
       if (cargaId !== cargaBibliotecaId.current) return;
       setSegmentos(segs || []);
     } catch (err) { if (cargaId === cargaBibliotecaId.current) setError(err.message || 'No se pudo cargar la biblioteca.'); }
-  }, [selectedId]);
+  }, [selectedId, esConstructorBloques]);
 
   useEffect(() => { cargarTipos(); }, [cargarTipos]);
   useEffect(() => { cargarBibliotecas(); }, [cargarBibliotecas]);
@@ -101,7 +116,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
     setError('');
     try {
       const sb = await getSupabaseClient();
-      let q = sb.from('tipos_documento_electronico').update({ es_default_para_categoria:false }).eq('empresa_id', empresa.id).eq('categoria_base','cotizacion');
+    let q = sb.from('tipos_documento_electronico').update({ es_default_para_categoria:false }).eq('empresa_id', empresa.id).eq('categoria_base', tipo.categoria_base);
       q = scopeFilter(q, sociedadId);
       const { error: clearError } = await q;
       if (clearError) throw clearError;
@@ -222,5 +237,6 @@ export function CatalogoDocumentosCondiciones({ active }) {
     {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar} disabled={publicando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button>}</div></div><div className="card-body">
       {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=>{ const segmentoKey = segmento.id || `new-${index}`; const feedbackKey = `segment-${index}`; const guardando = guardandoSegmento === feedbackKey; return <div key={segmentoKey} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmentoConFeedback(draft.id, segmento, feedbackKey)} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} variables={VARIABLES_COMERCIALES} /></div></div>})}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
     </div></div>}
+    {tipoSeleccionadoReal && esConstructorBloques && <ConstructorBloquesEditor tipo={tipoSeleccionadoReal} empresa={empresa} sociedadId={sociedadId} authUser={authUser} puedeCrear={can(role, tipoSeleccionadoReal.categoria_base, 'crear')} puedeEditar={can(role, tipoSeleccionadoReal.categoria_base, 'editar')} addNotificacion={addNotificacion} addToast={addToast} />}
   </div>;
 }
