@@ -59,6 +59,32 @@ const firstHito = (cotizacion = {}) => {
 
 const firstValue = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
 
+const primeraFila = value => Array.isArray(value) ? value[0] || {} : value || {};
+
+/**
+ * Contexto esperado para documentos de contrato laboral:
+ *
+ * - vigencia_efectiva: fila retornada por public.vigencia_efectiva(...), con
+ *   fecha_desde y fecha_hasta ya resueltas contra las adendas aplicables.
+ * - cargos_empresa: filas del maestro del tenant ({ id, codigo, nombre, ... }).
+ *   El resolver enlaza empleado.cargo_id con esta colección; no infiere un
+ *   código desde el nombre de cargo.
+ *
+ * Esta función es pura: la capa que prepare el documento debe consultar la
+ * RPC y el maestro antes de invocar renderTextoDocumental.
+ */
+export function crearContextoContratoLaboral({
+  empresa = {},
+  empleado = {},
+  contrato = {},
+  vigencia_efectiva = null,
+  cargos_empresa = [],
+} = {}) {
+  const cargos = Array.isArray(cargos_empresa) ? cargos_empresa : [];
+  const cargo = cargos.find(item => String(item?.id) === String(empleado?.cargo_id)) || null;
+  return { empresa, empleado, contrato, vigencia_efectiva: primeraFila(vigencia_efectiva), cargos_empresa: cargos, cargo };
+}
+
 export function valorVariableCotizacion(key, ctx = {}) {
   const empresa = ctx.empresa || {};
   const cliente = ctx.cliente || ctx.cuenta || {};
@@ -102,8 +128,16 @@ export function valorVariableContratoLaboral(key, ctx = {}) {
   const empleado = ctx.empleado || ctx.personal || {};
   const contrato = ctx.contrato || {};
   const condiciones = contrato.condiciones_laborales || contrato.snapshot_laboral || ctx.condiciones_laborales || {};
-  const cargo = ctx.cargo || {};
-  const moneda = firstValue(contrato.moneda, condiciones.moneda, empleado.moneda, empresa.moneda_base, 'PEN');
+  const vigenciaEfectiva = primeraFila(ctx.vigencia_efectiva || ctx.vigenciaEfectiva || contrato.vigencia_efectiva);
+  const cargosEmpresa = Array.isArray(ctx.cargos_empresa)
+    ? ctx.cargos_empresa
+    : Array.isArray(ctx.cargosEmpresa) ? ctx.cargosEmpresa : [];
+  const cargoDesdeMaestro = cargosEmpresa.find(item => String(item?.id) === String(empleado.cargo_id));
+  const cargo = ctx.cargo || cargoDesdeMaestro || {};
+  // personal_documentos no tiene una moneda contractual física. Se prefiere
+  // moneda del snapshot si fue capturada; si no, la moneda vigente de nómina
+  // de la ficha del empleado y finalmente la moneda base de la empresa.
+  const moneda = firstValue(condiciones.moneda, empleado.moneda, empresa.moneda_base, 'PEN');
   const remuneracion = firstValue(condiciones.remuneracion_base, contrato.remuneracion_base, contrato.remuneracion, contrato.sueldo_base, empleado.remuneracion, empleado.sueldo_base);
   const values = {
     'empresa.razon_social': empresa.razon_social || empresa.nombre_comercial || '',
@@ -117,14 +151,16 @@ export function valorVariableContratoLaboral(key, ctx = {}) {
     'empleado.direccion': empleado.direccion || '',
     'empleado.fecha_ingreso': empleado.fecha_ingreso || '',
     'contrato.tipo': firstValue(condiciones.tipo_contrato, contrato.tipo_contrato, empleado.tipo_contrato, empleado.modalidad_contrato, ''),
-    'contrato.fecha_inicio': firstValue(condiciones.fecha_inicio, contrato.fecha_inicio, contrato.fecha_emision, empleado.fecha_ingreso, ''),
-    'contrato.fecha_fin': firstValue(condiciones.fecha_fin, contrato.fecha_fin, contrato.fecha_vencimiento, ''),
+    'contrato.fecha_inicio': vigenciaEfectiva.fecha_desde || '',
+    'contrato.fecha_fin': vigenciaEfectiva.fecha_hasta || '',
     'contrato.remuneracion_base': remuneracion == null || remuneracion === '' ? '' : money(remuneracion, moneda),
     'contrato.moneda': moneda,
-    'contrato.modalidad': firstValue(condiciones.modalidad, contrato.modalidad, empleado.modalidad, empleado.modalidad_trabajo, ''),
+    'contrato.modalidad': firstValue(empleado.modalidad_contrato, empleado.tipo_contrato, condiciones.modalidad, contrato.modalidad, ''),
     'cargo.nombre': cargo.nombre || empleado.cargo || contrato.cargo || '',
     'cargo.codigo': cargo.codigo || '',
-    'cargo.area': cargo.area || empleado.area || contrato.area || '',
+    // cargos_empresa no declara área; la fuente vigente comprobada es la ficha
+    // de personal. El snapshot contractual queda solo como fallback histórico.
+    'cargo.area': empleado.area || contrato.area || '',
   };
   return values[key] ?? '';
 }
