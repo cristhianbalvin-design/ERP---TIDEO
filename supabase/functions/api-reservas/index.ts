@@ -90,24 +90,17 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 1. Obtener el empresa_id de TIDEO Tech & Strategy
-    // Asumimos que esta función es específica para el tenant principal en el caso de la landing.
-    const { data: empresa, error: empresaError } = await supabase
-      .from("empresas")
-      .select("id")
-      .ilike("nombre", "%TIDEO Tech & Strategy%")
-      .limit(1)
-      .single();
+    // 1. Obtener el empresa_id de TIDEO Tech & Strategy desde variable de entorno
+    const empresaId = Deno.env.get("TIDEO_EMPRESA_ID");
     
-    if (empresaError || !empresa) {
-      console.error("No se encontró la empresa TIDEO Tech & Strategy");
-      return new Response(JSON.stringify({ error: "Empresa no encontrada" }), {
+    if (!empresaId) {
+      console.error("Falta la variable de entorno TIDEO_EMPRESA_ID");
+      return new Response(JSON.stringify({ error: "Configuración incompleta" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const empresaId = empresa.id;
     let leadId = salesforce_uuid;
 
     // 2. Si no hay salesforce_uuid, el usuario llegó orgánicamente a Calendly sin pasar por el form.
