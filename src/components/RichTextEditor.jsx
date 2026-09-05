@@ -17,7 +17,7 @@ export const normalizeRichTextDocument = value => (
   value && typeof value === 'object' && value.type === 'doc' ? value : EMPTY_DOCUMENT
 );
 
-export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110 }) {
+export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [] }) {
   const editor = useEditor({
     extensions: [Document, Paragraph, Text, Bold, Italic, Underline, BulletList, OrderedList, ListItem, History],
     content: normalizeRichTextDocument(value),
@@ -44,6 +44,10 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
 
   if (!editor) return null;
   const command = (name, attrs) => () => editor.chain().focus()[name](attrs).run();
+  const insertarVariable = token => {
+    if (!token) return;
+    editor.chain().focus().insertContent(token).run();
+  };
   const button = (label, name, attrs, activeName = name) => (
     <button type="button" className={`btn btn-ghost ${editor.isActive(activeName) ? 'active' : ''}`} onClick={command(name, attrs)} disabled={disabled} style={{padding:'4px 8px', minWidth:30}}>{label}</button>
   );
@@ -56,6 +60,10 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
         {button(<u>U</u>, 'toggleUnderline')}
         {button('• Lista', 'toggleBulletList', undefined, 'bulletList')}
         {button('1. Lista', 'toggleOrderedList', undefined, 'orderedList')}
+        {variables.length > 0 && <select className="input" defaultValue="" onChange={e => { insertarVariable(e.target.value); e.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30}}>
+          <option value="">Insertar variable…</option>
+          {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
+        </select>}
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
       </div>}
