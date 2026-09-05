@@ -6,7 +6,7 @@ import { renderTextoComercial } from './lib/textoComercial.js';
 const fmt = (n, sym = 'S/') =>
   sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
 
-function richTextInline(nodes = [], keyPrefix = '') {
+function richTextInline(nodes = [], keyPrefix = '', textoCtx = {}) {
   return nodes.filter(node => node?.type === 'text').map((node, index) => {
     const marks = node.marks || [];
     const has = type => marks.some(mark => mark?.type === type);
@@ -14,18 +14,18 @@ function richTextInline(nodes = [], keyPrefix = '') {
       ...(has('bold') ? { fontFamily:'Helvetica-Bold', fontWeight:'bold' } : {}),
       ...(has('italic') ? { fontFamily:'Helvetica-Oblique', fontStyle:'italic' } : {}),
       ...(has('underline') ? { textDecoration:'underline' } : {}),
-    }}>{node.text || ''}</Text>;
+    }}>{renderTextoComercial(node.text || '', textoCtx)}</Text>;
   });
 }
 
-export function renderRichTextPDF(doc, style) {
+export function renderRichTextPDF(doc, style, textoCtx = {}) {
   const blocks = Array.isArray(doc?.content) ? doc.content : [];
   const renderList = (list, ordered, key) => (list.content || []).map((item, index) => {
     const paragraph = (item.content || []).find(node => node?.type === 'paragraph');
-    return <Text key={`${key}-item-${index}`} style={style}>{ordered ? `${index + 1}. ` : '• '}{richTextInline(paragraph?.content || [], `${key}-${index}`)}</Text>;
+    return <Text key={`${key}-item-${index}`} style={style}>{ordered ? `${index + 1}. ` : '• '}{richTextInline(paragraph?.content || [], `${key}-${index}`, textoCtx)}</Text>;
   });
   return blocks.flatMap((node, index) => {
-    if (node?.type === 'paragraph') return [<Text key={`paragraph-${index}`} style={style}>{richTextInline(node.content || [], `paragraph-${index}`)}</Text>];
+    if (node?.type === 'paragraph') return [<Text key={`paragraph-${index}`} style={style}>{richTextInline(node.content || [], `paragraph-${index}`, textoCtx)}</Text>];
     if (node?.type === 'bulletList') return renderList(node, false, `bullet-${index}`);
     if (node?.type === 'orderedList') return renderList(node, true, `ordered-${index}`);
     return [];
@@ -546,7 +546,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                     <View key={condicion.segmento_id || condicion.clave || index}>
                       <Text style={S.condKey}>{(condicion.titulo || '').toUpperCase()}</Text>
                       {condicion.contenido_json
-                        ? renderRichTextPDF(condicion.contenido_json, S.condVal)
+                        ? renderRichTextPDF(condicion.contenido_json, S.condVal, textoCtx)
                         : <Text style={S.condVal}>{renderComercial(condicion.contenido)}</Text>}
                     </View>
                   ))}
@@ -556,7 +556,7 @@ export function CotizacionPDF({ cot, cuenta, contacto, opp, cfg, qrDataUrl }) {
                     <View key={condicion.segmento_id || condicion.clave || index}>
                       <Text style={S.condKey}>{(condicion.titulo || '').toUpperCase()}</Text>
                       {condicion.contenido_json
-                        ? renderRichTextPDF(condicion.contenido_json, S.condVal)
+                        ? renderRichTextPDF(condicion.contenido_json, S.condVal, textoCtx)
                         : <Text style={S.condVal}>{renderComercial(condicion.contenido)}</Text>}
                     </View>
                   ))}
