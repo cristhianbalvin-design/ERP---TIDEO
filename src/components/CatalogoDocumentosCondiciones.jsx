@@ -30,7 +30,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const cargaBibliotecaId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'' });
+  const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'', motor_contenido:'condiciones_generales' });
   const [guardandoSegmento, setGuardandoSegmento] = useState(null);
   const [publicando, setPublicando] = useState(false);
   const [marcandoDefaultId, setMarcandoDefaultId] = useState(null);
@@ -104,10 +104,10 @@ export function CatalogoDocumentosCondiciones({ active }) {
     try {
       const sb = await getSupabaseClient();
       const { data, error: insertError } = await sb.from('tipos_documento_electronico').insert({
-        empresa_id: empresa.id, sociedad_id: sociedadId, codigo: nuevoTipo.codigo.trim().toUpperCase(), nombre: nuevoTipo.nombre.trim(), categoria_base:'cotizacion', activo:true,
+        empresa_id: empresa.id, sociedad_id: sociedadId, codigo: nuevoTipo.codigo.trim().toUpperCase(), nombre: nuevoTipo.nombre.trim(), categoria_base:'cotizacion', motor_contenido:nuevoTipo.motor_contenido, activo:true,
       }).select().single();
       if (insertError) throw insertError;
-      setNuevoTipo({ codigo:'', nombre:'' }); setTipos(prev => [...prev, data].sort((a,b) => a.nombre.localeCompare(b.nombre))); setSelectedId(data.id);
+      setNuevoTipo({ codigo:'', nombre:'', motor_contenido:'condiciones_generales' }); setTipos(prev => [...prev, data].sort((a,b) => a.nombre.localeCompare(b.nombre))); setSelectedId(data.id);
     } catch (err) { setError(err.message || 'No se pudo crear el tipo.'); }
   };
 
@@ -237,6 +237,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
     {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar} disabled={publicando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button>}</div></div><div className="card-body">
       {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=>{ const segmentoKey = segmento.id || `new-${index}`; const feedbackKey = `segment-${index}`; const guardando = guardandoSegmento === feedbackKey; return <div key={segmentoKey} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmentoConFeedback(draft.id, segmento, feedbackKey)} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} variables={VARIABLES_COMERCIALES} /></div></div>})}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
     </div></div>}
+    {puedeCrearCotizacion && <div className="card"><div className="card-body"><div className="input-group" style={{maxWidth:360}}><label>Motor para el nuevo tipo de cotización</label><select className="input" value={nuevoTipo.motor_contenido} onChange={event => setNuevoTipo(previous => ({ ...previous, motor_contenido:event.target.value }))}><option value="condiciones_generales">Condiciones generales</option><option value="constructor_bloques">Constructor de bloques</option></select><div className="text-muted" style={{fontSize:12, marginTop:4}}>El valor por defecto conserva el editor actual; selecciona Constructor de bloques antes de crear un tipo especial.</div></div></div></div>}
     {tipoSeleccionadoReal && esConstructorBloques && <ConstructorBloquesEditor tipo={tipoSeleccionadoReal} empresa={empresa} sociedadId={sociedadId} authUser={authUser} puedeCrear={can(role, tipoSeleccionadoReal.categoria_base, 'crear')} puedeEditar={can(role, tipoSeleccionadoReal.categoria_base, 'editar')} addNotificacion={addNotificacion} addToast={addToast} />}
   </div>;
 }
