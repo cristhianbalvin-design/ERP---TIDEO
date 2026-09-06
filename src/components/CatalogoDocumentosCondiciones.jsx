@@ -4,13 +4,25 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { SOCIEDAD_TODAS_ID } from '../services/sociedadesService.js';
 import { RichTextEditor, normalizeRichTextDocument } from './RichTextEditor.jsx';
 import { VARIABLES_COMERCIALES } from '../lib/textoComercial.js';
+import { ConstructorBloquesEditor } from './ConstructorBloquesEditor.jsx';
 
-const can = (role, action) => Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.permisos?.[action]?.includes?.('parametros'));
+const modulosPorCategoria = (categoriaBase, accion) => {
+  if (categoriaBase === 'cotizacion') return ['parametros'];
+  if (categoriaBase === 'contrato_laboral' && accion === 'ver') return ['rrhh_admin', 'rrhh_operativo'];
+  if (categoriaBase === 'contrato_laboral' && ['crear', 'editar'].includes(accion)) return ['rrhh_admin'];
+  return [];
+};
+const can = (role, categoriaBase, accion) => Boolean(
+  role?.permisos?.todo
+  || role?.es_admin_empresa
+  || modulosPorCategoria(categoriaBase, accion).some(modulo => role?.permisos?.[accion]?.includes?.(modulo))
+);
 const scopeFilter = (query, sociedadId) => sociedadId ? query.eq('sociedad_id', sociedadId) : query.is('sociedad_id', null);
 
 export function CatalogoDocumentosCondiciones({ active }) {
   const { empresa, sociedadActiva, role, authUser, addNotificacion, addToast } = useApp();
   const [tipos, setTipos] = useState([]);
+  const [versionesPorTipo, setVersionesPorTipo] = useState({});
   const [selectedId, setSelectedId] = useState('');
   const [bibliotecas, setBibliotecas] = useState([]);
   const [draft, setDraft] = useState(null);
@@ -19,15 +31,20 @@ export function CatalogoDocumentosCondiciones({ active }) {
   const cargaBibliotecaId = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'' });
+  const [nuevoTipo, setNuevoTipo] = useState({ codigo:'', nombre:'', motor_contenido:'condiciones_generales' });
   const [guardandoSegmento, setGuardandoSegmento] = useState(null);
   const [publicando, setPublicando] = useState(false);
+  const [descartando, setDescartando] = useState(false);
   const [marcandoDefaultId, setMarcandoDefaultId] = useState(null);
-  const puedeCrear = can(role, 'crear');
-  const puedeEditar = can(role, 'editar');
+  const puedeCrearCotizacion = can(role, 'cotizacion', 'crear');
+  const puedeEditarCotizacion = can(role, 'cotizacion', 'editar');
+  const puedeCrear = puedeCrearCotizacion;
+  const puedeEditar = puedeEditarCotizacion;
   const sociedadId = empresa?.multisociedad_habilitado ? (sociedadActiva?.id === SOCIEDAD_TODAS_ID ? null : sociedadActiva?.id || null) : null;
   const requiereSociedad = Boolean(empresa?.multisociedad_habilitado && !sociedadId);
-  const tipoSeleccionado = tipos.find(tipo => tipo.id === selectedId) || null;
+  const tipoSeleccionadoReal = tipos.find(tipo => tipo.id === selectedId) || null;
+  const esConstructorBloques = tipoSeleccionadoReal?.motor_contenido === 'constructor_bloques';
+  const tipoSeleccionado = esConstructorBloques ? null : tipoSeleccionadoReal;
   const publicada = useMemo(() => bibliotecas.filter(b => b.estado === 'publicada').sort((a,b) => b.version - a.version)[0] || null, [bibliotecas]);
   const historial = useMemo(() => bibliotecas.filter(b => b.estado === 'archivada').sort((a,b) => b.version - a.version), [bibliotecas]);
 
@@ -37,19 +54,40 @@ export function CatalogoDocumentosCondiciones({ active }) {
     try {
       const sb = await getSupabaseClient();
       const { data, error: queryError } = await scopeFilter(
-        sb.from('tipos_documento_electronico').select('*').eq('empresa_id', empresa.id).eq('categoria_base', 'cotizacion').order('nombre'),
+        sb.from('tipos_documento_electronico').select('*').eq('empresa_id', empresa.id).in('categoria_base', ['cotizacion', 'contrato_laboral']).order('nombre'),
         sociedadId,
       );
       if (queryError) throw queryError;
-      setTipos(data || []);
-      setSelectedId(prev => (data || []).some(tipo => tipo.id === prev) ? prev : (data || []).find(tipo => tipo.es_default_para_categoria)?.id || data?.[0]?.id || '');
+      const rows = data || [];
+      const ids = rows.map(tipo => tipo.id);
+      const [{ data: bibliotecasData, error: bibliotecasError }, { data: plantillasData, error: plantillasError }] = ids.length
+        ? await Promise.all([
+          sb.from('biblioteca_condiciones_generales').select('tipo_documento_id, version, estado').in('tipo_documento_id', ids),
+          sb.from('plantillas_documento_bloques').select('tipo_documento_id, version, estado').in('tipo_documento_id', ids),
+        ])
+        : [{ data:[], error:null }, { data:[], error:null }];
+      if (bibliotecasError) throw bibliotecasError;
+      if (plantillasError) throw plantillasError;
+      const versiones = Object.fromEntries(rows.map(tipo => {
+        const versionesTipo = (tipo.motor_contenido === 'constructor_bloques' ? plantillasData || [] : bibliotecasData || [])
+          .filter(version => version.tipo_documento_id === tipo.id);
+        const publicadaTipo = versionesTipo.filter(version => version.estado === 'publicada').sort((a, b) => b.version - a.version)[0] || null;
+        const borradorTipo = versionesTipo.filter(version => version.estado === 'borrador').sort((a, b) => b.version - a.version)[0] || null;
+        const label = publicadaTipo
+          ? `v${publicadaTipo.version}${borradorTipo ? ' (+ borrador)' : ''}`
+          : borradorTipo ? 'Sin publicar (borrador)' : '—';
+        return [tipo.id, label];
+      }));
+      setTipos(rows);
+      setVersionesPorTipo(versiones);
+      setSelectedId(prev => rows.some(tipo => tipo.id === prev) ? prev : rows.find(tipo => tipo.es_default_para_categoria)?.id || rows[0]?.id || '');
     } catch (err) { setError(err.message || 'No se pudo cargar el catálogo.'); }
     finally { setLoading(false); }
   }, [active, empresa?.id, requiereSociedad, sociedadId]);
 
   const cargarBibliotecas = useCallback(async () => {
     const cargaId = ++cargaBibliotecaId.current;
-    if (!selectedId || !isSupabaseConfigured()) {
+    if (!selectedId || esConstructorBloques || !isSupabaseConfigured()) {
       if (cargaId === cargaBibliotecaId.current) { setBibliotecas([]); setDraft(null); setSegmentos([]); }
       return;
     }
@@ -69,7 +107,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
       if (cargaId !== cargaBibliotecaId.current) return;
       setSegmentos(segs || []);
     } catch (err) { if (cargaId === cargaBibliotecaId.current) setError(err.message || 'No se pudo cargar la biblioteca.'); }
-  }, [selectedId]);
+  }, [selectedId, esConstructorBloques]);
 
   useEffect(() => { cargarTipos(); }, [cargarTipos]);
   useEffect(() => { cargarBibliotecas(); }, [cargarBibliotecas]);
@@ -86,13 +124,15 @@ export function CatalogoDocumentosCondiciones({ active }) {
 
   const crearTipo = async () => {
     if (!nuevoTipo.codigo.trim() || !nuevoTipo.nombre.trim()) return setError('Código y nombre son obligatorios.');
+    setError('');
     try {
       const sb = await getSupabaseClient();
       const { data, error: insertError } = await sb.from('tipos_documento_electronico').insert({
-        empresa_id: empresa.id, sociedad_id: sociedadId, codigo: nuevoTipo.codigo.trim().toUpperCase(), nombre: nuevoTipo.nombre.trim(), categoria_base:'cotizacion', activo:true,
+        empresa_id: empresa.id, sociedad_id: sociedadId, codigo: nuevoTipo.codigo.trim().toUpperCase(), nombre: nuevoTipo.nombre.trim(), categoria_base:'cotizacion', motor_contenido:nuevoTipo.motor_contenido, activo:true,
       }).select().single();
       if (insertError) throw insertError;
-      setNuevoTipo({ codigo:'', nombre:'' }); setTipos(prev => [...prev, data].sort((a,b) => a.nombre.localeCompare(b.nombre))); setSelectedId(data.id);
+      setNuevoTipo({ codigo:'', nombre:'', motor_contenido:'condiciones_generales' }); setTipos(prev => [...prev, data].sort((a,b) => a.nombre.localeCompare(b.nombre))); setVersionesPorTipo(prev => ({ ...prev, [data.id]:'—' })); setSelectedId(data.id);
+      setError('');
     } catch (err) { setError(err.message || 'No se pudo crear el tipo.'); }
   };
 
@@ -101,7 +141,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
     setError('');
     try {
       const sb = await getSupabaseClient();
-      let q = sb.from('tipos_documento_electronico').update({ es_default_para_categoria:false }).eq('empresa_id', empresa.id).eq('categoria_base','cotizacion');
+    let q = sb.from('tipos_documento_electronico').update({ es_default_para_categoria:false }).eq('empresa_id', empresa.id).eq('categoria_base', tipo.categoria_base);
       q = scopeFilter(q, sociedadId);
       const { error: clearError } = await q;
       if (clearError) throw clearError;
@@ -134,6 +174,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
         cloned = data || [];
       }
       setBibliotecas(prev => [nueva, ...prev]); setDraft(nueva); setSegmentos(cloned);
+      await cargarTipos();
       addNotificacion?.(`Borrador v${version} creado.`);
     } catch (err) { setError(err.message || 'No se pudo crear el borrador.'); }
   };
@@ -161,6 +202,20 @@ export function CatalogoDocumentosCondiciones({ active }) {
       const guardado = await guardarSegmento(bibliotecaId, segment);
       if (guardado) addToast?.('Segmento guardado.', 'success');
     } finally { setGuardandoSegmento(null); }
+  };
+
+  const descartarBorrador = async () => {
+    if (!draft || !window.confirm('Se perderán todos los cambios de este borrador sin afectar la versión publicada vigente. ¿Deseas descartarlo?')) return;
+    setDescartando(true); setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { error: discardError } = await sb.rpc('descartar_borrador_condiciones_generales', { p_biblioteca_id:draft.id });
+      if (discardError) throw discardError;
+      await cargarBibliotecas();
+      await cargarTipos();
+      addToast?.('Borrador descartado.', 'success');
+    } catch (err) { setError(err.message || 'No se pudo descartar el borrador.'); }
+    finally { setDescartando(false); }
   };
 
   const agregarSegmento = () => setSegmentos(prev => [...prev, { titulo:'', contenido_json:normalizeRichTextDocument(null), contenido_texto_plano:'', orden:prev.length + 1 }]);
@@ -207,6 +262,7 @@ export function CatalogoDocumentosCondiciones({ active }) {
       addNotificacion?.(`Versión ${draft.version} publicada.`);
       addToast?.(`Versión ${draft.version} publicada.`, 'success');
       await cargarBibliotecas();
+      await cargarTipos();
     } catch (err) { setError(err.message || 'No se pudo publicar la biblioteca.'); }
     finally { setPublicando(false); }
   };
@@ -216,11 +272,12 @@ export function CatalogoDocumentosCondiciones({ active }) {
   return <div className="params-section params-section-catalogo_documentos" style={{display:'grid', gap:16}}>
     <div className="card"><div className="card-head"><h3>Tipos de documento para cotizaciones</h3>{puedeCrear && <span className="badge badge-cyan">Categoría: cotización</span>}</div><div className="card-body">
       {error && <div className="alert alert-danger">{error}</div>}
-      {puedeCrear && <div className="grid-2" style={{gap:8, marginBottom:14}}><input className="input" placeholder="Código, ej. COTIZACION_SERVICIOS" value={nuevoTipo.codigo} onChange={e=>setNuevoTipo(p=>({...p,codigo:e.target.value}))}/><div className="row" style={{gap:8}}><input className="input" placeholder="Nombre del tipo" value={nuevoTipo.nombre} onChange={e=>setNuevoTipo(p=>({...p,nombre:e.target.value}))}/><button className="btn btn-primary" onClick={crearTipo}>Crear tipo</button></div></div>}
-      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>seleccionarTipo(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)} disabled={Boolean(marcandoDefaultId)}>{marcandoDefaultId === tipo.id ? 'Marcando…' : 'Marcar default'}</button>}</td></tr>)}</tbody></table></div>}
+      {puedeCrear && <div className="grid-2" style={{gap:8, marginBottom:14}}><input className="input" placeholder="Código, ej. COTIZACION_SERVICIOS" value={nuevoTipo.codigo} onChange={e=>setNuevoTipo(p=>({...p,codigo:e.target.value}))}/><div className="row" style={{gap:8}}><input className="input" placeholder="Nombre del tipo" value={nuevoTipo.nombre} onChange={e=>setNuevoTipo(p=>({...p,nombre:e.target.value}))}/><select className="input" value={nuevoTipo.motor_contenido} onChange={event=>setNuevoTipo(previous=>({...previous,motor_contenido:event.target.value}))} title="Motor de contenido"><option value="condiciones_generales">Condiciones generales</option><option value="constructor_bloques">Constructor de bloques</option></select><button className="btn btn-primary" onClick={crearTipo}>Crear tipo</button></div><div className="text-muted" style={{fontSize:12, gridColumn:'1/-1'}}>El valor por defecto conserva el editor actual; selecciona Constructor de bloques antes de crear un tipo especial.</div></div>}
+      {loading ? <div className="text-muted">Cargando…</div> : tipos.length === 0 ? <div className="text-muted">No hay tipos configurados para este alcance.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Código</th><th>Default</th><th>Estado</th><th>Versión</th><th></th></tr></thead><tbody>{tipos.map(tipo=><tr key={tipo.id} style={{background:tipo.id===selectedId?'var(--bg-alt)':undefined}}><td><button className="btn btn-ghost" onClick={()=>seleccionarTipo(tipo.id)}>{tipo.nombre}</button></td><td>{tipo.codigo}</td><td>{tipo.es_default_para_categoria?'Sí':'No'}</td><td>{tipo.activo?'Activo':'Inactivo'}</td><td>{versionesPorTipo[tipo.id] || '—'}</td><td>{puedeEditar && !tipo.es_default_para_categoria && <button className="btn btn-secondary" onClick={()=>marcarDefault(tipo)} disabled={Boolean(marcandoDefaultId)}>{marcandoDefaultId === tipo.id ? 'Marcando…' : 'Marcar default'}</button>}</td></tr>)}</tbody></table></div>}
     </div></div>
-    {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button className="btn btn-primary" onClick={publicar} disabled={publicando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button>}</div></div><div className="card-body">
+    {tipoSeleccionado && <div className="card"><div className="card-head"><div><h3>{tipoSeleccionado.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button className="btn btn-ghost" onClick={()=>setMostrarHistorial(value=>!value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button className="btn btn-secondary" onClick={()=>crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body">
       {draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>{segmentos.map((segmento,index)=>{ const segmentoKey = segmento.id || `new-${index}`; const feedbackKey = `segment-${index}`; const guardando = guardandoSegmento === feedbackKey; return <div key={segmentoKey} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><div className="row" style={{gap:8,alignItems:'center'}}><strong style={{minWidth:28}}>#{segmento.orden}</strong><input className="input" placeholder="Título del segmento" value={segmento.titulo} onChange={e=>editarSegmento(index,{titulo:e.target.value})}/><button className="btn btn-ghost" onClick={()=>mover(index,-1)} disabled={index===0}>↑</button><button className="btn btn-ghost" onClick={()=>mover(index,1)} disabled={index===segmentos.length-1}>↓</button><button type="button" className="btn btn-secondary" onClick={()=>guardarSegmentoConFeedback(draft.id, segmento, feedbackKey)} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button><button className="btn btn-ghost" onClick={()=>desactivarSegmento(segmento,index)}>Retirar</button></div><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} onChange={patch=>editarSegmento(index,patch)} variables={VARIABLES_COMERCIALES} /></div></div>})}<button className="btn btn-secondary" onClick={agregarSegmento}>+ Agregar segmento</button></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>{segmentos.map(segmento=><div key={segmento.id} style={{border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:10}}><strong>{segmento.orden}. {segmento.titulo}</strong><div style={{marginTop:8}}><RichTextEditor value={segmento.contenido_json} disabled onChange={()=>{}} /></div></div>)}</> : <div className="text-muted">Crea el primer borrador para agregar segmentos.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row=><li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
     </div></div>}
+    {tipoSeleccionadoReal && esConstructorBloques && <ConstructorBloquesEditor tipo={tipoSeleccionadoReal} empresa={empresa} sociedadId={sociedadId} authUser={authUser} puedeCrear={can(role, tipoSeleccionadoReal.categoria_base, 'crear')} puedeEditar={can(role, tipoSeleccionadoReal.categoria_base, 'editar')} addNotificacion={addNotificacion} addToast={addToast} onVersionsChanged={cargarTipos} />}
   </div>;
 }

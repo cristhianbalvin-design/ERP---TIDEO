@@ -2098,6 +2098,19 @@ body {
 .params-page[data-section="documentos"] .params-section-documentos {
   display: grid;
 }
+.params-page[data-section="catalogo_documentos"] .params-section-catalogo_documentos {
+  grid-auto-rows: max-content;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.params-page[data-section="catalogo_documentos"] .params-section-catalogo_documentos > .card {
+  height: auto;
+  min-height: auto;
+  flex: 0 0 auto;
+  overflow: visible;
+}
 @media (max-width: 1100px) {
   .params-commercial-grid,
   .params-token-grid,
