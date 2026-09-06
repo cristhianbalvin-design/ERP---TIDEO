@@ -106,13 +106,14 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onChange, o
   </div>;
 }
 
-export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, puedeCrear, puedeEditar, addNotificacion, addToast }) {
+export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, puedeCrear, puedeEditar, addNotificacion, addToast, onVersionsChanged }) {
   const [plantillas, setPlantillas] = useState([]);
   const [draft, setDraft] = useState(null);
   const [bloques, setBloques] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [publicando, setPublicando] = useState(false);
+  const [descartando, setDescartando] = useState(false);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [guardandoId, setGuardandoId] = useState(null);
   const [guardadoId, setGuardadoId] = useState(null);
@@ -175,7 +176,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
           cloned.push(copied);
         }
       }
-      setPlantillas(previous => [nueva, ...previous]); setDraft(nueva); setBloques(cloned); addNotificacion?.(`Borrador v${version} creado.`);
+      setPlantillas(previous => [nueva, ...previous]); setDraft(nueva); setBloques(cloned); await onVersionsChanged?.(); addNotificacion?.(`Borrador v${version} creado.`);
     } catch (err) { setError(err.message || 'No se pudo crear el borrador.'); }
   };
 
@@ -201,6 +202,20 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
         window.setTimeout(() => setGuardadoId(current => current === key ? null : current), 1500);
       }
     } finally { setGuardandoId(null); }
+  };
+
+  const descartarBorrador = async () => {
+    if (!draft || !window.confirm('Se perderán todos los cambios de este borrador sin afectar la versión publicada vigente. ¿Deseas descartarlo?')) return;
+    setDescartando(true); setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { error: discardError } = await sb.rpc('descartar_borrador_plantilla_documento', { p_plantilla_id:draft.id });
+      if (discardError) throw discardError;
+      await cargar();
+      await onVersionsChanged?.();
+      addToast?.('Borrador descartado.', 'success');
+    } catch (err) { setError(err.message || 'No se pudo descartar el borrador.'); }
+    finally { setDescartando(false); }
   };
 
   const addBlock = (parentId, tipoBloque) => {
@@ -253,14 +268,14 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
       }
       const { error: publishError } = await sb.from('plantillas_documento_bloques').update({ estado:'publicada', publicada_at:new Date().toISOString(), publicada_by:authUser?.id || null }).eq('id', draft.id);
       if (publishError) throw publishError;
-      addNotificacion?.(`Versión ${draft.version} publicada.`); addToast?.(`Versión ${draft.version} publicada.`, 'success'); await cargar();
+      addNotificacion?.(`Versión ${draft.version} publicada.`); addToast?.(`Versión ${draft.version} publicada.`, 'success'); await cargar(); await onVersionsChanged?.();
     } catch (err) { setError(err.message || 'No se pudo publicar la plantilla.'); }
     finally { setPublicando(false); }
   };
 
   const decoratedRoots = Object.assign(rootBlocks, { _all:bloques, _savingId:guardandoId, _savedId:guardadoId });
   const childList = parentId => Object.assign(childrenFor(parentId), { _all:bloques, _savingId:guardandoId, _savedId:guardadoId });
-  return <div className="card"><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button>}</div></div><div className="card-body">
+  return <div className="card"><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body">
     {error && <div className="alert alert-danger">{error}</div>}
     {loading ? <div className="text-muted">Cargando…</div> : draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div><BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled={!puedeEditar} variables={variables} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} /></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div><BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled variables={variables} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} /></> : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
   </div></div>;
