@@ -107,7 +107,7 @@ serve(async (req) => {
     // Creamos el prospecto/lead.
     if (!leadId) {
       const { data: newLead, error: insertError } = await supabase
-        .from("prospectos")
+        .from("leads")
         .insert({
           empresa_id: empresaId,
           nombre_contacto: name,
@@ -129,18 +129,35 @@ serve(async (req) => {
     } else {
       // 3. Si existe salesforce_uuid, actualizamos el prospecto existente
       // (Opcionalmente podríamos cambiar el estado aquí si aplica)
-      await supabase
-        .from("prospectos")
+      const { error: updateError } = await supabase
+        .from("leads")
         .update({ modificado_en: new Date().toISOString() })
         .eq("id", leadId)
         .eq("empresa_id", empresaId);
+        
+      if (updateError) {
+        console.error("Error al actualizar lead:", updateError);
+      }
     }
 
     // 4. Insertar en agenda_comercial
     // Usamos el formato esperado por persistirAgendaEvento
     const startDate = new Date(start_time);
-    const fecha = startDate.toISOString().split("T")[0]; // YYYY-MM-DD
-    const hora = startDate.toISOString().split("T")[1].substring(0, 5); // HH:MM
+    
+    // Convertir a zona horaria America/Lima
+    const fecha = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: 'America/Lima', 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    }).format(startDate); // Formato YYYY-MM-DD
+    
+    const hora = new Intl.DateTimeFormat('en-GB', { 
+      timeZone: 'America/Lima', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false 
+    }).format(startDate); // Formato HH:MM
 
     const eventoAgenda = {
       empresa_id: empresaId,
