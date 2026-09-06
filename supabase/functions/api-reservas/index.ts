@@ -170,6 +170,7 @@ serve(async (req) => {
     }).format(startDate); // Formato HH:MM
 
     const eventoAgenda = {
+      id: crypto.randomUUID(),
       empresa_id: empresaId,
       titulo: `Reunión Calendly: ${name}`,
       tipo: "reunion",
