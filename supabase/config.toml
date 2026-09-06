@@ -14,3 +14,11 @@ entrypoint = "./functions/extraer-tarjeta-lead/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/crear-upload-cv-publico/index.ts"
+
+[functions.api-reservas]
+enabled = true
+verify_jwt = false
+
+[functions.api-prospectos]
+enabled = true
+verify_jwt = false
