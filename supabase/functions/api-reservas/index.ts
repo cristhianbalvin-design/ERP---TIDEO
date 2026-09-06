@@ -108,21 +108,6 @@ serve(async (req) => {
       });
     }
 
-    if (event_uri) {
-      const { data: existingEvent } = await supabase
-        .from("agenda_comercial")
-        .select("id")
-        .eq("calendly_event_uri", event_uri)
-        .maybeSingle();
-        
-      if (existingEvent) {
-        console.log("Evento ya procesado:", event_uri);
-        return new Response(JSON.stringify({ success: true, message: "Evento ya procesado" }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
 
     let leadId = salesforce_uuid;
 
@@ -201,14 +186,24 @@ serve(async (req) => {
       notas: `Agendado vía Calendly. URI: ${event_uri}`
     };
 
-    const { error: agendaError } = await supabase
+    const { data: agendaData, error: agendaError } = await supabase
       .from("agenda_comercial")
-      .insert(eventoAgenda);
+      .upsert(eventoAgenda, { onConflict: 'calendly_event_uri', ignoreDuplicates: true })
+      .select("id")
+      .maybeSingle();
 
     if (agendaError) {
       console.error("Error al insertar en agenda_comercial:", agendaError);
       return new Response(JSON.stringify({ error: "Error creando evento" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!agendaData) {
+      console.log("Evento ya procesado (ignorado por upsert):", event_uri);
+      return new Response(JSON.stringify({ success: true, message: "Evento ya procesado" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
