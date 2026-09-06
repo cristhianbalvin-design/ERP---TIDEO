@@ -74,7 +74,7 @@ serve(async (req) => {
       telefono: telefono ?? null,
       cargo: cargo ?? null,
       fuente: fuente ?? "api",
-      notas: notas ?? null,
+      necesidad: notas ?? null,
       estado: "nuevo",
       campana_id: campanaId,
       registrado_desde: "api",
