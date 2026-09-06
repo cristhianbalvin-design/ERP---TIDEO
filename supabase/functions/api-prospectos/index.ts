@@ -69,7 +69,7 @@ serve(async (req) => {
       id: leadId,
       empresa_id: empresaId,
       nombre_contacto: nombre_contacto ?? "",
-      nombre_empresa: nombre_empresa ?? "",
+      empresa_nombre: nombre_empresa ?? "",
       email: email ?? null,
       telefono: telefono ?? null,
       cargo: cargo ?? null,
