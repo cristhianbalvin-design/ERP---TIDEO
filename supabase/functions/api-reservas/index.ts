@@ -109,6 +109,22 @@ serve(async (req) => {
     }
 
 
+    if (event_uri) {
+      const { data: existingEvent } = await supabase
+        .from("agenda_comercial")
+        .select("id")
+        .eq("calendly_event_uri", event_uri)
+        .maybeSingle();
+        
+      if (existingEvent) {
+        console.log("Evento ya procesado:", event_uri);
+        return new Response(JSON.stringify({ success: true, message: "Evento ya procesado" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     let leadId = salesforce_uuid;
 
     // 2. Si existe salesforce_uuid, intentamos actualizar el lead
