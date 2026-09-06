@@ -78,12 +78,19 @@ serve(async (req) => {
     const name = payload.name;
     const email = payload.email;
     const start_time = scheduled_event.start_time;
-    // const end_time = scheduled_event.end_time;
+    const end_time = scheduled_event.end_time;
     const tracking = scheduled_event.tracking || {};
     const salesforce_uuid = tracking.salesforce_uuid;
     const utm_source = tracking.utm_source;
     const event_uri = scheduled_event.uri;
-    const duration_minutes = 30; // Valor por defecto si no podemos deducirlo
+    
+    let duration_minutes = 30; // Valor por defecto si no podemos deducirlo
+    if (start_time && end_time) {
+      const diffMs = new Date(end_time).getTime() - new Date(start_time).getTime();
+      if (diffMs > 0) {
+        duration_minutes = Math.round(diffMs / 60000);
+      }
+    }
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -103,8 +110,22 @@ serve(async (req) => {
 
     let leadId = salesforce_uuid;
 
-    // 2. Si no hay salesforce_uuid, el usuario llegó orgánicamente a Calendly sin pasar por el form.
-    // Creamos el prospecto/lead.
+    // 2. Si existe salesforce_uuid, intentamos actualizar el lead
+    if (leadId) {
+      const { data: updated, error: updateError } = await supabase
+        .from("leads")
+        .update({ modificado_en: new Date().toISOString() })
+        .eq("id", leadId)
+        .eq("empresa_id", empresaId)
+        .select("id");
+        
+      if (updateError || !updated || updated.length === 0) {
+        console.warn("salesforce_uuid inválido o lead inexistente. Se creará uno nuevo.");
+        leadId = null; // Forzar creación
+      }
+    }
+
+    // 3. Si no había salesforce_uuid (o era inválido), creamos el lead.
     if (!leadId) {
       const { data: newLead, error: insertError } = await supabase
         .from("leads")
@@ -126,18 +147,6 @@ serve(async (req) => {
         });
       }
       leadId = newLead.id;
-    } else {
-      // 3. Si existe salesforce_uuid, actualizamos el prospecto existente
-      // (Opcionalmente podríamos cambiar el estado aquí si aplica)
-      const { error: updateError } = await supabase
-        .from("leads")
-        .update({ modificado_en: new Date().toISOString() })
-        .eq("id", leadId)
-        .eq("empresa_id", empresaId);
-        
-      if (updateError) {
-        console.error("Error al actualizar lead:", updateError);
-      }
     }
 
     // 4. Insertar en agenda_comercial
@@ -206,7 +215,7 @@ TAREA 3: DOCUMENTACIÓN - FLUJO META LEAD ADS (PARA FUTURA IMPLEMENTACIÓN)
 Cuando un lead ingrese a través de un formulario nativo de Meta (Lead Ads):
 1. El webhook `leadgen` de Meta será recibido por otra Edge Function (ej. api-meta-leads).
 2. Esa función guardará el lead vía `api-prospectos` (o insertando directamente si está en el mismo repo).
-3. El ID (`id`) que devuelve esa creación en la tabla de `prospectos` debe utilizarse como
+3. El ID (`id`) que devuelve esa creación en la tabla de `leads` debe utilizarse como
    parámetro `salesforce_uuid` en la URL de agendamiento de Calendly que se le muestre
    al usuario en la página de agradecimiento de Meta o en el correo de confirmación.
    Ejemplo de URL a generar:
