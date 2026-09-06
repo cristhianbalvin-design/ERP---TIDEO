@@ -132,6 +132,7 @@ serve(async (req) => {
         .insert({
           empresa_id: empresaId,
           nombre_contacto: name,
+          empresa_nombre: "Por definir",
           email: email,
           fuente: utm_source || "calendly_directo",
           estado: "nuevo"
