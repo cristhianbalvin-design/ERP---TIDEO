@@ -143,7 +143,10 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
 
   useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); cargar(); }, [cargar]);
 
-  const replaceBlock = (before, after) => setBloques(previous => previous.map(block => block === before || block.id === before.id || block.client_key === before.client_key ? { ...after, client_key: before.client_key } : block));
+  const isSameBlock = (block, target) => block === target
+    || (target.id != null && block.id === target.id)
+    || (target.client_key != null && block.client_key === target.client_key);
+  const replaceBlock = (before, after) => setBloques(previous => previous.map(block => isSameBlock(block, before) ? { ...after, client_key: before.client_key } : block));
   const updateBlock = (block, patch) => replaceBlock(block, { ...block, ...patch });
   const childrenFor = parentId => orderBlocks(bloques.filter(block => block.bloque_padre_id === parentId));
   const rootBlocks = childrenFor(null);
