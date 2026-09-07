@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { obtenerVariablesDocumentales } from '../lib/variablesDocumentales.js';
 import { subirImagenConstructorDocumento } from '../services/storageService.js';
@@ -12,6 +12,11 @@ const emptyTable = () => {
 };
 const emptyGroup = () => ({ fuente_repeticion: '', titulo_item: '' });
 const orderBlocks = blocks => [...blocks].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
+const PREVIEW_SHEET_HEIGHT = 1056;
+const PREVIEW_SHEET_VERTICAL_PADDING = 128;
+const PREVIEW_BODY_TOP_PADDING = 24;
+const previewBlockKey = block => block.client_key || block.id || `block-${block.orden || 0}-${block.titulo || ''}`;
+const normalizedScope = scope => scope === 'primera' ? 'primera' : 'todas';
 
 const normalizeTable = value => {
   const columnas = Array.isArray(value?.columnas) ? value.columnas.filter(column => column?.id).map(column => ({
@@ -140,7 +145,7 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onUploadIma
   </div>;
 }
 
-function SeccionPlantillaEditor({ titulo, value, disabled, variables, onUploadImage, guardando, guardado, onChange, onSave }) {
+function SeccionPlantillaEditor({ titulo, alcance, value, disabled, variables, onUploadImage, guardando, guardado, onAlcanceChange, onChange, onSave }) {
   const columns = normalizeSectionColumns(value?.contenido_json);
   const updateColumns = next => onChange(sectionPatch(next));
   const addColumn = () => {
@@ -153,18 +158,18 @@ function SeccionPlantillaEditor({ titulo, value, disabled, variables, onUploadIm
   };
   return <section style={{marginBottom:18}}>
     <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
-      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong>{!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}</div>
+      <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><strong>{titulo}</strong><label className="row text-muted" style={{gap:6, fontSize:12}}>Mostrar en:<select className="input" value={normalizedScope(alcance)} disabled={disabled} onChange={event => onAlcanceChange?.(event.target.value)} style={{minWidth:150, padding:'3px 6px'}}><option value="todas">Todas las páginas</option><option value="primera">Solo primera página</option></select></label>{!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}</div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
     </div>
     <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="row" style={{justifyContent:'space-between', gap:6, marginBottom:6}}><div className="text-muted" style={{fontSize:12}}>Columna {index + 1}</div>{!disabled && <button type="button" className="btn btn-ghost" aria-label={`Eliminar columna ${index + 1}`} onClick={() => removeColumn(column.id)} disabled={columns.length <= 1} style={{padding:'1px 6px', minWidth:0}}>×</button>}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
   </section>;
 }
 
-function VistaBloque({ block, bloques }) {
+function VistaBloque({ block, bloques, measurementRef = null }) {
   const hijos = orderBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
   const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
   const grupo = block.tipo_bloque === 'grupo_repetible' ? { ...emptyGroup(), ...(block.contenido_json || {}) } : null;
-  return <section className="document-preview-block">
+  return <section ref={measurementRef} className="document-preview-block">
     {block.titulo && <h4>{block.titulo}</h4>}
     {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} />}
     {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><thead><tr>{tabla.columnas.map(columna => <th key={columna.id}>{columna.titulo}</th>)}</tr></thead><tbody>{tabla.filas.map(fila => <tr key={fila.id}>{tabla.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (fila.valores[columna.id] ? '✓' : '') : fila.valores[columna.id] || ''}</td>)}</tr>)}</tbody></table></div>}
@@ -179,6 +184,75 @@ function VistaSeccionPlantilla({ value }) {
 
 function VistaPreviewHoja({ plantilla, bloques, zoom, onZoom }) {
   const raiz = orderBlocks(bloques.filter(bloque => !bloque.bloque_padre_id));
+  const measureSheetRef = useRef(null);
+  const measureHeaderRef = useRef(null);
+  const measureFooterRef = useRef(null);
+  const measureBlockRefs = useRef(new Map());
+  const [medidas, setMedidas] = useState(null);
+  const encabezadoAlcance = normalizedScope(plantilla?.encabezado_alcance);
+  const pieAlcance = normalizedScope(plantilla?.pie_alcance);
+  const measurementKey = useMemo(() => JSON.stringify({
+    encabezado:plantilla?.encabezado_json || null,
+    pie:plantilla?.pie_json || null,
+    encabezadoAlcance,
+    pieAlcance,
+    bloques:raiz.map(block => ({ key:previewBlockKey(block), titulo:block.titulo, tipo:block.tipo_bloque, contenido:block.contenido_json, texto:block.contenido_texto_plano })),
+    hijos:bloques.filter(block => block.bloque_padre_id).map(block => ({ key:previewBlockKey(block), padre:block.bloque_padre_id, titulo:block.titulo, tipo:block.tipo_bloque, contenido:block.contenido_json, texto:block.contenido_texto_plano })),
+  }), [plantilla?.encabezado_json, plantilla?.pie_json, encabezadoAlcance, pieAlcance, raiz, bloques]);
+
+  useLayoutEffect(() => {
+    let activo = true;
+    const medir = () => {
+      if (!activo) return;
+      const heights = Object.fromEntries(raiz.map(block => {
+        const node = measureBlockRefs.current.get(previewBlockKey(block));
+        if (!node) return [previewBlockKey(block), 0];
+        const styles = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return [previewBlockKey(block), rect.height + Number.parseFloat(styles.marginTop || 0) + Number.parseFloat(styles.marginBottom || 0)];
+      }));
+      const footerStyles = measureFooterRef.current ? window.getComputedStyle(measureFooterRef.current) : null;
+      const next = {
+        key:measurementKey,
+        bloques:heights,
+        encabezado:measureHeaderRef.current?.getBoundingClientRect().height || 0,
+        pie:(measureFooterRef.current?.getBoundingClientRect().height || 0) + Number.parseFloat(footerStyles?.marginTop || 0),
+      };
+      setMedidas(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+    };
+    const frame = window.requestAnimationFrame(medir);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medir);
+    [measureSheetRef.current, measureHeaderRef.current, measureFooterRef.current, ...measureBlockRefs.current.values()].filter(Boolean).forEach(node => observer?.observe(node));
+    document.fonts?.ready?.then(medir);
+    return () => { activo = false; window.cancelAnimationFrame(frame); observer?.disconnect(); };
+  }, [measurementKey]);
+
+  const todasLasAlturasMedidas = medidas?.key === measurementKey && raiz.every(block => Number(medidas.bloques?.[previewBlockKey(block)]) > 0);
+  const paginas = useMemo(() => {
+    if (!todasLasAlturasMedidas) return [raiz];
+    const capacidad = pageIndex => {
+      const mostrarEncabezado = pageIndex === 0 || encabezadoAlcance === 'todas';
+      const mostrarPie = pageIndex === 0 || pieAlcance === 'todas';
+      return Math.max(80, PREVIEW_SHEET_HEIGHT - PREVIEW_SHEET_VERTICAL_PADDING - PREVIEW_BODY_TOP_PADDING - (mostrarEncabezado ? medidas.encabezado : 0) - (mostrarPie ? medidas.pie : 0));
+    };
+    const resultado = [];
+    let paginaActual = [];
+    let altoUsado = 0;
+    raiz.forEach(block => {
+      const altoBloque = medidas.bloques[previewBlockKey(block)];
+      const altoDisponible = capacidad(resultado.length);
+      if (paginaActual.length && altoUsado + altoBloque > altoDisponible) {
+        resultado.push(paginaActual);
+        paginaActual = [];
+        altoUsado = 0;
+      }
+      paginaActual.push(block);
+      altoUsado += altoBloque;
+    });
+    if (paginaActual.length || !resultado.length) resultado.push(paginaActual);
+    return resultado;
+  }, [todasLasAlturasMedidas, raiz, encabezadoAlcance, pieAlcance, medidas]);
+
   return <div className="document-preview">
     <div className="document-preview-toolbar">
       <span className="text-muted">Vista previa</span>
@@ -189,10 +263,23 @@ function VistaPreviewHoja({ plantilla, bloques, zoom, onZoom }) {
       </div>
     </div>
     <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}>
-      <div className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label="Vista previa de documento">
-        <header className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} /></header>
-        <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={bloque.client_key || bloque.id} block={bloque} bloques={bloques} />)}</main>
-        <footer className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} /></footer>
+      <div className="document-preview-pages">{paginas.map((pagina, index) => {
+        const mostrarEncabezado = index === 0 || encabezadoAlcance === 'todas';
+        const mostrarPie = index === 0 || pieAlcance === 'todas';
+        return <div key={`pagina-${index}`} className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label={`Vista previa de documento, página ${index + 1}`}>
+          {mostrarEncabezado && <header className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} /></header>}
+          <main className="document-preview-body">{pagina.map(bloque => <VistaBloque key={previewBlockKey(bloque)} block={bloque} bloques={bloques} />)}</main>
+          {mostrarPie && <footer className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} /></footer>}
+        </article></div>;
+      })}</div>
+      <div className="document-preview-measure" aria-hidden="true"><article ref={measureSheetRef} className="document-preview-sheet">
+        <header ref={measureHeaderRef} className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} /></header>
+        <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={previewBlockKey(bloque)} measurementRef={node => {
+          const key = previewBlockKey(bloque);
+          if (node) measureBlockRefs.current.set(key, node);
+          else measureBlockRefs.current.delete(key);
+        }} block={bloque} bloques={bloques} />)}</main>
+        <footer ref={measureFooterRef} className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} /></footer>
       </article></div>
     </div>
   </div>;
@@ -265,8 +352,10 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
         created_by:authUser?.id || null,
         encabezado_json:origen?.encabezado_json || null,
         encabezado_texto_plano:origen?.encabezado_texto_plano || '',
+        encabezado_alcance:normalizedScope(origen?.encabezado_alcance),
         pie_json:origen?.pie_json || null,
         pie_texto_plano:origen?.pie_texto_plano || '',
+        pie_alcance:normalizedScope(origen?.pie_alcance),
       }).select().single();
       if (createError) throw createError;
       let cloned = [];
@@ -317,8 +406,8 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const guardarSeccionPlantilla = async seccion => {
     if (!draft?.id) return;
     const campos = seccion === 'encabezado'
-      ? { encabezado_json:draft.encabezado_json || null, encabezado_texto_plano:draft.encabezado_texto_plano || '' }
-      : { pie_json:draft.pie_json || null, pie_texto_plano:draft.pie_texto_plano || '' };
+      ? { encabezado_json:draft.encabezado_json || null, encabezado_texto_plano:draft.encabezado_texto_plano || '', encabezado_alcance:normalizedScope(draft.encabezado_alcance) }
+      : { pie_json:draft.pie_json || null, pie_texto_plano:draft.pie_texto_plano || '', pie_alcance:normalizedScope(draft.pie_alcance) };
     setGuardandoSeccion(seccion); setError('');
     try {
       const sb = await getSupabaseClient();
@@ -415,9 +504,9 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <VistaPreviewHoja plantilla={plantillaActiva} bloques={bloques} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} /> : <>
       {draft && <div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>}
       {!draft && publicada && <div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>}
-      {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
+      {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" alcance={plantillaActiva.encabezado_alcance} value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onAlcanceChange={encabezado_alcance => actualizarSeccionPlantilla({ encabezado_alcance })} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
       {cuerpoEditor}
-      {plantillaActiva && <SeccionPlantillaEditor titulo="Pie de página" value={{ contenido_json:plantillaActiva.pie_json, contenido_texto_plano:plantillaActiva.pie_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'pie'} guardado={guardadoSeccion === 'pie'} onChange={patch => actualizarSeccionPlantilla({ pie_json:patch.contenido_json, pie_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('pie')} />}
+      {plantillaActiva && <SeccionPlantillaEditor titulo="Pie de página" alcance={plantillaActiva.pie_alcance} value={{ contenido_json:plantillaActiva.pie_json, contenido_texto_plano:plantillaActiva.pie_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'pie'} guardado={guardadoSeccion === 'pie'} onAlcanceChange={pie_alcance => actualizarSeccionPlantilla({ pie_alcance })} onChange={patch => actualizarSeccionPlantilla({ pie_json:patch.contenido_json, pie_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('pie')} />}
       {mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}
     </>}
   </div></div>;
