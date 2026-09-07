@@ -4197,7 +4197,7 @@ body {
 .document-section-column { padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-alt); }
 .document-preview-header { padding-bottom: 28px; border-bottom: 1px solid #dbe2ea; }
 .document-preview-footer { margin-top: 28px; padding-top: 0; border-top: 1px solid #dbe2ea; }
-.document-preview-body { flex: 1 1 auto; min-height: 0; padding-top: 0; }
+.document-preview-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding-top: 0; }
 .document-preview-block { margin: 0 0 10px; }
 .document-preview-block h4 { margin: 0 0 8px; font-size: 14px; color: #172033; }
 .document-preview-sheet .rich-text-preview-content { line-height: 1.55; font-size: 13px; }
