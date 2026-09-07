@@ -143,17 +143,20 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onUploadIma
 function SeccionPlantillaEditor({ titulo, value, disabled, variables, onUploadImage, guardando, guardado, onChange, onSave }) {
   const columns = normalizeSectionColumns(value?.contenido_json);
   const updateColumns = next => onChange(sectionPatch(next));
-  const setColumnCount = count => {
-    const next = columns.slice(0, count);
-    while (next.length < count) next.push({ id:newKey(), contenido_json:normalizeRichTextDocument(null) });
-    updateColumns(next);
+  const addColumn = () => {
+    if (columns.length >= 3) return;
+    updateColumns([...columns, { id:newKey(), contenido_json:normalizeRichTextDocument(null) }]);
+  };
+  const removeColumn = id => {
+    if (columns.length <= 1) return;
+    updateColumns(columns.filter(column => column.id !== id));
   };
   return <section style={{marginBottom:18}}>
     <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
-      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong><span className="text-muted" style={{fontSize:12}}>Columnas:</span>{[1,2,3].map(count => <button type="button" key={count} className={`btn btn-ghost ${columns.length === count ? 'active' : ''}`} onClick={() => setColumnCount(count)} disabled={disabled} style={{padding:'3px 8px'}}>{count}</button>)}</div>
+      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong>{!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}</div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
     </div>
-    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="text-muted" style={{fontSize:12, marginBottom:6}}>Columna {index + 1}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
+    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="row" style={{justifyContent:'space-between', gap:6, marginBottom:6}}><div className="text-muted" style={{fontSize:12}}>Columna {index + 1}</div>{!disabled && <button type="button" className="btn btn-ghost" aria-label={`Eliminar columna ${index + 1}`} onClick={() => removeColumn(column.id)} disabled={columns.length <= 1} style={{padding:'1px 6px', minWidth:0}}>×</button>}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
   </section>;
 }
 
