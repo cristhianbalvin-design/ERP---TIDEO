@@ -1,15 +1,6 @@
 import React, { useEffect } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
-import Document from '@tiptap/extension-document';
-import Paragraph from '@tiptap/extension-paragraph';
-import Text from '@tiptap/extension-text';
-import Bold from '@tiptap/extension-bold';
-import Italic from '@tiptap/extension-italic';
-import Underline from '@tiptap/extension-underline';
-import BulletList from '@tiptap/extension-bullet-list';
-import OrderedList from '@tiptap/extension-ordered-list';
-import ListItem from '@tiptap/extension-list-item';
-import History from '@tiptap/extension-history';
+import { createRichTextExtensions, FONT_SIZES, LINE_HEIGHTS } from './richTextExtensions.js';
 
 const EMPTY_DOCUMENT = { type: 'doc', content: [{ type: 'paragraph' }] };
 
@@ -19,7 +10,7 @@ export const normalizeRichTextDocument = value => (
 
 export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [] }) {
   const editor = useEditor({
-    extensions: [Document, Paragraph, Text, Bold, Italic, Underline, BulletList, OrderedList, ListItem, History],
+    extensions: createRichTextExtensions(),
     content: normalizeRichTextDocument(value),
     editable: !disabled,
     editorProps: { attributes: { class: 'rich-text-editor-content', 'data-placeholder': placeholder } },
@@ -51,6 +42,16 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
   const button = (label, name, attrs, activeName = name) => (
     <button type="button" className={`btn btn-ghost ${editor.isActive(activeName) ? 'active' : ''}`} onClick={command(name, attrs)} disabled={disabled} style={{padding:'4px 8px', minWidth:30}}>{label}</button>
   );
+  const alignmentButton = (label, alignment, title) => (
+    <button type="button" title={title} className={`btn btn-ghost ${editor.isActive({ textAlign:alignment }) ? 'active' : ''}`} onClick={command('setTextAlign', alignment)} disabled={disabled} style={{padding:'4px 8px', minWidth:30}}>{label}</button>
+  );
+  const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
+  const currentLineHeight = editor.getAttributes('textStyle').lineHeight || '';
+  const setSelectCommand = commandName => event => {
+    const value = event.target.value;
+    if (commandName === 'setFontSize') editor.chain().focus().setFontSize(value || null).run();
+    if (commandName === 'setLineHeight') editor.chain().focus().setLineHeight(value || null).run();
+  };
 
   return (
     <div style={{border:'1px solid var(--border)', borderRadius:8, overflow:'hidden', background:'var(--bg)'}}>
@@ -60,6 +61,18 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
         {button(<u>U</u>, 'toggleUnderline')}
         {button('• Lista', 'toggleBulletList', undefined, 'bulletList')}
         {button('1. Lista', 'toggleOrderedList', undefined, 'orderedList')}
+        <select className="input" value={currentFontSize} onChange={setSelectCommand('setFontSize')} disabled={disabled} aria-label="Tamaño de fuente" style={{width:'auto', padding:'4px 8px', minHeight:30}}>
+          <option value="">Tamaño</option>
+          {FONT_SIZES.map(size => <option key={size.value} value={size.value}>{size.label}</option>)}
+        </select>
+        <select className="input" value={currentLineHeight} onChange={setSelectCommand('setLineHeight')} disabled={disabled} aria-label="Interlineado" style={{width:'auto', padding:'4px 8px', minHeight:30}}>
+          <option value="">Interlineado</option>
+          {LINE_HEIGHTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+        {alignmentButton('←', 'left', 'Alinear a la izquierda')}
+        {alignmentButton('↔', 'center', 'Centrar')}
+        {alignmentButton('→', 'right', 'Alinear a la derecha')}
+        {alignmentButton('≡', 'justify', 'Justificar')}
         {variables.length > 0 && <select className="input" defaultValue="" onChange={e => { insertarVariable(e.target.value); e.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30}}>
           <option value="">Insertar variable…</option>
           {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}

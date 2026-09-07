@@ -135,13 +135,25 @@ function VistaBloque({ block, bloques }) {
   </section>;
 }
 
-function VistaPreviewHoja({ plantilla, bloques }) {
+function VistaPreviewHoja({ plantilla, bloques, zoom, onZoom }) {
   const raiz = orderBlocks(bloques.filter(bloque => !bloque.bloque_padre_id));
-  return <div className="document-preview-stage"><article className="document-preview-sheet" aria-label="Vista previa de documento">
-    <header className="document-preview-header"><DocumentPreviewRichText value={plantilla?.encabezado_json} /></header>
-    <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={bloque.client_key || bloque.id} block={bloque} bloques={bloques} />)}</main>
-    <footer className="document-preview-footer"><DocumentPreviewRichText value={plantilla?.pie_json} /></footer>
-  </article></div>;
+  return <div className="document-preview">
+    <div className="document-preview-toolbar">
+      <span className="text-muted">Vista previa</span>
+      <div className="row" style={{gap:6}}>
+        <button type="button" className="btn btn-ghost" onClick={() => onZoom(zoom - 10)} disabled={zoom <= 50} aria-label="Alejar">−</button>
+        <span className="document-preview-zoom">{zoom}%</span>
+        <button type="button" className="btn btn-ghost" onClick={() => onZoom(zoom + 10)} disabled={zoom >= 150} aria-label="Acercar">+</button>
+      </div>
+    </div>
+    <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}>
+      <div className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label="Vista previa de documento">
+        <header className="document-preview-header"><DocumentPreviewRichText value={plantilla?.encabezado_json} /></header>
+        <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={bloque.client_key || bloque.id} block={bloque} bloques={bloques} />)}</main>
+        <footer className="document-preview-footer"><DocumentPreviewRichText value={plantilla?.pie_json} /></footer>
+      </article></div>
+    </div>
+  </div>;
 }
 
 export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, puedeCrear, puedeEditar, addNotificacion, addToast, onVersionsChanged }) {
@@ -158,6 +170,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const [guardandoSeccion, setGuardandoSeccion] = useState(null);
   const [guardadoSeccion, setGuardadoSeccion] = useState(null);
   const [modoVista, setModoVista] = useState('editar');
+  const [zoomVistaPrevia, setZoomVistaPrevia] = useState(100);
   const cargaId = useRef(0);
   const variables = useMemo(() => obtenerVariablesDocumentales(tipo?.categoria_base), [tipo?.categoria_base]);
   const publicada = useMemo(() => plantillas.filter(row => row.estado === 'publicada').sort((a, b) => b.version - a.version)[0] || null, [plantillas]);
@@ -185,7 +198,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     finally { if (request === cargaId.current) setLoading(false); }
   }, [tipo?.id]);
 
-  useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); setModoVista('editar'); cargar(); }, [cargar]);
+  useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); setModoVista('editar'); setZoomVistaPrevia(100); cargar(); }, [cargar]);
 
   const isSameBlock = (block, target) => block === target
     || (target.id != null && block.id === target.id)
@@ -356,7 +369,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
 
   return <div className="card"><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body">
     {error && <div className="alert alert-danger">{error}</div>}
-    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <VistaPreviewHoja plantilla={plantillaActiva} bloques={bloques} /> : <>
+    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <VistaPreviewHoja plantilla={plantillaActiva} bloques={bloques} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} /> : <>
       {draft && <div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>}
       {!draft && publicada && <div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>}
       {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
