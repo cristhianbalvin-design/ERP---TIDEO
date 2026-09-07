@@ -63,7 +63,14 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
     try {
       const { url } = await onUploadImage(file);
       if (!url) throw new Error('No se pudo obtener la URL de la imagen subida.');
-      editor.chain().focus().setImage({ src:url, alt:file.name }).run();
+      // El nodo se mantiene inline para que también pueda vivir en una columna,
+      // pero sin float ni ancho implícito de 100% que genere desbordes.
+      editor.chain().focus().setImage({
+        src:url,
+        alt:file.name,
+        containerStyle:'width: 320px; max-width: 100%; height: auto; cursor: pointer; display: inline-block;',
+        wrapperStyle:'display: inline-block; float: none; max-width: 100%; padding-right: 0;',
+      }).run();
     } catch (err) {
       setErrorImagen(err.message || 'No se pudo subir la imagen.');
     } finally {
