@@ -109,6 +109,12 @@ declare
   v_costo_unitario numeric;
   v_precio_unitario numeric;
   v_orden integer := 0;
+  v_suma_subtotales_items numeric;
+  v_ajuste_redondeo numeric;
+  v_indice_ajuste integer;
+  v_item_ajuste jsonb;
+  v_cantidad_ajuste numeric;
+  v_precio_ajuste numeric;
   v_alcance uuid[];
   v_moneda text;
 begin
@@ -221,6 +227,53 @@ begin
 
     -- La HC es la fuente comercial aprobada de la base imponible.
     v_subtotal := coalesce(v_hoja.precio_sugerido_sin_igv, 0);
+
+    -- calcularHojaCosteo redondea el precio aprobado una sola vez sobre el
+    -- costo agregado, mientras el adaptador redondea cada precio unitario.
+    -- Concentramos la diferencia residual en una sola línea para que la tabla
+    -- visible concilie exactamente con el subtotal aprobado de la HC.
+    select coalesce(sum((item ->> 'subtotal')::numeric), 0)
+    into v_suma_subtotales_items
+    from jsonb_array_elements(v_items) item;
+    v_ajuste_redondeo := round(v_subtotal - v_suma_subtotales_items, 2);
+
+    if v_ajuste_redondeo <> 0 then
+      if jsonb_array_length(v_items) = 0 then
+        raise exception 'La Hoja de Costeo no tiene ítems para conciliar su subtotal aprobado.'
+          using errcode = '22023';
+      end if;
+
+      select ordinality - 1, item
+      into v_indice_ajuste, v_item_ajuste
+      from jsonb_array_elements(v_items) with ordinality as item(item, ordinality)
+      order by case when (item ->> 'cantidad')::numeric = 1 then 0 else 1 end,
+               (item ->> 'subtotal')::numeric desc,
+               ordinality desc
+      limit 1;
+
+      v_cantidad_ajuste := (v_item_ajuste ->> 'cantidad')::numeric;
+      v_precio_ajuste := (v_item_ajuste ->> 'precio_unitario')::numeric
+        + (v_ajuste_redondeo / v_cantidad_ajuste);
+      v_item_ajuste := jsonb_set(
+        v_item_ajuste,
+        '{precio_unitario}',
+        to_jsonb(v_precio_ajuste),
+        false
+      );
+      v_item_ajuste := jsonb_set(
+        v_item_ajuste,
+        '{subtotal}',
+        to_jsonb(round(v_cantidad_ajuste * v_precio_ajuste, 2)),
+        false
+      );
+      v_item_ajuste := jsonb_set(
+        v_item_ajuste,
+        '{ajuste_redondeo}',
+        to_jsonb(v_ajuste_redondeo),
+        true
+      );
+      v_items := jsonb_set(v_items, array[v_indice_ajuste::text], v_item_ajuste, false);
+    end if;
   end if;
 
   -- Cotización Estándar utiliza una tasa fija de 18 % y redondea el IGV a entero.
