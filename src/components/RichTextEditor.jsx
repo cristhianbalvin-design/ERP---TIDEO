@@ -110,7 +110,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
         </select>}
         {onUploadImage && <><input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={insertarImagen} hidden /><button type="button" className="btn btn-ghost" onClick={() => imageInputRef.current?.click()} disabled={disabled || subiendoImagen} style={{padding:'4px 8px'}}>{subiendoImagen ? 'Subiendo imagen…' : 'Insertar imagen'}</button></>}
         {showHorizontalRule && button('—', 'setHorizontalRule', undefined, 'horizontalRule')}
-        {showTwoColumnLine && button('⇔', 'insertTwoColumnLine', undefined, 'twoColumnLine')}
+        {showTwoColumnLine && button('⇔ 2 col.', 'insertTwoColumnLine', undefined, 'twoColumnLine')}
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
       </div>}
