@@ -57,6 +57,38 @@ const blockPayload = (block, plantillaId, parentId = block.bloque_padre_id || nu
   activo: true,
 });
 
+const textFromRichText = value => {
+  const chunks = [];
+  const visit = node => {
+    if (!node || typeof node !== 'object') return;
+    if (node.text) chunks.push(node.text);
+    (node.content || []).forEach(visit);
+    if (['paragraph', 'listItem'].includes(node.type)) chunks.push('\n');
+  };
+  visit(value);
+  return chunks.join('').replace(/\n{3,}/g, '\n\n').trim();
+};
+
+const normalizeSectionColumns = value => {
+  const source = Array.isArray(value?.columnas)
+    ? value.columnas.slice(0, 3)
+    : [{ id:'legacy-column-1', contenido_json:value }];
+  const count = Math.max(1, source.length);
+  return source.map((column, index) => ({
+    id:column?.id || `column-${index + 1}`,
+    ancho:`${100 / count}%`,
+    contenido_json:normalizeRichTextDocument(column?.contenido_json),
+  }));
+};
+
+const sectionPatch = columns => {
+  const normalized = normalizeSectionColumns({ columnas:columns });
+  return {
+    contenido_json:{ columnas:normalized },
+    contenido_texto_plano:normalized.map(column => textFromRichText(column.contenido_json)).filter(Boolean).join('\n'),
+  };
+};
+
 function TablaBlockEditor({ value, disabled, onChange }) {
   const table = normalizeTable(value);
   const update = next => onChange?.({ contenido_json: next });
@@ -90,7 +122,7 @@ function BloqueCard({ block, index, total, depth, children, disabled, saving, sa
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
     <div style={{marginTop:10}}>
-      {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} />}
+      {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} showHorizontalRule />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Equipo {{equipo.nombre}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} disabled={disabled} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
     </div>
@@ -109,19 +141,19 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onUploadIma
 }
 
 function SeccionPlantillaEditor({ titulo, value, disabled, variables, onUploadImage, guardando, guardado, onChange, onSave }) {
+  const columns = normalizeSectionColumns(value?.contenido_json);
+  const updateColumns = next => onChange(sectionPatch(next));
+  const setColumnCount = count => {
+    const next = columns.slice(0, count);
+    while (next.length < count) next.push({ id:newKey(), contenido_json:normalizeRichTextDocument(null) });
+    updateColumns(next);
+  };
   return <section style={{marginBottom:18}}>
     <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
-      <strong>{titulo}</strong>
+      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong><span className="text-muted" style={{fontSize:12}}>Columnas:</span>{[1,2,3].map(count => <button type="button" key={count} className={`btn btn-ghost ${columns.length === count ? 'active' : ''}`} onClick={() => setColumnCount(count)} disabled={disabled} style={{padding:'3px 8px'}}>{count}</button>)}</div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
     </div>
-    <RichTextEditor
-      value={value?.contenido_json}
-      disabled={disabled}
-      variables={variables}
-      onUploadImage={onUploadImage}
-      placeholder={`Escribe el ${titulo.toLowerCase()}...`}
-      onChange={onChange}
-    />
+    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="text-muted" style={{fontSize:12, marginBottom:6}}>Columna {index + 1}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
   </section>;
 }
 
@@ -137,6 +169,11 @@ function VistaBloque({ block, bloques }) {
   </section>;
 }
 
+function VistaSeccionPlantilla({ value }) {
+  const columns = normalizeSectionColumns(value);
+  return <div className="document-preview-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map(column => <div key={column.id} className="document-preview-column"><DocumentPreviewRichText value={column.contenido_json} /></div>)}</div>;
+}
+
 function VistaPreviewHoja({ plantilla, bloques, zoom, onZoom }) {
   const raiz = orderBlocks(bloques.filter(bloque => !bloque.bloque_padre_id));
   return <div className="document-preview">
@@ -150,9 +187,9 @@ function VistaPreviewHoja({ plantilla, bloques, zoom, onZoom }) {
     </div>
     <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}>
       <div className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label="Vista previa de documento">
-        <header className="document-preview-header"><DocumentPreviewRichText value={plantilla?.encabezado_json} /></header>
+        <header className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} /></header>
         <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={bloque.client_key || bloque.id} block={bloque} bloques={bloques} />)}</main>
-        <footer className="document-preview-footer"><DocumentPreviewRichText value={plantilla?.pie_json} /></footer>
+        <footer className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} /></footer>
       </article></div>
     </div>
   </div>;
