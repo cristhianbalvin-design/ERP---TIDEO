@@ -121,6 +121,15 @@ body {
   background: var(--cyan-lt);
   color: var(--cyan-dk);
 }
+.alert-warning {
+  border-color: rgba(255,152,0,0.4);
+  background: var(--orange-lt);
+  color: var(--orange-dk);
+}
+.document-builder-oversized-block-warning {
+  padding: 8px 10px;
+  font-size: 12px;
+}
 
 /* === LAYOUT === */
 .app-shell { display: flex; height: 100vh; min-height: 0; overflow: hidden; }
