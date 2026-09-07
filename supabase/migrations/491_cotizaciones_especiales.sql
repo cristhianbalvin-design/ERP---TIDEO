@@ -15,7 +15,8 @@ create table public.cotizaciones_especiales (
     references public.tipos_documento_electronico(id) on delete restrict,
   plantilla_documento_id uuid not null
     references public.plantillas_documento_bloques(id) on delete restrict,
-  documento_generado_id uuid not null unique
+  -- Se enlaza al emitir, cuando documentos_generados admita cotizacion_especial.
+  documento_generado_id uuid unique
     references public.documentos_generados(id) on delete restrict,
 
   cuenta_id text not null
@@ -50,7 +51,8 @@ create table public.cotizaciones_especiales (
     or (origen_items = 'hoja_costeo' and hoja_costeo_id is not null)
   ),
   constraint cotizaciones_especiales_snapshot_emitido_check check (
-    estado = 'borrador' or contexto_emitido_json is not null
+    estado = 'borrador'
+    or (contexto_emitido_json is not null and documento_generado_id is not null)
   ),
   constraint cotizaciones_especiales_empresa_numero_key
     unique (empresa_id, numero),
@@ -150,18 +152,20 @@ begin
     raise exception 'La plantilla debe estar publicada y pertenecer al mismo tipo, empresa y sociedad.';
   end if;
 
-  select empresa_id, sociedad_id, tipo_documento_id, entidad_tipo, entidad_id, estado into v_documento
-  from public.documentos_generados
-  where id = new.documento_generado_id;
+  if new.documento_generado_id is not null then
+    select empresa_id, sociedad_id, tipo_documento_id, entidad_tipo, entidad_id, estado into v_documento
+    from public.documentos_generados
+    where id = new.documento_generado_id;
 
-  if not found
-     or v_documento.empresa_id is distinct from new.empresa_id
-     or v_documento.sociedad_id is distinct from new.sociedad_id
-     or v_documento.tipo_documento_id is distinct from new.tipo_documento_id
-     or v_documento.entidad_tipo is distinct from 'cotizacion_especial'
-     or v_documento.entidad_id is distinct from new.id::text
-     or v_documento.estado is distinct from 'borrador' then
-    raise exception 'El documento generado debe ser borrador y pertenecer a esta Cotización Especial, tipo, empresa y sociedad.';
+    if not found
+       or v_documento.empresa_id is distinct from new.empresa_id
+       or v_documento.sociedad_id is distinct from new.sociedad_id
+       or v_documento.tipo_documento_id is distinct from new.tipo_documento_id
+       or v_documento.entidad_tipo is distinct from 'cotizacion_especial'
+       or v_documento.entidad_id is distinct from new.id::text
+       or v_documento.estado is distinct from 'borrador' then
+      raise exception 'El documento generado debe ser borrador y pertenecer a esta Cotización Especial, tipo, empresa y sociedad.';
+    end if;
   end if;
 
   return new;
