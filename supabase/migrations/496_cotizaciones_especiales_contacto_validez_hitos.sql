@@ -239,12 +239,10 @@ $$;
 revoke all on function public.normalizar_hitos_cotizacion_especial(boolean, jsonb, numeric)
   from public, anon, authenticated, service_role;
 
--- PostgreSQL no permite cambiar los argumentos de una función con CREATE OR
--- REPLACE. Se elimina la firma de 492 sin CASCADE y se recrea una única firma
--- ampliada; los seis argumentos nuevos tienen defaults para compatibilidad
--- posicional con invocaciones de ocho argumentos.
+-- PostgreSQL no permite cambiar los argumentos de crear_cotizacion_especial
+-- con CREATE OR REPLACE. Se elimina la firma de 492 sin CASCADE y se recrea
+-- una única firma ampliada, con defaults para compatibilidad posicional.
 drop function public.crear_cotizacion_especial(uuid, uuid, text, text, text, text, text, jsonb);
-drop function public.actualizar_items_cotizacion_especial(uuid, jsonb);
 
 create or replace function public.crear_cotizacion_especial(
   p_tipo_documento_id uuid,
@@ -479,13 +477,7 @@ $$;
 
 create or replace function public.actualizar_items_cotizacion_especial(
   p_id uuid,
-  p_items jsonb,
-  p_contacto_id text default null,
-  p_validez_tipo text default 'dias',
-  p_validez_dias integer default 30,
-  p_validez_fecha date default null,
-  p_hitos_activos boolean default false,
-  p_hitos_pago jsonb default '[]'::jsonb
+  p_items jsonb
 )
 returns table(id uuid, items jsonb, subtotal numeric, igv numeric, total numeric)
 language plpgsql
@@ -540,7 +532,11 @@ begin
   v_igv := round(v_subtotal * 0.18);
   v_total := v_subtotal + v_igv;
 
-  v_hitos := public.normalizar_hitos_cotizacion_especial(p_hitos_activos, p_hitos_pago, v_total);
+  v_hitos := public.normalizar_hitos_cotizacion_especial(
+    v_cotizacion.hitos_activos,
+    v_cotizacion.hitos_pago,
+    v_total
+  );
 
   update public.cotizaciones_especiales cotizacion_especial
   set items = v_items,
@@ -548,11 +544,6 @@ begin
       igv_pct = 18,
       igv = v_igv,
       total = v_total,
-      contacto_id = p_contacto_id,
-      validez_tipo = p_validez_tipo,
-      validez_dias = p_validez_dias,
-      validez_fecha = p_validez_fecha,
-      hitos_activos = p_hitos_activos,
       hitos_pago = v_hitos,
       updated_at = now()
   where cotizacion_especial.id = p_id;
@@ -566,18 +557,99 @@ begin
 end;
 $$;
 
+create or replace function public.actualizar_datos_cotizacion_especial(
+  p_id uuid,
+  p_contacto_id text,
+  p_validez_tipo text,
+  p_validez_dias integer,
+  p_validez_fecha date,
+  p_hitos_activos boolean,
+  p_hitos_pago jsonb
+)
+returns table(id uuid, contacto_id text, validez_tipo text, validez_dias integer, validez_fecha date, hitos_activos boolean, hitos_pago jsonb)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cotizacion public.cotizaciones_especiales%rowtype;
+  v_alcance uuid[];
+  v_hitos jsonb;
+begin
+  if auth.uid() is null then
+    raise exception 'Debe iniciar sesión para editar una Cotización Especial.' using errcode = '42501';
+  end if;
+
+  select cotizacion.* into v_cotizacion
+  from public.cotizaciones_especiales cotizacion
+  where cotizacion.id = p_id
+  for update;
+
+  if not found then
+    raise exception 'La Cotización Especial no existe.' using errcode = 'P0002';
+  end if;
+
+  if v_cotizacion.estado <> 'borrador' then
+    raise exception 'Sólo se pueden editar los datos de una cotización en borrador.' using errcode = '22023';
+  end if;
+
+  if not public.usuario_tiene_empresa(v_cotizacion.empresa_id)
+     or not public.usuario_puede(v_cotizacion.empresa_id, 'cotizaciones', 'editar') then
+    raise exception 'No tiene permiso para editar cotizaciones en esta empresa.' using errcode = '42501';
+  end if;
+
+  v_alcance := public.usuario_alcance_sociedades(v_cotizacion.empresa_id);
+  if v_alcance is not null
+     and not coalesce(v_cotizacion.sociedad_id = any(v_alcance), false) then
+    raise exception 'No tiene alcance sobre la sociedad de esta cotización.' using errcode = '42501';
+  end if;
+
+  v_hitos := public.normalizar_hitos_cotizacion_especial(
+    p_hitos_activos,
+    p_hitos_pago,
+    v_cotizacion.total
+  );
+
+  update public.cotizaciones_especiales cotizacion_especial
+  set contacto_id = p_contacto_id,
+      validez_tipo = p_validez_tipo,
+      validez_dias = p_validez_dias,
+      validez_fecha = p_validez_fecha,
+      hitos_activos = p_hitos_activos,
+      hitos_pago = v_hitos,
+      updated_at = now()
+  where cotizacion_especial.id = p_id
+  returning cotizacion_especial.id,
+            cotizacion_especial.contacto_id,
+            cotizacion_especial.validez_tipo,
+            cotizacion_especial.validez_dias,
+            cotizacion_especial.validez_fecha,
+            cotizacion_especial.hitos_activos,
+            cotizacion_especial.hitos_pago
+  into id, contacto_id, validez_tipo, validez_dias, validez_fecha, hitos_activos, hitos_pago;
+
+  return next;
+end;
+$$;
+
 revoke all on function public.crear_cotizacion_especial(
   uuid, uuid, text, text, text, text, text, jsonb, text, text, integer, date, boolean, jsonb
 ) from public, anon, service_role;
 revoke all on function public.actualizar_items_cotizacion_especial(
-  uuid, jsonb, text, text, integer, date, boolean, jsonb
+  uuid, jsonb
+) from public, anon, service_role;
+revoke all on function public.actualizar_datos_cotizacion_especial(
+  uuid, text, text, integer, date, boolean, jsonb
 ) from public, anon, service_role;
 
 grant execute on function public.crear_cotizacion_especial(
   uuid, uuid, text, text, text, text, text, jsonb, text, text, integer, date, boolean, jsonb
 ) to authenticated;
 grant execute on function public.actualizar_items_cotizacion_especial(
-  uuid, jsonb, text, text, integer, date, boolean, jsonb
+  uuid, jsonb
+) to authenticated;
+grant execute on function public.actualizar_datos_cotizacion_especial(
+  uuid, text, text, integer, date, boolean, jsonb
 ) to authenticated;
 
 select pg_notify('pgrst', 'reload schema');
