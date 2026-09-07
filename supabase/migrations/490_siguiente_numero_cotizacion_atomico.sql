@@ -68,4 +68,4 @@ begin
 end;
 $$;
 
-grant execute on function public.siguiente_numero_cotizacion(text) to authenticated, service_role;
+grant execute on function public.siguiente_numero_cotizacion(text) to authenticated;
