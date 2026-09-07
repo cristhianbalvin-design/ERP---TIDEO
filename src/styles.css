@@ -2105,6 +2105,14 @@ body {
   overflow-y: auto;
   padding-right: 2px;
 }
+.params-page[data-section="catalogo_documentos"] .params-section-stack {
+  height: auto;
+  min-height: var(--params-form-height);
+  display: block;
+}
+.params-page[data-section="catalogo_documentos"] .params-section-catalogo_documentos {
+  overflow: visible;
+}
 .params-page[data-section="catalogo_documentos"] .params-section-catalogo_documentos > .card {
   height: auto;
   min-height: auto;
