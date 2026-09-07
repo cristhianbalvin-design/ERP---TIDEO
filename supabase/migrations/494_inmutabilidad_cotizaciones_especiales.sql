@@ -3,6 +3,10 @@
 -- también protege frente a rutas privilegiadas. Se preserva únicamente la
 -- transición futura emitido -> anulado, sin permitir alterar otra columna.
 
+alter table public.cotizaciones_especiales
+  add column anulada_at timestamptz,
+  add column anulada_by uuid;
+
 create or replace function public.proteger_inmutabilidad_cotizacion_especial()
 returns trigger
 language plpgsql
@@ -17,8 +21,9 @@ begin
 
   if old.estado = 'emitido' then
     if new.estado <> 'anulado'
-       or (to_jsonb(new) - 'estado') is distinct from (to_jsonb(old) - 'estado') then
-      raise exception 'Una Cotización Especial emitida sólo puede pasar a anulado sin modificar sus demás datos.'
+       or (to_jsonb(new) - 'estado' - 'anulada_at' - 'anulada_by' - 'updated_at')
+          is distinct from (to_jsonb(old) - 'estado' - 'anulada_at' - 'anulada_by' - 'updated_at') then
+      raise exception 'Una Cotización Especial emitida sólo puede pasar a anulado, registrando su auditoría, sin modificar sus demás datos.'
         using errcode = '55000';
     end if;
   end if;
