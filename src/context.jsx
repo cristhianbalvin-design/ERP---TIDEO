@@ -2662,29 +2662,32 @@ export function AppProvider({ children }) {
     const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
     const monedaHC = oppDeHC?.moneda || hc.moneda || empresa?.moneda || 'PEN';
     if (isSupabaseConfigured()) {
-      const serieDocHC = (seriesDocumentarias || []).find(s => s.documento === 'Cotizaciones' && s.estado === 'activo');
-      const numeroCotHC = serieDocHC
-        ? `${serieDocHC.serie}-${Number(serieDocHC.siguiente_correlativo).toString().padStart(4, '0')}`
-        : `COT-${new Date().getFullYear()}-${Math.floor(Math.random()*10000).toString().padStart(4,'0')}`;
-      const cotBase = {
-        id: generateId('cot'),
-        oportunidad_id: hc.oportunidad_id,
-        cuenta_id: hc.cuenta_id,
-        numero: numeroCotHC,
-        version: 1,
-        estado: 'borrador',
-        fecha: new Date().toISOString().split('T')[0],
-        moneda: monedaHC,
-        validez: '30 dias',
-        subtotal: hc.precio_sugerido_sin_igv,
-        base_imponible: hc.precio_sugerido_sin_igv,
-        igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
-        total: hc.precio_sugerido_total,
-        items: construirItemsCotizacionDesdeHC(hc),
-        hoja_costeo_id: hcId,
-        sociedad_id: hc.sociedad_id || null,
-      };
       try {
+        const sb = await getSupabaseClient();
+        const { data: numeroCotHC, error: numeroError } = await sb.rpc('siguiente_numero_cotizacion', {
+          p_empresa_id: empresa.id,
+        });
+        if (numeroError) throw numeroError;
+        if (!numeroCotHC) throw new Error('No se pudo reservar el número de cotización.');
+
+        const cotBase = {
+          id: generateId('cot'),
+          oportunidad_id: hc.oportunidad_id,
+          cuenta_id: hc.cuenta_id,
+          numero: numeroCotHC,
+          version: 1,
+          estado: 'borrador',
+          fecha: new Date().toISOString().split('T')[0],
+          moneda: monedaHC,
+          validez: '30 dias',
+          subtotal: hc.precio_sugerido_sin_igv,
+          base_imponible: hc.precio_sugerido_sin_igv,
+          igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+          total: hc.precio_sugerido_total,
+          items: construirItemsCotizacionDesdeHC(hc),
+          hoja_costeo_id: hcId,
+          sociedad_id: hc.sociedad_id || null,
+        };
         const result = await crmPersist(sb => empresa?.multisociedad_habilitado
           ? aprobarHojaCosteoSociedadRpc(sb, empresa.id, hcId, cotBase)
           : aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
@@ -2710,14 +2713,6 @@ export function AppProvider({ children }) {
           sincronizarMontoOportunidadYLead(cotFinal.oportunidad_id, { monto: cotFinal.subtotal, moneda: cotFinal.moneda });
         }
         setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, ...hcFinal } : h));
-        if (serieDocHC) {
-          const nextCorr = Number(serieDocHC.siguiente_correlativo) + 1;
-          setSeriesDocumentarias(prev => prev.map(s => s.id === serieDocHC.id ? { ...s, siguiente_correlativo: nextCorr } : s));
-          getSupabaseClient().then(sb =>
-            sb.from('series_documentarias').update({ siguiente_correlativo: nextCorr }).eq('id', serieDocHC.id)
-              .then(({ error }) => { if (error) console.error('[series] increment failed:', error); })
-          );
-        }
         auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
         addNotificacion('HC aprobada. Cotización borrador generada.');
         navigate('cotizaciones', { detail: cotFinal.id });
