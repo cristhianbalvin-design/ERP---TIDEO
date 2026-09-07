@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { obtenerVariablesDocumentales } from '../lib/variablesDocumentales.js';
 import { RichTextEditor, normalizeRichTextDocument } from './RichTextEditor.jsx';
+import { DocumentPreviewRichText } from './DocumentPreviewRichText.jsx';
 
 const newKey = () => globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const emptyTable = () => {
@@ -106,6 +107,43 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onChange, o
   </div>;
 }
 
+function SeccionPlantillaEditor({ titulo, value, disabled, variables, guardando, guardado, onChange, onSave }) {
+  return <section style={{marginBottom:18}}>
+    <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
+      <strong>{titulo}</strong>
+      {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
+    </div>
+    <RichTextEditor
+      value={value?.contenido_json}
+      disabled={disabled}
+      variables={variables}
+      placeholder={`Escribe el ${titulo.toLowerCase()}...`}
+      onChange={onChange}
+    />
+  </section>;
+}
+
+function VistaBloque({ block, bloques }) {
+  const hijos = orderBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
+  const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
+  const grupo = block.tipo_bloque === 'grupo_repetible' ? { ...emptyGroup(), ...(block.contenido_json || {}) } : null;
+  return <section className="document-preview-block">
+    {block.titulo && <h4>{block.titulo}</h4>}
+    {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} />}
+    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><thead><tr>{tabla.columnas.map(columna => <th key={columna.id}>{columna.titulo}</th>)}</tr></thead><tbody>{tabla.filas.map(fila => <tr key={fila.id}>{tabla.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (fila.valores[columna.id] ? '✓' : '') : fila.valores[columna.id] || ''}</td>)}</tr>)}</tbody></table></div>}
+    {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} />)}</div>}
+  </section>;
+}
+
+function VistaPreviewHoja({ plantilla, bloques }) {
+  const raiz = orderBlocks(bloques.filter(bloque => !bloque.bloque_padre_id));
+  return <div className="document-preview-stage"><article className="document-preview-sheet" aria-label="Vista previa de documento">
+    <header className="document-preview-header"><DocumentPreviewRichText value={plantilla?.encabezado_json} /></header>
+    <main className="document-preview-body">{raiz.map(bloque => <VistaBloque key={bloque.client_key || bloque.id} block={bloque} bloques={bloques} />)}</main>
+    <footer className="document-preview-footer"><DocumentPreviewRichText value={plantilla?.pie_json} /></footer>
+  </article></div>;
+}
+
 export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, puedeCrear, puedeEditar, addNotificacion, addToast, onVersionsChanged }) {
   const [plantillas, setPlantillas] = useState([]);
   const [draft, setDraft] = useState(null);
@@ -117,6 +155,9 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
   const [guardandoId, setGuardandoId] = useState(null);
   const [guardadoId, setGuardadoId] = useState(null);
+  const [guardandoSeccion, setGuardandoSeccion] = useState(null);
+  const [guardadoSeccion, setGuardadoSeccion] = useState(null);
+  const [modoVista, setModoVista] = useState('editar');
   const cargaId = useRef(0);
   const variables = useMemo(() => obtenerVariablesDocumentales(tipo?.categoria_base), [tipo?.categoria_base]);
   const publicada = useMemo(() => plantillas.filter(row => row.estado === 'publicada').sort((a, b) => b.version - a.version)[0] || null, [plantillas]);
@@ -144,7 +185,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     finally { if (request === cargaId.current) setLoading(false); }
   }, [tipo?.id]);
 
-  useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); cargar(); }, [cargar]);
+  useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); setModoVista('editar'); cargar(); }, [cargar]);
 
   const isSameBlock = (block, target) => block === target
     || (target.id != null && block.id === target.id)
@@ -158,7 +199,19 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     try {
       const sb = await getSupabaseClient();
       const version = Math.max(0, ...plantillas.map(row => Number(row.version || 0))) + 1;
-      const { data: nueva, error: createError } = await sb.from('plantillas_documento_bloques').insert({ empresa_id:empresa.id, sociedad_id:sociedadId, tipo_documento_id:tipo.id, nombre_interno:origen?.nombre_interno || tipo.nombre, version, estado:'borrador', created_by:authUser?.id || null }).select().single();
+      const { data: nueva, error: createError } = await sb.from('plantillas_documento_bloques').insert({
+        empresa_id:empresa.id,
+        sociedad_id:sociedadId,
+        tipo_documento_id:tipo.id,
+        nombre_interno:origen?.nombre_interno || tipo.nombre,
+        version,
+        estado:'borrador',
+        created_by:authUser?.id || null,
+        encabezado_json:origen?.encabezado_json || null,
+        encabezado_texto_plano:origen?.encabezado_texto_plano || '',
+        pie_json:origen?.pie_json || null,
+        pie_texto_plano:origen?.pie_texto_plano || '',
+      }).select().single();
       if (createError) throw createError;
       let cloned = [];
       if (origen) {
@@ -202,6 +255,25 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
         window.setTimeout(() => setGuardadoId(current => current === key ? null : current), 1500);
       }
     } finally { setGuardandoId(null); }
+  };
+
+  const actualizarSeccionPlantilla = patch => setDraft(actual => actual ? { ...actual, ...patch } : actual);
+  const guardarSeccionPlantilla = async seccion => {
+    if (!draft?.id) return;
+    const campos = seccion === 'encabezado'
+      ? { encabezado_json:draft.encabezado_json || null, encabezado_texto_plano:draft.encabezado_texto_plano || '' }
+      : { pie_json:draft.pie_json || null, pie_texto_plano:draft.pie_texto_plano || '' };
+    setGuardandoSeccion(seccion); setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error: saveError } = await sb.from('plantillas_documento_bloques').update(campos).eq('id', draft.id).eq('estado', 'borrador').select().single();
+      if (saveError) throw saveError;
+      setDraft(data);
+      setPlantillas(actual => actual.map(plantilla => plantilla.id === data.id ? data : plantilla));
+      setGuardadoSeccion(seccion); addToast?.(`${seccion === 'encabezado' ? 'Encabezado' : 'Pie de página'} guardado.`, 'success');
+      window.setTimeout(() => setGuardadoSeccion(actual => actual === seccion ? null : actual), 1500);
+    } catch (err) { setError(err.message || `No se pudo guardar el ${seccion}.`); }
+    finally { setGuardandoSeccion(null); }
   };
 
   const descartarBorrador = async () => {
@@ -274,9 +346,23 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   };
 
   const decoratedRoots = Object.assign(rootBlocks, { _all:bloques, _savingId:guardandoId, _savedId:guardadoId });
-  const childList = parentId => Object.assign(childrenFor(parentId), { _all:bloques, _savingId:guardandoId, _savedId:guardadoId });
-  return <div className="card"><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body">
+  const plantillaActiva = draft || publicada;
+  const editable = Boolean(draft && puedeEditar);
+  const cuerpoEditor = draft
+    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled={!puedeEditar} variables={variables} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
+    : publicada
+      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled variables={variables} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
+      : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>;
+
+  return <div className="card"><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body">
     {error && <div className="alert alert-danger">{error}</div>}
-    {loading ? <div className="text-muted">Cargando…</div> : draft ? <><div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div><BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled={!puedeEditar} variables={variables} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} /></> : <>{publicada ? <><div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div><BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled variables={variables} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} /></> : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>}{mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}</>}
+    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <VistaPreviewHoja plantilla={plantillaActiva} bloques={bloques} /> : <>
+      {draft && <div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>}
+      {!draft && publicada && <div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>}
+      {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
+      {cuerpoEditor}
+      {plantillaActiva && <SeccionPlantillaEditor titulo="Pie de página" value={{ contenido_json:plantillaActiva.pie_json, contenido_texto_plano:plantillaActiva.pie_texto_plano }} disabled={!editable} variables={variables} guardando={guardandoSeccion === 'pie'} guardado={guardadoSeccion === 'pie'} onChange={patch => actualizarSeccionPlantilla({ pie_json:patch.contenido_json, pie_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('pie')} />}
+      {mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}
+    </>}
   </div></div>;
 }
