@@ -15,9 +15,38 @@ const normalizeRichTextNode = node => {
   };
 };
 
+const BLOCK_NODE_TYPES = new Set(['paragraph', 'imageResize', 'horizontalRule', 'bulletList', 'orderedList', 'twoColumnLine']);
+
+const asBlockChildren = children => {
+  const blocks = [];
+  let inline = [];
+  const flushInline = () => {
+    if (inline.length || blocks.length === 0) blocks.push({ type:'paragraph', content:inline });
+    inline = [];
+  };
+  children.forEach(child => {
+    if (BLOCK_NODE_TYPES.has(child.type)) {
+      if (inline.length) flushInline();
+      blocks.push(child);
+    } else inline.push(child);
+  });
+  if (inline.length) flushInline();
+  return blocks;
+};
+
+const normalizeRichTextNodes = node => {
+  if (!node || typeof node !== 'object') return [node];
+  const { content, ...nodeWithoutContent } = node;
+  const normalized = normalizeRichTextNode(nodeWithoutContent);
+  const children = Array.isArray(content) ? content.flatMap(normalizeRichTextNodes) : null;
+  if (normalized.type === 'paragraph') return asBlockChildren(children || []).map(block => block.type === 'paragraph' ? { ...normalized, content:block.content || [] } : block);
+  if (normalized.type === 'twoColumnSide' || normalized.type === 'doc') return [{ ...normalized, content:asBlockChildren(children || []) }];
+  return [{ ...normalized, ...(children ? { content:children } : {}) }];
+};
+
 export const normalizeRichTextDocument = value => (
   value && typeof value === 'object' && value.type === 'doc'
-    ? normalizeRichTextNode(value)
+    ? normalizeRichTextNodes(value)[0]
     : EMPTY_DOCUMENT
 );
 
@@ -63,7 +92,20 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
     try {
       const { url } = await onUploadImage(file);
       if (!url) throw new Error('No se pudo obtener la URL de la imagen subida.');
-      editor.chain().focus().setImage({ src:url, alt:file.name }).run();
+      // Un bloque seguido de un párrafo mantiene un punto de escritura normal
+      // debajo de la imagen; Gapcursor cubre la posición inmediatamente anterior.
+      editor.chain().focus().insertContent([
+        {
+          type:'imageResize',
+          attrs:{
+            src:url,
+            alt:file.name,
+            containerStyle:'width: 320px; max-width: 100%; height: auto; cursor: pointer;',
+            wrapperStyle:'display: flex; margin: 0; max-width: 100%;',
+          },
+        },
+        { type:'paragraph' },
+      ]).run();
     } catch (err) {
       setErrorImagen(err.message || 'No se pudo subir la imagen.');
     } finally {
@@ -78,6 +120,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
   );
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
   const currentLineHeight = editor.getAttributes('textStyle').lineHeight || '';
+  const twoColumnPreset = editor.getAttributes('twoColumnLine').leftWidth || '';
   const setSelectCommand = commandName => event => {
     const value = event.target.value;
     if (commandName === 'setFontSize') editor.chain().focus().setFontSize(value || null).run();
@@ -111,6 +154,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
         {onUploadImage && <><input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={insertarImagen} hidden /><button type="button" className="btn btn-ghost" onClick={() => imageInputRef.current?.click()} disabled={disabled || subiendoImagen} style={{padding:'4px 8px'}}>{subiendoImagen ? 'Subiendo imagen…' : 'Insertar imagen'}</button></>}
         {showHorizontalRule && button('—', 'setHorizontalRule', undefined, 'horizontalRule')}
         {showTwoColumnLine && button('⇔ 2 col.', 'insertTwoColumnLine', undefined, 'twoColumnLine')}
+        {showTwoColumnLine && editor.isActive('twoColumnLine') && <span className="row" style={{gap:2}}><span className="text-muted" style={{fontSize:12}}>Proporción:</span>{['50%', '30%', '70%'].map(leftWidth => <button type="button" key={leftWidth} className={`btn btn-ghost ${twoColumnPreset === leftWidth ? 'active' : ''}`} onClick={() => editor.chain().focus().setTwoColumnLinePreset(leftWidth).run()} disabled={disabled} style={{padding:'4px 8px'}}>{leftWidth === '50%' ? '50/50' : leftWidth === '30%' ? '30/70' : '70/30'}</button>)}</span>}
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
       </div>}

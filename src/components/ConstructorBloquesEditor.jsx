@@ -115,13 +115,13 @@ function TablaBlockEditor({ value, disabled, onChange }) {
 function BloqueCard({ block, index, total, depth, children, disabled, saving, saved, variables, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible' }[block.tipo_bloque] || block.tipo_bloque;
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
-  return <div style={{border:'1px solid var(--border)', borderRadius:8, padding:12, marginBottom:10, background:depth ? 'var(--bg-alt)' : undefined}}>
+  return <div style={{border:'1px solid var(--border)', borderRadius:8, padding:10, marginBottom:6, background:depth ? 'var(--bg-alt)' : undefined}}>
     <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}>
       <strong style={{minWidth:28}}>#{block.orden}</strong><span className="badge badge-cyan">{typeLabel}</span>
       <input className="input" placeholder="Título del bloque (opcional)" value={block.titulo || ''} disabled={disabled} onChange={event => onChange({ titulo:event.target.value })} style={{flex:'1 1 220px'}} />
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
-    <div style={{marginTop:10}}>
+    <div style={{marginTop:8}}>
       {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Equipo {{equipo.nombre}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} disabled={disabled} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
@@ -134,7 +134,7 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onUploadIma
   const items = orderBlocks(blocks);
   const allBlocks = blocks._all || blocks;
   const decorateChildren = block => Object.assign(orderBlocks(allBlocks.filter(item => item.bloque_padre_id === block.id)), { _all:allBlocks, _savingId:blocks._savingId, _savedId:blocks._savedId });
-  return <div style={{marginTop:10}}>
+  return <div style={{marginTop:8}}>
     {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} variables={variables} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
     {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
   </div>;
@@ -143,17 +143,20 @@ function BloquesList({ blocks, parentId, depth, disabled, variables, onUploadIma
 function SeccionPlantillaEditor({ titulo, value, disabled, variables, onUploadImage, guardando, guardado, onChange, onSave }) {
   const columns = normalizeSectionColumns(value?.contenido_json);
   const updateColumns = next => onChange(sectionPatch(next));
-  const setColumnCount = count => {
-    const next = columns.slice(0, count);
-    while (next.length < count) next.push({ id:newKey(), contenido_json:normalizeRichTextDocument(null) });
-    updateColumns(next);
+  const addColumn = () => {
+    if (columns.length >= 3) return;
+    updateColumns([...columns, { id:newKey(), contenido_json:normalizeRichTextDocument(null) }]);
+  };
+  const removeColumn = id => {
+    if (columns.length <= 1) return;
+    updateColumns(columns.filter(column => column.id !== id));
   };
   return <section style={{marginBottom:18}}>
     <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
-      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong><span className="text-muted" style={{fontSize:12}}>Columnas:</span>{[1,2,3].map(count => <button type="button" key={count} className={`btn btn-ghost ${columns.length === count ? 'active' : ''}`} onClick={() => setColumnCount(count)} disabled={disabled} style={{padding:'3px 8px'}}>{count}</button>)}</div>
+      <div className="row" style={{gap:8, alignItems:'center'}}><strong>{titulo}</strong>{!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}</div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
     </div>
-    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="text-muted" style={{fontSize:12, marginBottom:6}}>Columna {index + 1}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
+    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="row" style={{justifyContent:'space-between', gap:6, marginBottom:6}}><div className="text-muted" style={{fontSize:12}}>Columna {index + 1}</div>{!disabled && <button type="button" className="btn btn-ghost" aria-label={`Eliminar columna ${index + 1}`} onClick={() => removeColumn(column.id)} disabled={columns.length <= 1} style={{padding:'1px 6px', minWidth:0}}>×</button>}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
   </section>;
 }
 
