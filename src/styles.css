@@ -4180,6 +4180,8 @@ body {
 .document-preview-sheet .rich-text-preview-content p { margin: 0 0 10px; }
 .document-preview-sheet .rich-text-preview-content ul,
 .document-preview-sheet .rich-text-preview-content ol { margin: 0 0 10px; padding-left: 22px; }
+.rich-text-editor-content img,
+.rich-text-preview-content img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
 .document-preview-table-wrap { overflow-x: auto; }
 .document-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .document-preview-table th,

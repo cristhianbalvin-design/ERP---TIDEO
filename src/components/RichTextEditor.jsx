@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { createRichTextExtensions, FONT_SIZES, LINE_HEIGHTS } from './richTextExtensions.js';
 
@@ -8,7 +8,10 @@ export const normalizeRichTextDocument = value => (
   value && typeof value === 'object' && value.type === 'doc' ? value : EMPTY_DOCUMENT
 );
 
-export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [] }) {
+export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [], onUploadImage = null }) {
+  const imageInputRef = useRef(null);
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [errorImagen, setErrorImagen] = useState('');
   const editor = useEditor({
     extensions: createRichTextExtensions(),
     content: normalizeRichTextDocument(value),
@@ -38,6 +41,21 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
   const insertarVariable = token => {
     if (!token) return;
     editor.chain().focus().insertContent(token).run();
+  };
+  const insertarImagen = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !onUploadImage) return;
+    setSubiendoImagen(true); setErrorImagen('');
+    try {
+      const { url } = await onUploadImage(file);
+      if (!url) throw new Error('No se pudo obtener la URL de la imagen subida.');
+      editor.chain().focus().setImage({ src:url, alt:file.name }).run();
+    } catch (err) {
+      setErrorImagen(err.message || 'No se pudo subir la imagen.');
+    } finally {
+      setSubiendoImagen(false);
+    }
   };
   const button = (label, name, attrs, activeName = name) => (
     <button type="button" className={`btn btn-ghost ${editor.isActive(activeName) ? 'active' : ''}`} onClick={command(name, attrs)} disabled={disabled} style={{padding:'4px 8px', minWidth:30}}>{label}</button>
@@ -77,9 +95,11 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
           <option value="">Insertar variable…</option>
           {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
         </select>}
+        {onUploadImage && <><input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={insertarImagen} hidden /><button type="button" className="btn btn-ghost" onClick={() => imageInputRef.current?.click()} disabled={disabled || subiendoImagen} style={{padding:'4px 8px'}}>{subiendoImagen ? 'Subiendo imagen…' : 'Insertar imagen'}</button></>}
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
       </div>}
+      {errorImagen && <div className="alert alert-danger" style={{margin:'8px 10px 0'}}>{errorImagen}</div>}
       <EditorContent editor={editor} style={{padding:'8px 10px', minHeight}} />
     </div>
   );

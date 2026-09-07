@@ -3,6 +3,7 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { TextStyle, FontSize, LineHeight } from '@tiptap/extension-text-style';
 import TextAlign from '@tiptap/extension-text-align';
+import Image from '@tiptap/extension-image';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
@@ -32,6 +33,7 @@ export const createRichTextExtensions = ({ includeHistory = true } = {}) => [
   FontSize,
   LineHeight,
   TextAlign.configure({ types:['paragraph'], alignments:['left', 'center', 'right', 'justify'] }),
+  Image.configure({ allowBase64:false }),
   Bold,
   Italic,
   Underline,

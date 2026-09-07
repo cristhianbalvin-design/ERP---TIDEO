@@ -11,6 +11,7 @@ export const STORAGE_BUCKETS = {
 };
 
 export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+export const MAX_CONSTRUCTOR_DOCUMENT_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const PUBLIC_BUCKETS = new Set([
   STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
@@ -68,6 +69,12 @@ const ALLOWED_EXTENSIONS = new Set([
   '.xls',
   '.xlsx',
   '.zip',
+]);
+
+const CONSTRUCTOR_DOCUMENT_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
 ]);
 
 const storageUri = (bucket, path) => `storage://${bucket}/${path}`;
@@ -131,6 +138,32 @@ export function construirRutaAdjunto({ empresaId, entidadTipo, entidadId }) {
     cleanSegment(entidadId),
     randomId(),
   ].join('/');
+}
+
+export async function subirImagenConstructorDocumento({ empresaId, file }) {
+  if (!empresaId) throw new Error('No se pudo identificar la empresa para subir la imagen.');
+  if (!file) throw new Error('Selecciona una imagen.');
+  if (Number(file.size || 0) > MAX_CONSTRUCTOR_DOCUMENT_IMAGE_BYTES) {
+    throw new Error('La imagen excede el límite de 2 MB.');
+  }
+  const mime = String(file.type || '').toLowerCase();
+  const extension = fileExtension(file.name);
+  if (!CONSTRUCTOR_DOCUMENT_IMAGE_MIME_TYPES.has(mime) || !['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) {
+    throw new Error('La imagen debe ser JPG, PNG o WebP.');
+  }
+
+  const path = `${String(empresaId).trim()}/constructor-documentos/${randomId()}${extension}`;
+  if (!isSupabaseMode()) return { path, url:storageUri(STORAGE_BUCKETS.DOCUMENTOS_GENERALES, path) };
+
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKETS.DOCUMENTOS_GENERALES)
+    .upload(path, file, { contentType:mime, upsert:false });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(STORAGE_BUCKETS.DOCUMENTOS_GENERALES).getPublicUrl(path);
+  if (!data?.publicUrl) throw new Error('No se pudo obtener la URL pública de la imagen.');
+  return { path, url:data.publicUrl };
 }
 
 function mockAdjunto({ empresaId, entidadTipo, entidadId, file, categoria, descripcion, bucket }) {
