@@ -4195,10 +4195,6 @@ body {
 .document-section-column { padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-alt); }
 .document-builder-editor-editar .document-section-columns { max-width: 688px; margin-inline: auto; }
 .document-builder-editor-editar .document-section-column { padding: 0; border: 0; border-radius: 0; background: transparent; }
-.document-builder-editor-editar .document-section-column .rich-text-editor-content { font-size: 13px; line-height: 1.55; }
-.document-builder-editor-editar .document-section-column .rich-text-editor-content p { margin: 0 0 10px; }
-.document-builder-editor-editar .document-section-column .rich-text-editor-content ul,
-.document-builder-editor-editar .document-section-column .rich-text-editor-content ol { margin: 0 0 10px; padding-left: 22px; }
 .document-preview-header { padding-bottom: 20px; border-bottom: 1px solid #dbe2ea; }
 .document-preview-footer { margin-top: 32px; padding-top: 20px; border-top: 1px solid #dbe2ea; }
 .document-preview-body { padding-top: 24px; }
