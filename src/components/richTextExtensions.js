@@ -29,11 +29,10 @@ export const LINE_HEIGHTS = [
 
 const TwoColumnSide = Node.create({
   name: 'twoColumnSide',
-  inline: true,
   content: 'inline*',
   defining: true,
-  parseHTML: () => [{ tag:'span[data-document-two-column-side]' }],
-  renderHTML: ({ HTMLAttributes }) => ['span', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-side', 'data-document-two-column-side':'' }), 0],
+  parseHTML: () => [{ tag:'div[data-document-two-column-side]' }],
+  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-side', 'data-document-two-column-side':'' }), 0],
 });
 
 const TwoColumnLine = Node.create({
