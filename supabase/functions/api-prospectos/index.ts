@@ -42,11 +42,15 @@ serve(async (req) => {
     return json({ error: "Body JSON inválido" }, 400);
   }
 
-  const { nombre_contacto, nombre_empresa, email, telefono, cargo, fuente, notas, campana_id: campanaIdRaw } = body;
+  const { nombre_contacto, nombre_empresa, email, telefono, cargo, fuente, notas, campana_id: campanaIdRaw, estado: estadoRaw, motivo_descarte } = body;
 
   if (!nombre_contacto && !nombre_empresa) {
     return json({ error: "Se requiere al menos nombre_contacto o nombre_empresa" }, 400);
   }
+
+  // Validar estado contra el catálogo, fallback a "nuevo"
+  const estadosValidos = ["nuevo", "en_contacto", "calificado", "convertido", "descartado"];
+  const estadoFinal = estadosValidos.includes(estadoRaw) ? estadoRaw : "nuevo";
 
   // Validar campana_id si viene en el body — si no es válida o no está activa, insertar con null
   let campanaId: string | null = null;
@@ -75,7 +79,8 @@ serve(async (req) => {
       cargo: cargo ?? null,
       fuente: fuente ?? "api",
       necesidad: notas ?? null,
-      estado: "nuevo",
+      estado: estadoFinal,
+      motivo_descarte: motivo_descarte ?? null,
       campana_id: campanaId,
       registrado_desde: "api",
     })
