@@ -5,6 +5,7 @@ import { TextStyle, FontSize, LineHeight } from '@tiptap/extension-text-style';
 import TextAlign from '@tiptap/extension-text-align';
 import ImageResize from 'tiptap-extension-resize-image';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
+import { Node, mergeAttributes } from '@tiptap/core';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
@@ -26,6 +27,31 @@ export const LINE_HEIGHTS = [
   { value: '2', label: 'Doble' },
 ];
 
+const TwoColumnSide = Node.create({
+  name: 'twoColumnSide',
+  content: 'inline*',
+  defining: true,
+  parseHTML: () => [{ tag:'div[data-document-two-column-side]' }],
+  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-side', 'data-document-two-column-side':'' }), 0],
+});
+
+const TwoColumnLine = Node.create({
+  name: 'twoColumnLine',
+  group: 'block',
+  content: 'twoColumnSide twoColumnSide',
+  defining: true,
+  parseHTML: () => [{ tag:'div[data-document-two-column-line]' }],
+  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-line', 'data-document-two-column-line':'' }), 0],
+  addCommands() {
+    return {
+      insertTwoColumnLine: () => ({ commands }) => commands.insertContent({
+        type: this.name,
+        content: [{ type:'twoColumnSide' }, { type:'twoColumnSide' }],
+      }),
+    };
+  },
+});
+
 export const createRichTextExtensions = ({ includeHistory = true } = {}) => [
   Document,
   Paragraph,
@@ -34,8 +60,10 @@ export const createRichTextExtensions = ({ includeHistory = true } = {}) => [
   FontSize,
   LineHeight,
   TextAlign.configure({ types:['paragraph'], alignments:['left', 'center', 'right', 'justify'] }),
-  ImageResize.configure({ allowBase64:false, minWidth:48, maxWidth:680 }),
+  ImageResize.configure({ inline:true, allowBase64:false, minWidth:48, maxWidth:680 }),
   HorizontalRule,
+  TwoColumnLine,
+  TwoColumnSide,
   Bold,
   Italic,
   Underline,
