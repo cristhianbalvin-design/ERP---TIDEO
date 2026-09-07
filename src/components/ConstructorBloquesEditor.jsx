@@ -496,7 +496,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     if (nextIndex < 0 || nextIndex >= siblings.length) return;
     const ordered = [...siblings]; [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
     const withOrder = ordered.map((block, itemIndex) => ({ ...block, orden:siblings[itemIndex].orden }));
-    setBloques(previous => previous.map(block => withOrder.find(item => item.id === block.id || item.client_key === block.client_key) || block));
+    setBloques(previous => previous.map(block => withOrder.find(item => isSameBlock(item, block)) || block));
     const persisted = withOrder.filter(block => block.id);
     if (!persisted.length || !draft?.id) return;
     try {
