@@ -4,7 +4,6 @@ import Text from '@tiptap/extension-text';
 import { TextStyle, FontSize, LineHeight } from '@tiptap/extension-text-style';
 import TextAlign from '@tiptap/extension-text-align';
 import ImageResize from 'tiptap-extension-resize-image';
-import Gapcursor from '@tiptap/extension-gapcursor';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
 import { Node, mergeAttributes } from '@tiptap/core';
 import Bold from '@tiptap/extension-bold';
@@ -30,10 +29,11 @@ export const LINE_HEIGHTS = [
 
 const TwoColumnSide = Node.create({
   name: 'twoColumnSide',
-  content: 'block+',
+  inline: true,
+  content: 'inline*',
   defining: true,
-  parseHTML: () => [{ tag:'div[data-document-two-column-side]' }],
-  renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-side', 'data-document-two-column-side':'' }), 0],
+  parseHTML: () => [{ tag:'span[data-document-two-column-side]' }],
+  renderHTML: ({ HTMLAttributes }) => ['span', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-side', 'data-document-two-column-side':'' }), 0],
 });
 
 const TwoColumnLine = Node.create({
@@ -41,39 +41,14 @@ const TwoColumnLine = Node.create({
   group: 'block',
   content: 'twoColumnSide twoColumnSide',
   defining: true,
-  addAttributes() {
-    return {
-      leftWidth: {
-        default: null,
-        parseHTML: element => element.getAttribute('data-left-width') || null,
-        renderHTML: attributes => attributes.leftWidth ? {
-          'data-left-width': attributes.leftWidth,
-          style: `--two-column-left: ${attributes.leftWidth};`,
-        } : {},
-      },
-    };
-  },
   parseHTML: () => [{ tag:'div[data-document-two-column-line]' }],
   renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { class:'rich-text-two-column-line', 'data-document-two-column-line':'' }), 0],
   addCommands() {
     return {
       insertTwoColumnLine: () => ({ commands }) => commands.insertContent({
         type: this.name,
-        content: [
-          { type:'twoColumnSide', content:[{ type:'paragraph' }] },
-          { type:'twoColumnSide', content:[{ type:'paragraph' }] },
-        ],
+        content: [{ type:'twoColumnSide' }, { type:'twoColumnSide' }],
       }),
-      setTwoColumnLinePreset: leftWidth => ({ state, dispatch }) => {
-        const { $from } = state.selection;
-        for (let depth = $from.depth; depth > 0; depth -= 1) {
-          const node = $from.node(depth);
-          if (node.type.name !== this.name) continue;
-          if (dispatch) dispatch(state.tr.setNodeMarkup($from.before(depth), undefined, { ...node.attrs, leftWidth }));
-          return true;
-        }
-        return false;
-      },
     };
   },
 });
@@ -86,8 +61,7 @@ export const createRichTextExtensions = ({ includeHistory = true } = {}) => [
   FontSize,
   LineHeight,
   TextAlign.configure({ types:['paragraph'], alignments:['left', 'center', 'right', 'justify'] }),
-  ImageResize.configure({ inline:false, allowBase64:false, minWidth:48, maxWidth:680 }),
-  Gapcursor,
+  ImageResize.configure({ inline:true, allowBase64:false, minWidth:48, maxWidth:680 }),
   HorizontalRule,
   TwoColumnLine,
   TwoColumnSide,
