@@ -202,7 +202,10 @@ begin
   ) order by bloque.bloque_padre_id nulls first, bloque.orden, bloque.id), '[]'::jsonb)
   into v_bloques
   from public.documento_bloques bloque
-  where bloque.plantilla_documento_id = v_plantilla.id;
+  where bloque.plantilla_documento_id = v_plantilla.id
+    -- Retirar conserva la fila con activo = false; una emisión sólo congela
+    -- los bloques vigentes que deben formar parte del documento final.
+    and bloque.activo = true;
 
   v_contenido_plantilla := jsonb_build_object(
     'plantilla', jsonb_strip_nulls(jsonb_build_object(
