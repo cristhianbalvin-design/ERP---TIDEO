@@ -111,6 +111,12 @@ function TablaBlockEditor({ value, disabled, onChange }) {
   </div>;
 }
 
+function AvisoBloqueExcedido({ alFinal = false }) {
+  return <div className="alert alert-warning document-builder-oversized-block-warning" style={{marginTop:10, marginBottom:alFinal ? 0 : 10}}>
+    <strong>Atención:</strong> Este bloque es más alto que una página y no se dividirá; considera separarlo en varios bloques.
+  </div>;
+}
+
 function BloqueCard({ block, index, total, depth, children, disabled, saving, saved, isOversized, oversizedBlockKeys, variables, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible' }[block.tipo_bloque] || block.tipo_bloque;
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
@@ -120,12 +126,13 @@ function BloqueCard({ block, index, total, depth, children, disabled, saving, sa
       <input className="input" placeholder="Título del bloque (opcional)" value={block.titulo || ''} disabled={disabled} onChange={event => onChange({ titulo:event.target.value })} style={{flex:'1 1 220px'}} />
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
-    {isOversized && <div className="alert alert-warning" style={{marginTop:10, marginBottom:0, padding:'8px 10px', fontSize:12}}>Este bloque es más alto que una página y no se dividirá; considera separarlo en varios bloques.</div>}
+    {isOversized && <AvisoBloqueExcedido />}
     <div style={{marginTop:10}}>
       {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Equipo {{equipo.nombre}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
     </div>
+    {isOversized && <AvisoBloqueExcedido alFinal />}
   </div>;
 }
 
