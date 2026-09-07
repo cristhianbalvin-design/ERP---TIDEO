@@ -14,7 +14,7 @@ const emptyGroup = () => ({ fuente_repeticion: '', titulo_item: '' });
 const orderBlocks = blocks => [...blocks].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
 const PREVIEW_SHEET_HEIGHT = 1056;
 const PREVIEW_SHEET_VERTICAL_PADDING = 128;
-const PREVIEW_BODY_TOP_PADDING = 24;
+const PREVIEW_BODY_TOP_PADDING = 0;
 const previewBlockKey = block => block.client_key || block.id || `block-${block.orden || 0}-${block.titulo || ''}`;
 const normalizedScope = scope => scope === 'primera' ? 'primera' : 'todas';
 const previewMeasurementKey = (plantilla, bloques) => {
