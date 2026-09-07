@@ -348,6 +348,15 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const replaceBlock = (before, after) => setBloques(previous => previous.map(block => isSameBlock(block, before) ? { ...after, client_key: before.client_key } : block));
   const updateBlock = (block, patch) => replaceBlock(block, { ...block, ...patch });
   const childrenFor = parentId => orderBlocks(bloques.filter(block => block.bloque_padre_id === parentId));
+  const cargarOrdenesHermanos = async parentId => {
+    if (!draft?.id) return [];
+    const sb = await getSupabaseClient();
+    let query = sb.from('documento_bloques').select('orden').eq('plantilla_documento_id', draft.id);
+    query = parentId ? query.eq('bloque_padre_id', parentId) : query.is('bloque_padre_id', null);
+    const { data, error: ordersError } = await query;
+    if (ordersError) throw ordersError;
+    return (data || []).map(block => Number(block.orden || 0));
+  };
   const rootBlocks = childrenFor(null);
   const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques), [draft, publicada, bloques]);
   const bloquesMayoresQuePagina = useMemo(() => {
@@ -458,9 +467,15 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     finally { setDescartando(false); }
   };
 
-  const addBlock = (parentId, tipoBloque) => {
-    const siblings = childrenFor(parentId);
-    setBloques(previous => [...previous, { client_key:newKey(), plantilla_documento_id:draft?.id || null, bloque_padre_id:parentId, tipo_bloque:tipoBloque, titulo:'', contenido_json:contentForType(tipoBloque), contenido_texto_plano:'', orden:siblings.length + 1, activo:true }]);
+  const addBlock = async (parentId, tipoBloque) => {
+    try {
+      const ordenesPersistidos = await cargarOrdenesHermanos(parentId);
+      setBloques(previous => {
+        const ordenesLocales = previous.filter(block => block.bloque_padre_id === parentId).map(block => Number(block.orden || 0));
+        const orden = Math.max(0, ...ordenesPersistidos, ...ordenesLocales) + 1;
+        return [...previous, { client_key:newKey(), plantilla_documento_id:draft?.id || null, bloque_padre_id:parentId, tipo_bloque:tipoBloque, titulo:'', contenido_json:contentForType(tipoBloque), contenido_texto_plano:'', orden, activo:true }];
+      });
+    } catch (err) { setError(err.message || 'No se pudo calcular el orden del nuevo bloque.'); }
   };
 
   const retirar = async block => {
@@ -480,13 +495,15 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= siblings.length) return;
     const ordered = [...siblings]; [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
-    const withOrder = ordered.map((block, itemIndex) => ({ ...block, orden:itemIndex + 1 }));
-    setBloques(previous => previous.map(block => withOrder.find(item => item.id === block.id || item.client_key === block.client_key) || block));
+    const withOrder = ordered.map((block, itemIndex) => ({ ...block, orden:siblings[itemIndex].orden }));
+    setBloques(previous => previous.map(block => withOrder.find(item => isSameBlock(item, block)) || block));
     const persisted = withOrder.filter(block => block.id);
     if (!persisted.length || !draft?.id) return;
     try {
       const sb = await getSupabaseClient();
-      const offset = persisted.map(block => ({ id:block.id, ...blockPayload(block, draft.id, parentId), orden:block.orden + 10000 }));
+      const ordenesOcupados = await cargarOrdenesHermanos(parentId);
+      const baseTemporal = Math.max(0, ...ordenesOcupados, ...withOrder.map(block => Number(block.orden || 0))) + 10000;
+      const offset = persisted.map((block, itemIndex) => ({ id:block.id, ...blockPayload(block, draft.id, parentId), orden:baseTemporal + itemIndex }));
       const final = persisted.map(block => ({ id:block.id, ...blockPayload(block, draft.id, parentId) }));
       const { error: offsetError } = await sb.from('documento_bloques').upsert(offset);
       if (offsetError) throw offsetError;
