@@ -116,9 +116,9 @@ begin
     raise exception 'Debe iniciar sesión para crear una Cotización Especial.' using errcode = '42501';
   end if;
 
-  select * into v_tipo
-  from public.tipos_documento_electronico
-  where id = p_tipo_documento_id;
+  select tipo.* into v_tipo
+  from public.tipos_documento_electronico tipo
+  where tipo.id = p_tipo_documento_id;
 
   if not found or not v_tipo.activo or v_tipo.categoria_base <> 'cotizacion' then
     raise exception 'El tipo de documento debe existir, estar activo y ser de categoría cotizacion.'
@@ -159,9 +159,9 @@ begin
       raise exception 'No envíe ítems manuales cuando el origen es hoja_costeo.' using errcode = '22023';
     end if;
 
-    select * into v_hoja
-    from public.hojas_costeo
-    where id = p_hoja_costeo_id;
+    select hoja.* into v_hoja
+    from public.hojas_costeo hoja
+    where hoja.id = p_hoja_costeo_id;
 
     if not found
        or v_hoja.estado <> 'aprobada'
@@ -295,9 +295,9 @@ begin
     raise exception 'Debe iniciar sesión para editar una Cotización Especial.' using errcode = '42501';
   end if;
 
-  select * into v_cotizacion
-  from public.cotizaciones_especiales
-  where id = p_id
+  select cotizacion.* into v_cotizacion
+  from public.cotizaciones_especiales cotizacion
+  where cotizacion.id = p_id
   for update;
 
   if not found then
@@ -330,14 +330,14 @@ begin
   v_igv := round(v_subtotal * 0.18);
   v_total := v_subtotal + v_igv;
 
-  update public.cotizaciones_especiales
+  update public.cotizaciones_especiales cotizacion_especial
   set items = v_items,
       subtotal = v_subtotal,
       igv_pct = 18,
       igv = v_igv,
       total = v_total,
       updated_at = now()
-  where id = p_id;
+  where cotizacion_especial.id = p_id;
 
   id := p_id;
   items := v_items;
