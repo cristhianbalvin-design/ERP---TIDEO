@@ -4,11 +4,24 @@ import { createRichTextExtensions, FONT_SIZES, LINE_HEIGHTS } from './richTextEx
 
 const EMPTY_DOCUMENT = { type: 'doc', content: [{ type: 'paragraph' }] };
 
+const normalizeRichTextNode = node => {
+  if (!node || typeof node !== 'object') return node;
+  return {
+    ...node,
+    // Las imágenes insertadas antes del resize usaban el nodo oficial `image`.
+    // Se convierten en memoria para que sigan visibles y puedan redimensionarse.
+    type: node.type === 'image' ? 'imageResize' : node.type,
+    ...(Array.isArray(node.content) ? { content:node.content.map(normalizeRichTextNode) } : {}),
+  };
+};
+
 export const normalizeRichTextDocument = value => (
-  value && typeof value === 'object' && value.type === 'doc' ? value : EMPTY_DOCUMENT
+  value && typeof value === 'object' && value.type === 'doc'
+    ? normalizeRichTextNode(value)
+    : EMPTY_DOCUMENT
 );
 
-export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [], onUploadImage = null }) {
+export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [], onUploadImage = null, showHorizontalRule = false }) {
   const imageInputRef = useRef(null);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
   const [errorImagen, setErrorImagen] = useState('');
@@ -96,6 +109,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
           {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
         </select>}
         {onUploadImage && <><input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={insertarImagen} hidden /><button type="button" className="btn btn-ghost" onClick={() => imageInputRef.current?.click()} disabled={disabled || subiendoImagen} style={{padding:'4px 8px'}}>{subiendoImagen ? 'Subiendo imagen…' : 'Insertar imagen'}</button></>}
+        {showHorizontalRule && button('—', 'setHorizontalRule', undefined, 'horizontalRule')}
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{padding:'4px 8px'}}>↶</button>
         <button type="button" className="btn btn-ghost" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{padding:'4px 8px'}}>↷</button>
       </div>}
