@@ -252,17 +252,19 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     return (data || []).map(block => Number(block.orden || 0));
   };
   const rootBlocks = childrenFor(null);
-  const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques), [draft, publicada, bloques]);
+  const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques, null, tipo?.categoria_base), [draft, publicada, bloques, tipo?.categoria_base]);
+  const bloquesConFuenteReal = useMemo(() => new Set(rootBlocks.filter(block => block.tipo_bloque === 'grupo_repetible' && Boolean(getDocumentRepeatSource(tipo?.categoria_base, block.contenido_json?.fuente_repeticion_id))).map(previewBlockKey)), [rootBlocks, tipo?.categoria_base]);
   const bloquesMayoresQuePagina = useMemo(() => {
-    if (medidasVistaPrevia?.key !== measurementKeyActual || !rootBlocks.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Set();
+    const evaluables = rootBlocks.filter(block => !bloquesConFuenteReal.has(previewBlockKey(block)));
+    if (medidasVistaPrevia?.key !== measurementKeyActual || !evaluables.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Set();
     const encabezadoAlcance = normalizedPreviewScope((draft || publicada)?.encabezado_alcance);
     const pieAlcance = normalizedPreviewScope((draft || publicada)?.pie_alcance);
     const capacidadMaxima = Math.max(
       previewPageCapacity(0, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
       previewPageCapacity(1, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
     );
-    return new Set(rootBlocks.filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima).map(previewBlockKey));
-  }, [medidasVistaPrevia, measurementKeyActual, rootBlocks, draft, publicada]);
+    return new Set(evaluables.filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima).map(previewBlockKey));
+  }, [medidasVistaPrevia, measurementKeyActual, rootBlocks, bloquesConFuenteReal, draft, publicada]);
 
   const crearBorrador = async (origen = publicada) => {
     try {
@@ -428,21 +430,21 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const plantillaActiva = draft || publicada;
   const editable = Boolean(draft && puedeEditar);
   const cuerpoEditor = draft
-    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} variables={variables} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
+    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
     : publicada
-      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} variables={variables} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
+      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
       : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>;
 
   return <div className={`card document-builder-editor document-builder-editor-${modoVista}`}><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body document-builder-editor-body">
     {error && <div className="alert alert-danger">{error}</div>}
-    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} onMeasurementsChange={setMedidasVistaPrevia} /> : <>
+    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} categoria={tipo?.categoria_base} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} onMeasurementsChange={setMedidasVistaPrevia} /> : <>
       {draft && <div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>}
       {!draft && publicada && <div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>}
       {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" alcance={plantillaActiva.encabezado_alcance} value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onAlcanceChange={encabezado_alcance => actualizarSeccionPlantilla({ encabezado_alcance })} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
       {cuerpoEditor}
       {plantillaActiva && <SeccionPlantillaEditor titulo="Pie de página" alcance={plantillaActiva.pie_alcance} value={{ contenido_json:plantillaActiva.pie_json, contenido_texto_plano:plantillaActiva.pie_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'pie'} guardado={guardadoSeccion === 'pie'} onAlcanceChange={pie_alcance => actualizarSeccionPlantilla({ pie_alcance })} onChange={patch => actualizarSeccionPlantilla({ pie_json:patch.contenido_json, pie_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('pie')} />}
       {mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}
-      {plantillaActiva && <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} zoom={100} onZoom={() => {}} measurementOnly onMeasurementsChange={setMedidasVistaPrevia} />}
+      {plantillaActiva && <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} categoria={tipo?.categoria_base} zoom={100} onZoom={() => {}} measurementOnly onMeasurementsChange={setMedidasVistaPrevia} />}
     </>}
   </div></div>;
 }
