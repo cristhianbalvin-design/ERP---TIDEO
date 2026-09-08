@@ -48,6 +48,23 @@ const renderTableCell = (column, row, categoria, contexto) => {
   if (column.campo_origen && contexto?.item) return renderTextoDocumental(`{{item.${column.campo_origen}}}`, categoria, contexto);
   return renderTableText(row.valores[column.id], categoria, contexto);
 };
+const isRepeatUnit = unit => unit.kind === 'repeat-instance' || unit.kind === 'repeat-table-row';
+const repeatTableChild = (block, bloques) => {
+  const group = groupConfig(block);
+  const children = orderDocumentPreviewBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
+  // Un título por ítem también es contenido repetido: no se compacta para no
+  // cambiar el orden visual de grupos mixtos o de textos por ítem.
+  if (group.titulo_item || children.length !== 1 || children[0].tipo_bloque !== 'tabla') return null;
+  return normalizeTable(children[0].contenido_json).filas.length === 1 ? children[0] : null;
+};
+
+function PreviewTableHead({ table, categoria, contexto, measurementRef = null }) {
+  return <thead ref={measurementRef}><tr>{table.columnas.map(columna => <th key={columna.id}>{renderTableText(columna.titulo, categoria, contexto)}</th>)}</tr></thead>;
+}
+
+function PreviewTableRow({ table, row, categoria, contexto, measurementRef = null }) {
+  return <tr ref={measurementRef}>{table.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (row.valores[columna.id] ? '✓' : '') : renderTableCell(columna, row, categoria, contexto)}</td>)}</tr>;
+}
 
 const normalizeSectionColumns = value => {
   const source = Array.isArray(value?.columnas) ? value.columnas.slice(0, 3) : [{ id:'legacy-column-1', contenido_json:value }];
@@ -68,6 +85,24 @@ export const createDocumentPreviewFlowUnits = (bloques, categoria, contexto) => 
     const source = group ? getDocumentRepeatSource(categoria, group.fuente_repeticion_id) : null;
     const items = source ? getRepeatSourceItems(contexto, source.id) : null;
     if (!source || items === null) return [{ kind:'block', key:previewBlockKey(block), block }];
+    const tableBlock = repeatTableChild(block, bloques);
+    if (tableBlock) {
+      const table = normalizeTable(tableBlock.contenido_json);
+      const groupKey = previewBlockKey(block);
+      const tableKey = `${groupKey}:table:${previewBlockKey(tableBlock)}`;
+      return items.map((item, index) => ({
+        kind:'repeat-table-row',
+        key:`${tableKey}:item:${itemIdentity(item, index)}`,
+        groupKey,
+        tableKey,
+        block,
+        tableBlock,
+        table,
+        row:table.filas[0],
+        item,
+        index,
+      }));
+    }
     return items.map((item, index) => ({
       kind:'repeat-instance',
       key:`${previewBlockKey(block)}:item:${itemIdentity(item, index)}`,
@@ -86,10 +121,12 @@ export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlc
   unidades.forEach(unit => {
     const colocar = () => {
       const anterior = paginaActual.at(-1)?.unit;
-      const showGroupTitle = unit.kind === 'repeat-instance' && anterior?.groupKey !== unit.groupKey;
+      const showGroupTitle = isRepeatUnit(unit) && anterior?.groupKey !== unit.groupKey;
+      const showTableHeader = unit.kind === 'repeat-table-row' && anterior?.tableKey !== unit.tableKey;
       const continuation = showGroupTitle && unit.index > 0;
       const altoTitulo = showGroupTitle ? Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, continuation)] || 0) : 0;
-      return { unit, showGroupTitle, continuation, alto: Number(medidas.unidades[unit.key] || 0) + altoTitulo };
+      const altoEncabezadoTabla = showTableHeader ? Number(medidas.encabezadosTabla?.[unit.tableKey] || 0) : 0;
+      return { unit, showGroupTitle, showTableHeader, continuation, alto: Number(medidas.unidades[unit.key] || 0) + altoTitulo + altoEncabezadoTabla };
     };
     let entry = colocar();
     let altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
@@ -114,7 +151,7 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
   return <section ref={measurementRef} className="document-preview-block">
     {block.titulo && <h4>{block.titulo}</h4>}
     {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />}
-    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><thead><tr>{tabla.columnas.map(columna => <th key={columna.id}>{renderTableText(columna.titulo, categoria, contexto)}</th>)}</tr></thead><tbody>{tabla.filas.map(fila => <tr key={fila.id}>{tabla.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (fila.valores[columna.id] ? '✓' : '') : renderTableCell(columna, fila, categoria, contexto)}</td>)}</tr>)}</tbody></table></div>}
+    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
   </section>;
 }
@@ -141,7 +178,59 @@ function VistaInstanciaRepetida({ unit, bloques, categoria, contexto, showGroupT
 function VistaUnidadFlujo({ entry, bloques, categoria, contexto, measurementRef = null }) {
   const { unit } = entry;
   if (unit.kind === 'repeat-instance') return <VistaInstanciaRepetida unit={unit} bloques={bloques} categoria={categoria} contexto={contexto} showGroupTitle={entry.showGroupTitle} continuation={entry.continuation} measurementRef={measurementRef} />;
+  if (unit.kind === 'repeat-table-row') return null;
   return <VistaBloque block={unit.block} bloques={bloques} categoria={categoria} contexto={contexto} measurementRef={measurementRef} />;
+}
+
+function VistaTablaRepetida({ entries, categoria, contexto }) {
+  const first = entries[0];
+  const { unit } = first;
+  return <section className="document-preview-block document-preview-repeat-table">
+    {first.showGroupTitle && <GroupHeading unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={first.continuation} />}
+    <div className="document-preview-table-wrap"><table className="document-preview-table">
+      <PreviewTableHead table={unit.table} categoria={categoria} contexto={contexto} />
+      <tbody>{entries.map(entry => <PreviewTableRow key={entry.unit.key} table={entry.unit.table} row={entry.unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:entry.unit.item }} />)}</tbody>
+    </table></div>
+  </section>;
+}
+
+function VistaPaginaFlujo({ entries, bloques, categoria, contexto }) {
+  const fragments = [];
+  for (let index = 0; index < entries.length;) {
+    const entry = entries[index];
+    if (entry.unit.kind !== 'repeat-table-row') {
+      fragments.push(<VistaUnidadFlujo key={entry.unit.key} entry={entry} bloques={bloques} categoria={categoria} contexto={contexto} />);
+      index += 1;
+      continue;
+    }
+    const tableEntries = [entry];
+    index += 1;
+    while (index < entries.length && entries[index].unit.kind === 'repeat-table-row' && entries[index].unit.tableKey === entry.unit.tableKey) {
+      tableEntries.push(entries[index]);
+      index += 1;
+    }
+    fragments.push(<VistaTablaRepetida key={`${entry.unit.tableKey}:${entry.unit.key}`} entries={tableEntries} categoria={categoria} contexto={contexto} />);
+  }
+  return fragments;
+}
+
+function MedicionTablasRepetidas({ unidades, categoria, contexto, measureUnitRefs, measureTableHeaderRefs, measureTableWrapRefs }) {
+  const tables = useMemo(() => {
+    const byKey = new Map();
+    unidades.filter(unit => unit.kind === 'repeat-table-row').forEach(unit => {
+      const current = byKey.get(unit.tableKey) || [];
+      current.push(unit);
+      byKey.set(unit.tableKey, current);
+    });
+    return [...byKey.entries()];
+  }, [unidades]);
+  return tables.map(([tableKey, rows]) => {
+    const first = rows[0];
+    return <section key={tableKey} ref={node => { if (node) measureTableWrapRefs.current.set(tableKey, node); else measureTableWrapRefs.current.delete(tableKey); }} className="document-preview-block"><div className="document-preview-table-wrap"><table className="document-preview-table">
+      <PreviewTableHead table={first.table} categoria={categoria} contexto={contexto} measurementRef={node => { if (node) measureTableHeaderRefs.current.set(tableKey, node); else measureTableHeaderRefs.current.delete(tableKey); }} />
+      <tbody>{rows.map(unit => <PreviewTableRow key={unit.key} table={unit.table} row={unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} />)}</tbody>
+    </table></div></section>;
+  });
 }
 
 function VistaSeccionPlantilla({ value, categoria, contexto }) {
@@ -164,11 +253,13 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const measureFooterRef = useRef(null);
   const measureUnitRefs = useRef(new Map());
   const measureGroupTitleRefs = useRef(new Map());
+  const measureTableHeaderRefs = useRef(new Map());
+  const measureTableWrapRefs = useRef(new Map());
   const [medidas, setMedidas] = useState(null);
   const encabezadoAlcance = normalizedPreviewScope(plantilla?.encabezado_alcance);
   const pieAlcance = normalizedPreviewScope(plantilla?.pie_alcance);
   const measurementKey = useMemo(() => previewMeasurementKey(plantilla, bloques, contexto, categoria), [plantilla, bloques, contexto, categoria]);
-  const titleMeasurements = useMemo(() => unidades.filter(unit => unit.kind === 'repeat-instance' && unit.block.titulo).filter((unit, index, list) => list.findIndex(item => item.groupKey === unit.groupKey) === index), [unidades]);
+  const titleMeasurements = useMemo(() => unidades.filter(unit => isRepeatUnit(unit) && unit.block.titulo).filter((unit, index, list) => list.findIndex(item => item.groupKey === unit.groupKey) === index), [unidades]);
 
   useLayoutEffect(() => {
     let activo = true;
@@ -179,12 +270,19 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         [previewGroupTitleKey(unit, false), measureNodeHeight(measureGroupTitleRefs.current.get(previewGroupTitleKey(unit, false)))],
         [previewGroupTitleKey(unit, true), measureNodeHeight(measureGroupTitleRefs.current.get(previewGroupTitleKey(unit, true)))],
       ])));
+      const tableHeaderHeights = Object.fromEntries([...measureTableHeaderRefs.current.keys()].map(tableKey => {
+        const headerHeight = measureNodeHeight(measureTableHeaderRefs.current.get(tableKey));
+        const rowHeight = unidades.filter(unit => unit.kind === 'repeat-table-row' && unit.tableKey === tableKey).reduce((sum, unit) => sum + measureNodeHeight(measureUnitRefs.current.get(unit.key)), 0);
+        const tableHeight = measureNodeHeight(measureTableWrapRefs.current.get(tableKey));
+        return [tableKey, headerHeight + Math.max(0, tableHeight - headerHeight - rowHeight)];
+      }));
       const footerStyles = measureFooterRef.current ? window.getComputedStyle(measureFooterRef.current) : null;
       const next = {
         key:measurementKey,
         bloques:Object.fromEntries(unidades.filter(unit => unit.kind === 'block').map(unit => [unit.key, unitHeights[unit.key]])),
         unidades:unitHeights,
         titulosGrupo:titleHeights,
+        encabezadosTabla:tableHeaderHeights,
         encabezado:measureHeaderRef.current?.getBoundingClientRect().height || 0,
         pie:(measureFooterRef.current?.getBoundingClientRect().height || 0) + Number.parseFloat(footerStyles?.marginTop || 0),
       };
@@ -192,7 +290,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
     };
     const frame = window.requestAnimationFrame(medir);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medir);
-    [measureSheetRef.current, measureHeaderRef.current, measureFooterRef.current, ...measureUnitRefs.current.values(), ...measureGroupTitleRefs.current.values()].filter(Boolean).forEach(node => observer?.observe(node));
+    [measureSheetRef.current, measureHeaderRef.current, measureFooterRef.current, ...measureUnitRefs.current.values(), ...measureGroupTitleRefs.current.values(), ...measureTableHeaderRefs.current.values(), ...measureTableWrapRefs.current.values()].filter(Boolean).forEach(node => observer?.observe(node));
     document.fonts?.ready?.then(medir);
     return () => { activo = false; window.cancelAnimationFrame(frame); observer?.disconnect(); };
   }, [measurementKey, unidades, titleMeasurements]);
@@ -201,22 +299,23 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
 
   const todasLasAlturasMedidas = medidas?.key === measurementKey && unidades.every(unit => Number(medidas.unidades?.[unit.key]) > 0);
   const paginas = useMemo(() => {
-    if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:unit.kind === 'repeat-instance' && unit.index === 0, continuation:false }))];
+    if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:isRepeatUnit(unit) && unit.index === 0, showTableHeader:unit.kind === 'repeat-table-row', continuation:false }))];
     return paginateDocumentPreviewUnits(unidades, encabezadoAlcance, pieAlcance, medidas);
   }, [todasLasAlturasMedidas, unidades, encabezadoAlcance, pieAlcance, medidas]);
 
   const instanciasSobredimensionadas = useMemo(() => {
     if (!todasLasAlturasMedidas) return [];
     const capacidadMaxima = Math.max(previewPageCapacity(0, encabezadoAlcance, pieAlcance, medidas), previewPageCapacity(1, encabezadoAlcance, pieAlcance, medidas));
-    return unidades.filter(unit => unit.kind === 'repeat-instance').filter(unit => {
+    return unidades.filter(unit => isRepeatUnit(unit)).filter(unit => {
       const titulo = Math.max(Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, false)] || 0), Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, true)] || 0));
-      return Number(medidas.unidades?.[unit.key] || 0) + titulo > capacidadMaxima;
+      const encabezadoTabla = unit.kind === 'repeat-table-row' ? Number(medidas.encabezadosTabla?.[unit.tableKey] || 0) : 0;
+      return Number(medidas.unidades?.[unit.key] || 0) + titulo + encabezadoTabla > capacidadMaxima;
     });
   }, [todasLasAlturasMedidas, unidades, encabezadoAlcance, pieAlcance, medidas]);
 
   const medicion = <div className="document-preview-measure" aria-hidden="true"><article ref={measureSheetRef} className="document-preview-sheet">
     <header ref={measureHeaderRef} className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} categoria={categoria} contexto={contexto} /></header>
-    <main className="document-preview-body">{unidades.map(unit => <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloques} categoria={categoria} contexto={contexto} />)}{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}</main>
+    <main className="document-preview-body">{unidades.filter(unit => unit.kind !== 'repeat-table-row').map(unit => <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloques} categoria={categoria} contexto={contexto} />)}<MedicionTablasRepetidas unidades={unidades} categoria={categoria} contexto={contexto} measureUnitRefs={measureUnitRefs} measureTableHeaderRefs={measureTableHeaderRefs} measureTableWrapRefs={measureTableWrapRefs} />{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}</main>
     <footer ref={measureFooterRef} className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} categoria={categoria} contexto={contexto} /></footer>
   </article></div>;
 
@@ -230,7 +329,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
       const mostrarPie = index === 0 || pieAlcance === 'todas';
       return <div key={`pagina-${index}`} className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label={`Vista previa de documento, página ${index + 1}`}>
         {mostrarEncabezado && <header className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} categoria={categoria} contexto={contexto} /></header>}
-        <main className="document-preview-body">{pagina.map(entry => <VistaUnidadFlujo key={entry.unit.key} entry={entry} bloques={bloques} categoria={categoria} contexto={contexto} />)}</main>
+        <main className="document-preview-body"><VistaPaginaFlujo entries={pagina} bloques={bloques} categoria={categoria} contexto={contexto} /></main>
         {mostrarPie && <footer className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} categoria={categoria} contexto={contexto} /></footer>}
       </article></div>;
     })}</div>{medicion}</div>
