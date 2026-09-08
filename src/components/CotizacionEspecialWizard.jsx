@@ -95,7 +95,10 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [loading, setLoading] = useState(Boolean(especialId));
   const [saving, setSaving] = useState(false);
   const [emitting, setEmitting] = useState(false);
+  const [actualizandoPlantilla, setActualizandoPlantilla] = useState(false);
   const [error, setError] = useState('');
+  const [plantillaLoading, setPlantillaLoading] = useState(Boolean(especialId));
+  const [plantillaError, setPlantillaError] = useState('');
 
   const tipo = tipos.find(row => row.id === form.tipo_documento_id) || null;
   const tiposVisibles = useMemo(() => empresa?.multisociedad_habilitado
@@ -107,6 +110,12 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const contacto = contactos.find(row => row.id === form.contacto_id) || null;
   const editable = Boolean(cotizacion && cotizacion.estado === 'borrador');
   const readonly = Boolean(cotizacion && cotizacion.estado !== 'borrador');
+  const plantillaNuevaDisponible = useMemo(() => {
+    if (!editable || !plantilla) return null;
+    return plantillas
+      .filter(row => row.estado === 'publicada' && Number(row.version) > Number(plantilla.version))
+      .sort((a, b) => Number(b.version) - Number(a.version))[0] || null;
+  }, [editable, plantilla, plantillas]);
   const totals = useMemo(() => readonly && cotizacion
     ? { subtotal:numero(cotizacion.subtotal), igv:numero(cotizacion.igv), total:numero(cotizacion.total) }
     : previewTotals(form.items), [readonly, cotizacion, form.items]);
@@ -183,18 +192,38 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     });
   }, [especialId, hojaCosteoInicialId, hojasCosteo, oportunidades, adaptarHojaCosteo]);
   useEffect(() => {
-    if (!form.tipo_documento_id) { setPlantillas([]); return; }
+    if (!form.tipo_documento_id) {
+      setPlantillas([]);
+      setPlantillaLoading(false);
+      setPlantillaError('');
+      return;
+    }
     let active = true;
+    const cargarPlantillaVinculada = Boolean(especialId && form.plantilla_documento_id);
+    setPlantillaLoading(true);
+    setPlantillaError('');
     (async () => {
       try {
         const sb = await getSupabaseClient();
-        const { data, error: queryError } = await sb.from('plantillas_documento_bloques').select('*').eq('tipo_documento_id', form.tipo_documento_id).eq('estado', 'publicada').order('version', { ascending:false });
+        let query = sb.from('plantillas_documento_bloques').select('*').eq('tipo_documento_id', form.tipo_documento_id);
+        query = cargarPlantillaVinculada
+          ? query.or(`estado.eq.publicada,id.eq.${form.plantilla_documento_id}`).order('version', { ascending:false })
+          : query.eq('estado', 'publicada').order('version', { ascending:false });
+        const { data, error: queryError } = await query;
         if (queryError) throw queryError;
+        if (cargarPlantillaVinculada && !(data || []).some(row => row.id === form.plantilla_documento_id)) {
+          throw new Error('No se pudo cargar la plantilla de esta cotización.');
+        }
         if (active) setPlantillas(data || []);
-      } catch (err) { if (active) setError(mensajeError(err)); }
+      } catch (err) {
+        if (active) {
+          setError(mensajeError(err));
+          if (cargarPlantillaVinculada) setPlantillaError('No se pudo cargar la plantilla de esta cotización.');
+        }
+      } finally { if (active) setPlantillaLoading(false); }
     })();
     return () => { active = false; };
-  }, [form.tipo_documento_id]);
+  }, [especialId, form.tipo_documento_id, form.plantilla_documento_id]);
   useEffect(() => {
     if (!form.plantilla_documento_id) { setBloques([]); return; }
     let active = true;
@@ -282,6 +311,20 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     } catch (err) { setError(mensajeError(err)); }
     finally { setSaving(false); }
   };
+  const actualizarPlantilla = async () => {
+    if (!cotizacion?.id || !plantillaNuevaDisponible) return;
+    setActualizandoPlantilla(true); setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { error: rpcError } = await sb.rpc('actualizar_plantilla_cotizacion_especial', {
+        p_id:cotizacion.id,
+        p_plantilla_documento_id:plantillaNuevaDisponible.id,
+      });
+      if (rpcError) throw rpcError;
+      await cargarCotizacion(cotizacion.id);
+    } catch (err) { setError(mensajeError(err)); }
+    finally { setActualizandoPlantilla(false); }
+  };
   const emitir = async () => {
     setEmitting(true); setError('');
     try {
@@ -306,11 +349,12 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
 
   if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}</div>
     {error && <div className="alert alert-danger">{error}</div>}
+    {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : <div className="text-muted">Cargando plantilla…</div>}</div></section></div></div>;
+    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando plantilla…</div> : <div className="alert alert-danger">No se pudo cargar la plantilla de esta cotización.</div>}</div></section></div></div>;
 
   return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}
     <div className="card"><div className="card-body">
