@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { normalizeRichTextDocument } from './RichTextEditor.jsx';
 import { DocumentPreviewRichText } from './DocumentPreviewRichText.jsx';
+import { renderTextoDocumental } from '../lib/variablesDocumentales.js';
 
 export const PREVIEW_SHEET_HEIGHT = 1056;
 export const PREVIEW_SHEET_VERTICAL_PADDING = 128;
@@ -37,6 +38,11 @@ const normalizeTable = value => {
   const filas = Array.isArray(value?.filas) ? value.filas.map((row, index) => ({ id:row?.id || `preview-row-${index}`, valores:Object.fromEntries(safeColumns.map(column => [column.id, row?.valores?.[column.id] ?? (column.tipo === 'check' ? false : '')])) })) : [];
   return { columnas:safeColumns, filas };
 };
+const renderTableText = (value, categoria, contexto) => (
+  categoria && contexto !== null && contexto !== undefined
+    ? renderTextoDocumental(value, categoria, contexto)
+    : String(value ?? '')
+);
 
 const normalizeSectionColumns = value => {
   const source = Array.isArray(value?.columnas) ? value.columnas.slice(0, 3) : [{ id:'legacy-column-1', contenido_json:value }];
@@ -51,7 +57,7 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
   return <section ref={measurementRef} className="document-preview-block">
     {block.titulo && <h4>{block.titulo}</h4>}
     {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />}
-    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><thead><tr>{tabla.columnas.map(columna => <th key={columna.id}>{columna.titulo}</th>)}</tr></thead><tbody>{tabla.filas.map(fila => <tr key={fila.id}>{tabla.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (fila.valores[columna.id] ? '✓' : '') : fila.valores[columna.id] || ''}</td>)}</tr>)}</tbody></table></div>}
+    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><thead><tr>{tabla.columnas.map(columna => <th key={columna.id}>{renderTableText(columna.titulo, categoria, contexto)}</th>)}</tr></thead><tbody>{tabla.filas.map(fila => <tr key={fila.id}>{tabla.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (fila.valores[columna.id] ? '✓' : '') : renderTableText(fila.valores[columna.id], categoria, contexto)}</td>)}</tr>)}</tbody></table></div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
   </section>;
 }
