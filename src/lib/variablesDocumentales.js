@@ -93,6 +93,7 @@ export function valorVariableCotizacion(key, ctx = {}) {
   const cotizacion = ctx.cotizacion || {};
   const oportunidad = ctx.oportunidad || {};
   const hito = firstHito(cotizacion);
+  const item = ctx.item || {};
   const moneda = cotizacion.moneda || oportunidad.moneda || empresa.moneda_base || 'PEN';
   const adelantoPct = Number(hito?.porcentaje || 0);
   const total = cotizacion.total_impl ?? cotizacion.total ?? cotizacion.subtotal ?? oportunidad.monto_estimado ?? 0;
@@ -121,6 +122,11 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'pago.saldo_pct': adelantoPct ? `${100 - adelantoPct}%` : '',
     'oportunidad.nombre': oportunidad.nombre || '',
     'oportunidad.servicio_interes': oportunidad.servicio_interes || oportunidad.nombre || '',
+    'item.descripcion': item.descripcion || '',
+    'item.cantidad': item.cantidad ?? '',
+    'item.unidad': item.unidad || '',
+    'item.precio_unitario': money(item.precio_unitario, moneda),
+    'item.subtotal': money(item.subtotal, moneda),
   };
   return values[key] ?? '';
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { obtenerVariablesDocumentales } from '../lib/variablesDocumentales.js';
+import { getDocumentRepeatSource, getDocumentRepeatSources } from '../lib/documentRepeatSources.js';
 import { subirImagenConstructorDocumento } from '../services/storageService.js';
 import { RichTextEditor, normalizeRichTextDocument, VariableInsertSelect } from './RichTextEditor.jsx';
 import { DocumentPreviewSheet, normalizedPreviewScope, previewBlockKey, previewMeasurementKey, previewPageCapacity } from './DocumentPreviewSheet.jsx';
@@ -10,13 +11,14 @@ const emptyTable = () => {
   const columnId = newKey();
   return { columnas: [{ id: columnId, titulo: 'Columna 1', tipo: 'texto' }], filas: [{ id: newKey(), valores: { [columnId]: '' } }] };
 };
-const emptyGroup = () => ({ fuente_repeticion: '', titulo_item: '' });
+const emptyGroup = () => ({ fuente_repeticion: '', fuente_repeticion_id: '', titulo_item: '' });
 const orderBlocks = blocks => [...blocks].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
 const normalizeTable = value => {
   const columnas = Array.isArray(value?.columnas) ? value.columnas.filter(column => column?.id).map(column => ({
     id: column.id,
     titulo: column.titulo || '',
     tipo: column.tipo === 'check' ? 'check' : 'texto',
+    campo_origen: column.campo_origen || '',
   })) : [];
   const safeColumns = columnas.length ? columnas : emptyTable().columnas;
   const filas = Array.isArray(value?.filas) ? value.filas.map(row => ({
@@ -88,14 +90,14 @@ const sectionPatch = columns => {
   };
 };
 
-function TablaBlockEditor({ value, disabled, variables, onChange }) {
+function TablaBlockEditor({ value, disabled, variables, repeatFields = [], onChange }) {
   const table = normalizeTable(value);
   const cellRefs = useRef(new Map());
   const update = next => onChange?.({ contenido_json: next });
   const updateColumn = (columnId, patch) => update({ ...table, columnas: table.columnas.map(column => column.id === columnId ? { ...column, ...patch } : column) });
   const addColumn = () => {
     const id = newKey();
-    update({ ...table, columnas: [...table.columnas, { id, titulo: `Columna ${table.columnas.length + 1}`, tipo: 'texto' }], filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [id]: '' } })) });
+    update({ ...table, columnas: [...table.columnas, { id, titulo: `Columna ${table.columnas.length + 1}`, tipo: 'texto', campo_origen:'' }], filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [id]: '' } })) });
   };
   const removeColumn = id => update({ ...table, columnas: table.columnas.filter(column => column.id !== id), filas: table.filas.map(row => {
     const valores = { ...row.valores }; delete valores[id]; return { ...row, valores };
@@ -123,7 +125,7 @@ function TablaBlockEditor({ value, disabled, variables, onChange }) {
     <div className="table-wrap"><table className="tbl"><thead><tr>{table.columnas.map(column => <th key={column.id}><div className="row" style={{gap:4, minWidth:130}}><input className="input" value={column.titulo} disabled={disabled} onChange={event => updateColumn(column.id, { titulo:event.target.value })} /><select className="input" value={column.tipo} disabled={disabled} onChange={event => {
       const tipo = event.target.value;
       update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
-    }}><option value="texto">Texto</option><option value="check">Check</option></select>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 130px'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
+    }}><option value="texto">Texto</option><option value="check">Check</option></select>{repeatFields.length > 0 && column.tipo === 'texto' && <select className="input" value={column.campo_origen || ''} disabled={disabled} onChange={event => updateColumn(column.id, { campo_origen:event.target.value })}><option value="">Contenido estático</option>{repeatFields.map(field => <option key={field.id} value={field.id}>Ítem: {field.label}</option>)}</select>}{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 130px'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
     {!disabled && <div className="row" style={{gap:8}}><button type="button" className="btn btn-secondary" onClick={addColumn}>+ Columna</button><button type="button" className="btn btn-secondary" onClick={addRow}>+ Fila</button></div>}
   </div>;
 }
@@ -134,7 +136,7 @@ function AvisoBloqueExcedido({ alFinal = false }) {
   </div>;
 }
 
-function BloqueCard({ block, index, total, depth, children, disabled, saving, saved, isOversized, oversizedBlockKeys, variables, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
+function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible' }[block.tipo_bloque] || block.tipo_bloque;
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
   return <div style={{border:'1px solid var(--border)', borderRadius:8, padding:12, marginBottom:10, background:depth ? 'var(--bg-alt)' : undefined}}>
@@ -144,22 +146,26 @@ function BloqueCard({ block, index, total, depth, children, disabled, saving, sa
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
     {isOversized && <AvisoBloqueExcedido />}
+    {isNotEvaluable && <div className="alert alert-info" style={{marginTop:10, marginBottom:10}}><strong>Vista administrativa:</strong> este grupo se medirá por ítem con datos reales de la cotización.</div>}
     <div style={{marginTop:10}}>
-      {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
-      {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={variables} onChange={onChange} />}
-      {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Equipo {{equipo.nombre}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
+      {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
+      {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} repeatFields={repeatFields} onChange={onChange} />}
+      {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
     </div>
     {isOversized && <AvisoBloqueExcedido alFinal />}
   </div>;
 }
 
-function BloquesList({ blocks, parentId, depth, disabled, oversizedBlockKeys = new Set(), variables, onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
+function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBlockKeys = new Set(), notEvaluableBlockKeys = new Set(), variables, onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const items = orderBlocks(blocks);
   const allBlocks = blocks._all || blocks;
+  const parent = allBlocks.find(block => block.id === parentId || block.client_key === parentId) || null;
+  const parentSource = parent?.tipo_bloque === 'grupo_repetible' ? getDocumentRepeatSource(categoria, parent.contenido_json?.fuente_repeticion_id) : null;
+  const repeatFields = parentSource?.fields || [];
   const decorateChildren = block => Object.assign(orderBlocks(allBlocks.filter(item => item.bloque_padre_id === block.id)), { _all:allBlocks, _savingId:blocks._savingId, _savedId:blocks._savedId });
   return <div style={{marginTop:10}}>
-    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
+    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
     {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
   </div>;
 }
@@ -246,17 +252,19 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
     return (data || []).map(block => Number(block.orden || 0));
   };
   const rootBlocks = childrenFor(null);
-  const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques), [draft, publicada, bloques]);
+  const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques, null, tipo?.categoria_base), [draft, publicada, bloques, tipo?.categoria_base]);
+  const bloquesConFuenteReal = useMemo(() => new Set(rootBlocks.filter(block => block.tipo_bloque === 'grupo_repetible' && Boolean(getDocumentRepeatSource(tipo?.categoria_base, block.contenido_json?.fuente_repeticion_id))).map(previewBlockKey)), [rootBlocks, tipo?.categoria_base]);
   const bloquesMayoresQuePagina = useMemo(() => {
-    if (medidasVistaPrevia?.key !== measurementKeyActual || !rootBlocks.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Set();
+    const evaluables = rootBlocks.filter(block => !bloquesConFuenteReal.has(previewBlockKey(block)));
+    if (medidasVistaPrevia?.key !== measurementKeyActual || !evaluables.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Set();
     const encabezadoAlcance = normalizedPreviewScope((draft || publicada)?.encabezado_alcance);
     const pieAlcance = normalizedPreviewScope((draft || publicada)?.pie_alcance);
     const capacidadMaxima = Math.max(
       previewPageCapacity(0, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
       previewPageCapacity(1, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
     );
-    return new Set(rootBlocks.filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima).map(previewBlockKey));
-  }, [medidasVistaPrevia, measurementKeyActual, rootBlocks, draft, publicada]);
+    return new Set(evaluables.filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima).map(previewBlockKey));
+  }, [medidasVistaPrevia, measurementKeyActual, rootBlocks, bloquesConFuenteReal, draft, publicada]);
 
   const crearBorrador = async (origen = publicada) => {
     try {
@@ -422,21 +430,21 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const plantillaActiva = draft || publicada;
   const editable = Boolean(draft && puedeEditar);
   const cuerpoEditor = draft
-    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} variables={variables} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
+    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
     : publicada
-      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} disabled oversizedBlockKeys={bloquesMayoresQuePagina} variables={variables} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
+      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
       : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>;
 
   return <div className={`card document-builder-editor document-builder-editor-${modoVista}`}><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body document-builder-editor-body">
     {error && <div className="alert alert-danger">{error}</div>}
-    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} onMeasurementsChange={setMedidasVistaPrevia} /> : <>
+    {loading ? <div className="text-muted">Cargando…</div> : modoVista === 'vista_previa' && plantillaActiva ? <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} categoria={tipo?.categoria_base} zoom={zoomVistaPrevia} onZoom={value => setZoomVistaPrevia(Math.max(50, Math.min(150, value)))} onMeasurementsChange={setMedidasVistaPrevia} /> : <>
       {draft && <div className="alert alert-warning">Editando borrador v{draft.version}. Las versiones publicadas no se modifican.</div>}
       {!draft && publicada && <div className="text-muted" style={{marginBottom:12}}>La versión publicada es de solo lectura. Crea un borrador para editarla.</div>}
       {plantillaActiva && <SeccionPlantillaEditor titulo="Encabezado" alcance={plantillaActiva.encabezado_alcance} value={{ contenido_json:plantillaActiva.encabezado_json, contenido_texto_plano:plantillaActiva.encabezado_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'encabezado'} guardado={guardadoSeccion === 'encabezado'} onAlcanceChange={encabezado_alcance => actualizarSeccionPlantilla({ encabezado_alcance })} onChange={patch => actualizarSeccionPlantilla({ encabezado_json:patch.contenido_json, encabezado_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('encabezado')} />}
       {cuerpoEditor}
       {plantillaActiva && <SeccionPlantillaEditor titulo="Pie de página" alcance={plantillaActiva.pie_alcance} value={{ contenido_json:plantillaActiva.pie_json, contenido_texto_plano:plantillaActiva.pie_texto_plano }} disabled={!editable} variables={variables} onUploadImage={subirImagen} guardando={guardandoSeccion === 'pie'} guardado={guardadoSeccion === 'pie'} onAlcanceChange={pie_alcance => actualizarSeccionPlantilla({ pie_alcance })} onChange={patch => actualizarSeccionPlantilla({ pie_json:patch.contenido_json, pie_texto_plano:patch.contenido_texto_plano })} onSave={() => guardarSeccionPlantilla('pie')} />}
       {mostrarHistorial && <div style={{marginTop:14}}><strong>Historial de versiones</strong><ul>{historial.map(row => <li key={row.id}>Versión {row.version} — archivada</li>)}</ul></div>}
-      {plantillaActiva && <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} zoom={100} onZoom={() => {}} measurementOnly onMeasurementsChange={setMedidasVistaPrevia} />}
+      {plantillaActiva && <DocumentPreviewSheet plantilla={plantillaActiva} bloques={bloques} categoria={tipo?.categoria_base} zoom={100} onZoom={() => {}} measurementOnly onMeasurementsChange={setMedidasVistaPrevia} />}
     </>}
   </div></div>;
 }
