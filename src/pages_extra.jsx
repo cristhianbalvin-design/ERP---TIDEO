@@ -178,6 +178,11 @@ const COT_BADGE = e =>
   e === 'convertida' ? 'badge-navy' :
   'badge-gray';
 
+const COT_ESPECIAL_BADGE = e =>
+  e === 'emitido' ? 'badge-cyan' :
+  e === 'anulado' ? 'badge-red' :
+  'badge-gray';
+
 function CotizacionesInner() {
   const {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
@@ -188,6 +193,8 @@ function CotizacionesInner() {
   const [osModal, setOsModal] = useState(null);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
+  const [cotizacionesEspeciales, setCotizacionesEspeciales] = useState([]);
+  const [cotizacionesEspecialesError, setCotizacionesEspecialesError] = useState('');
   const modoVistaSociedadCotizaciones = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -206,6 +213,42 @@ function CotizacionesInner() {
     const permitidas = new Set(modoVistaSociedadCotizaciones.sociedadesIds);
     return cotizaciones.filter(cotizacion => cotizacion.sociedad_id && permitidas.has(cotizacion.sociedad_id));
   }, [cotizaciones, modoVistaSociedadCotizaciones.sinFiltro, sociedadesIdsVistaCotizacionesKey]);
+
+  useEffect(() => {
+    let active = true;
+    if (!isSupabaseConfigured() || !empresa?.id) {
+      setCotizacionesEspeciales([]);
+      setCotizacionesEspecialesError('');
+      return () => { active = false; };
+    }
+    const cargarCotizacionesEspeciales = async () => {
+      try {
+        setCotizacionesEspecialesError('');
+        const sb = await getSupabaseClient();
+        let request = sb
+          .from('cotizaciones_especiales')
+          .select('id,empresa_id,sociedad_id,tipo_documento_id,plantilla_documento_id,cuenta_id,oportunidad_id,hoja_costeo_id,numero,moneda,items,subtotal,igv,total,estado,emitida_at,created_at')
+          .eq('empresa_id', empresa.id);
+        if (!modoVistaSociedadCotizaciones.sinFiltro) {
+          const sociedades = modoVistaSociedadCotizaciones.sociedadesIds.filter(Boolean);
+          if (!sociedades.length) {
+            if (active) setCotizacionesEspeciales([]);
+            return;
+          }
+          request = request.in('sociedad_id', sociedades);
+        }
+        const { data, error } = await request.order('created_at', { ascending:false });
+        if (error) throw error;
+        if (active) setCotizacionesEspeciales(data || []);
+      } catch (err) {
+        if (!active) return;
+        setCotizacionesEspeciales([]);
+        setCotizacionesEspecialesError(err?.message || String(err));
+      }
+    };
+    cargarCotizacionesEspeciales();
+    return () => { active = false; };
+  }, [empresa?.id, modoVistaSociedadCotizaciones.sinFiltro, sociedadesIdsVistaCotizacionesKey, activeParams?.especial, activeParams?.especial_id]);
 
   useEffect(() => {
     if (activeParams?.crear_os && activeParams?.detail) {
@@ -400,7 +443,17 @@ function CotizacionesInner() {
     }, {})
   ).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
 
-  const filtered = latestPorNumero.filter(c => {
+  const cotizacionesBandeja = [
+    ...latestPorNumero.map(cotizacion => ({ ...cotizacion, origen:'estandar', fecha_orden:cotizacion.fecha || '' })),
+    ...cotizacionesEspeciales.map(cotizacion => ({
+      ...cotizacion,
+      origen:'especial',
+      fecha:(cotizacion.emitida_at || cotizacion.created_at || '').slice(0, 10),
+      fecha_orden:cotizacion.emitida_at || cotizacion.created_at || '',
+    })),
+  ].sort((a, b) => (b.fecha_orden || '').localeCompare(a.fecha_orden || ''));
+
+  const filtered = cotizacionesBandeja.filter(c => {
     const opp = getOpp(c.oportunidad_id);
     const ownerUserId = c.responsable_id || opp?.responsable_id || null;
     const ownerName = opp?.responsable || null;
@@ -421,7 +474,7 @@ function CotizacionesInner() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Cotizaciones</h1>
-          <div className="page-sub">{latestPorNumero.length} cotizaciones registradas</div>
+          <div className="page-sub">{cotizacionesBandeja.length} cotizaciones registradas</div>
         </div>
         <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización especial.' : undefined} onClick={() => navigate('cotizaciones', { especial:true })}>+ Cotización Especial</button>
       </div>
@@ -438,6 +491,8 @@ function CotizacionesInner() {
           <option value="aceptada">Aceptada</option>
           <option value="convertida">Convertida</option>
           <option value="perdida">Perdida</option>
+          <option value="emitido">Emitido</option>
+          <option value="anulado">Anulado</option>
         </select>
         <input type="date" className="input" value={filtros.fechaDesde} onChange={e => setFiltros(f => ({...f, fechaDesde: e.target.value}))} />
         <input type="date" className="input" value={filtros.fechaHasta} onChange={e => setFiltros(f => ({...f, fechaHasta: e.target.value}))} />
@@ -447,6 +502,7 @@ function CotizacionesInner() {
       </div>
 
       <div className="card">
+        {cotizacionesEspecialesError && <div className="alert alert-warning" style={{margin:12}}>No se pudieron cargar las Cotizaciones Especiales: {cotizacionesEspecialesError}</div>}
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -456,21 +512,25 @@ function CotizacionesInner() {
               {filtered.map(r => {
                 const opp = getOpp(r.oportunidad_id);
                 const cliente = getCuentaNombre(r.cuenta_id || opp?.cuenta_id);
-                const impl = r.total_impl || r.total || 0;
-                const rec  = r.total_rec || 0;
+                const esEspecial = r.origen === 'especial';
+                const impl = esEspecial ? null : (r.total_impl || r.total || 0);
+                const rec  = esEspecial ? null : (r.total_rec || 0);
+                const badgeEstado = esEspecial ? COT_ESPECIAL_BADGE(r.estado) : COT_BADGE(r.estado);
                 return (
-                  <tr key={r.id} onClick={() => navigate('cotizaciones', { detail: r.id })} className="hover-row" style={{cursor:'pointer'}}>
+                  <tr key={`${r.origen}-${r.id}`} onClick={() => esEspecial ? navigate('cotizaciones', { especial:'detalle', especial_id:r.id }) : navigate('cotizaciones', { detail:r.id })} className="hover-row" style={{cursor:'pointer'}}>
                     <td className="mono" style={{fontWeight:600}}>
                       {r.numero}
-                      {r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
+                      {esEspecial
+                        ? <span className="badge badge-purple" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>Especial</span>
+                        : r.version > 1 && <span className="badge badge-gray" style={{marginLeft:6, fontSize:10, verticalAlign:'middle'}}>v{r.version}</span>}
                     </td>
                     {mostrarBadgeSociedadCotizaciones && <td><SociedadBadge sociedadId={r.sociedad_id} /></td>}
                     <td><strong>{cliente}</strong></td>
                     <td className="text-muted">{opp?.nombre || '—'}</td>
-                    <td className="num"><strong>{money(impl, currencySymbol(r.moneda))}</strong></td>
-                    <td className="num text-muted">{rec > 0 ? money(rec, currencySymbol(r.moneda)) : '—'}</td>
+                    <td className="num"><strong>{esEspecial ? '—' : money(impl, currencySymbol(r.moneda))}</strong></td>
+                    <td className="num text-muted">{esEspecial ? '—' : (rec > 0 ? money(rec, currencySymbol(r.moneda)) : '—')}</td>
                     <td className="text-muted">{r.fecha}</td>
-                    <td><span className={'badge ' + COT_BADGE(r.estado)}>{r.estado?.replace('_', ' ')}</span></td>
+                    <td><span className={'badge ' + badgeEstado}>{r.estado?.replace('_', ' ')}</span></td>
                   </tr>
                 );
               })}
