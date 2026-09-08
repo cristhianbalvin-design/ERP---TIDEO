@@ -21,6 +21,14 @@ export const normalizeRichTextDocument = value => (
     : EMPTY_DOCUMENT
 );
 
+export function VariableInsertSelect({ variables = [], disabled = false, onInsert }) {
+  if (!variables.length) return null;
+  return <select className="input" defaultValue="" onChange={event => { onInsert?.(event.target.value); event.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30}}>
+    <option value="">Insertar variable…</option>
+    {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
+  </select>;
+}
+
 export function RichTextEditor({ value, onChange, placeholder = 'Escribe el contenido…', disabled = false, minHeight = 110, variables = [], onUploadImage = null, showHorizontalRule = false, showTwoColumnLine = false }) {
   const imageInputRef = useRef(null);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
@@ -104,10 +112,7 @@ export function RichTextEditor({ value, onChange, placeholder = 'Escribe el cont
         {alignmentButton('↔', 'center', 'Centrar')}
         {alignmentButton('→', 'right', 'Alinear a la derecha')}
         {alignmentButton('≡', 'justify', 'Justificar')}
-        {variables.length > 0 && <select className="input" defaultValue="" onChange={e => { insertarVariable(e.target.value); e.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30}}>
-          <option value="">Insertar variable…</option>
-          {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
-        </select>}
+        <VariableInsertSelect variables={variables} disabled={disabled} onInsert={insertarVariable} />
         {onUploadImage && <><input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={insertarImagen} hidden /><button type="button" className="btn btn-ghost" onClick={() => imageInputRef.current?.click()} disabled={disabled || subiendoImagen} style={{padding:'4px 8px'}}>{subiendoImagen ? 'Subiendo imagen…' : 'Insertar imagen'}</button></>}
         {showHorizontalRule && button('—', 'setHorizontalRule', undefined, 'horizontalRule')}
         {showTwoColumnLine && button('⇔ 2 col.', 'insertTwoColumnLine', undefined, 'twoColumnLine')}
