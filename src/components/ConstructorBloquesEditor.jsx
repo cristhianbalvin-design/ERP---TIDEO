@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { obtenerVariablesDocumentales } from '../lib/variablesDocumentales.js';
 import { subirImagenConstructorDocumento } from '../services/storageService.js';
-import { RichTextEditor, normalizeRichTextDocument } from './RichTextEditor.jsx';
+import { RichTextEditor, normalizeRichTextDocument, VariableInsertSelect } from './RichTextEditor.jsx';
 import { DocumentPreviewSheet, normalizedPreviewScope, previewBlockKey, previewMeasurementKey, previewPageCapacity } from './DocumentPreviewSheet.jsx';
 
 const newKey = () => globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -88,8 +88,9 @@ const sectionPatch = columns => {
   };
 };
 
-function TablaBlockEditor({ value, disabled, onChange }) {
+function TablaBlockEditor({ value, disabled, variables, onChange }) {
   const table = normalizeTable(value);
+  const cellRefs = useRef(new Map());
   const update = next => onChange?.({ contenido_json: next });
   const updateColumn = (columnId, patch) => update({ ...table, columnas: table.columnas.map(column => column.id === columnId ? { ...column, ...patch } : column) });
   const addColumn = () => {
@@ -101,12 +102,28 @@ function TablaBlockEditor({ value, disabled, onChange }) {
   }) });
   const addRow = () => update({ ...table, filas: [...table.filas, { id: newKey(), valores: Object.fromEntries(table.columnas.map(column => [column.id, column.tipo === 'check' ? false : ''])) }] });
   const updateCell = (rowId, column, value) => update({ ...table, filas: table.filas.map(row => row.id === rowId ? { ...row, valores: { ...row.valores, [column.id]: value } } : row) });
+  const cellKey = (rowId, columnId) => `${rowId}:${columnId}`;
+  const insertVariable = (row, column, token) => {
+    if (!token) return;
+    const key = cellKey(row.id, column.id);
+    const input = cellRefs.current.get(key);
+    const value = String(row.valores[column.id] || '');
+    const start = input?.selectionStart ?? value.length;
+    const end = input?.selectionEnd ?? start;
+    const next = `${value.slice(0, start)}${token}${value.slice(end)}`;
+    updateCell(row.id, column, next);
+    window.requestAnimationFrame(() => {
+      const nextInput = cellRefs.current.get(key);
+      nextInput?.focus();
+      nextInput?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
   return <div style={{display:'grid', gap:8}}>
     <div className="text-muted" style={{fontSize:12}}>Define columnas de texto o casilla y las filas que debe mostrar la tabla.</div>
     <div className="table-wrap"><table className="tbl"><thead><tr>{table.columnas.map(column => <th key={column.id}><div className="row" style={{gap:4, minWidth:130}}><input className="input" value={column.titulo} disabled={disabled} onChange={event => updateColumn(column.id, { titulo:event.target.value })} /><select className="input" value={column.tipo} disabled={disabled} onChange={event => {
       const tipo = event.target.value;
       update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
-    }}><option value="texto">Texto</option><option value="check">Check</option></select>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <input className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} />}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
+    }}><option value="texto">Texto</option><option value="check">Check</option></select>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 130px'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
     {!disabled && <div className="row" style={{gap:8}}><button type="button" className="btn btn-secondary" onClick={addColumn}>+ Columna</button><button type="button" className="btn btn-secondary" onClick={addRow}>+ Fila</button></div>}
   </div>;
 }
@@ -129,7 +146,7 @@ function BloqueCard({ block, index, total, depth, children, disabled, saving, sa
     {isOversized && <AvisoBloqueExcedido />}
     <div style={{marginTop:10}}>
       {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
-      {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} />}
+      {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={variables} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Equipo {{equipo.nombre}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
     </div>
     {isOversized && <AvisoBloqueExcedido alFinal />}
