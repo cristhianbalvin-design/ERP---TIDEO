@@ -2128,6 +2128,20 @@ body {
   flex: 0 0 auto;
   overflow: visible;
 }
+.params-page[data-section="cuentas"] .params-section-stack {
+  height: auto;
+  min-height: var(--params-form-height);
+  display: block;
+}
+.params-page[data-section="cuentas"] .params-section-cuentas,
+.params-page[data-section="cuentas"] .params-section-cuentas > .card {
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+}
+.params-page[data-section="cuentas"] .params-section-cuentas > .card {
+  flex: 0 0 auto;
+}
 @media (max-width: 1100px) {
   .params-commercial-grid,
   .params-token-grid,

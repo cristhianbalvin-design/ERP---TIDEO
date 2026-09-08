@@ -7881,11 +7881,46 @@ function ParamChipGroup({ options, value, onChange }) {
 }
 
 function CuentasBancariasSection() {
-  const { cuentasBancarias = [], crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria, addNotificacion, sociedades = [] } = useApp();
+  const {
+    cuentasBancarias = [],
+    crearCuentaBancaria,
+    actualizarCuentaBancaria,
+    eliminarCuentaBancaria,
+    addNotificacion,
+    empresa,
+    sociedadesDisponibles = [],
+  } = useApp();
   const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [sociedadesNoMultisociedad, setSociedadesNoMultisociedad] = useState([]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!empresa?.id || empresa.multisociedad_habilitado) {
+      setSociedadesNoMultisociedad([]);
+      return () => { vigente = false; };
+    }
+
+    listarSociedadesAdministracion(empresa.id)
+      .then(rows => {
+        if (vigente) {
+          const sociedadActiva = (rows || []).find(sociedad => sociedad.activa);
+          setSociedadesNoMultisociedad(sociedadActiva ? [sociedadActiva] : []);
+        }
+      })
+      .catch(error => {
+        console.error('[CUENTAS] No se pudo cargar la sociedad activa:', error?.message || error);
+        if (vigente) setSociedadesNoMultisociedad([]);
+      });
+
+    return () => { vigente = false; };
+  }, [empresa?.id, empresa?.multisociedad_habilitado]);
+
+  const sociedades = empresa?.multisociedad_habilitado
+    ? sociedadesDisponibles
+    : sociedadesNoMultisociedad;
 
   // Filtros
   const [filtroBanco, setFiltroBanco] = useState('');
