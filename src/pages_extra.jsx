@@ -7,6 +7,7 @@ import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { RichTextEditor, normalizeRichTextDocument } from './components/RichTextEditor.jsx';
+import { CotizacionEspecialWizard } from './components/CotizacionEspecialWizard.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
@@ -218,6 +219,23 @@ function CotizacionesInner() {
   const getCuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
   const getContacto = id => contactos?.find(c => c.id === id);
 
+  if (activeParams?.especial || activeParams?.especial_id) {
+    return <CotizacionEspecialWizard
+      especialId={activeParams?.especial_id || null}
+      empresa={empresa}
+      empresaConfig={empresaConfig}
+      cuentas={cuentas}
+      oportunidades={oportunidades}
+      contactos={contactos}
+      hojasCosteo={hojasCosteo || []}
+      adaptarHojaCosteo={construirPartidasDesdeHC}
+      sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
+      onBack={() => navigate('cotizaciones')}
+      onCreated={id => navigate('cotizaciones', { especial_id:id })}
+      onEmitted={id => navigate('cotizaciones', { especial_id:id })}
+    />;
+  }
+
   // ── Nueva cotización ───────────────────────────────────────────────
   if (activeParams?.active_tab === 'nueva' && activeParams?.opp) {
     const opp = getOpp(activeParams.opp);
@@ -405,6 +423,7 @@ function CotizacionesInner() {
           <h1 className="page-title">Cotizaciones</h1>
           <div className="page-sub">{latestPorNumero.length} cotizaciones registradas</div>
         </div>
+        <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización especial.' : undefined} onClick={() => navigate('cotizaciones', { especial:true })}>+ Cotización Especial</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
