@@ -79,6 +79,34 @@ export const createDocumentPreviewFlowUnits = (bloques, categoria, contexto) => 
   });
 };
 
+export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlcance, medidas) => {
+  const resultado = [];
+  let paginaActual = [];
+  let altoUsado = 0;
+  unidades.forEach(unit => {
+    const colocar = () => {
+      const anterior = paginaActual.at(-1)?.unit;
+      const showGroupTitle = unit.kind === 'repeat-instance' && anterior?.groupKey !== unit.groupKey;
+      const continuation = showGroupTitle && unit.index > 0;
+      const altoTitulo = showGroupTitle ? Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, continuation)] || 0) : 0;
+      return { unit, showGroupTitle, continuation, alto: Number(medidas.unidades[unit.key] || 0) + altoTitulo };
+    };
+    let entry = colocar();
+    let altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
+    if (paginaActual.length && altoUsado + entry.alto > altoDisponible) {
+      resultado.push(paginaActual);
+      paginaActual = [];
+      altoUsado = 0;
+      entry = colocar();
+      altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
+    }
+    paginaActual.push(entry);
+    altoUsado += entry.alto;
+  });
+  if (paginaActual.length || !resultado.length) resultado.push(paginaActual);
+  return resultado;
+};
+
 function VistaBloque({ block, bloques, categoria, contexto, measurementRef = null }) {
   const hijos = orderDocumentPreviewBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
   const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
@@ -174,31 +202,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const todasLasAlturasMedidas = medidas?.key === measurementKey && unidades.every(unit => Number(medidas.unidades?.[unit.key]) > 0);
   const paginas = useMemo(() => {
     if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:unit.kind === 'repeat-instance' && unit.index === 0, continuation:false }))];
-    const resultado = [];
-    let paginaActual = [];
-    let altoUsado = 0;
-    unidades.forEach(unit => {
-      const colocar = () => {
-        const anterior = paginaActual.at(-1)?.unit;
-        const showGroupTitle = unit.kind === 'repeat-instance' && anterior?.groupKey !== unit.groupKey;
-        const continuation = showGroupTitle && unit.index > 0;
-        const altoTitulo = showGroupTitle ? Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, continuation)] || 0) : 0;
-        return { unit, showGroupTitle, continuation, alto: Number(medidas.unidades[unit.key] || 0) + altoTitulo };
-      };
-      let entry = colocar();
-      let altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
-      if (paginaActual.length && altoUsado + entry.alto > altoDisponible) {
-        resultado.push(paginaActual);
-        paginaActual = [];
-        altoUsado = 0;
-        entry = colocar();
-        altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
-      }
-      paginaActual.push(entry);
-      altoUsado += entry.alto;
-    });
-    if (paginaActual.length || !resultado.length) resultado.push(paginaActual);
-    return resultado;
+    return paginateDocumentPreviewUnits(unidades, encabezadoAlcance, pieAlcance, medidas);
   }, [todasLasAlturasMedidas, unidades, encabezadoAlcance, pieAlcance, medidas]);
 
   const instanciasSobredimensionadas = useMemo(() => {
