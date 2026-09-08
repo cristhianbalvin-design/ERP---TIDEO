@@ -265,6 +265,7 @@ function CotizacionesInner() {
   if (activeParams?.especial || activeParams?.especial_id) {
     return <CotizacionEspecialWizard
       especialId={activeParams?.especial_id || null}
+      hojaCosteoInicialId={activeParams?.hoja_costeo_id || null}
       empresa={empresa}
       empresaConfig={empresaConfig}
       cuentas={cuentas}
@@ -4746,7 +4747,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
             <button className="btn btn-primary" style={{background:'var(--green)'}} onClick={handleAprobar}>{I.check} Aprobar Costeo</button>
           )}
           {estado === 'aprobada' && (
-            <button className="btn btn-primary" onClick={() => navigate('cotizaciones', { active_tab: 'nueva', opp: hc.oportunidad_id, hc_id: hc.id })}>{I.plus} Generar Cotización</button>
+            <><button className="btn btn-primary" onClick={() => navigate('cotizaciones', { active_tab: 'nueva', opp: hc.oportunidad_id, hc_id: hc.id })}>{I.plus} Generar Cotización</button><button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { especial:'nueva', hoja_costeo_id:hc.id })}>{I.plus} Generar Cotización Especial</button></>
           )}
           <button className="btn btn-secondary" onClick={handleDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
         </div>

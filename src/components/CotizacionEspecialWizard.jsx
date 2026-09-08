@@ -85,7 +85,7 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   </div>;
 }
 
-export function CotizacionEspecialWizard({ especialId = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted }) {
+export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
@@ -163,6 +163,26 @@ export function CotizacionEspecialWizard({ especialId = null, empresa, empresaCo
     cargarCotizacion(especialId).catch(err => setError(mensajeError(err))).finally(() => setLoading(false));
   }, [especialId, cargarCotizacion]);
   useEffect(() => {
+    if (especialId || !hojaCosteoInicialId) return;
+    const hoja = hojasCosteo.find(row => row.id === hojaCosteoInicialId);
+    if (!hoja) return;
+    const oportunidadHC = oportunidades.find(row => row.id === hoja.oportunidad_id);
+    const cuentaId = hoja.cuenta_id || oportunidadHC?.cuenta_id || '';
+    setForm(current => {
+      if (current.hoja_costeo_id === hoja.id && current.origen_items === 'hoja_costeo') return current;
+      return {
+        ...current,
+        origen_items:'hoja_costeo',
+        hoja_costeo_id:hoja.id,
+        cuenta_id:cuentaId,
+        oportunidad_id:hoja.oportunidad_id || '',
+        moneda:hoja.moneda || current.moneda,
+        items:conClavesItems(adaptarHojaCosteo?.(hoja) || []),
+        contacto_id:'',
+      };
+    });
+  }, [especialId, hojaCosteoInicialId, hojasCosteo, oportunidades, adaptarHojaCosteo]);
+  useEffect(() => {
     if (!form.tipo_documento_id) { setPlantillas([]); return; }
     let active = true;
     (async () => {
@@ -189,7 +209,14 @@ export function CotizacionEspecialWizard({ especialId = null, empresa, empresaCo
     return () => { active = false; };
   }, [form.plantilla_documento_id]);
 
-  const cambiarTipo = tipoDocumentoId => setForm(current => ({ ...current, tipo_documento_id:tipoDocumentoId, plantilla_documento_id:'', hoja_costeo_id:'', origen_items:'manual' }));
+  const cambiarTipo = tipoDocumentoId => setForm(current => ({
+    ...current,
+    tipo_documento_id:tipoDocumentoId,
+    plantilla_documento_id:'',
+    ...(current.origen_items === 'hoja_costeo' && current.hoja_costeo_id
+      ? {}
+      : { hoja_costeo_id:'', origen_items:'manual' }),
+  }));
   const seleccionarHC = hojaCosteoId => {
     const hoja = hojasDisponibles.find(row => row.id === hojaCosteoId);
     const oppHC = oportunidades.find(row => row.id === hoja?.oportunidad_id);
