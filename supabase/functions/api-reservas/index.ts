@@ -131,13 +131,16 @@ serve(async (req) => {
     if (leadId) {
       const { data: updated, error: updateError } = await supabase
         .from("leads")
-        .update({ modificado_en: new Date().toISOString() })
+        .update({ updated_at: new Date().toISOString() })
         .eq("id", leadId)
         .eq("empresa_id", empresaId)
         .select("id");
         
       if (updateError || !updated || updated.length === 0) {
-        console.warn("salesforce_uuid inválido o lead inexistente. Se creará uno nuevo.");
+        console.warn(
+          "salesforce_uuid inválido o lead inexistente. Se creará uno nuevo.",
+          updateError ? `Error: ${updateError.message} (${updateError.code})` : `Sin coincidencias para id: ${leadId}`
+        );
         leadId = null; // Forzar creación
       }
     }
