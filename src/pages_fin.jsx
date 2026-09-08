@@ -5980,6 +5980,8 @@ function CajaChica() {
   };
   const puedeCrear = perm('crear');
   const puedeAprobar = perm('aprobar');
+  const puedeEditar = perm('editar');
+  const puedeEliminar = perm('anular');
   const puedeGestionar = perm('editar') || perm('anular');
 
   const usuariosEmpresa = useMemo(() => (usuarios || []).filter(u => !u.empresa_id || u.empresa_id === empresaId), [usuarios, empresaId]);
@@ -6035,6 +6037,7 @@ function CajaChica() {
       saldo_disponible: Math.max(0, 5000 - gastado),
       monto_gastado: gastado,
       monto_repuesto: 0,
+      tiene_movimientos: activos.length > 0,
       requiere_reposicion: Math.max(0, 5000 - gastado) <= 500,
     };
     return {
@@ -6103,6 +6106,10 @@ function CajaChica() {
   const guardarFondo = async () => {
     const monto = Number(formFondo.monto_asignado || 0);
     if (!formFondo.nombre.trim() || monto <= 0) return;
+    if (Number(formFondo.monto_minimo || 0) > monto) {
+      addNotificacion('El monto mínimo no puede ser mayor al monto asignado.');
+      return;
+    }
     setSavingFondo(true);
     try {
       const payload = {
@@ -6117,18 +6124,63 @@ function CajaChica() {
         notas: formFondo.notas || null,
         creado_por: authUser?.id || null,
       };
+      const esEdicion = Boolean(formFondo.id);
       if (isSupabaseMode()) {
-        await cajaChicaService.crearFondo(payload);
+        if (esEdicion) {
+          const { empresa_id, creado_por, ...cambios } = payload;
+          await cajaChicaService.actualizarFondo(formFondo.id, cambios);
+        } else {
+          await cajaChicaService.crearFondo(payload);
+        }
         await cargar();
       } else {
-        setFondos(prev => [{ ...payload, id: `ccf_${Date.now()}`, estado: 'activo', saldo_disponible: monto, monto_gastado: 0, monto_repuesto: 0 }, ...prev]);
+        setFondos(prev => esEdicion
+          ? prev.map(fondo => fondo.id === formFondo.id ? { ...fondo, ...payload } : fondo)
+          : [{ ...payload, id: `ccf_${Date.now()}`, estado: 'activo', saldo_disponible: monto, monto_gastado: 0, monto_repuesto: 0, tiene_movimientos: false }, ...prev]);
       }
       setPanelFondo(false);
-      addNotificacion('Fondo de caja chica creado.');
+      setFormFondo(CC_FONDO_FORM);
+      addNotificacion(esEdicion ? 'Fondo de caja chica actualizado.' : 'Fondo de caja chica creado.');
     } catch (err) {
       addNotificacion(`No se pudo crear el fondo: ${err?.message || err}`);
     } finally {
       setSavingFondo(false);
+    }
+  };
+
+  const abrirEditarFondo = fondo => {
+    if (fondo.tiene_movimientos) return;
+    setFormFondo({
+      id: fondo.id,
+      nombre: fondo.nombre || '',
+      responsable_id: fondo.responsable_id || '',
+      monto_asignado: String(fondo.monto_asignado || ''),
+      monto_minimo: String(fondo.monto_minimo || 0),
+      cuenta_bancaria_id: fondo.cuenta_bancaria_id || '',
+      moneda: fondo.moneda || empresa?.moneda || 'PEN',
+      fecha_apertura: fondo.fecha_apertura || new Date().toISOString().slice(0, 10),
+      notas: fondo.notas || '',
+    });
+    setPanelFondo(true);
+  };
+
+  const eliminarFondo = async fondo => {
+    if (fondo.tiene_movimientos) {
+      addNotificacion('No se puede eliminar un fondo que ya tiene movimientos.');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar el fondo "${fondo.nombre}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      if (isSupabaseMode()) {
+        await cajaChicaService.eliminarFondoSinMovimientos(fondo.id);
+        await cargar();
+      } else {
+        setFondos(prev => prev.filter(item => item.id !== fondo.id));
+      }
+      if (fondoSelId === fondo.id) setFondoSelId(null);
+      addNotificacion('Fondo de caja chica eliminado.');
+    } catch (err) {
+      addNotificacion(err?.message || 'No se pudo eliminar el fondo.');
     }
   };
 
@@ -6263,13 +6315,14 @@ function CajaChica() {
           <div className="card-head"><h3>Fondos administrados</h3><span className="badge badge-gray">{fondosActivos.length} activos</span></div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fondo</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th></tr></thead>
+              <thead><tr><th>Fondo</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th>{(puedeEditar || puedeEliminar) && <th aria-label="Acciones" />}</tr></thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0)} className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
+                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0) + (puedeEditar || puedeEliminar ? 1 : 0)} className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
                 ) : fondosVista.length ? fondosVista.map(f => {
                   const responsable = usuarioDe(f.responsable_id);
                   const cuenta = cuentaDe(f.cuenta_bancaria_id);
+                  const puedeModificarFondo = !f.tiene_movimientos;
                   return (
                     <tr key={f.id} className="hover-row" onClick={() => setFondoSelId(f.id)} style={{cursor:'pointer'}}>
                       <td><strong>{f.nombre}</strong>{f.requiere_reposicion && <span className="badge badge-orange" style={{marginLeft:8}}>Reponer</span>}</td>
@@ -6280,10 +6333,14 @@ function CajaChica() {
                       <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(f.saldo_disponible, f.moneda)}</strong></td>
                       <td>{moneyCurrency(f.monto_minimo, f.moneda)}</td>
                       <td><span className={`badge ${f.estado === 'activo' ? 'badge-green' : f.estado === 'cerrado' ? 'badge-gray' : 'badge-orange'}`}>{f.estado}</span></td>
+                      {(puedeEditar || puedeEliminar) && <td onClick={event => event.stopPropagation()} style={{textAlign:'right', whiteSpace:'nowrap'}}>
+                        {puedeModificarFondo && puedeEditar && <button type="button" className="icon-btn" title="Editar fondo" style={{color:'var(--cyan)'}} onClick={() => abrirEditarFondo(f)}>{I.edit}</button>}
+                        {puedeModificarFondo && puedeEliminar && <button type="button" className="icon-btn" title="Eliminar fondo" style={{color:'var(--danger)'}} onClick={() => eliminarFondo(f)}>{I.trash}</button>}
+                      </td>}
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Sin fondos configurados.</td></tr>
+                  <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0) + (puedeEditar || puedeEliminar ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Sin fondos configurados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -6410,7 +6467,7 @@ function CajaChica() {
         <>
           <div className="side-panel-backdrop" onClick={() => setPanelFondo(false)} />
           <div className="side-panel" style={{width:'min(520px,96vw)'}}>
-            <div className="side-panel-head"><div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>Nuevo fondo</div></div><button className="icon-btn" onClick={() => setPanelFondo(false)}>{I.x}</button></div>
+            <div className="side-panel-head"><div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>{formFondo.id ? 'Editar fondo' : 'Nuevo fondo'}</div></div><button className="icon-btn" onClick={() => setPanelFondo(false)}>{I.x}</button></div>
             <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
               <div className="input-group"><label>Nombre *</label><input className="input" value={formFondo.nombre} onChange={e=>setFormFondo(p=>({...p,nombre:e.target.value}))} placeholder="Ej: Caja chica Operaciones Lima"/></div>
               <div className="input-group"><label>Responsable</label><select className="select" value={formFondo.responsable_id} onChange={e=>setFormFondo(p=>({...p,responsable_id:e.target.value}))}><option value="">- Seleccionar usuario -</option>{usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email}</option>)}</select></div>
@@ -6424,7 +6481,7 @@ function CajaChica() {
               </div>
               <div className="input-group"><label>Fecha apertura</label><input className="input" type="date" value={formFondo.fecha_apertura} onChange={e=>setFormFondo(p=>({...p,fecha_apertura:e.target.value}))}/></div>
               <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formFondo.notas} onChange={e=>setFormFondo(p=>({...p,notas:e.target.value}))}/></div>
-              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setPanelFondo(false)}>Cancelar</button><button className="btn btn-primary" disabled={savingFondo || !formFondo.nombre.trim() || !Number(formFondo.monto_asignado || 0)} onClick={guardarFondo}>{savingFondo ? 'Guardando...' : 'Crear fondo'}</button></div>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setPanelFondo(false)}>Cancelar</button><button className="btn btn-primary" disabled={savingFondo || !formFondo.nombre.trim() || !Number(formFondo.monto_asignado || 0)} onClick={guardarFondo}>{savingFondo ? 'Guardando...' : formFondo.id ? 'Guardar cambios' : 'Crear fondo'}</button></div>
             </div>
           </div>
         </>

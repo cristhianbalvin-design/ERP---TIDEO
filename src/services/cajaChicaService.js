@@ -63,6 +63,7 @@ function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = [
       saldo_disponible: disponible,
       monto_gastado: gastado,
       monto_repuesto: repuesto,
+      tiene_movimientos: egresosFondo.length > 0 || rendicionesFondo.length > 0 || arqueosFondo.length > 0,
       requiere_reposicion: disponible <= Number(fondo.monto_minimo || 0),
       rendicion_vigente,
       ultimo_arqueo,
@@ -169,6 +170,19 @@ export const cajaChicaService = {
       console.warn('[cajaChicaService] movimiento desembolso:', error?.message || error);
     }
     return fondo;
+  },
+
+  async actualizarFondo(id, payload) {
+    const supabase = await getSupabaseClient();
+    return updateWithFallback(supabase, 'caja_chica_fondos', id, payload);
+  },
+
+  async eliminarFondoSinMovimientos(id) {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.rpc('eliminar_fondo_caja_sin_movimientos', {
+      p_fondo_id: id,
+    });
+    if (error) throw error;
   },
 
   async registrarEgresoFondo(payload) {
