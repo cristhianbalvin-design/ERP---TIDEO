@@ -13,8 +13,45 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
+import * as ticketsService from './services/ticketsService.js';
 
 // Mobile field views - all field profiles
+
+const GEOFENCE_BLOQUEO_ERRCODE = 'PGE01';
+
+function normalizarDistanciaGeocerca(valor) {
+  const distancia = Number(valor);
+  return Number.isFinite(distancia) ? Math.round(distancia) : null;
+}
+
+function construirBloqueoSalidaGeocerca(geofence, fix = null) {
+  const geocercaNombre = String(geofence?.geocerca_nombre || '').trim();
+  const distanciaM = normalizarDistanciaGeocerca(geofence?.distancia_presentacion_m ?? geofence?.distancia_m);
+  if (!geocercaNombre || distanciaM == null) return null;
+  return {
+    tipo: geofence?.tipo === 'poligono' ? 'poligono' : 'circulo',
+    geocercaNombre,
+    distanciaM,
+    precisionM: normalizarDistanciaGeocerca(fix?.precision_m),
+    lat: fix?.lat ?? null,
+    lng: fix?.lng ?? null,
+    fixAt: fix?.fix_at ?? null,
+  };
+}
+
+function parsearBloqueoSalidaGeocerca(error, fix = null) {
+  if (error?.code !== GEOFENCE_BLOQUEO_ERRCODE || !error?.details) return null;
+  try {
+    const detalle = typeof error.details === 'string' ? JSON.parse(error.details) : error.details;
+    return construirBloqueoSalidaGeocerca({
+      tipo: detalle?.tipo,
+      geocerca_nombre: detalle?.geocerca_nombre,
+      distancia_m: detalle?.distancia_m,
+    }, fix);
+  } catch {
+    return null;
+  }
+}
 
 function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
   const { authUser, usuarios, personalAdmin, personalOperativo, role } = useApp();
@@ -293,6 +330,12 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const [showConsent, setShowConsent] = useState(false);
   const [offlinePendientes, setOfflinePendientes] = useState(() => getGeoQueue().length);
   const [aviso, setAviso] = useState('');
+  const [bloqueoSalidaGeocerca, setBloqueoSalidaGeocerca] = useState(null);
+  const [reporteGeocercaAbierto, setReporteGeocercaAbierto] = useState(false);
+  const [comentarioReporteGeocerca, setComentarioReporteGeocerca] = useState('');
+  const [evidenciaReporteGeocerca, setEvidenciaReporteGeocerca] = useState(null);
+  const [reportandoGeocerca, setReportandoGeocerca] = useState(false);
+  const [resultadoReporteGeocerca, setResultadoReporteGeocerca] = useState('');
   const [marcacionesHoy, setMarcacionesHoy] = useState([]);
   const [modo, setModo] = useState('entrada');
   const [verificandoHoy, setVerificandoHoy] = useState(true);
@@ -421,6 +464,60 @@ function AsistenciaMobileView({ screen, setScreen }) {
     }
   };
 
+  const reportarSituacionGeocerca = async () => {
+    if (!bloqueoSalidaGeocerca || !empresa?.id || reportandoGeocerca) return;
+    setReportandoGeocerca(true);
+    setResultadoReporteGeocerca('');
+    const supervisor = usuarios.find(u =>
+      u.id === trabajadorActual?.jefe_user_id || u.auth_user_id === trabajadorActual?.jefe_user_id
+    );
+    const descripcion = [
+      'Marcación de salida bloqueada por geocerca.',
+      `Colaborador: ${trabajadorActual?.nombre || usuarioMovil?.nombre || 'Sin identificar'}.`,
+      `Sede esperada: ${bloqueoSalidaGeocerca.geocercaNombre}.`,
+      `Distancia al perímetro: ${bloqueoSalidaGeocerca.distanciaM} m.`,
+      `Precisión GPS: ${bloqueoSalidaGeocerca.precisionM == null ? 'No disponible' : `${bloqueoSalidaGeocerca.precisionM} m`}.`,
+      bloqueoSalidaGeocerca.lat != null && bloqueoSalidaGeocerca.lng != null
+        ? `Coordenadas reportadas: ${bloqueoSalidaGeocerca.lat}, ${bloqueoSalidaGeocerca.lng}.`
+        : null,
+      bloqueoSalidaGeocerca.fixAt ? `Captura GPS: ${bloqueoSalidaGeocerca.fixAt}.` : null,
+    ].filter(Boolean).join('\n');
+
+    try {
+      const ticket = await ticketsService.crearTicket(empresa.id, {
+        titulo: 'Salida bloqueada por geocerca',
+        descripcion,
+        tipo: 'otro',
+        canal_entrada: 'campo',
+        estado: 'abierto',
+        prioridad: 'media',
+        responsable_id: supervisor?.id || null,
+        responsable_nombre: supervisor?.nombre || null,
+        creado_por: authUser?.id || null,
+      });
+      if (comentarioReporteGeocerca.trim() || evidenciaReporteGeocerca) {
+        const evidenciaUrl = evidenciaReporteGeocerca
+          ? await ticketsService.subirImagenEvidencia(empresa.id, ticket.id, evidenciaReporteGeocerca)
+          : null;
+        await ticketsService.agregarComentarioTicket(empresa.id, ticket.id, {
+          tipo: evidenciaUrl ? 'evidencia' : 'observacion',
+          contenido: comentarioReporteGeocerca.trim() || 'Evidencia adjunta por el colaborador.',
+          imagen_url: evidenciaUrl,
+          usuario_id: authUser?.id || null,
+          usuario_nombre: usuarioMovil?.nombre || 'Colaborador',
+        });
+      }
+      setResultadoReporteGeocerca('Reporte enviado para revisión. Tu salida no ha sido marcada.');
+      setComentarioReporteGeocerca('');
+      setEvidenciaReporteGeocerca(null);
+      addNotificacion('Reporte de geocerca enviado para revisión.');
+    } catch (error) {
+      setResultadoReporteGeocerca(`No se pudo enviar el reporte: ${error?.message || 'intenta nuevamente.'}`);
+    } finally {
+      setReportandoGeocerca(false);
+    }
+  };
+
   const manejarMarcacionRefrigerio = async () => {
     if (verificandoHoy) return;
     setAviso('');
@@ -506,6 +603,9 @@ function AsistenciaMobileView({ screen, setScreen }) {
       }
     }
     setAviso('');
+    setBloqueoSalidaGeocerca(null);
+    setReporteGeocercaAbierto(false);
+    setResultadoReporteGeocerca('');
     if (!trabajadorId) {
       const msg = 'No encuentro un colaborador habilitado para asistencia móvil. Revisa el email y el permiso en Personal.';
       addNotificacion(msg);
@@ -556,6 +656,15 @@ function AsistenciaMobileView({ screen, setScreen }) {
     }
     const geoLocal = evaluarGeofenceLocal({ trabajador: trabajadorActual, geocercas, asignaciones: geocercaAsignaciones, fix: fix || { motivo }, fecha: today, config: geoCfg });
     if (geoLocal.estado === 'rechazable') {
+      if (modo === 'salida') {
+        const bloqueo = construirBloqueoSalidaGeocerca(geoLocal, fix);
+        if (bloqueo) {
+          setBloqueoSalidaGeocerca(bloqueo);
+          setLoading(false);
+          setGeoEstado('');
+          return;
+        }
+      }
       const msg = `Fuera de perimetro (${geoLocal.distancia_m} m). Politica estricta activa.`;
       addNotificacion(msg);
       setAviso(msg);
@@ -693,9 +802,14 @@ function AsistenciaMobileView({ screen, setScreen }) {
             setRegistrosAsistencia(prev => prev.map(r => r.id === abierto.id ? updatedLocal : r));
             setModo('completado');
           } else {
-            const msg = `Error BD (Salida): ${e.message || JSON.stringify(e)}`;
-            addNotificacion(msg);
-            setAviso(msg);
+            const bloqueo = parsearBloqueoSalidaGeocerca(e, fix);
+            if (bloqueo) {
+              setBloqueoSalidaGeocerca(bloqueo);
+            } else {
+              const msg = `Error BD (Salida): ${e.message || JSON.stringify(e)}`;
+              addNotificacion(msg);
+              setAviso(msg);
+            }
           }
         }
       }
@@ -787,7 +901,43 @@ function AsistenciaMobileView({ screen, setScreen }) {
       )}
 
       {loading && <div className="text-muted" style={{fontSize:14, fontWeight:600, marginBottom:20}}>{I.mapPin} {geoEstado}</div>}
-      {aviso && !loading && <div className="alert alert-warning" style={{width:'100%', marginBottom:14}}>{aviso}</div>}
+      {bloqueoSalidaGeocerca && !loading && (
+        <div className="card" role="alert" style={{width:'100%', padding:16, marginBottom:14, border:'1px solid var(--danger)', background:'color-mix(in srgb, var(--danger) 8%, var(--card))'}}>
+          <div style={{fontWeight:800, marginBottom:6}}>No se registró tu salida</div>
+          <div style={{fontSize:14, lineHeight:1.5}}>
+            No puedes marcar salida fuera de la sede <strong>{bloqueoSalidaGeocerca.geocercaNombre}</strong>. Estás a <strong>{bloqueoSalidaGeocerca.distanciaM} m</strong> del perímetro.
+          </div>
+          {bloqueoSalidaGeocerca.precisionM != null && (
+            <div className="text-muted" style={{fontSize:12, marginTop:6}}>Precisión GPS actual: {bloqueoSalidaGeocerca.precisionM} m.</div>
+          )}
+          <div className="row" style={{gap:8, flexWrap:'wrap', marginTop:14}}>
+            <button className="btn btn-primary" onClick={manejarMarcacion} disabled={loading}>Reintentar ahora</button>
+            <button className="btn btn-secondary" onClick={() => setReporteGeocercaAbierto(prev => !prev)} disabled={reportandoGeocerca}>
+              {reporteGeocercaAbierto ? 'Cerrar reporte' : 'Reportar situación'}
+            </button>
+          </div>
+          {reporteGeocercaAbierto && (
+            <div style={{marginTop:14, paddingTop:14, borderTop:'1px solid var(--border-subtle)'}}>
+              <label style={{display:'block', fontSize:13, fontWeight:700, marginBottom:6}}>Comentario para tu supervisor (opcional)</label>
+              <textarea
+                value={comentarioReporteGeocerca}
+                onChange={e => setComentarioReporteGeocerca(e.target.value)}
+                placeholder="Describe lo ocurrido para que puedan revisarlo."
+                rows={3}
+                style={{width:'100%', resize:'vertical', padding:10, borderRadius:8, border:'1px solid var(--border)', background:'var(--input-bg)', color:'var(--fg)'}}
+              />
+              <label style={{display:'block', fontSize:13, fontWeight:700, margin:'10px 0 6px'}}>Evidencia (opcional)</label>
+              <input type="file" accept="image/*,.pdf" onChange={e => setEvidenciaReporteGeocerca(e.target.files?.[0] || null)} />
+              {evidenciaReporteGeocerca && <div className="text-muted" style={{fontSize:12, marginTop:5}}>{evidenciaReporteGeocerca.name}</div>}
+              <button className="btn btn-primary" style={{marginTop:12}} onClick={reportarSituacionGeocerca} disabled={reportandoGeocerca}>
+                {reportandoGeocerca ? 'Enviando…' : 'Enviar reporte'}
+              </button>
+            </div>
+          )}
+          {resultadoReporteGeocerca && <div className="text-muted" style={{fontSize:13, marginTop:12}}>{resultadoReporteGeocerca}</div>}
+        </div>
+      )}
+      {aviso && !loading && !bloqueoSalidaGeocerca && <div className="alert alert-warning" style={{width:'100%', marginBottom:14}}>{aviso}</div>}
       {geoActivo && !loading && (
         <div className="card" style={{width:'100%', padding:12, marginBottom:14}}>
           <div style={{fontWeight:800, fontSize:13}}>Ubicacion puntual</div>

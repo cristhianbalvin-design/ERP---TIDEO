@@ -116,12 +116,20 @@ export function evaluarGeofenceLocal({ trabajador, geocercas = [], asignaciones 
       if (g.tipo === 'poligono') {
         const lat = Number(fix.lat);
         const lng = Number(fix.lng);
+        // Este valor es solo informativo para la UI: no interviene en la
+        // decisión de permitir/bloquear la marcación.
+        const distanciaLimiteM = distanciaAPoligonoM(lat, lng, g.poligono_geojson);
         let dentro = puntoEnPoligono(lat, lng, g.poligono_geojson);
         if (!dentro) {
           const precisionFix = Number(fix.precision_m || fix.accuracy || 0);
-          if (distanciaAPoligonoM(lat, lng, g.poligono_geojson) <= precisionFix) dentro = true;
+          if (distanciaLimiteM <= precisionFix) dentro = true;
         }
-        return { geocerca: g, distancia_m: dentro ? 0 : Infinity, dentroPoligono: dentro };
+        return {
+          geocerca: g,
+          distancia_m: dentro ? 0 : Infinity,
+          distancia_limite_m: Number.isFinite(distanciaLimiteM) ? Math.round(distanciaLimiteM) : null,
+          dentroPoligono: dentro,
+        };
       }
       return { geocerca: g, distancia_m: distanciaMetros(fix, { lat: g.latitud ?? g.lat, lng: g.longitud ?? g.lng }) };
     })
@@ -134,12 +142,23 @@ export function evaluarGeofenceLocal({ trabajador, geocercas = [], asignaciones 
   const radio = esPoligono ? null : Number(best.geocerca.radio_m || 0);
   const dentro = esPoligono ? best.dentroPoligono : best.distancia_m <= radio + precision;
   const distanciaSalida = esPoligono ? null : Math.round(best.distancia_m);
-  if (dentro) return { estado: 'dentro', geocerca_id: best.geocerca.id, geocerca_nombre: best.geocerca.nombre, distancia_m: distanciaSalida, radio_m: radio };
+  const distanciaPresentacion = esPoligono ? best.distancia_limite_m : distanciaSalida;
+  if (dentro) return {
+    estado: 'dentro',
+    geocerca_id: best.geocerca.id,
+    geocerca_nombre: best.geocerca.nombre,
+    tipo: esPoligono ? 'poligono' : 'circulo',
+    distancia_m: distanciaSalida,
+    distancia_presentacion_m: distanciaPresentacion,
+    radio_m: radio,
+  };
   return {
     estado: (config.geofencing_modo || 'flexible') === 'estricto' ? 'rechazable' : 'fuera',
     geocerca_id: best.geocerca.id,
     geocerca_nombre: best.geocerca.nombre,
+    tipo: esPoligono ? 'poligono' : 'circulo',
     distancia_m: distanciaSalida,
+    distancia_presentacion_m: distanciaPresentacion,
     radio_m: radio,
   };
 }
