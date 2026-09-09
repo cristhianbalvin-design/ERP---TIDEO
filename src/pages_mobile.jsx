@@ -912,8 +912,12 @@ function AsistenciaMobileView({ screen, setScreen }) {
           )}
           <div className="row" style={{gap:8, flexWrap:'wrap', marginTop:14}}>
             <button className="btn btn-primary" onClick={manejarMarcacion} disabled={loading}>Reintentar ahora</button>
-            <button className="btn btn-secondary" onClick={() => setReporteGeocercaAbierto(prev => !prev)} disabled={reportandoGeocerca}>
-              {reporteGeocercaAbierto ? 'Cerrar reporte' : 'Reportar situación'}
+            <button
+              onClick={() => setReporteGeocercaAbierto(prev => !prev)}
+              disabled={reportandoGeocerca}
+              style={{border:'none', background:'transparent', color:'var(--cyan)', textDecoration:'underline', padding:'8px 4px', cursor:'pointer'}}
+            >
+              {reporteGeocercaAbierto ? 'Cerrar reporte' : '¿No puedes regresar?'}
             </button>
           </div>
           {reporteGeocercaAbierto && (
