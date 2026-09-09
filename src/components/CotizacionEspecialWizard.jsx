@@ -132,6 +132,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
+  const [contenidoEmitido, setContenidoEmitido] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [cotizacion, setCotizacion] = useState(null);
   const [paso, setPaso] = useState(1);
@@ -155,6 +156,8 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const contacto = contactos.find(row => row.id === form.contacto_id) || null;
   const editable = Boolean(cotizacion && cotizacion.estado === 'borrador');
   const readonly = Boolean(cotizacion && cotizacion.estado !== 'borrador');
+  const plantillaVistaPrevia = readonly ? contenidoEmitido?.plantilla || null : plantilla;
+  const bloquesVistaPrevia = readonly ? contenidoEmitido?.bloques || [] : bloques;
   const plantillaNuevaDisponible = useMemo(() => {
     if (!editable || !plantilla) return null;
     return plantillas
@@ -237,6 +240,48 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     });
   }, [especialId, hojaCosteoInicialId, hojasCosteo, oportunidades, adaptarHojaCosteo]);
   useEffect(() => {
+    if (!readonly) {
+      setContenidoEmitido(null);
+      return;
+    }
+    if (!cotizacion?.documento_generado_id) {
+      setContenidoEmitido(null);
+      setPlantillaLoading(false);
+      setPlantillaError('No se encontró el snapshot del documento emitido.');
+      return;
+    }
+    let active = true;
+    setContenidoEmitido(null);
+    setPlantillaLoading(true);
+    setPlantillaError('');
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error: queryError } = await sb
+          .from('documentos_generados')
+          .select('contenido_resuelto_json')
+          .eq('id', cotizacion.documento_generado_id)
+          .single();
+        if (queryError) throw queryError;
+        const contenido = data?.contenido_resuelto_json;
+        if (!contenido?.plantilla || !Array.isArray(contenido.bloques)) {
+          throw new Error('El snapshot del documento emitido no tiene una estructura válida.');
+        }
+        if (active) setContenidoEmitido(contenido);
+      } catch (err) {
+        if (active) {
+          setPlantillaError(mensajeError(err));
+          setContenidoEmitido(null);
+        }
+      } finally { if (active) setPlantillaLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [readonly, cotizacion?.documento_generado_id]);
+  useEffect(() => {
+    if (readonly) {
+      setPlantillas([]);
+      return;
+    }
     if (!form.tipo_documento_id) {
       setPlantillas([]);
       setPlantillaLoading(false);
@@ -268,8 +313,12 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
       } finally { if (active) setPlantillaLoading(false); }
     })();
     return () => { active = false; };
-  }, [especialId, form.tipo_documento_id, form.plantilla_documento_id]);
+  }, [especialId, form.tipo_documento_id, form.plantilla_documento_id, readonly]);
   useEffect(() => {
+    if (readonly) {
+      setBloques([]);
+      return;
+    }
     if (!form.plantilla_documento_id) { setBloques([]); return; }
     let active = true;
     (async () => {
@@ -281,7 +330,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
       } catch (err) { if (active) setError(mensajeError(err)); }
     })();
     return () => { active = false; };
-  }, [form.plantilla_documento_id]);
+  }, [form.plantilla_documento_id, readonly]);
 
   const cambiarTipo = tipoDocumentoId => setForm(current => ({
     ...current,
@@ -439,14 +488,14 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
   </>;
 
-  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantilla} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div>
+  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div>
     {error && <div className="alert alert-danger">{error}</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantilla ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando plantilla…</div> : <div className="alert alert-danger">No se pudo cargar la plantilla de esta cotización.</div>}</div></section></div></div>;
+    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section></div></div>;
 
   return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}
     <div className="card"><div className="card-body">
