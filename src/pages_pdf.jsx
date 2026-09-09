@@ -927,6 +927,17 @@ function PapCheckBox({ checked }) {
   );
 }
 
+function diasCalendarioEntre(fechaInicio, fechaFin, fallback = 0) {
+  const inicioPartes = String(fechaInicio || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const finPartes = String(fechaFin || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!inicioPartes || !finPartes) return fallback;
+
+  const inicio = Date.UTC(Number(inicioPartes[1]), Number(inicioPartes[2]) - 1, Number(inicioPartes[3]));
+  const fin = Date.UTC(Number(finPartes[1]), Number(finPartes[2]) - 1, Number(finPartes[3]));
+  if (fin < inicio) return fallback;
+  return Math.floor((fin - inicio) / 86400000) + 1;
+}
+
 export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [], persona = null }) {
   const cfg = emisor || {};
   const aprobJefe = historial.find(h => h.estado_hasta === 'aprobada_jefe');
@@ -944,9 +955,14 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, histori
     ? new Date(solicitud.fecha_aprobacion_jefe).toLocaleDateString('es-PE')
     : (aprobJefe?.creado_en ? new Date(aprobJefe.creado_en).toLocaleDateString('es-PE') : '—');
 
+  const diasCalendario = diasCalendarioEntre(
+    solicitud.fecha_inicio,
+    solicitud.fecha_fin,
+    solicitud.dias_habiles || 0,
+  );
   const cantidadLabel = solicitud.unidad === 'horas'
     ? `${solicitud.cantidad_horas || 0} horas`
-    : `${solicitud.dias_habiles || 0} días hábiles`;
+    : `${diasCalendario} días calendario`;
 
   return (
     <Document>
@@ -1057,10 +1073,12 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, histori
             <Text style={papStyles.firmaFecha}>Solicitud: {solicitud.creado_en ? new Date(solicitud.creado_en).toLocaleDateString('es-PE') : '—'}</Text>
           </View>
           <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaLine} />
             <Text style={papStyles.firmaRole}>Jefe de área</Text>
             <Text style={papStyles.firmaFecha}>Aprobación: {fechaAprobStr}</Text>
           </View>
           <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaLine} />
             <Text style={papStyles.firmaRole}>Administrador / RRHH</Text>
             <Text style={papStyles.firmaFecha}>Confirmación: {fechaConfirmStr}</Text>
           </View>

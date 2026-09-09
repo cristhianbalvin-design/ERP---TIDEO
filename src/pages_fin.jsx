@@ -3429,7 +3429,7 @@ const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobr
 function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias, centrosBeneficio, empresa,
-    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
+    emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
     registrarCobroCxC, generarCxC, generarCxP, navigate, activeParams, searchQuery,
     empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
@@ -3555,27 +3555,11 @@ function Facturacion() {
     }
   };
 
-  // ── Archivos factura (PDF / ZIP) — almacenados como URLs en la factura ──
-  const [uploadingFac, setUploadingFac] = useState(null); // 'pdf' | 'zip' | null
-  const pdfInputRef = useRef(null);
-  const zipInputRef = useRef(null);
-
-  const handleSubirFac = async (file, tipo) => {
-    if (!file || !selFac) return;
-    setUploadingFac(tipo);
-    try {
-      await subirArchivoFactura(selFac, tipo, file);
-    } catch(e) {
-      alert('Error al subir: ' + (e?.message || 'intenta de nuevo'));
-    } finally {
-      setUploadingFac(null);
-    }
-  };
-
-  const handleEliminarArchivoFac = async (tipo) => {
+  // Archivos anteriores: se conservan para que los PDF/ZIP ya cargados sigan disponibles.
+  const handleEliminarArchivoFac = async (facturaId, tipo) => {
     if (!window.confirm(`¿Eliminar el archivo ${tipo.toUpperCase()}?`)) return;
     try {
-      await eliminarArchivoFactura(selFac, tipo);
+      await eliminarArchivoFactura(facturaId, tipo);
     } catch(e) {
       alert('Error al eliminar: ' + (e?.message || 'intenta de nuevo'));
     }
@@ -4528,6 +4512,7 @@ function Facturacion() {
     const TABS_FAC = [
       { id:'detalle', label:'Detalle' },
       { id:'vinculaciones', label:'Vinculaciones' },
+      { id:'archivos', label:'Archivos' },
       { id:'historial', label:`Historial (${historialFac.length})` },
     ];
 
@@ -4633,29 +4618,7 @@ function Facturacion() {
           </div>
         </div>
         <div className="side-panel-body">
-          <input ref={pdfInputRef} type="file" accept=".pdf,application/pdf" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'pdf'); e.target.value=''; }} />
-          <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" style={{display:'none'}} onChange={e => { handleSubirFac(e.target.files[0], 'zip'); e.target.value=''; }} />
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
-            {f.archivo_pdf_url ? (
-              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 8px',color:'var(--green)'}}>
-                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} onClick={() => window.open(f.archivo_pdf_url,'_blank','noopener,noreferrer')}>{I.download} PDF</button>
-                <button type="button" className="icon-btn" style={{width:14,height:14,color:'var(--green)',opacity:0.6,flexShrink:0}} onClick={() => handleEliminarArchivoFac('pdf')}>{I.x}</button>
-              </span>
-            ) : (
-              <button type="button" className="btn btn-secondary btn-sm" disabled={uploadingFac==='pdf'} onClick={() => pdfInputRef.current?.click()}>
-                {uploadingFac==='pdf' ? 'Subiendo...' : <>{I.upload} PDF</>}
-              </button>
-            )}
-            {f.archivo_zip_url ? (
-              <span style={{display:'inline-flex',alignItems:'center',gap:4,fontSize:12,background:'color-mix(in srgb,var(--green) 10%,transparent)',border:'1px solid var(--green)',borderRadius:6,padding:'4px 8px',color:'var(--green)'}}>
-                <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:12,fontWeight:700,gap:5,color:'var(--green)'}} onClick={() => window.open(f.archivo_zip_url,'_blank','noopener,noreferrer')}>{I.download} ZIP</button>
-                <button type="button" className="icon-btn" style={{width:14,height:14,color:'var(--green)',opacity:0.6,flexShrink:0}} onClick={() => handleEliminarArchivoFac('zip')}>{I.x}</button>
-              </span>
-            ) : (
-              <button type="button" className="btn btn-secondary btn-sm" disabled={uploadingFac==='zip'} onClick={() => zipInputRef.current?.click()}>
-                {uploadingFac==='zip' ? 'Subiendo...' : <>{I.upload} ZIP</>}
-              </button>
-            )}
             {f.estado === 'emitida' && puedeEditarFacturacion && (
               <button className="btn btn-secondary btn-sm" onClick={() => { const igvDerived = f.subtotal > 0 ? Math.round(((f.igv||0)/f.subtotal)*100) : 18; setPanelEditFac({ id: f.id, esDirecta: !f.valorizacion_id, form: { numero: f.numero||'', fecha_emision: f.fecha_emision||today, condicion_pago: f.condicion_pago||'30 días', fecha_vencimiento: f.fecha_vencimiento||'', moneda: f.moneda||'PEN', glosa: f.glosa||'', notas: f.notas||'' }, items: (f.items||[]).length > 0 ? f.items.map((it,i) => ({...it, id: it.id||`ep_${i}`})) : [{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:'' }], igvPct: igvDerived }); }}>{I.edit} Editar</button>
             )}
@@ -4856,6 +4819,46 @@ function Facturacion() {
               </div>
               {cxcVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cxc')}>Ver CxC</button>}
             </div>
+          </div>
+        )}
+
+        {/* Tab: Archivos */}
+        {fichaTab === 'archivos' && (
+          <div style={{display:'flex', flexDirection:'column', gap:12}}>
+            {(f.archivo_pdf_url || f.archivo_zip_url) && (
+              <div className="card" style={{padding:0}}>
+                <div className="card-head">
+                  <h3>Archivos anteriores</h3>
+                  <span className="text-muted" style={{fontSize:11}}>Cargados antes del nuevo listado</span>
+                </div>
+                <div style={{padding:'0 16px'}}>
+                  {[
+                    { tipo:'pdf', nombre:'PDF de factura', url:f.archivo_pdf_url },
+                    { tipo:'zip', nombre:'ZIP de factura', url:f.archivo_zip_url },
+                  ].filter(archivo => archivo.url).map(archivo => (
+                    <div key={archivo.tipo} className="row" style={{justifyContent:'space-between',gap:10,padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}>
+                      <div className="row" style={{gap:8,minWidth:0}}>
+                        <span style={{width:18,height:18,display:'inline-flex',color:'var(--cyan)'}}>{I.file}</span>
+                        <span style={{fontSize:13,fontWeight:700}}>{archivo.nombre}</span>
+                      </div>
+                      <div className="row" style={{gap:4,flexShrink:0}}>
+                        <button type="button" className="icon-btn" title={`Descargar ${archivo.nombre}`} onClick={() => window.open(archivo.url, '_blank', 'noopener,noreferrer')}>{I.download}</button>
+                        {puedeEditarFacturacion && <button type="button" className="icon-btn" title="Eliminar" style={{color:'var(--danger)'}} onClick={() => handleEliminarArchivoFac(f.id, archivo.tipo)}>{I.trash}</button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <FileUpload
+              entidadTipo="facturas"
+              entidadId={f.id}
+              empresaId={empresa?.id}
+              categoria="comprobante_factura"
+              descripcion={`Adjunto de la factura ${f.numero}`}
+              multiple
+              readOnly={!puedeEditarFacturacion || f.estado === 'anulada'}
+            />
           </div>
         )}
 
@@ -6094,6 +6097,11 @@ function CajaChica() {
     .reduce((s, m) => s + Math.abs(Number(m.monto_movimiento || m.monto || 0)), 0);
 
   const abrirEgreso = fondo => {
+    // El formulario de egreso es un panel independiente: cerrar primero el
+    // detalle del fondo para no apilar dos side panels y sus backdrops.
+    setFondoSelId(null);
+    setRendicionForm(null);
+    setArqueoFondo(null);
     setPreconfigNE({ ...CC_PRECONFIG_RAPIDO, form: { ...CC_PRECONFIG_RAPIDO.form, fondo_caja_chica_id: fondo?.id || '' } });
     setPanelNuevoEgreso(true);
   };

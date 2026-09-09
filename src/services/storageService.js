@@ -284,19 +284,25 @@ async function cargarAdjuntoPorId(adjuntoId) {
   return data;
 }
 
-export async function obtenerUrlAdjunto(adjunto, expiresIn = 600) {
+export async function obtenerUrlAdjunto(adjunto, expiresIn = 600, { download = false } = {}) {
   if (!adjunto) return '';
   if (!isSupabaseMode()) return adjunto.url || '';
 
   const row = typeof adjunto === 'string' ? await cargarAdjuntoPorId(adjunto) : adjunto;
   if (esBucketPublico(row.bucket) && row.url && !row.url.startsWith('storage://')) {
-    return row.url;
+    if (!download) return row.url;
+    const separator = row.url.includes('?') ? '&' : '?';
+    return `${row.url}${separator}download=${encodeURIComponent(row.nombre_original || 'archivo')}`;
   }
 
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase.storage
     .from(row.bucket)
-    .createSignedUrl(row.storage_path, expiresIn);
+    .createSignedUrl(
+      row.storage_path,
+      expiresIn,
+      download ? { download: row.nombre_original || true } : undefined,
+    );
 
   if (error) throw error;
   return data?.signedUrl || '';

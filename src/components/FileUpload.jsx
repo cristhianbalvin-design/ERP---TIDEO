@@ -153,6 +153,21 @@ export const FileUpload = forwardRef(function FileUpload({
     }
   };
 
+  const descargarAdjunto = async adjunto => {
+    try {
+      const url = await storageService.obtenerUrlAdjunto(adjunto, 600, { download: true });
+      if (!url) return;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = adjunto.nombre_original || 'archivo';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (downloadError) {
+      setError(downloadError.message || 'No se pudo descargar el adjunto.');
+    }
+  };
+
   const eliminarAdjunto = async adjunto => {
     setDeletingId(adjunto.id);
     setError('');
@@ -185,18 +200,23 @@ export const FileUpload = forwardRef(function FileUpload({
   const adjuntosVisibles = soloUltimo ? adjuntos.slice(0, 1) : adjuntos;
   const adjuntoItems = adjuntosVisibles.map(adjunto => (
     <div key={adjunto.id} className="row" style={{justifyContent:'space-between', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border-subtle)'}}>
-      <button type="button" className="btn btn-ghost" onClick={() => abrirAdjunto(adjunto)} style={{justifyContent:'flex-start', minWidth:0, padding:0}}>
+      <button type="button" className="btn btn-ghost" title="Abrir archivo" onClick={() => abrirAdjunto(adjunto)} style={{justifyContent:'flex-start', minWidth:0, padding:0}}>
         <span style={{width:18, height:18, display:'inline-flex'}}>{I.file}</span>
         <span style={{minWidth:0, textAlign:'left'}}>
           <span style={{display:'block', fontSize:13, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{adjunto.nombre_original}</span>
           <span className="text-muted" style={{display:'block', fontSize:11}}>{storageService.formatoTamano(adjunto.tamano_bytes)} - {adjunto.categoria || 'adjunto'}</span>
         </span>
       </button>
-      {!readOnly && (
-        <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={disabled || deletingId === adjunto.id}>
-          {I.trash}
+      <div className="row" style={{gap:4, flexShrink:0}}>
+        <button type="button" className="icon-btn" title="Descargar" onClick={() => descargarAdjunto(adjunto)} disabled={disabled}>
+          {I.download}
         </button>
-      )}
+        {!readOnly && (
+          <button type="button" className="icon-btn" title="Eliminar" onClick={() => eliminarAdjunto(adjunto)} disabled={disabled || deletingId === adjunto.id}>
+            {I.trash}
+          </button>
+        )}
+      </div>
     </div>
   ));
 
@@ -249,7 +269,7 @@ export const FileUpload = forwardRef(function FileUpload({
             <span style={{width:28, height:28, display:'inline-flex', color:'var(--cyan)'}}>{I.file}</span>
             <div>
               <div className="font-display" style={{fontSize:13, fontWeight:700}}>Adjuntar archivo</div>
-              <div className="text-muted" style={{fontSize:11}}>{soloImagenes ? 'Imagen JPG o PNG - max. 20 MB' : 'PDF, imagen u Office - max. 20 MB'}</div>
+              <div className="text-muted" style={{fontSize:11}}>{soloImagenes ? 'Imagen JPG o PNG - max. 20 MB' : 'PDF, imagen, Office o ZIP - max. 20 MB'}</div>
             </div>
           </div>
           <input
@@ -257,7 +277,7 @@ export const FileUpload = forwardRef(function FileUpload({
             type="file"
             multiple={multiple}
             disabled={disabled || uploading}
-            accept={soloImagenes ? '.jpg,.jpeg,.png,image/jpeg,image/png' : '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
+            accept={soloImagenes ? '.jpg,.jpeg,.png,image/jpeg,image/png' : '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed'}
             onChange={event => {
               agregarArchivos(event.target.files);
               event.target.value = '';

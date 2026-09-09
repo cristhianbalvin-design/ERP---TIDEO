@@ -38,7 +38,7 @@ const ACTIVO_TIPOS_WIZ = [
   { value: 'otro',        label: 'Otro' },
 ];
 
-const METODOS_PAGO = ['Transferencia bancaria', 'Caja chica', 'Tarjeta empresa', 'Efectivo', 'Otro'];
+const METODOS_PAGO = ['Transferencia bancaria', 'Caja chica', 'Tarjeta empresa', 'Efectivo', 'Yape / Plin', 'Otro'];
 const TIPOS_COMP   = ['Factura', 'Boleta', 'Recibo honorarios', 'Ticket', 'Sin comprobante'];
 
 const normTexto = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
