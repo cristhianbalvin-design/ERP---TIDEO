@@ -71,7 +71,9 @@ const verificarCORSDeImagenes = async imagenes => {
 
 const esperarRecursosVistaPrevia = async paginas => {
   await document.fonts?.ready;
-  const imagenes = paginas.flatMap(pagina => [...pagina.querySelectorAll('img')]);
+  const imagenes = paginas
+    .flatMap(pagina => [...pagina.querySelectorAll('img')])
+    .filter(imagen => !imagen.classList.contains('ProseMirror-separator'));
   await Promise.all(imagenes.map(esperarImagen));
   await verificarCORSDeImagenes(imagenes);
   await esperarSiguientePintado();
