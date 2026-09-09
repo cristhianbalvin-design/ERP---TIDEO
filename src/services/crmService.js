@@ -134,6 +134,19 @@ export async function actualizarLead(supabase, leadId, datos) {
 }
 
 export async function eliminarLead(supabase, leadId) {
+  // El RPC desvincula agenda, oportunidades y actividades antes de borrar el
+  // lead. Un DELETE directo falla cuando alguno de esos registros mantiene
+  // una clave foránea hacia leads.
+  const rpc = await supabase.rpc('eliminar_lead_crm', { p_lead_id: leadId });
+  if (!rpc.error) {
+    if (rpc.data === true) return rpc;
+    throw new Error('No se encontró el lead que se desea eliminar.');
+  }
+
+  // Compatibilidad con instalaciones antiguas que aún no tengan el RPC.
+  // Los demás errores del RPC (permisos, integridad) se deben propagar.
+  if (rpc.error.code !== 'PGRST202') throw rpc.error;
+
   const { error, count } = await supabase
     .from('leads')
     .delete({ count: 'exact' })
@@ -143,12 +156,7 @@ export async function eliminarLead(supabase, leadId) {
 
   if (count && count > 0) return { count };
 
-  const rpc = await supabase.rpc('eliminar_lead_crm', { p_lead_id: leadId });
-  if (rpc.error) throw rpc.error;
-  if (rpc.data !== true) {
-    throw new Error('Supabase no eliminó el lead. Revisa permisos RLS o que el registro exista.');
-  }
-  return rpc;
+  throw new Error('No se encontró el lead que se desea eliminar.');
 }
 
 export async function persistirCuenta(supabase, empresaId, cuenta) {
@@ -678,6 +686,17 @@ export async function actualizarAgendaEventoSvc(supabase, eventoId, datos) {
   if (!Object.keys(row).length) return;
   row.updated_at = new Date().toISOString();
   return supabase.from('agenda_comercial').update(row).eq('id', eventoId);
+}
+
+export async function eliminarAgendaEventoSvc(supabase, eventoId) {
+  const { error, count } = await supabase
+    .from('agenda_comercial')
+    .delete({ count: 'exact' })
+    .eq('id', eventoId)
+    .select();
+  if (error) throw error;
+  if (!count) throw new Error('No se encontró el evento que se desea eliminar.');
+  return { count };
 }
 
 export async function persistirActividadComercial(supabase, empresaId, actividad) {

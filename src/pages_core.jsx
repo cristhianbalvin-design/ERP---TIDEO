@@ -1986,9 +1986,11 @@ function Leads() {
             <div className="modal-foot">
               <button className="btn btn-secondary" onClick={() => setModalEliminarLead(null)}>Cancelar</button>
               <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={async () => {
-                await eliminarLead(modalEliminarLead.id);
-                if (sel?.id === modalEliminarLead.id) setSel(null);
-                setModalEliminarLead(null);
+                try {
+                  await eliminarLead(modalEliminarLead.id);
+                  if (sel?.id === modalEliminarLead.id) setSel(null);
+                  setModalEliminarLead(null);
+                } catch (_) { /* notificacion emitida en context */ }
               }}>{I.trash} Eliminar definitivamente</button>
             </div>
           </div>
@@ -7267,7 +7269,7 @@ function BIOperativo() {
 
 // ============ AGENDA COMERCIAL ============
 function AgendaComercial() {
-  const { agendaEventos, cuentas, role, usuarios, roles, authUser, crearAgendaEvento, actualizarAgendaEvento, registrarActividad, searchQuery } = useApp();
+  const { agendaEventos, cuentas, role, usuarios, roles, authUser, crearAgendaEvento, actualizarAgendaEvento, eliminarAgendaEvento, registrarActividad, searchQuery } = useApp();
   const getAgendaCuentaNombre = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
 
   const [view, setView] = useState('calendario'); // 'calendario' | 'semana' | 'dia' | 'lista'
@@ -7324,6 +7326,16 @@ function AgendaComercial() {
     role.permisos?.plataforma ||
     ['direccion', 'jefatura', 'supervisor'].includes(String(viewer?.nivel_jerarquico || '').toLowerCase())
   );
+  const puedeEliminarEventos = Boolean(
+    role.permisos?.todo || role.permisos?.tenant_admin || role.permisos?.plataforma ||
+    role.permisos?.anular?.includes('agenda_comercial')
+  );
+  const confirmarEliminarEvento = async (evento) => {
+    if (!evento?.id || !window.confirm(`¿Eliminar el evento \"${evento.titulo}\"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await eliminarAgendaEvento(evento.id);
+    } catch (_) { /* notificación emitida en context */ }
+  };
 
   const query = searchQuery.toLowerCase();
   const eventosFiltrados = agendaEventos.filter(e => {
@@ -7542,6 +7554,7 @@ function AgendaComercial() {
                   <th>Registrado por</th>
                   <th>Duración</th>
                   <th>Estado</th>
+                  {puedeEliminarEventos && <th aria-label="Acciones"/>}
                 </tr>
               </thead>
               <tbody>
@@ -7561,11 +7574,12 @@ function AgendaComercial() {
                     <td>{getRegistrador(e)}</td>
                     <td>{e.duracion_minutos} min</td>
                     <td><span className={'badge ' + getBadgeColor(e.estado)}>{e.estado}</span></td>
+                    {puedeEliminarEventos && <td><button className="icon-btn" title="Eliminar evento" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarEvento(e)}>{I.trash}</button></td>}
                   </tr>
                 ))}
                 {eventosFiltrados.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                    <td colSpan={puedeEliminarEventos ? 7 : 6} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                       No hay eventos programados
                     </td>
                   </tr>
@@ -7634,11 +7648,14 @@ function AgendaComercial() {
                       </div>
                       <div className="text-muted" style={{fontSize:12}}>{e.cuenta_id ? getAgendaCuentaNombre(e.cuenta_id) : 'Lead'} - {e.tipo} - {e.duracion_minutos} min</div>
                       <div className="calendar-owner">{I.user} Registrado por: {getRegistrador(e)}</div>
-                      {e.estado !== 'realizado' && (
-                        <button className="btn btn-sm btn-secondary" onClick={() => setEventoRealizado(e)}>
-                          {I.check} Realizado
-                        </button>
-                      )}
+                      <div className="row" style={{gap:8, marginTop:10}}>
+                        {e.estado !== 'realizado' && (
+                          <button className="btn btn-sm btn-secondary" onClick={() => setEventoRealizado(e)}>
+                            {I.check} Realizado
+                          </button>
+                        )}
+                        {puedeEliminarEventos && <button className="icon-btn" title="Eliminar evento" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarEvento(e)}>{I.trash}</button>}
+                      </div>
                     </div>
                   ))}
                   {eventosSeleccionados.length === 0 && (
@@ -7721,11 +7738,14 @@ function AgendaComercial() {
                           </div>
                           <div className="text-muted" style={{fontSize:12}}>{e.cuenta_id ? getAgendaCuentaNombre(e.cuenta_id) : 'Lead'} - {e.tipo} - {e.duracion_minutos} min</div>
                           <div className="calendar-owner">{I.user} Registrado por: {getRegistrador(e)}</div>
-                          {e.estado !== 'realizado' && (
-                            <button className="btn btn-sm btn-secondary" onClick={() => setEventoRealizado(e)}>
-                              {I.check} Realizado
-                            </button>
-                          )}
+                          <div className="row" style={{gap:8, marginTop:10}}>
+                            {e.estado !== 'realizado' && (
+                              <button className="btn btn-sm btn-secondary" onClick={() => setEventoRealizado(e)}>
+                                {I.check} Realizado
+                              </button>
+                            )}
+                            {puedeEliminarEventos && <button className="icon-btn" title="Eliminar evento" style={{color:'var(--danger)'}} onClick={() => confirmarEliminarEvento(e)}>{I.trash}</button>}
+                          </div>
                         </div>
                       ))}
                     </div>

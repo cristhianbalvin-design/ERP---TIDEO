@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -9567,6 +9567,41 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: id, accion: 'editar', valor_anterior: anterior, valor_nuevo: datos });
   };
 
+  const eliminarAgendaEvento = async (id) => {
+    const indice = agendaEventos.findIndex(e => e.id === id);
+    const anterior = indice >= 0 ? agendaEventos[indice] : null;
+    if (!anterior) throw new Error('No se encontró el evento que se desea eliminar.');
+
+    const nextAgenda = agendaEventos.filter(e => e.id !== id);
+    setAgendaEventos(nextAgenda);
+    const recalcularLead = (agenda) => {
+      if (!anterior.lead_id) return;
+      setLeads(prev => {
+        const nextLeads = recalcularDiasSinActividadLeads(prev, actividades, agenda);
+        const leadActualizado = nextLeads.find(l => l.id === anterior.lead_id);
+        if (leadActualizado) {
+          crmSync(sb => actualizarLead(sb, anterior.lead_id, { dias_sin_actividad: leadActualizado.dias_sin_actividad }));
+        }
+        return nextLeads;
+      });
+    };
+    recalcularLead(nextAgenda);
+
+    try {
+      await crmPersist(sb => eliminarAgendaEventoSvc(sb, id));
+      auditSync({ modulo: 'crm', entidad: 'agenda_comercial', entidad_id: id, accion: 'eliminar', valor_anterior: anterior });
+      addNotificacion('Evento de agenda eliminado.');
+      return true;
+    } catch (error) {
+      setAgendaEventos(prev => prev.some(e => e.id === id)
+        ? prev
+        : [...prev.slice(0, indice), anterior, ...prev.slice(indice)]);
+      recalcularLead(agendaEventos);
+      addNotificacion(`No se pudo eliminar el evento de agenda: ${error?.message || 'Error desconocido.'}`);
+      throw error;
+    }
+  };
+
   // ─── PLANNER V2 ────────────────────────────────────────────────────────────
   /**
    * Carga las asignaciones del planner para la semana (o rango) indicado.
@@ -10624,7 +10659,7 @@ export function AppProvider({ children }) {
     contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta,
     oportunidades, setOportunidades, oppHistorialEtapas,
     actividades, setActividades,
-    agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento,
+    agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento, eliminarAgendaEvento,
     hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo,
     cotizaciones, setCotizaciones, actualizarCotizacion,
     osClientes, setOsClientes, actualizarOSCliente,
