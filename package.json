@@ -32,6 +32,8 @@
     "@tiptap/react": "^3.31.2",
     "@xyflow/react": "^12.11.5",
     "@zxing/browser": "^0.2.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "leaflet": "1.9.4",
     "leaflet-draw": "1.0.4",
     "qrcode": "^1.5.4",

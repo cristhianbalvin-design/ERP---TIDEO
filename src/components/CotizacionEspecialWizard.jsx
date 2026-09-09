@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { DocumentPreviewSheet } from './DocumentPreviewSheet.jsx';
 
@@ -37,6 +37,49 @@ const normalizarHitosPreview = (hitos, total) => hitos.map((hito, index) => ({
   monto:Math.round(numero(total) * numero(hito.porcentaje)) / 100,
 }));
 const mensajeError = error => error?.message || String(error || 'No se pudo completar la operación.');
+
+const esperarSiguientePintado = () => new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+
+const esperarImagen = imagen => new Promise((resolve, reject) => {
+  if (imagen.complete) {
+    if (imagen.naturalWidth > 0) resolve();
+    else reject(new Error(`No se pudo cargar la imagen ${imagen.currentSrc || imagen.src || ''}.`));
+    return;
+  }
+  imagen.addEventListener('load', () => resolve(), { once:true });
+  imagen.addEventListener('error', () => reject(new Error(`No se pudo cargar la imagen ${imagen.currentSrc || imagen.src || ''}.`)), { once:true });
+});
+
+const verificarCORSDeImagenes = async imagenes => {
+  const externas = imagenes.filter(imagen => {
+    const src = imagen.currentSrc || imagen.src || '';
+    if (!src || src.startsWith('data:') || src.startsWith('blob:')) return false;
+    try { return new URL(src, window.location.href).origin !== window.location.origin; }
+    catch { return false; }
+  });
+  const bloqueadas = (await Promise.all(externas.map(async imagen => {
+    const src = imagen.currentSrc || imagen.src;
+    try {
+      const respuesta = await fetch(src, { mode:'cors', cache:'no-store' });
+      return respuesta.ok ? null : src;
+    } catch {
+      return src;
+    }
+  }))).filter(Boolean);
+  if (bloqueadas.length) throw new Error('No se pudo capturar una imagen porque su servidor no habilita CORS. Revise la configuración del recurso e inténtelo nuevamente.');
+};
+
+const esperarRecursosVistaPrevia = async paginas => {
+  await document.fonts?.ready;
+  const imagenes = paginas
+    .flatMap(pagina => [...pagina.querySelectorAll('img')])
+    .filter(imagen => !imagen.classList.contains('ProseMirror-separator'));
+  await Promise.all(imagenes.map(esperarImagen));
+  await verificarCORSDeImagenes(imagenes);
+  await esperarSiguientePintado();
+};
+
+const nombreArchivoCotizacion = numero => `Cotizacion-${String(numero || 'sin-numero').replace(/[\\/:*?"<>|]/g, '-')}.pdf`;
 
 function ResumenTotales({ totals, moneda, estimado = true }) {
   return <div className="card" style={{padding:14, marginTop:12, background:'var(--bg-subtle)'}}>
@@ -95,10 +138,12 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [loading, setLoading] = useState(Boolean(especialId));
   const [saving, setSaving] = useState(false);
   const [emitting, setEmitting] = useState(false);
+  const [generandoPDF, setGenerandoPDF] = useState(false);
   const [actualizandoPlantilla, setActualizandoPlantilla] = useState(false);
   const [error, setError] = useState('');
   const [plantillaLoading, setPlantillaLoading] = useState(Boolean(especialId));
   const [plantillaError, setPlantillaError] = useState('');
+  const vistaPreviaRef = useRef(null);
 
   const tipo = tipos.find(row => row.id === form.tipo_documento_id) || null;
   const tiposVisibles = useMemo(() => empresa?.multisociedad_habilitado
@@ -338,6 +383,53 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     finally { setEmitting(false); }
   };
 
+  const descargarPDF = async () => {
+    if (cotizacion?.estado !== 'emitido') return;
+    const contenedor = vistaPreviaRef.current;
+    const paginas = contenedor
+      ? [...contenedor.querySelectorAll('.document-preview-pages > .document-preview-sheet-frame > article.document-preview-sheet')]
+      : [];
+    if (!paginas.length) {
+      setError('La vista previa aún no está lista para generar el PDF. Inténtelo nuevamente en unos segundos.');
+      return;
+    }
+    setGenerandoPDF(true); setError('');
+    try {
+      await esperarRecursosVistaPrevia(paginas);
+      const [{ default:html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+      const documento = new jsPDF({
+        orientation:'portrait',
+        unit:'px',
+        format:'letter',
+        hotfixes:['px_scaling'],
+        compress:true,
+      });
+      for (const [index, pagina] of paginas.entries()) {
+        const captura = await html2canvas(pagina, {
+          backgroundColor:'#ffffff',
+          scale:2,
+          useCORS:true,
+          allowTaint:false,
+          logging:false,
+          imageTimeout:15000,
+        });
+        if (index > 0) documento.addPage('letter', 'portrait');
+        documento.addImage(captura.toDataURL('image/png'), 'PNG', 0, 0, 816, 1056, undefined, 'FAST');
+      }
+      documento.save(nombreArchivoCotizacion(cotizacion.numero));
+    } catch (err) {
+      const detalle = err?.name === 'SecurityError'
+        ? 'No se pudo capturar una imagen por una restricción CORS. Revise el recurso de la plantilla e inténtelo nuevamente.'
+        : mensajeError(err);
+      setError(`No se pudo generar el PDF: ${detalle}`);
+    } finally {
+      setGenerandoPDF(false);
+    }
+  };
+
   if (loading) return <div className="p-4 text-muted">Cargando Cotización Especial…</div>;
   if (!isSupabaseConfigured()) return <div className="p-4"><div className="alert alert-danger">Supabase no está configurado.</div></div>;
 
@@ -347,14 +439,14 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
   </>;
 
-  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}</div>
+  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantilla} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div>
     {error && <div className="alert alert-danger">{error}</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando plantilla…</div> : <div className="alert alert-danger">No se pudo cargar la plantilla de esta cotización.</div>}</div></section></div></div>;
+    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantilla ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando plantilla…</div> : <div className="alert alert-danger">No se pudo cargar la plantilla de esta cotización.</div>}</div></section></div></div>;
 
   return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}
     <div className="card"><div className="card-body">
