@@ -9,7 +9,7 @@ export const CXC_MASSIVE_SHEET = 'CxC';
 export const CXC_MASSIVE_HEADERS = [
   'ruc_cliente', 'razon_social', 'tipo_documento', 'numero',
   'fecha_emision', 'fecha_vencimiento', 'moneda', 'subtotal', 'igv', 'monto_total',
-  'monto_pagado', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
+  'monto_pagado', 'monto_detraccion', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
   'os_cliente_codigo', 'centro_beneficio_codigo', 'confirmar_exceso', 'glosa', 'notas',
 ];
 export const TIPOS_CXC_MASIVA = ['Factura', 'Boleta'];
@@ -96,7 +96,7 @@ export async function descargarPlantillaCxcMasiva(supabase, empresaId, empresaNo
   const data = XLSX.utils.aoa_to_sheet([CXC_MASSIVE_HEADERS, [
     '20123456789', 'Cliente Ejemplo S.A.C.', 'Factura', 'F001-000123',
     new Date().toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), 'PEN', '1000.00', '180.00', '1180.00',
-    '0.00', '', '', '', '', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
+    '0.00', '0.00', '', '', '', '', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
   ]]);
   data['!cols'] = CXC_MASSIVE_HEADERS.map(header => ({ wch: Math.max(16, header.length + 2) }));
 
@@ -110,9 +110,10 @@ export async function descargarPlantillaCxcMasiva(supabase, empresaId, empresaNo
     ['3', 'Con OS Cliente, el CEBE se hereda de la OS. Sin OS, centro_beneficio_codigo es obligatorio.'],
     ['4', 'El CEBE debe estar activo y vigente para fecha_emision; fechas nulas son extremos abiertos.'],
     ['5', 'El monto no puede exceder el saldo de la OS salvo confirmar_exceso=SI; en ese caso el saldo queda en cero.'],
-    ['6', 'Si monto_pagado es mayor a cero, fecha_cobro es obligatoria y debe quedar saldo pendiente.'],
-    ['7', 'La retencion SUNAT se consulta en vivo desde la cuenta del cliente; el saldo CxC se calcula sobre el neto cobrable.'],
-    ['8', 'Cliente inexistente por RUC: se crea automaticamente con RUC y razon social.'],
+    ['6', 'Si monto_pagado o monto_detraccion es mayor a cero, fecha_cobro es obligatoria y debe quedar saldo pendiente.'],
+    ['7', 'monto_detraccion genera un segundo cobro con medio de pago Detraccion; monto_pagado es el depósito neto en la cuenta habitual.'],
+    ['8', 'La retencion SUNAT se consulta en vivo desde la cuenta del cliente; el saldo CxC se calcula sobre el neto cobrable.'],
+    ['9', 'Cliente inexistente por RUC: se crea automaticamente con RUC y razon social.'],
     [], ['Valores permitidos de tipo_documento', ...TIPOS_CXC_MASIVA], [],
     ['CEBEs activos al momento de la descarga'], ['Codigo', 'Nombre', 'Fecha inicio', 'Fecha fin'],
     ...(cebes || []).map(c => [c.codigo, c.nombre, c.fecha_inicio || '', c.fecha_fin || '']),
@@ -166,6 +167,7 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     const igv = numero(source.igv);
     const monto_total = numero(source.monto_total);
     const monto_pagado = numero(source.monto_pagado);
+    const monto_detraccion = numero(source.monto_detraccion);
     const os_cliente_codigo = normalizarCodigoCxc(source.os_cliente_codigo);
     const centro_beneficio_codigo = normalizarCodigoCxc(source.centro_beneficio_codigo);
     const os = os_cliente_codigo ? osPorCodigo.get(os_cliente_codigo) : null;
@@ -186,10 +188,11 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     if (!fecha_vencimiento) errores.push('Fecha de vencimiento invalida: usa AAAA-MM-DD.');
     if (fecha_emision && fecha_vencimiento && fecha_vencimiento < fecha_emision) errores.push('Fecha de vencimiento no puede ser anterior a emision.');
     if (!['PEN', 'USD'].includes(moneda)) errores.push('Moneda invalida: usa PEN o USD.');
-    if (![subtotal, igv, monto_total, monto_pagado].every(Number.isFinite) || subtotal < 0 || igv < 0 || monto_total <= 0 || monto_pagado < 0) errores.push('Importes invalidos.');
+    if (![subtotal, igv, monto_total, monto_pagado, monto_detraccion].every(Number.isFinite) || subtotal < 0 || igv < 0 || monto_total <= 0 || monto_pagado < 0 || monto_detraccion < 0) errores.push('Importes invalidos.');
     if (Number.isFinite(subtotal) && Number.isFinite(igv) && Number.isFinite(monto_total) && Math.abs((subtotal + igv) - monto_total) > 0.01) errores.push('Monto total debe coincidir con subtotal mas IGV.');
-    if (monto_pagado >= monto_total) errores.push('Solo se permiten saldos pendientes: monto_pagado debe ser menor que monto_total.');
-    if (monto_pagado > 0 && !fecha_cobro) errores.push('Fecha de cobro obligatoria para pago parcial.');
+    if (monto_detraccion > 0 && monto_pagado <= 0) errores.push('Monto pagado debe incluir el depósito neto cuando se informa monto_detraccion.');
+    if ((monto_pagado + monto_detraccion) >= monto_total) errores.push('Solo se permiten saldos pendientes: monto_pagado más monto_detraccion debe ser menor que monto_total.');
+    if ((monto_pagado + monto_detraccion) > 0 && !fecha_cobro) errores.push('Fecha de cobro obligatoria para pago parcial.');
 
     if (os_cliente_codigo) {
       if (!os) errores.push(`OS Cliente inexistente: "${os_cliente_codigo}".`);
@@ -222,7 +225,7 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     }
     return {
       ...source, _fila: index + 2, ruc_cliente, razon_social, tipo_documento: tipo_documento?.toLowerCase() || texto(source.tipo_documento),
-      numero: numeroDocumento, fecha_emision, fecha_vencimiento, fecha_cobro, moneda, subtotal, igv, monto_total, monto_pagado,
+      numero: numeroDocumento, fecha_emision, fecha_vencimiento, fecha_cobro, moneda, subtotal, igv, monto_total, monto_pagado, monto_detraccion,
       os_cliente_codigo, centro_beneficio_codigo, _errores: errores, _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
     };
   }).map(row => {
@@ -248,7 +251,7 @@ export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase,
           empresa_id: empresaId, ruc_cliente: row.ruc_cliente, razon_social: row.razon_social,
           tipo_documento: row.tipo_documento, numero: row.numero, fecha_emision: row.fecha_emision,
           fecha_vencimiento: row.fecha_vencimiento, moneda: row.moneda, subtotal: row.subtotal, igv: row.igv,
-          monto_total: row.monto_total, monto_pagado: row.monto_pagado, fecha_cobro: row.fecha_cobro || null,
+          monto_total: row.monto_total, monto_pagado: row.monto_pagado, monto_detraccion: row.monto_detraccion, fecha_cobro: row.fecha_cobro || null,
           medio_pago: row.medio_pago || null, cuenta_bancaria: row.cuenta_bancaria || null, numero_operacion: row.numero_operacion || null,
           os_cliente_codigo: row.os_cliente_codigo || null, centro_beneficio_codigo: row.centro_beneficio_codigo || null,
           confirmar_exceso: row.confirmar_exceso || null, glosa: row.glosa || null, notas: row.notas || null,
@@ -258,7 +261,8 @@ export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase,
       if (error) throw error;
       resultado.creadas++;
       if (data?.cuenta_creada) resultado.clientesCreados++;
-      if (data?.cobro) resultado.cobrosRegistrados++;
+      const cobros = data?.cobros || (data?.cobro ? [data.cobro] : []);
+      resultado.cobrosRegistrados += cobros.length;
       resultado.registros.push(data);
       resultado.filas.push({ ...row, _estado: 'CREADA', _resultado: data });
     } catch (error) {
