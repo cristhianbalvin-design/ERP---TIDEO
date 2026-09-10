@@ -18,6 +18,8 @@ const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura 
     : opciones
 );
 
+const etiquetaOT = (ot) => ot?.numero || ot?.codigo || ot?.codigo_ot || 'OT sin código';
+
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
   { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package'   },
@@ -233,9 +235,24 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (k === 'cuenta_bancaria_id' || k === 'metodo_pago' || k === 'ya_pagado') setErrCuentaPago(false);
   };
 
+  const seleccionarSociedad = (sociedadId) => {
+    setForm(prev => {
+      const cecoSeleccionado = (centrosCosto || []).find(ceco => ceco.id === prev.centro_costo_id);
+      const otSeleccionada = (ots || []).find(ot => ot.id === prev.ot_vinc_id);
+      return {
+        ...prev,
+        sociedad_id: sociedadId,
+        centro_costo_id: sociedadId && cecoSeleccionado?.sociedad_id !== sociedadId ? '' : prev.centro_costo_id,
+        ot_vinc_id: sociedadId && otSeleccionada?.sociedad_id !== sociedadId ? '' : prev.ot_vinc_id,
+      };
+    });
+    setErrCeco(false);
+  };
+
+  const sociedadFiltroEgreso = form.sociedad_id || sociedadIdEscrituraEgreso;
   const cecos = filtrarOpcionesPorSociedadEscritura(
     (centrosCosto || []).filter(c => c.estado === 'activo'),
-    sociedadIdEscrituraEgreso,
+    sociedadFiltroEgreso,
   );
   const otsActivas = filtrarOpcionesPorSociedadEscritura(
     (ots || []).filter(o => !['cerrada', 'anulada'].includes(o.estado)),
@@ -251,7 +268,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const destinoSociedadEgreso = resolverSociedadDestino({
     sociedades: sociedadesDisponibles,
     origenes: [
-      { seleccionado: Boolean(form.ot_vinc_id), sociedadId: otDestino?.sociedad_id || null, label: `La OT ${otDestino?.numero || otDestino?.codigo || form.ot_vinc_id || ''}`.trim() },
+      { seleccionado: Boolean(form.ot_vinc_id), sociedadId: otDestino?.sociedad_id || null, label: `La OT ${etiquetaOT(otDestino)}`.trim() },
       { seleccionado: Boolean(form.centro_costo_id), sociedadId: cecoDestino?.sociedad_id || null, label: `El CECO ${cecoDestino?.codigo || form.centro_costo_id || ''}`.trim() },
     ],
     mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino del egreso.',
@@ -500,6 +517,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         </div>
       )}
 
+      <SociedadFormField value={form.sociedad_id} onChange={seleccionarSociedad} />
+
       {/* CECO (obligatorio) */}
       <div className="input-group">
         <label>Centro de Costo <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -507,8 +526,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           className={`select${errCeco ? ' input-error' : ''}`}
           value={form.centro_costo_id}
           onChange={e => setF('centro_costo_id', e.target.value)}
+          disabled={empresa?.multisociedad_habilitado && !form.sociedad_id}
         >
-          <option value="">— Seleccionar CECO —</option>
+          <option value="">{empresa?.multisociedad_habilitado && !form.sociedad_id ? 'Selecciona primero una sociedad...' : '— Seleccionar CECO —'}</option>
           {cecos.map(c => (
             <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>
           ))}
@@ -520,15 +540,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         )}
       </div>
 
-      <SociedadFormField value={form.sociedad_id} onChange={value => setF('sociedad_id', value)} />
-
       {/* OT vinculada (opcional) */}
       <div className="input-group">
         <label>OT vinculada <span style={{ color: 'var(--fg-muted)', fontWeight: 400, fontSize: 11 }}>(opcional)</span></label>
         <select className="select" value={form.ot_vinc_id} onChange={e => setF('ot_vinc_id', e.target.value)}>
           <option value="">— Sin OT —</option>
           {otsActivas.map(o => (
-            <option key={o.id} value={o.id}>{o.codigo || o.id} {o.descripcion ? `— ${o.descripcion}` : ''}</option>
+            <option key={o.id} value={o.id}>{etiquetaOT(o)} {o.descripcion ? `— ${o.descripcion}` : ''}</option>
           ))}
         </select>
       </div>
@@ -805,7 +823,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Fecha',          form.fecha],
       ['Monto',          `${form.moneda} ${monto.toFixed(2)}${form.moneda !== 'PEN' ? ` (S/ ${montoPEN.toFixed(2)})` : ''}`],
       ['CECO',           cecoNombre],
-      form.ot_vinc_id ? ['OT vinculada', otsActivas.find(o => o.id === form.ot_vinc_id)?.codigo || form.ot_vinc_id] : null,
+      form.ot_vinc_id ? ['OT vinculada', etiquetaOT(otsActivas.find(o => o.id === form.ot_vinc_id))] : null,
       ['Estado pago',    form.ya_pagado ? 'Pagado' : 'Pendiente'],
       form.ya_pagado ? ['Método',    form.metodo_pago] : null,
       form.ya_pagado && form.metodo_pago !== 'Caja chica' ? ['Fecha de pago', form.fecha_pago || form.fecha] : null,
