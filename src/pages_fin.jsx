@@ -614,10 +614,6 @@ function CxC() {
         ), os)));
       }
       addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas, ${resultado.clientesCreados} clientes creados y ${resultado.cobrosRegistrados} cobros registrados.`);
-      // Los motivos de rechazo ya se muestran durante la validacion previa.
-      // Al concluir el lote se cierra el modal, incluso en una carga parcial.
-      setCxcImportRows([]);
-      setCxcImportResult(null);
     } catch (error) {
       addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
     } finally {
@@ -7525,10 +7521,6 @@ function CxP() {
       }
       if (resultado.proveedoresNuevos.length) setProveedores(prev => [...resultado.proveedoresNuevos, ...prev]);
       addNotificacion(`Carga finalizada: ${resultado.creadas} creadas, ${resultado.rechazadas} rechazadas, ${resultado.fallidas} fallidas.`);
-      // Los motivos de rechazo ya se muestran durante la validacion previa.
-      // Al concluir el lote se cierra el modal, incluso en una carga parcial.
-      setCxpImportRows([]);
-      setCxpImportResult(null);
     } catch (error) {
       addNotificacion(`No se pudo ejecutar la carga: ${error.message}`);
     } finally {
