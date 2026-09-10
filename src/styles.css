@@ -4241,6 +4241,9 @@ body {
 .document-preview-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding-top: 0; }
 .document-preview-block { margin: 0 0 10px; }
 .document-preview-block h4 { margin: 0 0 8px; font-size: 14px; color: #172033; }
+.document-preview-conditions-segment { margin: 0 0 14px; }
+.document-preview-conditions-segment:last-child { margin-bottom: 0; }
+.document-preview-conditions-message { color: #475569; font-size: 13px; font-style: italic; }
 .document-preview-sheet .rich-text-preview-content { line-height: 1.55; font-size: 13px; }
 .document-preview-sheet .rich-text-preview-content p { margin: 0 0 10px; }
 .document-preview-sheet .rich-text-preview-content ul,

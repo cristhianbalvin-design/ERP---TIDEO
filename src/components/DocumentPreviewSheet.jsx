@@ -3,6 +3,7 @@ import { normalizeRichTextDocument } from './RichTextEditor.jsx';
 import { DocumentPreviewRichText } from './DocumentPreviewRichText.jsx';
 import { renderTextoDocumental } from '../lib/variablesDocumentales.js';
 import { getDocumentRepeatSource, getRepeatSourceItems } from '../lib/documentRepeatSources.js';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 
 export const PREVIEW_SHEET_HEIGHT = 1056;
 export const PREVIEW_SHEET_VERTICAL_PADDING = 128;
@@ -31,6 +32,78 @@ export const previewPageCapacity = (pageIndex, encabezadoAlcance, pieAlcance, me
   const mostrarPie = pageIndex === 0 || pieAlcance === 'todas';
   return Math.max(80, PREVIEW_SHEET_HEIGHT - PREVIEW_SHEET_VERTICAL_PADDING - PREVIEW_BODY_TOP_PADDING - (mostrarEncabezado ? medidas.encabezado : 0) - (mostrarPie ? medidas.pie : 0));
 };
+
+const esBloqueCondicionesGenerales = bloque => bloque?.tipo_bloque === 'condiciones_generales';
+const tieneCondicionesMaterializadas = bloque => Array.isArray(bloque?.contenido_json?.segmentos);
+
+function useCondicionesGeneralesPublicadas(plantilla, bloques) {
+  const requiereResolucion = bloques.some(bloque => esBloqueCondicionesGenerales(bloque) && !tieneCondicionesMaterializadas(bloque));
+  const [estado, setEstado] = useState({ estado:'cargando', segmentos:[], mensaje:'' });
+
+  useEffect(() => {
+    if (!requiereResolucion) {
+      setEstado({ estado:'inactivo', segmentos:[], mensaje:'' });
+      return;
+    }
+    if (!isSupabaseConfigured() || !plantilla?.tipo_documento_id || !plantilla?.empresa_id) {
+      setEstado({ estado:'error', segmentos:[], mensaje:'No se pudo identificar la plantilla para resolver las condiciones generales.' });
+      return;
+    }
+    let activo = true;
+    setEstado({ estado:'cargando', segmentos:[], mensaje:'' });
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        let bibliotecaQuery = sb
+          .from('biblioteca_condiciones_generales')
+          .select('id')
+          .eq('empresa_id', plantilla.empresa_id)
+          .eq('tipo_documento_id', plantilla.tipo_documento_id)
+          .eq('estado', 'publicada')
+          .order('version', { ascending:false })
+          .limit(1);
+        bibliotecaQuery = plantilla.sociedad_id
+          ? bibliotecaQuery.eq('sociedad_id', plantilla.sociedad_id)
+          : bibliotecaQuery.is('sociedad_id', null);
+        const { data:bibliotecas, error:bibliotecaError } = await bibliotecaQuery;
+        if (bibliotecaError) throw bibliotecaError;
+        const biblioteca = bibliotecas?.[0];
+        if (!biblioteca) {
+          if (activo) setEstado({ estado:'sin_biblioteca', segmentos:[], mensaje:'No hay condiciones generales publicadas para este tipo de documento.' });
+          return;
+        }
+        const { data:segmentos, error:segmentosError } = await sb
+          .from('condiciones_generales_segmentos')
+          .select('id,titulo,contenido_json,contenido_texto_plano,orden')
+          .eq('condiciones_generales_id', biblioteca.id)
+          .eq('activo', true)
+          .order('orden');
+        if (segmentosError) throw segmentosError;
+        if (activo) setEstado((segmentos || []).length
+          ? { estado:'listo', segmentos:segmentos || [], mensaje:'' }
+          : { estado:'sin_segmentos', segmentos:[], mensaje:'La biblioteca publicada no tiene segmentos activos.' });
+      } catch (error) {
+        if (activo) setEstado({ estado:'error', segmentos:[], mensaje:'No se pudieron cargar las condiciones generales publicadas.' });
+      }
+    })();
+    return () => { activo = false; };
+  }, [requiereResolucion, plantilla?.empresa_id, plantilla?.sociedad_id, plantilla?.tipo_documento_id]);
+
+  return estado;
+}
+
+const bloquesConCondicionesResueltas = (bloques, condiciones) => bloques.map(bloque => {
+  if (!esBloqueCondicionesGenerales(bloque) || tieneCondicionesMaterializadas(bloque)) return bloque;
+  return {
+    ...bloque,
+    contenido_json:{
+      ...(bloque.contenido_json || {}),
+      segmentos:condiciones.segmentos,
+      estado_resolucion:condiciones.estado,
+      mensaje_resolucion:condiciones.mensaje,
+    },
+  };
+});
 
 const fallbackTable = () => ({ columnas:[{ id:'preview-column-1', titulo:'Columna 1', tipo:'texto', campo_origen:'' }], filas:[] });
 const normalizeTable = value => {
@@ -148,12 +221,24 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
   const hijos = orderDocumentPreviewBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
   const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
   const grupo = block.tipo_bloque === 'grupo_repetible' ? groupConfig(block) : null;
+  const condiciones = esBloqueCondicionesGenerales(block) ? block.contenido_json || {} : null;
   return <section ref={measurementRef} className="document-preview-block">
     {block.titulo && <h4>{block.titulo}</h4>}
     {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />}
     {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
+    {condiciones && <VistaCondicionesGenerales condiciones={condiciones} categoria={categoria} contexto={contexto} />}
   </section>;
+}
+
+function VistaCondicionesGenerales({ condiciones, categoria, contexto }) {
+  const segmentos = Array.isArray(condiciones.segmentos) ? condiciones.segmentos : [];
+  if (condiciones.estado_resolucion === 'cargando' || !condiciones.estado_resolucion) return <div className="document-preview-conditions-message">Cargando condiciones generales…</div>;
+  if (condiciones.estado_resolucion !== 'listo') return <div className="document-preview-conditions-message">{condiciones.mensaje_resolucion || 'No se pudieron cargar las condiciones generales publicadas.'}</div>;
+  return <div className="document-preview-conditions">{segmentos.map(segmento => <section key={segmento.id || segmento.orden} className="document-preview-conditions-segment">
+    {segmento.titulo && <h4>{segmento.titulo}</h4>}
+    <DocumentPreviewRichText value={segmento.contenido_json} categoria={categoria} contexto={contexto} />
+  </section>)}</div>;
 }
 
 function GroupHeading({ unit, categoria, contexto, continuation = false, measurementRef = null }) {
@@ -247,7 +332,9 @@ const measureNodeHeight = node => {
 
 // Sin contexto, conserva los tokens literales del editor administrativo.
 export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cotizacion', contexto = null, zoom = 100, onZoom = () => {}, measurementOnly = false, onMeasurementsChange }) {
-  const unidades = useMemo(() => createDocumentPreviewFlowUnits(bloques, categoria, contexto), [bloques, categoria, contexto]);
+  const condicionesGenerales = useCondicionesGeneralesPublicadas(plantilla, bloques);
+  const bloquesVistaPrevia = useMemo(() => bloquesConCondicionesResueltas(bloques, condicionesGenerales), [bloques, condicionesGenerales]);
+  const unidades = useMemo(() => createDocumentPreviewFlowUnits(bloquesVistaPrevia, categoria, contexto), [bloquesVistaPrevia, categoria, contexto]);
   const measureSheetRef = useRef(null);
   const measureHeaderRef = useRef(null);
   const measureFooterRef = useRef(null);
@@ -258,7 +345,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const [medidas, setMedidas] = useState(null);
   const encabezadoAlcance = normalizedPreviewScope(plantilla?.encabezado_alcance);
   const pieAlcance = normalizedPreviewScope(plantilla?.pie_alcance);
-  const measurementKey = useMemo(() => previewMeasurementKey(plantilla, bloques, contexto, categoria), [plantilla, bloques, contexto, categoria]);
+  const measurementKey = useMemo(() => previewMeasurementKey(plantilla, bloquesVistaPrevia, contexto, categoria), [plantilla, bloquesVistaPrevia, contexto, categoria]);
   const titleMeasurements = useMemo(() => unidades.filter(unit => isRepeatUnit(unit) && unit.block.titulo).filter((unit, index, list) => list.findIndex(item => item.groupKey === unit.groupKey) === index), [unidades]);
 
   useLayoutEffect(() => {
@@ -315,7 +402,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
 
   const medicion = <div className="document-preview-measure" aria-hidden="true"><article ref={measureSheetRef} className="document-preview-sheet">
     <header ref={measureHeaderRef} className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} categoria={categoria} contexto={contexto} /></header>
-    <main className="document-preview-body">{unidades.filter(unit => unit.kind !== 'repeat-table-row').map(unit => <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloques} categoria={categoria} contexto={contexto} />)}<MedicionTablasRepetidas unidades={unidades} categoria={categoria} contexto={contexto} measureUnitRefs={measureUnitRefs} measureTableHeaderRefs={measureTableHeaderRefs} measureTableWrapRefs={measureTableWrapRefs} />{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}</main>
+    <main className="document-preview-body">{unidades.filter(unit => unit.kind !== 'repeat-table-row').map(unit => <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloquesVistaPrevia} categoria={categoria} contexto={contexto} />)}<MedicionTablasRepetidas unidades={unidades} categoria={categoria} contexto={contexto} measureUnitRefs={measureUnitRefs} measureTableHeaderRefs={measureTableHeaderRefs} measureTableWrapRefs={measureTableWrapRefs} />{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}</main>
     <footer ref={measureFooterRef} className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} categoria={categoria} contexto={contexto} /></footer>
   </article></div>;
 
@@ -329,7 +416,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
       const mostrarPie = index === 0 || pieAlcance === 'todas';
       return <div key={`pagina-${index}`} className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label={`Vista previa de documento, página ${index + 1}`}>
         {mostrarEncabezado && <header className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} categoria={categoria} contexto={contexto} /></header>}
-        <main className="document-preview-body"><VistaPaginaFlujo entries={pagina} bloques={bloques} categoria={categoria} contexto={contexto} /></main>
+        <main className="document-preview-body"><VistaPaginaFlujo entries={pagina} bloques={bloquesVistaPrevia} categoria={categoria} contexto={contexto} /></main>
         {mostrarPie && <footer className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} categoria={categoria} contexto={contexto} /></footer>}
       </article></div>;
     })}</div>{medicion}</div>

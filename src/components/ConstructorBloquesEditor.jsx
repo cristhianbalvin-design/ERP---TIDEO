@@ -34,12 +34,14 @@ const plainTextForBlock = block => {
     const table = normalizeTable(block.contenido_json);
     return table.filas.map(row => table.columnas.map(column => column.tipo === 'check' ? (row.valores[column.id] ? 'Sí' : 'No') : row.valores[column.id] || '').join(' | ')).join('\n');
   }
+  if (block.tipo_bloque === 'condiciones_generales') return '';
   return [block.contenido_json?.fuente_repeticion || '', block.contenido_json?.titulo_item || ''].filter(Boolean).join('\n');
 };
 
 const contentForType = type => {
   if (type === 'tabla') return emptyTable();
   if (type === 'grupo_repetible') return emptyGroup();
+  if (type === 'condiciones_generales') return {};
   return normalizeRichTextDocument(null);
 };
 
@@ -52,6 +54,8 @@ const blockPayload = (block, plantillaId, parentId = block.bloque_padre_id || nu
     ? normalizeRichTextDocument(block.contenido_json)
     : block.tipo_bloque === 'tabla'
       ? normalizeTable(block.contenido_json)
+      : block.tipo_bloque === 'condiciones_generales'
+        ? {}
       : block.contenido_json || contentForType(block.tipo_bloque),
   contenido_texto_plano: plainTextForBlock(block),
   orden: Number(block.orden || 1),
@@ -137,12 +141,13 @@ function AvisoBloqueExcedido({ alFinal = false }) {
 }
 
 function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
-  const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible' }[block.tipo_bloque] || block.tipo_bloque;
+  const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible', condiciones_generales:'Condiciones Generales' }[block.tipo_bloque] || block.tipo_bloque;
+  const esCondicionesGenerales = block.tipo_bloque === 'condiciones_generales';
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
   return <div style={{border:'1px solid var(--border)', borderRadius:8, padding:12, marginBottom:10, background:depth ? 'var(--bg-alt)' : undefined}}>
     <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}>
       <strong style={{minWidth:28}}>#{block.orden}</strong><span className="badge badge-cyan">{typeLabel}</span>
-      <input className="input" placeholder="Título del bloque (opcional)" value={block.titulo || ''} disabled={disabled} onChange={event => onChange({ titulo:event.target.value })} style={{flex:'1 1 220px'}} />
+      <input className="input" placeholder="Título del bloque (opcional)" value={block.titulo || ''} disabled={disabled || esCondicionesGenerales} onChange={event => onChange({ titulo:event.target.value })} style={{flex:'1 1 220px'}} />
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
     {isOversized && <AvisoBloqueExcedido />}
@@ -151,6 +156,7 @@ function BloqueCard({ block, index, total, depth, children, categoria, disabled,
       {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} repeatFields={repeatFields} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
+      {esCondicionesGenerales && <div className="alert alert-info" style={{margin:0}}>Solo lectura: la Vista Previa usa la biblioteca publicada vigente del tipo de documento.</div>}
     </div>
     {isOversized && <AvisoBloqueExcedido alFinal />}
   </div>;
@@ -166,7 +172,7 @@ function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBl
   const decorateChildren = block => Object.assign(orderBlocks(allBlocks.filter(item => item.bloque_padre_id === block.id)), { _all:allBlocks, _savingId:blocks._savingId, _savedId:blocks._savedId });
   return <div style={{marginTop:10}}>
     {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
-    {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
+    {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'condiciones_generales'); setPickerOpen(false); }}>Condiciones Generales</button></>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
   </div>;
 }
 
