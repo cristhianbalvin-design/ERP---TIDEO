@@ -1,4 +1,9 @@
 import * as XLSX from 'xlsx';
+import {
+  TAX_ID_EXTRANJERO_MAX_LENGTH,
+  TAX_ID_EXTRANJERO_MIN_LENGTH,
+  TIPO_DOCUMENTO_TAX_ID_EXTRANJERO,
+} from '../lib/formValidators.js';
 
 export const CXC_MASSIVE_SHEET = 'CxC';
 export const CXC_MASSIVE_HEADERS = [
@@ -11,6 +16,7 @@ export const TIPOS_CXC_MASIVA = ['Factura', 'Boleta'];
 
 const texto = value => String(value ?? '').trim();
 export const normalizarRucCxc = value => texto(value).replace(/\D/g, '');
+export const normalizarIdentificadorClienteCxc = value => texto(value).toUpperCase();
 export const normalizarCodigoCxc = value => texto(value).toUpperCase();
 export const normalizarNumeroCxc = value => texto(value).replace(/\s+/g, ' ').toLowerCase();
 
@@ -65,7 +71,7 @@ export const huellaDuplicadoCxc = ({ numero }) => normalizarNumeroCxc(numero);
 
 export async function cargarCatalogosCxcMasivo(supabase, empresaId) {
   const [cuentasR, cebeR, osR, facturasR] = await Promise.all([
-    supabase.from('cuentas').select('id,ruc,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
+    supabase.from('cuentas').select('id,ruc,tipo_documento,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
     supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('facturas').select('id,numero').eq('empresa_id', empresaId),
@@ -140,13 +146,15 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
   const cebesPorCodigo = new Map((catalogos.centrosBeneficio || []).map(c => [normalizarCodigoCxc(c.codigo), c]));
   const osPorCodigo = new Map((catalogos.osClientes || []).map(os => [normalizarCodigoCxc(os.numero), os]));
   const cuentasPorRuc = new Map((catalogos.cuentas || []).map(c => [normalizarRucCxc(c.ruc), c]));
+  const cuentasPorIdentificador = new Map((catalogos.cuentas || []).map(c => [normalizarIdentificadorClienteCxc(c.ruc), c]));
   const cebePorId = new Map((catalogos.centrosBeneficio || []).map(c => [c.id, c]));
   const existentes = new Set((catalogos.facturas || []).map(huellaDuplicadoCxc));
   const enArchivo = new Map();
 
   return (rows || []).map((source, index) => {
     const errores = [];
-    const ruc_cliente = normalizarRucCxc(source.ruc_cliente);
+    const identificador_cliente = texto(source.ruc_cliente);
+    const rucNormalizado = normalizarRucCxc(identificador_cliente);
     const razon_social = texto(source.razon_social);
     const tipo_documento = TIPOS_CXC_MASIVA.find(tipo => mismoTexto(tipo, source.tipo_documento));
     const numeroDocumento = texto(source.numero);
@@ -161,9 +169,16 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     const os_cliente_codigo = normalizarCodigoCxc(source.os_cliente_codigo);
     const centro_beneficio_codigo = normalizarCodigoCxc(source.centro_beneficio_codigo);
     const os = os_cliente_codigo ? osPorCodigo.get(os_cliente_codigo) : null;
-    const cuenta = cuentasPorRuc.get(ruc_cliente);
+    const cuenta = cuentasPorIdentificador.get(normalizarIdentificadorClienteCxc(identificador_cliente))
+      || cuentasPorRuc.get(rucNormalizado);
+    const esTaxIdExtranjero = cuenta?.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
+    const ruc_cliente = esTaxIdExtranjero ? identificador_cliente : rucNormalizado;
 
-    if (!/^\d{11}$/.test(ruc_cliente)) errores.push('RUC del cliente invalido: debe tener 11 digitos.');
+    if (esTaxIdExtranjero) {
+      if (identificador_cliente.length < TAX_ID_EXTRANJERO_MIN_LENGTH || identificador_cliente.length > TAX_ID_EXTRANJERO_MAX_LENGTH) {
+        errores.push(`Tax ID extranjero invalido: usa entre ${TAX_ID_EXTRANJERO_MIN_LENGTH} y ${TAX_ID_EXTRANJERO_MAX_LENGTH} caracteres.`);
+      }
+    } else if (!/^\d{11}$/.test(ruc_cliente)) errores.push('RUC del cliente invalido: debe tener 11 digitos.');
     if (!razon_social) errores.push('Razon social del cliente obligatoria.');
     if (!tipo_documento) errores.push(`Tipo de documento invalido. Valores permitidos: ${TIPOS_CXC_MASIVA.join(', ')}.`);
     if (!numeroDocumento) errores.push('Numero de comprobante obligatorio.');
