@@ -3975,6 +3975,7 @@ function SolicitudesMovilView() {
   const [form, setForm] = useState({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
   const [formHE, setFormHE] = useState({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
   const [saving, setSaving] = useState(false);
+  const [solicitudError, setSolicitudError] = useState('');
 
   const todosPersonal = useMemo(() => [
     ...personalOperativo.map(p => ({ ...p, _tipo: 'operativo' })),
@@ -4034,6 +4035,7 @@ function SolicitudesMovilView() {
       return;
     }
     setSaving(true);
+    setSolicitudError('');
     try {
       const esAutoAprobacion = supervisor?.id === personalActual.id || (supervisor?.auth_user_id && supervisor?.auth_user_id === (personalActual.auth_user_id || personalActual.user_id));
       const nueva = await solicitudesRrhhService.crearSolicitud(empresa.id, {
@@ -4055,7 +4057,9 @@ function SolicitudesMovilView() {
       setForm({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
       setScreen('home');
     } catch (err) {
-      addNotificacion('Error: ' + err.message);
+      const mensajeError = err?.message || 'No se pudo enviar la solicitud. Inténtalo nuevamente.';
+      setSolicitudError(mensajeError);
+      addNotificacion('Error: ' + mensajeError);
     } finally {
       setSaving(false);
     }
@@ -4256,6 +4260,11 @@ function SolicitudesMovilView() {
                 <div style={{marginTop:8, color:'var(--fg-muted)'}}>{form.motivo}</div>
               </div>
             </div>
+            {solicitudError && (
+              <div className="alert alert-danger" role="alert" style={{marginBottom:12}}>
+                {solicitudError}
+              </div>
+            )}
             <div className="row" style={{gap:10}}>
               <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPaso(3)}>{I.chevLeft} Atrás</button>
               <button className="btn btn-primary" style={{flex:2}} onClick={enviarSolicitud} disabled={saving}>
