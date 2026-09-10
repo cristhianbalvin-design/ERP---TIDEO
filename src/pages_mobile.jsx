@@ -4150,11 +4150,13 @@ function SolicitudesMovilView() {
   // ── Pantalla nueva solicitud — paso a paso ───────────────────────────────────
   if (screen === 'nueva') {
     const tiposOrdenados = Object.entries(SOL_TIPO_LABELS_M);
+    const totalPasos = reqDoc ? 4 : 3;
+    const pasoVisible = reqDoc ? paso : Math.min(paso, totalPasos);
     return (
       <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
         <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
           <button className="btn btn-secondary btn-sm" onClick={() => setScreen('home')}>{I.chevLeft}</button>
-          <div style={{fontWeight:700, fontSize:15}}>Nueva solicitud · Paso {paso} de {reqDoc ? 4 : 3}</div>
+          <div style={{fontWeight:700, fontSize:15}}>Nueva solicitud · Paso {pasoVisible} de {totalPasos}</div>
         </div>
 
         {paso === 1 && (
