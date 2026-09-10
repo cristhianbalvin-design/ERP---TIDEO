@@ -9,7 +9,19 @@ import { campanasService } from './services/campanasService.js';
 import { maestrosService } from './services/maestrosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
-import { PHONE_PATTERN, RUC_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import {
+  PHONE_PATTERN,
+  RUC_PATTERN,
+  TIPO_DOCUMENTO_RUC,
+  TIPO_DOCUMENTO_TAX_ID_EXTRANJERO,
+  TAX_ID_EXTRANJERO_MAX_LENGTH,
+  isValidDocumentoCliente,
+  isValidPhone,
+  isValidRuc,
+  sanitizeDocumentoCliente,
+  sanitizePhone,
+  sanitizeRuc,
+} from './lib/formValidators.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
@@ -898,6 +910,7 @@ function Leads() {
       nombre_comercial: modalConvertir.empresa_contacto || '',
       razon_social: modalConvertir.razon_social || modalConvertir.empresa_contacto || '',
       ruc: modalConvertir.ruc || '',
+      tipo_documento: TIPO_DOCUMENTO_RUC,
       industria: modalConvertir.industria || '',
       fuente: modalConvertir.fuente || '',
       contacto_nombre: modalConvertir.nombre || '',
@@ -1767,12 +1780,13 @@ function Leads() {
       )}
 
       {modalConvertir && convForm && (() => {
-        const rucError = !isValidRuc(convForm.ruc) || !convForm.ruc;
+        const esTaxIdExtranjero = convForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
+        const rucError = !convForm.ruc || !isValidDocumentoCliente(convForm.ruc, convForm.tipo_documento);
         const telError = !isValidPhone(convForm.contacto_telefono) || !convForm.contacto_telefono;
         const canSubmit =
           convForm.nombre_comercial.trim() &&
           convForm.razon_social.trim() &&
-          convForm.ruc && isValidRuc(convForm.ruc) &&
+          convForm.ruc && isValidDocumentoCliente(convForm.ruc, convForm.tipo_documento) &&
           convForm.fuente &&
           convForm.industria &&
           convForm.contacto_nombre.trim() &&
@@ -1812,11 +1826,20 @@ function Leads() {
                     </div>
                     <div className="grid-2">
                       <div className="input-group">
-                        <label>RUC{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>(11 dígitos, inicia en 1 o 2)</span></label>
-                        <input className="input" value={convForm.ruc} maxLength={11}
+                        <label>Tipo de documento{req}</label>
+                        <select className="select" value={convForm.tipo_documento}
+                          onChange={e=>setConvForm(p=>({...p,tipo_documento:e.target.value}))}>
+                          <option value={TIPO_DOCUMENTO_RUC}>RUC</option>
+                          <option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option>
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>{esTaxIdExtranjero ? 'Tax ID extranjero' : 'RUC'}{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>{esTaxIdExtranjero ? '(3 a 30 caracteres)' : '(11 dígitos, inicia en 1 o 2)'}</span></label>
+                        <input className="input" value={convForm.ruc} maxLength={esTaxIdExtranjero ? TAX_ID_EXTRANJERO_MAX_LENGTH : 11}
+                          inputMode={esTaxIdExtranjero ? 'text' : 'numeric'} pattern={esTaxIdExtranjero ? undefined : RUC_PATTERN}
                           style={rucError ? {borderColor:'var(--danger)'} : {}}
-                          onChange={e=>setConvForm(p=>({...p,ruc:sanitizeRuc(e.target.value)}))}/>
-                        {rucError && <span style={{fontSize:11,color:'var(--danger)'}}>11 dígitos, inicia con 1 o 2</span>}
+                          onChange={e=>setConvForm(p=>({...p,ruc:sanitizeDocumentoCliente(e.target.value, p.tipo_documento)}))}/>
+                        {rucError && <span style={{fontSize:11,color:'var(--danger)'}}>{esTaxIdExtranjero ? 'Ingresa entre 3 y 30 caracteres.' : '11 dígitos, inicia con 1 o 2'}</span>}
                       </div>
                       <div className="input-group">
                         <label>Fuente{req}</label>

@@ -166,6 +166,7 @@ export async function persistirCuenta(supabase, empresaId, cuenta) {
     nombre_comercial: cuenta.nombre_comercial || cuenta.razon_social || 'Sin nombre',
     razon_social: cuenta.razon_social || null,
     ruc: cuenta.ruc || null,
+    tipo_documento: cuenta.tipo_documento || 'RUC',
     tipo: cuenta.tipo || 'prospecto',
     industria: cuenta.industria || null,
     tamano: cuenta.tamano || null,
@@ -197,7 +198,7 @@ export async function persistirCuenta(supabase, empresaId, cuenta) {
 
 export async function actualizarCuenta(supabase, empresaId, cuentaId, datos) {
   const allowed = [
-    'nombre_comercial', 'razon_social', 'ruc', 'tipo', 'industria', 'tamano',
+    'nombre_comercial', 'razon_social', 'ruc', 'tipo_documento', 'tipo', 'industria', 'tamano',
     'telefono', 'email', 'direccion', 'responsable_comercial', 'responsable_cs',
     'fuente_origen', 'condicion_pago', 'limite_credito', 'moneda',
     'riesgo_financiero', 'riesgo_churn', 'health_score', 'saldo_cxc',

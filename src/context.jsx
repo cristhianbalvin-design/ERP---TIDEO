@@ -2172,7 +2172,8 @@ export function AppProvider({ children }) {
       direccion: lead.direccion || 'Pendiente',
       telefono: lead.telefono,
       email: lead.email,
-      ruc: rucLead || 'Pendiente'
+      ruc: rucLead || 'Pendiente',
+      tipo_documento: datosConversion.tipo_documento || 'RUC',
     };
 
     // Deduplicar contacto por email dentro de la misma cuenta
