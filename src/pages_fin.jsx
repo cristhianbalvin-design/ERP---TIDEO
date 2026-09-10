@@ -5315,7 +5315,7 @@ function Facturacion() {
                 <th>F. Vencimiento</th>
                 <th>Estado</th>
                 <th style={{textAlign:'center',width:64}}>Docs</th>
-                <th></th>
+                <th style={{textAlign:'center',width:92}}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -5374,7 +5374,28 @@ function Facturacion() {
                       </span>
                     </td>
                     <td onClick={e => e.stopPropagation()}>
-                      <button className="icon-btn" title="Ver detalle" onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>{I.eye}</button>
+                      <div className="factura-table-actions">
+                        {puedeEditarFacturacion && f.estado !== 'anulada' && (
+                          <button
+                            type="button"
+                            className="factura-table-action"
+                            title="Subir archivos"
+                            aria-label={`Subir archivos a ${f.numero || 'la factura'}`}
+                            onClick={() => { setSelFac(f.id); setFichaTab('archivos'); }}
+                          >
+                            {I.upload}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="factura-table-action"
+                          title="Ver detalle"
+                          aria-label={`Ver detalle de ${f.numero || 'la factura'}`}
+                          onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}
+                        >
+                          {I.eye}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

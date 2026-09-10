@@ -1452,6 +1452,24 @@ body {
 .num { font-variant-numeric: tabular-nums; font-family: 'DM Sans', sans-serif; }
 .tbl input.num { padding-left: 8px; padding-right: 8px; }
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.factura-table-actions { display:flex; justify-content:center; gap:6px; }
+.factura-table-action {
+  width:32px;
+  height:32px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--fg);
+  cursor:pointer;
+  transition:background 0.14s, border-color 0.14s, color 0.14s;
+}
+.factura-table-action:hover { background:var(--cyan-lt); border-color:var(--cyan); color:var(--cyan-dk); }
+.dark .factura-table-action:hover { color:var(--cyan); }
+.factura-table-action svg { width:17px; height:17px; stroke-width:1.9; }
 
 /* Usuarios: el contenido ancho se contiene dentro de esta tabla, no en el viewport. */
 .users-table-wrap {
