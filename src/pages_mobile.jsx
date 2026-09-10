@@ -3484,9 +3484,17 @@ function GerenciaView({ screen, setScreen }) {
           { icon: I.dollar, text: `${money(cxcVencida)} vencidos en cartera critica`, badge: 'Cobranza' },
           { icon: I.file, text: `${cotAprobar} cotizaciones requieren aprobacion`, badge: 'Comercial' },
           { icon: I.alert, text: '2 OTs con SLA en riesgo esta semana', badge: 'Operaciones' },
-          { icon: I.trend, text: 'Logistica Altiplano con health score critico', badge: 'CS' }
+          { icon: I.trend, text: 'Logistica Altiplano con health score critico', badge: 'CS' },
+          ...(bandejaSolicitudes.puedeAcceder && bandejaSolicitudes.solicitudesPendientes.length > 0
+            ? [{
+              icon: I.check,
+              text: `${bandejaSolicitudes.solicitudesPendientes.length} solicitud${bandejaSolicitudes.solicitudesPendientes.length === 1 ? '' : 'es'} de RRHH pendiente${bandejaSolicitudes.solicitudesPendientes.length === 1 ? '' : 's'} de aprobación`,
+              badge: 'RRHH',
+              onClick: () => setScreen('solicitudes_rrhh'),
+            }]
+            : [])
         ].map((a, i) => (
-          <div key={i} className="card row" style={{padding:12, gap:10}}>
+          <div key={i} className="card row" style={{padding:12, gap:10, cursor: a.onClick ? 'pointer' : undefined}} onClick={a.onClick}>
             <div className="kpi-icon orange" style={{position:'static',width:32,height:32}}>{a.icon}</div>
             <div style={{flex:1}}>
               <div style={{fontSize:12, fontWeight:600}}>{a.text}</div>
