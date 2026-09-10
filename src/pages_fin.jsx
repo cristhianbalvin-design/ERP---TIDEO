@@ -4825,31 +4825,6 @@ function Facturacion() {
         {/* Tab: Archivos */}
         {fichaTab === 'archivos' && (
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
-            {(f.archivo_pdf_url || f.archivo_zip_url) && (
-              <div className="card" style={{padding:0}}>
-                <div className="card-head">
-                  <h3>Archivos anteriores</h3>
-                  <span className="text-muted" style={{fontSize:11}}>Cargados antes del nuevo listado</span>
-                </div>
-                <div style={{padding:'0 16px'}}>
-                  {[
-                    { tipo:'pdf', nombre:'PDF de factura', url:f.archivo_pdf_url },
-                    { tipo:'zip', nombre:'ZIP de factura', url:f.archivo_zip_url },
-                  ].filter(archivo => archivo.url).map(archivo => (
-                    <div key={archivo.tipo} className="row" style={{justifyContent:'space-between',gap:10,padding:'10px 0',borderBottom:'1px solid var(--border-subtle)'}}>
-                      <div className="row" style={{gap:8,minWidth:0}}>
-                        <span style={{width:18,height:18,display:'inline-flex',color:'var(--cyan)'}}>{I.file}</span>
-                        <span style={{fontSize:13,fontWeight:700}}>{archivo.nombre}</span>
-                      </div>
-                      <div className="row" style={{gap:4,flexShrink:0}}>
-                        <button type="button" className="icon-btn" title={`Descargar ${archivo.nombre}`} onClick={() => window.open(archivo.url, '_blank', 'noopener,noreferrer')}>{I.download}</button>
-                        {puedeEditarFacturacion && <button type="button" className="icon-btn" title="Eliminar" style={{color:'var(--danger)'}} onClick={() => handleEliminarArchivoFac(f.id, archivo.tipo)}>{I.trash}</button>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             <FileUpload
               entidadTipo="facturas"
               entidadId={f.id}
@@ -4858,6 +4833,11 @@ function Facturacion() {
               descripcion={`Adjunto de la factura ${f.numero}`}
               multiple
               readOnly={!puedeEditarFacturacion || f.estado === 'anulada'}
+              adjuntosExternos={[
+                { id:'factura-pdf-historico', tipo:'pdf', nombre_original:'PDF de factura', categoria:'Archivo histórico', url:f.archivo_pdf_url, externo:true },
+                { id:'factura-zip-historico', tipo:'zip', nombre_original:'ZIP de factura', categoria:'Archivo histórico', url:f.archivo_zip_url, externo:true },
+              ].filter(adjunto => adjunto.url)}
+              onEliminarAdjuntoExterno={adjunto => handleEliminarArchivoFac(f.id, adjunto.tipo)}
             />
           </div>
         )}

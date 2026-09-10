@@ -15,6 +15,8 @@ export const FileUpload = forwardRef(function FileUpload({
   readOnly = false,
   soloImagenes = false,
   soloUltimo = false,
+  adjuntosExternos = [],
+  onEliminarAdjuntoExterno,
   onUploaded,
 }, ref) {
   const inputRef = useRef(null);
@@ -146,6 +148,10 @@ export const FileUpload = forwardRef(function FileUpload({
 
   const abrirAdjunto = async adjunto => {
     try {
+      if (adjunto.externo) {
+        if (adjunto.url) window.open(adjunto.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
       const url = await storageService.obtenerUrlAdjunto(adjunto);
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     } catch (openError) {
@@ -155,7 +161,9 @@ export const FileUpload = forwardRef(function FileUpload({
 
   const descargarAdjunto = async adjunto => {
     try {
-      const url = await storageService.obtenerUrlAdjunto(adjunto, 600, { download: true });
+      const url = adjunto.externo
+        ? adjunto.url
+        : await storageService.obtenerUrlAdjunto(adjunto, 600, { download: true });
       if (!url) return;
       const link = document.createElement('a');
       link.href = url;
@@ -172,8 +180,15 @@ export const FileUpload = forwardRef(function FileUpload({
     setDeletingId(adjunto.id);
     setError('');
     try {
-      await storageService.eliminarAdjunto(adjunto);
-      setAdjuntos(prev => prev.filter(item => item.id !== adjunto.id));
+      if (adjunto.externo) {
+        if (typeof onEliminarAdjuntoExterno !== 'function') {
+          throw new Error('No se puede eliminar este adjunto.');
+        }
+        await onEliminarAdjuntoExterno(adjunto);
+      } else {
+        await storageService.eliminarAdjunto(adjunto);
+        setAdjuntos(prev => prev.filter(item => item.id !== adjunto.id));
+      }
     } catch (deleteError) {
       setError(deleteError.message || 'No se pudo eliminar el adjunto.');
     } finally {
@@ -198,13 +213,16 @@ export const FileUpload = forwardRef(function FileUpload({
   ));
 
   const adjuntosVisibles = soloUltimo ? adjuntos.slice(0, 1) : adjuntos;
-  const adjuntoItems = adjuntosVisibles.map(adjunto => (
+  const todosLosAdjuntos = [...adjuntosVisibles, ...adjuntosExternos];
+  const adjuntoItems = todosLosAdjuntos.map(adjunto => (
     <div key={adjunto.id} className="row" style={{justifyContent:'space-between', gap:10, padding:'9px 0', borderBottom:'1px solid var(--border-subtle)'}}>
       <button type="button" className="btn btn-ghost" title="Abrir archivo" onClick={() => abrirAdjunto(adjunto)} style={{justifyContent:'flex-start', minWidth:0, padding:0}}>
         <span style={{width:18, height:18, display:'inline-flex'}}>{I.file}</span>
         <span style={{minWidth:0, textAlign:'left'}}>
           <span style={{display:'block', fontSize:13, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{adjunto.nombre_original}</span>
-          <span className="text-muted" style={{display:'block', fontSize:11}}>{storageService.formatoTamano(adjunto.tamano_bytes)} - {adjunto.categoria || 'adjunto'}</span>
+          <span className="text-muted" style={{display:'block', fontSize:11}}>
+            {[adjunto.tamano_bytes != null ? storageService.formatoTamano(adjunto.tamano_bytes) : null, adjunto.categoria || 'adjunto'].filter(Boolean).join(' - ')}
+          </span>
         </span>
       </button>
       <div className="row" style={{gap:4, flexShrink:0}}>
@@ -220,7 +238,7 @@ export const FileUpload = forwardRef(function FileUpload({
     </div>
   ));
 
-  const totalAdjuntos = adjuntosVisibles.length + pendingFiles.length;
+  const totalAdjuntos = todosLosAdjuntos.length + pendingFiles.length;
   const dropBorder = dragging ? '1px solid var(--cyan)' : '1px dashed var(--border)';
   const uploadButton = !deferUpload && pendingFiles.length ? (
     <button type="button" className="btn btn-secondary btn-sm" onClick={uploadPendingFiles} disabled={uploading || disabled}>
