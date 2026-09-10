@@ -166,6 +166,25 @@ export async function cargarSolicitudes(empresaId) {
   return data || [];
 }
 
+// Bandeja de jefe: la autorización y el alcance se resuelven en la RPC para
+// mantener la misma regla que aprobar_solicitud_rrhh (permiso o jefe efectivo).
+export async function listarSolicitudesPendientesAprobacion(empresaId) {
+  const vacio = { puede_acceder: false, permiso_generico: false, solicitudes: [] };
+  if (!empresaId || getDataMode() !== 'supabase') return vacio;
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.rpc('listar_solicitudes_rrhh_pendientes_aprobacion', {
+    p_empresa_id: empresaId,
+  });
+  if (error) throw error;
+
+  return {
+    puede_acceder: Boolean(data?.puede_acceder),
+    permiso_generico: Boolean(data?.permiso_generico),
+    solicitudes: Array.isArray(data?.solicitudes) ? data.solicitudes : [],
+  };
+}
+
 export async function crearSolicitud(empresaId, payload) {
   const {
     personal_id, personal_nombre, personal_tipo = 'operativo',

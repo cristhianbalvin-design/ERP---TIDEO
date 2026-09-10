@@ -3885,6 +3885,86 @@ function MiEspacioMobileView({ setScreen }) {
   );
 }
 
+// Estado y persistencia de la bandeja de aprobación. Se mantiene separado del
+// formulario del colaborador para poder montarlo desde perfiles de supervisión.
+function useSolicitudesAprobacionMovil({
+  empresaId,
+  setSolicitudes,
+  addNotificacion,
+  onCompletada,
+}) {
+  const [accionSolId, setAccionSolId] = useState(null);
+  const [accionTipo, setAccionTipo] = useState('');
+  const [accionComentario, setAccionComentario] = useState('');
+  const [accionSaving, setAccionSaving] = useState(false);
+  const [puedeAcceder, setPuedeAcceder] = useState(false);
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState([]);
+
+  // Las solicitudes RRHH llegan ya autorizadas y filtradas por la RPC 504.
+  useEffect(() => {
+    let activo = true;
+    if (!empresaId) {
+      setPuedeAcceder(false);
+      setSolicitudesPendientes([]);
+      return () => { activo = false; };
+    }
+
+    solicitudesRrhhService.listarSolicitudesPendientesAprobacion(empresaId)
+      .then((bandeja) => {
+        if (!activo) return;
+        setPuedeAcceder(bandeja.puede_acceder);
+        setSolicitudesPendientes(bandeja.solicitudes);
+      })
+      .catch(() => {
+        if (!activo) return;
+        setPuedeAcceder(false);
+        setSolicitudesPendientes([]);
+      });
+
+    return () => { activo = false; };
+  }, [empresaId]);
+
+  const ejecutarAccion = async () => {
+    if (!accionSolId) return;
+    if (accionTipo === 'rechazar_jefe' && !accionComentario.trim()) {
+      addNotificacion('El comentario es obligatorio.');
+      return;
+    }
+    setAccionSaving(true);
+    try {
+      let updated;
+      if (['aprobar_jefe', 'rechazar_jefe'].includes(accionTipo)) {
+        updated = await solicitudesRrhhService.procesarSolicitudRrhh(
+          accionSolId, empresaId, accionTipo, accionComentario,
+        );
+      }
+      if (updated) {
+        setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
+        setSolicitudesPendientes(prev => prev.filter(s => s.id !== updated.id));
+      }
+      addNotificacion('Acción aplicada.');
+      setAccionSolId(null);
+      setAccionTipo('');
+      setAccionComentario('');
+      onCompletada?.();
+    } catch (err) {
+      addNotificacion('Error: ' + err.message);
+    } finally {
+      setAccionSaving(false);
+    }
+  };
+
+  return {
+    accionSolId, setAccionSolId,
+    accionTipo, setAccionTipo,
+    accionComentario, setAccionComentario,
+    accionSaving,
+    puedeAcceder,
+    solicitudesPendientes,
+    ejecutarAccion,
+  };
+}
+
 function SolicitudesMovilView() {
   const { empresa, role, personalOperativo, personalAdmin, authUser, addNotificacion } = useApp();
   const [screen, setScreen] = useState('home');
@@ -3895,11 +3975,6 @@ function SolicitudesMovilView() {
   const [form, setForm] = useState({ tipo: 'vacaciones', fecha_inicio: new Date().toISOString().slice(0,10), fecha_fin: new Date().toISOString().slice(0,10), motivo: '', documento_url: '' });
   const [formHE, setFormHE] = useState({ fecha: new Date().toISOString().slice(0,10), horas_estimadas: 1, motivo: '' });
   const [saving, setSaving] = useState(false);
-  const [accionSolId, setAccionSolId] = useState(null);
-  const [accionIsHE, setAccionIsHE] = useState(false);
-  const [accionTipo, setAccionTipo] = useState('');
-  const [accionComentario, setAccionComentario] = useState('');
-  const [accionSaving, setAccionSaving] = useState(false);
 
   const todosPersonal = useMemo(() => [
     ...personalOperativo.map(p => ({ ...p, _tipo: 'operativo' })),
@@ -3926,21 +4001,6 @@ function SolicitudesMovilView() {
     return solicitudesRrhhService.diasHabilesLocal(form.fecha_inicio, form.fecha_fin);
   }, [form.fecha_inicio, form.fecha_fin]);
 
-  const subordinadosIds = useMemo(() => {
-    if (!personalActual) return [];
-    const uid = personalActual.id;
-    const authUid = personalActual.auth_user_id || personalActual.user_id;
-    return todosPersonal
-      .filter(p => (p.supervisor_id && p.supervisor_id === uid) || (p.jefe_user_id && authUid && p.jefe_user_id === authUid))
-      .map(p => p.id);
-  }, [personalActual, todosPersonal]);
-
-  const esJefe = subordinadosIds.length > 0;
-
-  const pendientesEquipo = useMemo(() => {
-    return solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id);
-  }, [solicitudes, subordinadosIds, personalActual]);
-
   useEffect(() => {
     if (!empresa?.id) return;
     solicitudesRrhhService.cargarSolicitudes(empresa.id).then(setSolicitudes).catch(() => {});
@@ -3957,12 +4017,6 @@ function SolicitudesMovilView() {
     solicitudes.filter(s => s.personal_id === personalActual?.id)
       .sort((a, b) => b.creado_en.localeCompare(a.creado_en))
   , [solicitudes, personalActual]);
-
-  const pendientesEquipoMixto = useMemo(() => {
-    const arr1 = solicitudes.filter(s => s.estado === 'enviada' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id).map(s => ({...s, _isHE: false}));
-    const arr2 = autorizacionesHE.filter(s => s.estado === 'pendiente' && subordinadosIds.includes(s.personal_id) && s.personal_id !== personalActual?.id).map(s => ({...s, _isHE: true, tipo: 'horas_extra'}));
-    return [...arr1, ...arr2];
-  }, [solicitudes, autorizacionesHE, subordinadosIds, personalActual]);
 
   const misSolicitudesMixtas = useMemo(() => {
     const arr1 = solicitudes.filter(s => s.personal_id === personalActual?.id).map(s => ({...s, _isHE: false}));
@@ -4038,36 +4092,6 @@ function SolicitudesMovilView() {
     }
   };
 
-  const ejecutarAccion = async () => {
-    if (!accionSolId) return;
-    if (accionTipo === 'rechazar_jefe' && !accionComentario.trim()) {
-      addNotificacion('El comentario es obligatorio.');
-      return;
-    }
-    setAccionSaving(true);
-    try {
-      let updated;
-      if (['aprobar_jefe', 'rechazar_jefe'].includes(accionTipo)) {
-        updated = await solicitudesRrhhService.procesarSolicitudRrhh(
-          accionSolId,
-          empresa.id,
-          accionTipo,
-          accionComentario,
-        );
-      }
-      if (updated) setSolicitudes(prev => prev.map(s => s.id === updated.id ? updated : s));
-      addNotificacion('Acción aplicada.');
-      setAccionSolId(null);
-      setAccionTipo('');
-      setAccionComentario('');
-      setScreen('home');
-    } catch (err) {
-      addNotificacion('Error: ' + err.message);
-    } finally {
-      setAccionSaving(false);
-    }
-  };
-
   const reqDoc = solicitudesRrhhService.requiereDocumento(form.tipo);
   const excedeSaldo = form.tipo === 'vacaciones' && diasHabiles > saldoVac.saldo && diasHabiles > 0;
 
@@ -4083,12 +4107,6 @@ function SolicitudesMovilView() {
           <div style={{fontSize:20, fontWeight:700, color:'var(--cyan)'}}>{saldoVac.saldo} días</div>
           <div style={{fontSize:10, color:'var(--fg-muted)'}}>{saldoVac.usados} usados de {saldoVac.disponibles}</div>
         </div>
-        {esJefe && pendientesEquipoMixto.length > 0 && (
-          <div style={{marginLeft:'auto', textAlign:'right'}}>
-            <div style={{fontSize:10, color:'var(--fg-muted)'}}>Pendientes de aprobar</div>
-            <span className="badge badge-orange" style={{fontSize:13, padding:'2px 10px'}}>{pendientesEquipoMixto.length}</span>
-          </div>
-        )}
       </div>
 
       <div className="row" style={{gap:10, marginBottom:14}}>
@@ -4099,36 +4117,6 @@ function SolicitudesMovilView() {
           {I.clock} Solicitar HE
         </button>
       </div>
-
-      {esJefe && pendientesEquipoMixto.length > 0 && (
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Pendientes de tu aprobación</div>
-          {pendientesEquipoMixto.map(sol => (
-            <div key={sol.id} className="card" style={{padding:12, marginBottom:8}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6}}>
-                <div>
-                  <div style={{fontWeight:600, fontSize:13}}>{sol.personal_nombre}</div>
-                  <div style={{fontSize:12, color:'var(--fg-muted)'}}>{sol._isHE ? 'Horas Extra' : (SOL_TIPO_LABELS_M[sol.tipo] || sol.tipo)}</div>
-                </div>
-                <span className={'badge ' + solEstadoBadgeM(sol.estado)}>{sol._isHE ? (sol.estado === 'pendiente' ? 'Enviada' : sol.estado) : SOL_ESTADO_LABELS_M[sol.estado]}</span>
-              </div>
-              <div style={{fontSize:12, color:'var(--fg-muted)', marginBottom:8}}>
-                {sol._isHE ? `${sol.fecha} · ${sol.horas_estimadas} horas` : `${sol.fecha_inicio} — ${sol.fecha_fin} · ${sol.dias_habiles} días hábiles`}
-              </div>
-              <div className="row" style={{gap:8}}>
-                <button className="btn btn-primary btn-sm" style={{flex:1}}
-                  onClick={() => { setAccionSolId(sol.id); setAccionIsHE(sol._isHE); setAccionTipo('aprobar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
-                  Aprobar
-                </button>
-                <button className="btn btn-secondary btn-sm" style={{flex:1, color:'var(--red)'}}
-                  onClick={() => { setAccionSolId(sol.id); setAccionIsHE(sol._isHE); setAccionTipo('rechazar_jefe'); setAccionComentario(''); setScreen('accion'); }}>
-                  Rechazar
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div style={{fontSize:12, fontWeight:700, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:8}}>Mis solicitudes recientes</div>
       {misSolicitudesMixtas.length === 0
@@ -4338,44 +4326,6 @@ function SolicitudesMovilView() {
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  // ── Pantalla acción (aprobar/rechazar) ───────────────────────────────────────
-  if (screen === 'accion') {
-    const accionSol = accionIsHE ? autorizacionesHE.find(s => s.id === accionSolId) : solicitudes.find(s => s.id === accionSolId);
-    const esRechazo = accionTipo === 'rechazar_jefe';
-    return (
-      <div style={{padding:'16px 14px', overflowY:'auto', height:'100%', display:'flex', flexDirection:'column'}}>
-        <div className="row" style={{alignItems:'center', marginBottom:16, gap:8}}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setScreen('home')}>{I.chevLeft}</button>
-          <div style={{fontWeight:700, fontSize:15}}>{esRechazo ? 'Rechazar' : 'Aprobar'} solicitud</div>
-        </div>
-        {accionSol && (
-          <div className="card" style={{padding:14, marginBottom:14}}>
-            <div style={{fontWeight:600, fontSize:14}}>{accionSol.personal_nombre}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>{accionIsHE ? 'Horas Extra' : SOL_TIPO_LABELS_M[accionSol.tipo]} · {accionIsHE ? `${accionSol.horas_estimadas} horas` : `${accionSol.dias_habiles} días`}</div>
-            <div style={{fontSize:12, color:'var(--fg-muted)'}}>{accionIsHE ? accionSol.fecha : `${accionSol.fecha_inicio} — ${accionSol.fecha_fin}`}</div>
-            <div style={{fontSize:12, marginTop:8}}>{accionSol.motivo}</div>
-          </div>
-        )}
-        <div className="input-group" style={{marginBottom:14}}>
-          <label>{esRechazo ? 'Motivo del rechazo *' : 'Comentario (opcional)'}</label>
-          <textarea className="input" rows={3} value={accionComentario}
-            onChange={e => setAccionComentario(e.target.value)}
-            placeholder={esRechazo ? 'Obligatorio' : 'Opcional'}/>
-        </div>
-        <div className="row" style={{gap:10, marginTop:'auto'}}>
-          <button className="btn btn-secondary" style={{flex:1}} onClick={() => setScreen('home')}>Cancelar</button>
-          <button
-            className={'btn ' + (esRechazo ? 'btn-secondary' : 'btn-primary')}
-            style={{flex:2, ...(esRechazo ? {color:'var(--red)', borderColor:'var(--red)'} : {})}}
-            onClick={ejecutarAccion} disabled={accionSaving}
-          >
-            {accionSaving ? 'Procesando...' : (esRechazo ? 'Confirmar rechazo' : 'Confirmar aprobación')}
-          </button>
-        </div>
       </div>
     );
   }
