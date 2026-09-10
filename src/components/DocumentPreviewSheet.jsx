@@ -233,8 +233,9 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
 
 function VistaCondicionesGenerales({ condiciones, categoria, contexto }) {
   const segmentos = Array.isArray(condiciones.segmentos) ? condiciones.segmentos : [];
-  if (condiciones.estado_resolucion === 'cargando' || !condiciones.estado_resolucion) return <div className="document-preview-conditions-message">Cargando condiciones generales…</div>;
-  if (condiciones.estado_resolucion !== 'listo') return <div className="document-preview-conditions-message">{condiciones.mensaje_resolucion || 'No se pudieron cargar las condiciones generales publicadas.'}</div>;
+  const resuelto = condiciones.estado_resolucion === 'listo' || (!condiciones.estado_resolucion && Array.isArray(condiciones.segmentos));
+  if (condiciones.estado_resolucion === 'cargando') return <div className="document-preview-conditions-message">Cargando condiciones generales…</div>;
+  if (!resuelto) return <div className="document-preview-conditions-message">{condiciones.mensaje_resolucion || 'No se pudieron cargar las condiciones generales publicadas.'}</div>;
   return <div className="document-preview-conditions">{segmentos.map(segmento => <section key={segmento.id || segmento.orden} className="document-preview-conditions-segment">
     {segmento.titulo && <h4>{segmento.titulo}</h4>}
     <DocumentPreviewRichText value={segmento.contenido_json} categoria={categoria} contexto={contexto} />
