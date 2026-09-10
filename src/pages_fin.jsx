@@ -6915,7 +6915,7 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -6937,6 +6937,13 @@ function CxP() {
     ots || [],
     modoVistaSociedadCxP.sociedadIdEscritura,
   );
+  const cuentasBancariasActivasCxP = useMemo(
+    () => filtrarOpcionesPorSociedadEscritura(
+      cuentasBancarias.filter(cuenta => String(cuenta.estado || '').toLowerCase() === 'activo'),
+      modoVistaSociedadCxP.sociedadIdEscritura,
+    ),
+    [cuentasBancarias, modoVistaSociedadCxP.sociedadIdEscritura],
+  );
   const [erCatOpts, setErCatOpts] = useState([]);
   const [erCategorias, setErCategorias] = useState([]);
   useEffect(() => {
@@ -6956,7 +6963,7 @@ function CxP() {
   const [tabCxP, setTabCxP] = useState('general');
 
   // Form: pago
-  const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: 'Cuenta principal', referencia: '' });
+  const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
 
   // Form: nueva CxP
   const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
@@ -7336,7 +7343,7 @@ function CxP() {
   const abrirFicha = c => {
     setSel(c);
     setFichaTab('pago');
-    setFormPago({ monto: String(saldoDe(c)), fecha: today, cuenta_bancaria: 'Cuenta principal', referencia: '' });
+    setFormPago({ monto: String(saldoDe(c)), fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
   };
@@ -7345,6 +7352,10 @@ function CxP() {
     e.preventDefault();
     const monto = Number(formPago.monto || 0);
     if (!sel || monto <= 0) return;
+    if (!formPago.cuenta_bancaria_id) {
+      addNotificacion('Seleccione la cuenta bancaria desde la que se realizó el pago.');
+      return;
+    }
     setGuardando(true);
     try {
       await registrarPagoCxP(sel.id, monto, formPago);
@@ -7857,8 +7868,30 @@ function CxP() {
                         <input className="input" type="date" value={formPago.fecha} onChange={e => setFormPago(v => ({...v,fecha:e.target.value}))}/>
                       </div>
                       <div className="input-group">
-                        <label>Cuenta bancaria</label>
-                        <input className="input" value={formPago.cuenta_bancaria} onChange={e => setFormPago(v => ({...v,cuenta_bancaria:e.target.value}))}/>
+                        <label>Cuenta bancaria <span style={{color:'var(--danger)'}}>*</span></label>
+                        <select
+                          className="input"
+                          value={formPago.cuenta_bancaria_id}
+                          onChange={e => {
+                            const cuenta = cuentasBancariasActivasCxP.find(item => item.id === e.target.value);
+                            setFormPago(v => ({
+                              ...v,
+                              cuenta_bancaria_id: cuenta?.id || '',
+                              cuenta_bancaria: cuenta ? (cuenta.alias || cuenta.nombre || cuenta.banco || cuenta.id) : '',
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Seleccionar cuenta bancaria...</option>
+                          {cuentasBancariasActivasCxP.map(cuenta => (
+                            <option key={cuenta.id} value={cuenta.id}>
+                              {cuenta.alias || cuenta.nombre || cuenta.banco} · {cuenta.banco} · {cuenta.moneda || 'PEN'}
+                            </option>
+                          ))}
+                        </select>
+                        {cuentasBancariasActivasCxP.length === 0 && (
+                          <span className="text-muted" style={{fontSize:11}}>No hay cuentas bancarias activas para la sociedad seleccionada.</span>
+                        )}
                       </div>
                       <div className="input-group">
                         <label>Referencia</label>
