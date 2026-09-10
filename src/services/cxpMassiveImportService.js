@@ -101,7 +101,7 @@ const rucDeCxp = (cxp, proveedoresPorId) => cxp?.ruc_emisor
 export async function cargarCatalogosCxpMasivo(supabase, empresaId) {
   const [proveedoresR, cecosR, categoriasR, cxpR, personalAdminR, personalOperativoR] = await Promise.all([
     supabase.from('proveedores').select('id,ruc,razon_social,estado').eq('empresa_id', empresaId),
-    supabase.from('centros_costo').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin').eq('empresa_id', empresaId),
+    supabase.from('centros_costo').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('er_categorias').select('nombre,activo,tipo_sistema,seccion,orden').eq('empresa_id', empresaId),
     supabase.from('cxp').select('id,proveedor_id,ruc_emisor,personal_id,tipo_comprobante,factura_numero,concepto,fecha_emision,monto_total,proveedores(ruc)').eq('empresa_id', empresaId),
     supabase.from('personal_administrativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,retencion_ir_comision,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
@@ -224,7 +224,7 @@ export function leerPlantillaCxpMasiva(file) {
   });
 }
 
-export function validarFilasCxpMasiva(rows, catalogos = {}) {
+export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabilitada = false } = {}) {
   const proveedoresPorId = new Map((catalogos.proveedores || []).map(p => [p.id, p]));
   const categorias = (catalogos.categoriasEr || []).filter(c => c.activo !== false);
   const personalPorId = new Map((catalogos.personal || []).map(persona => [persona.id, persona]));
@@ -282,6 +282,10 @@ export function validarFilasCxpMasiva(rows, catalogos = {}) {
     else if (!centroCosto) errores.push(`CECO inexistente: no se encontró el código "${centro_costo_codigo}" en este tenant.`);
     else if (centroCosto.estado !== 'activo') errores.push(`CECO inactivo: "${centro_costo_codigo}" no está activo.`);
     else if (fecha_emision && !inCecoRange(centroCosto, fecha_emision)) errores.push(`CECO fuera de vigencia: "${centro_costo_codigo}" no está vigente para la fecha de emisión.`);
+
+    if (multisociedadHabilitada && centroCosto && !centroCosto.sociedad_id) {
+      errores.push(`El CECO "${centro_costo_codigo}" no tiene sociedad asignada; corrígelo antes de importar.`);
+    }
 
     if (esRhe) {
       const esInterno = Boolean(personal_id);

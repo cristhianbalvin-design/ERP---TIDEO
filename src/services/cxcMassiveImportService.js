@@ -66,8 +66,8 @@ export const huellaDuplicadoCxc = ({ numero }) => normalizarNumeroCxc(numero);
 export async function cargarCatalogosCxcMasivo(supabase, empresaId) {
   const [cuentasR, cebeR, osR, facturasR] = await Promise.all([
     supabase.from('cuentas').select('id,ruc,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
-    supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin').eq('empresa_id', empresaId),
-    supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado').eq('empresa_id', empresaId),
+    supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
+    supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('facturas').select('id,numero').eq('empresa_id', empresaId),
   ]);
   const error = [cuentasR, cebeR, osR, facturasR].find(result => result.error)?.error;
@@ -136,7 +136,7 @@ export function leerPlantillaCxcMasiva(file) {
   });
 }
 
-export function validarFilasCxcMasiva(rows, catalogos = {}) {
+export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabilitada = false } = {}) {
   const cebesPorCodigo = new Map((catalogos.centrosBeneficio || []).map(c => [normalizarCodigoCxc(c.codigo), c]));
   const osPorCodigo = new Map((catalogos.osClientes || []).map(os => [normalizarCodigoCxc(os.numero), os]));
   const cuentasPorRuc = new Map((catalogos.cuentas || []).map(c => [normalizarRucCxc(c.ruc), c]));
@@ -179,6 +179,7 @@ export function validarFilasCxcMasiva(rows, catalogos = {}) {
     if (os_cliente_codigo) {
       if (!os) errores.push(`OS Cliente inexistente: "${os_cliente_codigo}".`);
       else {
+        if (multisociedadHabilitada && !os.sociedad_id) errores.push(`El OS Cliente "${os_cliente_codigo}" no tiene sociedad asignada; corrígelo antes de importar.`);
         if (cuenta && os.cuenta_id !== cuenta.id) errores.push('La OS Cliente indicada no pertenece al cliente del RUC cargado.');
         const cebeOs = cebePorId.get(os.centro_beneficio_id);
         if (!cebeOs) errores.push('La OS Cliente indicada no tiene un CEBE valido.');
@@ -193,6 +194,7 @@ export function validarFilasCxcMasiva(rows, catalogos = {}) {
         if (!cebe) errores.push(`CEBE inexistente: "${centro_beneficio_codigo}".`);
         else if (cebe.estado !== 'activo') errores.push(`CEBE inactivo: "${centro_beneficio_codigo}".`);
         else if (fecha_emision && !dentroVigencia(cebe, fecha_emision)) errores.push(`CEBE fuera de vigencia: "${centro_beneficio_codigo}".`);
+        if (multisociedadHabilitada && cebe && !cebe.sociedad_id) errores.push(`El CEBE "${centro_beneficio_codigo}" no tiene sociedad asignada; corrígelo antes de importar.`);
       }
     }
 

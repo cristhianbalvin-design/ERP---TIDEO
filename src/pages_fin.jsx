@@ -570,7 +570,7 @@ function CxC() {
         leerPlantillaCxcMasiva(file),
         cargarCatalogosCxcMasivo(sb, empresa.id),
       ]);
-      const validadas = validarFilasCxcMasiva(rows, catalogos);
+      const validadas = validarFilasCxcMasiva(rows, catalogos, { multisociedadHabilitada: Boolean(empresa.multisociedad_habilitado) });
       setCxcImportRows(validadas);
       const rechazadas = validadas.filter(row => row._errores.length).length;
       // La previsualizacion se arma despues de validar el archivo contra los
@@ -7492,7 +7492,7 @@ function CxP() {
         leerPlantillaCxpMasiva(file),
         cargarCatalogosCxpMasivo(sb, empresa.id),
       ]);
-      const validadas = validarFilasCxpMasiva(rows, catalogos);
+      const validadas = validarFilasCxpMasiva(rows, catalogos, { multisociedadHabilitada: Boolean(empresa.multisociedad_habilitado) });
       setCxpImportRows(validadas);
       const rechazadas = validadas.filter(row => row._errores.length).length;
       addNotificacion(`Archivo analizado: ${validadas.length - rechazadas} filas listas y ${rechazadas} rechazadas.`);
