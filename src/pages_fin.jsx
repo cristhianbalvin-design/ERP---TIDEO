@@ -1256,6 +1256,7 @@ function CxC() {
                     <option value="">Seleccionar...</option>
                     <option>Transferencia bancaria</option>
                     <option>Depósito</option>
+                    <option value="Detraccion">Detracción</option>
                     <option>Cheque</option>
                     <option>Efectivo</option>
                     <option>Otro</option>
