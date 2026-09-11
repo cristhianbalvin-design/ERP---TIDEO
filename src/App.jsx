@@ -17,6 +17,7 @@ const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ defau
 const Actividades     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Actividades })));
 const AgendaComercial = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.AgendaComercial })));
 const OSCliente       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.OSCliente })));
+const PanelProduccionWhynco = lazy(() => import('./pages_whynco_produccion.jsx').then(m => ({ default: m.PanelProduccionWhynco })));
 const Marketing       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Marketing })));
 const BIComercial     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIComercial })));
 const BIOperativo     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIOperativo })));
@@ -279,7 +280,8 @@ function MainLayout({ onShowApplicationWelcome }) {
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
-  const activeAllowed = puedeVerPantalla(role, active, active === 'maestros' ? ['servicios'] : []);
+  const activeAllowed = puedeVerPantalla(role, active,
+    active === 'maestros' ? ['servicios'] : active === 'produccion_whynco' ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -376,6 +378,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'hoja_costeo':      return <HojaCosteo/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
+      case 'produccion_whynco': return <PanelProduccionWhynco/>;
       case 'backlog':          return <Backlog/>;
       case 'cierre':           return <Cierre/>;
       case 'remision':         return <Remision/>;

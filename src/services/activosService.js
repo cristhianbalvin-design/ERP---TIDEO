@@ -29,6 +29,19 @@ export const getActivos = async (empresaId) => {
   return data || [];
 };
 
+// Selector operativo: deliberadamente incluye activos propios y de clientes.
+// La pantalla que lo consume decide cómo presentarlos; no restringe por cuenta.
+export const getActivosParaOS = async (empresaId) => {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('activos').select('*')
+    .eq('empresa_id', empresaId)
+    .order('codigo');
+  if (error) throw error;
+  return data || [];
+};
+
 export const crearActivo = async (empresaId, activo, usuarioId = null) => {
   const supabase = await getSupabaseClient();
   const payload = {

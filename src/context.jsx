@@ -3053,13 +3053,14 @@ export function AppProvider({ children }) {
     navigate('os_cliente', { detail: osc.id });
   };
 
-  const crearOSClienteManual = async (datos) => {
+  const crearOSClienteManual = async (datos, { navegarAlDetalle = true } = {}) => {
     const monto = Number(datos.monto_aprobado || 0);
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
       numero: datos.numero || `OSC-${new Date().getFullYear()}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
       cuenta_id: datos.cuenta_id || null,
+      activo_id: datos.activo_id || null,
       cotizacion_id: datos.cotizacion_id || null,
       oportunidad_id: datos.oportunidad_id || null,
       sociedad_id: datos.sociedad_id || null,
@@ -3097,7 +3098,7 @@ export function AppProvider({ children }) {
     setOsClientes(prev => [...prev, osc]);
     auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osc.id, accion: 'crear_manual', valor_nuevo: osc });
     addNotificacion(`Orden de Servicio ${osc.numero} registrada.`);
-    navigate('os_cliente', { detail: osc.id });
+    if (navegarAlDetalle) navigate('os_cliente', { detail: osc.id });
     return osc.id;
   };
 
