@@ -20,6 +20,8 @@ import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
   finanzasService,
+  revisarDuplicadoCxP,
+  revisarDuplicadoFactura,
   resolverCondicionPagoCxC,
 } from './services/finanzasService.js';
 import { cajaChicaService } from './services/cajaChicaService.js';
@@ -585,10 +587,12 @@ function CxC() {
 
   const ejecutarCargaCxcMasiva = async () => {
     if (!cxcImportRows.length || cxcImportando || !empresa?.id) return;
+    const advertenciasNumero = cxcImportRows.filter(row => row._advertencias?.length);
+    if (advertenciasNumero.length && !window.confirm(`Hay ${advertenciasNumero.length} fila(s) con un número de factura ya usado por otro cliente en la misma sociedad. Revísalas antes de continuar. ¿Confirmas la importación?`)) return;
     setCxcImportando(true);
     try {
       const sb = await getSupabaseClient();
-      const resultado = await ejecutarImportacionCxcMasiva({ filas: cxcImportRows, empresaId: empresa.id, supabase: sb });
+      const resultado = await ejecutarImportacionCxcMasiva({ filas: cxcImportRows, empresaId: empresa.id, supabase: sb, confirmarNumerosRepetidos: advertenciasNumero.length > 0 });
       setCxcImportRows(resultado.filas);
       setCxcImportResult(resultado);
       if (resultado.registros.length) {
@@ -1397,7 +1401,7 @@ function CxC() {
                       const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'VALIDA' ? 'var(--cyan)' : 'var(--danger)';
                       return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'VALIDA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
                         <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_cliente}</td><td>{row.razon_social}</td><td>{row.numero}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.os_cliente_codigo || '-'}</td><td>{row.centro_beneficio_codigo || (row.os_cliente_codigo ? 'Heredado de OS' : '-')}</td>
-                        <td style={{fontSize:12,color:listo ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
+                        <td style={{fontSize:12,color:listo ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' | ') || (row._advertencias || []).join(' | ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
                       </tr>;
                     })}</tbody>
                   </table>
@@ -3998,13 +4002,33 @@ function Facturacion() {
     // P7.3 — total supera saldo OS (requiere confirmación explícita)
     if (excedeOsSaldo && !confirmarExcesoFac) return;
 
+    const numeroPropuesto = form.numero || (esBoleta ? nextNumeroBoleta : nextNumero);
+    let confirmarNumeroDuplicado = false;
+    if (isSupabaseConfigured()) {
+      const revision = await revisarDuplicadoFactura({
+        empresaId: empresa?.id,
+        sociedadId: empresa?.multisociedad_habilitado ? form.sociedad_id : null,
+        cuentaId,
+        numero: numeroPropuesto,
+      });
+      if (revision.mismoBeneficiario.length) {
+        alert(`No se puede emitir la factura ${numeroPropuesto}: ya existe para este cliente y sociedad.`);
+        return;
+      }
+      if (revision.otrosBeneficiarios.length) {
+        const clientes = [...new Set(revision.otrosBeneficiarios.map(item => item.cuentas?.razon_social || 'otro cliente'))].join(', ');
+        confirmarNumeroDuplicado = window.confirm(`Posible error: el número ${numeroPropuesto} ya existe para ${clientes} en esta sociedad. ¿Deseas emitirla de todas formas para el cliente seleccionado?`);
+        if (!confirmarNumeroDuplicado) return;
+      }
+    }
+
     if (emitiendoRef.current) return;
     emitiendoRef.current = true;
     setSaving(true);
     try {
       const facturaEmitidaId = await emitirFacturaConCxC({
         tipo_documento: form.tipo_documento,
-        numero: form.numero || (esBoleta ? nextNumeroBoleta : nextNumero),
+        numero: numeroPropuesto,
         cuenta_id: cuentaId,
         os_cliente_id: mode === 'val' ? getVal(valSel)?.os_cliente_id : (osSel || null),
         valorizacion_id: mode === 'val' ? valSel : null,
@@ -4031,6 +4055,7 @@ function Facturacion() {
         aplica_retencion: clienteRetencion.aplica,
         monto_retencion: retencionCalc,
         monto_neto_cobrable: netoCobrableCalc,
+        confirmar_numero_duplicado: confirmarNumeroDuplicado,
       });
       if (ventaContextId && facturaEmitidaId) {
         try {
@@ -7444,6 +7469,22 @@ function CxP() {
         ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {}),
         ...(!esTributo && !esDividendo && cxpYaRegistrado ? { no_devengar_er: true } : {}),
       };
+      if (isSupabaseConfigured() && cxpPayload.proveedor_id && cxpPayload.factura_numero) {
+        const revision = await revisarDuplicadoCxP({
+          empresaId: empresa?.id,
+          sociedadId: cxpPayload.sociedad_id,
+          proveedorId: cxpPayload.proveedor_id,
+          numero: cxpPayload.factura_numero,
+        });
+        if (revision.mismoBeneficiario.length) {
+          addNotificacion(`No se puede registrar la factura ${cxpPayload.factura_numero}: ya existe para este proveedor y sociedad.`);
+          return;
+        }
+        if (revision.otrosBeneficiarios.length) {
+          const proveedoresConMismoNumero = [...new Set(revision.otrosBeneficiarios.map(item => item.proveedores?.razon_social || 'otro proveedor'))].join(', ');
+          if (!window.confirm(`Posible error: el número ${cxpPayload.factura_numero} ya existe para ${proveedoresConMismoNumero} en esta sociedad. ¿Deseas registrarla de todas formas para el proveedor seleccionado?`)) return;
+        }
+      }
       await generarCxP(cxpPayload);
       resetCrearCxP();
     } finally {
@@ -7534,6 +7575,8 @@ function CxP() {
 
   const ejecutarCargaCxpMasiva = async () => {
     if (!cxpImportRows.length || cxpImportando) return;
+    const advertenciasNumero = cxpImportRows.filter(row => row._advertencias?.length);
+    if (advertenciasNumero.length && !window.confirm(`Hay ${advertenciasNumero.length} fila(s) con un número de factura ya usado por otro proveedor en la misma sociedad. Revísalas antes de continuar. ¿Confirmas la importación?`)) return;
     setCxpImportando(true);
     try {
       const sb = await getSupabaseClient();
@@ -7543,6 +7586,7 @@ function CxP() {
         supabase: sb,
         proveedores,
         authUserId: authUser?.id || null,
+        confirmarNumerosRepetidos: advertenciasNumero.length > 0,
       });
       setCxpImportRows(resultado.filas);
       setCxpImportResult(resultado);
@@ -8505,14 +8549,14 @@ function CxP() {
                 <div className="table-wrap" style={{maxHeight:'58vh',overflowY:'auto'}}>
                   <table className="tbl">
                     <thead style={{position:'sticky',top:0,zIndex:1,background:'var(--bg)'}}><tr>
-                      <th>Fila</th><th>Estado</th><th>RUC</th><th>Razón social</th><th>Concepto</th><th>Fecha</th><th>Monto</th><th>CECO</th><th>Mensaje</th>
+                      <th>Fila</th><th>Estado</th><th>RUC</th><th>Razón social</th><th>Documento</th><th>Concepto</th><th>Fecha</th><th>Monto</th><th>CECO</th><th>Mensaje</th>
                     </tr></thead>
                     <tbody>{cxpImportRows.map(row => {
                       const estado = row._estado || (row._errores?.length ? 'RECHAZADA' : 'LISTA');
                       const tone = estado === 'CREADA' ? 'var(--green)' : estado === 'LISTA' ? 'var(--cyan)' : 'var(--danger)';
                       return <tr key={row._fila} style={{background:estado === 'CREADA' ? 'rgba(31,157,85,.06)' : estado === 'LISTA' ? 'transparent' : 'rgba(220,53,69,.06)'}}>
-                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_emisor}</td><td>{row.razon_social}</td><td>{row.concepto}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.centro_costo_codigo}</td>
-                        <td style={{fontSize:12,color:estado === 'LISTA' || estado === 'CREADA' ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' · ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
+                        <td>{row._fila}</td><td style={{fontWeight:700,color:tone}}>{estado}</td><td>{row.ruc_emisor}</td><td>{row.razon_social}</td><td>{row.documento || row.numero_rhe || '-'}</td><td>{row.concepto}</td><td>{row.fecha_emision}</td><td>{row.moneda} {Number(row.monto_total || 0).toFixed(2)}</td><td>{row.centro_costo_codigo}</td>
+                        <td style={{fontSize:12,color:estado === 'LISTA' || estado === 'CREADA' ? 'var(--fg-muted)' : 'var(--danger)'}}>{(row._errores || []).join(' · ') || (row._advertencias || []).join(' · ') || (estado === 'CREADA' ? 'Importada correctamente.' : 'Lista para importar.')}</td>
                       </tr>;
                     })}</tbody>
                   </table>

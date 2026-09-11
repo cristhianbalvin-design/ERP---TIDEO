@@ -74,7 +74,7 @@ export async function cargarCatalogosCxcMasivo(supabase, empresaId) {
     supabase.from('cuentas').select('id,ruc,tipo_documento,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
     supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado,sociedad_id').eq('empresa_id', empresaId),
-    supabase.from('facturas').select('id,numero').eq('empresa_id', empresaId),
+    supabase.from('facturas').select('id,cuenta_id,sociedad_id,numero').eq('empresa_id', empresaId),
   ]);
   const error = [cuentasR, cebeR, osR, facturasR].find(result => result.error)?.error;
   if (error) throw error;
@@ -147,9 +147,9 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
   const cebesPorCodigo = new Map((catalogos.centrosBeneficio || []).map(c => [normalizarCodigoCxc(c.codigo), c]));
   const osPorCodigo = new Map((catalogos.osClientes || []).map(os => [normalizarCodigoCxc(os.numero), os]));
   const cuentasPorRuc = new Map((catalogos.cuentas || []).map(c => [normalizarRucCxc(c.ruc), c]));
+  const cuentasPorId = new Map((catalogos.cuentas || []).map(c => [c.id, c]));
   const cuentasPorIdentificador = new Map((catalogos.cuentas || []).map(c => [normalizarIdentificadorClienteCxc(c.ruc), c]));
   const cebePorId = new Map((catalogos.centrosBeneficio || []).map(c => [c.id, c]));
-  const existentes = new Set((catalogos.facturas || []).map(huellaDuplicadoCxc));
   const enArchivo = new Map();
 
   return (rows || []).map((source, index) => {
@@ -175,6 +175,8 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
       || cuentasPorRuc.get(rucNormalizado);
     const esTaxIdExtranjero = cuenta?.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
     const ruc_cliente = esTaxIdExtranjero ? identificador_cliente : rucNormalizado;
+    const cebeAsignado = os ? cebePorId.get(os.centro_beneficio_id) : cebesPorCodigo.get(centro_beneficio_codigo);
+    const sociedad_id = os?.sociedad_id || cebeAsignado?.sociedad_id || null;
 
     if (esTaxIdExtranjero) {
       if (identificador_cliente.length < TAX_ID_EXTRANJERO_MIN_LENGTH || identificador_cliente.length > TAX_ID_EXTRANJERO_MAX_LENGTH) {
@@ -217,25 +219,45 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     }
 
     const huella = huellaDuplicadoCxc({ numero: numeroDocumento });
-    if (huella && existentes.has(huella)) errores.push(`Duplicado: ya existe una factura con el numero "${numeroDocumento}" en este tenant.`);
+    const coincidencias = huella ? (catalogos.facturas || []).filter(factura =>
+      (factura.sociedad_id || null) === sociedad_id && huellaDuplicadoCxc(factura) === huella
+    ) : [];
+    const mismoCliente = coincidencias.some(factura => {
+      const clienteFactura = cuentasPorId.get(factura.cuenta_id);
+      return factura.cuenta_id === cuenta?.id || normalizarIdentificadorClienteCxc(clienteFactura?.ruc) === normalizarIdentificadorClienteCxc(ruc_cliente);
+    });
+    if (mismoCliente) errores.push(`Duplicado: ya existe la factura "${numeroDocumento}" para este cliente y sociedad.`);
     if (huella) {
-      const posiciones = enArchivo.get(huella) || [];
-      posiciones.push(index + 2);
-      enArchivo.set(huella, posiciones);
+      const clave = `${sociedad_id || 'sin-sociedad'}|${huella}`;
+      const posiciones = enArchivo.get(clave) || [];
+      posiciones.push({ fila: index + 2, cliente: normalizarIdentificadorClienteCxc(ruc_cliente) });
+      enArchivo.set(clave, posiciones);
     }
     return {
       ...source, _fila: index + 2, ruc_cliente, razon_social, tipo_documento: tipo_documento?.toLowerCase() || texto(source.tipo_documento),
       numero: numeroDocumento, fecha_emision, fecha_vencimiento, fecha_cobro, moneda, subtotal, igv, monto_total, monto_pagado, monto_detraccion,
-      os_cliente_codigo, centro_beneficio_codigo, _errores: errores, _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
+      os_cliente_codigo, centro_beneficio_codigo, sociedad_id, _errores: errores, _advertencias: [], _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
     };
   }).map(row => {
-    const posiciones = enArchivo.get(huellaDuplicadoCxc(row)) || [];
-    if (posiciones.length > 1) return { ...row, _estado: 'RECHAZADA', _errores: [...row._errores, `Duplicado en archivo: el numero aparece en filas ${posiciones.join(', ')}.`] };
+    const huella = huellaDuplicadoCxc(row);
+    const posiciones = enArchivo.get(`${row.sociedad_id || 'sin-sociedad'}|${huella}`) || [];
+    const mismoClienteArchivo = posiciones.filter(item => item.cliente === normalizarIdentificadorClienteCxc(row.ruc_cliente));
+    const otroClienteArchivo = posiciones.filter(item => item.cliente !== normalizarIdentificadorClienteCxc(row.ruc_cliente));
+    if (mismoClienteArchivo.length > 1) return { ...row, _estado: 'RECHAZADA', _errores: [...row._errores, `Duplicado en archivo: la factura "${row.numero}" se repite para el mismo cliente en filas ${mismoClienteArchivo.map(item => item.fila).join(', ')}.`] };
+    const otrosEnDb = (catalogos.facturas || []).filter(factura => {
+      const clienteFactura = cuentasPorId.get(factura.cuenta_id);
+      return (factura.sociedad_id || null) === (row.sociedad_id || null)
+        && huellaDuplicadoCxc(factura) === huella
+        && normalizarIdentificadorClienteCxc(clienteFactura?.ruc) !== normalizarIdentificadorClienteCxc(row.ruc_cliente);
+    });
+    if (otroClienteArchivo.length || otrosEnDb.length) {
+      return { ...row, _advertencias: [...row._advertencias, `Posible error: la factura "${row.numero}" ya figura para otro cliente en esta sociedad.`] };
+    }
     return row;
   });
 }
 
-export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase, onProgress }) {
+export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase, onProgress, confirmarNumerosRepetidos = false }) {
   const resultado = { creadas: 0, rechazadas: 0, fallidas: 0, clientesCreados: 0, cobrosRegistrados: 0, filas: [], registros: [] };
   for (const original of filas || []) {
     const row = { ...original, _errores: [...(original._errores || [])] };
@@ -256,6 +278,7 @@ export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase,
           os_cliente_codigo: row.os_cliente_codigo || null, centro_beneficio_codigo: row.centro_beneficio_codigo || null,
           confirmar_exceso: row.confirmar_exceso || null, glosa: row.glosa || null, notas: row.notas || null,
           condicion_pago: row.condicion_pago || null,
+          confirmar_numero_duplicado: confirmarNumerosRepetidos,
         },
       });
       if (error) throw error;

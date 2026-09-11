@@ -4909,6 +4909,7 @@ export function AppProvider({ children }) {
         notas: datos.notas || null,
         aplica_retencion: datos.aplica_retencion || false,
         monto_retencion: datos.monto_retencion || 0,
+        confirmar_numero_duplicado: datos.confirmar_numero_duplicado || false,
       });
       const facturaCreada = resultado?.factura;
       const cxcCreada = resultado?.cxc;

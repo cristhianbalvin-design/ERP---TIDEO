@@ -15,6 +15,55 @@ export const diasPorCondicion = {
 
 const stripAccents = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+// El número se compara sin diferencias accidentales de mayúsculas o espacios.
+// Se conserva la serie y los guiones, que sí forman parte del comprobante.
+export const normalizarNumeroComprobante = value => String(value || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLocaleLowerCase('es-PE');
+
+const mismaSociedadDocumento = (left, right) => (left || null) === (right || null);
+
+export async function revisarDuplicadoCxP({ empresaId, sociedadId = null, proveedorId, numero }) {
+  const numeroNormalizado = normalizarNumeroComprobante(numero);
+  if (!empresaId || !numeroNormalizado) return { mismoBeneficiario: [], otrosBeneficiarios: [] };
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('cxp')
+    .select('id,proveedor_id,factura_numero,sociedad_id,proveedores(razon_social)')
+    .eq('empresa_id', empresaId)
+    .not('factura_numero', 'is', null);
+  if (error) throw error;
+  const coincidencias = (data || []).filter(row =>
+    mismaSociedadDocumento(row.sociedad_id, sociedadId)
+    && normalizarNumeroComprobante(row.factura_numero) === numeroNormalizado
+  );
+  return {
+    mismoBeneficiario: coincidencias.filter(row => row.proveedor_id && row.proveedor_id === proveedorId),
+    otrosBeneficiarios: coincidencias.filter(row => !row.proveedor_id || row.proveedor_id !== proveedorId),
+  };
+}
+
+export async function revisarDuplicadoFactura({ empresaId, sociedadId = null, cuentaId, numero, excluirId = null }) {
+  const numeroNormalizado = normalizarNumeroComprobante(numero);
+  if (!empresaId || !numeroNormalizado) return { mismoBeneficiario: [], otrosBeneficiarios: [] };
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('facturas')
+    .select('id,cuenta_id,numero,sociedad_id,cuentas(razon_social)')
+    .eq('empresa_id', empresaId);
+  if (error) throw error;
+  const coincidencias = (data || []).filter(row =>
+    row.id !== excluirId
+    && mismaSociedadDocumento(row.sociedad_id, sociedadId)
+    && normalizarNumeroComprobante(row.numero) === numeroNormalizado
+  );
+  return {
+    mismoBeneficiario: coincidencias.filter(row => row.cuenta_id === cuentaId),
+    otrosBeneficiarios: coincidencias.filter(row => row.cuenta_id !== cuentaId),
+  };
+}
+
 export const normalizarCondicionPagoCxC = (condicion) => {
   const raw = String(condicion || '').trim();
   if (!raw) return null;

@@ -19,6 +19,7 @@ export const normalizarTextoCxp = value => String(value ?? '')
   .replace(/\s+/g, ' ')
   .toLowerCase();
 export const normalizarCodigoCxp = value => String(value ?? '').trim().toUpperCase();
+export const normalizarNumeroDocumentoCxp = value => String(value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 const texto = value => String(value ?? '').trim();
 const mismoTexto = (left, right) => normalizarTextoCxp(left) === normalizarTextoCxp(right);
@@ -103,7 +104,7 @@ export async function cargarCatalogosCxpMasivo(supabase, empresaId) {
     supabase.from('proveedores').select('id,ruc,razon_social,estado').eq('empresa_id', empresaId),
     supabase.from('centros_costo').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('er_categorias').select('nombre,activo,tipo_sistema,seccion,orden').eq('empresa_id', empresaId),
-    supabase.from('cxp').select('id,proveedor_id,ruc_emisor,personal_id,tipo_comprobante,factura_numero,concepto,fecha_emision,monto_total,proveedores(ruc)').eq('empresa_id', empresaId),
+    supabase.from('cxp').select('id,sociedad_id,proveedor_id,ruc_emisor,personal_id,tipo_comprobante,factura_numero,concepto,fecha_emision,monto_total,proveedores(ruc)').eq('empresa_id', empresaId),
     supabase.from('personal_administrativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,retencion_ir_comision,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
     supabase.from('personal_operativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
   ]);
@@ -239,6 +240,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       ruc_emisor: cxp.ruc_emisor, personal_id: cxp.personal_id, numero_rhe: cxp.factura_numero,
     })));
   const fileFingerprints = new Map();
+  const documentosArchivo = new Map();
 
   return (rows || []).map((source, index) => {
     const errores = [];
@@ -263,6 +265,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
     let categoria = categorias.find(item => mismoTexto(item.nombre, categoriaInput));
     const centro_costo_codigo = normalizarCodigoCxp(source.centro_costo_codigo);
     const centroCosto = cecosPorCodigo.get(centro_costo_codigo);
+    const sociedad_id = centroCosto?.sociedad_id || null;
 
     if (!esRhe && !/^\d{11}$/.test(ruc_emisor)) errores.push('RUC emisor inválido: debe tener 11 dígitos.');
     if (!esRhe && !razon_social) errores.push('Razón social obligatoria.');
@@ -327,6 +330,27 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       }
     }
 
+    // El número de factura identifica el documento frente al proveedor dentro
+    // de la misma sociedad. Con otro proveedor se muestra como advertencia.
+    const numeroDocumento = normalizarNumeroDocumentoCxp(documento);
+    if (!esRhe && numeroDocumento) {
+      const coincidencias = (catalogos.cxpExistentes || []).filter(cxp =>
+        !mismoTexto(cxp.tipo_comprobante, 'RHE')
+        && (cxp.sociedad_id || null) === sociedad_id
+        && normalizarNumeroDocumentoCxp(cxp.factura_numero) === numeroDocumento
+      );
+      const mismoProveedor = coincidencias.some(cxp => normalizarRucCxp(rucDeCxp(cxp, proveedoresPorId)) === ruc_emisor);
+      if (mismoProveedor) errores.push(`Duplicado: ya existe la factura "${documento}" para este proveedor y sociedad.`);
+      const otrosProveedores = coincidencias.filter(cxp => normalizarRucCxp(rucDeCxp(cxp, proveedoresPorId)) !== ruc_emisor);
+      if (otrosProveedores.length) {
+        // Se pide confirmación al ejecutar la importación; no se rechaza la fila.
+      }
+      const claveDocumento = `${sociedad_id || 'sin-sociedad'}|${numeroDocumento}`;
+      const posiciones = documentosArchivo.get(claveDocumento) || [];
+      posiciones.push({ fila: index + 2, ruc: ruc_emisor });
+      documentosArchivo.set(claveDocumento, posiciones);
+    }
+
     const fingerprint = esRhe
       ? huellaDuplicadoRhe({ ruc_emisor, personal_id, numero_rhe })
       : huellaDuplicadoCxp({ ruc_emisor, concepto, fecha_emision, monto_total });
@@ -343,7 +367,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       ...source,
       ruc_emisor, razon_social, tipo_cxp, documento, concepto, fecha_emision, fecha_vencimiento,
       moneda, monto_total, monto_pagado, fecha_pago, categoria_er: categoria?.nombre || categoriaInput,
-      centro_costo_codigo, centro_costo_id: centroCosto?.id || null,
+      centro_costo_codigo, centro_costo_id: centroCosto?.id || null, sociedad_id,
       personal_id: esRhe && personal_id ? personal_id : null, numero_rhe: esRhe ? numero_rhe : null,
       monto_bruto: esRhe ? monto_bruto : null, trabajo_facturable: esRhe && personal_id ? trabajo_facturable : null,
       cuenta_bancaria: texto(source.cuenta_bancaria) || null,
@@ -358,6 +382,25 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
         : `Duplicado en archivo: la combinación RUC + concepto + fecha + monto aparece en filas ${positions.join(', ')}.`);
       row._estado = 'RECHAZADA';
     }
+    if (row.tipo_cxp !== 'RHE' && row.documento) {
+      const posicionesDocumento = documentosArchivo.get(`${row.sociedad_id || 'sin-sociedad'}|${normalizarNumeroDocumentoCxp(row.documento)}`) || [];
+      const mismaRuc = posicionesDocumento.filter(item => item.ruc === row.ruc_emisor);
+      const otraRuc = posicionesDocumento.filter(item => item.ruc !== row.ruc_emisor);
+      if (mismaRuc.length > 1) {
+        row._errores.push(`Duplicado en archivo: la factura "${row.documento}" se repite para el mismo proveedor en filas ${mismaRuc.map(item => item.fila).join(', ')}.`);
+        row._estado = 'RECHAZADA';
+      }
+      if (otraRuc.length) {
+        row._advertencias.push(`Posible error: la factura "${row.documento}" también figura para otro proveedor en filas ${otraRuc.map(item => item.fila).join(', ')}.`);
+      }
+      const otrosEnDb = (catalogos.cxpExistentes || []).filter(cxp =>
+        !mismoTexto(cxp.tipo_comprobante, 'RHE')
+        && (cxp.sociedad_id || null) === (row.sociedad_id || null)
+        && normalizarNumeroDocumentoCxp(cxp.factura_numero) === normalizarNumeroDocumentoCxp(row.documento)
+        && normalizarRucCxp(rucDeCxp(cxp, proveedoresPorId)) !== row.ruc_emisor
+      );
+      if (otrosEnDb.length) row._advertencias.push(`Posible error: la factura "${row.documento}" ya existe para otro proveedor en esta sociedad.`);
+    }
     return row;
   });
 }
@@ -366,6 +409,7 @@ const generarIdProveedor = () => `prv_imp_${(globalThis.crypto?.randomUUID?.() |
 
 export async function ejecutarImportacionCxpMasiva({
   filas, empresaId, supabase, proveedores = [], authUserId = null, onProgress,
+  confirmarNumerosRepetidos = false,
   crearProveedor = comprasService.crearProveedor, obtenerTipoCambio = getTipoCambioPorFecha,
 }) {
   const proveedoresPorRuc = new Map((proveedores || [])
@@ -424,6 +468,7 @@ export async function ejecutarImportacionCxpMasiva({
           centro_costo_id: row.centro_costo_id, tipo_cambio: tipoCambio, registrado_por: authUserId,
           personal_id: esRhe ? row.personal_id : null, monto_bruto: esRhe ? row.monto_bruto : null,
           trabajo_facturable: esRhe ? row.trabajo_facturable : null,
+          confirmar_numero_duplicado: confirmarNumerosRepetidos,
         },
       });
       if (error) throw error;
