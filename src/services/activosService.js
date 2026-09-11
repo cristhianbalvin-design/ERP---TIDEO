@@ -10,7 +10,7 @@ const pick = (src, keys) => keys.reduce((a, k) => { if (src[k] !== undefined) a[
 const ACTIVO_FIELDS = [
   'codigo', 'nombre', 'tipo_categoria', 'marca', 'modelo', 'placa_serie',
   'ubicacion', 'estado', 'centro_costo_id', 'responsable_id', 'responsable_nombre',
-  'fecha_alta', 'valor_adquisicion', 'moneda', 'vida_util_anos',
+  'fecha_alta', 'valor_adquisicion', 'moneda', 'vida_util_anos', 'horas_disponibles_mes',
   'documentos', 'observacion', 'compras_gasto_id',
   'propietario_tipo', 'cliente_propietario_id',
 ];

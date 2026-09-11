@@ -8627,7 +8627,7 @@ function ActivosFijos() {
     codigo: '', nombre: '', tipo_categoria: 'equipo', marca: '', modelo: '',
     placa_serie: '', ubicacion: '', estado: 'operativo', centro_costo_id: '',
     responsable_nombre: '', fecha_alta: today, valor_adquisicion: '',
-    moneda: 'PEN', vida_util_anos: '', observacion: '', compras_gasto_id: null,
+    moneda: 'PEN', vida_util_anos: '', horas_disponibles_mes: '', observacion: '', compras_gasto_id: null,
   };
   const [form, setForm] = useState(initForm);
   const [formDocs, setFormDocs] = useState([]);
@@ -8713,7 +8713,7 @@ function ActivosFijos() {
   };
   const abrirEditar = (a) => {
     setSelActivo(a);
-    setForm({ ...initForm, ...a, valor_adquisicion: a.valor_adquisicion ?? '', vida_util_anos: a.vida_util_anos ?? '' });
+    setForm({ ...initForm, ...a, valor_adquisicion: a.valor_adquisicion ?? '', vida_util_anos: a.vida_util_anos ?? '', horas_disponibles_mes: a.horas_disponibles_mes ?? '' });
     setFormDocs(Array.isArray(a.documentos) ? a.documentos : []);
     setPanel('editar');
   };
@@ -8730,6 +8730,7 @@ function ActivosFijos() {
         documentos: formDocs,
         valor_adquisicion: Number(form.valor_adquisicion) || 0,
         vida_util_anos: parseInt(form.vida_util_anos, 10) || 0,
+        horas_disponibles_mes: form.horas_disponibles_mes === '' ? null : Number(form.horas_disponibles_mes),
         centro_costo_id: form.centro_costo_id || null,
       };
       if (panel === 'nuevo') await crearActivoCtx(payload);
@@ -9060,6 +9061,7 @@ function ActivosFijos() {
               <div className="input-group"><label>Valor adquisición</label><input className="input" type="number" min="0" step="0.01" value={form.valor_adquisicion} onChange={e => setForm(v => ({ ...v, valor_adquisicion: e.target.value }))} /></div>
               <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setForm(v => ({ ...v, moneda: e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
               <div className="input-group"><label>Vida útil (años)</label><input className="input" type="number" min="0" step="1" value={form.vida_util_anos} onChange={e => setForm(v => ({ ...v, vida_util_anos: e.target.value }))} /></div>
+              <div className="input-group"><label>Horas disponibles al mes</label><input className="input" type="number" min="0" step="0.01" value={form.horas_disponibles_mes} onChange={e => setForm(v => ({ ...v, horas_disponibles_mes: e.target.value }))} /></div>
               <div className="input-group"><label>CECO por defecto</label><select className="select" value={form.centro_costo_id} onChange={e => setForm(v => ({ ...v, centro_costo_id: e.target.value }))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
             </div>
             <div className="input-group"><label>Responsable</label><input className="input" placeholder="Nombre del responsable" value={form.responsable_nombre} onChange={e => setForm(v => ({ ...v, responsable_nombre: e.target.value }))} /></div>
