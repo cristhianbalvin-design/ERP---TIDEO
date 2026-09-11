@@ -5,6 +5,7 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 
 const numero = value => Number(value || 0);
 const moneyUsd = value => moneyD(numero(value), 'US$');
+const porcentaje = value => `${(numero(value) * 100).toLocaleString('es-PE', { minimumFractionDigits:2, maximumFractionDigits:2 })}%`;
 
 function DepreciacionActivos() {
   const { empresa, role, addToast } = useApp();
@@ -110,6 +111,114 @@ function DepreciacionActivos() {
   </>;
 }
 
+function GastoAdministrativo() {
+  const { empresa, role, addToast } = useApp();
+  const [configuracion, setConfiguracion] = useState(null);
+  const [porcentajeCalculado, setPorcentajeCalculado] = useState(null);
+  const [porcentajeManual, setPorcentajeManual] = useState('');
+  const [metodoActivo, setMetodoActivo] = useState('calculado');
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const puedeCrear = Boolean(role?.permisos?.todo || role?.permisos?.crear?.includes('costeo_variables'));
+  const puedeEditar = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes('costeo_variables'));
+  const puedeGuardar = configuracion ? puedeEditar : puedeCrear;
+
+  const cargar = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) {
+      setCargando(false);
+      return;
+    }
+    setCargando(true);
+    setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const [configResult, calculadoResult] = await Promise.all([
+        sb.from('gasto_administrativo_config').select('id, metodo_activo, porcentaje_manual').eq('empresa_id', empresa.id).maybeSingle(),
+        sb.from('vw_gasto_administrativo_pct_grupo').select('porcentaje_calculado').eq('empresa_id', empresa.id).maybeSingle(),
+      ]);
+      if (configResult.error) throw configResult.error;
+      if (calculadoResult.error) throw calculadoResult.error;
+      const config = configResult.data || null;
+      setConfiguracion(config);
+      setPorcentajeCalculado(calculadoResult.data?.porcentaje_calculado ?? null);
+      setPorcentajeManual(config?.porcentaje_manual != null ? String(numero(config.porcentaje_manual) * 100) : '');
+      setMetodoActivo(config?.metodo_activo || 'calculado');
+    } catch (err) {
+      setError(err?.message || 'No se pudo cargar el gasto administrativo.');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => { cargar(); }, [empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const guardar = async () => {
+    const manualNumerico = porcentajeManual === '' ? null : Number(porcentajeManual);
+    if (manualNumerico !== null && (!Number.isFinite(manualNumerico) || manualNumerico < 0)) {
+      addToast('El porcentaje manual debe ser un número mayor o igual a cero.', 'error');
+      return;
+    }
+    if (metodoActivo === 'manual' && !(manualNumerico > 0)) {
+      addToast('Ingresa un porcentaje manual mayor a cero para usar el método manual.', 'error');
+      return;
+    }
+    if (!puedeGuardar) {
+      addToast('No tienes permiso para guardar esta variable de costeo.', 'error');
+      return;
+    }
+    setGuardando(true);
+    try {
+      const sb = await getSupabaseClient();
+      const { error: upsertError } = await sb
+        .from('gasto_administrativo_config')
+        .upsert({
+          empresa_id: empresa.id,
+          metodo_activo: metodoActivo,
+          porcentaje_manual: manualNumerico === null ? null : manualNumerico / 100,
+          actualizado_en: new Date().toISOString(),
+        }, { onConflict: 'empresa_id' });
+      if (upsertError) throw upsertError;
+      await cargar();
+      addToast('Gasto administrativo guardado.', 'success');
+    } catch (err) {
+      addToast(`No se pudo guardar el gasto administrativo: ${err?.message || err}`, 'error');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const hayCalculado = numero(porcentajeCalculado) > 0;
+  return <>
+    <div className="page-sub" style={{ marginBottom:18 }}>Define el porcentaje de gasto administrativo que Hoja de Costeo aplicará por defecto. El valor manual se ingresa como porcentaje y se guarda como proporción.</div>
+    {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
+    <div className="card">
+      <div className="card-head"><h3>Gasto administrativo de la empresa</h3></div>
+      {cargando ? <div className="text-muted" style={{ padding:22 }}>Cargando porcentaje de gasto administrativo...</div> : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:18, padding:18 }}>
+        <div style={{ padding:16, border:'1px solid var(--border)', borderRadius:8 }}>
+          <div className="eyebrow" style={{ marginBottom:8 }}>% calculado</div>
+          {hayCalculado ? <strong style={{ fontSize:24 }}>{porcentaje(porcentajeCalculado)}</strong> : <div className="text-muted">Sin datos; verifica la información o usa un valor manual.</div>}
+        </div>
+        <label style={{ display:'grid', gap:8 }}>
+          <span className="eyebrow">% manual</span>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <input type="number" min="0" step="0.01" className="input num" value={porcentajeManual} disabled={!puedeGuardar || guardando} onChange={event => setPorcentajeManual(event.target.value)} placeholder="Ej. 18.30" />
+            <span className="text-muted">%</span>
+          </div>
+        </label>
+        <label style={{ display:'grid', gap:8 }}>
+          <span className="eyebrow">Método activo</span>
+          <select className="input" value={metodoActivo} disabled={!puedeGuardar || guardando} onChange={event => setMetodoActivo(event.target.value)}>
+            <option value="calculado">Calculado</option>
+            <option value="manual">Manual</option>
+          </select>
+        </label>
+      </div>}
+      {!cargando && <div style={{ display:'flex', justifyContent:'flex-end', padding:'0 18px 18px' }}><button className="btn btn-primary" disabled={!puedeGuardar || guardando} onClick={guardar}>{I.save} {guardando ? 'Guardando...' : 'Guardar gasto administrativo'}</button></div>}
+    </div>
+  </>;
+}
+
 export default function CosteoVariables() {
   const { empresa, role, addToast } = useApp();
   const [vista, setVista] = useState('costo_hora');
@@ -204,18 +313,19 @@ export default function CosteoVariables() {
       <div className="page-header">
         <div>
           <div className="eyebrow">Variables Comerciales de Costeo</div>
-          <h1 className="page-title">{vista === 'costo_hora' ? 'Costo hora por cargo' : 'Depreciación de activos'}</h1>
+          <h1 className="page-title">{vista === 'costo_hora' ? 'Costo hora por cargo' : vista === 'depreciacion' ? 'Depreciación de activos' : 'Gasto administrativo'}</h1>
           <div className="page-sub">Variables comerciales que alimentan el cálculo de Hoja de Costeo.</div>
         </div>
       </div>
       <nav aria-label="Variables de costeo" style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
         <button type="button" className={vista === 'costo_hora' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('costo_hora')}>Costo hora por cargo</button>
         <button type="button" className={vista === 'depreciacion' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('depreciacion')}>Depreciación de activos</button>
+        <button type="button" className={vista === 'gasto_administrativo' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('gasto_administrativo')}>Gasto administrativo</button>
       </nav>
       <div style={{ marginBottom:18, padding:'11px 14px', borderRadius:8, background:'rgba(6,182,212,.08)', border:'1px solid rgba(6,182,212,.2)', fontSize:13, color:'var(--fg-muted)' }}>
         Esta sección agrupa variables comerciales de costeo y se gestiona separada de Maestros Base.
       </div>
-      {vista === 'depreciacion' ? <DepreciacionActivos /> : <>
+      {vista === 'depreciacion' ? <DepreciacionActivos /> : vista === 'gasto_administrativo' ? <GastoAdministrativo /> : <>
       {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
       <div className="card">
         <div className="card-head"><h3>Cargos de la empresa</h3><span className="badge badge-cyan">{cargos.length}</span></div>
