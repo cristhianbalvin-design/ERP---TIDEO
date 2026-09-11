@@ -213,6 +213,7 @@ create table if not exists public.ordenes_servicio_interna (
 create table if not exists public.recepciones (
   id text primary key,
   empresa_id text not null references public.empresas(id),
+  sociedad_id uuid references public.sociedades(id) on delete set null,
   orden_compra_id text references public.ordenes_compra(id),
   orden_servicio_id text references public.ordenes_servicio_interna(id),
   tipo text default 'total',
@@ -228,4 +229,5 @@ create index if not exists idx_proveedores_empresa on public.proveedores(empresa
 create index if not exists idx_solpe_empresa on public.solpe_interna(empresa_id, estado);
 create index if not exists idx_oc_empresa on public.ordenes_compra(empresa_id, estado);
 create index if not exists idx_recepciones_empresa on public.recepciones(empresa_id, fecha);
+create index if not exists idx_recepciones_empresa_sociedad on public.recepciones(empresa_id, sociedad_id);
 create index if not exists idx_stock_empresa on public.stock(empresa_id, material_id, almacen_id);

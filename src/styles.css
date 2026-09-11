@@ -209,6 +209,74 @@ body {
   color: rgba(255,255,255,0.5);
   font-weight: 600;
 }
+.sidebar-module-search {
+  padding: 8px 12px 2px;
+  flex-shrink: 0;
+}
+.sidebar-module-search-input {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,255,255,0.11);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.055);
+  color: rgba(255,255,255,0.56);
+  transition: border-color .16s ease, background .16s ease;
+}
+.sidebar-module-search-input:focus-within {
+  border-color: rgba(45, 201, 217, 0.78);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+.sidebar-module-search-input > svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sidebar-module-search-input input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.sidebar-module-search-input input::placeholder { color: rgba(255,255,255,0.43); }
+.sidebar-module-search-input button {
+  width: 20px;
+  height: 20px;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255,255,255,0.58);
+  cursor: pointer;
+}
+.sidebar-module-search-input button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.sidebar-module-search-input button svg { width: 14px; height: 14px; }
+.sidebar-search-results { display: grid; gap: 3px; padding-top: 2px; }
+.sidebar-search-result {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-fg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.sidebar-search-result:hover,
+.sidebar-search-result.active { background: var(--sidebar-active); color: #fff; }
+.sidebar-search-result > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sidebar-search-result > span:nth-child(2) { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.sidebar-search-result strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.sidebar-search-result small { color: rgba(255,255,255,0.46); font-size: 10px; }
+.sidebar-search-empty { padding: 22px 10px; color: rgba(255,255,255,0.55); text-align: center; font-size: 12px; line-height: 1.45; }
 
 .sidebar-nav {
   flex: 1;

@@ -7522,9 +7522,22 @@ function Recepciones() {
     sociedadesIds: modoVistaSociedadRecepciones.sociedadesIds,
   };
   const sociedadesRecepcionesSet = new Set(modoVistaSociedadRecepciones.sociedadesIds);
+  // Las recepciones anteriores a la capa multisociedad no almacenaban sociedad_id.
+  // Mientras se completa su migracion, se toma la sociedad del documento origen.
+  const sociedadDeRegistroRecepcion = row => {
+    if (row?.sociedad_id) return row.sociedad_id;
+    const ocId = row?.orden_compra_id || row?.oc_id;
+    const osId = row?.orden_servicio_id || row?.os_id;
+    return ordenesCompra.find(o => o.id === ocId)?.sociedad_id
+      || ordenesServicio.find(o => o.id === osId)?.sociedad_id
+      || null;
+  };
   const filtrarPorVistaSociedadRecepciones = registros => modoVistaSociedadRecepciones.sinFiltro
     ? (registros || [])
-    : (registros || []).filter(row => row.sociedad_id && sociedadesRecepcionesSet.has(row.sociedad_id));
+    : (registros || []).filter(row => {
+      const sociedadId = sociedadDeRegistroRecepcion(row);
+      return sociedadId && sociedadesRecepcionesSet.has(sociedadId);
+    });
   const ordenesCompraVistaRecepciones = filtrarPorVistaSociedadRecepciones(ordenesCompra);
   const ordenesServicioVistaRecepciones = filtrarPorVistaSociedadRecepciones(ordenesServicio);
   const recepcionesVista = filtrarPorVistaSociedadRecepciones(recepciones);

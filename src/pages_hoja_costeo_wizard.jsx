@@ -185,7 +185,8 @@ export default function HojaCosteoWizard() {
       <>
         {bloqueada && (
           <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.10)', color: 'var(--orange)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
-            {I.lock} Esta Hoja de Costeo está aprobada. Las líneas de mano de obra solo se muestran en modo lectura.
+            <span aria-hidden="true" style={{ width: 16, height: 16, flex: '0 0 16px', display: 'inline-flex' }}>{I.lock}</span>
+            <span>Esta Hoja de Costeo está aprobada. Las líneas de mano de obra solo se muestran en modo lectura.</span>
           </div>
         )}
         <section className="card" style={{ padding: 20, marginBottom: 18 }}>

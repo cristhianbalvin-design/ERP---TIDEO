@@ -71,7 +71,15 @@ import {
   confirmarOrdenVenta as svcConfirmarOV, anularOrdenVenta as svcAnularOV,
   getCatalogoVenta, crearProductoCatalogo as svcCrearProductoCatalogo,
 } from './services/ventasService.js';
-const AppContext = createContext();
+// Conserva la misma instancia de contexto durante las recargas en caliente de Vite.
+// Sin ello, un chunk cargado antes de una actualización puede conservar useApp()
+// apuntando al contexto anterior mientras AppProvider ya usa uno nuevo.
+const AppContext = import.meta.hot?.data?.appContext || createContext();
+if (import.meta.hot) {
+  import.meta.hot.dispose(data => {
+    data.appContext = AppContext;
+  });
+}
 const PLATFORM_SUPERADMIN_EMAIL = 'cristhianbalvin@gmail.com';
 const isPlatformSuperadminEmail = email =>
   String(email || '').trim().toLowerCase() === PLATFORM_SUPERADMIN_EMAIL;
@@ -8412,6 +8420,7 @@ export function AppProvider({ children }) {
       codigo: `REC-${new Date().getFullYear()}-${String(recepciones.length + 1).padStart(4, '0')}`,
       orden_compra_id: isOC ? base.id : null,
       orden_servicio_id: isOC ? null : base.id,
+      sociedad_id: base.sociedad_id || null,
       tipo: observaciones ? 'observada' : 'total',
       fecha,
       items_recibidos: itemsRecibidos,
@@ -8435,6 +8444,7 @@ export function AppProvider({ children }) {
           id: recepcion.id,
           orden_compra_id: recepcion.orden_compra_id,
           orden_servicio_id: recepcion.orden_servicio_id,
+          sociedad_id: recepcion.sociedad_id,
           tipo: recepcion.tipo,
           fecha: recepcion.fecha,
           items_recibidos: recepcion.items_recibidos,

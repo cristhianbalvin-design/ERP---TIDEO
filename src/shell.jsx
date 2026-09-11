@@ -143,6 +143,53 @@ const SECTION_ICONS = {
 
 const sectionKey = section => String(section || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
 const norm = value => String(value || '').toLowerCase();
+const normalizarBusqueda = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+const SEARCH_ALIASES = {
+  dashboard: 'inicio principal resumen',
+  inventario: 'producto productos stock materiales existencias almacen',
+  recepciones: 'recepcion productos producto ingreso compras conformidad proveedor',
+  ordenes_compra: 'oc orden compra proveedor adquisiciones',
+  ordenes_servicio: 'os orden servicio proveedor',
+  os_cliente: 'orden servicio cliente contrato comercial',
+  cuentas: 'clientes contactos empresas',
+  cxc: 'cobros clientes por cobrar',
+  cxp: 'pagos proveedores por pagar',
+  tesoreria: 'bancos conciliacion match',
+  nomina: 'planilla sueldos remuneraciones',
+  partes: 'parte diario horas trabajo',
+  ot: 'orden trabajo ordenes mantenimiento',
+  solpe: 'solicitud pedido requerimiento compra',
+};
+
+// Puntua coincidencias exactas, por palabra y por letras consecutivas para que
+// abreviaturas como "recep" o "produ" encuentren el modulo esperado.
+const puntuarBusquedaModulo = (consulta, item, seccion) => {
+  const etiqueta = normalizarBusqueda(item.label);
+  const texto = `${etiqueta} ${normalizarBusqueda(seccion)} ${normalizarBusqueda(item.key).replace(/_/g, ' ')} ${SEARCH_ALIASES[item.key] || ''}`;
+  if (!consulta) return 0;
+  if (etiqueta === consulta) return 1000;
+  if (etiqueta.startsWith(consulta)) return 800;
+  if (texto.includes(consulta)) return 600 - Math.min(texto.indexOf(consulta), 120);
+
+  const palabras = consulta.split(/\s+/).filter(Boolean);
+  if (palabras.length > 1 && palabras.every(palabra => texto.includes(palabra))) {
+    return 450 + palabras.reduce((total, palabra) => total + (etiqueta.startsWith(palabra) ? 30 : 0), 0);
+  }
+
+  let cursor = 0;
+  let saltos = 0;
+  for (const letra of consulta.replace(/\s/g, '')) {
+    const posicion = texto.indexOf(letra, cursor);
+    if (posicion === -1) return 0;
+    saltos += posicion - cursor;
+    cursor = posicion + 1;
+  }
+  return Math.max(1, 180 - saltos);
+};
 const dateValue = value => {
   if (!value) return null;
   const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
@@ -244,6 +291,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
+  const [busquedaModulo, setBusquedaModulo] = useState('');
   const effectiveCollapsed = collapsed || isMobileNav;
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
@@ -267,6 +315,19 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       active: visibleItems.some(it => it.key === active),
     };
   }).filter(Boolean), [active, role, badges, isSuperadmin]);
+  const resultadosBusqueda = useMemo(() => {
+    const consulta = normalizarBusqueda(busquedaModulo);
+    if (!consulta) return [];
+    return visibleGroups
+      .flatMap(group => group.items.map(item => ({
+        ...item,
+        seccion: group.section,
+        puntuacion: puntuarBusquedaModulo(consulta, item, group.section),
+      })))
+      .filter(item => item.puntuacion > 0)
+      .sort((a, b) => b.puntuacion - a.puntuacion || a.label.localeCompare(b.label, 'es'))
+      .slice(0, 8);
+  }, [busquedaModulo, visibleGroups]);
   const activeGroupKey = visibleGroups.find(group => group.active)?.key || visibleGroups[0]?.key || '';
   const [openSections, setOpenSections] = useState(() => {
     try {
@@ -303,6 +364,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       const next = !prev;
       localStorage.setItem('tideo_sidebar_collapsed', String(next));
       setFlyoutKey(null);
+      if (next) setBusquedaModulo('');
       return next;
     });
   };
@@ -317,6 +379,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   };
   const handleNav = key => {
     setFlyoutKey(null);
+    setBusquedaModulo('');
     onNav(key);
   };
   const toggleFlyout = (event, key) => {
@@ -349,8 +412,43 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
         </div>}
       </button>
+      {!effectiveCollapsed && (
+        <div className="sidebar-module-search">
+          <div className="sidebar-module-search-input">
+            {I.search}
+            <input
+              type="search"
+              value={busquedaModulo}
+              onChange={event => setBusquedaModulo(event.target.value)}
+              placeholder="Buscar módulo..."
+              aria-label="Buscar módulo"
+            />
+            {busquedaModulo && (
+              <button type="button" onClick={() => setBusquedaModulo('')} aria-label="Limpiar búsqueda">
+                {I.x}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <nav className="sidebar-nav" style={{padding:'10px 12px'}}>
-        {visibleGroups.map(group => {
+        {busquedaModulo.trim() ? (
+          <div className="sidebar-search-results" aria-label="Resultados de módulos">
+            {resultadosBusqueda.map(item => (
+              <button
+                type="button"
+                key={item.key}
+                className={'sidebar-search-result ' + (active === item.key ? 'active' : '')}
+                onClick={() => handleNav(item.key)}
+              >
+                {item.icon}
+                <span><strong>{item.label}</strong><small>{item.seccion}</small></span>
+                {item.badge && <span className="sidebar-item-badge">{item.badge}</span>}
+              </button>
+            ))}
+            {!resultadosBusqueda.length && <div className="sidebar-search-empty">No encontramos un módulo parecido.</div>}
+          </div>
+        ) : visibleGroups.map(group => {
           const isOpen = openSections.has(group.key);
           return (
             <div key={group.key} className="sidebar-group">
