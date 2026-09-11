@@ -35,33 +35,56 @@ export const previewPageCapacity = (pageIndex, encabezadoAlcance, pieAlcance, me
 
 const esBloqueCondicionesGenerales = bloque => bloque?.tipo_bloque === 'condiciones_generales';
 const tieneCondicionesMaterializadas = bloque => Array.isArray(bloque?.contenido_json?.segmentos);
+const etiquetaCategoriaDocumento = categoria => String(categoria || 'documento').replace(/_/g, ' ').replace(/^./, letra => letra.toUpperCase());
 
 function useCondicionesGeneralesPublicadas(plantilla, bloques) {
   const requiereResolucion = bloques.some(bloque => esBloqueCondicionesGenerales(bloque) && !tieneCondicionesMaterializadas(bloque));
-  const [estado, setEstado] = useState({ estado:'cargando', segmentos:[], mensaje:'' });
+  const [estado, setEstado] = useState({ estado:'cargando', segmentos:[], mensaje:'', advertencia:'' });
 
   useEffect(() => {
     if (!requiereResolucion) {
-      setEstado({ estado:'inactivo', segmentos:[], mensaje:'' });
+      setEstado({ estado:'inactivo', segmentos:[], mensaje:'', advertencia:'' });
       return;
     }
     if (!isSupabaseConfigured() || !plantilla?.tipo_documento_id || !plantilla?.empresa_id) {
-      setEstado({ estado:'error', segmentos:[], mensaje:'No se pudo identificar la plantilla para resolver las condiciones generales.' });
+      setEstado({ estado:'error', segmentos:[], mensaje:'No se pudo identificar la plantilla para resolver las condiciones generales.', advertencia:'' });
       return;
     }
     let activo = true;
-    setEstado({ estado:'cargando', segmentos:[], mensaje:'' });
+    setEstado({ estado:'cargando', segmentos:[], mensaje:'', advertencia:'' });
     (async () => {
       try {
         const sb = await getSupabaseClient();
-        let bibliotecaQuery = sb
-          .from('biblioteca_condiciones_generales')
+        const { data:tipoPlantilla, error:tipoError } = await sb
+          .from('tipos_documento_electronico')
+          .select('categoria_base')
+          .eq('id', plantilla.tipo_documento_id)
+          .single();
+        if (tipoError) throw tipoError;
+        let tiposQuery = sb
+          .from('tipos_documento_electronico')
           .select('id')
           .eq('empresa_id', plantilla.empresa_id)
-          .eq('tipo_documento_id', plantilla.tipo_documento_id)
+          .eq('categoria_base', tipoPlantilla.categoria_base);
+        tiposQuery = plantilla.sociedad_id
+          ? tiposQuery.eq('sociedad_id', plantilla.sociedad_id)
+          : tiposQuery.is('sociedad_id', null);
+        const { data:tiposCategoria, error:tiposError } = await tiposQuery;
+        if (tiposError) throw tiposError;
+        const tiposDocumentoIds = (tiposCategoria || []).map(tipo => tipo.id);
+        if (!tiposDocumentoIds.length) {
+          if (activo) setEstado({ estado:'sin_biblioteca', segmentos:[], mensaje:`No hay Documentos de Condiciones publicados para la categoría ${etiquetaCategoriaDocumento(tipoPlantilla.categoria_base)}.`, advertencia:'' });
+          return;
+        }
+        let bibliotecaQuery = sb
+          .from('biblioteca_condiciones_generales')
+          .select('id,nombre_interno,version,publicada_at,created_at,tipo_documento_id')
+          .eq('empresa_id', plantilla.empresa_id)
+          .in('tipo_documento_id', tiposDocumentoIds)
           .eq('estado', 'publicada')
-          .order('version', { ascending:false })
-          .limit(1);
+          .order('publicada_at', { ascending:false, nullsFirst:false })
+          .order('created_at', { ascending:false, nullsFirst:false })
+          .order('id', { ascending:false });
         bibliotecaQuery = plantilla.sociedad_id
           ? bibliotecaQuery.eq('sociedad_id', plantilla.sociedad_id)
           : bibliotecaQuery.is('sociedad_id', null);
@@ -69,9 +92,12 @@ function useCondicionesGeneralesPublicadas(plantilla, bloques) {
         if (bibliotecaError) throw bibliotecaError;
         const biblioteca = bibliotecas?.[0];
         if (!biblioteca) {
-          if (activo) setEstado({ estado:'sin_biblioteca', segmentos:[], mensaje:'No hay condiciones generales publicadas para este tipo de documento.' });
+          if (activo) setEstado({ estado:'sin_biblioteca', segmentos:[], mensaje:`No hay Documentos de Condiciones publicados para la categoría ${etiquetaCategoriaDocumento(tipoPlantilla.categoria_base)}.`, advertencia:'' });
           return;
         }
+        const advertencia = bibliotecas.length > 1
+          ? `Hay ${bibliotecas.length} Documentos de Condiciones publicados para la categoría ${etiquetaCategoriaDocumento(tipoPlantilla.categoria_base)}. Se muestra «${biblioteca.nombre_interno}» v${biblioteca.version}, el más recientemente publicado.`
+          : '';
         const { data:segmentos, error:segmentosError } = await sb
           .from('condiciones_generales_segmentos')
           .select('id,titulo,contenido_json,contenido_texto_plano,orden')
@@ -80,10 +106,10 @@ function useCondicionesGeneralesPublicadas(plantilla, bloques) {
           .order('orden');
         if (segmentosError) throw segmentosError;
         if (activo) setEstado((segmentos || []).length
-          ? { estado:'listo', segmentos:segmentos || [], mensaje:'' }
-          : { estado:'sin_segmentos', segmentos:[], mensaje:'La biblioteca publicada no tiene segmentos activos.' });
+          ? { estado:'listo', segmentos:segmentos || [], mensaje:'', advertencia }
+          : { estado:'sin_segmentos', segmentos:[], mensaje:'El Documento de Condiciones publicado no tiene segmentos activos.', advertencia });
       } catch (error) {
-        if (activo) setEstado({ estado:'error', segmentos:[], mensaje:'No se pudieron cargar las condiciones generales publicadas.' });
+        if (activo) setEstado({ estado:'error', segmentos:[], mensaje:'No se pudieron cargar los Documentos de Condiciones publicados.', advertencia:'' });
       }
     })();
     return () => { activo = false; };
@@ -101,6 +127,7 @@ const bloquesConCondicionesResueltas = (bloques, condiciones) => bloques.map(blo
       segmentos:condiciones.segmentos,
       estado_resolucion:condiciones.estado,
       mensaje_resolucion:condiciones.mensaje,
+      advertencia_resolucion:condiciones.advertencia,
     },
   };
 });
@@ -234,9 +261,10 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
 function VistaCondicionesGenerales({ condiciones, categoria, contexto }) {
   const segmentos = Array.isArray(condiciones.segmentos) ? condiciones.segmentos : [];
   const resuelto = condiciones.estado_resolucion === 'listo' || (!condiciones.estado_resolucion && Array.isArray(condiciones.segmentos));
-  if (condiciones.estado_resolucion === 'cargando') return <div className="document-preview-conditions-message">Cargando condiciones generales…</div>;
-  if (!resuelto) return <div className="document-preview-conditions-message">{condiciones.mensaje_resolucion || 'No se pudieron cargar las condiciones generales publicadas.'}</div>;
-  return <div className="document-preview-conditions">{segmentos.map(segmento => <section key={segmento.id || segmento.orden} className="document-preview-conditions-segment">
+  const advertencia = condiciones.advertencia_resolucion && <div className="document-preview-conditions-warning">{condiciones.advertencia_resolucion}</div>;
+  if (condiciones.estado_resolucion === 'cargando') return <div className="document-preview-conditions">{advertencia}<div className="document-preview-conditions-message">Cargando condiciones generales…</div></div>;
+  if (!resuelto) return <div className="document-preview-conditions">{advertencia}<div className="document-preview-conditions-message">{condiciones.mensaje_resolucion || 'No se pudieron cargar las condiciones generales publicadas.'}</div></div>;
+  return <div className="document-preview-conditions">{advertencia}{segmentos.map(segmento => <section key={segmento.id || segmento.orden} className="document-preview-conditions-segment">
     {segmento.titulo && <h4>{segmento.titulo}</h4>}
     <DocumentPreviewRichText value={segmento.contenido_json} categoria={categoria} contexto={contexto} />
   </section>)}</div>;

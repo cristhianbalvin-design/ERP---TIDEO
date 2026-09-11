@@ -9485,7 +9485,7 @@ function Parametros() {
       : []),
     { key: 'nomina', title: 'Nomina', description: 'Regimen laboral, frecuencia de pago, quincenas y valores fiscales vigentes.' },
     { key: 'comercial', title: 'Condiciones', description: 'Textos base que se precargan en cada cotizacion comercial.' },
-    { key: 'catalogo_documentos', title: 'Catálogo documental', description: 'Tipos de cotización y versiones de condiciones generales por sociedad.' },
+    { key: 'catalogo_documentos', title: 'Catálogo documental', description: 'Tipos de cotización y versiones de Documentos de Condiciones por sociedad.' },
     { key: 'biblioteca', title: 'Biblioteca', description: 'Variables del sistema y frases reutilizables para tus documentos.' },
     { key: 'documentos', title: 'Documentos', description: 'Series, moneda, impuestos y plantillas fiscales o comerciales.' },
     { key: 'flujos', title: 'Flujos', description: 'Estados por documento, transiciones y reglas de alerta para cada modulo.' },

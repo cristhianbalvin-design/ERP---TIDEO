@@ -4244,6 +4244,7 @@ body {
 .document-preview-conditions-segment { margin: 0 0 14px; }
 .document-preview-conditions-segment:last-child { margin-bottom: 0; }
 .document-preview-conditions-message { color: #475569; font-size: 13px; font-style: italic; }
+.document-preview-conditions-warning { margin: 0 0 12px; padding: 8px 10px; border: 1px solid #fbbf24; border-radius: 6px; background: #fffbeb; color: #92400e; font-size: 12px; }
 .document-preview-sheet .rich-text-preview-content { line-height: 1.55; font-size: 13px; }
 .document-preview-sheet .rich-text-preview-content p { margin: 0 0 10px; }
 .document-preview-sheet .rich-text-preview-content ul,
