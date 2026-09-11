@@ -3074,6 +3074,7 @@ export function AppProvider({ children }) {
       fecha_fin: datos.fecha_fin || null,
       sla: datos.sla || null,
       estado: datos.estado || 'en_ejecucion',
+      estado_produccion: datos.estado_produccion ?? null,
       centro_beneficio_id: datos.centro_beneficio_id || null,
       responsable_comercial_id: datos.responsable_comercial_id || null,
       responsable_comercial: datos.responsable_comercial || null,

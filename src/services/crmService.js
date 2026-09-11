@@ -459,6 +459,7 @@ export async function persistirOSCliente(supabase, empresaId, osc) {
     fecha_fin: osc.fecha_fin || null,
     sla: osc.sla || null,
     estado: osc.estado || 'en_ejecucion',
+    estado_produccion: osc.estado_produccion ?? null,
     saldo_por_ejecutar: osc.saldo_por_ejecutar || 0,
     saldo_por_valorizar: osc.saldo_por_valorizar || 0,
     saldo_por_facturar: osc.saldo_por_facturar || 0,
@@ -484,6 +485,7 @@ export async function persistirOSCliente(supabase, empresaId, osc) {
 export async function actualizarOSCliente(supabase, oscId, datos) {
   const allowed = [
     'estado',
+    'estado_produccion',
     'saldo_por_ejecutar',
     'saldo_por_valorizar',
     'saldo_por_facturar',

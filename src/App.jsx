@@ -17,7 +17,7 @@ const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ defau
 const Actividades     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Actividades })));
 const AgendaComercial = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.AgendaComercial })));
 const OSCliente       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.OSCliente })));
-const PanelProduccionWhynco = lazy(() => import('./pages_whynco_produccion.jsx').then(m => ({ default: m.PanelProduccionWhynco })));
+const PanelProduccionOSCliente = lazy(() => import('./pages_produccion_os_cliente.jsx').then(m => ({ default: m.PanelProduccionOSCliente })));
 const Marketing       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Marketing })));
 const BIComercial     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIComercial })));
 const BIOperativo     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIOperativo })));
@@ -282,7 +282,7 @@ function MainLayout({ onShowApplicationWelcome }) {
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
   const activeAllowed = puedeVerPantalla(role, active,
-    active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'produccion_whynco' ? ['os_cliente'] : []);
+    active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'panel_produccion' ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -380,7 +380,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'hoja_costeo_wizard': return <HojaCosteoWizard/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
-      case 'produccion_whynco': return <PanelProduccionWhynco/>;
+      case 'panel_produccion': return <PanelProduccionOSCliente/>;
       case 'backlog':          return <Backlog/>;
       case 'cierre':           return <Cierre/>;
       case 'remision':         return <Remision/>;
@@ -412,7 +412,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'ia_operativa':     return <IAOperativa/>;
       case 'ia_financiera':    return <IAFinanciera/>;
       case 'bi_financiero':    return <BIFinanciero/>;
-      default:                 return allowed && !allowed.has('dashboard') ? <MiPortal /> : <Dashboard role={role}/>;
+      default:                 return <Dashboard role={role}/>;
     }
   };
 

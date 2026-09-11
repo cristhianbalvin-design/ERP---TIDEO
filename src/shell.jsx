@@ -35,7 +35,7 @@ const SIDEBAR = [
     { key: 'hoja_costeo', label: 'Hoja de Costeo', icon: I.receipt },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: I.file },
     { key: 'os_cliente', label: 'OS Cliente', icon: I.clipboard },
-    { key: 'produccion_whynco', label: 'Panel Producción WHYNCO', icon: I.trend, accessAnyOf: ['os_cliente'] },
+    { key: 'panel_produccion', label: 'Panel de Producción', icon: I.trend, accessAnyOf: ['os_cliente'] },
   ]},
   { section: 'Operaciones', items: [
     { key: 'planner', label: 'Planner y Recursos', icon: I.calendar },
