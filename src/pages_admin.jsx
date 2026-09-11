@@ -5239,7 +5239,7 @@ function FamiliasServicioPanel({ onClose }) {
   </>;
 }
 
-function TrabajosMaestro({ onClose, onChanged }) {
+function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar, reloadKey }) {
   const { empresa, role, addNotificacion } = useApp();
   const [trabajos, setTrabajos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -5265,7 +5265,7 @@ function TrabajosMaestro({ onClose, onChanged }) {
     }
   };
 
-  useEffect(() => { cargar(); }, [empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar(); }, [empresa?.id, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cancelar = () => {
     setForm({ nombre: '', activo: true });
@@ -5321,9 +5321,13 @@ function TrabajosMaestro({ onClose, onChanged }) {
       </div>
       <div className="side-panel-body">
         {error && <div className="alert alert-danger" style={{ marginBottom:14 }}>{error}</div>}
-        <div className="row" style={{ justifyContent:'space-between', marginBottom:16 }}>
+        <div className="row" style={{ justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
           <span className="text-muted" style={{ fontSize:13 }}>{trabajos.length} valor{trabajos.length === 1 ? '' : 'es'} cargado{trabajos.length === 1 ? '' : 's'}</span>
-          {puedeCrear && !formVisible && <button className="btn btn-primary" onClick={() => { setForm({ nombre:'', activo:true }); setEditandoId(null); setFormVisible(true); }}>{I.plus} Nuevo trabajo</button>}
+          {puedeCrear && !formVisible && <div className="row" style={{ gap:8 }}>
+            <button className="btn btn-secondary" onClick={onDescargarPlantilla}>{I.download} Descargar plantilla</button>
+            <button className="btn btn-secondary" onClick={onImportar}>{I.upload} Subir plantilla</button>
+            <button className="btn btn-primary" onClick={() => { setForm({ nombre:'', activo:true }); setEditandoId(null); setFormVisible(true); }}>{I.plus} Nuevo trabajo</button>
+          </div>}
         </div>
         {formVisible && (
           <form className="card" style={{ padding:16, marginBottom:18 }} onSubmit={guardar}>
@@ -5388,6 +5392,8 @@ function Maestros() {
   const [showFamiliasServicio, setShowFamiliasServicio] = useState(false);
   const [showTrabajos, setShowTrabajos] = useState(false);
   const [trabajosCount, setTrabajosCount] = useState(0);
+  const [trabajos, setTrabajos] = useState([]);
+  const [trabajosVersion, setTrabajosVersion] = useState(0);
   const [editandoId, setEditandoId] = useState(null);
   const [fusionOrigenId, setFusionOrigenId] = useState(null);
   const [fusionDestinoId, setFusionDestinoId] = useState('');
@@ -5439,8 +5445,26 @@ function Maestros() {
   ));
   useEffect(() => {
     if (!empresa?.id) return;
-    maestrosService.getTrabajos(empresa.id).then(data => setTrabajosCount(data.length)).catch(() => setTrabajosCount(0));
+    maestrosService.getTrabajos(empresa.id).then(data => {
+      setTrabajos(data);
+      setTrabajosCount(data.length);
+    }).catch(() => {
+      setTrabajos([]);
+      setTrabajosCount(0);
+    });
   }, [empresa?.id]);
+  const refrescarTrabajos = async () => {
+    if (!empresa?.id) return [];
+    const data = await maestrosService.getTrabajos(empresa.id);
+    setTrabajos(data);
+    setTrabajosCount(data.length);
+    return data;
+  };
+  const registrarCambioTrabajos = count => {
+    setTrabajosCount(count);
+    setTrabajosVersion(version => version + 1);
+    refrescarTrabajos().catch(() => {});
+  };
   const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', clasificacion_id:'', familia_id:'', especialidad_id:'', tiempo_estimado_horas:'', requiere_certificacion:false, nivel_riesgo:'', requiere_permiso_especial:false, herramientas_requeridas:'', requiere_repuestos:false, frecuencia_sugerida:'', unidad_medida:'', costo_estandar_hora:'', orden_sugerido:0, facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
   const [rows, setRows] = useState({
     mst_clientes: [],
@@ -5501,6 +5525,7 @@ function Maestros() {
     if (sel.id === 'mst_industrias') return industrias;
     if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
     if (sel.id === 'mst_tipos_contrato') return tiposContrato;
+    if (sel.id === 'mst_trabajos') return trabajos.map(trabajo => ({ ...trabajo, estado: trabajo.activo !== false ? 'activo' : 'inactivo' }));
     if (sel.id === 'mst_materiales') return materiales;
     return rows[sel.id] || [];
   };
@@ -5645,6 +5670,13 @@ function Maestros() {
       fields:  ['codigo','nombre','estado'],
       ejemplo: ['1000','PLAZO INDETERMINADO','activo'],
       hint: 'Se recomienda usar los códigos establecidos por SUNAT',
+    },
+    mst_trabajos: {
+      sheetName: 'Trabajos', filename: 'trabajos.xlsx',
+      headers: ['Nombre','Estado'],
+      fields: ['nombre','estado'],
+      ejemplo: ['Mantenimiento preventivo','activo'],
+      hint: 'Nombre obligatorio y único dentro de la empresa. Estado: activo o inactivo.',
     },
   };
 
@@ -5845,9 +5877,9 @@ function Maestros() {
     XLSX.writeFile(wb, cfg.filename);
   };
 
-  const descargarPlantillaMaestro = () => {
-    const cfg = MAESTRO_XLSX_CFG[sel?.id]; if (!cfg) return;
-    if (sel?.id === 'mst_tipos_servicio') {
+  const descargarPlantillaMaestro = (maestroId = sel?.id) => {
+    const cfg = MAESTRO_XLSX_CFG[maestroId]; if (!cfg) return;
+    if (maestroId === 'mst_tipos_servicio') {
       const instrucciones = XLSX.utils.aoa_to_sheet([
         ['Plantilla de Catálogo de Actividades Operativas'],
         [],
@@ -5901,7 +5933,7 @@ function Maestros() {
       XLSX.writeFile(wb, 'plantilla_actividades_operativas.xlsx');
       return;
     }
-    if (sel?.id === 'mst_unidades_organizacionales') {
+    if (maestroId === 'mst_unidades_organizacionales') {
       const dataSheet = XLSX.utils.aoa_to_sheet([
         cfg.headers,
         cfg.ejemplo,
@@ -6044,6 +6076,7 @@ function Maestros() {
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
         else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
         else if (sel.id === 'mst_tipos_contrato') await crearTipoContrato({ codigo: (r.codigo||'').trim(), nombre: r.nombre, estado: r.estado || 'activo' });
+        else if (sel.id === 'mst_trabajos') await maestrosService.crearTrabajo(empresa.id, { nombre: r.nombre, activo: (r.estado || 'activo') === 'activo' });
         creados++;
         resultado.push({ ...r, _estado: 'CREADO', _errores: [] });
       }
@@ -6057,6 +6090,9 @@ function Maestros() {
       setImportRows(resultado);
       setImportSummary({ creados, reutilizados, pendientesCargoInactivo, fallidas });
       setImportStep(2);
+      if (sel.id === 'mst_trabajos') {
+        refrescarTrabajos().then(() => setTrabajosVersion(version => version + 1)).catch(() => {});
+      }
       addNotificacion?.(
         pendientesCargoInactivo
           ? `Importación terminada: ${creados} creados, ${reutilizados} reutilizados y ${pendientesCargoInactivo} pendiente(s) por cargo inactivo.`
@@ -7062,7 +7098,7 @@ function Maestros() {
       {showFamiliasServicio && <FamiliasServicioPanel onClose={() => setShowFamiliasServicio(false)} />}
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
-      {showTrabajos && <TrabajosMaestro onClose={() => setShowTrabajos(false)} onChanged={setTrabajosCount} />}
+      {showTrabajos && <TrabajosMaestro onClose={() => { setShowTrabajos(false); if (sel?.id === 'mst_trabajos') setSel(null); }} onChanged={registrarCambioTrabajos} onDescargarPlantilla={() => descargarPlantillaMaestro('mst_trabajos')} onImportar={async () => { try { await refrescarTrabajos(); setImportSummary(null); setImportRows([]); setImportStep(1); setSel({ id:'mst_trabajos', tabla:'Trabajos' }); setImportModal(true); } catch (err) { addNotificacion?.(`No se pudieron cargar los trabajos: ${err?.message || err}`, 'error'); } }} reloadKey={trabajosVersion} />}
 
       <div className="maestros-help">
         <div className="maestros-help-icon">{I.users}</div>
@@ -7204,7 +7240,7 @@ function Maestros() {
         </div>
       )}
 
-      {sel && sel.id !== 'mst_materiales' && <>
+      {sel && sel.id !== 'mst_materiales' && sel.id !== 'mst_trabajos' && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
         <div className="side-panel" style={{width:'min(800px, 96vw)'}}>
           <div className="side-panel-head">
