@@ -2222,9 +2222,10 @@ function Pipeline() {
   const {
     oportunidades, cuentas, actividades, agendaEventos, hojasCosteo, cotizaciones, osClientes,
     oppHistorialEtapas, personalAdmin,
-    crearAgendaEvento, crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    crearAgendaEvento, crearOportunidad, crearHojaCosteo, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
-    navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser,
+    navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser, addToast,
+    perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     probabilidadPorEtapaOpp, forecastPorEtapaOpp
   } = useApp();
   const [view, setView] = useState('kanban');
@@ -2254,6 +2255,14 @@ function Pipeline() {
   const [dropMsg, setDropMsg] = useState(null);
   const [serviciosOpp, setServiciosOpp] = useState([]);
   const [loadingServiciosOpp, setLoadingServiciosOpp] = useState(false);
+  const [creandoHojaCosteoId, setCreandoHojaCosteoId] = useState(null);
+  const modoVistaSociedadCosteo = resolverFiltroSociedadesVista({
+    multisociedadHabilitado: empresa?.multisociedad_habilitado,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesIdsAlcance,
+    sociedadesDisponibles,
+  });
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const cuentasVisibles = cuentas.filter(c => canUserSeeOwner({ viewer: authUser, ownerUserId: c.responsable_id, ownerName: c.responsable_comercial, users: usuarios, roles }));
   const oppFormBase = {
@@ -2297,6 +2306,28 @@ function Pipeline() {
   const cerrarNuevaOpp = () => {
     setPanelNuevaOpp(false);
     setOppForm(oppFormBase);
+  };
+  const crearHojaCosteoDesdeOportunidad = async oportunidad => {
+    if (!oportunidad?.id || creandoHojaCosteoId) return;
+    if (!modoVistaSociedadCosteo.permiteEscritura) {
+      addToast('Selecciona una sociedad concreta en el selector superior para crear una Hoja de Costeo.', 'error');
+      return;
+    }
+    setCreandoHojaCosteoId(oportunidad.id);
+    try {
+      const hojaId = await crearHojaCosteo({
+        oportunidad_id: oportunidad.id,
+        cuenta_id: oportunidad.cuenta_id || null,
+        sociedad_id: empresa?.multisociedad_habilitado ? modoVistaSociedadCosteo.sociedadIdEscritura : null,
+        responsable_costeo: oportunidad.responsable || null,
+        moneda: oportunidad.moneda || 'PEN',
+      });
+      navigate('hoja_costeo_wizard', { hojaId });
+    } catch (error) {
+      addToast(`No se pudo crear la Hoja de Costeo: ${error?.message || error}`, 'error');
+    } finally {
+      setCreandoHojaCosteoId(null);
+    }
   };
   const guardarNuevaOpp = (event) => {
     event.preventDefault();
@@ -3010,8 +3041,9 @@ function Pipeline() {
                     )}
                     {!hojasCosteo.some(h => h.oportunidad_id === sel.id) && !cotizaciones.some(c => c.oportunidad_id === sel.id) && (
                       <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
-                        onClick={e => { e.stopPropagation(); navigate('hoja_costeo', { nueva: true, opp: sel.id }); }}>
-                        {I.receipt} Crear Hoja de Costeo
+                        disabled={creandoHojaCosteoId === sel.id}
+                        onClick={e => { e.stopPropagation(); crearHojaCosteoDesdeOportunidad(sel); }}>
+                        {I.receipt} {creandoHojaCosteoId === sel.id ? 'Creando Hoja de Costeo...' : 'Crear Hoja de Costeo'}
                       </button>
                     )}
                     <div className="row" style={{gap:8, marginTop:2}}>
