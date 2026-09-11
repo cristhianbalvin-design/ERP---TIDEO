@@ -334,6 +334,40 @@ export const maestrosService = {
     if (error) throw error;
   },
 
+  // Trabajos de Hoja de Costeo
+  getTrabajos: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('familia_trabajo')
+      .select('id, nombre, activo, creado_en, actualizado_en')
+      .eq('empresa_id', empresaId)
+      .order('nombre');
+    if (error) throw error;
+    return data || [];
+  },
+  crearTrabajo: async (empresaId, trabajo) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('familia_trabajo')
+      .insert({ empresa_id: empresaId, nombre: String(trabajo.nombre || '').trim(), activo: trabajo.activo !== false })
+      .select('id, nombre, activo, creado_en, actualizado_en')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarTrabajo: async (trabajoId, trabajo) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('familia_trabajo')
+      .update({ nombre: String(trabajo.nombre || '').trim(), activo: Boolean(trabajo.activo) })
+      .eq('id', trabajoId)
+      .select('id, nombre, activo, creado_en, actualizado_en')
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   // Almacenes
   getAlmacenes: async (empresaId) => {
     if (!empresaId) return [];

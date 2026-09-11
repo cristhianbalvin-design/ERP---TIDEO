@@ -5239,6 +5239,111 @@ function FamiliasServicioPanel({ onClose }) {
   </>;
 }
 
+function TrabajosMaestro({ onClose, onChanged }) {
+  const { empresa, role, addNotificacion } = useApp();
+  const [trabajos, setTrabajos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+  const [form, setForm] = useState({ nombre: '', activo: true });
+  const [error, setError] = useState('');
+  const puedeCrear = Boolean(role?.permisos?.todo || role?.permisos?.crear?.includes('maestros'));
+  const puedeEditar = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes('maestros'));
+
+  const cargar = async () => {
+    if (!empresa?.id) return;
+    setCargando(true);
+    try {
+      const data = await maestrosService.getTrabajos(empresa.id);
+      setTrabajos(data);
+      onChanged?.(data.length);
+    } catch (err) {
+      setError(err?.message || 'No se pudieron cargar los trabajos.');
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  useEffect(() => { cargar(); }, [empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cancelar = () => {
+    setForm({ nombre: '', activo: true });
+    setEditandoId(null);
+    setFormVisible(false);
+    setError('');
+  };
+  const editar = trabajo => {
+    setForm({ nombre: trabajo.nombre || '', activo: trabajo.activo !== false });
+    setEditandoId(trabajo.id);
+    setFormVisible(true);
+    setError('');
+  };
+  const guardar = async event => {
+    event.preventDefault();
+    const nombre = form.nombre.trim();
+    if (!nombre) {
+      setError('Completa el nombre del trabajo.');
+      return;
+    }
+    setGuardando(true);
+    setError('');
+    try {
+      let persistido;
+      if (editandoId) {
+        persistido = await maestrosService.actualizarTrabajo(editandoId, { nombre, activo: form.activo });
+        setTrabajos(prev => prev.map(item => item.id === persistido.id ? persistido : item).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+        addNotificacion?.('Trabajo actualizado.');
+      } else {
+        persistido = await maestrosService.crearTrabajo(empresa.id, { nombre, activo: form.activo });
+        setTrabajos(prev => [...prev, persistido].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+        addNotificacion?.('Trabajo creado.');
+      }
+      cancelar();
+      onChanged?.(editandoId ? trabajos.length : trabajos.length + 1);
+    } catch (err) {
+      setError(err?.message || 'No se pudo guardar el trabajo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return <>
+    <div className="side-panel-backdrop" onClick={onClose} />
+    <div className="side-panel" style={{ width:'min(760px, 96vw)' }}>
+      <div className="side-panel-head">
+        <div>
+          <div className="eyebrow">Maestros Base</div>
+          <div className="font-display" style={{ fontSize:22, fontWeight:700, marginTop:2 }}>Trabajos</div>
+          <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>Catálogo de trabajos disponible para la Mano de Obra de Hoja de Costeo.</div>
+        </div>
+        <button className="icon-btn" onClick={onClose}>{I.x}</button>
+      </div>
+      <div className="side-panel-body">
+        {error && <div className="alert alert-danger" style={{ marginBottom:14 }}>{error}</div>}
+        <div className="row" style={{ justifyContent:'space-between', marginBottom:16 }}>
+          <span className="text-muted" style={{ fontSize:13 }}>{trabajos.length} valor{trabajos.length === 1 ? '' : 'es'} cargado{trabajos.length === 1 ? '' : 's'}</span>
+          {puedeCrear && !formVisible && <button className="btn btn-primary" onClick={() => { setForm({ nombre:'', activo:true }); setEditandoId(null); setFormVisible(true); }}>{I.plus} Nuevo trabajo</button>}
+        </div>
+        {formVisible && (
+          <form className="card" style={{ padding:16, marginBottom:18 }} onSubmit={guardar}>
+            <div style={{ fontWeight:600, marginBottom:12 }}>{editandoId ? 'Editar trabajo' : 'Nuevo trabajo'}</div>
+            <div className="grid-2" style={{ gap:12 }}>
+              <div className="input-group"><label>Nombre *</label><input className="input" autoFocus required value={form.nombre} onChange={e => setForm(prev => ({ ...prev, nombre:e.target.value }))} placeholder="Ej: Mantenimiento preventivo" /></div>
+              <div className="input-group"><label>Estado</label><select className="select" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(prev => ({ ...prev, activo:e.target.value === 'activo' }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+            </div>
+            <div className="row" style={{ justifyContent:'flex-end', gap:8, marginTop:14 }}><button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear trabajo'}</button></div>
+          </form>
+        )}
+        <div className="card"><div className="table-wrap"><table className="tbl">
+          <thead><tr><th>Trabajo</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
+          <tbody>{cargando ? <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>Cargando trabajos...</td></tr> : trabajos.length ? trabajos.map(trabajo => <tr key={trabajo.id}><td><strong>{trabajo.nombre}</strong></td><td><span className={`badge ${trabajo.activo !== false ? 'badge-green' : 'badge-gray'}`}>{trabajo.activo !== false ? 'Activo' : 'Inactivo'}</span></td><td style={{ textAlign:'right' }}>{puedeEditar && <button className="btn btn-ghost btn-sm" onClick={() => editar(trabajo)}>{I.edit} Editar</button>}</td></tr>) : <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>No hay trabajos registrados.</td></tr>}</tbody>
+        </table></div></div>
+      </div>
+    </div>
+  </>;
+}
+
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
@@ -5281,6 +5386,8 @@ function Maestros() {
   const [showRequisitos, setShowRequisitos] = useState(false);
   const [showTiposDocumento, setShowTiposDocumento] = useState(false);
   const [showFamiliasServicio, setShowFamiliasServicio] = useState(false);
+  const [showTrabajos, setShowTrabajos] = useState(false);
+  const [trabajosCount, setTrabajosCount] = useState(0);
   const [editandoId, setEditandoId] = useState(null);
   const [fusionOrigenId, setFusionOrigenId] = useState(null);
   const [fusionDestinoId, setFusionDestinoId] = useState('');
@@ -5318,6 +5425,7 @@ function Maestros() {
     { id: 'mst_familias_servicio', tabla: 'Familias de servicio' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas' },
+    { id: 'mst_trabajos', tabla: 'Trabajos' },
     { id: 'mst_catalogo_servicios', tabla: 'Catálogo Servicios', permiso: 'servicios' },
     { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
@@ -5329,6 +5437,10 @@ function Maestros() {
       ? !m.permiso || role?.permisos?.todo || role?.permisos?.ver?.includes(m.permiso)
       : Boolean(m.permiso && role?.permisos?.ver?.includes(m.permiso))
   ));
+  useEffect(() => {
+    if (!empresa?.id) return;
+    maestrosService.getTrabajos(empresa.id).then(data => setTrabajosCount(data.length)).catch(() => setTrabajosCount(0));
+  }, [empresa?.id]);
   const nuevoBase = { codigo:'', nombre:'', detalle:'', estado:'activo', area:'', requiere_cert:false, clasificacion:'', clasificacion_id:'', familia_id:'', especialidad_id:'', tiempo_estimado_horas:'', requiere_certificacion:false, nivel_riesgo:'', requiere_permiso_especial:false, herramientas_requeridas:'', requiere_repuestos:false, frecuencia_sugerida:'', unidad_medida:'', costo_estandar_hora:'', orden_sugerido:0, facturable:false, tipo:'', responsable:'', direccion:'', tipo_cargo:'', modo_gestion:'individual', tipo_catalogo:'moneda', ambito:'Ambos', exige_vencimiento:false, dias_alerta:30, es_habilitante:false, requiere_validacion:true, orden:0, unidad_padre_id:'', ceco_id:'', categoria:'otro', alcance:'propio' };
   const [rows, setRows] = useState({
     mst_clientes: [],
@@ -6270,6 +6382,7 @@ function Maestros() {
     }
     if (mId === 'mst_familias_servicio') return 'Catálogo por tenant';
     if (mId === 'mst_catalogo_servicios') return 'Catálogo comercial por tenant';
+    if (mId === 'mst_trabajos') return `${trabajosCount} valor${trabajosCount === 1 ? '' : 'es'} cargado${trabajosCount === 1 ? '' : 's'}`;
     
     let arr = [];
     switch (mId) {
@@ -6933,7 +7046,7 @@ function Maestros() {
               <div className="maestro-card-title">{m.tabla}</div>
               <div className="maestro-card-meta">{getMaestroMetaText(m.id)}</div>
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else { setSel(m); resetForm(); } }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else if (m.id === 'mst_trabajos') { setShowTrabajos(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
@@ -6949,6 +7062,7 @@ function Maestros() {
       {showFamiliasServicio && <FamiliasServicioPanel onClose={() => setShowFamiliasServicio(false)} />}
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
+      {showTrabajos && <TrabajosMaestro onClose={() => setShowTrabajos(false)} onChanged={setTrabajosCount} />}
 
       <div className="maestros-help">
         <div className="maestros-help-icon">{I.users}</div>
