@@ -4737,6 +4737,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
               {editMode ? <>{I.save} Guardar cambios</> : <>{I.edit} Editar costeo</>}
             </button>
           )}
+          <button className="btn btn-secondary" onClick={() => navigate('hoja_costeo_wizard', { hojaId: hc.id })}>Abrir wizard</button>
           {estado === 'borrador' && (
             <button className="btn btn-primary" onClick={handleEnviarRevision}>{I.send} Enviar a revision</button>
           )}

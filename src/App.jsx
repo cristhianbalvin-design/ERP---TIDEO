@@ -84,6 +84,7 @@ const Cotizaciones = lazy(() => import('./pages_extra.jsx').then(m => ({ default
 const Valorizacion = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.Valorizacion })));
 const Inventario   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.Inventario })));
 const HojaCosteo   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.HojaCosteo })));
+const HojaCosteoWizard = lazy(() => import('./pages_hoja_costeo_wizard.jsx'));
 
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
@@ -281,7 +282,7 @@ function MainLayout({ onShowApplicationWelcome }) {
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
   const activeAllowed = puedeVerPantalla(role, active,
-    active === 'maestros' ? ['servicios'] : active === 'produccion_whynco' ? ['os_cliente'] : []);
+    active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'produccion_whynco' ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -376,6 +377,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'actividades':      return <Actividades/>;
       case 'agenda_comercial': return <AgendaComercial/>;
       case 'hoja_costeo':      return <HojaCosteo/>;
+      case 'hoja_costeo_wizard': return <HojaCosteoWizard/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
       case 'produccion_whynco': return <PanelProduccionWhynco/>;
