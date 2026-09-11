@@ -33,6 +33,7 @@ const SIDEBAR = [
   { section: 'Comercial', items: [
     { key: 'agenda_comercial', label: 'Agenda Comercial', icon: I.calendar },
     { key: 'hoja_costeo', label: 'Hoja de Costeo', icon: I.receipt },
+    { key: 'costeo_variables', label: 'Variables de Costeo', icon: I.dollar, requiereVerCostos: true },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: I.file },
     { key: 'os_cliente', label: 'OS Cliente', icon: I.clipboard },
     { key: 'panel_produccion', label: 'Panel de Producción', icon: I.trend, accessAnyOf: ['os_cliente'] },
@@ -303,7 +304,9 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items
-      .filter(it => puedeVerPantalla(role, it.key, it.accessAnyOf || []))
+      .filter(it => it.requiereVerCostos
+        ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
+        : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
       .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);

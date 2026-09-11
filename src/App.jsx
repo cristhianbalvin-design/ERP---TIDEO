@@ -86,6 +86,7 @@ const Inventario   = lazy(() => import('./pages_extra.jsx').then(m => ({ default
 const HojaCosteo   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.HojaCosteo })));
 const HojaCosteoWizard = lazy(() => import('./pages_hoja_costeo_wizard.jsx'));
 
+const CosteoVariables = lazy(() => import('./pages_costeo_variables.jsx'));
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
 const BIFinanciero      = lazy(() => import('./pages_bi_fin.jsx').then(m => ({ default: m.BIFinanciero })));
@@ -281,8 +282,10 @@ function MainLayout({ onShowApplicationWelcome }) {
   const [openSelectorSignal, setOpenSelectorSignal] = useState(0);
 
   const pantallasPermitidas = Array.isArray(role?.permisos?.ver) ? role.permisos.ver : [];
-  const activeAllowed = puedeVerPantalla(role, active,
-    active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'panel_produccion' ? ['os_cliente'] : []);
+  const activeAllowed = active === 'costeo_variables'
+    ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
+    : puedeVerPantalla(role, active,
+      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'panel_produccion' ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -378,6 +381,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'agenda_comercial': return <AgendaComercial/>;
       case 'hoja_costeo':      return <HojaCosteo/>;
       case 'hoja_costeo_wizard': return <HojaCosteoWizard/>;
+      case 'costeo_variables': return <CosteoVariables/>;
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
       case 'panel_produccion': return <PanelProduccionOSCliente/>;
