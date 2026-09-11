@@ -41,7 +41,7 @@ const plainTextForBlock = block => {
 const contentForType = type => {
   if (type === 'tabla') return emptyTable();
   if (type === 'grupo_repetible') return emptyGroup();
-  if (type === 'condiciones_generales') return {};
+  if (type === 'condiciones_generales') return { condiciones_tipo_documento_id:'' };
   return normalizeRichTextDocument(null);
 };
 
@@ -55,7 +55,7 @@ const blockPayload = (block, plantillaId, parentId = block.bloque_padre_id || nu
     : block.tipo_bloque === 'tabla'
       ? normalizeTable(block.contenido_json)
       : block.tipo_bloque === 'condiciones_generales'
-        ? {}
+        ? { condiciones_tipo_documento_id:block.contenido_json?.condiciones_tipo_documento_id || '' }
       : block.contenido_json || contentForType(block.tipo_bloque),
   contenido_texto_plano: plainTextForBlock(block),
   orden: Number(block.orden || 1),
@@ -140,7 +140,7 @@ function AvisoBloqueExcedido({ alFinal = false }) {
   </div>;
 }
 
-function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
+function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, documentosCondiciones, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible', condiciones_generales:'Condiciones Generales' }[block.tipo_bloque] || block.tipo_bloque;
   const esCondicionesGenerales = block.tipo_bloque === 'condiciones_generales';
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
@@ -156,13 +156,13 @@ function BloqueCard({ block, index, total, depth, children, categoria, disabled,
       {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} repeatFields={repeatFields} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
-      {esCondicionesGenerales && <div className="alert alert-info" style={{margin:0}}>Solo lectura: la Vista Previa usa la biblioteca publicada vigente del tipo de documento.</div>}
+      {esCondicionesGenerales && <div className="input-group"><label>Documento de Condiciones a usar</label><select className="input" value={block.contenido_json?.condiciones_tipo_documento_id || ''} disabled={disabled} onChange={event => onChange({ contenido_json:{ condiciones_tipo_documento_id:event.target.value } })}><option value="">Seleccione…</option>{documentosCondiciones.map(documento => <option key={documento.id} value={documento.id}>{documento.nombre}</option>)}</select><div className="text-muted" style={{fontSize:12, marginTop:6}}>El contenido se toma de la versión publicada vigente del documento seleccionado.</div></div>}
     </div>
     {isOversized && <AvisoBloqueExcedido alFinal />}
   </div>;
 }
 
-function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBlockKeys = new Set(), notEvaluableBlockKeys = new Set(), variables, onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
+function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBlockKeys = new Set(), notEvaluableBlockKeys = new Set(), variables, documentosCondiciones = [], onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const items = orderBlocks(blocks);
   const allBlocks = blocks._all || blocks;
@@ -171,7 +171,7 @@ function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBl
   const repeatFields = parentSource?.fields || [];
   const decorateChildren = block => Object.assign(orderBlocks(allBlocks.filter(item => item.bloque_padre_id === block.id)), { _all:allBlocks, _savingId:blocks._savingId, _savedId:blocks._savedId });
   return <div style={{marginTop:10}}>
-    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
+    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} documentosCondiciones={documentosCondiciones} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
     {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'condiciones_generales'); setPickerOpen(false); }}>Condiciones Generales</button></>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
   </div>;
 }
@@ -212,6 +212,7 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const [modoVista, setModoVista] = useState('editar');
   const [zoomVistaPrevia, setZoomVistaPrevia] = useState(100);
   const [medidasVistaPrevia, setMedidasVistaPrevia] = useState(null);
+  const [documentosCondiciones, setDocumentosCondiciones] = useState([]);
   const cargaId = useRef(0);
   const variables = useMemo(() => obtenerVariablesDocumentales(tipo?.categoria_base), [tipo?.categoria_base]);
   const subirImagen = useCallback(file => subirImagenConstructorDocumento({ empresaId:empresa?.id, file }), [empresa?.id]);
@@ -241,6 +242,41 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   }, [tipo?.id]);
 
   useEffect(() => { setPlantillas([]); setDraft(null); setBloques([]); setMostrarHistorial(false); setModoVista('editar'); setZoomVistaPrevia(100); cargar(); }, [cargar]);
+  useEffect(() => {
+    if (!tipo?.categoria_base || !empresa?.id || !isSupabaseConfigured()) { setDocumentosCondiciones([]); return; }
+    let active = true;
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        let tiposQuery = sb
+          .from('tipos_documento_electronico')
+          .select('id,nombre')
+          .eq('empresa_id', empresa.id)
+          .eq('categoria_base', tipo.categoria_base)
+          .eq('motor_contenido', 'condiciones_generales')
+          .order('nombre');
+        tiposQuery = sociedadId ? tiposQuery.eq('sociedad_id', sociedadId) : tiposQuery.is('sociedad_id', null);
+        const { data:tiposCondiciones, error:tiposError } = await tiposQuery;
+        if (tiposError) throw tiposError;
+        const ids = (tiposCondiciones || []).map(item => item.id);
+        if (!ids.length) { if (active) setDocumentosCondiciones([]); return; }
+        let bibliotecasQuery = sb
+          .from('biblioteca_condiciones_generales')
+          .select('tipo_documento_id')
+          .in('tipo_documento_id', ids)
+          .eq('empresa_id', empresa.id)
+          .eq('estado', 'publicada');
+        bibliotecasQuery = sociedadId ? bibliotecasQuery.eq('sociedad_id', sociedadId) : bibliotecasQuery.is('sociedad_id', null);
+        const { data:bibliotecas, error:bibliotecasError } = await bibliotecasQuery;
+        if (bibliotecasError) throw bibliotecasError;
+        const idsConBiblioteca = new Set((bibliotecas || []).map(item => item.tipo_documento_id));
+        if (active) setDocumentosCondiciones((tiposCondiciones || []).filter(item => idsConBiblioteca.has(item.id)));
+      } catch (err) {
+        if (active) { setDocumentosCondiciones([]); setError(err.message || 'No se pudieron cargar los Documentos de Condiciones.'); }
+      }
+    })();
+    return () => { active = false; };
+  }, [tipo?.categoria_base, empresa?.id, sociedadId]);
 
   const isSameBlock = (block, target) => block === target
     || (target.id != null && block.id === target.id)
@@ -436,9 +472,9 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const plantillaActiva = draft || publicada;
   const editable = Boolean(draft && puedeEditar);
   const cuerpoEditor = draft
-    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
+    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
     : publicada
-      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
+      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
       : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>;
 
   return <div className={`card document-builder-editor document-builder-editor-${modoVista}`}><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body document-builder-editor-body">
