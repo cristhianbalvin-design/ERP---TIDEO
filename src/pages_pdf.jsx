@@ -197,15 +197,15 @@ export function HojaCostooPDF({ hc, opp, cuenta, cfg }) {
   const moneda = normalizeCurrency(hc.moneda || opp?.moneda || 'PEN');
   const s = currencySymbol(moneda);
 
-  const calcSub = list => (list || []).reduce((acc, i) => acc + (Number(i.cantidad || 0) * Number(i.costo_unitario || 0)), 0);
-  const totalMO = calcSub(hc.mano_obra);
-  const totalMat = calcSub(hc.materiales);
-  const totalST = calcSub(hc.servicios_terceros);
-  const totalLog = calcSub(hc.logistica);
-  const totalCosto = totalMO + totalMat + totalST + totalLog;
+  const totalMO = Number(hc.total_mano_obra || 0);
+  const totalMat = Number(hc.total_materiales || 0);
+  const totalST = Number(hc.total_servicios_terceros || 0);
+  const totalLog = Number(hc.total_logistica || 0);
+  const totalActivos = Number(hc.total_activos || 0);
+  const totalCosto = Number(hc.costo_total || 0);
   const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95);
-  const precioSinIgv = margen < 100 ? totalCosto / (1 - margen / 100) : totalCosto;
-  const precioConIgv = precioSinIgv * 1.18;
+  const precioSinIgv = Number(hc.precio_sugerido_sin_igv || 0);
+  const precioConIgv = Number(hc.precio_sugerido_total || 0);
   const estadoLabel = String(hc.estado || 'borrador').replace('_', ' ').toUpperCase();
 
   const renderSeccion = (titulo, items) => {
@@ -280,9 +280,10 @@ export function HojaCostooPDF({ hc, opp, cuenta, cfg }) {
         <View style={[S.twoCol, { gap: 16 }]}>
           <View style={[S.totBox, { flex: 1 }]}>
             {totalMO  > 0 && <View style={S.totRow}><Text style={S.totLabel}>Mano de obra</Text><Text style={S.totVal}>{fmt(totalMO, s)}</Text></View>}
-            {totalMat > 0 && <View style={S.totRow}><Text style={S.totLabel}>Materiales</Text><Text style={S.totVal}>{fmt(totalMat, s)}</Text></View>}
-            {totalST  > 0 && <View style={S.totRow}><Text style={S.totLabel}>Servicios terceros</Text><Text style={S.totVal}>{fmt(totalST, s)}</Text></View>}
-            {totalLog > 0 && <View style={S.totRow}><Text style={S.totLabel}>Logística</Text><Text style={S.totVal}>{fmt(totalLog, s)}</Text></View>}
+             {totalMat > 0 && <View style={S.totRow}><Text style={S.totLabel}>Materiales</Text><Text style={S.totVal}>{fmt(totalMat, s)}</Text></View>}
+             {totalST  > 0 && <View style={S.totRow}><Text style={S.totLabel}>Servicios terceros</Text><Text style={S.totVal}>{fmt(totalST, s)}</Text></View>}
+             {totalLog > 0 && <View style={S.totRow}><Text style={S.totLabel}>Logística</Text><Text style={S.totVal}>{fmt(totalLog, s)}</Text></View>}
+             {totalActivos > 0 && <View style={S.totRow}><Text style={S.totLabel}>Activos</Text><Text style={S.totVal}>{fmt(totalActivos, s)}</Text></View>}
             <View style={S.totFinal}>
               <Text style={S.totFinalLabel}>Costo total estimado</Text>
               <Text style={S.totFinalVal}>{fmt(totalCosto, s)}</Text>

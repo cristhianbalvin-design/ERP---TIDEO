@@ -138,7 +138,7 @@ const pdfAssetSource = async ({ url, path }) => {
   return directUrl;
 };
 
-const construirPartidasDesdeHC = (hc) => {
+const construirPartidasDesdeHC = (hc, lineas = {}) => {
   const margen = Math.min(Math.max(toCotNumber(hc.margen_objetivo_pct, 35), 0), 95) / 100;
   const divisor = 1 - margen;
   const descripcionItemHC = i => String(i?.descripcion || i?.nombre || i?.concepto || i?.item || '').trim();
@@ -148,11 +148,51 @@ const construirPartidasDesdeHC = (hc) => {
     const meta = String(i?.tipo || i?.categoria || i?.seccion || i?.key || '').toLowerCase();
     return !['resumen', 'resumen_costeo', 'metadata', 'costo_total', 'subtotal', 'total'].includes(meta);
   };
-  return [
+  const manoObraRelacional = Array.isArray(hc.mano_obra) && hc.mano_obra.length
+    ? []
+    : (lineas.mano_obra || []).map(linea => ({
+      id: `mo_${linea.id}`,
+      descripcion:[lineas.familias?.[linea.familia_trabajo_id]?.nombre, lineas.actividades?.[linea.actividad_id]?.nombre, lineas.cargos?.[linea.cargo_id]?.nombre].filter(Boolean).join(' - ') || 'Mano de obra',
+      cantidad:linea.horas,
+      unidad:'hora',
+      costo_unitario:linea.costo_hora_snapshot,
+      tipo:'servicio',
+    }));
+  const materialesRelacionales = Array.isArray(hc.materiales) && hc.materiales.length
+    ? []
+    : (lineas.materiales || []).map(linea => {
+      const material = lineas.materialesCatalogo?.[linea.material_id] || {};
+      return {
+        id:`mat_${linea.id}`,
+        descripcion:material.descripcion || 'Material de costeo',
+        cantidad:linea.cantidad,
+        unidad:material.unidad || 'und',
+        costo_unitario:linea.costo_unitario_snapshot,
+        tipo:'material',
+      };
+    });
+  const activosRelacionales = (lineas.activos || []).map(linea => {
+    const activo = lineas.activosCatalogo?.[linea.activo_id] || {};
+    const cantidad = linea.horas_uso_estimadas == null ? 1 : linea.horas_uso_estimadas;
+    return {
+      id:`act_${linea.id}`,
+      descripcion:activo.nombre || 'Activo de costeo',
+      cantidad,
+      unidad:linea.horas_uso_estimadas == null ? 'servicio' : 'hora',
+      costo_unitario:linea.horas_uso_estimadas == null
+        ? linea.depreciacion_asignada
+        : toCotNumber(linea.depreciacion_asignada) / Math.max(toCotNumber(linea.horas_uso_estimadas), 1),
+      tipo:'servicio',
+    };
+  });
+  const partidas = [
     ...(hc.mano_obra || []),
+    ...manoObraRelacional,
     ...(hc.materiales || []),
+    ...materialesRelacionales,
     ...(hc.servicios_terceros || []),
     ...(hc.logistica || []),
+    ...activosRelacionales,
   ].filter(esItemRealHC).map((i, idx) => {
     const cantidad = toCotNumber(i.cantidad);
     const costoUnitario = toCotNumber(i.costo_unitario ?? i.precio_unitario);
@@ -167,6 +207,66 @@ const construirPartidasDesdeHC = (hc) => {
       subtotal: cantidad * precioUnitario,
     };
   }).filter(p => p.cantidad > 0 || p.precio_unitario > 0);
+  const subtotalObjetivo = toCotNumber(hc.precio_sugerido_sin_igv);
+  const subtotalActual = partidas.reduce((s, partida) => s + toCotNumber(partida.subtotal), 0);
+  const ajuste = Math.round((subtotalObjetivo - subtotalActual) * 100) / 100;
+  if (ajuste && partidas.length) {
+    const indice = partidas
+      .map((partida, index) => ({ partida, index }))
+      .sort((a, b) => (Number(a.partida.cantidad) === 1 ? -1 : 0) - (Number(b.partida.cantidad) === 1 ? -1 : 0)
+        || toCotNumber(b.partida.subtotal) - toCotNumber(a.partida.subtotal)
+        || b.index - a.index)[0]?.index;
+    if (indice != null && toCotNumber(partidas[indice].cantidad) > 0) {
+      const cantidad = toCotNumber(partidas[indice].cantidad);
+      const precio = toCotNumber(partidas[indice].precio_unitario) + ajuste / cantidad;
+      partidas[indice] = { ...partidas[indice], precio_unitario:precio, subtotal:Math.round(cantidad * precio * 100) / 100, ajuste_redondeo:ajuste };
+    }
+  }
+  return partidas;
+};
+
+const cargarPartidasDesdeHC = async (hc) => {
+  if (!isSupabaseConfigured()) return construirPartidasDesdeHC(hc);
+  const sb = await getSupabaseClient();
+  const [manoObraR, materialesR, activosR] = await Promise.all([
+    sb.from('hoja_costeo_lineas_mano_obra').select('id,familia_trabajo_id,actividad_id,cargo_id,horas,costo_hora_snapshot').eq('hoja_costeo_id', hc.id),
+    sb.from('hoja_costeo_lineas_materiales').select('id,material_id,cantidad,costo_unitario_snapshot').eq('hoja_costeo_id', hc.id),
+    sb.from('hoja_costeo_lineas_activos').select('id,activo_id,horas_uso_estimadas,depreciacion_asignada').eq('hoja_costeo_id', hc.id),
+  ]);
+  if (manoObraR.error || materialesR.error || activosR.error) throw manoObraR.error || materialesR.error || activosR.error;
+  const manoObra = manoObraR.data || [];
+  const materiales = materialesR.data || [];
+  const activos = activosR.data || [];
+  const idsUnicos = valores => [...new Set(valores.filter(Boolean))];
+  const familiaIds = idsUnicos(manoObra.map(linea => linea.familia_trabajo_id));
+  const actividadIds = idsUnicos(manoObra.map(linea => linea.actividad_id));
+  const cargoIds = idsUnicos(manoObra.map(linea => linea.cargo_id));
+  const materialIds = idsUnicos(materiales.map(linea => linea.material_id));
+  const activoIds = idsUnicos(activos.map(linea => linea.activo_id));
+  const consultarMaestro = async (tabla, ids, campos) => {
+    if (!ids.length) return [];
+    const { data, error } = await sb.from(tabla).select(campos).in('id', ids);
+    if (error) throw error;
+    return data || [];
+  };
+  const [familias, actividades, cargos, materialesCatalogo, activosCatalogo] = await Promise.all([
+    consultarMaestro('familia_trabajo', familiaIds, 'id,nombre'),
+    consultarMaestro('tipos_servicio_interno', actividadIds, 'id,nombre'),
+    consultarMaestro('cargos_empresa', cargoIds, 'id,nombre'),
+    consultarMaestro('materiales', materialIds, 'id,descripcion,unidad'),
+    consultarMaestro('activos', activoIds, 'id,nombre'),
+  ]);
+  const porId = filas => Object.fromEntries(filas.map(fila => [fila.id, fila]));
+  return construirPartidasDesdeHC(hc, {
+    mano_obra:manoObra,
+    materiales,
+    activos,
+    familias:porId(familias),
+    actividades:porId(actividades),
+    cargos:porId(cargos),
+    materialesCatalogo:porId(materialesCatalogo),
+    activosCatalogo:porId(activosCatalogo),
+  });
 };
 
 // ============ COTIZACIONES ============
@@ -197,6 +297,8 @@ function CotizacionesInner() {
   const [filtros, setFiltros] = useState({ cliente: '', oportunidad: '', estado: '', fechaDesde: '', fechaHasta: '' });
   const [cotizacionesEspeciales, setCotizacionesEspeciales] = useState([]);
   const [cotizacionesEspecialesError, setCotizacionesEspecialesError] = useState('');
+  const [partidasHCPorId, setPartidasHCPorId] = useState({});
+  const [cargandoPartidasHC, setCargandoPartidasHC] = useState(false);
   const modoVistaSociedadCotizaciones = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -289,6 +391,31 @@ function CotizacionesInner() {
     }
   }, [activeParams?.crear_os, activeParams?.detail, cotizacionesAlcance]);
 
+  const hojaCosteoOrigenId = activeParams?.hc_id || activeParams?.hoja_costeo_id || null;
+  useEffect(() => {
+    let activa = true;
+    const hoja = (hojasCosteo || []).find(item => item.id === hojaCosteoOrigenId);
+    if (!hoja) {
+      setCargandoPartidasHC(false);
+      return () => { activa = false; };
+    }
+    if (Object.prototype.hasOwnProperty.call(partidasHCPorId, hoja.id)) return () => { activa = false; };
+    setCargandoPartidasHC(true);
+    cargarPartidasDesdeHC(hoja)
+      .catch(error => {
+        if (activa) {
+          addNotificacion(`No se pudieron cargar líneas relacionales de la Hoja; se usará el detalle histórico. ${error?.message || ''}`);
+          return construirPartidasDesdeHC(hoja);
+        }
+        return null;
+      })
+      .then(partidas => {
+        if (activa && partidas) setPartidasHCPorId(actual => ({ ...actual, [hoja.id]:partidas }));
+      })
+      .finally(() => { if (activa) setCargandoPartidasHC(false); });
+    return () => { activa = false; };
+  }, [hojaCosteoOrigenId, hojasCosteo, partidasHCPorId, addNotificacion]);
+
   const getOpp    = id => oportunidades.find(o => o.id === id);
   const getCuenta = id => cuentas.find(c => c.id === id);
   const getCuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
@@ -313,7 +440,7 @@ function CotizacionesInner() {
       oportunidades={oportunidades}
       contactos={contactos}
       hojasCosteo={hojasCosteo || []}
-      adaptarHojaCosteo={construirPartidasDesdeHC}
+      adaptarHojaCosteo={hoja => partidasHCPorId[hoja.id] || construirPartidasDesdeHC(hoja)}
       sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
       onBack={() => navigate('cotizaciones')}
       onCreated={id => navigate('cotizaciones', { especial_id:id })}
@@ -361,7 +488,9 @@ function CotizacionesInner() {
       const mensaje = 'Selecciona una sociedad concreta en el selector superior para crear una cotización desde una oportunidad.';
       return <div className="p-4"><div className="alert alert-warning">{mensaje}</div><button className="btn btn-secondary mt-4" onClick={() => opp ? navigate('pipeline', { panel: opp.id }) : navigate('hoja_costeo', { detail: hcBase.id })}>Volver</button></div>;
     }
-    const itemsHC = hcBase ? construirPartidasDesdeHC(hcBase) : [];
+    const tienePartidasHC = hcBase && Object.prototype.hasOwnProperty.call(partidasHCPorId, hcBase.id);
+    if (hcBase && !tienePartidasHC) return <div className="p-4"><div className="alert alert-info">Cargando partidas de la Hoja de Costeo…</div></div>;
+    const itemsHC = hcBase ? (partidasHCPorId[hcBase.id] || construirPartidasDesdeHC(hcBase)) : [];
     const subtotalHC = itemsHC.reduce((s, p) => s + toCotNumber(p.subtotal ?? (toCotNumber(p.cantidad) * toCotNumber(p.precio_unitario))), 0);
     const igvHC = Math.round(subtotalHC * 18 / 100);
     const cotBaseDeHC = hcBase ? {
@@ -4660,13 +4789,14 @@ function SeccionCosto({ titulo, badge, items, onChange, readOnly, sugerido, cata
 
 function ResumenCostos({ hc, moneda = 'PEN' }) {
   const margen = Number(hc.margen_objetivo_pct || 35);
-  const totalManoObra = hc.total_mano_obra ?? calcSub(hc.mano_obra);
-  const totalMateriales = hc.total_materiales ?? calcSub(hc.materiales);
-  const totalServicios = hc.total_servicios_terceros ?? calcSub(hc.servicios_terceros);
-  const totalLogistica = hc.total_logistica ?? calcSub(hc.logistica);
-  const costo = hc.costo_total ?? (totalManoObra + totalMateriales + totalServicios + totalLogistica);
-  const sinIgv = hc.precio_sugerido_sin_igv ?? calcPrecio(hc);
-  const conIgv = hc.precio_sugerido_total ?? (sinIgv * 1.18);
+  const totalManoObra = Number(hc.total_mano_obra || 0);
+  const totalMateriales = Number(hc.total_materiales || 0);
+  const totalServicios = Number(hc.total_servicios_terceros || 0);
+  const totalLogistica = Number(hc.total_logistica || 0);
+  const totalActivos = Number(hc.total_activos || 0);
+  const costo = Number(hc.costo_total || 0);
+  const sinIgv = Number(hc.precio_sugerido_sin_igv || 0);
+  const conIgv = Number(hc.precio_sugerido_total || 0);
   const margenReal = sinIgv > 0 ? Math.round((sinIgv - costo) / sinIgv * 100) : 0;
 
   return (
@@ -4675,9 +4805,10 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 24px', marginBottom:16}}>
         {[
           ['Mano de obra', totalManoObra],
-          ['Materiales', totalMateriales],
-          ['Servicios terceros', totalServicios],
-          ['Logística', totalLogistica],
+           ['Materiales', totalMateriales],
+           ['Servicios terceros', totalServicios],
+           ['Logística', totalLogistica],
+           ['Activos', totalActivos],
         ].map(([label, val]) => (
           <div key={label} className="row" style={{justifyContent:'space-between'}}>
             <span className="text-muted" style={{fontSize:13}}>{label}</span>
@@ -4888,7 +5019,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
             <SeccionCosto titulo="Logística y Viáticos" badge="badge-gray" items={form.logistica} readOnly={readOnly} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={hcMoneda} />
           </div>
           <aside className="cost-sidebar">
-            <ResumenCostos hc={{ ...hc, ...form, costo_total: (calcSub(form.mano_obra)+calcSub(form.materiales)+calcSub(form.servicios_terceros)+calcSub(form.logistica)), precio_sugerido_sin_igv: calcPrecio(form), precio_sugerido_total: calcPrecio(form)*1.18 }} moneda={hcMoneda} />
+        <ResumenCostos hc={hc} moneda={hcMoneda} />
 
             <div className="card mt-6" style={{padding:20}}>
               <div className="eyebrow" style={{marginBottom:16}}>Configuración y Notas</div>

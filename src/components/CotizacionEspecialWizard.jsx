@@ -25,6 +25,8 @@ const serializarItems = items => items.map((item, index) => ({
   unidad:String(item.unidad || '').trim(),
   precio_unitario:numero(item.precio_unitario),
 }));
+const mismaPartidaOrigen = (items = []) => items.map(({ client_key, ...item }) => item);
+const mismosItemsOrigen = (a = [], b = []) => JSON.stringify(mismaPartidaOrigen(a)) === JSON.stringify(mismaPartidaOrigen(b));
 const previewTotals = items => {
   const subtotal = serializarItems(items).reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0);
   const igv = Math.round(subtotal * 0.18);
@@ -263,8 +265,9 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     if (!hoja) return;
     const oportunidadHC = oportunidades.find(row => row.id === hoja.oportunidad_id);
     const cuentaId = hoja.cuenta_id || oportunidadHC?.cuenta_id || '';
+    const itemsHoja = conClavesItems(adaptarHojaCosteo?.(hoja) || []);
     setForm(current => {
-      if (current.hoja_costeo_id === hoja.id && current.origen_items === 'hoja_costeo') return current;
+      if (current.hoja_costeo_id === hoja.id && current.origen_items === 'hoja_costeo' && mismosItemsOrigen(current.items, itemsHoja)) return current;
       return {
         ...current,
         origen_items:'hoja_costeo',
@@ -272,7 +275,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
         cuenta_id:cuentaId,
         oportunidad_id:hoja.oportunidad_id || '',
         moneda:hoja.moneda || current.moneda,
-        items:conClavesItems(adaptarHojaCosteo?.(hoja) || []),
+        items:itemsHoja,
         contacto_id:'',
       };
     });
