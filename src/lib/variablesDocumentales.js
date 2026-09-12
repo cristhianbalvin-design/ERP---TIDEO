@@ -18,6 +18,10 @@ export const VARIABLES_COTIZACION = [
   { grupo: 'Cotizacion', label: 'Subtotal', token: '{{cotizacion.subtotal}}' },
   { grupo: 'Cotizacion', label: 'IGV %', token: '{{cotizacion.igv_pct}}' },
   { grupo: 'Cotizacion', label: 'Total', token: '{{cotizacion.total}}' },
+  { grupo: 'Hoja de Costeo', label: 'Costo total', token: '{{hoja_costeo.costo_total}}' },
+  { grupo: 'Hoja de Costeo', label: 'Precio sugerido sin IGV', token: '{{hoja_costeo.precio_sugerido_sin_igv}}' },
+  { grupo: 'Hoja de Costeo', label: 'Precio sugerido total', token: '{{hoja_costeo.precio_sugerido_total}}' },
+  { grupo: 'Hoja de Costeo', label: 'Margen objetivo', token: '{{hoja_costeo.margen_objetivo_pct}}' },
   { grupo: 'Pago', label: 'Porcentaje adelanto', token: '{{pago.adelanto_pct}}' },
   { grupo: 'Pago', label: 'Monto adelanto', token: '{{pago.adelanto_monto}}' },
   { grupo: 'Pago', label: 'Porcentaje saldo', token: '{{pago.saldo_pct}}' },
@@ -92,9 +96,11 @@ export function valorVariableCotizacion(key, ctx = {}) {
   const contacto = ctx.contacto || {};
   const cotizacion = ctx.cotizacion || {};
   const oportunidad = ctx.oportunidad || {};
+  const hojaCosteo = ctx.hoja_costeo || ctx.hojaCosteo || {};
   const hito = firstHito(cotizacion);
   const item = ctx.item || {};
   const moneda = cotizacion.moneda || oportunidad.moneda || empresa.moneda_base || 'PEN';
+  const monedaHojaCosteo = hojaCosteo.moneda || moneda;
   const adelantoPct = Number(hito?.porcentaje || 0);
   const total = cotizacion.total_impl ?? cotizacion.total ?? cotizacion.subtotal ?? oportunidad.monto_estimado ?? 0;
   const values = {
@@ -117,6 +123,10 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'cotizacion.subtotal': money(cotizacion.subtotal, moneda),
     'cotizacion.total': money(total, moneda),
     'cotizacion.igv_pct': cotizacion.igv_pct || '',
+    'hoja_costeo.costo_total': hojaCosteo.costo_total == null ? '' : money(hojaCosteo.costo_total, monedaHojaCosteo),
+    'hoja_costeo.precio_sugerido_sin_igv': hojaCosteo.precio_sugerido_sin_igv == null ? '' : money(hojaCosteo.precio_sugerido_sin_igv, monedaHojaCosteo),
+    'hoja_costeo.precio_sugerido_total': hojaCosteo.precio_sugerido_total == null ? '' : money(hojaCosteo.precio_sugerido_total, monedaHojaCosteo),
+    'hoja_costeo.margen_objetivo_pct': hojaCosteo.margen_objetivo_pct == null || hojaCosteo.margen_objetivo_pct === '' ? '' : `${Number(hojaCosteo.margen_objetivo_pct)}%`,
     'pago.adelanto_pct': adelantoPct ? `${adelantoPct}%` : '',
     'pago.adelanto_monto': adelantoPct ? money(total * adelantoPct / 100, moneda) : '',
     'pago.saldo_pct': adelantoPct ? `${100 - adelantoPct}%` : '',

@@ -91,6 +91,22 @@ function ResumenTotales({ totals, moneda, estimado = true }) {
   </div>;
 }
 
+function ReferenciaHojaCosteo({ hoja, moneda }) {
+  if (!hoja) return null;
+  const monedaHoja = hoja.moneda || moneda || 'PEN';
+  const margen = hoja.margen_objetivo_pct;
+  return <div className="card" style={{padding:14, marginBottom:16, background:'var(--bg-subtle)', border:'1px solid var(--border)'}}>
+    <div style={{fontWeight:700, marginBottom:4}}>Referencia de Hoja de Costeo {hoja.numero ? `· ${hoja.numero}` : ''}</div>
+    <div className="text-muted" style={{fontSize:12, marginBottom:10}}>Estos valores son informativos; las partidas de esta cotización se pueden ajustar libremente.</div>
+    <div className="grid-2" style={{gap:8, fontSize:13}}>
+      <div><span className="text-muted">Costo total</span><br/><strong>{formatMoney(hoja.costo_total, monedaHoja)}</strong></div>
+      <div><span className="text-muted">Margen objetivo</span><br/><strong>{margen === null || margen === undefined || margen === '' ? '—' : `${numero(margen)}%`}</strong></div>
+      <div><span className="text-muted">Precio sugerido sin IGV</span><br/><strong>{formatMoney(hoja.precio_sugerido_sin_igv, monedaHoja)}</strong></div>
+      <div><span className="text-muted">Precio sugerido total</span><br/><strong>{formatMoney(hoja.precio_sugerido_total, monedaHoja)}</strong></div>
+    </div>
+  </div>;
+}
+
 function ItemsEditor({ items, moneda, disabled, onChange }) {
   const totals = previewTotals(items);
   const patch = (key, field, value) => onChange(items.map(item => item.client_key === key ? { ...item, [field]:value } : item));
@@ -171,13 +187,19 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const hitosPreview = useMemo(() => normalizarHitosPreview(form.hitos_pago, totals.total), [form.hitos_pago, totals.total]);
   const contactosCuenta = useMemo(() => contactos.filter(row => row.cuenta_id === form.cuenta_id), [contactos, form.cuenta_id]);
   const hojasDisponibles = useMemo(() => hojasCosteo.filter(hoja => hoja.estado === 'aprobada' && hoja.empresa_id === empresa?.id && (!tipo || hoja.sociedad_id === tipo.sociedad_id)), [hojasCosteo, empresa?.id, tipo?.id, tipo?.sociedad_id]);
+  const hojaCosteoReferencia = useMemo(() => hojasCosteo.find(hoja => hoja.id === form.hoja_costeo_id) || null, [hojasCosteo, form.hoja_costeo_id]);
   const activoVinculadoId = cotizacion?.activo_id || activoInicialId || null;
   const recepcionVinculadaId = cotizacion?.recepcion_id || recepcionInicialId || null;
   const origenBloqueado = recepcionVinculadaId ? <div className="alert alert-info mt-4">
     Origen bloqueado: recepción <strong>{recepcionNumeroInicial || recepcionVinculadaId}</strong> · activo <strong>{activoCodigoInicial || activoVinculadoId || 'Cargando…'}</strong>{activoNombreInicial ? ` · ${activoNombreInicial}` : ''}. Estos vínculos se conservarán al guardar.
   </div> : null;
   const contexto = useMemo(() => {
-    if (readonly && cotizacion?.contexto_emitido_json) return cotizacion.contexto_emitido_json;
+    if (readonly && cotizacion?.contexto_emitido_json) {
+      return {
+        ...cotizacion.contexto_emitido_json,
+        hoja_costeo:cotizacion.contexto_emitido_json.hoja_costeo || hojaCosteoReferencia || {},
+      };
+    }
     const empresaContexto = {
       id:empresa?.id,
       razon_social:empresaConfig?.razon_social || empresa?.razon_social,
@@ -195,10 +217,11 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
       cuenta:cuentaContexto,
       contacto:contacto ? { id:contacto.id, nombre:contacto.nombre, cargo:contacto.cargo, email:contacto.email } : {},
       oportunidad:oportunidad ? { id:oportunidad.id, nombre:oportunidad.nombre, servicio_interes:oportunidad.servicio_interes, monto_estimado:oportunidad.monto_estimado, moneda:oportunidad.moneda } : {},
+      hoja_costeo:hojaCosteoReferencia || {},
       cotizacion:{ id:cotizacion?.id || '', numero:cotizacion?.numero || 'Borrador', fecha:cotizacion?.emitida_at?.slice(0, 10) || today(), moneda:form.moneda, items:readonly ? (cotizacion?.items || []) : serializarItems(form.items), subtotal:totals.subtotal, igv_pct:18, igv:totals.igv, total:totals.total, validez_tipo:form.validez_tipo, validez_dias:form.validez_dias, validez_fecha:form.validez_fecha || null, hitos_activos:form.hitos_activos, hitos_pago:hitosPreview },
       emision:cotizacion?.emitida_at ? { fecha:cotizacion.emitida_at.slice(0, 10), emitida_at:cotizacion.emitida_at, emitida_by:cotizacion.emitida_by } : {},
     };
-  }, [readonly, cotizacion, empresa, empresaConfig, cuenta, contacto, oportunidad, form, totals, hitosPreview]);
+  }, [readonly, cotizacion, empresa, empresaConfig, cuenta, contacto, oportunidad, form, totals, hitosPreview, hojaCosteoReferencia]);
 
   const cargarTipos = useCallback(async () => {
     if (!isSupabaseConfigured()) return;
@@ -512,6 +535,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
+      <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
     </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section></div></div>;
