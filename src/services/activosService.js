@@ -42,6 +42,45 @@ export const getActivosParaOS = async (empresaId) => {
   return data || [];
 };
 
+// Fuente única para las vistas de equipos de clientes. Con activoId devuelve
+// una sola ficha con su historial; sin activoId devuelve las fichas filtradas.
+export const getEquiposClientesConHistorial = async (empresaId, { clienteId = null, activoId = null } = {}) => {
+  if (!empresaId) return activoId ? null : [];
+  const supabase = await getSupabaseClient();
+  let activosQuery = supabase
+    .from('activos')
+    .select('id,empresa_id,codigo,nombre,marca,modelo,placa_serie,estado,observacion,cliente_propietario_id')
+    .eq('empresa_id', empresaId)
+    .eq('propietario_tipo', 'cliente')
+    .order('codigo');
+  if (clienteId) activosQuery = activosQuery.eq('cliente_propietario_id', clienteId);
+  if (activoId) activosQuery = activosQuery.eq('id', activoId);
+  const { data: activos, error: activosError } = await activosQuery;
+  if (activosError) throw activosError;
+  if (!activos?.length) return activoId ? null : [];
+
+  const ids = activos.map(activo => activo.id);
+  const { data: osClientes, error: osError } = await supabase
+    .from('os_clientes')
+    .select('id,activo_id,numero,estado,fecha_emision,cuenta_id')
+    .eq('empresa_id', empresaId)
+    .in('activo_id', ids)
+    .order('fecha_emision', { ascending: false });
+  if (osError) throw osError;
+
+  const historialPorActivo = new Map();
+  (osClientes || []).forEach(os => {
+    const historial = historialPorActivo.get(os.activo_id) || [];
+    historial.push(os);
+    historialPorActivo.set(os.activo_id, historial);
+  });
+  const fichas = activos.map(activo => {
+    const historial = historialPorActivo.get(activo.id) || [];
+    return { activo, historial, osCount: historial.length };
+  });
+  return activoId ? fichas[0] || null : fichas;
+};
+
 export const crearActivo = async (empresaId, activo, usuarioId = null) => {
   const supabase = await getSupabaseClient();
   const payload = {

@@ -37,6 +37,7 @@ const SIDEBAR = [
     { key: 'cotizaciones', label: 'Cotizaciones', icon: I.file },
     { key: 'os_cliente', label: 'OS Cliente', icon: I.clipboard },
     { key: 'panel_produccion', label: 'Panel de Producción', icon: I.trend, accessAnyOf: ['os_cliente'] },
+    { key: 'equipos_clientes', label: 'Equipos de Clientes', icon: I.package, accessAnyOf: ['os_cliente'] },
   ]},
   { section: 'Operaciones', items: [
     { key: 'planner', label: 'Planner y Recursos', icon: I.calendar },

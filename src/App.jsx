@@ -18,6 +18,7 @@ const Actividades     = lazy(() => import('./pages_core.jsx').then(m => ({ defau
 const AgendaComercial = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.AgendaComercial })));
 const OSCliente       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.OSCliente })));
 const PanelProduccionOSCliente = lazy(() => import('./pages_produccion_os_cliente.jsx').then(m => ({ default: m.PanelProduccionOSCliente })));
+const EquiposClientes = lazy(() => import('./pages_equipos_clientes.jsx').then(m => ({ default: m.EquiposClientes })));
 const Marketing       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Marketing })));
 const BIComercial     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIComercial })));
 const BIOperativo     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIOperativo })));
@@ -85,8 +86,8 @@ const Valorizacion = lazy(() => import('./pages_extra.jsx').then(m => ({ default
 const Inventario   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.Inventario })));
 const HojaCosteo   = lazy(() => import('./pages_extra.jsx').then(m => ({ default: m.HojaCosteo })));
 const HojaCosteoWizard = lazy(() => import('./pages_hoja_costeo_wizard.jsx'));
-
 const CosteoVariables = lazy(() => import('./pages_costeo_variables.jsx'));
+
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
 const BIFinanciero      = lazy(() => import('./pages_bi_fin.jsx').then(m => ({ default: m.BIFinanciero })));
@@ -285,7 +286,7 @@ function MainLayout({ onShowApplicationWelcome }) {
   const activeAllowed = active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
     : puedeVerPantalla(role, active,
-      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'panel_produccion' ? ['os_cliente'] : []);
+      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -385,6 +386,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'cotizaciones':     return <Cotizaciones/>;
       case 'os_cliente':       return <OSCliente/>;
       case 'panel_produccion': return <PanelProduccionOSCliente/>;
+      case 'equipos_clientes': return <EquiposClientes/>;
       case 'backlog':          return <Backlog/>;
       case 'cierre':           return <Cierre/>;
       case 'remision':         return <Remision/>;

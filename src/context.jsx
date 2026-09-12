@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
@@ -2606,14 +2607,27 @@ export function AppProvider({ children }) {
       cotizacion_id: null
     };
     const calculada = calcularHojaCosteo(hc);
+    const monedaSolicitada = calculada.moneda;
+    const enlacesRecepcion = {
+      activo_id: datos.activo_id || null,
+      recepcion_id: datos.recepcion_id || null,
+    };
     try {
       if (isSupabaseConfigured()) {
         const result = await crmPersist(sb => empresa?.multisociedad_habilitado
           ? crearHojaCosteoSociedadRpc(sb, empresa.id, calculada)
           : crearHojaCosteoRpc(sb, empresa.id, calculada));
         if (result?.data) Object.assign(calculada, result.data);
-        if (calculada.moneda && calculada.moneda !== 'PEN') {
-          crmSync(sb => actualizarHojaCosteoSvc(sb, calculada.id, { moneda: calculada.moneda }));
+        if (enlacesRecepcion.activo_id || enlacesRecepcion.recepcion_id) {
+          const enlaceResult = await crmPersist(sb => actualizarHojaCosteoSvc(sb, calculada.id, {
+            ...enlacesRecepcion,
+          }));
+          if (enlaceResult?.error) throw enlaceResult.error;
+          Object.assign(calculada, enlacesRecepcion);
+        }
+        if (monedaSolicitada && monedaSolicitada !== 'PEN') {
+          await crmPersist(sb => actualizarHojaCosteoSvc(sb, calculada.id, { moneda: monedaSolicitada }));
+          calculada.moneda = monedaSolicitada;
         }
       } else {
         await crmPersist(sb => persistirHojaCosteo(sb, empresa.id, calculada));
@@ -2695,14 +2709,22 @@ export function AppProvider({ children }) {
           total: hc.precio_sugerido_total,
           items: construirItemsCotizacionDesdeHC(hc),
           hoja_costeo_id: hcId,
+          activo_id: hc.activo_id || null,
+          recepcion_id: hc.recepcion_id || null,
           sociedad_id: hc.sociedad_id || null,
         };
         const result = await crmPersist(sb => empresa?.multisociedad_habilitado
           ? aprobarHojaCosteoSociedadRpc(sb, empresa.id, hcId, cotBase)
           : aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
-        const cotFinal = { ...cotBase, ...(result?.data?.cotizacion || {}), items: cotBase.items };
+        const cotFinal = {
+          ...cotBase,
+          ...(result?.data?.cotizacion || {}),
+          activo_id: hc.activo_id || null,
+          recepcion_id: hc.recepcion_id || null,
+          items: cotBase.items,
+        };
         const hcFinal = result?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
-        crmSync(sb => svcActualizarCotizacion(sb, cotFinal.id, {
+        const cotizacionResult = await crmPersist(sb => svcActualizarCotizacion(sb, cotFinal.id, {
           items: cotFinal.items,
           moneda: cotFinal.moneda,
           subtotal: cotFinal.subtotal,
@@ -2713,7 +2735,11 @@ export function AppProvider({ children }) {
           subtotal_impl: cotFinal.subtotal,
           igv_impl: cotFinal.igv,
           total_impl: cotFinal.total,
+          activo_id: cotFinal.activo_id,
+          recepcion_id: cotFinal.recepcion_id,
         }));
+        if (cotizacionResult?.error) throw cotizacionResult.error;
+        if (cotFinal.recepcion_id) await marcarRecepcionActivoClienteCotizada(empresa.id, cotFinal.recepcion_id);
         setCotizaciones(prev => prev.some(c => c.id === cotFinal.id)
           ? prev.map(c => c.id === cotFinal.id ? { ...c, ...cotFinal } : c)
           : [...prev, cotFinal]
@@ -2748,7 +2774,9 @@ export function AppProvider({ children }) {
       igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
       total_impl: hc.precio_sugerido_total,
       items: itemsCot,
-      hoja_costeo_id: hcId
+      hoja_costeo_id: hcId,
+      activo_id: hc.activo_id || null,
+      recepcion_id: hc.recepcion_id || null,
     });
     try {
       await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { estado: 'aprobada', cotizacion_id: cotId }));
@@ -2810,6 +2838,7 @@ export function AppProvider({ children }) {
     };
     try {
       await crmPersist(sb => persistirCotizacion(sb, empresa.id, cot));
+      if (cot.recepcion_id && isSupabaseConfigured()) await marcarRecepcionActivoClienteCotizada(empresa.id, cot.recepcion_id);
     } catch (error) {
       const message = error?.message || 'No se pudo guardar la Cotizacion en Supabase.';
       addNotificacion(`No se creo la Cotizacion: ${message}`);
@@ -3099,12 +3128,19 @@ export function AppProvider({ children }) {
 
     try {
       await crmPersist(sb => persistirOSCliente(sb, empresa.id, osc));
+      if (osc.cotizacion_id) {
+        const cotResult = await crmPersist(sb => svcActualizarCotizacion(sb, osc.cotizacion_id, { os_cliente_id: osc.id }));
+        if (cotResult?.error) throw cotResult.error;
+      }
     } catch (error) {
       const message = error?.message || 'No se pudo guardar la OS Cliente en Supabase.';
       addNotificacion(`No se creo la OS Cliente: ${message}`);
       throw error;
     }
     setOsClientes(prev => [...prev, osc]);
+    if (osc.cotizacion_id) {
+      setCotizaciones(prev => prev.map(c => c.id === osc.cotizacion_id ? { ...c, os_cliente_id: osc.id } : c));
+    }
     auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osc.id, accion: 'crear_manual', valor_nuevo: osc });
     addNotificacion(`Orden de Servicio ${osc.numero} registrada.`);
     if (navegarAlDetalle) navigate('os_cliente', { detail: osc.id });
@@ -3112,6 +3148,39 @@ export function AppProvider({ children }) {
   };
 
   const actualizarOSCliente = async (id, datos) => {
+    const anterior = osClientes.find(o => o.id === id);
+    const cambiaCotizacion = Object.prototype.hasOwnProperty.call(datos, 'cotizacion_id')
+      && (anterior?.cotizacion_id || null) !== (datos.cotizacion_id || null);
+
+    if (cambiaCotizacion) {
+      const cotizacionAnterior = cotizaciones.find(c => c.id === anterior?.cotizacion_id);
+      try {
+        await crmPersist(async sb => {
+          // Solo libera el vínculo inverso si la cotización anterior aún apunta a esta OS.
+          if (cotizacionAnterior?.os_cliente_id === id) {
+            const liberarResult = await svcActualizarCotizacion(sb, cotizacionAnterior.id, { os_cliente_id: null });
+            if (liberarResult?.error) throw liberarResult.error;
+          }
+          const osResult = await svcActualizarOSCliente(sb, id, datos);
+          if (osResult?.error) throw osResult.error;
+          if (datos.cotizacion_id) {
+            const vincularResult = await svcActualizarCotizacion(sb, datos.cotizacion_id, { os_cliente_id: id });
+            if (vincularResult?.error) throw vincularResult.error;
+          }
+        });
+      } catch (error) {
+        const message = error?.message || 'No se pudo actualizar el vínculo de cotización.';
+        addNotificacion(`CRM no persistió el vínculo de cotización: ${message}`);
+        throw error;
+      }
+      setOsClientes(prev => prev.map(o => o.id === id ? { ...o, ...datos } : o));
+      setCotizaciones(prev => prev.map(c => {
+        if (c.id === cotizacionAnterior?.id && cotizacionAnterior.os_cliente_id === id) return { ...c, os_cliente_id: null };
+        if (c.id === datos.cotizacion_id) return { ...c, os_cliente_id: id };
+        return c;
+      }));
+      return;
+    }
     setOsClientes(prev => prev.map(o => o.id === id ? { ...o, ...datos } : o));
     crmSync(sb => svcActualizarOSCliente(sb, id, datos));
   };

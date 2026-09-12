@@ -13,6 +13,7 @@ import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import { obtenerRecepcionActivoCliente } from './services/recepcionesActivosClienteService.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -213,6 +214,36 @@ function CotizacionesInner() {
     const permitidas = new Set(modoVistaSociedadCotizaciones.sociedadesIds);
     return cotizaciones.filter(cotizacion => cotizacion.sociedad_id && permitidas.has(cotizacion.sociedad_id));
   }, [cotizaciones, modoVistaSociedadCotizaciones.sinFiltro, sociedadesIdsVistaCotizacionesKey]);
+  const [recepcionOrigen, setRecepcionOrigen] = useState(null);
+  const [cargandoRecepcionOrigen, setCargandoRecepcionOrigen] = useState(false);
+  const [errorRecepcionOrigen, setErrorRecepcionOrigen] = useState('');
+
+  useEffect(() => {
+    let activa = true;
+    const recepcionId = activeParams?.recepcion_id;
+    if (!recepcionId || !empresa?.id) {
+      setRecepcionOrigen(null);
+      setErrorRecepcionOrigen('');
+      setCargandoRecepcionOrigen(false);
+      return () => { activa = false; };
+    }
+    setCargandoRecepcionOrigen(true);
+    setErrorRecepcionOrigen('');
+    obtenerRecepcionActivoCliente(empresa.id, recepcionId)
+      .then(data => {
+        if (!activa) return;
+        setRecepcionOrigen(data);
+        if (!data) setErrorRecepcionOrigen('La recepción indicada no existe en la empresa activa.');
+      })
+      .catch(err => {
+        if (activa) {
+          setRecepcionOrigen(null);
+          setErrorRecepcionOrigen(err?.message || 'No se pudo cargar la recepción de origen.');
+        }
+      })
+      .finally(() => { if (activa) setCargandoRecepcionOrigen(false); });
+    return () => { activa = false; };
+  }, [activeParams?.recepcion_id, empresa?.id]);
 
   useEffect(() => {
     let active = true;
@@ -261,6 +292,37 @@ function CotizacionesInner() {
   const getCuenta = id => cuentas.find(c => c.id === id);
   const getCuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
   const getContacto = id => contactos?.find(c => c.id === id);
+
+  if (activeParams?.recepcion_id) {
+    if (cargandoRecepcionOrigen || (!recepcionOrigen && !errorRecepcionOrigen)) return <div className="p-4"><div className="alert alert-info">Cargando recepción de origen…</div></div>;
+    if (errorRecepcionOrigen) return <div className="p-4"><div className="alert alert-danger">{errorRecepcionOrigen}</div><button className="btn btn-secondary mt-4" onClick={() => navigate('panel_produccion')}>Volver al Panel de Producción</button></div>;
+    if (!recepcionOrigen) return <div className="p-4"><div className="alert alert-warning">No se encontró la recepción de origen.</div></div>;
+    if (!modoVistaSociedadCotizaciones.permiteEscritura) return <div className="p-4"><div className="alert alert-warning">Selecciona una sociedad concreta en el selector superior para crear la cotización desde esta recepción.</div><button className="btn btn-secondary mt-4" onClick={() => navigate('panel_produccion')}>Volver al Panel de Producción</button></div>;
+    if (recepcionOrigen.estado !== 'pendiente_cotizar') return <div className="p-4"><div className="alert alert-warning">Esta recepción ya no está pendiente de cotizar.</div><button className="btn btn-secondary mt-4" onClick={() => navigate('panel_produccion')}>Volver al Panel de Producción</button></div>;
+    const activoOrigen = recepcionOrigen.activo;
+    const cuentaOrigen = getCuenta(activoOrigen?.cliente_propietario_id);
+    if (!activoOrigen || !cuentaOrigen) return <div className="p-4"><div className="alert alert-danger">La recepción no tiene un activo de cliente con propietario válido; no es posible generar la cotización.</div><button className="btn btn-secondary mt-4" onClick={() => navigate('panel_produccion')}>Volver al Panel de Producción</button></div>;
+    const cotizacionOrigen = {
+      activo_id: recepcionOrigen.activo_id,
+      recepcion_id: recepcionOrigen.id,
+      cuenta_id: cuentaOrigen.id,
+      sociedad_id: recepcionOrigen.sociedad_id || modoVistaSociedadCotizaciones.sociedadIdEscritura || null,
+      recepcion_numero: recepcionOrigen.numero,
+      activo_codigo: activoOrigen.codigo,
+      activo_nombre: activoOrigen.nombre,
+    };
+    return <EditorCotizacion
+      opp={null}
+      cuenta={cuentaOrigen}
+      cotizacionBase={cotizacionOrigen}
+      sociedadIdEscritura={cotizacionOrigen.sociedad_id}
+      contactos={(contactos || []).filter(c => c.cuenta_id === cuentaOrigen.id)}
+      empresaConfig={empresaConfig}
+      diccionarioComercial={diccionarioComercial}
+      onSave={async data => { const cotizacionId = await crearCotizacion(data); navigate('cotizaciones', { detail: cotizacionId }); }}
+      onCancel={() => navigate('panel_produccion')}
+    />;
+  }
 
   if (activeParams?.especial || activeParams?.especial_id) {
     return <CotizacionEspecialWizard
@@ -1360,6 +1422,9 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
       await onSave({
         oportunidad_id: cotizacionBase?.oportunidad_id || opp?.id,
         cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
+        // Cuando la cotización nace desde una recepción, estos vínculos se conservan bloqueados.
+        activo_id: cotizacionBase?.activo_id || null,
+        recepcion_id: cotizacionBase?.recepcion_id || null,
         contacto_id:    contactoId || null,
         centro_beneficio_id: cebeId || null,
         sociedad_id: empresa?.multisociedad_habilitado ? sociedadId : null,
@@ -1412,6 +1477,9 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
           {errorGuardar && <span style={{fontSize:12, color:'var(--red)', maxWidth:320, textAlign:'right'}}>{errorGuardar}</span>}
         </div>
       </div>
+      {cotizacionBase?.recepcion_id && <div className="alert alert-info mt-4">
+        Origen bloqueado: recepción <strong>{cotizacionBase.recepcion_numero || cotizacionBase.recepcion_id}</strong> · activo <strong>{cotizacionBase.activo_codigo || cotizacionBase.activo_id}</strong>{cotizacionBase.activo_nombre ? ` · ${cotizacionBase.activo_nombre}` : ''}. Estos vínculos se conservarán al guardar.
+      </div>}
 
       {/* ── Bloque 1: encabezado ──────────────────────────────────────── */}
       <div className="card mt-6">
