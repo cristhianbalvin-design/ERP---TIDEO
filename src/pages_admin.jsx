@@ -12370,6 +12370,24 @@ function RRHHAdmin() {
               return ({ '14x7':'minero_14x7', '20x10':'minero_20x10', '28x14':'minero_28x14', '2x1':'minero_2x1' })[`${Number(a.dias_ciclo_trabajo)}x${Number(a.dias_ciclo_descanso)}`] || 'general';
             };
             const fechaAnteriorATramoVigente = Boolean(asigActiva?.fecha_inicio && formAsigAdmin.fecha_inicio && formAsigAdmin.fecha_inicio < asigActiva.fecha_inicio);
+            const eliminarAsigAdmin = async (id, overrideOpts) => {
+              if (!confirm('¿Estás seguro de eliminar el tramo actual (el más reciente) de este trabajador?')) return;
+              const forzarOverride = overrideOpts?.forzarOverride || false;
+              const motivoOverride = overrideOpts?.motivoOverride || null;
+              setDeletingAsigAdminId(id); setRetroWallDeleteAsigAdmin(null);
+              try {
+                await eliminarAsignacionJornadaCtx(id, forzarOverride, motivoOverride);
+                setDeletingAsigAdminId(null);
+                setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin('');
+                addNotificacion('Tramo de jornada eliminado.');
+              } catch (e) {
+                setDeletingAsigAdminId(null);
+                const msg = e.message || '';
+                if (msg.startsWith('RETRO_WALL_PERMISO:')) addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
+                else if (msg.startsWith('RETRO_WALL:')) setRetroWallDeleteAsigAdmin(msg.replace('RETRO_WALL:', '').trim());
+                else addNotificacion(msg || 'Error al eliminar asignación.', 'error');
+              }
+            };
             const guardarAsignacion = async (override = {}) => {
               if (!formAsigAdmin.fecha_inicio) {
                 const mensaje = 'La fecha de inicio es obligatoria.';
@@ -12392,24 +12410,6 @@ function RRHHAdmin() {
                 const mensaje = 'Completa la fecha de inicio del ciclo.';
                 setFormAsigAdminError(mensaje); addNotificacion(mensaje, 'error'); return;
               }
-              const eliminarAsigAdmin = async (id, overrideOpts) => {
-                if (!confirm('¿Estás seguro de eliminar el tramo actual (el más reciente) de este trabajador?')) return;
-                const forzarOverride = overrideOpts?.forzarOverride || false;
-                const motivoOverride = overrideOpts?.motivoOverride || null;
-                setDeletingAsigAdminId(id); setRetroWallDeleteAsigAdmin(null);
-                try {
-                  await eliminarAsignacionJornadaCtx(id, forzarOverride, motivoOverride);
-                  setDeletingAsigAdminId(null);
-                  setRetroWallDeleteAsigAdmin(null); setRetroWallMotivoDeleteAsigAdmin('');
-                  addNotificacion('Tramo de jornada eliminado.');
-                } catch (e) {
-                  setDeletingAsigAdminId(null);
-                  const msg = e.message || '';
-                  if (msg.startsWith('RETRO_WALL_PERMISO:')) addNotificacion(msg.replace('RETRO_WALL_PERMISO:', '').trim(), 'error');
-                  else if (msg.startsWith('RETRO_WALL:')) setRetroWallDeleteAsigAdmin(msg.replace('RETRO_WALL:', '').trim());
-                  else addNotificacion(msg || 'Error al eliminar asignación.', 'error');
-                }
-              };
               setSavingAsigAdmin(true); setRetroWallAsigAdmin(null); setFormAsigAdminError('');
               try {
                 await crearAsignacionJornadaCtx(persona.id, 'administrativo', {
