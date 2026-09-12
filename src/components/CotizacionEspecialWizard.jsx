@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { DocumentPreviewSheet } from './DocumentPreviewSheet.jsx';
+import { marcarRecepcionActivoClienteCotizada } from '../services/recepcionesActivosClienteService.js';
 
 const nuevoItem = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random()}`, descripcion:'', cantidad:1, unidad:'und', precio_unitario:0 });
 const nuevoHito = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `hito-${Date.now()}-${Math.random()}`, concepto:'', porcentaje:0, condicion:'' });
@@ -128,7 +129,7 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   </div>;
 }
 
-export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted }) {
+export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
@@ -170,6 +171,11 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const hitosPreview = useMemo(() => normalizarHitosPreview(form.hitos_pago, totals.total), [form.hitos_pago, totals.total]);
   const contactosCuenta = useMemo(() => contactos.filter(row => row.cuenta_id === form.cuenta_id), [contactos, form.cuenta_id]);
   const hojasDisponibles = useMemo(() => hojasCosteo.filter(hoja => hoja.estado === 'aprobada' && hoja.empresa_id === empresa?.id && (!tipo || hoja.sociedad_id === tipo.sociedad_id)), [hojasCosteo, empresa?.id, tipo?.id, tipo?.sociedad_id]);
+  const activoVinculadoId = cotizacion?.activo_id || activoInicialId || null;
+  const recepcionVinculadaId = cotizacion?.recepcion_id || recepcionInicialId || null;
+  const origenBloqueado = recepcionVinculadaId ? <div className="alert alert-info mt-4">
+    Origen bloqueado: recepción <strong>{recepcionNumeroInicial || recepcionVinculadaId}</strong> · activo <strong>{activoCodigoInicial || activoVinculadoId || 'Cargando…'}</strong>{activoNombreInicial ? ` · ${activoNombreInicial}` : ''}. Estos vínculos se conservarán al guardar.
+  </div> : null;
   const contexto = useMemo(() => {
     if (readonly && cotizacion?.contexto_emitido_json) return cotizacion.contexto_emitido_json;
     const empresaContexto = {
@@ -219,6 +225,15 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     setLoading(true); setError('');
     cargarCotizacion(especialId).catch(err => setError(mensajeError(err))).finally(() => setLoading(false));
   }, [especialId, cargarCotizacion]);
+  useEffect(() => {
+    if (especialId || (!plantillaInicialId && !tipoDocumentoInicialId && !cuentaInicialId)) return;
+    setForm(current => ({
+      ...current,
+      tipo_documento_id: tipoDocumentoInicialId || current.tipo_documento_id,
+      plantilla_documento_id: plantillaInicialId || current.plantilla_documento_id,
+      cuenta_id: cuentaInicialId || current.cuenta_id,
+    }));
+  }, [especialId, plantillaInicialId, tipoDocumentoInicialId, cuentaInicialId]);
   useEffect(() => {
     if (especialId || !hojaCosteoInicialId) return;
     const hoja = hojasCosteo.find(row => row.id === hojaCosteoInicialId);
@@ -362,6 +377,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const crear = async () => {
     const validation = validarPaso(5);
     if (validation) return setError(validation);
+    if (recepcionVinculadaId && !activoVinculadoId) return setError('No se pudo cargar el activo de la recepción de origen. Espera un momento e inténtalo nuevamente.');
     setSaving(true); setError('');
     try {
       const sb = await getSupabaseClient();
@@ -371,10 +387,12 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
         p_items:form.origen_items === 'manual' ? serializarItems(form.items) : null, p_contacto_id:form.contacto_id || null, p_validez_tipo:form.validez_tipo,
         p_validez_dias:form.validez_tipo === 'dias' ? Number(form.validez_dias) : null, p_validez_fecha:form.validez_tipo === 'fecha_exacta' ? form.validez_fecha : null,
         p_hitos_activos:form.hitos_activos, p_hitos_pago:form.hitos_activos ? form.hitos_pago.map(({ concepto, porcentaje, condicion }) => ({ concepto, porcentaje:numero(porcentaje), condicion })) : [],
+        p_activo_id:activoVinculadoId, p_recepcion_id:recepcionVinculadaId,
       });
       if (rpcError) throw rpcError;
       const created = Array.isArray(data) ? data[0] : data;
       if (!created?.id) throw new Error('El servidor no devolvió el identificador del borrador creado.');
+      if (recepcionVinculadaId) await marcarRecepcionActivoClienteCotizada(empresa?.id, recepcionVinculadaId);
       onCreated?.(created.id);
     } catch (err) { setError(mensajeError(err)); }
     finally { setSaving(false); }
@@ -489,6 +507,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   </>;
 
   if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div>
+    {origenBloqueado}
     {error && <div className="alert alert-danger">{error}</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
@@ -497,7 +516,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
     </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section></div></div>;
 
-  return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}
+  return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
     <div className="card"><div className="card-body">
       {paso === 1 && <><h3>1. Tipo y plantilla</h3><div className="grid-2"><div className="input-group"><label>Tipo de documento</label><select className="input" value={form.tipo_documento_id} onChange={event => cambiarTipo(event.target.value)}><option value="">Seleccione…</option>{tiposVisibles.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div><div className="input-group"><label>Plantilla publicada</label><select className="input" value={form.plantilla_documento_id} disabled={!form.tipo_documento_id} onChange={event => setForm(current => ({ ...current, plantilla_documento_id:event.target.value }))}><option value="">Seleccione…</option>{plantillas.map(row => <option key={row.id} value={row.id}>v{row.version} — {row.nombre_interno}</option>)}</select></div></div></>}
       {paso === 2 && <><h3>2. Origen de ítems</h3><div className="row" style={{gap:12, marginBottom:14}}><label><input type="radio" checked={form.origen_items === 'manual'} onChange={() => setForm(current => ({ ...current, origen_items:'manual', hoja_costeo_id:'' }))} /> Manual</label><label><input type="radio" checked={form.origen_items === 'hoja_costeo'} onChange={() => setForm(current => ({ ...current, origen_items:'hoja_costeo', items:[] }))} /> Hoja de Costeo</label></div>{form.origen_items === 'hoja_costeo' ? <div className="input-group"><label>Hoja de Costeo aprobada</label><select className="input" value={form.hoja_costeo_id} onChange={event => seleccionarHC(event.target.value)}><option value="">Seleccione…</option>{hojasDisponibles.map(row => <option key={row.id} value={row.id}>{row.numero || row.id}</option>)}</select></div> : null}<div className="grid-2" style={{marginTop:14}}><div className="input-group"><label>Cuenta</label><select className="input" value={form.cuenta_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, cuenta_id:event.target.value, contacto_id:'' }))}><option value="">Seleccione…</option>{cuentas.filter(row => row.empresa_id === empresa?.id).map(row => <option key={row.id} value={row.id}>{row.razon_social || row.nombre_comercial}</option>)}</select></div><div className="input-group"><label>Oportunidad (opcional)</label><select className="input" value={form.oportunidad_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, oportunidad_id:event.target.value }))}><option value="">Sin oportunidad</option>{oportunidades.filter(row => row.empresa_id === empresa?.id && (!form.cuenta_id || row.cuenta_id === form.cuenta_id)).map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div></div><div className="input-group" style={{marginTop:14}}><label>Moneda</label><select className="input" value={form.moneda} onChange={event => setForm(current => ({ ...current, moneda:event.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div><div style={{marginTop:16}}><ItemsEditor items={form.items} moneda={form.moneda} disabled={form.origen_items === 'hoja_costeo'} onChange={items => setForm(current => ({ ...current, items }))} /></div></>}

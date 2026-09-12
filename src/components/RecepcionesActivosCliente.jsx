@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { I } from '../icons.jsx';
 import { useApp } from '../context.jsx';
 import { getActivosParaOS } from '../services/activosService.js';
+import { SelectorTipoCotizacion } from './SelectorTipoCotizacion.jsx';
 import {
   crearRecepcionActivoCliente,
   devolverRecepcionActivoCliente,
@@ -37,6 +38,7 @@ export function RecepcionesActivosCliente() {
   const [modalRecepcion, setModalRecepcion] = useState(false);
   const [modalActivo, setModalActivo] = useState(false);
   const [modalDevolucion, setModalDevolucion] = useState(null);
+  const [selectorCotizacion, setSelectorCotizacion] = useState(null);
   const [form, setForm] = useState(() => emptyReception(sociedadPorDefecto));
   const [assetSearch, setAssetSearch] = useState('');
   const [assetForm, setAssetForm] = useState(() => emptyAsset());
@@ -135,7 +137,23 @@ export function RecepcionesActivosCliente() {
       setError('El activo de esta recepción no tiene cliente propietario; así no se puede abrir una cotización.');
       return;
     }
+    setError('');
+    setSelectorCotizacion(recepcion);
+  };
+  const abrirCotizacionEstandar = recepcion => {
+    setSelectorCotizacion(null);
     navigate('cotizaciones', { recepcion_id: recepcion.id });
+  };
+  const abrirCotizacionEspecial = (recepcion, plantilla) => {
+    const activo = activosPorId.get(recepcion.activo_id);
+    setSelectorCotizacion(null);
+    navigate('cotizaciones', {
+      especial: 'nueva',
+      plantilla_documento_id: plantilla.id,
+      tipo_documento_id: plantilla.tipo_documento_id,
+      cuenta_id: activo?.cliente_propietario_id || null,
+      recepcion_id: recepcion.id,
+    });
   };
 
   const iniciarHojaCosteo = async recepcion => {
@@ -218,5 +236,6 @@ export function RecepcionesActivosCliente() {
     </div></div><div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={() => { setModalActivo(false); setError(''); }}>Cancelar</button><button type="button" className="btn btn-primary" onClick={guardarActivo} disabled={saving}>{saving ? 'Guardando…' : 'Crear y seleccionar activo'}</button></div></div></div>}
 
     {modalDevolucion && <div className="modal-backdrop"><div className="modal" style={{ maxWidth: 520 }}><div className="modal-head"><div><h2>Devolver sin cotizar</h2><div className="text-muted" style={{ fontSize: 12 }}>{modalDevolucion.numero}</div></div><button className="icon-btn" onClick={() => { setModalDevolucion(null); setError(''); }}>{I.x}</button></div><form onSubmit={guardarDevolucion}><div className="modal-body">{error && <div className="alert alert-danger" style={{ marginBottom: 14 }}>{error}</div>}<div className="grid-2" style={{ gap: 14 }}><div className="input-group"><label>Fecha de devolución *</label><input className="input" type="date" value={devolucion.fecha_devolucion} onChange={e => setDevolucion(actual => ({ ...actual, fecha_devolucion: e.target.value }))} required /></div><div className="input-group"><label>Guía de devolución</label><input className="input" value={devolucion.guia_devolucion} onChange={e => setDevolucion(actual => ({ ...actual, guia_devolucion: e.target.value }))} placeholder="N° guía o documento" /></div></div></div><div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={() => { setModalDevolucion(null); setError(''); }}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Confirmar devolución'}</button></div></form></div></div>}
+    {selectorCotizacion && <SelectorTipoCotizacion empresaId={empresaId} onEstandar={() => abrirCotizacionEstandar(selectorCotizacion)} onEspecial={plantilla => abrirCotizacionEspecial(selectorCotizacion, plantilla)} onCancel={() => setSelectorCotizacion(null)} onError={mensaje => setError(mensaje)} />}
   </>;
 }
