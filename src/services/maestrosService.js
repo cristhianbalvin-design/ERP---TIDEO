@@ -367,6 +367,11 @@ export const maestrosService = {
     if (error) throw error;
     return data;
   },
+  eliminarTrabajo: async (trabajoId) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase.from('familia_trabajo').delete().eq('id', trabajoId);
+    if (error) throw error;
+  },
 
   // Almacenes
   getAlmacenes: async (empresaId) => {

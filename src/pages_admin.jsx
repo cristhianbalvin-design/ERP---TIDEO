@@ -5244,7 +5244,7 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
   const [trabajos, setTrabajos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-  const [formVisible, setFormVisible] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState(null);
   const [editandoId, setEditandoId] = useState(null);
   const [form, setForm] = useState({ nombre: '', activo: true });
   const [error, setError] = useState('');
@@ -5269,14 +5269,29 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
   const cancelar = () => {
     setForm({ nombre: '', activo: true });
     setEditandoId(null);
-    setFormVisible(false);
     setError('');
   };
   const editar = trabajo => {
     setForm({ nombre: trabajo.nombre || '', activo: trabajo.activo !== false });
     setEditandoId(trabajo.id);
-    setFormVisible(true);
     setError('');
+  };
+
+  const eliminar = async trabajo => {
+    if (!window.confirm(`¿Eliminar el trabajo "${trabajo.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setEliminandoId(trabajo.id);
+    setError('');
+    try {
+      await maestrosService.eliminarTrabajo(trabajo.id);
+      setTrabajos(prev => prev.filter(item => item.id !== trabajo.id));
+      if (editandoId === trabajo.id) cancelar();
+      onChanged?.(Math.max(trabajos.length - 1, 0));
+      addNotificacion?.('Trabajo eliminado.');
+    } catch (err) {
+      setError(err?.message || 'No se pudo eliminar el trabajo.');
+    } finally {
+      setEliminandoId(null);
+    }
   };
   const guardar = async event => {
     event.preventDefault();
@@ -5312,7 +5327,7 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
     <div className="side-panel" style={{ width:'min(760px, 96vw)' }}>
       <div className="side-panel-head">
         <div>
-          <div className="eyebrow">Maestros Base</div>
+          <div className="eyebrow">GESTIÓN DE CATÁLOGO</div>
           <div className="font-display" style={{ fontSize:22, fontWeight:700, marginTop:2 }}>Trabajos</div>
           <div className="text-muted" style={{ fontSize:12, marginTop:4 }}>Catálogo de trabajos disponible para la Mano de Obra de Hoja de Costeo.</div>
         </div>
@@ -5322,25 +5337,27 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
         {error && <div className="alert alert-danger" style={{ marginBottom:14 }}>{error}</div>}
         <div className="row" style={{ justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:10 }}>
           <span className="text-muted" style={{ fontSize:13 }}>{trabajos.length} valor{trabajos.length === 1 ? '' : 'es'} cargado{trabajos.length === 1 ? '' : 's'}</span>
-          {puedeCrear && !formVisible && <div className="row" style={{ gap:8 }}>
+          {puedeCrear && <div className="row" style={{ gap:8 }}>
             <button className="btn btn-secondary" onClick={onDescargarPlantilla}>{I.download} Descargar plantilla</button>
             <button className="btn btn-secondary" onClick={onImportar}>{I.upload} Subir plantilla</button>
-            <button className="btn btn-primary" onClick={() => { setForm({ nombre:'', activo:true }); setEditandoId(null); setFormVisible(true); }}>{I.plus} Nuevo trabajo</button>
           </div>}
         </div>
-        {formVisible && (
-          <form className="card" style={{ padding:16, marginBottom:18 }} onSubmit={guardar}>
-            <div style={{ fontWeight:600, marginBottom:12 }}>{editandoId ? 'Editar trabajo' : 'Nuevo trabajo'}</div>
+        <form className="card" style={{ marginBottom:18 }} onSubmit={guardar}>
+          <div className="card-head"><h3>{editandoId ? 'Editar trabajo' : 'Agregar trabajo'}</h3>{editandoId && <span className="badge badge-cyan">Edición</span>}</div>
+          <div style={{ padding:16 }}>
             <div className="grid-2" style={{ gap:12 }}>
-              <div className="input-group"><label>Nombre *</label><input className="input" autoFocus required value={form.nombre} onChange={e => setForm(prev => ({ ...prev, nombre:e.target.value }))} placeholder="Ej: Mantenimiento preventivo" /></div>
+              <div className="input-group"><label>Nombre *</label><input className="input" required value={form.nombre} onChange={e => setForm(prev => ({ ...prev, nombre:e.target.value }))} placeholder="Ej: Mantenimiento preventivo" /></div>
               <div className="input-group"><label>Estado</label><select className="select" value={form.activo ? 'activo' : 'inactivo'} onChange={e => setForm(prev => ({ ...prev, activo:e.target.value === 'activo' }))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
             </div>
-            <div className="row" style={{ justifyContent:'flex-end', gap:8, marginTop:14 }}><button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear trabajo'}</button></div>
-          </form>
-        )}
+            <div className="row" style={{ justifyContent:'flex-end', gap:8, marginTop:14 }}>
+              {editandoId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar edición</button>}
+              <button type="submit" className="btn btn-primary" disabled={(editandoId ? !puedeEditar : !puedeCrear) || guardando}>{I.plus} {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Agregar trabajo'}</button>
+            </div>
+          </div>
+        </form>
         <div className="card"><div className="table-wrap"><table className="tbl">
           <thead><tr><th>Trabajo</th><th>Estado</th><th style={{ textAlign:'right' }}>Acciones</th></tr></thead>
-          <tbody>{cargando ? <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>Cargando trabajos...</td></tr> : trabajos.length ? trabajos.map(trabajo => <tr key={trabajo.id}><td><strong>{trabajo.nombre}</strong></td><td><span className={`badge ${trabajo.activo !== false ? 'badge-green' : 'badge-gray'}`}>{trabajo.activo !== false ? 'Activo' : 'Inactivo'}</span></td><td style={{ textAlign:'right' }}>{puedeEditar && <button className="btn btn-ghost btn-sm" onClick={() => editar(trabajo)}>{I.edit} Editar</button>}</td></tr>) : <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>No hay trabajos registrados.</td></tr>}</tbody>
+          <tbody>{cargando ? <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>Cargando trabajos...</td></tr> : trabajos.length ? trabajos.map(trabajo => <tr key={trabajo.id}><td><strong>{trabajo.nombre}</strong></td><td><span className={`badge ${trabajo.activo !== false ? 'badge-green' : 'badge-gray'}`}>{trabajo.activo !== false ? 'Activo' : 'Inactivo'}</span></td><td style={{ textAlign:'right', whiteSpace:'nowrap' }}>{puedeEditar && <><button className="btn btn-ghost btn-sm" title="Editar trabajo" onClick={() => editar(trabajo)}>{I.edit}</button><button className="btn btn-ghost btn-sm" title="Eliminar trabajo" disabled={eliminandoId === trabajo.id} style={{ color:'var(--danger)' }} onClick={() => eliminar(trabajo)}>{I.trash}</button></>}</td></tr>) : <tr><td colSpan="3" className="text-muted" style={{ padding:18 }}>No hay trabajos registrados.</td></tr>}</tbody>
         </table></div></div>
       </div>
     </div>
