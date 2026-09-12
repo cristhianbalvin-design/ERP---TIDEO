@@ -5257,7 +5257,6 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
     try {
       const data = await maestrosService.getTrabajos(empresa.id);
       setTrabajos(data);
-      onChanged?.(data.length);
     } catch (err) {
       setError(err?.message || 'No se pudieron cargar los trabajos.');
     } finally {
