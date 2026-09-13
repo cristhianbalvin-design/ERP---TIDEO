@@ -4797,7 +4797,16 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
   const costo = Number(hc.costo_total || 0);
   const sinIgv = Number(hc.precio_sugerido_sin_igv || 0);
   const conIgv = Number(hc.precio_sugerido_total || 0);
-  const margenReal = sinIgv > 0 ? Math.round((sinIgv - costo) / sinIgv * 100) : 0;
+  const margenCombinadoReal = sinIgv > 0 ? (sinIgv - costo) / sinIgv * 100 : 0;
+  const gastoManualGuardado = hc.gasto_administrativo_manual_pct;
+  const tieneGastoManualGuardado = gastoManualGuardado != null && Number.isFinite(Number(gastoManualGuardado));
+  // Las hojas antiguas sin manual no guardan el porcentaje calculado: se deriva del precio persistido.
+  const gastoAdminEfectivo = tieneGastoManualGuardado
+    ? Number(gastoManualGuardado) * 100
+    : Math.max(0, margenCombinadoReal - margen);
+  const objetivoCombinado = margen + gastoAdminEfectivo;
+  const margenCombinadoMostrado = Math.round(margenCombinadoReal);
+  const coincideConFormula = sinIgv > 0 && Math.abs(margenCombinadoReal - objetivoCombinado) < 0.01;
 
   return (
     <div style={{background:'var(--bg-subtle)', borderRadius:10, padding:20, border:'1px solid var(--border)'}}>
@@ -4822,7 +4831,7 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
           <span className="num" style={{fontWeight:700}}>{moneyCurrency(costo, moneda)}</span>
         </div>
         <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
-          <span className="text-muted" style={{fontSize:13}}>Margen objetivo: {margen}% → precio sin IGV</span>
+          <span className="text-muted" style={{fontSize:13}}>Margen: {margen}% · Gasto Admin: {gastoAdminEfectivo.toLocaleString('es-PE', {maximumFractionDigits:2})}% → precio sin IGV</span>
           <span className="num" style={{fontSize:13}}>{moneyCurrency(sinIgv, moneda)}</span>
         </div>
         <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)'}}>
@@ -4830,8 +4839,8 @@ function ResumenCostos({ hc, moneda = 'PEN' }) {
           <span className="num" style={{fontWeight:700, fontFamily:'Sora', fontSize:18, color:'var(--cyan)'}}>{moneyCurrency(conIgv, moneda)}</span>
         </div>
       </div>
-      <div style={{marginTop:8, padding:'6px 10px', background: margenReal >= margen ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)', borderRadius:6, textAlign:'center', fontSize:13}}>
-        Margen real calculado: <strong>{margenReal}%</strong> {margenReal >= margen ? '✓' : '↓ bajo objetivo'}
+      <div style={{marginTop:8, padding:'6px 10px', background: coincideConFormula ? 'rgba(76,175,80,0.1)' : 'rgba(255,152,0,0.1)', borderRadius:6, textAlign:'center', fontSize:13}}>
+        Margen + Gasto Admin real: <strong>{margenCombinadoMostrado}%</strong> {coincideConFormula ? '✓ coincide con la fórmula' : `↓ difiere del objetivo combinado (${objetivoCombinado.toLocaleString('es-PE', {maximumFractionDigits:2})}%)`}
       </div>
     </div>
   );
