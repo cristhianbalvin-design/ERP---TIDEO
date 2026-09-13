@@ -269,6 +269,65 @@ const cargarPartidasDesdeHC = async (hc) => {
   });
 };
 
+const cargarLineasRelacionalesDetalleHC = async (hc) => {
+  const requiereManoObra = !Array.isArray(hc.mano_obra) || hc.mano_obra.length === 0;
+  const requiereMateriales = !Array.isArray(hc.materiales) || hc.materiales.length === 0;
+  if (!requiereManoObra && !requiereMateriales) return { manoObra: [], materiales: [] };
+  if (!isSupabaseConfigured()) return { manoObra: [], materiales: [] };
+
+  const sb = await getSupabaseClient();
+  const [manoObraR, materialesR] = await Promise.all([
+    requiereManoObra
+      ? sb.from('hoja_costeo_lineas_mano_obra').select('id,familia_trabajo_id,actividad_id,cargo_id,horas,costo_hora_snapshot').eq('hoja_costeo_id', hc.id).order('orden').order('creado_en')
+      : Promise.resolve({ data: [], error: null }),
+    requiereMateriales
+      ? sb.from('hoja_costeo_lineas_materiales').select('id,material_id,cantidad,costo_unitario_snapshot').eq('hoja_costeo_id', hc.id).order('orden').order('creado_en')
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (manoObraR.error || materialesR.error) throw manoObraR.error || materialesR.error;
+
+  const manoObra = manoObraR.data || [];
+  const materiales = materialesR.data || [];
+  const idsUnicos = valores => [...new Set(valores.filter(Boolean))];
+  const consultarMaestro = async (tabla, ids, campos) => {
+    if (!ids.length) return [];
+    const { data, error } = await sb.from(tabla).select(campos).in('id', ids);
+    if (error) throw error;
+    return data || [];
+  };
+  const [familias, actividades, cargos, catalogoMateriales] = await Promise.all([
+    consultarMaestro('familia_trabajo', idsUnicos(manoObra.map(linea => linea.familia_trabajo_id)), 'id,nombre'),
+    consultarMaestro('tipos_servicio_interno', idsUnicos(manoObra.map(linea => linea.actividad_id)), 'id,nombre'),
+    consultarMaestro('cargos_empresa', idsUnicos(manoObra.map(linea => linea.cargo_id)), 'id,nombre'),
+    consultarMaestro('materiales', idsUnicos(materiales.map(linea => linea.material_id)), 'id,descripcion,unidad'),
+  ]);
+  const porId = filas => Object.fromEntries(filas.map(fila => [fila.id, fila]));
+  const familiasPorId = porId(familias);
+  const actividadesPorId = porId(actividades);
+  const cargosPorId = porId(cargos);
+  const materialesPorId = porId(catalogoMateriales);
+
+  return {
+    manoObra: manoObra.map(linea => ({
+      id: `mo_${linea.id}`,
+      descripcion: [familiasPorId[linea.familia_trabajo_id]?.nombre, actividadesPorId[linea.actividad_id]?.nombre, cargosPorId[linea.cargo_id]?.nombre].filter(Boolean).join(' — ') || 'Mano de obra',
+      cantidad: linea.horas,
+      unidad: 'hora',
+      costo_unitario: linea.costo_hora_snapshot,
+    })),
+    materiales: materiales.map(linea => {
+      const material = materialesPorId[linea.material_id] || {};
+      return {
+        id: `mat_${linea.id}`,
+        descripcion: material.descripcion || 'Material de costeo',
+        cantidad: linea.cantidad,
+        unidad: material.unidad || 'und',
+        costo_unitario: linea.costo_unitario_snapshot,
+      };
+    }),
+  };
+};
+
 // ============ COTIZACIONES ============
 
 const COT_BADGE = e =>
@@ -4883,6 +4942,7 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
   const [editMode, setEditMode] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [selectorTipoCotizacion, setSelectorTipoCotizacion] = useState(false);
+  const [lineasRelacionalesDetalle, setLineasRelacionalesDetalle] = useState({ hojaId: null, manoObra: [], materiales: [] });
   const [form, setForm] = useState({
     mano_obra: Array.isArray(hc.mano_obra) ? hc.mano_obra : [],
     materiales: Array.isArray(hc.materiales) ? hc.materiales : [],
@@ -4892,6 +4952,36 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
     responsable_costeo: hc.responsable_costeo || '',
     notas: hc.notas || ''
   });
+
+  const manoObraJson = Array.isArray(hc.mano_obra) ? hc.mano_obra : [];
+  const materialesJson = Array.isArray(hc.materiales) ? hc.materiales : [];
+  const usaManoObraRelacional = manoObraJson.length === 0;
+  const usaMaterialesRelacional = materialesJson.length === 0;
+  useEffect(() => {
+    let activa = true;
+    if (!usaManoObraRelacional && !usaMaterialesRelacional) {
+      setLineasRelacionalesDetalle({ hojaId: hc.id, manoObra: [], materiales: [] });
+      return () => { activa = false; };
+    }
+    cargarLineasRelacionalesDetalleHC(hc)
+      .then(lineas => {
+        if (activa) setLineasRelacionalesDetalle({ hojaId: hc.id, ...lineas });
+      })
+      .catch(error => {
+        if (activa) {
+          setLineasRelacionalesDetalle({ hojaId: hc.id, manoObra: [], materiales: [] });
+          addNotificacion(`No se pudieron cargar las líneas relacionales de la Hoja de Costeo: ${error?.message || error}`);
+        }
+      });
+    return () => { activa = false; };
+  }, [hc.id]); // Las categorías JSONB de la cabecera no cambian en esta vista.
+
+  const lineasManoObraDetalle = usaManoObraRelacional && lineasRelacionalesDetalle.hojaId === hc.id
+    ? lineasRelacionalesDetalle.manoObra
+    : manoObraJson;
+  const lineasMaterialesDetalle = usaMaterialesRelacional && lineasRelacionalesDetalle.hojaId === hc.id
+    ? lineasRelacionalesDetalle.materiales
+    : materialesJson;
 
   const puedeEditar = estado === 'borrador' || (estado === 'en_revision' && puedeAprobarHC);
   const readOnly = !puedeEditar || !editMode;
@@ -5022,8 +5112,8 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
       <div className="cost-editor-shell">
         <div className="cost-editor-grid">
           <div className="cost-lines">
-            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={form.mano_obra} readOnly={readOnly} onChange={val => setForm(p=>({...p, mano_obra: val}))} moneda={hcMoneda} />
-            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={form.materiales} readOnly={readOnly} onChange={val => setForm(p=>({...p, materiales: val}))} moneda={hcMoneda} />
+            <SeccionCosto titulo="Mano de Obra" badge="badge-cyan" items={lineasManoObraDetalle} readOnly onChange={() => {}} moneda={hcMoneda} />
+            <SeccionCosto titulo="Materiales e Insumos" badge="badge-purple" items={lineasMaterialesDetalle} readOnly onChange={() => {}} moneda={hcMoneda} />
             <SeccionCosto titulo="Servicios Terceros / Alquileres" badge="badge-orange" items={form.servicios_terceros} readOnly={readOnly} onChange={val => setForm(p=>({...p, servicios_terceros: val}))} moneda={hcMoneda} />
             <SeccionCosto titulo="Logística y Viáticos" badge="badge-gray" items={form.logistica} readOnly={readOnly} onChange={val => setForm(p=>({...p, logistica: val}))} moneda={hcMoneda} />
           </div>
