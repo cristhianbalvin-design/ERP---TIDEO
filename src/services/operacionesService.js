@@ -600,40 +600,6 @@ export async function persistirCierreTecnico(supabase, empresaId, cierre) {
   return insert(payload);
 }
 
-export async function consumirInventario(supabase, empresaId, itemsADescontar, otId, sociedadId = null) {
-  for (const item of itemsADescontar) {
-    // 1. Insertar en kardex
-    await supabase.from('kardex').insert({
-      id: `kdx_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      empresa_id: empresaId,
-      sociedad_id: sociedadId,
-      material_id: item.material_id, // Usamos id del material real, o codigo temporal si es mock
-      almacen_id: item.almacen_id || null,
-      tipo: 'salida',
-      cantidad: item.cantidad,
-      referencia_tipo: 'Consumo OT',
-      referencia_id: otId,
-      observacion: `Consumo para OT ${otId}`
-    });
-
-    // 2. Actualizar stock (esto idealmente lo haria un trigger o rpc)
-    // Primero intentamos buscar el stock
-    let stockQuery = supabase.from('stock')
-      .select('id, disponible')
-      .eq('empresa_id', empresaId)
-      .eq('material_id', item.material_id);
-    stockQuery = sociedadId ? stockQuery.eq('sociedad_id', sociedadId) : stockQuery.is('sociedad_id', null);
-    const { data: stocks } = await stockQuery;
-    
-    if (stocks && stocks.length > 0) {
-      const stock = stocks[0];
-      await supabase.from('stock')
-        .update({ disponible: Math.max(0, stock.disponible - item.cantidad) })
-        .eq('id', stock.id);
-    }
-  }
-}
-
 export async function loadOpsFromSupabase(supabase, empresaId) {
   if (!isSupabaseMode() || !supabase || !empresaId) return null;
 
