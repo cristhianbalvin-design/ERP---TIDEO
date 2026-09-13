@@ -1054,17 +1054,15 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
       const stock = stocks[0];
       const cantidadADescontar = Math.min(Number(item.cantidad), Number(stock.disponible));
 
-      await supabase.from('kardex').insert({
-        id: mkId('kdx'),
-        empresa_id: empresaId,
-        sociedad_id: sociedadOperacionId,
-        material_id: item.material_id,
-        almacen_id: item.almacen_id || stock.almacen_id || null,
+      if (cantidadADescontar <= 0) continue;
+
+      await registrarMovimiento(empresaId, {
         tipo: 'salida',
         motivo: 'consumo_ot',
+        material_id: item.material_id,
+        almacen_id: item.almacen_id || stock.almacen_id || null,
         cantidad: cantidadADescontar,
         costo_unitario: costoPromedio,
-        costo_total: costoPromedio * cantidadADescontar,
         moneda: 'PEN',
         lote: item.lote || null,
         serie: item.serie || null,
@@ -1072,16 +1070,9 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
         referencia_tipo: 'ot',
         referencia_id: otId,
         observacion: `Consumo OT ${otId}`,
-        created_by: usuarioId || null,
-        anulado: false,
-        saldo_cantidad: Math.max(0, Number(stock.fisico ?? stock.disponible) - cantidadADescontar),
+        usuario_id: usuarioId || null,
+        sociedad_id: sociedadOperacionId,
       });
-
-      await supabase.from('stock').update({
-        fisico: Math.max(0, Number(stock.fisico ?? stock.disponible) - cantidadADescontar),
-        disponible: Math.max(0, Number(stock.disponible) - cantidadADescontar),
-        updated_at: new Date().toISOString(),
-      }).eq('id', stock.id);
     } catch (_) {
       console.error('registrarConsumoOT item:', item.material_id, _.message);
     }
