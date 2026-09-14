@@ -79,18 +79,6 @@ const fetchRolesIntoMap = async (
   for (const role of data || []) rolesById.set(String(role.id), role);
 };
 
-const fetchAuthFallbacks = async (
-  adminClient: ReturnType<typeof createClient>,
-  userIds: string[],
-) => {
-  const authById = new Map<string, Record<string, unknown>>();
-  await Promise.all(unique(userIds).map(async (userId) => {
-    const { data, error } = await adminClient.auth.admin.getUserById(userId);
-    if (!error && data?.user) authById.set(userId, data.user as unknown as Record<string, unknown>);
-  }));
-  return authById;
-};
-
 const fetchPlatformAdminFlag = async (
   adminClient: ReturnType<typeof createClient>,
   userId: string,
@@ -365,23 +353,18 @@ serve(async (req) => {
       assignmentsByKey.set(key, list);
     }
 
-    const missingAuthIds = membershipUserIds.filter((id) => !profilesByUserId.has(id) && !legacyByUserId.has(id));
-    const authById = missingAuthIds.length ? await fetchAuthFallbacks(adminClient, missingAuthIds) : new Map<string, Record<string, unknown>>();
-
     const rows = new Map<string, Record<string, unknown>>();
     for (const membership of memberships || []) {
       const userId = String(membership.user_id);
       const empresaKey = String(membership.empresa_id);
       const key = `${userId}:${empresaKey}`;
-      const profile = profilesByUserId.get(userId) || legacyByUserId.get(userId);
       const legacy = legacyByUserId.get(userId);
-      const authUser = authById.get(userId);
-      // Una membresía puede sobrevivir a una cuenta/perfil eliminado. No representa a una
-      // persona administrable: se conserva en la base para auditoría, pero no se muestra
-      // como un supuesto usuario usando el UUID como nombre.
-      if (!profile && !legacy && !authUser) continue;
-      const metadata = (authUser?.user_metadata || {}) as Record<string, unknown>;
-      const email = profile?.email || legacy?.email || authUser?.email || "";
+      // Las FKs operativas (por ejemplo, responsable_comercial_id) referencian
+      // public.usuarios.id. Una membresia de Auth sin esa fila se conserva para
+      // auditoria, pero no puede exponerse como opcion seleccionable.
+      if (!legacy) continue;
+      const profile = profilesByUserId.get(userId) || legacy;
+      const email = profile?.email || legacy.email || "";
       const role = rolesById.get(String(membership.rol_id));
       const asignaciones = assignmentsByKey.get(key) || [];
       const principal = asignaciones.find((assignment) => assignment.principal) || asignaciones[0] || null;
@@ -398,7 +381,7 @@ serve(async (req) => {
         id: userId,
         user_id: userId,
         empresa_id: empresaKey,
-        nombre: profile?.nombre || legacy?.nombre || metadata.nombre || String(email).split("@")[0] || userId,
+        nombre: profile?.nombre || legacy.nombre || String(email).split("@")[0] || userId,
         email,
         telefono: profile?.telefono || legacy?.telefono || "",
         avatar_url: profile?.avatar_url || null,
