@@ -4,6 +4,7 @@ import { DocumentPreviewRichText } from './DocumentPreviewRichText.jsx';
 import { renderTextoDocumental } from '../lib/variablesDocumentales.js';
 import { getDocumentRepeatSource, getRepeatSourceItems } from '../lib/documentRepeatSources.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { hasLayoutColumns, normalizeLayoutColumns } from './DocumentLayoutColumns.jsx';
 
 export const PREVIEW_SHEET_HEIGHT = 1056;
 export const PREVIEW_SHEET_VERTICAL_PADDING = 128;
@@ -152,11 +153,7 @@ function PreviewTableRow({ table, row, categoria, contexto, measurementRef = nul
   return <tr ref={measurementRef}>{table.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (row.valores[columna.id] ? '✓' : '') : renderTableCell(columna, row, categoria, contexto)}</td>)}</tr>;
 }
 
-const normalizeSectionColumns = value => {
-  const source = Array.isArray(value?.columnas) ? value.columnas.slice(0, 3) : [{ id:'legacy-column-1', contenido_json:value }];
-  const count = Math.max(1, source.length);
-  return source.map((column, index) => ({ id:column?.id || `column-${index + 1}`, ancho:`${100 / count}%`, contenido_json:normalizeRichTextDocument(column?.contenido_json) }));
-};
+const normalizeSectionColumns = value => normalizeLayoutColumns(value, normalizeRichTextDocument);
 
 const groupConfig = block => ({ fuente_repeticion:'', fuente_repeticion_id:'', titulo_item:'', ...(block.contenido_json || {}) });
 const itemIdentity = (item, index) => item?.id || item?.uuid || item?.codigo || index + 1;
@@ -235,9 +232,13 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
   const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
   const grupo = block.tipo_bloque === 'grupo_repetible' ? groupConfig(block) : null;
   const condiciones = esBloqueCondicionesGenerales(block) ? block.contenido_json || {} : null;
+  const textoConColumnas = block.tipo_bloque === 'texto_rico' && hasLayoutColumns(block.contenido_json);
+  const columnasTexto = textoConColumnas ? normalizeLayoutColumns(block.contenido_json, normalizeRichTextDocument) : [];
   return <section ref={measurementRef} className="document-preview-block">
     {block.titulo && <h4>{block.titulo}</h4>}
-    {block.tipo_bloque === 'texto_rico' && <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />}
+    {block.tipo_bloque === 'texto_rico' && (textoConColumnas
+      ? <div className="document-preview-columns" style={{gridTemplateColumns:columnasTexto.map(column => column.ancho).join(' ')}}>{columnasTexto.map(column => <div key={column.id} className="document-preview-column"><DocumentPreviewRichText value={column.contenido_json} categoria={categoria} contexto={contexto} /></div>)}</div>
+      : <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />)}
     {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
     {condiciones && <VistaCondicionesGenerales condiciones={condiciones} categoria={categoria} contexto={contexto} />}

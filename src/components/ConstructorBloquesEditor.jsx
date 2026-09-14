@@ -5,6 +5,7 @@ import { getDocumentRepeatSource, getDocumentRepeatSources } from '../lib/docume
 import { subirImagenConstructorDocumento } from '../services/storageService.js';
 import { RichTextEditor, normalizeRichTextDocument, VariableInsertSelect } from './RichTextEditor.jsx';
 import { DocumentPreviewSheet, normalizedPreviewScope, previewBlockKey, previewMeasurementKey, previewPageCapacity } from './DocumentPreviewSheet.jsx';
+import { hasLayoutColumns, LayoutColumnsEditor, normalizeLayoutColumns } from './DocumentLayoutColumns.jsx';
 
 const newKey = () => globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const emptyTable = () => {
@@ -28,8 +29,15 @@ const normalizeTable = value => {
   return { columnas: safeColumns, filas };
 };
 
+const normalizeRichTextColumns = value => normalizeLayoutColumns(value, normalizeRichTextDocument);
+const normalizeRichTextBlock = value => hasLayoutColumns(value)
+  ? { columnas:normalizeRichTextColumns(value) }
+  : normalizeRichTextDocument(value);
+
 const plainTextForBlock = block => {
-  if (block.tipo_bloque === 'texto_rico') return block.contenido_texto_plano || '';
+  if (block.tipo_bloque === 'texto_rico') return hasLayoutColumns(block.contenido_json)
+    ? normalizeRichTextColumns(block.contenido_json).map(column => textFromRichText(column.contenido_json)).filter(Boolean).join('\n')
+    : block.contenido_texto_plano || textFromRichText(normalizeRichTextDocument(block.contenido_json));
   if (block.tipo_bloque === 'tabla') {
     const table = normalizeTable(block.contenido_json);
     return table.filas.map(row => table.columnas.map(column => column.tipo === 'check' ? (row.valores[column.id] ? 'Sí' : 'No') : row.valores[column.id] || '').join(' | ')).join('\n');
@@ -51,7 +59,7 @@ const blockPayload = (block, plantillaId, parentId = block.bloque_padre_id || nu
   tipo_bloque: block.tipo_bloque,
   titulo: block.titulo || null,
   contenido_json: block.tipo_bloque === 'texto_rico'
-    ? normalizeRichTextDocument(block.contenido_json)
+    ? normalizeRichTextBlock(block.contenido_json)
     : block.tipo_bloque === 'tabla'
       ? normalizeTable(block.contenido_json)
       : block.tipo_bloque === 'condiciones_generales'
@@ -74,17 +82,7 @@ const textFromRichText = value => {
   return chunks.join('').replace(/\n{3,}/g, '\n\n').trim();
 };
 
-const normalizeSectionColumns = value => {
-  const source = Array.isArray(value?.columnas)
-    ? value.columnas.slice(0, 3)
-    : [{ id:'legacy-column-1', contenido_json:value }];
-  const count = Math.max(1, source.length);
-  return source.map((column, index) => ({
-    id:column?.id || `column-${index + 1}`,
-    ancho:`${100 / count}%`,
-    contenido_json:normalizeRichTextDocument(column?.contenido_json),
-  }));
-};
+const normalizeSectionColumns = normalizeRichTextColumns;
 
 const sectionPatch = columns => {
   const normalized = normalizeSectionColumns({ columnas:columns });
@@ -140,6 +138,31 @@ function AvisoBloqueExcedido({ alFinal = false }) {
   </div>;
 }
 
+function TextoRicoBlockEditor({ value, disabled, variables, onUploadImage, onChange }) {
+  const updateColumns = next => onChange({
+    // Un bloque histórico conserva su formato plano mientras siga teniendo una
+    // sola sección. Al agregar otra, el contenido original pasa a la primera.
+    contenido_json:!hasLayoutColumns(value) && next.length === 1 ? next[0].contenido_json : { columnas:next },
+    contenido_texto_plano:next.map(column => textFromRichText(column.contenido_json)).filter(Boolean).join('\n'),
+  });
+  return <LayoutColumnsEditor
+    value={value}
+    normalizeContent={normalizeRichTextDocument}
+    disabled={disabled}
+    onColumnsChange={updateColumns}
+    columnLabel="Columna"
+    renderColumn={(column, onContentChange) => <RichTextEditor
+      value={column.contenido_json}
+      disabled={disabled}
+      variables={variables}
+      onUploadImage={onUploadImage}
+      showHorizontalRule
+      showTwoColumnLine
+      onChange={patch => onContentChange(patch.contenido_json)}
+    />}
+  />;
+}
+
 function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, documentosCondiciones, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible', condiciones_generales:'Condiciones Generales' }[block.tipo_bloque] || block.tipo_bloque;
   const esCondicionesGenerales = block.tipo_bloque === 'condiciones_generales';
@@ -153,7 +176,7 @@ function BloqueCard({ block, index, total, depth, children, categoria, disabled,
     {isOversized && <AvisoBloqueExcedido />}
     {isNotEvaluable && <div className="alert alert-info" style={{marginTop:10, marginBottom:10}}><strong>Vista administrativa:</strong> este grupo se medirá por ítem con datos reales de la cotización.</div>}
     <div style={{marginTop:10}}>
-      {block.tipo_bloque === 'texto_rico' && <RichTextEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine />}
+      {block.tipo_bloque === 'texto_rico' && <TextoRicoBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} repeatFields={repeatFields} onChange={onChange} />}
       {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
       {esCondicionesGenerales && <div className="input-group"><label>Documento de Condiciones a usar</label><select className="input" value={block.contenido_json?.condiciones_tipo_documento_id || ''} disabled={disabled} onChange={event => onChange({ contenido_json:{ condiciones_tipo_documento_id:event.target.value } })}><option value="">Seleccione…</option>{documentosCondiciones.map(documento => <option key={documento.id} value={documento.id}>{documento.nombre}</option>)}</select><div className="text-muted" style={{fontSize:12, marginTop:6}}>El contenido se toma de la versión publicada vigente del documento seleccionado.</div></div>}
@@ -177,22 +200,13 @@ function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBl
 }
 
 function SeccionPlantillaEditor({ titulo, alcance, value, disabled, variables, onUploadImage, guardando, guardado, onAlcanceChange, onChange, onSave }) {
-  const columns = normalizeSectionColumns(value?.contenido_json);
   const updateColumns = next => onChange(sectionPatch(next));
-  const addColumn = () => {
-    if (columns.length >= 3) return;
-    updateColumns([...columns, { id:newKey(), contenido_json:normalizeRichTextDocument(null) }]);
-  };
-  const removeColumn = id => {
-    if (columns.length <= 1) return;
-    updateColumns(columns.filter(column => column.id !== id));
-  };
   return <section style={{marginBottom:18}}>
     <div className="row" style={{justifyContent:'space-between', gap:8, marginBottom:8}}>
-      <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><strong>{titulo}</strong><label className="row text-muted" style={{gap:6, fontSize:12}}>Mostrar en:<select className="input" value={normalizedPreviewScope(alcance)} disabled={disabled} onChange={event => onAlcanceChange?.(event.target.value)} style={{minWidth:150, padding:'3px 6px'}}><option value="todas">Todas las páginas</option><option value="primera">Solo primera página</option></select></label>{!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}</div>
+      <div className="row" style={{gap:8, alignItems:'center', flexWrap:'wrap'}}><strong>{titulo}</strong><label className="row text-muted" style={{gap:6, fontSize:12}}>Mostrar en:<select className="input" value={normalizedPreviewScope(alcance)} disabled={disabled} onChange={event => onAlcanceChange?.(event.target.value)} style={{minWidth:150, padding:'3px 6px'}}><option value="todas">Todas las páginas</option><option value="primera">Solo primera página</option></select></label></div>
       {!disabled && <button type="button" className="btn btn-secondary" onClick={onSave} disabled={guardando}>{guardando ? 'Guardando...' : guardado ? 'Guardado ✓' : `Guardar ${titulo.toLowerCase()}`}</button>}
     </div>
-    <div className="document-section-columns" style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className="document-section-column"><div className="row" style={{justifyContent:'space-between', gap:6, marginBottom:6}}><div className="text-muted" style={{fontSize:12}}>Columna {index + 1}</div>{!disabled && <button type="button" className="btn btn-ghost" aria-label={`Eliminar columna ${index + 1}`} onClick={() => removeColumn(column.id)} disabled={columns.length <= 1} style={{padding:'1px 6px', minWidth:0}}>×</button>}</div><RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => updateColumns(columns.map(item => item.id === column.id ? { ...item, contenido_json:patch.contenido_json } : item))} /></div>)}</div>
+    <LayoutColumnsEditor value={value?.contenido_json} normalizeContent={normalizeRichTextDocument} disabled={disabled} onColumnsChange={updateColumns} columnLabel="Columna" renderColumn={(column, onContentChange) => <RichTextEditor value={column.contenido_json} disabled={disabled} variables={variables} onUploadImage={onUploadImage} showHorizontalRule showTwoColumnLine placeholder={`Escribe el ${titulo.toLowerCase()}...`} onChange={patch => onContentChange(patch.contenido_json)} />} />
   </section>;
 }
 
