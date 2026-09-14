@@ -3,6 +3,7 @@ import { I, moneyD } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { actualizarHojaCosteoSvc } from './services/crmService.js';
+import { CotizacionesGeneradasHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
 
 const STEPS = [
   { id: 'mano_obra', label: 'Mano de obra' },
@@ -1010,6 +1011,8 @@ export default function HojaCosteoWizard() {
         </div>
         <span className={`badge ${bloqueada ? 'badge-green' : 'badge-gray'}`} style={{ alignSelf: 'flex-start', textTransform: 'uppercase' }}>{hoja.estado || 'borrador'}</span>
       </div>
+
+      <CotizacionesGeneradasHojaCosteo hojaCosteoId={hoja.id} navigate={navigate} />
 
       <nav aria-label="Pasos del wizard" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))', gap: 8, margin: '12px 0 20px', overflowX: 'auto' }}>
         {STEPS.map((item, index) => (

@@ -147,7 +147,7 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   </div>;
 }
 
-export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
+export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, oportunidadInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
@@ -289,14 +289,15 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     cargarCotizacion(especialId).catch(err => setError(mensajeError(err))).finally(() => setLoading(false));
   }, [especialId, cargarCotizacion]);
   useEffect(() => {
-    if (especialId || (!plantillaInicialId && !tipoDocumentoInicialId && !cuentaInicialId)) return;
+    if (especialId || (!plantillaInicialId && !tipoDocumentoInicialId && !cuentaInicialId && !oportunidadInicialId)) return;
     setForm(current => ({
       ...current,
       tipo_documento_id: tipoDocumentoInicialId || current.tipo_documento_id,
       plantilla_documento_id: plantillaInicialId || current.plantilla_documento_id,
       cuenta_id: cuentaInicialId || current.cuenta_id,
+      oportunidad_id: oportunidadInicialId || current.oportunidad_id,
     }));
-  }, [especialId, plantillaInicialId, tipoDocumentoInicialId, cuentaInicialId]);
+  }, [especialId, plantillaInicialId, tipoDocumentoInicialId, cuentaInicialId, oportunidadInicialId]);
   useEffect(() => {
     if (especialId || !hojaCosteoInicialId) return;
     const hoja = hojasCosteo.find(row => row.id === hojaCosteoInicialId);

@@ -9,6 +9,7 @@ import { SmartTextField } from './components/SmartTextField.jsx';
 import { RichTextEditor, normalizeRichTextDocument } from './components/RichTextEditor.jsx';
 import { CotizacionEspecialWizard } from './components/CotizacionEspecialWizard.jsx';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
+import { CotizacionesGeneradasHojaCosteo, listarHojasCosteoConCotizaciones } from './components/CotizacionesGeneradasHojaCosteo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
@@ -348,7 +349,7 @@ function CotizacionesInner() {
   const {
     cotizaciones, oportunidades, cuentas, contactos, usuarios, osClientes, hojasCosteo, activeParams,
     navigate, crearCotizacion, actualizarCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual,
-    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion,
+    crearOSCliente, vincularCotizacionOS, subirVersionCotizacion, crearHojaCosteo, searchQuery, empresaConfig, diccionarioComercial = [], addNotificacion,
     authUser, roles, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles
   } = useApp();
   const [osModal, setOsModal] = useState(null);
@@ -358,6 +359,8 @@ function CotizacionesInner() {
   const [cotizacionesEspecialesError, setCotizacionesEspecialesError] = useState('');
   const [partidasHCPorId, setPartidasHCPorId] = useState({});
   const [cargandoPartidasHC, setCargandoPartidasHC] = useState(false);
+  const [selectorNuevaCotizacion, setSelectorNuevaCotizacion] = useState(false);
+  const [entradaDirecta, setEntradaDirecta] = useState(null);
   const modoVistaSociedadCotizaciones = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -479,6 +482,39 @@ function CotizacionesInner() {
   const getCuenta = id => cuentas.find(c => c.id === id);
   const getCuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
   const getContacto = id => contactos?.find(c => c.id === id);
+  const abrirEntradaDirecta = tipo => {
+    setSelectorNuevaCotizacion(false);
+    setEntradaDirecta({ tipo, cuenta_id:'', error:'', saving:false });
+  };
+  const confirmarEntradaDirecta = async event => {
+    event.preventDefault();
+    if (!entradaDirecta?.cuenta_id) {
+      setEntradaDirecta(actual => ({ ...actual, error:'Selecciona una cuenta para continuar.' }));
+      return;
+    }
+    const cuenta = getCuenta(entradaDirecta.cuenta_id);
+    if (!cuenta) {
+      setEntradaDirecta(actual => ({ ...actual, error:'La cuenta seleccionada ya no está disponible.' }));
+      return;
+    }
+    if (entradaDirecta.tipo === 'estandar') {
+      navigate('cotizaciones', { active_tab:'nueva', cuenta_id:cuenta.id });
+      setEntradaDirecta(null);
+      return;
+    }
+    setEntradaDirecta(actual => ({ ...actual, saving:true, error:'' }));
+    try {
+      const hojaId = await crearHojaCosteo({
+        cuenta_id:cuenta.id,
+        sociedad_id:empresa?.multisociedad_habilitado ? modoVistaSociedadCotizaciones.sociedadIdEscritura : null,
+        moneda:cuenta.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN',
+      });
+      setEntradaDirecta(null);
+      navigate('hoja_costeo_wizard', { hojaId });
+    } catch (err) {
+      setEntradaDirecta(actual => ({ ...actual, saving:false, error:err?.message || 'No se pudo crear la Hoja de Costeo.' }));
+    }
+  };
 
   if (activeParams?.especial || activeParams?.especial_id) {
     const activoOrigenEspecial = recepcionOrigen?.activo || null;
@@ -489,6 +525,7 @@ function CotizacionesInner() {
       plantillaInicialId={activeParams?.plantilla_documento_id || null}
       tipoDocumentoInicialId={activeParams?.tipo_documento_id || null}
       cuentaInicialId={activeParams?.cuenta_id || null}
+      oportunidadInicialId={activeParams?.oportunidad_id || null}
       activoInicialId={activeParams?.activo_id || recepcionOrigen?.activo_id || null}
       recepcionInicialId={activeParams?.recepcion_id || null}
       recepcionNumeroInicial={recepcionOrigen?.numero || null}
@@ -556,13 +593,14 @@ function CotizacionesInner() {
   }
 
   // ── Nueva cotización ───────────────────────────────────────────────
-  if (activeParams?.active_tab === 'nueva' && (activeParams?.opp || activeParams?.hc_id)) {
+  if (activeParams?.active_tab === 'nueva' && (activeParams?.opp || activeParams?.hc_id || activeParams?.cuenta_id)) {
     const opp = activeParams?.opp ? getOpp(activeParams.opp) : null;
     const hcBase = activeParams.hc_id ? (hojasCosteo || []).find(h => h.id === activeParams.hc_id) : null;
-    if (!opp && !hcBase) return <div className="p-4">No se encontró la oportunidad ni la Hoja de Costeo de origen.</div>;
+    const cuentaDirecta = activeParams?.cuenta_id ? getCuenta(activeParams.cuenta_id) : null;
+    if (!opp && !hcBase && !cuentaDirecta) return <div className="p-4">No se encontró la oportunidad, la Hoja de Costeo ni la cuenta de origen.</div>;
     if (!modoVistaSociedadCotizaciones.permiteEscritura) {
       const mensaje = 'Selecciona una sociedad concreta en el selector superior para crear una cotización desde una oportunidad.';
-      return <div className="p-4"><div className="alert alert-warning">{mensaje}</div><button className="btn btn-secondary mt-4" onClick={() => opp ? navigate('pipeline', { panel: opp.id }) : navigate('hoja_costeo', { detail: hcBase.id })}>Volver</button></div>;
+      return <div className="p-4"><div className="alert alert-warning">{mensaje}</div><button className="btn btn-secondary mt-4" onClick={() => opp ? navigate('pipeline', { panel: opp.id }) : hcBase ? navigate('hoja_costeo', { detail: hcBase.id }) : navigate('cotizaciones')}>Volver</button></div>;
     }
     const tienePartidasHC = hcBase && Object.prototype.hasOwnProperty.call(partidasHCPorId, hcBase.id);
     if (hcBase && !tienePartidasHC) return <div className="p-4"><div className="alert alert-info">Cargando partidas de la Hoja de Costeo…</div></div>;
@@ -585,18 +623,18 @@ function CotizacionesInner() {
       igv_impl: igvHC,
       total_impl: subtotalHC + igvHC,
       items: itemsHC,
-    } : null;
+    } : (cuentaDirecta ? { cuenta_id:cuentaDirecta.id, moneda:cuentaDirecta.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN' } : null);
     return (
       <EditorCotizacion
         opp={opp}
-        cuenta={getCuenta(opp?.cuenta_id || hcBase?.cuenta_id)}
+        cuenta={getCuenta(opp?.cuenta_id || hcBase?.cuenta_id || cuentaDirecta?.id)}
         cotizacionBase={cotBaseDeHC}
         sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
-        contactos={(contactos || []).filter(c => c.cuenta_id === (opp?.cuenta_id || hcBase?.cuenta_id))}
+        contactos={(contactos || []).filter(c => c.cuenta_id === (opp?.cuenta_id || hcBase?.cuenta_id || cuentaDirecta?.id))}
         empresaConfig={empresaConfig}
         diccionarioComercial={diccionarioComercial}
         onSave={async (data) => { await crearCotizacion(data); navigate('cotizaciones'); }}
-        onCancel={() => opp ? navigate('pipeline', { panel: opp.id }) : navigate('hoja_costeo', { detail: hcBase.id })}
+        onCancel={() => opp ? navigate('pipeline', { panel: opp.id }) : hcBase ? navigate('hoja_costeo', { detail: hcBase.id }) : navigate('cotizaciones')}
       />
     );
   }
@@ -757,8 +795,11 @@ function CotizacionesInner() {
           <h1 className="page-title">Cotizaciones</h1>
           <div className="page-sub">{cotizacionesBandeja.length} cotizaciones registradas</div>
         </div>
-        <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización especial.' : undefined} onClick={() => navigate('cotizaciones', { especial:true })}>+ Cotización Especial</button>
+        <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>+ Nueva Cotización</button>
       </div>
+
+      {selectorNuevaCotizacion && <SelectorTipoCotizacion empresaId={empresa?.id} onHojaCosteo={() => abrirEntradaDirecta('hoja_costeo')} onEstandar={() => abrirEntradaDirecta('estandar')} onEspecial={plantilla => { setSelectorNuevaCotizacion(false); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:plantilla.id, tipo_documento_id:plantilla.tipo_documento_id }); }} onCancel={() => setSelectorNuevaCotizacion(false)} onError={mensaje => addNotificacion(mensaje)} />}
+      {entradaDirecta && <div className="modal-backdrop"><form className="modal" style={{ maxWidth:520 }} onSubmit={confirmarEntradaDirecta}><div className="modal-head"><div><h2>{entradaDirecta.tipo === 'hoja_costeo' ? 'Nueva Hoja de Costeo' : 'Nueva Cotización Estándar'}</h2><div className="text-muted" style={{ fontSize:12 }}>Selecciona el cliente para continuar.</div></div><button type="button" className="icon-btn" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>{I.x}</button></div><div className="modal-body"><div className="input-group"><label>Cuenta *</label><select className="select" required value={entradaDirecta.cuenta_id} disabled={entradaDirecta.saving} onChange={event => setEntradaDirecta(actual => ({ ...actual, cuenta_id:event.target.value, error:'' }))}><option value="">Selecciona una cuenta…</option>{cuentas.filter(cuenta => cuenta.empresa_id === empresa?.id).map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.razon_social || cuenta.nombre_comercial}</option>)}</select></div>{entradaDirecta.error && <div className="alert alert-danger" style={{ marginTop:14 }}>{entradaDirecta.error}</div>}</div><div className="modal-foot"><button type="button" className="btn btn-secondary" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={entradaDirecta.saving}>{entradaDirecta.saving ? 'Creando…' : 'Continuar'}</button></div></form></div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
         <input className="input" placeholder="Buscar por cliente…" value={filtros.cliente} onChange={e => setFiltros(f => ({...f, cliente: e.target.value}))} />
@@ -4736,6 +4777,7 @@ function HojaCosteo() {
     && (modoVistaSociedadHC.sinFiltro || modoVistaSociedadHC.sociedadesIds.length > 0)
   );
   const sociedadesIdsVistaHCKey = modoVistaSociedadHC.sociedadesIds.join('|');
+  const [hojasConCotizaciones, setHojasConCotizaciones] = useState(new Set());
   const hojasCosteoAlcance = useMemo(() => {
     if (modoVistaSociedadHC.sinFiltro) return hojasCosteo;
     const permitidas = new Set(modoVistaSociedadHC.sociedadesIds);
@@ -4750,6 +4792,14 @@ function HojaCosteo() {
       cliente.toLowerCase().includes(query) ||
       (opp?.nombre || '').toLowerCase().includes(query);
   });
+
+  useEffect(() => {
+    let activa = true;
+    listarHojasCosteoConCotizaciones(hojasCosteoAlcance.map(hoja => hoja.id))
+      .then(ids => { if (activa) setHojasConCotizaciones(ids); })
+      .catch(() => { if (activa) setHojasConCotizaciones(new Set()); });
+    return () => { activa = false; };
+  }, [hojasCosteoAlcance]);
 
   if (activeParams?.detail) {
     const hc = hojasCosteoAlcance.find(h => h.id === activeParams.detail);
@@ -4782,7 +4832,7 @@ function HojaCosteo() {
         <div className="table-wrap">
           <table className="tbl">
             <thead>
-              <tr><th>Número</th>{mostrarBadgeSociedadHC && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th></tr>
+              <tr><th>Número</th>{mostrarBadgeSociedadHC && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th><th>Cotización</th></tr>
             </thead>
             <tbody>
               {filteredHC.map(hc => {
@@ -4798,6 +4848,7 @@ function HojaCosteo() {
                     <td className="num">{hc.margen_objetivo_pct}%</td>
                     <td className="text-muted">{hc.responsable_costeo || '—'}</td>
                     <td><span className={'badge ' + badgeHC(hc.estado)}>{labelEstadoHC(hc.estado)}</span></td>
+                    <td>{hojasConCotizaciones.has(hc.id) && <span className="badge badge-cyan">Con cotización</span>}</td>
                   </tr>
                 );
               })}
@@ -5098,6 +5149,10 @@ function DetalleHC({ hc, getOpp, getCuentaNombre, badgeHC, actualizarHojaCosteo,
           )}
           <button className="btn btn-secondary" onClick={handleDescargarPDF} disabled={generandoPDF}>{I.download} {generandoPDF ? 'Generando…' : 'PDF'}</button>
         </div>
+      </div>
+
+      <div style={{ padding: '12px 32px 0' }}>
+        <CotizacionesGeneradasHojaCosteo hojaCosteoId={hc.id} navigate={navigate} />
       </div>
 
       {opp && (
