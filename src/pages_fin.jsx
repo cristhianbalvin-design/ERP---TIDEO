@@ -6101,6 +6101,9 @@ function CajaChica() {
   const [savingFondo, setSavingFondo] = useState(false);
   const [fondoSelId, setFondoSelId] = useState(null);
   const [rendicionForm, setRendicionForm] = useState(null);
+  const [aporteFondo, setAporteFondo] = useState(null);
+  const [aporteForm, setAporteForm] = useState({ monto: '', fecha: new Date().toISOString().slice(0, 10), tipo_origen: 'cuenta_bancaria', cuenta_bancaria_id: '', aportante_id: '', tercero_nombre: '', tercero_documento: '', notas: '' });
+  const [savingAporte, setSavingAporte] = useState(false);
   const [arqueoFondo, setArqueoFondo] = useState(null);
   const [arqueoForm, setArqueoForm] = useState({ efectivo_declarado: '', comprobantes_pendientes: '', justificacion: '' });
   const [fFondo, setFFondo] = useState('');
@@ -6251,6 +6254,73 @@ function CajaChica() {
     setPanelNuevoEgreso(false);
     setPreconfigNE(null);
     cargar();
+  };
+
+  const abrirAporte = fondo => {
+    if (fondo?.estado === 'cerrado') {
+      addNotificacion('No se pueden registrar aportes en un fondo cerrado.');
+      return;
+    }
+    setFondoSelId(null);
+    setRendicionForm(null);
+    setArqueoFondo(null);
+    setAporteForm({ monto: '', fecha: new Date().toISOString().slice(0, 10), tipo_origen: 'cuenta_bancaria', cuenta_bancaria_id: '', aportante_id: '', tercero_nombre: '', tercero_documento: '', notas: '' });
+    setAporteFondo(fondo);
+  };
+
+  const registrarAporte = async () => {
+    if (!aporteFondo) return;
+    if (aporteFondo.estado === 'cerrado') {
+      addNotificacion('No se pueden registrar aportes en un fondo cerrado.');
+      return;
+    }
+    const monto = Number(aporteForm.monto || 0);
+    const tipoOrigen = aporteForm.tipo_origen;
+    if (monto <= 0) {
+      addNotificacion('El monto del aporte debe ser mayor a cero.');
+      return;
+    }
+    if (tipoOrigen === 'cuenta_bancaria' && !aporteForm.cuenta_bancaria_id) {
+      addNotificacion('Selecciona la cuenta bancaria de origen.');
+      return;
+    }
+    if (tipoOrigen === 'aporte_directo' && !aporteForm.aportante_id) {
+      addNotificacion('Selecciona quién entregó el efectivo.');
+      return;
+    }
+    if (tipoOrigen === 'prestamo_tercero' && !aporteForm.tercero_nombre.trim()) {
+      addNotificacion('Indica el nombre del tercero que otorgó el préstamo.');
+      return;
+    }
+    setSavingAporte(true);
+    try {
+      const payload = {
+        monto,
+        fecha: aporteForm.fecha,
+        moneda: aporteFondo.moneda || empresa?.moneda || 'PEN',
+        tipo_origen: tipoOrigen,
+        cuenta_bancaria_id: tipoOrigen === 'cuenta_bancaria' ? aporteForm.cuenta_bancaria_id : null,
+        aportante_id: tipoOrigen === 'aporte_directo' ? aporteForm.aportante_id : null,
+        tercero_nombre: tipoOrigen === 'prestamo_tercero' ? aporteForm.tercero_nombre.trim() : null,
+        tercero_documento: tipoOrigen === 'prestamo_tercero' ? (aporteForm.tercero_documento.trim() || null) : null,
+        notas: aporteForm.notas.trim() || null,
+        creado_por: authUser?.id || null,
+      };
+      if (isSupabaseMode()) {
+        await cajaChicaService.registrarAporte(aporteFondo.id, payload);
+        await cargar();
+      } else {
+        const aporte = { ...payload, id: `cca_${Date.now()}`, empresa_id: empresaId, fondo_id: aporteFondo.id, estado: 'registrado', creado_en: new Date().toISOString() };
+        setFondos(prev => prev.map(f => f.id === aporteFondo.id ? { ...f, saldo_disponible: Number(f.saldo_disponible || 0) + monto, monto_aportado: Number(f.monto_aportado || 0) + monto, tiene_movimientos: true } : f));
+        setMovimientos(prev => [{ ...aporte, tipo_movimiento: 'aporte', fecha_movimiento: aporte.fecha, monto_movimiento: monto }, ...prev]);
+      }
+      setAporteFondo(null);
+      addNotificacion('Aporte registrado en el fondo de caja chica.');
+    } catch (err) {
+      addNotificacion(`No se pudo registrar el aporte: ${err?.message || err}`);
+    } finally {
+      setSavingAporte(false);
+    }
   };
 
   const guardarFondo = async () => {
@@ -6546,7 +6616,7 @@ function CajaChica() {
                       <td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td>
                       {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdMovimientoCajaDe(m)} /></td>}
                       <td>{m.fondo_nombre || fondos.find(f => f.id === m.fondo_id)?.nombre || 'Legacy sin fondo'}</td>
-                      <td><span className={`badge ${tipo === 'reposicion' ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
+                      <td><span className={`badge ${['reposicion', 'aporte'].includes(tipo) ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
                       <td>{m.concepto || m.descripcion}</td>
                       <td className="text-muted">{ceco?.nombre || '-'}</td>
                       <td className="mono text-muted">{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</td>
@@ -6584,9 +6654,10 @@ function CajaChica() {
                 <div><span className="text-muted">Estado: </span><span className={`badge ${fondoSel.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{fondoSel.estado}</span></div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                <button className="btn btn-primary" onClick={() => abrirEgreso(fondoSel)}>{I.plus} Nuevo egreso</button>
-                {(esResponsable(fondoSel) || puedeCrear) && <button className="btn btn-secondary" onClick={() => setRendicionForm({ periodo_inicio: `${new Date().toISOString().slice(0,7)}-01`, periodo_fin: new Date().toISOString().slice(0,10), monto_solicitado: String(fondoSel.monto_gastado || 0) })}>{I.receipt} Solicitar rendicion</button>}
-                {puedeGestionar && <button className="btn btn-secondary" onClick={() => { setArqueoFondo(fondoSel); setArqueoForm({ efectivo_declarado: fondoSel.saldo_disponible || '', comprobantes_pendientes: '', justificacion: '' }); }}>{I.clipboard} Arqueo</button>}
+                <button className="btn btn-primary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => abrirEgreso(fondoSel)}>{I.plus} Nuevo egreso</button>
+                {(puedeGestionar || puedeCrear) && <button className="btn btn-primary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => abrirAporte(fondoSel)}>{I.plus} Agregar aporte</button>}
+                {(esResponsable(fondoSel) || puedeCrear) && <button className="btn btn-secondary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => setRendicionForm({ periodo_inicio: `${new Date().toISOString().slice(0,7)}-01`, periodo_fin: new Date().toISOString().slice(0,10), monto_solicitado: String(fondoSel.monto_gastado || 0) })}>{I.receipt} Solicitar rendicion</button>}
+                {puedeGestionar && <button className="btn btn-secondary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => { setArqueoFondo(fondoSel); setArqueoForm({ efectivo_declarado: fondoSel.saldo_disponible || '', comprobantes_pendientes: '', justificacion: '' }); }}>{I.clipboard} Arqueo</button>}
                 {puedeGestionar && fondoSel.estado === 'activo' && <button className="btn btn-secondary" onClick={() => cerrarFondo(fondoSel)}>{I.x} Cerrar</button>}
               </div>
               {fondoSel.rendicion_vigente && (
@@ -6623,7 +6694,7 @@ function CajaChica() {
                   <table className="tbl">
                     <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th className="num">Monto</th><th>Estado</th></tr></thead>
                     <tbody>{historialFondo.length ? historialFondo.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${m.tipo_movimiento === 'reposicion' ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
                     )) : <tr><td colSpan="5" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
@@ -6654,6 +6725,28 @@ function CajaChica() {
               <div className="input-group"><label>Fecha apertura</label><input className="input" type="date" value={formFondo.fecha_apertura} onChange={e=>setFormFondo(p=>({...p,fecha_apertura:e.target.value}))}/></div>
               <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formFondo.notas} onChange={e=>setFormFondo(p=>({...p,notas:e.target.value}))}/></div>
               <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setPanelFondo(false)}>Cancelar</button><button className="btn btn-primary" disabled={savingFondo || !formFondo.nombre.trim() || !Number(formFondo.monto_asignado || 0)} onClick={guardarFondo}>{savingFondo ? 'Guardando...' : formFondo.id ? 'Guardar cambios' : 'Crear fondo'}</button></div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {aporteFondo && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => !savingAporte && setAporteFondo(null)} />
+          <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+            <div className="side-panel-head"><div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>Agregar aporte</div></div><button className="icon-btn" disabled={savingAporte} onClick={() => setAporteFondo(null)}>{I.x}</button></div>
+            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
+              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Fondo</div><strong>{aporteFondo.nombre}</strong><div className="text-muted" style={{fontSize:12,marginTop:4}}>Disponible actual: {moneyCurrency(aporteFondo.saldo_disponible, aporteFondo.moneda)}</div></div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <div className="input-group"><label>Monto *</label><input className="input" type="number" min="0.01" step="0.01" value={aporteForm.monto} onChange={e=>setAporteForm(p=>({...p,monto:e.target.value}))}/></div>
+                <div className="input-group"><label>Fecha</label><input className="input" type="date" value={aporteForm.fecha} onChange={e=>setAporteForm(p=>({...p,fecha:e.target.value}))}/></div>
+              </div>
+              <div className="input-group"><label>Origen del aporte *</label><select className="select" value={aporteForm.tipo_origen} onChange={e=>{const tipo_origen=e.target.value;setAporteForm(p=>({...p,tipo_origen,cuenta_bancaria_id:'',aportante_id:'',tercero_nombre:'',tercero_documento:''}));}}><option value="cuenta_bancaria">Cuenta bancaria</option><option value="aporte_directo">Aporte directo en efectivo</option><option value="prestamo_tercero">Préstamo de tercero</option></select></div>
+              {aporteForm.tipo_origen === 'cuenta_bancaria' && <div className="input-group"><label>Cuenta bancaria de origen *</label><select className="select" value={aporteForm.cuenta_bancaria_id} onChange={e=>setAporteForm(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Seleccionar cuenta -</option>{cuentasActivasEscrituraCajaChica.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>}
+              {aporteForm.tipo_origen === 'aporte_directo' && <div className="input-group"><label>Quién entregó el efectivo *</label><select className="select" value={aporteForm.aportante_id} onChange={e=>setAporteForm(p=>({...p,aportante_id:e.target.value}))}><option value="">- Seleccionar aportante -</option>{usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email}</option>)}</select></div>}
+              {aporteForm.tipo_origen === 'prestamo_tercero' && <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}><div className="input-group"><label>Nombre del tercero *</label><input className="input" value={aporteForm.tercero_nombre} onChange={e=>setAporteForm(p=>({...p,tercero_nombre:e.target.value}))}/></div><div className="input-group"><label>Documento</label><input className="input" value={aporteForm.tercero_documento} onChange={e=>setAporteForm(p=>({...p,tercero_documento:e.target.value}))}/></div></div>}
+              <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={aporteForm.notas} onChange={e=>setAporteForm(p=>({...p,notas:e.target.value}))}/></div>
+              <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" disabled={savingAporte} onClick={() => setAporteFondo(null)}>Cancelar</button><button className="btn btn-primary" disabled={savingAporte || !Number(aporteForm.monto || 0)} onClick={registrarAporte}>{savingAporte ? 'Registrando...' : 'Registrar aporte'}</button></div>
             </div>
           </div>
         </>

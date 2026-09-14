@@ -42,16 +42,32 @@ async function updateWithFallback(supabase, table, id, payload) {
 
 const isActivo = row => !['anulado', 'anulada'].includes(String(row?.estado || '').toLowerCase());
 
-function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = []) {
+async function obtenerFondoAbierto(supabase, fondoId) {
+  if (!fondoId) throw new Error('Seleccione un fondo de caja chica.');
+  const { data: fondo, error } = await supabase
+    .from('caja_chica_fondos')
+    .select('id, empresa_id, nombre, moneda, estado')
+    .eq('id', fondoId)
+    .single();
+  if (error) throw error;
+  if (fondo?.estado === 'cerrado') {
+    throw new Error('No se pueden registrar movimientos en un fondo de caja chica cerrado.');
+  }
+  return fondo;
+}
+
+function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = [], aportes = []) {
   return fondos.map(fondo => {
     const egresosFondo = egresos.filter(e => e.fondo_id === fondo.id && isActivo(e));
     const rendicionesFondo = rendiciones.filter(r => r.fondo_id === fondo.id);
     const arqueosFondo = arqueos.filter(a => a.fondo_id === fondo.id);
+    const aportesFondo = aportes.filter(a => a.fondo_id === fondo.id && isActivo(a));
     const gastado = egresosFondo.reduce((s, e) => s + Number(e.monto || 0), 0);
+    const aportado = aportesFondo.reduce((s, a) => s + Number(a.monto || 0), 0);
     const repuesto = rendicionesFondo
       .filter(r => ['aprobada', 'repuesta'].includes(String(r.estado || '').toLowerCase()))
       .reduce((s, r) => s + Number(r.monto_aprobado || 0), 0);
-    const disponible = Math.max(0, Number(fondo.monto_asignado || 0) - gastado + repuesto);
+    const disponible = Math.max(0, Number(fondo.monto_asignado || 0) + aportado - gastado + repuesto);
     const rendicion_vigente = rendicionesFondo
       .filter(r => !['rechazada', 'repuesta'].includes(String(r.estado || '').toLowerCase()))
       .sort((a, b) => String(b.creado_en || '').localeCompare(String(a.creado_en || '')))[0] || null;
@@ -62,8 +78,9 @@ function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = [
       ...fondo,
       saldo_disponible: disponible,
       monto_gastado: gastado,
+      monto_aportado: aportado,
       monto_repuesto: repuesto,
-      tiene_movimientos: egresosFondo.length > 0 || rendicionesFondo.length > 0 || arqueosFondo.length > 0,
+      tiene_movimientos: egresosFondo.length > 0 || rendicionesFondo.length > 0 || arqueosFondo.length > 0 || aportesFondo.length > 0,
       requiere_reposicion: disponible <= Number(fondo.monto_minimo || 0),
       rendicion_vigente,
       ultimo_arqueo,
@@ -90,10 +107,11 @@ export const cajaChicaService = {
     }
     if (fondosResult.error) throw fondosResult.error;
 
-    const [egresosResult, rendicionesResult, arqueosResult] = await Promise.all([
+    const [egresosResult, rendicionesResult, arqueosResult, aportesResult] = await Promise.all([
       supabase.from('caja_chica').select('*').eq('empresa_id', empresaId),
       supabase.from('caja_chica_rendiciones').select('*').eq('empresa_id', empresaId),
       supabase.from('caja_chica_arqueos').select('*').eq('empresa_id', empresaId),
+      supabase.from('caja_chica_aportes').select('*').eq('empresa_id', empresaId),
     ]);
     if (egresosResult.error) throw egresosResult.error;
 
@@ -102,6 +120,7 @@ export const cajaChicaService = {
       egresosResult.data || [],
       rendicionesResult.error ? [] : (rendicionesResult.data || []),
       arqueosResult.error ? [] : (arqueosResult.data || []),
+      aportesResult.error ? [] : (aportesResult.data || []),
     );
   },
 
@@ -112,9 +131,10 @@ export const cajaChicaService = {
 
   async listarMovimientos(empresaId) {
     const supabase = await getSupabaseClient();
-    const [egresos, rendiciones, fondos] = await Promise.all([
+    const [egresos, rendiciones, aportes, fondos] = await Promise.all([
       supabase.from('caja_chica').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false }),
       supabase.from('caja_chica_rendiciones').select('*').eq('empresa_id', empresaId).order('creado_en', { ascending: false }),
+      supabase.from('caja_chica_aportes').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: false }),
       supabase.from('caja_chica_fondos').select('id, nombre').eq('empresa_id', empresaId),
     ]);
     if (egresos.error) throw egresos.error;
@@ -134,6 +154,14 @@ export const cajaChicaService = {
         concepto: `Reposicion rendicion ${r.periodo_inicio || ''} - ${r.periodo_fin || ''}`,
         fecha_movimiento: r.aprobado_en || r.creado_en,
         monto_movimiento: Number(r.monto_aprobado || 0),
+      }))),
+      ...((aportes.data || []).filter(isActivo).map(a => ({
+        ...a,
+        tipo_movimiento: 'aporte',
+        fondo_nombre: fondoNombre.get(a.fondo_id) || null,
+        concepto: `Aporte ${String(a.tipo_origen || '').replaceAll('_', ' ')}`,
+        fecha_movimiento: a.fecha || a.creado_en,
+        monto_movimiento: Number(a.monto || 0),
       }))),
     ];
     return rows.sort((a, b) => String(b.fecha_movimiento || '').localeCompare(String(a.fecha_movimiento || '')));
@@ -191,9 +219,71 @@ export const cajaChicaService = {
     if (error) throw error;
   },
 
+  async registrarAporte(fondoId, datos = {}) {
+    const supabase = await getSupabaseClient();
+    const fondo = await obtenerFondoAbierto(supabase, fondoId);
+    const tipoOrigen = datos.tipo_origen;
+    if (!['cuenta_bancaria', 'aporte_directo', 'prestamo_tercero'].includes(tipoOrigen)) {
+      throw new Error('Selecciona un tipo de origen para el aporte.');
+    }
+    if (tipoOrigen === 'cuenta_bancaria' && !datos.cuenta_bancaria_id) {
+      throw new Error('Selecciona la cuenta bancaria de origen del aporte.');
+    }
+    if (tipoOrigen === 'aporte_directo' && !datos.aportante_id) {
+      throw new Error('Selecciona quién entregó el efectivo.');
+    }
+    if (tipoOrigen === 'prestamo_tercero' && !String(datos.tercero_nombre || '').trim()) {
+      throw new Error('Indica el nombre del tercero que otorgó el préstamo.');
+    }
+    const monto = Number(datos.monto || 0);
+    if (monto <= 0) throw new Error('El monto del aporte debe ser mayor a cero.');
+
+    const aporte = await insertWithFallback(supabase, 'caja_chica_aportes', {
+      id: datos.id || genId('cca'),
+      empresa_id: fondo.empresa_id,
+      fondo_id: fondo.id,
+      fecha: datos.fecha || new Date().toISOString().slice(0, 10),
+      monto,
+      moneda: datos.moneda || fondo.moneda || 'PEN',
+      tipo_origen: tipoOrigen,
+      cuenta_bancaria_id: tipoOrigen === 'cuenta_bancaria' ? datos.cuenta_bancaria_id : null,
+      aportante_id: tipoOrigen === 'aporte_directo' ? datos.aportante_id : null,
+      tercero_nombre: tipoOrigen === 'prestamo_tercero' ? String(datos.tercero_nombre).trim() : null,
+      tercero_documento: tipoOrigen === 'prestamo_tercero' ? (datos.tercero_documento || null) : null,
+      notas: datos.notas || null,
+      creado_por: datos.creado_por || null,
+      estado: 'registrado',
+    });
+
+    if (tipoOrigen === 'cuenta_bancaria') {
+      try {
+        await insertWithFallback(supabase, 'movimientos_tesoreria', {
+          id: genId('tes'),
+          empresa_id: aporte.empresa_id,
+          tipo: 'egreso',
+          descripcion: `Aporte a caja chica: ${fondo.nombre}`,
+          monto: Number(aporte.monto || 0),
+          moneda: aporte.moneda || fondo.moneda || 'PEN',
+          fecha: aporte.fecha,
+          cuenta_bancaria_id: aporte.cuenta_bancaria_id,
+          categoria: 'caja_chica',
+          es_manual: false,
+          referencia: datos.referencia || null,
+          vinculo_tipo: 'caja_chica_aporte',
+          vinculo_id: aporte.id,
+          estado: 'registrado',
+        });
+      } catch (error) {
+        console.warn('[cajaChicaService] movimiento aporte:', error?.message || error);
+      }
+    }
+    return aporte;
+  },
+
   async registrarEgresoFondo(payload) {
     if (!payload?.fondo_id) throw new Error('Seleccione un fondo de caja chica.');
     const supabase = await getSupabaseClient();
+    await obtenerFondoAbierto(supabase, payload.fondo_id);
     const { sociedadId } = await validarSociedadActivaParaEscritura(
       supabase,
       payload?.empresa_id,
@@ -205,6 +295,7 @@ export const cajaChicaService = {
 
   async solicitarRendicion(payload) {
     const supabase = await getSupabaseClient();
+    await obtenerFondoAbierto(supabase, payload?.fondo_id);
     return insertWithFallback(supabase, 'caja_chica_rendiciones', {
       id: payload.id || genId('ccr'),
       estado: 'solicitada',
