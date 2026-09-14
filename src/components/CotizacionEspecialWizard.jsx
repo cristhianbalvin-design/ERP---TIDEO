@@ -147,7 +147,7 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   </div>;
 }
 
-export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted }) {
+export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
@@ -160,6 +160,9 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [emitting, setEmitting] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [actualizandoPlantilla, setActualizandoPlantilla] = useState(false);
+  const [osVinculada, setOsVinculada] = useState(null);
+  const [osVinculadaCargando, setOsVinculadaCargando] = useState(false);
+  const [osVinculadaError, setOsVinculadaError] = useState('');
   const [error, setError] = useState('');
   const [plantillaLoading, setPlantillaLoading] = useState(Boolean(especialId));
   const [plantillaError, setPlantillaError] = useState('');
@@ -192,6 +195,41 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const hojaCosteoReferencia = useMemo(() => hojasCosteo.find(hoja => hoja.id === form.hoja_costeo_id) || null, [hojasCosteo, form.hoja_costeo_id]);
   const activoVinculadoId = cotizacion?.activo_id || activoInicialId || null;
   const recepcionVinculadaId = cotizacion?.recepcion_id || recepcionInicialId || null;
+
+  useEffect(() => {
+    let activa = true;
+    if (cotizacion?.estado !== 'emitido') {
+      setOsVinculada(null);
+      setOsVinculadaCargando(false);
+      setOsVinculadaError('');
+      return () => { activa = false; };
+    }
+    const cargarOSVinculada = async () => {
+      setOsVinculadaCargando(true);
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error: queryError } = await sb
+          .from('os_clientes')
+          .select('id,numero')
+          .eq('cotizacion_especial_id', cotizacion.id)
+          .maybeSingle();
+        if (queryError) throw queryError;
+        if (activa) {
+          setOsVinculada(data || null);
+          setOsVinculadaCargando(false);
+          setOsVinculadaError('');
+        }
+      } catch (err) {
+        if (activa) {
+          setOsVinculada(null);
+          setOsVinculadaCargando(false);
+          setOsVinculadaError(mensajeError(err));
+        }
+      }
+    };
+    cargarOSVinculada();
+    return () => { activa = false; };
+  }, [cotizacion?.id, cotizacion?.estado]);
   const origenBloqueado = recepcionVinculadaId ? <div className="alert alert-info mt-4">
     Origen bloqueado: recepción <strong>{recepcionNumeroInicial || recepcionVinculadaId}</strong> · activo <strong>{activoCodigoInicial || activoVinculadoId || 'Cargando…'}</strong>{activoNombreInicial ? ` · ${activoNombreInicial}` : ''}. Estos vínculos se conservarán al guardar.
   </div> : null;
@@ -532,9 +570,10 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
   </>;
 
-  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div>
+  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div><div className="row" style={{gap:8, flexWrap:'wrap'}}>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && osVinculadaCargando && <button type="button" className="btn btn-secondary" disabled>Verificando OS…</button>}{cotizacion.estado === 'emitido' && !osVinculadaCargando && !osVinculada && <button type="button" className="btn btn-primary" onClick={() => onGenerarOS?.(cotizacion)}>Generar OS</button>}{cotizacion.estado === 'emitido' && osVinculada && <button type="button" className="btn btn-secondary" onClick={() => onVerOS?.(osVinculada.id)}>OS generada: {osVinculada.numero || osVinculada.id}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div></div>
     {origenBloqueado}
     {error && <div className="alert alert-danger">{error}</div>}
+    {osVinculadaError && <div className="alert alert-warning">No se pudo verificar la OS vinculada: {osVinculadaError}</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>

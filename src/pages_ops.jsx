@@ -38,6 +38,8 @@ import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXT
 import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { insertarNotificacionesSistema } from './services/crmService.js';
+import { getEquiposClientesConHistorial } from './services/activosService.js';
+import { EquipoClienteHistorial, EquiposClientesListado } from './components/EquiposClientes.jsx';
 import { BIOMETRICO_PERFIL_DEFAULT, previsualizarImportacionBiometrica } from './services/biometricoService.js';
 import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/geofencingService.js';
 import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
@@ -196,6 +198,10 @@ function Cuentas() {
     notas: ''
   });
   const [activeTab, setActiveTab] = useState('Resumen');
+  const [fichasEquiposCliente, setFichasEquiposCliente] = useState([]);
+  const [equiposClienteLoading, setEquiposClienteLoading] = useState(false);
+  const [equiposClienteError, setEquiposClienteError] = useState('');
+  const [equipoClienteSeleccionadoId, setEquipoClienteSeleccionadoId] = useState(null);
   const canFinanzas = role?.permisos?.ver_finanzas;
   const [editingCuenta, setEditingCuenta] = useState(null);
   const [editCuentaForm, setEditCuentaForm] = useState({});
@@ -209,6 +215,26 @@ function Cuentas() {
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
+  const cuentasPorId = useMemo(() => new Map((cuentas || []).map(cuenta => [cuenta.id, cuenta])), [cuentas]);
+
+  useEffect(() => {
+    let active = true;
+    if (activeTab !== 'Equipos' || !sel?.id || !empresa?.id) return () => { active = false; };
+    const cargarEquipos = async () => {
+      setEquiposClienteLoading(true); setEquiposClienteError('');
+      try {
+        const fichas = await getEquiposClientesConHistorial(empresa.id, { clienteId: sel.id });
+        if (active) {
+          setFichasEquiposCliente(fichas);
+          setEquipoClienteSeleccionadoId(actual => fichas.some(ficha => ficha.activo.id === actual) ? actual : fichas[0]?.activo.id || null);
+        }
+      } catch (error) {
+        if (active) setEquiposClienteError(error?.message || 'No se pudieron cargar los equipos de este cliente.');
+      } finally { if (active) setEquiposClienteLoading(false); }
+    };
+    cargarEquipos();
+    return () => { active = false; };
+  }, [activeTab, sel?.id, empresa?.id]);
 
   const csHealth  = sel ? healthScoresDetalle.find(h => h.cuenta_id === sel.id) : null;
   const csOb      = sel ? onboardings.find(o => o.cuenta_id === sel.id) : null;
@@ -939,7 +965,7 @@ function Cuentas() {
           </div>
           <div className="side-panel-body">
             <div className="tabs account-profile-tabs ficha-detail-tabs">
-              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Facturas', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
+              {['Timeline', 'Resumen', 'Oportunidades', 'Cotizaciones', 'OS Cliente', 'Equipos', 'Facturas', 'Contactos', 'Customer Success', ...(canFinanzas ? ['Condiciones comerciales'] : [])].map(t => (
                 <div key={t} className={`tab ficha-detail-tab ${activeTab===t?'active':''}`} onClick={() => setActiveTab(t)}>{t}</div>
               ))}
             </div>
@@ -1117,6 +1143,15 @@ function Cuentas() {
                 ))}
               </div>
             )}
+
+            {activeTab === 'Equipos' && (() => {
+              const fichaSeleccionada = fichasEquiposCliente.find(ficha => ficha.activo.id === equipoClienteSeleccionadoId) || null;
+              return <div className="col" style={{ gap: 12 }}>
+                {equiposClienteError && <div className="alert alert-danger">{equiposClienteError}</div>}
+                <EquiposClientesListado fichas={fichasEquiposCliente} cuentasPorId={cuentasPorId} showCliente={false} selectedId={equipoClienteSeleccionadoId} onSelect={setEquipoClienteSeleccionadoId} loading={equiposClienteLoading} emptyMessage="Este cliente no tiene equipos registrados." />
+                <EquipoClienteHistorial ficha={fichaSeleccionada} cuentasPorId={cuentasPorId} />
+              </div>;
+            })()}
 
             {activeTab === 'Facturas' && (() => {
               const facturasCliente = facturas.filter(f => f.cuenta_id === sel.id && f.tipo_documento !== 'nota_credito' && f.tipo_documento !== 'nota_debito');

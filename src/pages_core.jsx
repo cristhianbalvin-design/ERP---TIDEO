@@ -2256,6 +2256,7 @@ function Pipeline() {
   const [serviciosOpp, setServiciosOpp] = useState([]);
   const [loadingServiciosOpp, setLoadingServiciosOpp] = useState(false);
   const [creandoHojaCosteoId, setCreandoHojaCosteoId] = useState(null);
+  const [confirmacionHojaCosteo, setConfirmacionHojaCosteo] = useState(null);
   const modoVistaSociedadCosteo = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -2307,7 +2308,18 @@ function Pipeline() {
     setPanelNuevaOpp(false);
     setOppForm(oppFormBase);
   };
-  const crearHojaCosteoDesdeOportunidad = async oportunidad => {
+  const abrirConfirmacionHojaCosteo = oportunidad => {
+    if (!oportunidad?.id || creandoHojaCosteoId) return;
+    if (!modoVistaSociedadCosteo.permiteEscritura) {
+      addToast('Selecciona una sociedad concreta en el selector superior para crear una Hoja de Costeo.', 'error');
+      return;
+    }
+    setConfirmacionHojaCosteo({
+      oportunidad,
+      moneda: oportunidad.moneda === 'USD' ? 'USD' : 'PEN',
+    });
+  };
+  const crearHojaCosteoDesdeOportunidad = async (oportunidad, moneda) => {
     if (!oportunidad?.id || creandoHojaCosteoId) return;
     if (!modoVistaSociedadCosteo.permiteEscritura) {
       addToast('Selecciona una sociedad concreta en el selector superior para crear una Hoja de Costeo.', 'error');
@@ -2320,8 +2332,9 @@ function Pipeline() {
         cuenta_id: oportunidad.cuenta_id || null,
         sociedad_id: empresa?.multisociedad_habilitado ? modoVistaSociedadCosteo.sociedadIdEscritura : null,
         responsable_costeo: oportunidad.responsable || null,
-        moneda: oportunidad.moneda || 'PEN',
+        moneda: moneda === 'USD' ? 'USD' : 'PEN',
       });
+      setConfirmacionHojaCosteo(null);
       navigate('hoja_costeo_wizard', { hojaId });
     } catch (error) {
       addToast(`No se pudo crear la Hoja de Costeo: ${error?.message || error}`, 'error');
@@ -3042,7 +3055,7 @@ function Pipeline() {
                     {!hojasCosteo.some(h => h.oportunidad_id === sel.id) && !cotizaciones.some(c => c.oportunidad_id === sel.id) && (
                       <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
                         disabled={creandoHojaCosteoId === sel.id}
-                        onClick={e => { e.stopPropagation(); crearHojaCosteoDesdeOportunidad(sel); }}>
+                        onClick={e => { e.stopPropagation(); abrirConfirmacionHojaCosteo(sel); }}>
                         {I.receipt} {creandoHojaCosteoId === sel.id ? 'Creando Hoja de Costeo...' : 'Crear Hoja de Costeo'}
                       </button>
                     )}
@@ -3656,6 +3669,38 @@ function Pipeline() {
             </form>
           </div>
         </>
+      )}
+
+      {confirmacionHojaCosteo && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 430 }}>
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow">Hoja de Costeo</div>
+                <h2>Confirmar moneda</h2>
+              </div>
+              <button className="icon-btn" disabled={Boolean(creandoHojaCosteoId)} onClick={() => setConfirmacionHojaCosteo(null)}>{I.x}</button>
+            </div>
+            <div className="modal-body col" style={{ gap: 16 }}>
+              <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: 0 }}>
+                La moneda sugerida para <strong>{confirmacionHojaCosteo.oportunidad.nombre}</strong> es la de la oportunidad. Puedes cambiarla antes de continuar.
+              </p>
+              <div className="input-group" style={{ margin: 0 }}>
+                <label>Moneda de la Hoja de Costeo</label>
+                <select className="select" value={confirmacionHojaCosteo.moneda} disabled={Boolean(creandoHojaCosteoId)} onChange={e => setConfirmacionHojaCosteo(prev => ({ ...prev, moneda: e.target.value }))}>
+                  <option value="PEN">S/ Soles (PEN)</option>
+                  <option value="USD">US$ Dólares (USD)</option>
+                </select>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-secondary" disabled={Boolean(creandoHojaCosteoId)} onClick={() => setConfirmacionHojaCosteo(null)}>Cancelar</button>
+              <button className="btn btn-primary" disabled={Boolean(creandoHojaCosteoId)} onClick={() => crearHojaCosteoDesdeOportunidad(confirmacionHojaCosteo.oportunidad, confirmacionHojaCosteo.moneda)}>
+                {I.receipt} {creandoHojaCosteoId ? 'Creando...' : 'Continuar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {pendingPerdida && (
@@ -5350,6 +5395,7 @@ function OSCliente() {
           </div>
           <div className="row" style={{gap:8, flexWrap:'wrap', alignSelf:'flex-start'}}>
             {os.cotizacion_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { detail: os.cotizacion_id })}>{I.file} Ver cotización</button>}
+            {os.cotizacion_especial_id && <button className="btn btn-secondary" onClick={() => navigate('cotizaciones', { especial:'detalle', especial_id:os.cotizacion_especial_id })}>{I.file} Ver cotización especial</button>}
             {!cerrada && <button className="btn btn-secondary" style={{fontSize:12}} onClick={() => abrirEditarOS(os)}>{I.edit} Editar OS</button>}
             <button className="icon-btn" title="Eliminar OS" style={{color:'var(--danger)'}} onClick={() => abrirEliminarOS(os)}>{I.trash}</button>
             {!cerrada && <>

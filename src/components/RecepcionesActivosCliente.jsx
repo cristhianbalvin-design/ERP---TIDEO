@@ -35,6 +35,7 @@ export function RecepcionesActivosCliente() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [errorRecepcionId, setErrorRecepcionId] = useState(null);
   const [modalRecepcion, setModalRecepcion] = useState(false);
   const [modalActivo, setModalActivo] = useState(false);
   const [modalDevolucion, setModalDevolucion] = useState(null);
@@ -55,6 +56,7 @@ export function RecepcionesActivosCliente() {
       setRecepciones(pendientes);
       setActivos(activosEmpresa);
       setError('');
+      setErrorRecepcionId(null);
     } catch (err) {
       setError(err?.message || 'No se pudieron cargar las recepciones de activos.');
     } finally {
@@ -134,10 +136,12 @@ export function RecepcionesActivosCliente() {
   const abrirCotizacion = recepcion => {
     const activo = activosPorId.get(recepcion.activo_id);
     if (!activo?.cliente_propietario_id) {
-      setError('El activo de esta recepción no tiene cliente propietario; así no se puede abrir una cotización.');
+      setError(`${recepcion.numero}: el activo ${activo?.codigo || 'sin código'} no tiene cliente propietario; así no se puede abrir una cotización.`);
+      setErrorRecepcionId(recepcion.id);
       return;
     }
     setError('');
+    setErrorRecepcionId(null);
     setSelectorCotizacion(recepcion);
   };
   const abrirCotizacionEstandar = recepcion => {
@@ -159,11 +163,13 @@ export function RecepcionesActivosCliente() {
   const iniciarHojaCosteo = async recepcion => {
     const activo = activosPorId.get(recepcion.activo_id);
     if (!activo?.cliente_propietario_id) {
-      setError('El activo de esta recepción no tiene cliente propietario; así no se puede iniciar una Hoja de Costeo.');
+      setError(`${recepcion.numero}: el activo ${activo?.codigo || 'sin código'} no tiene cliente propietario; así no se puede iniciar una Hoja de Costeo.`);
+      setErrorRecepcionId(recepcion.id);
       return;
     }
     setSaving(true);
     setError('');
+    setErrorRecepcionId(null);
     try {
       const hojaId = await crearHojaCosteo({
         cuenta_id: activo.cliente_propietario_id,
@@ -211,12 +217,12 @@ export function RecepcionesActivosCliente() {
           <div><div className="eyebrow">Taller</div><h3 style={{ margin: 0 }}>Recepciones de equipos de clientes</h3><div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>Piezas ingresadas aún pendientes de cotización.</div></div>
           <button type="button" className="btn btn-secondary" onClick={abrirRecepcion}>{I.plus} Nueva recepción</button>
         </div>
-        {error && !modalRecepcion && !modalDevolucion && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{error}</div>}
+        {error && !errorRecepcionId && !modalRecepcion && !modalDevolucion && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{error}</div>}
         <div className="table-wrap"><table className="tbl" style={{ minWidth: 760 }}><thead><tr><th>Recepción</th><th>Código</th><th>Activo</th><th>Ingreso</th><th>Días</th><th>Guía</th><th /></tr></thead><tbody>
           {recepciones.map(recepcion => {
             const activo = activosPorId.get(recepcion.activo_id);
             return <tr key={recepcion.id}>
-              <td className="mono"><strong>{recepcion.numero}</strong></td><td className="mono">{activo?.codigo || '—'}</td><td>{activo?.nombre || 'Activo no disponible'}{activo?.modelo ? ` · ${activo.modelo}` : ''}</td>
+              <td className="mono"><strong>{recepcion.numero}</strong>{errorRecepcionId === recepcion.id && <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 0, whiteSpace: 'normal', minWidth: 280 }}>{error}</div>}</td><td className="mono">{activo?.codigo || '—'}</td><td>{activo?.nombre || 'Activo no disponible'}{activo?.modelo ? ` · ${activo.modelo}` : ''}</td>
               <td>{recepcion.fecha_ingreso || '—'}{recepcion.hora_ingreso ? ` ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</td><td>{diasDesde(recepcion.fecha_ingreso)}</td><td>{recepcion.guia_ingreso || '—'}</td>
               <td style={{ whiteSpace: 'nowrap' }}><button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirCotizacion(recepcion)} disabled={saving}>Crear cotización</button><button type="button" className="btn btn-secondary btn-sm" onClick={() => iniciarHojaCosteo(recepcion)} disabled={saving}>{I.clipboard} Iniciar Hoja de Costeo</button><button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => abrirDevolucion(recepcion)} disabled={saving}>Devolver sin cotizar</button></td>
             </tr>;

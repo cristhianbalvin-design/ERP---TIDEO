@@ -116,7 +116,6 @@ function GastoAdministrativo() {
   const [configuracion, setConfiguracion] = useState(null);
   const [porcentajeCalculado, setPorcentajeCalculado] = useState(null);
   const [porcentajeManual, setPorcentajeManual] = useState('');
-  const [metodoActivo, setMetodoActivo] = useState('calculado');
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -134,7 +133,7 @@ function GastoAdministrativo() {
     try {
       const sb = await getSupabaseClient();
       const [configResult, calculadoResult] = await Promise.all([
-        sb.from('gasto_administrativo_config').select('id, metodo_activo, porcentaje_manual').eq('empresa_id', empresa.id).maybeSingle(),
+        sb.from('gasto_administrativo_config').select('id, porcentaje_manual').eq('empresa_id', empresa.id).maybeSingle(),
         sb.from('vw_gasto_administrativo_pct_grupo').select('porcentaje_calculado').eq('empresa_id', empresa.id).maybeSingle(),
       ]);
       if (configResult.error) throw configResult.error;
@@ -143,7 +142,6 @@ function GastoAdministrativo() {
       setConfiguracion(config);
       setPorcentajeCalculado(calculadoResult.data?.porcentaje_calculado ?? null);
       setPorcentajeManual(config?.porcentaje_manual != null ? String(numero(config.porcentaje_manual) * 100) : '');
-      setMetodoActivo(config?.metodo_activo || 'calculado');
     } catch (err) {
       setError(err?.message || 'No se pudo cargar el gasto administrativo.');
     } finally {
@@ -159,10 +157,6 @@ function GastoAdministrativo() {
       addToast('El porcentaje manual debe ser un número mayor o igual a cero.', 'error');
       return;
     }
-    if (metodoActivo === 'manual' && !(manualNumerico > 0)) {
-      addToast('Ingresa un porcentaje manual mayor a cero para usar el método manual.', 'error');
-      return;
-    }
     if (!puedeGuardar) {
       addToast('No tienes permiso para guardar esta variable de costeo.', 'error');
       return;
@@ -174,7 +168,6 @@ function GastoAdministrativo() {
         .from('gasto_administrativo_config')
         .upsert({
           empresa_id: empresa.id,
-          metodo_activo: metodoActivo,
           porcentaje_manual: manualNumerico === null ? null : manualNumerico / 100,
           actualizado_en: new Date().toISOString(),
         }, { onConflict: 'empresa_id' });
@@ -190,7 +183,7 @@ function GastoAdministrativo() {
 
   const hayCalculado = numero(porcentajeCalculado) > 0;
   return <>
-    <div className="page-sub" style={{ marginBottom:18 }}>Define el porcentaje de gasto administrativo que Hoja de Costeo aplicará por defecto. El valor manual se ingresa como porcentaje y se guarda como proporción.</div>
+    <div className="page-sub" style={{ marginBottom:18 }}>El porcentaje calculado es una referencia. Si registras un valor manual, Hoja de Costeo usará ese valor. El manual se ingresa como porcentaje y se guarda como proporción.</div>
     {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
     <div className="card">
       <div className="card-head"><h3>Gasto administrativo de la empresa</h3></div>
@@ -205,13 +198,6 @@ function GastoAdministrativo() {
             <input type="number" min="0" step="0.01" className="input num" value={porcentajeManual} disabled={!puedeGuardar || guardando} onChange={event => setPorcentajeManual(event.target.value)} placeholder="Ej. 18.30" />
             <span className="text-muted">%</span>
           </div>
-        </label>
-        <label style={{ display:'grid', gap:8 }}>
-          <span className="eyebrow">Método activo</span>
-          <select className="input" value={metodoActivo} disabled={!puedeGuardar || guardando} onChange={event => setMetodoActivo(event.target.value)}>
-            <option value="calculado">Calculado</option>
-            <option value="manual">Manual</option>
-          </select>
         </label>
       </div>}
       {!cargando && <div style={{ display:'flex', justifyContent:'flex-end', padding:'0 18px 18px' }}><button className="btn btn-primary" disabled={!puedeGuardar || guardando} onClick={guardar}>{I.save} {guardando ? 'Guardando...' : 'Guardar gasto administrativo'}</button></div>}

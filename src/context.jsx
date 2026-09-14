@@ -2685,7 +2685,7 @@ export function AppProvider({ children }) {
       throw new Error('La Hoja de Costeo no tiene sociedad. Corrígela antes de aprobarla.');
     }
     const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
-    const monedaHC = oppDeHC?.moneda || hc.moneda || empresa?.moneda || 'PEN';
+    const monedaHC = hc.moneda || oppDeHC?.moneda || empresa?.moneda || 'PEN';
     if (isSupabaseConfigured()) {
       try {
         const sb = await getSupabaseClient();
@@ -2723,7 +2723,6 @@ export function AppProvider({ children }) {
           ...(result?.data?.cotizacion || {}),
           activo_id: hc.activo_id || null,
           recepcion_id: hc.recepcion_id || null,
-          items: cotBase.items,
         };
         const hcFinal = result?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
         const cotizacionResult = await crmPersist(sb => svcActualizarCotizacion(sb, cotFinal.id, {
@@ -3035,9 +3034,25 @@ export function AppProvider({ children }) {
     return nuevoId;
   };
 
-  const crearOSCliente = async (cotId, datos) => {
-    const cot = cotizaciones.find(c => c.id === cotId);
-    if (!cot) return;
+  const crearOSCliente = async (cotId, datos, { origen = 'estandar', cotizacionEspecial = null } = {}) => {
+    const esCotizacionEspecial = origen === 'especial';
+    let cot = esCotizacionEspecial ? cotizacionEspecial : cotizaciones.find(c => c.id === cotId);
+
+    if (esCotizacionEspecial && isSupabaseConfigured()) {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb
+        .from('cotizaciones_especiales')
+        .select('id,empresa_id,sociedad_id,cuenta_id,oportunidad_id,numero,moneda,total,estado,activo_id')
+        .eq('id', cotId)
+        .eq('empresa_id', empresa.id)
+        .single();
+      if (error) throw error;
+      cot = data;
+    }
+    if (!cot) throw new Error('No se encontró la cotización de origen.');
+    if (esCotizacionEspecial && cot.estado !== 'emitido') {
+      throw new Error('Solo se puede generar una OS desde una Cotización Especial emitida.');
+    }
 
     const responsableUser = datos.responsable_comercial_id
       ? usuarios.find(u => u.id === datos.responsable_comercial_id)
@@ -3049,11 +3064,14 @@ export function AppProvider({ children }) {
       numero_doc_cliente: datos.numero_doc_cliente || null,
       nombre: datos.nombre || null,
       cuenta_id: cot.cuenta_id,
-      cotizacion_id: cotId,
+      activo_id: cot.activo_id || null,
+      cotizacion_id: esCotizacionEspecial ? null : cotId,
+      cotizacion_especial_id: esCotizacionEspecial ? cotId : null,
       oportunidad_id: cot.oportunidad_id,
       monto_aprobado: cot.total,
       moneda: cot.moneda,
       condicion_pago: datos.condicion_pago || cot.condicion_pago,
+      sociedad_id: cot.sociedad_id || null,
       fecha_emision: new Date().toISOString().split('T')[0],
       fecha_inicio: datos.fecha_inicio,
       fecha_fin: datos.fecha_fin,
@@ -3074,10 +3092,21 @@ export function AppProvider({ children }) {
 
     try {
       await crmPersist(async sb => {
+        if (esCotizacionEspecial) {
+          const { data: osExistente, error: osExistenteError } = await sb
+            .from('os_clientes')
+            .select('id')
+            .eq('cotizacion_especial_id', cotId)
+            .maybeSingle();
+          if (osExistenteError) throw osExistenteError;
+          if (osExistente) throw new Error('Esta Cotización Especial ya tiene una OS Cliente vinculada.');
+        }
         const osResult = await persistirOSCliente(sb, empresa.id, osc);
         if (osResult?.error) throw osResult.error;
-        const cotResult = await svcActualizarCotizacion(sb, cotId, { estado: 'convertida', os_cliente_id: osc.id });
-        if (cotResult?.error) throw cotResult.error;
+        if (!esCotizacionEspecial) {
+          const cotResult = await svcActualizarCotizacion(sb, cotId, { estado: 'convertida', os_cliente_id: osc.id });
+          if (cotResult?.error) throw cotResult.error;
+        }
       });
     } catch (error) {
       const message = error?.message || 'No se pudo guardar la OS Cliente en Supabase.';
@@ -3085,9 +3114,18 @@ export function AppProvider({ children }) {
       throw error;
     }
     setOsClientes(prev => [...prev, osc]);
-    setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, estado: 'convertida', os_cliente_id: osc.id } : c));
+    if (!esCotizacionEspecial) {
+      setCotizaciones(prev => prev.map(c => c.id === cotId ? { ...c, estado: 'convertida', os_cliente_id: osc.id } : c));
+    }
     auditSync({ modulo: 'comercial', entidad: 'os_clientes', entidad_id: osc.id, accion: 'crear', valor_nuevo: osc });
-    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotId, accion: 'convertir_os', valor_anterior: cot, valor_nuevo: { estado: 'convertida', os_cliente_id: osc.id } });
+    auditSync({
+      modulo: 'comercial',
+      entidad: esCotizacionEspecial ? 'cotizaciones_especiales' : 'cotizaciones',
+      entidad_id: cotId,
+      accion: 'vincular_os',
+      valor_anterior: esCotizacionEspecial ? { estado: cot.estado } : cot,
+      valor_nuevo: esCotizacionEspecial ? { estado: cot.estado, os_cliente_id: osc.id } : { estado: 'convertida', os_cliente_id: osc.id },
+    });
     addNotificacion(`Orden de Servicio ${osc.numero} registrada.`);
     navigate('os_cliente', { detail: osc.id });
   };
@@ -3187,24 +3225,65 @@ export function AppProvider({ children }) {
     crmSync(sb => svcActualizarOSCliente(sb, id, datos));
   };
 
-  const vincularCotizacionOS = async (cotizacionId, osId) => {
-    const cotizacion = cotizaciones.find(c => c.id === cotizacionId);
+  const vincularCotizacionOS = async (cotizacionId, osId, { origen = 'estandar', cotizacionEspecial = null } = {}) => {
+    const esCotizacionEspecial = origen === 'especial';
+    let cotizacion = esCotizacionEspecial ? cotizacionEspecial : cotizaciones.find(c => c.id === cotizacionId);
     const os = osClientes.find(o => o.id === osId);
+    if (esCotizacionEspecial && isSupabaseConfigured()) {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb
+        .from('cotizaciones_especiales')
+        .select('id,empresa_id,estado')
+        .eq('id', cotizacionId)
+        .eq('empresa_id', empresa.id)
+        .single();
+      if (error) throw error;
+      cotizacion = data;
+    }
+    if (esCotizacionEspecial && cotizacion?.estado !== 'emitido') {
+      throw new Error('Solo se puede vincular una OS a una Cotización Especial emitida.');
+    }
     if (!cotizacion || !os) throw new Error('No se encontró la cotización u OS a vincular.');
     try {
       await crmPersist(async sb => {
-        const osResult = await svcActualizarOSCliente(sb, osId, { cotizacion_id: cotizacionId });
+        if (esCotizacionEspecial) {
+          const { data: osExistente, error: osExistenteError } = await sb
+            .from('os_clientes')
+            .select('id')
+            .eq('cotizacion_especial_id', cotizacionId)
+            .neq('id', osId)
+            .maybeSingle();
+          if (osExistenteError) throw osExistenteError;
+          if (osExistente) throw new Error('Esta Cotización Especial ya tiene una OS Cliente vinculada.');
+        }
+        const osResult = await svcActualizarOSCliente(sb, osId, esCotizacionEspecial
+          ? { cotizacion_especial_id: cotizacionId }
+          : { cotizacion_id: cotizacionId });
         if (osResult?.error) throw osResult.error;
-        const cotResult = await svcActualizarCotizacion(sb, cotizacionId, { os_cliente_id: osId });
-        if (cotResult?.error) throw cotResult.error;
+        if (!esCotizacionEspecial) {
+          const cotResult = await svcActualizarCotizacion(sb, cotizacionId, { os_cliente_id: osId });
+          if (cotResult?.error) throw cotResult.error;
+        }
       });
     } catch (error) {
       addNotificacion(`No se pudo vincular la cotización: ${error?.message || error}`);
       throw error;
     }
-    setOsClientes(prev => prev.map(o => o.id === osId ? { ...o, cotizacion_id: cotizacionId } : o));
-    setCotizaciones(prev => prev.map(c => c.id === cotizacionId ? { ...c, os_cliente_id: osId } : c));
-    auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cotizacionId, accion: 'vincular_os', valor_anterior: { os_cliente_id: cotizacion.os_cliente_id || null }, valor_nuevo: { os_cliente_id: osId } });
+    setOsClientes(prev => prev.map(o => o.id === osId ? {
+      ...o,
+      ...(esCotizacionEspecial ? { cotizacion_especial_id: cotizacionId } : { cotizacion_id: cotizacionId }),
+    } : o));
+    if (!esCotizacionEspecial) {
+      setCotizaciones(prev => prev.map(c => c.id === cotizacionId ? { ...c, os_cliente_id: osId } : c));
+    }
+    auditSync({
+      modulo: 'comercial',
+      entidad: esCotizacionEspecial ? 'cotizaciones_especiales' : 'cotizaciones',
+      entidad_id: cotizacionId,
+      accion: 'vincular_os',
+      valor_anterior: esCotizacionEspecial ? { estado: cotizacion.estado } : { os_cliente_id: cotizacion.os_cliente_id || null },
+      valor_nuevo: esCotizacionEspecial ? { estado: cotizacion.estado, os_cliente_id: osId } : { os_cliente_id: osId },
+    });
     addNotificacion('Cotización vinculada a la OS.');
   };
 

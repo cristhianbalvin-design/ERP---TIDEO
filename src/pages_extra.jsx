@@ -482,7 +482,8 @@ function CotizacionesInner() {
 
   if (activeParams?.especial || activeParams?.especial_id) {
     const activoOrigenEspecial = recepcionOrigen?.activo || null;
-    return <CotizacionEspecialWizard
+    return <>
+      <CotizacionEspecialWizard
       especialId={activeParams?.especial_id || null}
       hojaCosteoInicialId={activeParams?.hoja_costeo_id || null}
       plantillaInicialId={activeParams?.plantilla_documento_id || null}
@@ -504,7 +505,23 @@ function CotizacionesInner() {
       onBack={() => navigate('cotizaciones')}
       onCreated={id => navigate('cotizaciones', { especial_id:id })}
       onEmitted={id => navigate('cotizaciones', { especial_id:id })}
-    />;
+      onGenerarOS={cotizacion => setOsModal({ cotizacion, origen:'especial' })}
+      onVerOS={osId => navigate('os_cliente', { detail:osId })}
+    />
+      {osModal && (
+        <CrearOSModal
+          cot={osModal.cotizacion}
+          origen="especial"
+          opp={oportunidades.find(o => o.id === osModal.cotizacion.oportunidad_id)}
+          osClientes={osClientes || []}
+          cuentas={cuentas}
+          sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
+          onClose={() => setOsModal(null)}
+          onCrearNueva={async (datos) => { await crearOSCliente(osModal.cotizacion.id, datos, { origen:'especial', cotizacionEspecial:osModal.cotizacion }); setOsModal(null); }}
+          onVincularExistente={async (osId) => { await vincularCotizacionOS(osModal.cotizacion.id, osId, { origen:'especial', cotizacionEspecial:osModal.cotizacion }); setOsModal(null); }}
+        />
+      )}
+    </>;
   }
 
   if (activeParams?.recepcion_id) {
@@ -683,14 +700,15 @@ function CotizacionesInner() {
         />
         {osModal && (
           <CrearOSModal
-            cot={osModal}
-            opp={oportunidades.find(o => o.id === osModal.oportunidad_id)}
+            cot={osModal?.cotizacion || osModal}
+            origen={osModal?.origen || 'estandar'}
+            opp={oportunidades.find(o => o.id === (osModal?.cotizacion || osModal).oportunidad_id)}
             osClientes={osClientes || []}
             cuentas={cuentas}
             sociedadIdEscritura={modoVistaSociedadCotizaciones.sociedadIdEscritura}
             onClose={() => setOsModal(null)}
-            onCrearNueva={async (datos) => { await crearOSCliente(osModal.id, datos); setOsModal(null); }}
-            onVincularExistente={async (osId) => { await vincularCotizacionOS(osModal.id, osId); setOsModal(null); }}
+            onCrearNueva={async (datos) => { const cotizacionModal = osModal?.cotizacion || osModal; await crearOSCliente(cotizacionModal.id, datos, { origen: osModal?.origen || 'estandar', cotizacionEspecial: cotizacionModal }); setOsModal(null); }}
+            onVincularExistente={async (osId) => { const cotizacionModal = osModal?.cotizacion || osModal; await vincularCotizacionOS(cotizacionModal.id, osId, { origen: osModal?.origen || 'estandar', cotizacionEspecial: cotizacionModal }); setOsModal(null); }}
           />
         )}
       </>
@@ -2005,12 +2023,15 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
 
 const CONDICIONES_PAGO = ['Contado', '30 días', '45 días', '60 días', '90 días', '120 días', 'Anticipado', 'Contra entrega'];
 
-function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, onClose, onCrearNueva, onVincularExistente }) {
+function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, origen = 'estandar', onClose, onCrearNueva, onVincularExistente }) {
   const { usuarios, centrosBeneficio } = useApp();
   const getNombre = id => (cuentas || []).find(c => c.id === id)?.razon_social || id;
   const cuenta = (cuentas || []).find(c => c.id === cot.cuenta_id);
+  const esCotizacionEspecial = origen === 'especial';
   const osExistentes = filtrarOpcionesPorSociedadEscritura(osClientes || [], sociedadIdEscritura).filter(os =>
-    os.cuenta_id === cot.cuenta_id && !['cerrada', 'anulada'].includes(os.estado)
+    os.cuenta_id === cot.cuenta_id
+      && !['cerrada', 'anulada'].includes(os.estado)
+      && (!esCotizacionEspecial || !os.cotizacion_especial_id || os.cotizacion_especial_id === cot.id)
   );
   const today = new Date().toISOString().split('T')[0];
   const cebesActivos = filtrarOpcionesPorSociedadEscritura(
@@ -2050,7 +2071,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, onCl
           </div>
           <div className="modal-body col" style={{gap:14}}>
             <div style={infoBox}>
-              <div className="eyebrow">Cotización aprobada</div>
+              <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial emitida' : 'Cotización aprobada'}</div>
               <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
             </div>
             <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>

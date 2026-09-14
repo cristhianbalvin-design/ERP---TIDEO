@@ -8770,6 +8770,9 @@ function ActivosFijos() {
 
   const today = new Date().toISOString().slice(0, 10);
   const [tab, setTab] = useState('maestro');
+  // El servicio también aplica esta condición; se conserva aquí para que la
+  // pantalla nunca liste ni abra activos de clientes desde el contexto.
+  const activosPropios = activos.filter(a => a.propietario_tipo === 'propio');
 
   // ─── Maestro: estado local ─────────────────────────────────────────────────
   const [panel, setPanel] = useState(null); // null | 'nuevo' | 'editar' | 'ver'
@@ -8835,12 +8838,12 @@ function ActivosFijos() {
   };
 
   // ─── KPIs maestro ─────────────────────────────────────────────────────────
-  const activosOperativos = activos.filter(a => a.estado === 'operativo');
-  const activosMantenimiento = activos.filter(a => a.estado === 'en_mantenimiento');
-  const activosConAlerta = activos.filter(a => ['rojo', 'amarillo'].includes(semaforoActivo(a)));
-  const valorTotal = activos.filter(a => a.estado !== 'dado_baja').reduce((s, a) => s + Number(a.valor_adquisicion || 0), 0);
+  const activosOperativos = activosPropios.filter(a => a.estado === 'operativo');
+  const activosMantenimiento = activosPropios.filter(a => a.estado === 'en_mantenimiento');
+  const activosConAlerta = activosPropios.filter(a => ['rojo', 'amarillo'].includes(semaforoActivo(a)));
+  const valorTotal = activosPropios.filter(a => a.estado !== 'dado_baja').reduce((s, a) => s + Number(a.valor_adquisicion || 0), 0);
 
-  const activosFiltrados = activos.filter(a => {
+  const activosFiltrados = activosPropios.filter(a => {
     if (!busqueda) return true;
     const q = busqueda.toLowerCase();
     return (a.codigo || '').toLowerCase().includes(q) || (a.nombre || '').toLowerCase().includes(q) || (a.marca || '').toLowerCase().includes(q) || (a.placa_serie || '').toLowerCase().includes(q);
