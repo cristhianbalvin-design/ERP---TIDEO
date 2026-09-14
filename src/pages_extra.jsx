@@ -152,7 +152,7 @@ const construirPartidasDesdeHC = (hc, lineas = {}) => {
     ? []
     : (lineas.mano_obra || []).map(linea => ({
       id: `mo_${linea.id}`,
-      descripcion:[lineas.familias?.[linea.familia_trabajo_id]?.nombre, lineas.actividades?.[linea.actividad_id]?.nombre, lineas.cargos?.[linea.cargo_id]?.nombre].filter(Boolean).join(' - ') || 'Mano de obra',
+      descripcion:lineas.cargos?.[linea.cargo_id]?.nombre || 'Mano de obra',
       cantidad:linea.horas,
       unidad:'hora',
       costo_unitario:linea.costo_hora_snapshot,
@@ -310,7 +310,7 @@ const cargarLineasRelacionalesDetalleHC = async (hc) => {
   return {
     manoObra: manoObra.map(linea => ({
       id: `mo_${linea.id}`,
-      descripcion: [familiasPorId[linea.familia_trabajo_id]?.nombre, actividadesPorId[linea.actividad_id]?.nombre, cargosPorId[linea.cargo_id]?.nombre].filter(Boolean).join(' — ') || 'Mano de obra',
+      descripcion: cargosPorId[linea.cargo_id]?.nombre || 'Mano de obra',
       cantidad: linea.horas,
       unidad: 'hora',
       costo_unitario: linea.costo_hora_snapshot,
