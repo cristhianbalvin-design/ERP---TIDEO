@@ -14,7 +14,7 @@ const fmtMoney = (n, m = 'PEN') => {
 
 const fmtDt = (iso) => iso ? new Date(iso).toLocaleString('es-PE', { dateStyle: 'long', timeStyle: 'short' }) : '—';
 
-export function PaginaAceptacion({ token }) {
+export function PaginaAceptacion({ token, tipo = 'estandar' }) {
   const [phase, setPhase]     = useState('loading');
   const [cot, setCot]         = useState(null);
   const [cfg, setCfg]         = useState(null);
@@ -23,8 +23,12 @@ export function PaginaAceptacion({ token }) {
   const [dni, setDni]         = useState('');
   const [error, setError]     = useState(null);
 
+  const esEspecial = tipo === 'especial';
+  const rpcConsulta = esEspecial ? 'get_cotizacion_especial_publica' : 'get_cotizacion_publica';
+  const rpcAceptacion = esEspecial ? 'registrar_aceptacion_cotizacion_especial' : 'registrar_aceptacion_cotizacion';
+
   useEffect(() => {
-    sb.rpc('get_cotizacion_publica', { p_token: token })
+    sb.rpc(rpcConsulta, { p_token: token })
       .then(({ data, error: e }) => {
         if (e || !data) { setPhase('invalid'); return; }
         if (data.status === 'token_invalido') { setPhase('invalid'); return; }
@@ -35,7 +39,7 @@ export function PaginaAceptacion({ token }) {
         setPhase('ready');
       })
       .catch(() => setPhase('invalid'));
-  }, [token]);
+  }, [token, rpcConsulta]);
 
   const handleAceptar = async (e) => {
     e.preventDefault();
@@ -46,7 +50,7 @@ export function PaginaAceptacion({ token }) {
     try { const r = await fetch('https://api.ipify.org?format=json'); ip = (await r.json()).ip; } catch (_) {}
 
     // 1. Registrar aceptación en BD
-    const { data: rpc, error: rpcErr } = await sb.rpc('registrar_aceptacion_cotizacion', {
+    const { data: rpc, error: rpcErr } = await sb.rpc(rpcAceptacion, {
       p_token: token, p_nombre: nombre.trim(), p_dni: dni.trim(), p_ip: ip,
     });
     if (rpcErr || !rpc?.ok) {
@@ -56,7 +60,7 @@ export function PaginaAceptacion({ token }) {
     }
 
     // 2. Notificación por email (fire & forget)
-    fetch(import.meta.env.VITE_SUPABASE_URL + '/functions/v1/aceptar-cotizacion', {
+    if (!esEspecial) fetch(import.meta.env.VITE_SUPABASE_URL + '/functions/v1/aceptar-cotizacion', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
       body: JSON.stringify({ token, nombre: nombre.trim(), dni: dni.trim(), ip }),
@@ -344,6 +348,10 @@ export function PaginaAceptacion({ token }) {
       </div>
     </div>
   );
+}
+
+export function PaginaAceptacionEspecial({ token }) {
+  return <PaginaAceptacion token={token} tipo="especial" />;
 }
 
 export function PaginaConformidadOT({ token }) {

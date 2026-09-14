@@ -341,6 +341,8 @@ const COT_BADGE = e =>
   'badge-gray';
 
 const COT_ESPECIAL_BADGE = e =>
+  e === 'aceptada' ? 'badge-green' :
+  e === 'enviada' ? 'badge-orange' :
   e === 'emitido' ? 'badge-cyan' :
   e === 'anulado' ? 'badge-red' :
   'badge-gray';
@@ -2112,7 +2114,7 @@ function CrearOSModal({ cot, opp, osClientes, cuentas, sociedadIdEscritura, orig
           </div>
           <div className="modal-body col" style={{gap:14}}>
             <div style={infoBox}>
-              <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial emitida' : 'Cotización aprobada'}</div>
+          <div className="eyebrow">{esCotizacionEspecial ? 'Cotización especial aceptada' : 'Cotización aprobada'}</div>
               <strong>{cot.numero}</strong> · {money(cot.total_impl || cot.total, currencySymbol(cot.moneda))} · {getNombre(cot.cuenta_id)}
             </div>
             <div style={{fontWeight:500, fontSize:14}}>Se detectaron OS activas para este cliente. ¿Esta cotización corresponde a una OS existente o es una OS nueva?</div>
