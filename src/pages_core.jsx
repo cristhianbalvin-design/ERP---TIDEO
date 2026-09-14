@@ -23,6 +23,7 @@ import {
   sanitizeRuc,
 } from './lib/formValidators.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
+import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -2257,6 +2258,7 @@ function Pipeline() {
   const [loadingServiciosOpp, setLoadingServiciosOpp] = useState(false);
   const [creandoHojaCosteoId, setCreandoHojaCosteoId] = useState(null);
   const [confirmacionHojaCosteo, setConfirmacionHojaCosteo] = useState(null);
+  const [selectorNuevaCotizacion, setSelectorNuevaCotizacion] = useState(null);
   const modoVistaSociedadCosteo = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -3048,17 +3050,11 @@ function Pipeline() {
                   <div className="col" style={{gap:8, paddingBottom:4}}>
                     {!cotizaciones.some(c => c.oportunidad_id === sel.id) && (
                       <button className="btn btn-primary" style={{justifyContent:'center', fontWeight:600}} data-local-form="true"
-                        onClick={e => { e.stopPropagation(); navigate('cotizaciones', { opp: sel.id, active_tab: 'nueva' }); }}>
-                        {I.file} Crear Cotización
+                        onClick={e => { e.stopPropagation(); setSelectorNuevaCotizacion(sel); }}>
+                        {I.file} Nueva Cotización
                       </button>
                     )}
-                    {!hojasCosteo.some(h => h.oportunidad_id === sel.id) && !cotizaciones.some(c => c.oportunidad_id === sel.id) && (
-                      <button className="btn btn-secondary" style={{justifyContent:'center'}} data-local-form="true"
-                        disabled={creandoHojaCosteoId === sel.id}
-                        onClick={e => { e.stopPropagation(); abrirConfirmacionHojaCosteo(sel); }}>
-                        {I.receipt} {creandoHojaCosteoId === sel.id ? 'Creando Hoja de Costeo...' : 'Crear Hoja de Costeo'}
-                      </button>
-                    )}
+                    {selectorNuevaCotizacion?.id === sel.id && <SelectorTipoCotizacion empresaId={empresa?.id} onHojaCosteo={() => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); abrirConfirmacionHojaCosteo(oportunidad); }} onEstandar={() => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { opp: oportunidad.id, active_tab: 'nueva' }); }} onEspecial={plantilla => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:plantilla.id, tipo_documento_id:plantilla.tipo_documento_id, cuenta_id:oportunidad.cuenta_id || null, oportunidad_id:oportunidad.id }); }} onCancel={() => setSelectorNuevaCotizacion(null)} onError={mensaje => addToast(mensaje, 'error')} />}
                     <div className="row" style={{gap:8, marginTop:2}}>
                       {sel.etapa === 'negociacion' && (
                         <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
