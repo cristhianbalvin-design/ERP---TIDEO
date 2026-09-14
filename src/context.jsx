@@ -4,7 +4,7 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, consumirInventario, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
+import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
@@ -3938,8 +3938,6 @@ export function AppProvider({ children }) {
         getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
           .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
           .catch(err => console.error('consumo OT inventario:', err));
-      } else {
-        opsSync(sb => consumirInventario(sb, empresa.id, itemsADescontar, otId, sociedadOtId));
       }
     }
 

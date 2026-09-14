@@ -372,8 +372,109 @@ const StickyTotals = ({ segmentos, tipoCargo, ingreso, centroCosto, objetoCostoI
 
 // ── SegmentoCard: accordion con 3 tabs de estimación ──────────────────────
 
+const MaterialAutocomplete = ({ item, empresaId, sociedadId, disabled, onSelect, onClear }) => {
+  const [busqueda, setBusqueda] = useState(
+    [item.material_codigo, item.material_descripcion].filter(Boolean).join(' · '),
+  );
+  const [resultados, setResultados] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const termino = busqueda.trim();
+    if (!empresaId || termino.length < 2) {
+      setResultados([]);
+      setError(null);
+      return undefined;
+    }
+
+    let vigente = true;
+    const temporizador = setTimeout(async () => {
+      setCargando(true);
+      setError(null);
+      const { data, error: errorBusqueda } = await getSupabaseClient().rpc('buscar_materiales_ot', {
+        p_empresa_id: empresaId,
+        p_sociedad_id: sociedadId || null,
+        p_busqueda: termino,
+        p_limite: 30,
+      });
+      if (!vigente) return;
+      setCargando(false);
+      if (errorBusqueda) {
+        setResultados([]);
+        setError(errorBusqueda.message || 'No se pudo buscar materiales.');
+        return;
+      }
+      setResultados(data || []);
+    }, 280);
+
+    return () => {
+      vigente = false;
+      clearTimeout(temporizador);
+    };
+  }, [busqueda, empresaId, sociedadId]);
+
+  const seleccionar = (material) => {
+    setBusqueda([material.codigo, material.descripcion].filter(Boolean).join(' · '));
+    setResultados([]);
+    onSelect(material);
+  };
+
+  return (
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      <input
+        type="search"
+        className="input"
+        value={busqueda}
+        disabled={disabled}
+        onChange={(event) => {
+          setBusqueda(event.target.value);
+          if (item.material_id) onClear();
+        }}
+        placeholder="Busca por código, parte o descripción"
+        style={{ fontSize: 12, padding: '4px 6px', width: '100%' }}
+      />
+      {cargando && (
+        <div className="hint" style={{ fontSize: 10, marginTop: 2 }}>Buscando materiales…</div>
+      )}
+      {error && (
+        <div style={{ color: '#b91c1c', fontSize: 10, marginTop: 2 }}>{error}</div>
+      )}
+      {resultados.length > 0 && (
+        <div style={{
+          position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0,
+          maxHeight: 220, overflowY: 'auto', background: '#fff',
+          border: '1px solid var(--card-border)', borderRadius: 6, marginTop: 2,
+          boxShadow: '0 6px 18px rgba(0,0,0,.14)',
+        }}>
+          {resultados.map((material) => (
+            <button
+              key={material.material_id}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => seleccionar(material)}
+              style={{
+                display: 'block', width: '100%', border: 0, background: 'transparent',
+                textAlign: 'left', padding: '7px 8px', cursor: 'pointer', fontSize: 12,
+              }}
+            >
+              <b>{material.codigo}</b> · {material.descripcion}
+              <span className="muted" style={{ marginLeft: 5 }}>
+                Disp. {Number(material.disponible || 0).toLocaleString()} {material.unidad || 'und'}
+              </span>
+            </button>
+          ))}
+          <div className="hint" style={{ padding: '5px 8px', fontSize: 10 }}>
+            Mostrando hasta 30 resultados. Sigue escribiendo para acotar la búsqueda.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SegmentoCard = ({
-  seg, isOnly, onPatch, onRemove, repuestosDB, tiposServicio, cargandoTiposServicio,
+  seg, isOnly, onPatch, onRemove, empresaId, sociedadId, permiteEscritura, tiposServicio, cargandoTiposServicio,
   errorTiposServicio, tecnicos, cargandoTecnicos, cuadrillas, cargandoCuadrillas,
   errorCuadrillas,
 }) => {
@@ -605,20 +706,22 @@ const SegmentoCard = ({
                 const linTotal = Number(item.precio_unitario || 0) * Number(item.cantidad || 0);
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 90px 80px 24px', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                    <select className="input" value={item.repuesto_id}
-                      onChange={e => {
-                        const rep = repuestosDB?.find(r => r.cod === e.target.value);
-                        patchEst('estimacion_repuestos', i, {
-                          repuesto_id: e.target.value,
-                          precio_unitario: rep ? rep.usd : item.precio_unitario,
-                        });
-                      }}
-                      style={{ fontSize: 12, padding: '4px 6px' }}>
-                      <option value="">-- Repuesto --</option>
-                      {repuestosDB?.map(r => (
-                        <option key={r.cod} value={r.cod}>{r.cod} · {r.desc} (disp. {r.stock})</option>
-                      ))}
-                    </select>
+                    <MaterialAutocomplete
+                      item={item}
+                      empresaId={empresaId}
+                      sociedadId={sociedadId}
+                      disabled={!permiteEscritura}
+                      onClear={() => patchEst('estimacion_repuestos', i, {
+                        material_id: '', material_codigo: '', material_descripcion: '', disponible: 0,
+                      })}
+                      onSelect={(material) => patchEst('estimacion_repuestos', i, {
+                        material_id: material.material_id,
+                        material_codigo: material.codigo,
+                        material_descripcion: material.descripcion,
+                        disponible: Number(material.disponible || 0),
+                        precio_unitario: Number(material.precio_unitario || 0),
+                      })}
+                    />
                     <input type="number" className="input" min={1} value={item.cantidad}
                       onChange={e => patchEst('estimacion_repuestos', i, { cantidad: e.target.value })}
                       style={{ fontSize: 12, padding: '4px 4px', textAlign: 'center' }} />
@@ -1596,6 +1699,7 @@ export const CrearOTPage = ({ onNav }) => {
     const payloadBase = {
       id: generarIdOT(),
       empresa_id: sesionOperativa.empresaId,
+      sociedad_id: sesionOperativa.sociedadId || null,
       os_cliente_id: esOTDesdeOS ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
       equipo_id: ['equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
@@ -1676,6 +1780,30 @@ export const CrearOTPage = ({ onNav }) => {
         errorTareas = error;
       }
 
+      const repuestosEstimados = segmentos.flatMap((segmento) =>
+        segmento.estimacion_repuestos
+          .filter(item => item.material_id)
+          .map(item => ({
+            ot_id: guardada.id,
+            segmento_id: segmento.codigo,
+            material_id: item.material_id,
+            cantidad_estimada: Number(item.cantidad || 0),
+            precio_unitario_estimado: Number(item.precio_unitario || 0),
+            almacen_id: null,
+            solpe_id: null,
+            empresa_id: sesionOperativa.empresaId,
+            sociedad_id: sesionOperativa.sociedadId || null,
+          })),
+      );
+
+      let errorRepuestos = null;
+      if (repuestosEstimados.length > 0) {
+        const { error } = await getSupabaseClient()
+          .from('ot_segmento_repuestos')
+          .insert(repuestosEstimados);
+        errorRepuestos = error;
+      }
+
       setCreada({
         ...form,
         id: guardada.id,
@@ -1685,6 +1813,9 @@ export const CrearOTPage = ({ onNav }) => {
         fechaPrimerLaborReal: null,
         ingreso: noFacturable(form.tipoCargo) ? 0 : form.ingreso,
         horometro_apertura: form.horometroApertura ? Number(form.horometroApertura) : null,
+        errorRepuestos: errorRepuestos
+          ? `La OT ${guardada.numero} fue creada, pero sus repuestos estimados no pudieron registrarse.`
+          : null,
         errorTareas: errorTareas
           ? `La OT ${guardada.numero} fue creada, pero sus tareas no pudieron registrarse. Regístralas manualmente desde Administrativo.`
           : null,
@@ -1744,6 +1875,11 @@ export const CrearOTPage = ({ onNav }) => {
           <div className="sub" style={{ marginBottom: 18 }}>
             <b>{creada.numero}</b> · {trabajoLabel(creada.tipoTrabajo)} · {cargoLabel(creada.tipoCargo)}
           </div>
+          {creada.errorRepuestos && (
+            <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
+              {creada.errorRepuestos}
+            </div>
+          )}
           {creada.errorTareas && (
             <div className="card" style={{ padding: 14, marginBottom: 18, textAlign: 'left', color: '#b45309', borderColor: '#fcd34d', background: '#fffbeb' }}>
               {creada.errorTareas}
@@ -2414,7 +2550,9 @@ export const CrearOTPage = ({ onNav }) => {
                 isOnly={segmentos.length === 1}
                 onPatch={(patch) => patchSegmento(si, patch)}
                 onRemove={() => removeSegmento(si)}
-                repuestosDB={D.repuestos}
+                empresaId={sesionOperativa.empresaId}
+                sociedadId={sesionOperativa.sociedadId}
+                permiteEscritura={sesionOperativa.permiteEscritura}
                 tiposServicio={tiposServicioInterno}
                 cargandoTiposServicio={cargandoTiposServicio}
                 errorTiposServicio={errorTiposServicio}

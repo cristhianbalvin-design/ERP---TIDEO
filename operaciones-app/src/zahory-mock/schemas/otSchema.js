@@ -65,7 +65,10 @@ export const makeMOItem = () => ({
 });
 
 export const makeRepuestoItem = () => ({
-  repuesto_id: '',
+  material_id: '',
+  material_codigo: '',
+  material_descripcion: '',
+  disponible: 0,
   cantidad: 1,
   precio_unitario: 0,
 });

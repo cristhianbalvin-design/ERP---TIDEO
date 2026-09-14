@@ -5367,14 +5367,13 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
-    areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, almacenes, sedes, industrias,
+    areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, sedes, industrias,
     monedasImpuestosUnidades = [],
     unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional, eliminarUnidadOrganizacional,
     crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
     crearEspecialidad, actualizarEspecialidad, eliminarEspecialidad,
     crearNivelJerarquico, actualizarNivelJerarquico, eliminarNivelJerarquico,
     crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
-    crearAlmacen, actualizarAlmacen, eliminarAlmacen,
     crearSede, actualizarSede, eliminarSede,
     crearIndustria, actualizarIndustria, eliminarIndustria,
     crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
@@ -5449,7 +5448,6 @@ function Maestros() {
     { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas' },
     { id: 'mst_trabajos', tabla: 'Trabajos' },
     { id: 'mst_catalogo_servicios', tabla: 'Catálogo Servicios', permiso: 'servicios' },
-    { id: 'mst_almacenes', tabla: 'Almacenes y depósitos' },
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
     { id: 'mst_tipos_contrato', tabla: 'Tipos de Contrato' },
   ];
@@ -5535,7 +5533,6 @@ function Maestros() {
     if (sel.id === 'mst_especialidades') return especialidades;
     if (sel.id === 'mst_niveles_jerarquicos') return nivelesJerarquicos;
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
-    if (sel.id === 'mst_almacenes') return almacenes;
     if (sel.id === 'mst_fabricantes') return fabricantes;
     if (sel.id === 'mst_sedes') return sedes;
     if (sel.id === 'mst_industrias') return industrias;
@@ -5644,13 +5641,6 @@ function Maestros() {
       },
       ejemplo: ['ACT-001','Cambio de aceite y filtros motor','Preventivo','Mecánico','2','No','Bajo','No','Llave de filtros;Bomba de extracción','Sí','Cada 250 horas','Hora','45','1'],
       hint: 'Clasificación y Familia se resuelven contra los maestros globales; una no coincidencia se importa con ID vacío y advertencia.',
-    },
-    mst_almacenes: {
-      sheetName: 'Almacenes', filename: 'almacenes.xlsx',
-      headers: ['Codigo','Nombre','Tipo','Responsable','Direccion','Estado'],
-      fields:  ['codigo','nombre','tipo','responsable','direccion','estado'],
-      ejemplo: ['ALM-001','Almacén Central Lima','Central','','Av. Industrial 123','activo'],
-      hint: 'Tipo: Central / Sede / Móvil / Tránsito',
     },
     mst_sedes: {
       sheetName: 'Sedes', filename: 'sedes.xlsx',
@@ -6086,7 +6076,6 @@ function Maestros() {
           await crearTipoServicio({ ...base, clasificacion: clas?.nombre || r.clasificacion || 'General', clasificacion_id: clas?.id || null, familia_id: familia?.id || null, tiempo_estimado_horas: r.tiempo_estimado_horas === '' ? null : Number(r.tiempo_estimado_horas), requiere_certificacion: esSi(r.requiere_certificacion), nivel_riesgo: r.nivel_riesgo || null, requiere_permiso_especial: esSi(r.requiere_permiso_especial), herramientas_requeridas: r.herramientas_requeridas || null, requiere_repuestos: esSi(r.requiere_repuestos), frecuencia_sugerida: r.frecuencia_sugerida || null, unidad_medida: r.unidad_medida || null, costo_estandar_hora: r.costo_estandar_hora === '' ? null : Number(r.costo_estandar_hora), orden_sugerido: Number(r.orden_sugerido) || 0 });
           r._advertencias = advertencias;
         }
-        else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
         else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '', tipo: r.tipo || 'oficina' });
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
@@ -6119,7 +6108,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_almacenes:'ALM', mst_fabricantes:'FAB', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
+    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_fabricantes:'FAB', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -6203,10 +6192,6 @@ function Maestros() {
         };
         if (editandoId) await actualizarTipoServicio(editandoId, item);
         else await crearTipoServicio(item);
-      } else if (sel.id === 'mst_almacenes') {
-        const item = { ...base, tipo: nuevo.tipo || 'Central', responsable: nuevo.responsable || '', direccion: nuevo.direccion || '' };
-        if (editandoId) await actualizarAlmacen(editandoId, item);
-        else await crearAlmacen(item);
       } else if (sel.id === 'mst_fabricantes') {
         const item = { ...base, nombre: String(nuevo.nombre || '').trim(), estado: nuevo.estado || 'activo' };
         if (!item.nombre) throw new Error('Completa el nombre del fabricante.');
@@ -6286,7 +6271,6 @@ function Maestros() {
   const NOTAS_PANEL = {
     mst_especialidades: 'Estas especialidades se asignan al personal desde RRHH Operativo.',
     mst_tipos_servicio: 'Estos tipos se usan al crear Órdenes de Trabajo.',
-    mst_almacenes: 'Los almacenes se administran con stock y movimientos desde el módulo de Inventario.',
     mst_tipos_documento: 'Define qué documentos existen en tu empresa. Usa "Importar Plantilla" para partir de tipos comunes del sector minero. Puedes editarlos libremente después.',
     mst_requisitos_cargo: 'Define qué documentos requiere cada cargo. El sistema usará esta configuración para calcular el cumplimiento documental del personal.',
   };
@@ -6375,7 +6359,6 @@ function Maestros() {
       else if (sel.id === 'mst_especialidades') await eliminarEspecialidad(r.id);
       else if (sel.id === 'mst_niveles_jerarquicos') await eliminarNivelJerarquico(r.id);
       else if (sel.id === 'mst_tipos_servicio') await eliminarTipoServicio(r.id);
-      else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
       else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
       else if (sel.id === 'mst_impuestos') await eliminarMonedaImpuestoUnidad(r.id);
@@ -6449,7 +6432,6 @@ function Maestros() {
       case 'mst_materiales': arr = materiales || []; break;
       case 'mst_impuestos': arr = monedasImpuestosUnidades || []; break;
       case 'mst_tipos_servicio': arr = tiposServicio || []; break;
-      case 'mst_almacenes': arr = almacenes || []; break;
       case 'mst_fabricantes': arr = fabricantes || []; break;
       case 'mst_tipos_contrato': arr = tiposContrato || []; break;
     }
@@ -6621,19 +6603,6 @@ function Maestros() {
             )}
           </div>
           <FormActions label="tipo" />
-        </div>
-      </form>
-    );
-    if (sel?.id === 'mst_almacenes') return (
-      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
-        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
-          {renderCodPreview(sel.id, formLen)}
-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del almacén</label><input className="input" value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Almacén Sede Sur" autoFocus/></div>
-          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
-          <div className="input-group"><label>Tipo</label><select className="select" value={nuevo.tipo} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="">Seleccionar...</option>{['Central','Sede','Móvil','Tránsito'].map(t=><option key={t}>{t}</option>)}</select></div>
-          <div className="input-group"><label>Responsable</label><input className="input" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))} placeholder="Nombre del responsable"/></div>
-          <div className="input-group" style={{gridColumn:'span 2'}}><label>Dirección</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Dirección del almacén"/></div>
-          <FormActions label="almacen" />
         </div>
       </form>
     );
@@ -7011,22 +6980,6 @@ function Maestros() {
               }}>{r.estado === 'activo' ? 'Desactivar' : 'Activar'}</button>
               <button className="icon-btn" title="Editar" onClick={() => editarRegistro(r)} style={{color:'var(--cyan)'}}>{I.edit}</button>
             </td>
-          </tr>
-        ))}</tbody>
-      </table>
-    );
-    if (sel?.id === 'mst_almacenes') return (
-      <table className="tbl">
-        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
-        <tbody>{selectedRows.map((r,i) => (
-          <tr key={`${r.codigo}-${i}`}>
-            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
-            <td className="mono">{r.codigo}</td>
-            <td><strong>{r.nombre}</strong><div className="text-muted" style={{fontSize:11}}>{r.direccion}</div></td>
-            <td><span className="badge badge-purple" style={{fontSize:11}}>{r.tipo}</span></td>
-            <td className="text-muted">{r.responsable}</td>
-            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
-            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
       </table>
