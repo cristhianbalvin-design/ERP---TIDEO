@@ -3050,8 +3050,8 @@ export function AppProvider({ children }) {
       cot = data;
     }
     if (!cot) throw new Error('No se encontró la cotización de origen.');
-    if (esCotizacionEspecial && cot.estado !== 'emitido') {
-      throw new Error('Solo se puede generar una OS desde una Cotización Especial emitida.');
+    if (esCotizacionEspecial && cot.estado !== 'aceptada') {
+      throw new Error('Solo se puede generar una OS desde una Cotización Especial aceptada.');
     }
 
     const responsableUser = datos.responsable_comercial_id
@@ -3240,8 +3240,8 @@ export function AppProvider({ children }) {
       if (error) throw error;
       cotizacion = data;
     }
-    if (esCotizacionEspecial && cotizacion?.estado !== 'emitido') {
-      throw new Error('Solo se puede vincular una OS a una Cotización Especial emitida.');
+    if (esCotizacionEspecial && cotizacion?.estado !== 'aceptada') {
+      throw new Error('Solo se puede vincular una OS a una Cotización Especial aceptada.');
     }
     if (!cotizacion || !os) throw new Error('No se encontró la cotización u OS a vincular.');
     try {

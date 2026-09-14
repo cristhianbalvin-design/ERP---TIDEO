@@ -147,6 +147,61 @@ function HitosEditor({ hitos, activos, total, moneda, disabled, onActivosChange,
   </div>;
 }
 
+function AceptacionEspecialQR({ token }) {
+  const [dataUrl, setDataUrl] = useState('');
+  const [copiado, setCopiado] = useState(false);
+  const url = (import.meta.env.VITE_APP_URL || window.location.origin) + '/#aceptar-especial/' + token;
+  useEffect(() => {
+    let activa = true;
+    import('qrcode').then(modulo => modulo.default.toDataURL(url, { width:160, margin:1 }))
+      .then(valor => { if (activa) setDataUrl(valor); })
+      .catch(() => { if (activa) setDataUrl(''); });
+    return () => { activa = false; };
+  }, [url]);
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(url); setCopiado(true); }
+    catch { setCopiado(false); }
+  };
+  return <div className="card" style={{padding:14, marginTop:16}}>
+    <div className="card-head" style={{padding:0, marginBottom:10}}><h3>Enviar para aceptacion</h3><span className="badge badge-orange">Pendiente</span></div>
+    <div className="row" style={{gap:16, alignItems:'center', flexWrap:'wrap'}}>
+      {dataUrl ? <img src={dataUrl} alt="QR de aceptacion" width="140" height="140" /> : <div className="text-muted" style={{width:140}}>Generando QR...</div>}
+      <div style={{flex:1, minWidth:220}}>
+        <div className="text-muted" style={{fontSize:12, marginBottom:6}}>Comparte este enlace con el cliente. El documento ya esta congelado y solo podra registrar su aceptacion.</div>
+        <div className="mono text-muted" style={{fontSize:11, overflowWrap:'anywhere', padding:8, background:'var(--bg-subtle)', borderRadius:6}}>{url}</div>
+        <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={copiar}>{copiado ? 'Enlace copiado' : 'Copiar enlace'}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function AceptacionManualEspecialModal({ onClose, onConfirmar }) {
+  const [nombre, setNombre] = useState('');
+  const [dni, setDni] = useState('');
+  const [fecha, setFecha] = useState(today());
+  const [canal, setCanal] = useState('correo');
+  const [notas, setNotas] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const confirmar = async () => {
+    if (!nombre.trim() || !fecha || !canal) { setError('Nombre, fecha y canal son obligatorios.'); return; }
+    setSaving(true); setError('');
+    try { await onConfirmar({ nombre:nombre.trim(), dni:dni.trim(), fecha, canal, notas:notas.trim() }); }
+    catch (err) { setError(mensajeError(err)); setSaving(false); }
+  };
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal" style={{maxWidth:520}} onClick={event => event.stopPropagation()}>
+    <div className="modal-head"><h3>Registrar aceptacion manual</h3><button type="button" className="btn btn-ghost" onClick={onClose}>x</button></div>
+    <div className="modal-body" style={{display:'grid', gap:12}}>
+      <div className="input-group"><label>Nombre de quien acepta *</label><input className="input" value={nombre} onChange={event => setNombre(event.target.value)} /></div>
+      <div className="grid-2"><div className="input-group"><label>DNI / documento</label><input className="input" value={dni} onChange={event => setDni(event.target.value)} /></div><div className="input-group"><label>Fecha de aceptacion *</label><input className="input" type="date" value={fecha} onChange={event => setFecha(event.target.value)} /></div></div>
+      <div className="input-group"><label>Canal *</label><select className="input" value={canal} onChange={event => setCanal(event.target.value)}><option value="correo">Correo</option><option value="whatsapp">WhatsApp</option><option value="reunion">Reunion</option><option value="telefono">Telefono</option><option value="otro">Otro</option></select></div>
+      <div className="input-group"><label>Notas</label><textarea className="input" rows="3" value={notas} onChange={event => setNotas(event.target.value)} /></div>
+      {error && <div className="alert alert-danger">{error}</div>}
+    </div>
+    <div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="btn btn-primary" onClick={confirmar} disabled={saving}>{saving ? 'Registrando...' : 'Confirmar aceptacion'}</button></div>
+  </div></div>;
+}
+
 export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, oportunidadInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
@@ -158,6 +213,8 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [loading, setLoading] = useState(Boolean(especialId));
   const [saving, setSaving] = useState(false);
   const [emitting, setEmitting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [aceptacionManualAbierta, setAceptacionManualAbierta] = useState(false);
   const [generandoPDF, setGenerandoPDF] = useState(false);
   const [actualizandoPlantilla, setActualizandoPlantilla] = useState(false);
   const [osVinculada, setOsVinculada] = useState(null);
@@ -198,7 +255,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
 
   useEffect(() => {
     let activa = true;
-    if (cotizacion?.estado !== 'emitido') {
+    if (cotizacion?.estado !== 'aceptada') {
       setOsVinculada(null);
       setOsVinculadaCargando(false);
       setOsVinculadaError('');
@@ -515,8 +572,34 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     finally { setEmitting(false); }
   };
 
+  const enviar = async () => {
+    setSending(true); setError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { error: rpcError } = await sb.rpc('enviar_cotizacion_especial', { p_id:cotizacion.id });
+      if (rpcError) throw rpcError;
+      await cargarCotizacion(cotizacion.id);
+    } catch (err) { setError(mensajeError(err)); }
+    finally { setSending(false); }
+  };
+
+  const registrarAceptacionManual = async datos => {
+    const sb = await getSupabaseClient();
+    const { error: rpcError } = await sb.rpc('registrar_aceptacion_manual_cotizacion_especial', {
+      p_id:cotizacion.id,
+      p_nombre:datos.nombre,
+      p_dni:datos.dni || null,
+      p_fecha:datos.fecha,
+      p_canal:datos.canal,
+      p_notas:datos.notas || null,
+    });
+    if (rpcError) throw rpcError;
+    await cargarCotizacion(cotizacion.id);
+    setAceptacionManualAbierta(false);
+  };
+
   const descargarPDF = async () => {
-    if (cotizacion?.estado !== 'emitido') return;
+    if (!['emitido', 'enviada', 'aceptada'].includes(cotizacion?.estado)) return;
     const contenedor = vistaPreviaRef.current;
     const paginas = contenedor
       ? [...contenedor.querySelectorAll('.document-preview-pages > .document-preview-sheet-frame > article.document-preview-sheet')]
@@ -571,17 +654,19 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     <div className="input-group" style={{marginTop:10}}>{form.validez_tipo === 'dias' ? <><label>Días de validez</label><input className="input" type="number" min="1" value={form.validez_dias ?? ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_dias:event.target.value }))} /></> : <><label>Válida hasta</label><input className="input" type="date" value={form.validez_fecha || ''} disabled={readonly} onChange={event => setForm(current => ({ ...current, validez_fecha:event.target.value }))} /></>}</div>
   </>;
 
-  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div><div className="row" style={{gap:8, flexWrap:'wrap'}}>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && osVinculadaCargando && <button type="button" className="btn btn-secondary" disabled>Verificando OS…</button>}{cotizacion.estado === 'emitido' && !osVinculadaCargando && !osVinculada && <button type="button" className="btn btn-primary" onClick={() => onGenerarOS?.(cotizacion)}>Generar OS</button>}{cotizacion.estado === 'emitido' && osVinculada && <button type="button" className="btn btn-secondary" onClick={() => onVerOS?.(osVinculada.id)}>OS generada: {osVinculada.numero || osVinculada.id}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div></div>
+  if (cotizacion) return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Cotización Especial {cotizacion.numero}</h1><div className="page-sub">Estado: <span className="badge badge-cyan">{cotizacion.estado}</span></div></div><div className="row" style={{gap:8, flexWrap:'wrap'}}>{editable && <button type="button" className="btn btn-primary" disabled={emitting} onClick={emitir}>{emitting ? 'Emitiendo…' : 'Emitir'}</button>}{cotizacion.estado === 'emitido' && <button type="button" className="btn btn-primary" disabled={sending} onClick={enviar}>{sending ? 'Enviando…' : 'Enviar a cliente'}</button>}{cotizacion.estado === 'enviada' && <button type="button" className="btn btn-primary" onClick={() => setAceptacionManualAbierta(true)}>Registrar aceptación manual</button>}{cotizacion.estado === 'aceptada' && osVinculadaCargando && <button type="button" className="btn btn-secondary" disabled>Verificando OS…</button>}{cotizacion.estado === 'aceptada' && !osVinculadaCargando && !osVinculada && <button type="button" className="btn btn-primary" onClick={() => onGenerarOS?.(cotizacion)}>Generar OS</button>}{cotizacion.estado === 'aceptada' && osVinculada && <button type="button" className="btn btn-secondary" onClick={() => onVerOS?.(osVinculada.id)}>OS generada: {osVinculada.numero || osVinculada.id}</button>}{['emitido', 'enviada', 'aceptada'].includes(cotizacion.estado) && <button type="button" className="btn btn-secondary" disabled={generandoPDF || !plantillaVistaPrevia} onClick={descargarPDF} aria-busy={generandoPDF}>{generandoPDF ? 'Generando PDF…' : 'Descargar PDF'}</button>}</div></div>
     {origenBloqueado}
     {error && <div className="alert alert-danger">{error}</div>}
     {osVinculadaError && <div className="alert alert-warning">No se pudo verificar la OS vinculada: {osVinculadaError}</div>}
+    {cotizacion.estado === 'enviada' && cotizacion.token_aceptacion && <AceptacionEspecialQR token={cotizacion.token_aceptacion} />}
+    {cotizacion.estado === 'aceptada' && <div className="alert alert-success">Aceptada {cotizacion.aceptacion_tipo === 'digital' ? 'digitalmente' : 'manualmente'}{cotizacion.aceptacion_nombre ? ` por ${cotizacion.aceptacion_nombre}` : ''}{cotizacion.aceptacion_fecha ? ` el ${new Date(cotizacion.aceptacion_fecha).toLocaleDateString('es-PE')}` : ''}.</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
       <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section></div></div>;
+    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section>{aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}</div></div>;
 
   return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
     <div className="card"><div className="card-body">
