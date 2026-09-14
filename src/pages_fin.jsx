@@ -6434,7 +6434,10 @@ function CajaChica() {
 
       {fondosAlerta.length > 0 && (
         <div className="card mt-6" style={{ padding: '14px 18px', borderColor: 'color-mix(in srgb, var(--orange) 45%, var(--border))', background: 'color-mix(in srgb, var(--orange) 7%, var(--surface))' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--orange)' }}>{I.alert} Fondos en minimo de reposicion</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, color: 'var(--orange)' }}>
+            <span style={{ display: 'inline-flex', width: 20, height: 20, flex: '0 0 20px' }}>{I.alert}</span>
+            Fondos en minimo de reposicion
+          </div>
           <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 4 }}>{fondosAlerta.map(f => `${f.nombre}: ${moneyCurrency(f.saldo_disponible, f.moneda)}`).join(' · ')}</div>
         </div>
       )}
