@@ -19,7 +19,7 @@ export const normalizeLayoutColumns = (value, normalizeContent) => {
   }));
 };
 
-export function LayoutColumnsEditor({ value, normalizeContent, disabled, onColumnsChange, renderColumn, columnLabel = 'Columna', className = 'document-section-columns', columnClassName = 'document-section-column' }) {
+export function LayoutColumnsEditor({ value, normalizeContent, disabled, onColumnsChange, renderColumn, renderHeader = null, columnLabel = 'Columna', className = 'document-section-columns', columnClassName = 'document-section-column' }) {
   const columns = normalizeLayoutColumns(value, normalizeContent);
   const updateColumns = next => onColumnsChange?.(normalizeLayoutColumns({ columnas:next }, normalizeContent));
   const addColumn = () => {
@@ -31,7 +31,7 @@ export function LayoutColumnsEditor({ value, normalizeContent, disabled, onColum
     updateColumns(columns.filter(column => column.id !== id));
   };
   return <>
-    {!disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}
+    {renderHeader ? renderHeader({ addColumn, canAddColumn:columns.length < 3 }) : !disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={columns.length >= 3} style={{padding:'3px 8px'}}>+ Agregar columna</button>}
     <div className={className} style={{gridTemplateColumns:columns.map(column => column.ancho).join(' ')}}>{columns.map((column, index) => <div key={column.id} className={columnClassName}>
       <div className="row" style={{justifyContent:'space-between', gap:6, marginBottom:6}}>
         <div className="text-muted" style={{fontSize:12}}>{columnLabel} {index + 1}</div>
