@@ -133,7 +133,7 @@ const saldoNetoCxC = cxc => {
   return Math.max(0, montoNetoCobrableCxC(cxc) - numeroFin(cxc?.monto_pagado ?? cxc?.pagado));
 };
 
-const normalizarCxC = cxc => {
+export const normalizarCxC = cxc => {
   const montoNeto = montoNetoCobrableCxC(cxc);
   const saldoNeto = saldoNetoCxC(cxc);
   const pagado = numeroFin(cxc?.monto_pagado ?? cxc?.pagado);
@@ -829,7 +829,12 @@ export const finanzasService = {
       p_comision: comision,
     });
     if (error) throw error;
-    return data;
+    return {
+      ...data,
+      // La RPC devuelve la fila cruda. Normalizarla aquí evita que los
+      // consumidores conserven un saldo_neto_cobranza calculado antes del pago.
+      cxc: data?.cxc ? normalizarCxC(data.cxc) : data?.cxc,
+    };
   },
 
   async registrarMovimientoTesoreria(payload) {

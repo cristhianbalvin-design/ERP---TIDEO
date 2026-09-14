@@ -9,6 +9,7 @@ import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
   finanzasService,
+  normalizarCxC,
   resolverCondicionPagoCxC,
 } from './services/finanzasService.js';
 import { clasificarCoincidenciasCargo, maestrosService, normalizarNombreCargo } from './services/maestrosService.js';
@@ -47,6 +48,7 @@ import { resolverSociedadContratoVigente, resolverSociedadDocumentoLaboral } fro
 import { buildRoleDePermisos } from './access/roleAccess.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto as convertirMontoFn } from './services/tipoCambioService.js';
+import * as storageService from './services/storageService.js';
 import {
   prepararDesvinculacionMovimientoCuenta,
   prepararVinculacionMovimientoCuenta,
@@ -5499,6 +5501,7 @@ export function AppProvider({ children }) {
 
       const montoCobrado = Number(monto || 0);
       const montoMora = Number(datos.monto_mora || 0);
+      const archivoAdjunto = datos.archivo_adjunto || null;
       const totalCuenta = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
       const retencionCuenta = Number(cuentaCobrar?.monto_retencion || 0);
       const netoSnapshot = Number(cuentaCobrar?.monto_neto_cobrable || cuentaCobrar?.facturas?.monto_neto_cobrable || 0);
@@ -5538,16 +5541,45 @@ export function AppProvider({ children }) {
             cobro, movimiento, comision,
           };
       const cxcGuardada = resultado?.cxc || { ...cuentaCobrar, monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo, estado: nuevoEstado };
+      const cxcActualizada = normalizarCxC({ ...cuentaCobrar, ...cxcGuardada });
       const facturaGuardada = resultado?.factura || null;
       const cobroGuardado = resultado?.cobro || cobro;
       const movimientoGuardado = resultado?.movimiento || movimiento;
       const comisionGuardada = resultado?.comision || comision;
 
-      setCxc(prev => prev.map(c => c.id === cxcId ? { ...c, ...cxcGuardada, pagado: Number(cxcGuardada.monto_pagado || 0) } : c));
+      // El cobro se registra primero de forma atómica. El archivo se vincula al
+      // identificador definitivo del cobro mediante el repositorio transversal
+      // de adjuntos, sin duplicar información en la tabla financiera.
+      let cobroConAdjunto = cobroGuardado;
+      if (archivoAdjunto && cobroGuardado?.id) {
+        try {
+          const adjunto = await storageService.subirAdjunto({
+            empresaId: empresa.id,
+            entidadTipo: 'cobros_cxc',
+            entidadId: cobroGuardado.id,
+            file: archivoAdjunto,
+            categoria: 'comprobante_cobro',
+            descripcion: `Comprobante del cobro ${facturaNumero}`,
+            subidoPor: authUser?.id || null,
+          });
+          cobroConAdjunto = { ...cobroGuardado, comprobante_adjunto: adjunto };
+        } catch (archivoError) {
+          // No se revierte un cobro ya contabilizado si falla solamente su archivo.
+          addNotificacion(`El cobro de ${facturaNumero} fue registrado, pero no se pudo adjuntar el comprobante: ${archivoError?.message || 'inténtalo nuevamente desde el historial.'}`);
+        }
+      }
+
+      setCxc(prev => prev.map(c => c.id === cxcId ? {
+        ...c,
+        ...cxcActualizada,
+        // Nunca conservar el saldo calculado previo al cobro.
+        saldo_neto_cobranza: cxcActualizada.saldo_neto_cobranza,
+        pagado: Number(cxcActualizada.monto_pagado ?? 0),
+      } : c));
       if (facturaGuardada?.id) {
         setFacturas(prev => prev.map(f => f.id === facturaGuardada.id ? { ...f, ...facturaGuardada } : f));
       }
-      setCobrosHistorial(prev => [cobroGuardado, ...prev]);
+      setCobrosHistorial(prev => [cobroConAdjunto, ...prev]);
       setMovimientosTesoreria(prev => [movimientoGuardado, ...prev]);
       if (cuentaCobrar?.cuenta_id) {
         setCuentas(prev => prev.map(c => c.id === cuentaCobrar.cuenta_id ? {
@@ -6620,6 +6652,7 @@ export function AppProvider({ children }) {
   const registrarPagoCxP = async (cxpId, monto, datos = {}) => {
     const cuentaPagar = cxp.find(c => c.id === cxpId);
     const montoPagado = Number(monto || 0);
+    const archivoAdjunto = datos.archivo_adjunto || null;
     let nuevoEstado = '';
     setCxp(prev => prev.map(c => {
       if (c.id === cxpId) {
@@ -6646,6 +6679,27 @@ export function AppProvider({ children }) {
       creado_en: new Date().toISOString(),
     };
     setCxpPagos(prev => [registroPago, ...prev]);
+
+    const adjuntarComprobantePago = async pago => {
+      if (!archivoAdjunto || !pago?.id) return pago;
+      try {
+        const adjunto = await storageService.subirAdjunto({
+          empresaId: empresa.id,
+          entidadTipo: 'cxp_pagos',
+          entidadId: pago.id,
+          file: archivoAdjunto,
+          categoria: 'comprobante_pago',
+          descripcion: `Comprobante del pago ${cuentaPagar?.factura_numero || cuentaPagar?.concepto || cxpId}`,
+          subidoPor: authUser?.id || null,
+        });
+        const pagoConAdjunto = { ...pago, comprobante_adjunto: adjunto };
+        setCxpPagos(prev => prev.map(item => item.id === pago.id ? { ...item, ...pagoConAdjunto } : item));
+        return pagoConAdjunto;
+      } catch (archivoError) {
+        addNotificacion(`El pago fue registrado, pero no se pudo adjuntar el comprobante: ${archivoError?.message || 'inténtalo nuevamente desde el historial.'}`);
+        return pago;
+      }
+    };
 
     const movimiento = {
       id: generateId('tes'),
@@ -6689,7 +6743,8 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) {
       finSync(async () => {
         await finanzasService.registrarPagoCxP(cxpId, montoPagado);
-        await finanzasService.insertarCxpPago(registroPago);
+        const pagoGuardado = await finanzasService.insertarCxpPago(registroPago);
+        await adjuntarComprobantePago(pagoGuardado);
         await finanzasService.registrarMovimientoTesoreria(movimiento);
         if (nuevoEstado === 'pagada' && gastoIdVinculado) {
           const sb = await getSupabaseClient();
@@ -6704,6 +6759,8 @@ export function AppProvider({ children }) {
           }
         }
       });
+    } else {
+      await adjuntarComprobantePago(registroPago);
     }
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cxpId, accion: 'pagar', valor_anterior: cuentaPagar || null, valor_nuevo: { monto: montoPagado, estado: nuevoEstado, movimiento } });
     addNotificacion(`Pago registrado. Estado: ${nuevoEstado || 'Actualizado'}`);

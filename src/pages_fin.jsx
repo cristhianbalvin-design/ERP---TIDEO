@@ -73,6 +73,62 @@ const mostrarBadgeEnVistaSociedad = (empresa, modoVista) => Boolean(
   && !modoVista.permiteEscritura
   && (modoVista.sinFiltro || modoVista.sociedadesIds.length > 0)
 );
+
+function DescargaAdjuntoPago({ registro, empresaId, entidadTipo }) {
+  const [adjuntos, setAdjuntos] = useState(() => (
+    registro?.comprobante_adjunto ? [registro.comprobante_adjunto] : []
+  ));
+
+  useEffect(() => {
+    let activo = true;
+    const adjuntoLocal = registro?.comprobante_adjunto;
+    if (adjuntoLocal) setAdjuntos([adjuntoLocal]);
+    if (!empresaId || !registro?.id || !entidadTipo || !isSupabaseMode()) return () => { activo = false; };
+
+    storageService.cargarAdjuntos({
+      empresaId,
+      entidadTipo,
+      entidadId: registro.id,
+    }).then(rows => {
+      if (activo) setAdjuntos(rows || []);
+    }).catch(() => {
+      // Se conserva el adjunto recién cargado en memoria si la consulta falla.
+    });
+
+    return () => { activo = false; };
+  }, [empresaId, entidadTipo, registro?.id, registro?.comprobante_adjunto?.id]);
+
+  const descargar = async () => {
+    const adjunto = adjuntos[0];
+    if (!adjunto) return;
+    try {
+      const url = await storageService.obtenerUrlAdjunto(adjunto, 600, { download: true });
+      if (!url) return;
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = adjunto.nombre_original || 'comprobante-pago';
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo descargar el comprobante.');
+    }
+  };
+
+  const adjunto = adjuntos[0];
+  if (!adjunto) return <span className="text-muted">—</span>;
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      title={`Descargar ${adjunto.nombre_original || 'comprobante'}`}
+      onClick={descargar}
+      style={{padding:'3px 6px', color:'var(--cyan)'}}
+    >
+      {I.download} Descargar
+    </button>
+  );
+}
 // Futuro: mover este umbral a Parametros Generales.
 const RHE_DESVIACION_UMBRAL = 0.20;
 const RHE_MESES = [
@@ -274,8 +330,11 @@ function CxC() {
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
   const [formCobro, setFormCobro] = useState({ monto:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', notas:'' });
+  const [archivoCobro, setArchivoCobro] = useState(null);
+  const [archivoCobroError, setArchivoCobroError] = useState('');
   const [montoError, setMontoError] = useState('');
   const [savingCobro, setSavingCobro] = useState(false);
+  const archivoCobroRef = useRef(null);
   const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
     (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado'),
     modoVistaSociedadCxC.sociedadIdEscritura,
@@ -443,6 +502,8 @@ function CxC() {
     if (e) e.stopPropagation();
     setCobroSel(c);
     setFormCobro({ monto: String(saldoDe(c)), incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', notas: '' });
+    setArchivoCobro(null);
+    setArchivoCobroError('');
     setPanelCobro(true);
   };
 
@@ -465,11 +526,20 @@ function CxC() {
       alert('Ingrese el número de operación o referencia bancaria.');
       return;
     }
+    if (archivoCobro) {
+      const validacionArchivo = storageService.validarArchivo(archivoCobro);
+      if (!validacionArchivo.ok) {
+        setArchivoCobroError(validacionArchivo.error);
+        return;
+      }
+    }
     setSavingCobro(true);
     try {
-      await registrarCobroCxC(cobroSel.id, monto, formCobro);
+      await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, archivo_adjunto: archivoCobro });
       setPanelCobro(false);
       setCobroSel(null);
+      setArchivoCobro(null);
+      setArchivoCobroError('');
     } catch (error) {
       setMontoError(error?.message || 'No se pudo registrar el cobro. No se realizaron cambios.');
     } finally {
@@ -768,7 +838,7 @@ function CxC() {
             ) : (
               <div className="table-wrap">
                 <table className="tbl">
-                  <thead><tr><th>Fecha</th><th>Capital</th><th>Mora</th><th>Medio de pago</th><th>Referencia</th><th>Cuenta destino</th><th>Registrado por</th></tr></thead>
+                  <thead><tr><th>Fecha</th><th>Capital</th><th>Mora</th><th>Medio de pago</th><th>Referencia</th><th>Cuenta destino</th><th>Comprobante</th><th>Registrado por</th></tr></thead>
                   <tbody>{cobros.map(cb=>(
                     <tr key={cb.id}>
                       <td>{cb.fecha_cobro}</td>
@@ -777,6 +847,7 @@ function CxC() {
                       <td>{cb.medio_pago||'—'}</td>
                       <td className="mono">{cb.numero_operacion||cb.referencia||'—'}</td>
                       <td>{cb.cuenta_bancaria||'—'}</td>
+                      <td><DescargaAdjuntoPago registro={cb} empresaId={empresa?.id} entidadTipo="cobros_cxc"/></td>
                       <td style={{fontSize:12,color:'var(--fg-muted)'}}>{cb.registrado_por||'—'}</td>
                     </tr>
                   ))}</tbody>
@@ -1291,6 +1362,41 @@ function CxC() {
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Notas <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <textarea className="input" rows={2} value={formCobro.notas} onChange={e=>setFormCobro(v=>({...v,notas:e.target.value}))}/>
+                </div>
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>Comprobante de pago <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
+                  <input
+                    ref={archivoCobroRef}
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed"
+                    style={{display:'none'}}
+                    onChange={event => {
+                      const archivo = event.target.files?.[0] || null;
+                      event.target.value = '';
+                      if (!archivo) return;
+                      const validacion = storageService.validarArchivo(archivo);
+                      if (!validacion.ok) {
+                        setArchivoCobro(null);
+                        setArchivoCobroError(validacion.error);
+                        return;
+                      }
+                      setArchivoCobro(archivo);
+                      setArchivoCobroError('');
+                    }}
+                  />
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={()=>archivoCobroRef.current?.click()} disabled={savingCobro}>
+                      {I.file} Adjuntar archivo
+                    </button>
+                    {archivoCobro && (
+                      <span style={{fontSize:12,display:'inline-flex',alignItems:'center',gap:6}}>
+                        {archivoCobro.name}
+                        <button type="button" className="icon-btn" title="Quitar archivo" onClick={()=>{setArchivoCobro(null);setArchivoCobroError('');}} disabled={savingCobro}>{I.x}</button>
+                      </span>
+                    )}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:5}}>PDF, imagen, Office o ZIP; máximo 20 MB.</div>
+                  {archivoCobroError && <div style={{fontSize:12,color:'var(--danger)',marginTop:4}}>{archivoCobroError}</div>}
                 </div>
               </div>
 
@@ -6990,6 +7096,9 @@ function CxP() {
 
   // Form: pago
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+  const [archivoPago, setArchivoPago] = useState(null);
+  const [archivoPagoError, setArchivoPagoError] = useState('');
+  const archivoPagoRef = useRef(null);
 
   // Form: nueva CxP
   const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
@@ -7370,6 +7479,8 @@ function CxP() {
     setSel(c);
     setFichaTab('pago');
     setFormPago({ monto: String(saldoDe(c)), fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+    setArchivoPago(null);
+    setArchivoPagoError('');
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
   };
@@ -7382,10 +7493,19 @@ function CxP() {
       addNotificacion('Seleccione la cuenta bancaria desde la que se realizó el pago.');
       return;
     }
+    if (archivoPago) {
+      const validacionArchivo = storageService.validarArchivo(archivoPago);
+      if (!validacionArchivo.ok) {
+        setArchivoPagoError(validacionArchivo.error);
+        return;
+      }
+    }
     setGuardando(true);
     try {
-      await registrarPagoCxP(sel.id, monto, formPago);
+      await registrarPagoCxP(sel.id, monto, { ...formPago, archivo_adjunto: archivoPago });
       setSel(null);
+      setArchivoPago(null);
+      setArchivoPagoError('');
     } finally {
       setGuardando(false);
     }
@@ -7942,6 +8062,41 @@ function CxP() {
                         <label>Referencia</label>
                         <input className="input" value={formPago.referencia} onChange={e => setFormPago(v => ({...v,referencia:e.target.value}))} placeholder="Operación bancaria"/>
                       </div>
+                      <div className="input-group" style={{gridColumn:'1/-1'}}>
+                        <label>Comprobante de pago <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
+                        <input
+                          ref={archivoPagoRef}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed"
+                          style={{display:'none'}}
+                          onChange={event => {
+                            const archivo = event.target.files?.[0] || null;
+                            event.target.value = '';
+                            if (!archivo) return;
+                            const validacion = storageService.validarArchivo(archivo);
+                            if (!validacion.ok) {
+                              setArchivoPago(null);
+                              setArchivoPagoError(validacion.error);
+                              return;
+                            }
+                            setArchivoPago(archivo);
+                            setArchivoPagoError('');
+                          }}
+                        />
+                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={()=>archivoPagoRef.current?.click()} disabled={guardando}>
+                            {I.file} Adjuntar archivo
+                          </button>
+                          {archivoPago && (
+                            <span style={{fontSize:12,display:'inline-flex',alignItems:'center',gap:6}}>
+                              {archivoPago.name}
+                              <button type="button" className="icon-btn" title="Quitar archivo" onClick={()=>{setArchivoPago(null);setArchivoPagoError('');}} disabled={guardando}>{I.x}</button>
+                            </span>
+                          )}
+                        </div>
+                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:5}}>PDF, imagen, Office o ZIP; máximo 20 MB.</div>
+                        {archivoPagoError && <div style={{fontSize:12,color:'var(--danger)',marginTop:4}}>{archivoPagoError}</div>}
+                      </div>
                     </div>
                     <div className="row mt-6" style={{justifyContent:'flex-end'}}>
                       <button type="button" className="btn btn-secondary" onClick={() => setSel(null)}>Cancelar</button>
@@ -7969,6 +8124,9 @@ function CxP() {
                         <div style={{fontSize:11,color:'var(--fg-muted)'}}>
                           {p.cuenta_bancaria && <span>{p.cuenta_bancaria}</span>}
                           {p.referencia && <span> · Ref: {p.referencia}</span>}
+                        </div>
+                        <div style={{marginTop:8}}>
+                          <DescargaAdjuntoPago registro={p} empresaId={empresa?.id} entidadTipo="cxp_pagos"/>
                         </div>
                       </div>
                     ))}
