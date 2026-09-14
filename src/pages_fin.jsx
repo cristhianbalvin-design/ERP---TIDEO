@@ -6068,6 +6068,8 @@ function CajaChicaLegacy() {
 const CC_FONDO_FORM = {
   nombre: '',
   responsable_id: '',
+  tipo_origen: 'cuenta_bancaria',
+  aportante_id: '',
   monto_asignado: '',
   monto_minimo: '',
   cuenta_bancaria_id: '',
@@ -6127,6 +6129,17 @@ function CajaChica() {
   );
   const usuarioDe = id => usuariosEmpresa.find(u => u.id === id);
   const cuentaDe = id => (cuentasBancarias || []).find(c => c.id === id);
+  const origenFondoLabel = fondo => {
+    if (fondo?.tipo_origen === 'aporte_directo') {
+      const aportante = usuarioDe(fondo.aportante_id);
+      return `Aporte directo${aportante ? ` · ${aportante.nombre || aportante.email}` : ''}`;
+    }
+    if (fondo?.tipo_origen === 'cuenta_bancaria') {
+      const cuenta = cuentaDe(fondo.cuenta_bancaria_id);
+      return cuenta ? `${cuenta.banco || ''} ${cuenta.nombre || ''}`.trim() : 'Cuenta bancaria pendiente';
+    }
+    return 'Pendiente de clasificar';
+  };
   const cecoDe = id => (centrosCosto || []).find(c => c.id === id);
   const sociedadIdCajaDe = registro => registro?.sociedad_id
     || cuentaDe(registro?.cuenta_bancaria_id)?.sociedad_id
@@ -6243,6 +6256,19 @@ function CajaChica() {
   const guardarFondo = async () => {
     const monto = Number(formFondo.monto_asignado || 0);
     if (!formFondo.nombre.trim() || monto <= 0) return;
+    const tipoOrigen = formFondo.tipo_origen;
+    if (!['cuenta_bancaria', 'aporte_directo'].includes(tipoOrigen)) {
+      addNotificacion('Selecciona el origen del fondo.');
+      return;
+    }
+    if (tipoOrigen === 'cuenta_bancaria' && !formFondo.cuenta_bancaria_id) {
+      addNotificacion('Selecciona la cuenta bancaria de origen.');
+      return;
+    }
+    if (tipoOrigen === 'aporte_directo' && !formFondo.aportante_id) {
+      addNotificacion('Selecciona quién entregó el efectivo.');
+      return;
+    }
     if (Number(formFondo.monto_minimo || 0) > monto) {
       addNotificacion('El monto mínimo no puede ser mayor al monto asignado.');
       return;
@@ -6255,7 +6281,9 @@ function CajaChica() {
         responsable_id: formFondo.responsable_id || null,
         monto_asignado: monto,
         monto_minimo: Number(formFondo.monto_minimo || 0),
-        cuenta_bancaria_id: formFondo.cuenta_bancaria_id || null,
+        tipo_origen: tipoOrigen,
+        cuenta_bancaria_id: tipoOrigen === 'cuenta_bancaria' ? formFondo.cuenta_bancaria_id : null,
+        aportante_id: tipoOrigen === 'aporte_directo' ? formFondo.aportante_id : null,
         moneda: formFondo.moneda || empresa?.moneda || 'PEN',
         fecha_apertura: formFondo.fecha_apertura,
         notas: formFondo.notas || null,
@@ -6291,6 +6319,8 @@ function CajaChica() {
       id: fondo.id,
       nombre: fondo.nombre || '',
       responsable_id: fondo.responsable_id || '',
+      tipo_origen: fondo.tipo_origen || '',
+      aportante_id: fondo.aportante_id || '',
       monto_asignado: String(fondo.monto_asignado || ''),
       monto_minimo: String(fondo.monto_minimo || 0),
       cuenta_bancaria_id: fondo.cuenta_bancaria_id || '',
@@ -6455,7 +6485,7 @@ function CajaChica() {
           <div className="card-head"><h3>Fondos administrados</h3><span className="badge badge-gray">{fondosActivos.length} activos</span></div>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Fondo</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Responsable</th><th>Cuenta origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th>{(puedeEditar || puedeEliminar) && <th aria-label="Acciones" />}</tr></thead>
+              <thead><tr><th>Fondo</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Responsable</th><th>Origen</th><th className="num">Asignado</th><th className="num">Disponible</th><th>Minimo</th><th>Estado</th>{(puedeEditar || puedeEliminar) && <th aria-label="Acciones" />}</tr></thead>
               <tbody>
                 {loading ? (
                   <tr><td colSpan={7 + (mostrarBadgeSociedadCajaChica ? 1 : 0) + (puedeEditar || puedeEliminar ? 1 : 0)} className="text-center text-muted" style={{padding:28}}>Cargando fondos...</td></tr>
@@ -6468,7 +6498,7 @@ function CajaChica() {
                       <td><strong>{f.nombre}</strong>{f.requiere_reposicion && <span className="badge badge-orange" style={{marginLeft:8}}>Reponer</span>}</td>
                       {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdCajaDe(f)} /></td>}
                       <td className="text-muted">{responsable?.nombre || responsable?.email || 'Sin asignar'}</td>
-                      <td className="text-muted">{cuenta ? `${cuenta.banco || ''} ${cuenta.nombre || ''}`.trim() : 'Sin cuenta'}</td>
+                      <td className="text-muted">{origenFondoLabel(f)}</td>
                       <td className="num">{moneyCurrency(f.monto_asignado, f.moneda)}</td>
                       <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(f.saldo_disponible, f.moneda)}</strong></td>
                       <td>{moneyCurrency(f.monto_minimo, f.moneda)}</td>
@@ -6549,7 +6579,7 @@ function CajaChica() {
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,fontSize:13}}>
                 <div><span className="text-muted">Responsable: </span><strong>{usuarioDe(fondoSel.responsable_id)?.nombre || usuarioDe(fondoSel.responsable_id)?.email || 'Sin asignar'}</strong></div>
-                <div><span className="text-muted">Cuenta origen: </span><strong>{cuentaDe(fondoSel.cuenta_bancaria_id)?.nombre || 'Sin cuenta'}</strong></div>
+                <div><span className="text-muted">Origen: </span><strong>{origenFondoLabel(fondoSel)}</strong></div>
                 <div><span className="text-muted">Apertura: </span><strong>{fondoSel.fecha_apertura}</strong></div>
                 <div><span className="text-muted">Estado: </span><span className={`badge ${fondoSel.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{fondoSel.estado}</span></div>
               </div>
@@ -6616,9 +6646,11 @@ function CajaChica() {
                 <div className="input-group"><label>Monto minimo</label><input className="input" type="number" min="0" step="0.01" value={formFondo.monto_minimo} onChange={e=>setFormFondo(p=>({...p,monto_minimo:e.target.value}))}/></div>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <div className="input-group"><label>Cuenta origen</label><select className="select" value={formFondo.cuenta_bancaria_id} onChange={e=>setFormFondo(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Sin cuenta -</option>{cuentasActivasEscrituraCajaChica.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>
+                <div className="input-group"><label>Origen del fondo *</label><select className="select" value={formFondo.tipo_origen} onChange={e=>{const tipo_origen=e.target.value;setFormFondo(p=>({...p,tipo_origen,cuenta_bancaria_id:tipo_origen==='aporte_directo'?'':p.cuenta_bancaria_id,aportante_id:tipo_origen==='cuenta_bancaria'?'':p.aportante_id}));}}><option value="">- Seleccionar origen -</option><option value="cuenta_bancaria">Cuenta bancaria</option><option value="aporte_directo">Aporte directo en efectivo</option></select></div>
                 <div className="input-group"><label>Moneda</label><select className="select" value={formFondo.moneda} onChange={e=>setFormFondo(p=>({...p,moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div>
               </div>
+              {formFondo.tipo_origen === 'cuenta_bancaria' && <div className="input-group"><label>Cuenta origen *</label><select className="select" value={formFondo.cuenta_bancaria_id} onChange={e=>setFormFondo(p=>({...p,cuenta_bancaria_id:e.target.value}))}><option value="">- Seleccionar cuenta -</option>{cuentasActivasEscrituraCajaChica.map(c=><option key={c.id} value={c.id}>{c.banco} - {c.nombre}</option>)}</select></div>}
+              {formFondo.tipo_origen === 'aporte_directo' && <div className="input-group"><label>Quién entregó el efectivo *</label><select className="select" value={formFondo.aportante_id} onChange={e=>setFormFondo(p=>({...p,aportante_id:e.target.value}))}><option value="">- Seleccionar aportante -</option>{usuariosEmpresa.map(u=><option key={u.id} value={u.id}>{u.nombre || u.email}</option>)}</select></div>}
               <div className="input-group"><label>Fecha apertura</label><input className="input" type="date" value={formFondo.fecha_apertura} onChange={e=>setFormFondo(p=>({...p,fecha_apertura:e.target.value}))}/></div>
               <div className="input-group"><label>Notas</label><textarea className="input" rows={3} value={formFondo.notas} onChange={e=>setFormFondo(p=>({...p,notas:e.target.value}))}/></div>
               <div style={{display:'flex',justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={() => setPanelFondo(false)}>Cancelar</button><button className="btn btn-primary" disabled={savingFondo || !formFondo.nombre.trim() || !Number(formFondo.monto_asignado || 0)} onClick={guardarFondo}>{savingFondo ? 'Guardando...' : formFondo.id ? 'Guardar cambios' : 'Crear fondo'}</button></div>

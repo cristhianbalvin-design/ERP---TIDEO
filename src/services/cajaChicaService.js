@@ -76,7 +76,7 @@ export const cajaChicaService = {
     const supabase = await getSupabaseClient();
     const fondosReq = supabase
       .from('caja_chica_fondos')
-      .select('*, cuentas_bancarias(id, nombre, banco, moneda), usuarios(id, nombre, email)')
+      .select('*, cuentas_bancarias(id, nombre, banco, moneda), responsable:usuarios!caja_chica_fondos_responsable_id_fkey(id, nombre, email), aportante:usuarios!caja_chica_fondos_aportante_id_fkey(id, nombre, email)')
       .eq('empresa_id', empresaId)
       .order('creado_en', { ascending: false });
 
@@ -148,6 +148,12 @@ export const cajaChicaService = {
       fecha_apertura: payload.fecha_apertura || new Date().toISOString().slice(0, 10),
     });
 
+    // Mientras una instalación antigua aún no tenga la columna, mantenemos el
+    // comportamiento bancario existente. Con el esquema actual, un aporte
+    // directo nunca crea un movimiento pendiente de conciliación.
+    const tipoOrigen = fondo.tipo_origen || payload.tipo_origen || 'cuenta_bancaria';
+    if (tipoOrigen === 'aporte_directo') return fondo;
+
     const movimiento = {
       id: genId('tes'),
       empresa_id: fondo.empresa_id,
@@ -210,7 +216,17 @@ export const cajaChicaService = {
     const supabase = await getSupabaseClient();
     const { data: actual, error: getError } = await supabase.from('caja_chica_rendiciones').select('*').eq('id', id).single();
     if (getError) throw getError;
+    const { data: fondo, error: fondoError } = await supabase
+      .from('caja_chica_fondos')
+      .select('id, tipo_origen')
+      .eq('id', actual.fondo_id)
+      .single();
+    if (fondoError) throw fondoError;
+
     const estado = accion === 'aprobar' ? 'aprobada' : 'rechazada';
+    if (estado === 'aprobada' && !['cuenta_bancaria', 'aporte_directo'].includes(fondo?.tipo_origen)) {
+      throw new Error('Clasifica el origen del fondo antes de aprobar una reposición.');
+    }
     const updated = await updateWithFallback(supabase, 'caja_chica_rendiciones', id, {
       estado,
       monto_aprobado: estado === 'aprobada' ? Number(monto_aprobado || actual.monto_solicitado || 0) : 0,
@@ -221,7 +237,7 @@ export const cajaChicaService = {
       notas: notas || actual.notas || null,
     });
 
-    if (estado === 'aprobada') {
+    if (estado === 'aprobada' && fondo.tipo_origen === 'cuenta_bancaria') {
       const monto = Number(updated.monto_aprobado || 0);
       try {
         await insertWithFallback(supabase, 'movimientos_tesoreria', {
