@@ -4325,7 +4325,9 @@ body {
 .document-preview-sheet .rich-text-preview-content ol { margin: 0 0 10px; padding-left: 22px; }
 .rich-text-editor-content img,
 .rich-text-preview-content img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
-.rich-text-preview-content img.ProseMirror-separator { display: none; }
+/* ProseMirror fuerza este cursor técnico a inline !important. En una vista
+   de solo lectura deja una línea fantasma después de imágenes redimensionables. */
+.rich-text-preview-content img.ProseMirror-separator { display: none !important; }
 .rich-text-preview-content br.ProseMirror-trailingBreak { display: none; }
 .rich-text-editor-content hr,
 .rich-text-preview-content hr { border: 0; border-top: 1px solid #94a3b8; margin: 16px 0; }
