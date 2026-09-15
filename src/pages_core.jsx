@@ -11,16 +11,16 @@ import * as tareosAdminService from './services/tareosAdminService.js';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   PHONE_PATTERN,
+  DNI_PATTERN,
   RUC_PATTERN,
+  TIPO_DOCUMENTO_DNI,
   TIPO_DOCUMENTO_RUC,
   TIPO_DOCUMENTO_TAX_ID_EXTRANJERO,
   TAX_ID_EXTRANJERO_MAX_LENGTH,
   isValidDocumentoCliente,
   isValidPhone,
-  isValidRuc,
   sanitizeDocumentoCliente,
   sanitizePhone,
-  sanitizeRuc,
 } from './lib/formValidators.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
@@ -854,9 +854,10 @@ function Leads() {
   const opcionesIndustria = industrias?.length ? industrias.map(i => i.nombre || i) : ['Mineria','Industrial','Construccion','Agroindustria','Facilities','Energia','Petroleo & Gas','Logistica','Retail','Salud','Educacion','Tecnologia','Servicios profesionales','Sector publico','Otro'];
   const [panelNuevo, setPanelNuevo] = useState(false);
   const [editandoLead, setEditandoLead] = useState(null);
-  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', ruc:'', industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
+  const formNuevoBase = { nombre:'', cargo:'', empresa_contacto:'', razon_social:'', numero_documento:'', tipo_documento:TIPO_DOCUMENTO_RUC, industria:'', telefono:'', email:'', fuente:'', campana_id:'', registrado_desde:'web', responsable:'', responsable_id:'', urgencia:'media', necesidad:'', presupuesto_estimado:'', moneda: empresa?.moneda || 'PEN', servicio_interes:'' };
   const [formNuevo, setFormNuevo] = useState(formNuevoBase);
   const [errores, setErrores] = useState({});
+  const esPersonaNaturalForm = formNuevo.tipo_documento === TIPO_DOCUMENTO_DNI;
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
   const [campanasForm, setCampanasForm] = useState([]);
   const [loadingCampanasForm, setLoadingCampanasForm] = useState(false);
@@ -910,8 +911,8 @@ function Leads() {
     setConvForm({
       nombre_comercial: modalConvertir.empresa_contacto || '',
       razon_social: modalConvertir.razon_social || modalConvertir.empresa_contacto || '',
-      ruc: modalConvertir.ruc || '',
-      tipo_documento: TIPO_DOCUMENTO_RUC,
+      numero_documento: modalConvertir.numero_documento || '',
+      tipo_documento: modalConvertir.tipo_documento || TIPO_DOCUMENTO_RUC,
       industria: modalConvertir.industria || '',
       fuente: modalConvertir.fuente || '',
       contacto_nombre: modalConvertir.nombre || '',
@@ -977,7 +978,8 @@ function Leads() {
       cargo: lead.cargo || '',
       empresa_contacto: lead.empresa_contacto || lead.empresa_nombre || '',
       razon_social: lead.razon_social || '',
-      ruc: lead.ruc || '',
+      numero_documento: lead.numero_documento || '',
+      tipo_documento: lead.tipo_documento || TIPO_DOCUMENTO_RUC,
       industria: lead.industria || '',
       telefono: sanitizePhone(lead.telefono || ''),
       email: lead.email || '',
@@ -1011,10 +1013,11 @@ function Leads() {
     const errs = {};
     const esLeadConvertidoActual = Boolean(editandoLead && (editandoLead.convertido || editandoLead.estado === 'convertido'));
     if (!esLeadConvertidoActual && !formNuevo.nombre) errs.nombre = true;
-    if (!esLeadConvertidoActual && !formNuevo.empresa_contacto) errs.empresa_contacto = true;
+    const esPersonaNatural = formNuevo.tipo_documento === TIPO_DOCUMENTO_DNI;
+    if (!esLeadConvertidoActual && !esPersonaNatural && !formNuevo.empresa_contacto) errs.empresa_contacto = true;
     if (!esLeadConvertidoActual && !formNuevo.responsable_id) errs.responsable = true;
     if (formNuevo.telefono && !isValidPhone(formNuevo.telefono)) errs.telefono = 'El teléfono debe tener 9 dígitos y comenzar con 9';
-    if (formNuevo.ruc && !isValidRuc(formNuevo.ruc)) errs.ruc = 'El RUC debe tener 11 números y comenzar con 1 o 2';
+    if (formNuevo.numero_documento && !isValidDocumentoCliente(formNuevo.numero_documento, formNuevo.tipo_documento)) errs.numero_documento = formNuevo.tipo_documento === TIPO_DOCUMENTO_DNI ? 'El DNI debe tener 8 digitos.' : 'Documento invalido.';
     if (Object.keys(errs).length) { setErrores(errs); return; }
     const editStateActual = editandoLead ? getLeadEditState(editandoLead) : { montoBloqueado: false };
     const datos = esLeadConvertidoActual ? {
@@ -1022,9 +1025,10 @@ function Leads() {
     } : {
       nombre: formNuevo.nombre,
       cargo: formNuevo.cargo,
-      empresa_contacto: formNuevo.empresa_contacto,
-      razon_social: formNuevo.razon_social || formNuevo.empresa_contacto,
-      ruc: formNuevo.ruc || null,
+      empresa_contacto: esPersonaNatural ? null : formNuevo.empresa_contacto,
+      razon_social: esPersonaNatural ? null : (formNuevo.razon_social || formNuevo.empresa_contacto),
+      numero_documento: formNuevo.numero_documento || null,
+      tipo_documento: formNuevo.tipo_documento,
       industria: formNuevo.industria || null,
       telefono: formNuevo.telefono,
       email: formNuevo.email,
@@ -1115,7 +1119,7 @@ function Leads() {
       a.lead_id === lead.id && new Date(a.fecha || a.created_at) >= hace7dias
     );
 
-    const tieneRuc           = !!(lead.ruc && String(lead.ruc).trim());
+    const tieneDocumento     = !!(lead.numero_documento && String(lead.numero_documento).trim());
     const tienePresupuesto   = (getLeadPotencial(lead).monto || 0) > 0;
     const tieneNecesidad     = !!(lead.necesidad && String(lead.necesidad).trim());
     const tieneResponsable   = !!(lead.responsable_id || lead.responsable);
@@ -1123,7 +1127,7 @@ function Leads() {
     const muySinActividad    = Number(lead.dias_sin_actividad || 0) > 15;
     const fueDescartado      = lead.estado === 'descartado';
 
-    if (tieneRuc)               score += 10;
+    if (tieneDocumento)          score += 10;
     if (tienePresupuesto)        score += 15;
     if (fuentePremium)           score += 15;
     else if (fuenteMedia)        score += 10;
@@ -1141,7 +1145,7 @@ function Leads() {
     const bgLight = score <= 30 ? 'rgba(239,68,68,0.07)' : score <= 60 ? 'rgba(249,115,22,0.07)' : 'rgba(16,185,129,0.07)';
 
     const criterios = [
-      { text: `RUC registrado (+10)`,                    estado: tieneRuc ? 'suma' : 'neutro' },
+      { text: `${lead.tipo_documento || TIPO_DOCUMENTO_RUC} registrado (+10)`, estado: tieneDocumento ? 'suma' : 'neutro' },
       { text: `Presupuesto declarado (+15)`,              estado: tienePresupuesto ? 'suma' : 'neutro' },
       { text: `Fuente premium: Referido/Evento (+15)`,    estado: fuentePremium ? 'suma' : 'neutro' },
       { text: `Fuente digital: LinkedIn/Formulario (+10)`,estado: fuenteMedia ? 'suma' : 'neutro' },
@@ -1486,7 +1490,7 @@ function Leads() {
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
                       <div className="eyebrow" style={{marginBottom:8}}>Empresa objetivo</div>
                       <div style={{fontSize:20, fontWeight:800, color:'var(--navy)', lineHeight:1.15}}>{sel.empresa_contacto || 'Empresa pendiente'}</div>
-                      <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.razon_social || 'Sin razon social legal'}{sel.ruc ? ` · RUC ${sel.ruc}` : ''}</div>
+                       <div className="text-muted" style={{fontSize:12, marginTop:8}}>{sel.razon_social || sel.nombre || sel.nombre_contacto || 'Sin razon social legal'}{sel.numero_documento ? ` · ${sel.tipo_documento || TIPO_DOCUMENTO_RUC} ${sel.numero_documento}` : ''}</div>
                     </div>
                     <div style={{padding:18, border:'1px solid var(--border)', borderRadius:10, background:'var(--surface)', boxShadow:'var(--shadow-sm)'}}>
                       <div className="eyebrow" style={{marginBottom:8}}>Potencial</div>
@@ -1502,8 +1506,8 @@ function Leads() {
                       <SectionTitle icon={I.building} title="Empresa" color="var(--cyan)" />
                       <div style={{display:'grid', gap:13}}>
                         <Field label="Nombre comercial" value={sel.empresa_contacto} strong />
-                        <Field label="Razon social legal" value={sel.razon_social} />
-                        <Field label="RUC" value={sel.ruc} />
+                         {sel.tipo_documento !== TIPO_DOCUMENTO_DNI && <Field label="Razon social legal" value={sel.razon_social} />}
+                         <Field label={sel.tipo_documento || TIPO_DOCUMENTO_RUC} value={sel.numero_documento} />
                         <Field label="Industria" value={sel.industria} />
                       </div>
                     </div>
@@ -1782,12 +1786,13 @@ function Leads() {
 
       {modalConvertir && convForm && (() => {
         const esTaxIdExtranjero = convForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO;
-        const rucError = !convForm.ruc || !isValidDocumentoCliente(convForm.ruc, convForm.tipo_documento);
+        const esPersonaNatural = convForm.tipo_documento === TIPO_DOCUMENTO_DNI;
+        const documentoError = !convForm.numero_documento || !isValidDocumentoCliente(convForm.numero_documento, convForm.tipo_documento);
         const telError = !isValidPhone(convForm.contacto_telefono) || !convForm.contacto_telefono;
         const canSubmit =
-          convForm.nombre_comercial.trim() &&
-          convForm.razon_social.trim() &&
-          convForm.ruc && isValidDocumentoCliente(convForm.ruc, convForm.tipo_documento) &&
+          (esPersonaNatural || convForm.nombre_comercial.trim()) &&
+          (esPersonaNatural || convForm.razon_social.trim()) &&
+          convForm.numero_documento && isValidDocumentoCliente(convForm.numero_documento, convForm.tipo_documento) &&
           convForm.fuente &&
           convForm.industria &&
           convForm.contacto_nombre.trim() &&
@@ -1811,7 +1816,7 @@ function Leads() {
                 <div style={secStyle}>
                   <div className="eyebrow" style={{marginBottom:10}}>Cuenta</div>
                   <div className="col" style={{gap:10}}>
-                    <div className="grid-2">
+                    {!esPersonaNatural && <div className="grid-2">
                       <div className="input-group">
                         <label>Nombre Comercial{req}</label>
                         <input className="input" value={convForm.nombre_comercial}
@@ -1824,23 +1829,24 @@ function Leads() {
                           style={emptyStyle(convForm.razon_social)}
                           onChange={e=>setConvForm(p=>({...p,razon_social:e.target.value}))}/>
                       </div>
-                    </div>
+                    </div>}
                     <div className="grid-2">
                       <div className="input-group">
                         <label>Tipo de documento{req}</label>
                         <select className="select" value={convForm.tipo_documento}
                           onChange={e=>setConvForm(p=>({...p,tipo_documento:e.target.value}))}>
                           <option value={TIPO_DOCUMENTO_RUC}>RUC</option>
+                          <option value={TIPO_DOCUMENTO_DNI}>DNI</option>
                           <option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option>
                         </select>
                       </div>
                       <div className="input-group">
-                        <label>{esTaxIdExtranjero ? 'Tax ID extranjero' : 'RUC'}{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>{esTaxIdExtranjero ? '(3 a 30 caracteres)' : '(11 dígitos, inicia en 1 o 2)'}</span></label>
-                        <input className="input" value={convForm.ruc} maxLength={esTaxIdExtranjero ? TAX_ID_EXTRANJERO_MAX_LENGTH : 11}
-                          inputMode={esTaxIdExtranjero ? 'text' : 'numeric'} pattern={esTaxIdExtranjero ? undefined : RUC_PATTERN}
-                          style={rucError ? {borderColor:'var(--danger)'} : {}}
-                          onChange={e=>setConvForm(p=>({...p,ruc:sanitizeDocumentoCliente(e.target.value, p.tipo_documento)}))}/>
-                        {rucError && <span style={{fontSize:11,color:'var(--danger)'}}>{esTaxIdExtranjero ? 'Ingresa entre 3 y 30 caracteres.' : '11 dígitos, inicia con 1 o 2'}</span>}
+                        <label>{esTaxIdExtranjero ? 'Tax ID extranjero' : esPersonaNatural ? 'DNI' : 'RUC'}{req} <span className="text-subtle" style={{fontWeight:400,fontSize:11}}>{esTaxIdExtranjero ? '(3 a 30 caracteres)' : esPersonaNatural ? '(8 dígitos)' : '(11 dígitos, inicia en 1 o 2)'}</span></label>
+                        <input className="input" value={convForm.numero_documento} placeholder={esTaxIdExtranjero ? 'Identificador fiscal extranjero' : esPersonaNatural ? '12345678' : '20xxxxxxxxx'} maxLength={esTaxIdExtranjero ? TAX_ID_EXTRANJERO_MAX_LENGTH : esPersonaNatural ? 8 : 11}
+                          inputMode={esTaxIdExtranjero ? 'text' : 'numeric'} pattern={esTaxIdExtranjero ? undefined : esPersonaNatural ? DNI_PATTERN : RUC_PATTERN}
+                          style={documentoError ? {borderColor:'var(--danger)'} : {}}
+                          onChange={e=>setConvForm(p=>({...p,numero_documento:sanitizeDocumentoCliente(e.target.value, p.tipo_documento)}))}/>
+                        {documentoError && <span style={{fontSize:11,color:'var(--danger)'}}>{esTaxIdExtranjero ? 'Ingresa entre 3 y 30 caracteres.' : esPersonaNatural ? 'El DNI debe tener 8 dígitos.' : '11 dígitos, inicia con 1 o 2'}</span>}
                       </div>
                       <div className="input-group">
                         <label>Fuente{req}</label>
@@ -2117,8 +2123,16 @@ function Leads() {
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos del contacto</div>
             {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde la ficha de la cuenta, seccion Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              <div className="input-group">
+                <label>Tipo de documento</label>
+                <select className="select" value={formNuevo.tipo_documento} onChange={e=>updateNuevo('tipo_documento',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
+                  <option value={TIPO_DOCUMENTO_RUC}>RUC</option>
+                  <option value={TIPO_DOCUMENTO_DNI}>DNI</option>
+                  <option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option>
+                </select>
+              </div>
               <div className="input-group" style={{gridColumn:'1/-1'}}>
-                <label>Nombre del contacto * {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label>
+                <label>{esPersonaNaturalForm ? 'Nombre completo' : 'Nombre del contacto'} * {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label>
                 <input className={'input'+(errores.nombre?' border-danger':'')} value={formNuevo.nombre} onChange={e=>updateNuevo('nombre',e.target.value)} placeholder="Ej: Carlos Huanca" autoFocus={!campoBloqueadoConvertido} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.nombre && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
@@ -2132,20 +2146,21 @@ function Leads() {
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email {campoBloqueadoConvertido && <LockHint>Ficha de cuenta / Contactos</LockHint>}</label><input className="input" type="email" value={formNuevo.email} onChange={e=>updateNuevo('email',e.target.value)} placeholder="contacto@empresa.pe" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
             </div>
 
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
+            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>{esPersonaNaturalForm ? 'Datos del documento' : 'Datos de la empresa'}</div>
             {campoBloqueadoConvertido && <div className="lead-section-lock-note">Se actualiza desde Cuentas y Contactos.</div>}
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
+              {!esPersonaNaturalForm && <>
               <div className="input-group">
                 <label>Nombre comercial * {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label>
                 <input className={'input'+(errores.empresa_contacto?' border-danger':'')} value={formNuevo.empresa_contacto} onChange={e=>updateNuevo('empresa_contacto',e.target.value)} placeholder="Ej: Minera San Cristóbal SAC" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
                 {errores.empresa_contacto && <span style={{fontSize:11,color:'var(--danger)'}}>Campo requerido</span>}
               </div>
-              <div className="input-group"><label>Razón social legal</label><input className="input" value={formNuevo.razon_social} onChange={e=>updateNuevo('razon_social',e.target.value)} placeholder="Si difiere del nombre comercial" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div>
+              <div className="input-group"><label>Razón social legal</label><input className="input" value={formNuevo.razon_social} onChange={e=>updateNuevo('razon_social',e.target.value)} placeholder="Si difiere del nombre comercial" disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/></div></>}
               <div className="input-group">
-                <label>RUC <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>· 11 dígitos</span></label>
+                <label>{formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : esPersonaNaturalForm ? 'DNI' : 'RUC'} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '· 3 a 30 caracteres' : esPersonaNaturalForm ? '· 8 dígitos' : '· 11 dígitos'}</span></label>
                 {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}
-                <input className={'input'+(errores.ruc?' border-danger':'')} value={formNuevo.ruc} onChange={e=>updateNuevo('ruc',sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" inputMode="numeric" pattern={RUC_PATTERN} maxLength={11} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
-                {errores.ruc && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.ruc}</span>}
+                <input className={'input'+(errores.numero_documento?' border-danger':'')} value={formNuevo.numero_documento} onChange={e=>updateNuevo('numero_documento',sanitizeDocumentoCliente(e.target.value, formNuevo.tipo_documento))} placeholder={formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Identificador fiscal extranjero' : esPersonaNaturalForm ? '12345678' : '20xxxxxxxxx'} inputMode={formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : esPersonaNaturalForm ? DNI_PATTERN : RUC_PATTERN} maxLength={formNuevo.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : esPersonaNaturalForm ? 8 : 11} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}/>
+                {errores.numero_documento && <span style={{fontSize:11,color:'var(--danger)'}}>{errores.numero_documento}</span>}
               </div>
               <div className="input-group"><label>Industria {campoBloqueadoConvertido && <LockHint>Cuentas y Contactos</LockHint>}</label><select className="select" value={formNuevo.industria} onChange={e=>updateNuevo('industria',e.target.value)} disabled={campoBloqueadoConvertido} style={estiloBloqueado(campoBloqueadoConvertido)}>
                 <option value="">Seleccionar...</option>

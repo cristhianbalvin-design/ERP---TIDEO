@@ -93,9 +93,10 @@ export async function persistirLead(supabase, empresaId, lead) {
     id: lead.id,
     empresa_id: empresaId,
     nombre_contacto: lead.nombre || lead.nombre_contacto || 'Sin nombre',
-    empresa_nombre: lead.empresa_contacto || lead.empresa_nombre || 'Sin empresa',
+    empresa_nombre: lead.empresa_contacto || lead.empresa_nombre || null,
     razon_social: lead.razon_social || null,
-    ruc: lead.ruc || null,
+    numero_documento: lead.numero_documento || null,
+    tipo_documento: lead.tipo_documento || 'RUC',
     industria: lead.industria || null,
     telefono: lead.telefono || null,
     email: lead.email || null,
@@ -120,7 +121,7 @@ export async function persistirLead(supabase, empresaId, lead) {
 
 export async function actualizarLead(supabase, leadId, datos) {
   const allowed = [
-    'nombre_contacto', 'empresa_nombre', 'razon_social', 'ruc', 'industria',
+    'nombre_contacto', 'empresa_nombre', 'razon_social', 'numero_documento', 'tipo_documento', 'industria',
     'telefono', 'email', 'fuente', 'cargo', 'urgencia', 'registrado_desde',
     'responsable', 'responsable_id', 'campana', 'campana_id',
     'dias_sin_actividad', 'fecha_creacion', 'motivo_descarte', 'necesidad',

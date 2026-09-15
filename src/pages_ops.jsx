@@ -54,8 +54,10 @@ import { contarDiasDescontablesAsistencia } from './utils/asistenciaNomina.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   PHONE_PATTERN,
+  DNI_PATTERN,
   RUC_PATTERN,
   TAX_ID_EXTRANJERO_MAX_LENGTH,
+  TIPO_DOCUMENTO_DNI,
   TIPO_DOCUMENTO_RUC,
   TIPO_DOCUMENTO_TAX_ID_EXTRANJERO,
   isValidDocumentoCliente,
@@ -158,6 +160,16 @@ const habTooltip = (req) => {
 // ============ CUENTAS Y CONTACTOS ============
 function Cuentas() {
   const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta, actualizarLogoCuenta, contactos, setContactos, crearContactoCuenta, actualizarContactoCuenta, oportunidades, cotizaciones, osClientes, leads, historialEstados, actividades, hojasCosteo, ots, valorizaciones, facturas, cxc, oppHistorialEtapas, usuarios, roles, navigate, empresa, addNotificacion, role, authUser, healthScoresDetalle, onboardings, planesExito, npsEncuestas, renovaciones } = useApp();
+  const esPersonaNatural = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_DNI;
+  const etiquetaDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : esPersonaNatural(tipoDocumento) ? 'DNI' : 'RUC';
+  const placeholderDocumento = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
+    ? 'Identificador fiscal extranjero'
+    : esPersonaNatural(tipoDocumento) ? '12345678' : '20xxxxxxxxx';
+  const mensajeDocumentoInvalido = tipoDocumento => tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
+    ? 'El Tax ID extranjero debe tener entre 3 y 30 caracteres.'
+    : esPersonaNatural(tipoDocumento)
+      ? 'El DNI debe tener 8 digitos.'
+      : 'El RUC debe tener 11 numeros y comenzar con 1 o 2.';
   const [sel, setSel] = useState(null);
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
@@ -347,7 +359,7 @@ function Cuentas() {
   };
 
   const cuentaHealthBase = sel ? [
-    sel.ruc && sel.ruc !== 'Pendiente' ? 15 : 0,
+    sel.ruc ? 15 : 0,
     contactoPrincipal ? 20 : 0,
     sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 15 : 0,
     sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 15 : 0,
@@ -361,7 +373,7 @@ function Cuentas() {
   const cuentaHealthBg = cuentaHealthScore >= 70 ? 'rgba(76,175,80,0.10)' : cuentaHealthScore >= 40 ? 'rgba(251,191,36,0.12)' : 'rgba(239,68,68,0.10)';
   const cuentaHealthLabel = cuentaHealthScore >= 70 ? 'Cuenta sana' : cuentaHealthScore >= 40 ? 'En seguimiento' : 'Cuenta en riesgo';
   const cuentaHealthCriterios = sel ? [
-    { ok: Boolean(sel.ruc && sel.ruc !== 'Pendiente'), label: sel.ruc && sel.ruc !== 'Pendiente' ? 'RUC registrado' : 'RUC pendiente' },
+    { ok: Boolean(sel.ruc), label: sel.ruc ? `${etiquetaDocumento(sel.tipo_documento)} registrado` : `${etiquetaDocumento(sel.tipo_documento)} pendiente` },
     { ok: Boolean(contactoPrincipal), label: contactoPrincipal ? 'Contacto principal asignado' : 'Sin contacto principal' },
     { ok: Boolean(sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar'), label: sel.responsable_comercial && sel.responsable_comercial !== 'Sin asignar' ? 'Responsable comercial asignado' : 'Responsable comercial pendiente' },
     { ok: Boolean(sel.condicion_pago && sel.condicion_pago !== 'Por definir'), label: sel.condicion_pago && sel.condicion_pago !== 'Por definir' ? 'Condiciones comerciales definidas' : 'Condiciones comerciales pendientes' },
@@ -468,13 +480,15 @@ function Cuentas() {
 
   const guardarEditCuenta = async () => {
     if (!editingCuenta) return;
-    if (!isValidDocumentoCliente(editCuentaForm.ruc, editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC)) {
-      addNotificacion?.(editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
-        ? 'El Tax ID extranjero debe tener entre 3 y 30 caracteres.'
-        : 'El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+    const tipoDocumento = editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC;
+    if (!isValidDocumentoCliente(editCuentaForm.ruc, tipoDocumento)) {
+      addNotificacion?.(mensajeDocumentoInvalido(tipoDocumento));
       return;
     }
-    const actualizada = await actualizarCuenta(editingCuenta.id, editCuentaForm);
+    const actualizada = await actualizarCuenta(editingCuenta.id, {
+      ...editCuentaForm,
+      razon_social: esPersonaNatural(tipoDocumento) ? null : editCuentaForm.razon_social,
+    });
     if (sel?.id === editingCuenta.id) setSel(prev => ({ ...prev, ...editCuentaForm, ...actualizada }));
     setEditingCuenta(null);
     addNotificacion?.('Cuenta actualizada');
@@ -518,14 +532,15 @@ function Cuentas() {
     if (!sel?.id) return;
     const tipoDocumento = condEdit.tipo_documento || sel.tipo_documento || TIPO_DOCUMENTO_RUC;
     if (Object.hasOwn(condEdit, 'ruc') && !isValidDocumentoCliente(condEdit.ruc, tipoDocumento)) {
-      addNotificacion?.(tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
-        ? 'El Tax ID extranjero debe tener entre 3 y 30 caracteres.'
-        : 'El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+      addNotificacion?.(mensajeDocumentoInvalido(tipoDocumento));
       return;
     }
     try {
       setCondSaving(true);
-      const actualizada = await actualizarCuenta(sel.id, condEdit);
+      const actualizada = await actualizarCuenta(sel.id, {
+        ...condEdit,
+        ...(esPersonaNatural(tipoDocumento) ? { razon_social: null } : {}),
+      });
       setSel(prev => ({ ...prev, ...actualizada }));
       setCondEdit({});
       setCondEditing(false);
@@ -629,9 +644,15 @@ function Cuentas() {
   const guardarCuenta = (e) => {
     e.preventDefault();
     if (!isValidDocumentoCliente(formCuenta.ruc, formCuenta.tipo_documento)) {
-      addNotificacion?.(formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO
-        ? 'El Tax ID extranjero debe tener entre 3 y 30 caracteres.'
-        : 'El RUC debe tener 11 numeros y comenzar con 1 o 2.');
+      addNotificacion?.(mensajeDocumentoInvalido(formCuenta.tipo_documento));
+      return;
+    }
+    if (!formCuenta.nombre_comercial.trim()) {
+      addNotificacion?.(esPersonaNatural(formCuenta.tipo_documento) ? 'El nombre completo es obligatorio.' : 'El nombre comercial es obligatorio.');
+      return;
+    }
+    if (!esPersonaNatural(formCuenta.tipo_documento) && !formCuenta.razon_social.trim()) {
+      addNotificacion?.('La razon social es obligatoria para este tipo de documento.');
       return;
     }
     if (formCuenta.telefono && !isValidPhone(formCuenta.telefono)) {
@@ -641,7 +662,7 @@ function Cuentas() {
     const nueva = {
       id: `cta_${Date.now().toString(36)}`,
       empresa_id: empresa.id,
-      razon_social: formCuenta.razon_social || 'Nueva cuenta sin nombre',
+      razon_social: esPersonaNatural(formCuenta.tipo_documento) ? null : (formCuenta.razon_social || 'Nueva cuenta sin nombre'),
       nombre_comercial: formCuenta.nombre_comercial || formCuenta.razon_social || 'Nueva cuenta',
       tipo: formCuenta.tipo || 'prospecto',
       pais: formCuenta.pais || 'Perú',
@@ -663,7 +684,7 @@ function Cuentas() {
       email_corporativo: formCuenta.email_corporativo || null,
       telefono: formCuenta.telefono,
       email: formCuenta.email,
-      ruc: formCuenta.ruc || 'Pendiente',
+      ruc: formCuenta.ruc || null,
       tipo_documento: formCuenta.tipo_documento || TIPO_DOCUMENTO_RUC,
       fuente_origen: formCuenta.fuente_origen || null,
       notas: formCuenta.notas || null,
@@ -771,11 +792,11 @@ function Cuentas() {
             <article key={c.id} className="account-card" onClick={() => { setSel({ ...c, logo_url: logoUrl }); setActiveTab('Resumen'); setContactEditId(null); setCondEditing(false); setCondEdit({}); }}>
               <div className="account-logo-wrap">
                 {logoUrl ? (
-                  <img className="account-logo" src={logoUrl} alt={`Logo de ${c.razon_social}`} />
+                  <img className="account-logo" src={logoUrl} alt={`Logo de ${c.razon_social || c.nombre_comercial}`} />
                 ) : (
                   <div className="account-logo-empty">
-                    <div className="account-logo-initials">{getInitials(c.razon_social)}</div>
-                    <span>Subir logotipo de empresa</span>
+                    <div className="account-logo-initials">{getInitials(c.razon_social || c.nombre_comercial)}</div>
+                    <span>Subir logotipo</span>
                   </div>
                 )}
                 <label className="account-logo-upload" onClick={(e) => e.stopPropagation()}>
@@ -785,8 +806,8 @@ function Cuentas() {
               </div>
               <div className="account-card-body">
                 <div>
-                  <h2 className="account-title">{c.razon_social}</h2>
-                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>{c.ruc || 'RUC pendiente'}</div>
+                  <h2 className="account-title">{c.razon_social || c.nombre_comercial}</h2>
+                  <div className="text-muted" style={{fontSize:12, marginTop:4}}>{c.ruc || `${etiquetaDocumento(c.tipo_documento)} pendiente`}</div>
                 </div>
                 <div className="account-meta">
                   <div><span>Tipo</span><strong className={'badge ' + getTipoBadge(c.tipo)}>{c.tipo.replace('_', ' ')}</strong></div>
@@ -823,7 +844,7 @@ function Cuentas() {
                     <div className="row" style={{gap:2}} onClick={e => e.stopPropagation()}>
                       <button type="button" className="icon-btn" title="Editar cuenta"
                         style={{width:26, height:26, color:'var(--fg-muted)', borderRadius:6}}
-                        onClick={e => { e.stopPropagation(); setEditingCuenta(c); setEditCuentaForm({ razon_social:c.razon_social||'', ruc:c.ruc||'', tipo_documento:c.tipo_documento||TIPO_DOCUMENTO_RUC, industria:c.industria||'', tipo:c.tipo||'prospecto', responsable_comercial:c.responsable_comercial||'' }); }}>
+                        onClick={e => { e.stopPropagation(); setEditingCuenta(c); setEditCuentaForm({ razon_social:c.razon_social||'', nombre_comercial:c.nombre_comercial||'', ruc:c.ruc||'', tipo_documento:c.tipo_documento||TIPO_DOCUMENTO_RUC, industria:c.industria||'', tipo:c.tipo||'prospecto', responsable_comercial:c.responsable_comercial||'' }); }}>
                         {I.edit}
                       </button>
                       <button type="button" className="icon-btn" title="Eliminar cuenta"
@@ -853,10 +874,10 @@ function Cuentas() {
           <form className="side-panel-body" onSubmit={guardarCuenta}>
             <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
             <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>
-              <div className="input-group"><label>Tipo de documento</label><select className="select" value={formCuenta.tipo_documento} onChange={e=>updateCuentaForm('tipo_documento', e.target.value)}><option value={TIPO_DOCUMENTO_RUC}>RUC</option><option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option></select></div>
-              <div className="input-group"><label>{formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : 'RUC'} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '· 3 a 30 caracteres' : '· 11 dígitos'}</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeDocumentoCliente(e.target.value, formCuenta.tipo_documento))} placeholder={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Identificador fiscal extranjero' : '20xxxxxxxxx'} inputMode={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : RUC_PATTERN} maxLength={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : 11}/></div>
-              <div className="input-group"><label>Nombre comercial</label><input className="input" value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder="Si es diferente a la razón social"/></div>
+              <div className="input-group"><label>Tipo de documento</label><select className="select" value={formCuenta.tipo_documento} onChange={e=>updateCuentaForm('tipo_documento', e.target.value)}><option value={TIPO_DOCUMENTO_RUC}>RUC</option><option value={TIPO_DOCUMENTO_DNI}>DNI</option><option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option></select></div>
+              <div className="input-group"><label>{etiquetaDocumento(formCuenta.tipo_documento)} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '· 3 a 30 caracteres' : esPersonaNatural(formCuenta.tipo_documento) ? '· 8 dígitos' : '· 11 dígitos'}</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeDocumentoCliente(e.target.value, formCuenta.tipo_documento))} placeholder={placeholderDocumento(formCuenta.tipo_documento)} inputMode={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : esPersonaNatural(formCuenta.tipo_documento) ? DNI_PATTERN : RUC_PATTERN} maxLength={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : esPersonaNatural(formCuenta.tipo_documento) ? 8 : 11}/></div>
+              <div className="input-group"><label>{esPersonaNatural(formCuenta.tipo_documento) ? 'Nombre completo *' : 'Nombre comercial *'}</label><input className="input" required value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder={esPersonaNatural(formCuenta.tipo_documento) ? 'Nombre completo de la persona' : 'Si es diferente a la razón social'}/></div>
+              {!esPersonaNatural(formCuenta.tipo_documento) && <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>}
               <div className="input-group"><label>País</label><select className="select" value={formCuenta.pais} onChange={e=>updateCuentaForm('pais', e.target.value)}>
                 {['Perú','Chile','Colombia','México','Ecuador','Bolivia','Argentina','Brasil','Uruguay','Otro'].map(p=><option key={p}>{p}</option>)}
               </select></div>
@@ -1056,7 +1077,7 @@ function Cuentas() {
                   <div className="account-info-card">
                     <div className="card-head"><h3>Datos de empresa</h3></div>
                     <div className="account-info-list">
-                      <div><span>RUC</span><strong>{sel.ruc || 'Pendiente'}</strong></div>
+                      <div><span>{etiquetaDocumento(sel.tipo_documento)}</span><strong>{sel.ruc || 'Pendiente'}</strong></div>
                       <div><span>Razón social</span><strong>{sel.razon_social}</strong></div>
                       <div><span>Dirección</span><strong>{sel.direccion || 'Pendiente'}</strong></div>
                       <div><span>Responsable comercial</span><strong>{sel.responsable_comercial || 'Sin asignar'}</strong></div>
@@ -1407,20 +1428,20 @@ function Cuentas() {
                   <div className="card-body">
                     <div className="grid-2" style={{gap:16}}>
                       {[
-                        { k:'tipo_documento', label:'Tipo de documento', type:'select', opts:[TIPO_DOCUMENTO_RUC, TIPO_DOCUMENTO_TAX_ID_EXTRANJERO] },
-                        { k:'ruc', label:'RUC', type:'text' },
+                        { k:'tipo_documento', label:'Tipo de documento', type:'select', opts:[TIPO_DOCUMENTO_RUC, TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_TAX_ID_EXTRANJERO] },
+                        { k:'ruc', label:'Número de documento', type:'text' },
                         { k:'razon_social', label:'Razón social legal', type:'text' },
                         { k:'direccion', label:'Dirección fiscal', type:'text' },
                         { k:'condicion_tributaria', label:'Condición tributaria', type:'select', opts:['Habido','No Habido','No hallado','Suspensión temporal'] },
-                      ].map(({k, label, type, opts}) => (
+                      ].filter(({ k }) => !(k === 'razon_social' && esPersonaNatural(condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC))).map(({k, label, type, opts}) => (
                         <div className="input-group" key={k}>
-                          <label style={{fontSize:11}}>{k === 'ruc' && (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : label}</label>
+                          <label style={{fontSize:11}}>{k === 'ruc' ? etiquetaDocumento(condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) : label}</label>
                           {type === 'select' ? (
                             <select className="select" disabled={!condEditing || condSaving} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]:e.target.value}))}>
                               {opts.map(o=><option key={o}>{o}</option>)}
                             </select>
                           ) : (
-                            <input className="input" disabled={!condEditing || condSaving} type="text" inputMode={k === 'ruc' && (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_RUC ? 'numeric' : undefined} pattern={k === 'ruc' && (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_RUC ? RUC_PATTERN : undefined} maxLength={k === 'ruc' ? ((condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : 11) : undefined} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]: k === 'ruc' ? sanitizeDocumentoCliente(e.target.value, p.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) : e.target.value}))}/>
+                            <input className="input" disabled={!condEditing || condSaving} type="text" placeholder={k === 'ruc' ? placeholderDocumento(condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) : undefined} inputMode={k === 'ruc' && (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) !== TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'numeric' : undefined} pattern={k === 'ruc' ? ((condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_DNI ? DNI_PATTERN : (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : RUC_PATTERN) : undefined} maxLength={k === 'ruc' ? ((condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : (condEdit.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) === TIPO_DOCUMENTO_DNI ? 8 : 11) : undefined} value={condEdit[k] ?? sel[k] ?? ''} onChange={e => setCondEdit(p=>({...p,[k]: k === 'ruc' ? sanitizeDocumentoCliente(e.target.value, p.tipo_documento ?? sel.tipo_documento ?? TIPO_DOCUMENTO_RUC) : e.target.value}))}/>
                           )}
                         </div>
                       ))}
@@ -1547,22 +1568,27 @@ function Cuentas() {
             </div>
             <div className="modal-body col" style={{gap:14}}>
               <div className="grid-2">
-                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                {!esPersonaNatural(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC) && <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Razón Social</label>
                   <input className="input" value={editCuentaForm.razon_social} onChange={e=>setEditCuentaForm(p=>({...p,razon_social:e.target.value}))} autoFocus/>
+                </div>}
+                <div className="input-group" style={{gridColumn:'1/-1'}}>
+                  <label>{esPersonaNatural(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC) ? 'Nombre completo' : 'Nombre comercial'}</label>
+                  <input className="input" value={editCuentaForm.nombre_comercial} onChange={e=>setEditCuentaForm(p=>({...p,nombre_comercial:e.target.value}))}/>
                 </div>
                 <div className="input-group">
                   <label>Tipo de documento</label>
                   <select className="select" value={editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC}
                     onChange={e=>setEditCuentaForm(p=>({...p,tipo_documento:e.target.value}))}>
                     <option value={TIPO_DOCUMENTO_RUC}>RUC</option>
+                    <option value={TIPO_DOCUMENTO_DNI}>DNI</option>
                     <option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option>
                   </select>
                 </div>
                 <div className="input-group">
-                  <label>{editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : 'RUC'} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '(3 a 30 caracteres)' : '(11 dígitos)'}</span></label>
-                  <input className="input" value={editCuentaForm.ruc} maxLength={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : 11}
-                    inputMode={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : RUC_PATTERN}
+                  <label>{etiquetaDocumento(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC)} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '(3 a 30 caracteres)' : esPersonaNatural(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC) ? '(8 dígitos)' : '(11 dígitos)'}</span></label>
+                  <input className="input" value={editCuentaForm.ruc} placeholder={placeholderDocumento(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC)} maxLength={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : esPersonaNatural(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC) ? 8 : 11}
+                    inputMode={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={editCuentaForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : esPersonaNatural(editCuentaForm.tipo_documento || TIPO_DOCUMENTO_RUC) ? DNI_PATTERN : RUC_PATTERN}
                     onChange={e=>setEditCuentaForm(p=>({...p,ruc:sanitizeDocumentoCliente(e.target.value, p.tipo_documento || TIPO_DOCUMENTO_RUC)}))}/>
                 </div>
                 <div className="input-group">
