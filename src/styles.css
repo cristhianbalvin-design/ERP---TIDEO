@@ -4313,7 +4313,10 @@ body {
 .document-preview-conditions-segment:last-child { margin-bottom: 0; }
 .document-preview-conditions-message { color: #475569; font-size: 13px; font-style: italic; }
 .document-preview-sheet .rich-text-preview-content { line-height: 1.55; font-size: 13px; }
-.document-preview-sheet .rich-text-preview-content p { margin: 0 0 10px; }
+.rich-text-editor-content p,
+.document-preview-sheet .rich-text-preview-content p { margin: 0 0 8px; }
+.rich-text-editor-content p:last-child,
+.document-preview-sheet .rich-text-preview-content p:last-child { margin-bottom: 0; }
 .document-preview-sheet .rich-text-preview-content ul,
 .document-preview-sheet .rich-text-preview-content ol { margin: 0 0 10px; padding-left: 22px; }
 .rich-text-editor-content img,
