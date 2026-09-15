@@ -21,9 +21,9 @@ export const normalizeRichTextDocument = value => (
     : EMPTY_DOCUMENT
 );
 
-export function VariableInsertSelect({ variables = [], disabled = false, onInsert }) {
+export function VariableInsertSelect({ variables = [], disabled = false, onInsert, style = null }) {
   if (!variables.length) return null;
-  return <select className="input" defaultValue="" onChange={event => { onInsert?.(event.target.value); event.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30}}>
+  return <select className="input" defaultValue="" onChange={event => { onInsert?.(event.target.value); event.currentTarget.value = ''; }} disabled={disabled} style={{width:'auto', padding:'4px 8px', minHeight:30, ...(style || {})}}>
     <option value="">Insertar variable…</option>
     {variables.map(variable => <option key={variable.token} value={variable.token}>{variable.grupo}: {variable.label}</option>)}
   </select>;
