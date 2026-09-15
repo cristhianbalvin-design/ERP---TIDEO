@@ -4326,7 +4326,7 @@ body {
 .rich-text-editor-content img,
 .rich-text-preview-content img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
 .rich-text-preview-content img.ProseMirror-separator,
-.rich-text-preview-content br.ProseMirror-trailingBreak { display: none; }
+.rich-text-preview-content img.ProseMirror-separator + br.ProseMirror-trailingBreak { display: none; }
 .rich-text-editor-content hr,
 .rich-text-preview-content hr { border: 0; border-top: 1px solid #94a3b8; margin: 16px 0; }
 .rich-text-editor-content .rich-text-two-column-line,
