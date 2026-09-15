@@ -4342,15 +4342,13 @@ body {
 .document-preview-table th,
 .document-preview-table td { padding: 7px 8px; border: 1px solid #cbd5e1; text-align: left; vertical-align: top; }
 .document-preview-table th { background: #eff6ff; font-weight: 700; }
-.document-preview-table thead.document-preview-table-format > tr > th,
-.document-preview-table tbody.document-preview-table-format > tr > td {
+.document-preview-table .document-preview-table-format {
   font-style: var(--document-table-font-style, normal);
   text-decoration: var(--document-table-text-decoration, none);
   font-size: var(--document-table-font-size, inherit);
-  line-height: var(--document-table-line-height, normal);
 }
 .document-preview-table thead.document-preview-table-format > tr > th { font-weight: var(--document-table-font-weight, 700); }
-.document-preview-table tbody.document-preview-table-format > tr > td { font-weight: var(--document-table-font-weight, 400); }
+.document-preview-table td.document-preview-table-format { font-weight: var(--document-table-font-weight, 400); }
 .document-table-format-editor-row > td { padding: 6px !important; background: var(--bg-alt); }
 .document-preview-repeat { padding: 12px; border: 1px dashed #94a3b8; border-radius: 6px; }
 .document-preview-repeat-note { margin-bottom: 10px; color: #475569; font-size: 12px; }

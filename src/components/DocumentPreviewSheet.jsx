@@ -7,13 +7,11 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { hasLayoutColumns, normalizeLayoutColumns } from './DocumentLayoutColumns.jsx';
 
 const TABLE_FONT_SIZES = new Set(['10px', '12px', '14px', '18px', '24px']);
-const TABLE_LINE_HEIGHTS = new Set(['1', '1.5', '2']);
 const normalizeTableFormat = value => ({
   negrita:value?.negrita === true ? true : null,
   cursiva:value?.cursiva === true,
   subrayado:value?.subrayado === true,
   tamano_fuente:TABLE_FONT_SIZES.has(value?.tamano_fuente) ? value.tamano_fuente : null,
-  interlineado:TABLE_LINE_HEIGHTS.has(value?.interlineado) ? value.interlineado : null,
 });
 const tableFormatStyle = value => {
   const format = normalizeTableFormat(value);
@@ -22,7 +20,6 @@ const tableFormatStyle = value => {
     ...(format.cursiva ? { '--document-table-font-style':'italic' } : {}),
     ...(format.subrayado ? { '--document-table-text-decoration':'underline' } : {}),
     ...(format.tamano_fuente ? { '--document-table-font-size':format.tamano_fuente } : {}),
-    ...(format.interlineado ? { '--document-table-line-height':format.interlineado } : {}),
   };
 };
 
@@ -147,12 +144,16 @@ const normalizeTable = value => {
   const filas = Array.isArray(value?.filas) ? value.filas.map((row, index) => ({ id:row?.id || `preview-row-${index}`, valores:Object.fromEntries(safeColumns.map(column => [column.id, row?.valores?.[column.id] ?? (column.tipo === 'check' ? false : '')])) })) : [];
   // Las tablas creadas antes del control no tienen este campo y deben seguir
   // mostrando encabezado, tal como se guardaron originalmente.
+  const formatosExistentes = value?.formato_columnas && typeof value.formato_columnas === 'object' ? value.formato_columnas : {};
   return {
     columnas:safeColumns,
     filas,
     mostrar_encabezado:value?.mostrar_encabezado !== false,
     formato_encabezado:normalizeTableFormat(value?.formato_encabezado),
-    formato_cuerpo:normalizeTableFormat(value?.formato_cuerpo),
+    formato_columnas:Object.fromEntries(safeColumns.map(column => [
+      column.id,
+      normalizeTableFormat(formatosExistentes[column.id] ?? value?.formato_cuerpo),
+    ])),
   };
 };
 const normalizeTableSections = value => normalizeLayoutColumns(value, normalizeTable);
@@ -184,7 +185,10 @@ function PreviewTableHead({ table, categoria, contexto, measurementRef = null })
 }
 
 function PreviewTableRow({ table, row, categoria, contexto, measurementRef = null }) {
-  return <tr ref={measurementRef}>{table.columnas.map(columna => <td key={columna.id}>{columna.tipo === 'check' ? (row.valores[columna.id] ? '✓' : '') : renderTableCell(columna, row, categoria, contexto)}</td>)}</tr>;
+  return <tr ref={measurementRef}>{table.columnas.map(columna => {
+    const format = columna.tipo === 'texto' ? table.formato_columnas?.[columna.id] : null;
+    return <td key={columna.id} className={format ? 'document-preview-table-format' : undefined} style={format ? tableFormatStyle(format) : undefined}>{columna.tipo === 'check' ? (row.valores[columna.id] ? '✓' : '') : renderTableCell(columna, row, categoria, contexto)}</td>;
+  })}</tr>;
 }
 
 const normalizeSectionColumns = value => normalizeLayoutColumns(value, normalizeRichTextDocument);
@@ -432,10 +436,10 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
     {block.tipo_bloque === 'texto_rico' && (textoConColumnas
       ? <div className="document-preview-columns" style={{gridTemplateColumns:columnasTexto.map(column => column.ancho).join(' ')}}>{columnasTexto.map(column => <div key={column.id} className="document-preview-column"><DocumentPreviewRichText value={column.contenido_json} categoria={categoria} contexto={contexto} /></div>)}</div>
       : <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />)}
-    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody className="document-preview-table-format" style={tableFormatStyle(tabla.formato_cuerpo)}>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
+    {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
     {seccionesTabla.length > 0 && <div className="document-preview-columns" style={{gridTemplateColumns:seccionesTabla.map(section => section.ancho).join(' ')}}>{seccionesTabla.map(section => {
       const table = normalizeTable(section.contenido_json);
-      return <div key={section.id} className="document-preview-column"><div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={table} categoria={categoria} contexto={contexto} /><tbody className="document-preview-table-format" style={tableFormatStyle(table.formato_cuerpo)}>{table.filas.map(fila => <PreviewTableRow key={fila.id} table={table} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div></div>;
+      return <div key={section.id} className="document-preview-column"><div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={table} categoria={categoria} contexto={contexto} /><tbody>{table.filas.map(fila => <PreviewTableRow key={fila.id} table={table} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div></div>;
     })}</div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
     {condiciones && <VistaCondicionesGenerales condiciones={condiciones} categoria={categoria} contexto={contexto} />}
@@ -527,7 +531,7 @@ function VistaTablaRepetida({ entries, categoria, contexto }) {
     {first.showGroupTitle && <GroupHeading unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={first.continuation} />}
     <div className="document-preview-table-wrap"><table className="document-preview-table">
       <PreviewTableHead table={unit.table} categoria={categoria} contexto={contexto} />
-      <tbody className="document-preview-table-format" style={tableFormatStyle(unit.table.formato_cuerpo)}>{entries.map(entry => <PreviewTableRow key={entry.unit.key} table={entry.unit.table} row={entry.unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:entry.unit.item }} />)}</tbody>
+      <tbody>{entries.map(entry => <PreviewTableRow key={entry.unit.key} table={entry.unit.table} row={entry.unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:entry.unit.item }} />)}</tbody>
     </table></div>
   </section>;
 }
@@ -566,7 +570,7 @@ function MedicionTablasRepetidas({ unidades, categoria, contexto, measureUnitRef
     const first = rows[0];
     return <section key={tableKey} ref={node => { if (node) measureTableWrapRefs.current.set(tableKey, node); else measureTableWrapRefs.current.delete(tableKey); }} className="document-preview-block"><div className="document-preview-table-wrap"><table className="document-preview-table">
       <PreviewTableHead table={first.table} categoria={categoria} contexto={contexto} measurementRef={node => { if (node) measureTableHeaderRefs.current.set(tableKey, node); else measureTableHeaderRefs.current.delete(tableKey); }} />
-      <tbody className="document-preview-table-format" style={tableFormatStyle(first.table.formato_cuerpo)}>{rows.map(unit => <PreviewTableRow key={unit.key} table={unit.table} row={unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} />)}</tbody>
+      <tbody>{rows.map(unit => <PreviewTableRow key={unit.key} table={unit.table} row={unit.row} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} />)}</tbody>
     </table></div></section>;
   });
 }
