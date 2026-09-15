@@ -125,7 +125,9 @@ const normalizeTable = value => {
   const columnas = Array.isArray(value?.columnas) ? value.columnas.filter(column => column?.id).map(column => ({ id:column.id, titulo:column.titulo || '', tipo:column.tipo === 'check' ? 'check' : 'texto', campo_origen:column.campo_origen || '' })) : [];
   const safeColumns = columnas.length ? columnas : fallbackTable().columnas;
   const filas = Array.isArray(value?.filas) ? value.filas.map((row, index) => ({ id:row?.id || `preview-row-${index}`, valores:Object.fromEntries(safeColumns.map(column => [column.id, row?.valores?.[column.id] ?? (column.tipo === 'check' ? false : '')])) })) : [];
-  return { columnas:safeColumns, filas };
+  // Las tablas creadas antes del control no tienen este campo y deben seguir
+  // mostrando encabezado, tal como se guardaron originalmente.
+  return { columnas:safeColumns, filas, mostrar_encabezado:value?.mostrar_encabezado !== false };
 };
 const normalizeTableSections = value => normalizeLayoutColumns(value, normalizeTable);
 const renderTableText = (value, categoria, contexto) => (
@@ -151,6 +153,7 @@ const repeatTableChild = (block, bloques) => {
 };
 
 function PreviewTableHead({ table, categoria, contexto, measurementRef = null }) {
+  if (!table.mostrar_encabezado) return null;
   return <thead ref={measurementRef}><tr>{table.columnas.map(columna => <th key={columna.id}>{renderTableText(columna.titulo, categoria, contexto)}</th>)}</tr></thead>;
 }
 
@@ -369,7 +372,7 @@ export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlc
       if (isRichTextFlowUnit(unit)) return textFlowEntry(unit, paginaActual, medidas);
       const anterior = paginaActual.at(-1)?.unit;
       const showGroupTitle = isRepeatUnit(unit) && anterior?.groupKey !== unit.groupKey;
-      const showTableHeader = unit.kind === 'repeat-table-row' && anterior?.tableKey !== unit.tableKey;
+      const showTableHeader = unit.kind === 'repeat-table-row' && unit.table.mostrar_encabezado && anterior?.tableKey !== unit.tableKey;
       const continuation = showGroupTitle && unit.index > 0;
       const altoTitulo = showGroupTitle ? Number(medidas.titulosGrupo?.[previewGroupTitleKey(unit, continuation)] || 0) : 0;
       const altoEncabezadoTabla = showTableHeader ? Number(medidas.encabezadosTabla?.[unit.tableKey] || 0) : 0;
@@ -591,7 +594,12 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         [previewTextBlockTitleKey(unit, true), measureNodeHeight(measureTextTitleRefs.current.get(previewTextBlockTitleKey(unit, true)))],
       ])));
       const richTextNodeHeights = Object.fromEntries([...measureRichTextNodeRefs.current.entries()].map(([key, node]) => [key, measureNodeHeight(node)]));
-      const tableHeaderHeights = Object.fromEntries([...measureTableHeaderRefs.current.keys()].map(tableKey => {
+      const repeatedTables = [...new Map(unidades
+        .filter(unit => unit.kind === 'repeat-table-row')
+        .map(unit => [unit.tableKey, unit])).values()];
+      const tableHeaderHeights = Object.fromEntries(repeatedTables.map(unit => {
+        const tableKey = unit.tableKey;
+        if (!unit.table.mostrar_encabezado) return [tableKey, 0];
         const headerHeight = measureNodeHeight(measureTableHeaderRefs.current.get(tableKey));
         const rowHeight = unidades.filter(unit => unit.kind === 'repeat-table-row' && unit.tableKey === tableKey).reduce((sum, unit) => sum + measureNodeHeight(measureUnitRefs.current.get(unit.key)), 0);
         const tableHeight = measureNodeHeight(measureTableWrapRefs.current.get(tableKey));
