@@ -4,6 +4,7 @@ import { obtenerVariablesDocumentales } from '../lib/variablesDocumentales.js';
 import { getDocumentRepeatSource, getDocumentRepeatSources } from '../lib/documentRepeatSources.js';
 import { subirImagenConstructorDocumento } from '../services/storageService.js';
 import { RichTextEditor, normalizeRichTextDocument, VariableInsertSelect } from './RichTextEditor.jsx';
+import { FONT_SIZES, LINE_HEIGHTS } from './richTextExtensions.js';
 import { DocumentPreviewSheet, normalizedPreviewScope, previewBlockKey, previewMeasurementKey, previewPageCapacity } from './DocumentPreviewSheet.jsx';
 import { hasLayoutColumns, LayoutColumnsEditor, normalizeLayoutColumns } from './DocumentLayoutColumns.jsx';
 
@@ -14,6 +15,13 @@ const emptyTable = () => {
 };
 const emptyGroup = () => ({ fuente_repeticion: '', fuente_repeticion_id: '', titulo_item: '' });
 const orderBlocks = blocks => [...blocks].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
+const normalizeTableFormat = value => ({
+  negrita:value?.negrita === true ? true : null,
+  cursiva:value?.cursiva === true,
+  subrayado:value?.subrayado === true,
+  tamano_fuente:FONT_SIZES.some(size => size.value === value?.tamano_fuente) ? value.tamano_fuente : null,
+  interlineado:LINE_HEIGHTS.some(option => option.value === value?.interlineado) ? value.interlineado : null,
+});
 const normalizeTable = value => {
   const columnas = Array.isArray(value?.columnas) ? value.columnas.filter(column => column?.id).map(column => ({
     id: column.id,
@@ -28,7 +36,13 @@ const normalizeTable = value => {
   })) : [];
   // La ausencia del campo corresponde a tablas creadas antes de esta opción.
   // Deben conservar su encabezado visible por compatibilidad.
-  return { columnas: safeColumns, filas, mostrar_encabezado:value?.mostrar_encabezado !== false };
+  return {
+    columnas: safeColumns,
+    filas,
+    mostrar_encabezado:value?.mostrar_encabezado !== false,
+    formato_encabezado:normalizeTableFormat(value?.formato_encabezado),
+    formato_cuerpo:normalizeTableFormat(value?.formato_cuerpo),
+  };
 };
 
 const normalizeRichTextColumns = value => normalizeLayoutColumns(value, normalizeRichTextDocument);
@@ -104,6 +118,25 @@ const sectionPatch = columns => {
   };
 };
 
+function TableFormatToolbar({ label, value, disabled, onChange }) {
+  const format = normalizeTableFormat(value);
+  const toggle = field => onChange?.({ ...format, [field]:format[field] === true ? false : true });
+  return <div className="row" style={{gap:4, padding:'5px 6px', border:'1px solid var(--border)', borderRadius:6, background:'var(--bg-alt)', flexWrap:'wrap'}}>
+    <span className="text-muted" style={{fontSize:12, marginRight:2}}>{label}</span>
+    <button type="button" title="Negrita" className={`btn btn-ghost ${format.negrita ? 'active' : ''}`} disabled={disabled} onClick={() => toggle('negrita')} style={{padding:'2px 7px', minWidth:28}}><strong>B</strong></button>
+    <button type="button" title="Cursiva" className={`btn btn-ghost ${format.cursiva ? 'active' : ''}`} disabled={disabled} onClick={() => toggle('cursiva')} style={{padding:'2px 7px', minWidth:28}}><em>I</em></button>
+    <button type="button" title="Subrayado" className={`btn btn-ghost ${format.subrayado ? 'active' : ''}`} disabled={disabled} onClick={() => toggle('subrayado')} style={{padding:'2px 7px', minWidth:28}}><u>U</u></button>
+    <select className="input" aria-label={`Tamaño de fuente del ${label.toLowerCase()}`} value={format.tamano_fuente || ''} disabled={disabled} onChange={event => onChange?.({ ...format, tamano_fuente:event.target.value || null })} style={{width:'auto', padding:'2px 6px', minHeight:28}}>
+      <option value="">Tamaño</option>
+      {FONT_SIZES.map(size => <option key={size.value} value={size.value}>{size.label}</option>)}
+    </select>
+    <select className="input" aria-label={`Interlineado del ${label.toLowerCase()}`} value={format.interlineado || ''} disabled={disabled} onChange={event => onChange?.({ ...format, interlineado:event.target.value || null })} style={{width:'auto', padding:'2px 6px', minHeight:28}}>
+      <option value="">Interlineado</option>
+      {LINE_HEIGHTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  </div>;
+}
+
 function TablaContenidoEditor({ value, disabled, variables, repeatFields = [], onChange }) {
   const table = normalizeTable(value);
   const cellRefs = useRef(new Map());
@@ -140,10 +173,17 @@ function TablaContenidoEditor({ value, disabled, variables, repeatFields = [], o
       <input type="checkbox" checked={table.mostrar_encabezado} disabled={disabled} onChange={event => update({ ...table, mostrar_encabezado:event.target.checked })} />
       Mostrar encabezado
     </label>
-    <div className="table-wrap"><table className="tbl"><thead><tr>{table.columnas.map(column => <th key={column.id}><div className="row" style={{gap:4, minWidth:130}}><input className="input" value={column.titulo} disabled={disabled} onChange={event => updateColumn(column.id, { titulo:event.target.value })} /><select className="input" value={column.tipo} disabled={disabled} onChange={event => {
-      const tipo = event.target.value;
-      update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
-    }}><option value="texto">Texto</option><option value="check">Check</option></select>{repeatFields.length > 0 && column.tipo === 'texto' && <select className="input" value={column.campo_origen || ''} disabled={disabled} onChange={event => updateColumn(column.id, { campo_origen:event.target.value })}><option value="">Contenido estático</option>{repeatFields.map(field => <option key={field.id} value={field.id}>Ítem: {field.label}</option>)}</select>}{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 0'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} style={{flex:'0 0 142px', width:142, minWidth:0}} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
+    {table.mostrar_encabezado && <TableFormatToolbar label="Formato del encabezado" value={table.formato_encabezado} disabled={disabled} onChange={formato_encabezado => update({ ...table, formato_encabezado })} />}
+    <div className="table-wrap"><table className="tbl">
+      <thead><tr>{table.columnas.map(column => <th key={column.id}><div className="row" style={{gap:4, minWidth:130}}><input className="input" value={column.titulo} disabled={disabled} onChange={event => updateColumn(column.id, { titulo:event.target.value })} /><select className="input" value={column.tipo} disabled={disabled} onChange={event => {
+        const tipo = event.target.value;
+        update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
+      }}><option value="texto">Texto</option><option value="check">Check</option></select>{repeatFields.length > 0 && column.tipo === 'texto' && <select className="input" value={column.campo_origen || ''} disabled={disabled} onChange={event => updateColumn(column.id, { campo_origen:event.target.value })}><option value="">Contenido estático</option>{repeatFields.map(field => <option key={field.id} value={field.id}>Ítem: {field.label}</option>)}</select>}{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead>
+      <tbody>
+        <tr className="document-table-format-editor-row"><td colSpan={table.columnas.length + 1}><TableFormatToolbar label="Formato del cuerpo" value={table.formato_cuerpo} disabled={disabled} onChange={formato_cuerpo => update({ ...table, formato_cuerpo })} /></td></tr>
+        {table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 0'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} style={{flex:'0 0 142px', width:142, minWidth:0}} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}
+      </tbody>
+    </table></div>
     {!disabled && <div className="row" style={{gap:8}}><button type="button" className="btn btn-secondary" onClick={addColumn}>+ Columna</button><button type="button" className="btn btn-secondary" onClick={addRow}>+ Fila</button></div>}
   </div>;
 }
