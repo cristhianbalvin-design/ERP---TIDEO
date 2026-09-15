@@ -7,7 +7,8 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { hasLayoutColumns, normalizeLayoutColumns } from './DocumentLayoutColumns.jsx';
 
 export const PREVIEW_SHEET_HEIGHT = 1056;
-export const PREVIEW_SHEET_VERTICAL_PADDING = 128;
+// Debe reflejar el padding vertical total de .document-preview-sheet (40px × 2).
+export const PREVIEW_SHEET_VERTICAL_PADDING = 80;
 export const PREVIEW_BODY_TOP_PADDING = 0;
 
 export const orderDocumentPreviewBlocks = blocks => [...blocks].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
