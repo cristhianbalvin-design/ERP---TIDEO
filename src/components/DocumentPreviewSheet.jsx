@@ -127,6 +127,7 @@ const normalizeTable = value => {
   const filas = Array.isArray(value?.filas) ? value.filas.map((row, index) => ({ id:row?.id || `preview-row-${index}`, valores:Object.fromEntries(safeColumns.map(column => [column.id, row?.valores?.[column.id] ?? (column.tipo === 'check' ? false : '')])) })) : [];
   return { columnas:safeColumns, filas };
 };
+const normalizeTableSections = value => normalizeLayoutColumns(value, normalizeTable);
 const renderTableText = (value, categoria, contexto) => (
   categoria && contexto !== null && contexto !== undefined
     ? renderTextoDocumental(value, categoria, contexto)
@@ -143,6 +144,9 @@ const repeatTableChild = (block, bloques) => {
   // Un título por ítem también es contenido repetido: no se compacta para no
   // cambiar el orden visual de grupos mixtos o de textos por ítem.
   if (group.titulo_item || children.length !== 1 || children[0].tipo_bloque !== 'tabla') return null;
+  // Dos secciones son dos tablas independientes: se renderizan dentro de cada
+  // instancia repetida, en vez de forzarlas al optimizador de una sola tabla.
+  if (hasLayoutColumns(children[0].contenido_json)) return null;
   return normalizeTable(children[0].contenido_json).filas.length === 1 ? children[0] : null;
 };
 
@@ -387,7 +391,9 @@ export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlc
 
 function VistaBloque({ block, bloques, categoria, contexto, measurementRef = null }) {
   const hijos = orderDocumentPreviewBlocks(bloques.filter(item => item.bloque_padre_id === block.id));
-  const tabla = block.tipo_bloque === 'tabla' ? normalizeTable(block.contenido_json) : null;
+  const tablaConSecciones = block.tipo_bloque === 'tabla' && hasLayoutColumns(block.contenido_json);
+  const tabla = block.tipo_bloque === 'tabla' && !tablaConSecciones ? normalizeTable(block.contenido_json) : null;
+  const seccionesTabla = tablaConSecciones ? normalizeTableSections(block.contenido_json) : [];
   const grupo = block.tipo_bloque === 'grupo_repetible' ? groupConfig(block) : null;
   const condiciones = esBloqueCondicionesGenerales(block) ? block.contenido_json || {} : null;
   const textoConColumnas = block.tipo_bloque === 'texto_rico' && hasLayoutColumns(block.contenido_json);
@@ -398,6 +404,10 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
       ? <div className="document-preview-columns" style={{gridTemplateColumns:columnasTexto.map(column => column.ancho).join(' ')}}>{columnasTexto.map(column => <div key={column.id} className="document-preview-column"><DocumentPreviewRichText value={column.contenido_json} categoria={categoria} contexto={contexto} /></div>)}</div>
       : <DocumentPreviewRichText value={block.contenido_json} categoria={categoria} contexto={contexto} />)}
     {tabla && <div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={tabla} categoria={categoria} contexto={contexto} /><tbody>{tabla.filas.map(fila => <PreviewTableRow key={fila.id} table={tabla} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div>}
+    {seccionesTabla.length > 0 && <div className="document-preview-columns" style={{gridTemplateColumns:seccionesTabla.map(section => section.ancho).join(' ')}}>{seccionesTabla.map(section => {
+      const table = normalizeTable(section.contenido_json);
+      return <div key={section.id} className="document-preview-column"><div className="document-preview-table-wrap"><table className="document-preview-table"><PreviewTableHead table={table} categoria={categoria} contexto={contexto} /><tbody>{table.filas.map(fila => <PreviewTableRow key={fila.id} table={table} row={fila} categoria={categoria} contexto={contexto} />)}</tbody></table></div></div>;
+    })}</div>}
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
     {condiciones && <VistaCondicionesGenerales condiciones={condiciones} categoria={categoria} contexto={contexto} />}
   </section>;

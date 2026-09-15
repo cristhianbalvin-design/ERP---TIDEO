@@ -33,15 +33,25 @@ const normalizeRichTextColumns = value => normalizeLayoutColumns(value, normaliz
 const normalizeRichTextBlock = value => hasLayoutColumns(value)
   ? { columnas:normalizeRichTextColumns(value) }
   : normalizeRichTextDocument(value);
+const normalizeTableSections = value => normalizeLayoutColumns(value, normalizeTable);
+const normalizeTableBlock = value => hasLayoutColumns(value)
+  ? { columnas:normalizeTableSections(value) }
+  : normalizeTable(value);
+
+const textFromTable = value => {
+  const table = normalizeTable(value);
+  return table.filas.map(row => table.columnas.map(column => column.tipo === 'check'
+    ? (row.valores[column.id] ? 'Sí' : 'No')
+    : row.valores[column.id] || '').join(' | ')).join('\n');
+};
 
 const plainTextForBlock = block => {
   if (block.tipo_bloque === 'texto_rico') return hasLayoutColumns(block.contenido_json)
     ? normalizeRichTextColumns(block.contenido_json).map(column => textFromRichText(column.contenido_json)).filter(Boolean).join('\n')
     : block.contenido_texto_plano || textFromRichText(normalizeRichTextDocument(block.contenido_json));
-  if (block.tipo_bloque === 'tabla') {
-    const table = normalizeTable(block.contenido_json);
-    return table.filas.map(row => table.columnas.map(column => column.tipo === 'check' ? (row.valores[column.id] ? 'Sí' : 'No') : row.valores[column.id] || '').join(' | ')).join('\n');
-  }
+  if (block.tipo_bloque === 'tabla') return hasLayoutColumns(block.contenido_json)
+    ? normalizeTableSections(block.contenido_json).map(column => textFromTable(column.contenido_json)).filter(Boolean).join('\n')
+    : textFromTable(block.contenido_json);
   if (block.tipo_bloque === 'condiciones_generales') return '';
   return [block.contenido_json?.fuente_repeticion || '', block.contenido_json?.titulo_item || ''].filter(Boolean).join('\n');
 };
@@ -61,7 +71,7 @@ const blockPayload = (block, plantillaId, parentId = block.bloque_padre_id || nu
   contenido_json: block.tipo_bloque === 'texto_rico'
     ? normalizeRichTextBlock(block.contenido_json)
     : block.tipo_bloque === 'tabla'
-      ? normalizeTable(block.contenido_json)
+      ? normalizeTableBlock(block.contenido_json)
       : block.tipo_bloque === 'condiciones_generales'
         ? { condiciones_tipo_documento_id:block.contenido_json?.condiciones_tipo_documento_id || '' }
       : block.contenido_json || contentForType(block.tipo_bloque),
@@ -92,10 +102,10 @@ const sectionPatch = columns => {
   };
 };
 
-function TablaBlockEditor({ value, disabled, variables, repeatFields = [], onChange }) {
+function TablaContenidoEditor({ value, disabled, variables, repeatFields = [], onChange }) {
   const table = normalizeTable(value);
   const cellRefs = useRef(new Map());
-  const update = next => onChange?.({ contenido_json: next });
+  const update = next => onChange?.(next);
   const updateColumn = (columnId, patch) => update({ ...table, columnas: table.columnas.map(column => column.id === columnId ? { ...column, ...patch } : column) });
   const addColumn = () => {
     const id = newKey();
@@ -129,6 +139,32 @@ function TablaBlockEditor({ value, disabled, variables, repeatFields = [], onCha
       update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
     }}><option value="texto">Texto</option><option value="check">Check</option></select>{repeatFields.length > 0 && column.tipo === 'texto' && <select className="input" value={column.campo_origen || ''} disabled={disabled} onChange={event => updateColumn(column.id, { campo_origen:event.target.value })}><option value="">Contenido estático</option>{repeatFields.map(field => <option key={field.id} value={field.id}>Ítem: {field.label}</option>)}</select>}{!disabled && <button type="button" className="btn btn-ghost" onClick={() => removeColumn(column.id)}>×</button>}</div></th>)}<th style={{width:44}} /></tr></thead><tbody>{table.filas.map(row => <tr key={row.id}>{table.columnas.map(column => <td key={column.id}>{column.tipo === 'check' ? <input type="checkbox" checked={Boolean(row.valores[column.id])} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.checked)} /> : <div className="row" style={{gap:4}}><input ref={input => { const key = cellKey(row.id, column.id); if (input) cellRefs.current.set(key, input); else cellRefs.current.delete(key); }} className="input" value={row.valores[column.id] || ''} disabled={disabled} onChange={event => updateCell(row.id, column, event.target.value)} style={{minWidth:0, flex:'1 1 130px'}} /><VariableInsertSelect variables={variables} disabled={disabled} onInsert={token => insertVariable(row, column, token)} /></div>}</td>)}<td>{!disabled && <button type="button" className="btn btn-ghost" onClick={() => update({ ...table, filas: table.filas.filter(item => item.id !== row.id) })}>×</button>}</td></tr>)}</tbody></table></div>
     {!disabled && <div className="row" style={{gap:8}}><button type="button" className="btn btn-secondary" onClick={addColumn}>+ Columna</button><button type="button" className="btn btn-secondary" onClick={addRow}>+ Fila</button></div>}
+  </div>;
+}
+
+function TablaBlockEditor({ value, disabled, variables, repeatFields = [], onChange }) {
+  const updateSections = next => onChange({
+    // Conserva el JSON histórico mientras exista una sola sección implícita.
+    contenido_json:!hasLayoutColumns(value) && next.length === 1 ? next[0].contenido_json : { columnas:next },
+    contenido_texto_plano:next.map(section => textFromTable(section.contenido_json)).filter(Boolean).join('\n'),
+  });
+  return <div style={{display:'grid', gap:8}}>
+    <div className="text-muted" style={{fontSize:12}}>Cada sección de layout contiene una tabla completa e independiente. Las columnas y filas dentro de cada tabla se configuran por separado.</div>
+    <LayoutColumnsEditor
+      value={value}
+      normalizeContent={normalizeTable}
+      disabled={disabled}
+      onColumnsChange={updateSections}
+      columnLabel="Sección"
+      renderHeader={({ addColumn, canAddColumn }) => !disabled && <button type="button" className="btn btn-ghost" onClick={addColumn} disabled={!canAddColumn} style={{padding:'3px 8px'}}>+ Agregar sección</button>}
+      renderColumn={(section, onContentChange) => <TablaContenidoEditor
+        value={section.contenido_json}
+        disabled={disabled}
+        variables={variables}
+        repeatFields={repeatFields}
+        onChange={onContentChange}
+      />}
+    />
   </div>;
 }
 
