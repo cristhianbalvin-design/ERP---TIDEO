@@ -26,7 +26,9 @@ const normalizeTable = value => {
     id: row?.id || newKey(),
     valores: Object.fromEntries(safeColumns.map(column => [column.id, row?.valores?.[column.id] ?? (column.tipo === 'check' ? false : '')])),
   })) : [];
-  return { columnas: safeColumns, filas };
+  // La ausencia del campo corresponde a tablas creadas antes de esta opción.
+  // Deben conservar su encabezado visible por compatibilidad.
+  return { columnas: safeColumns, filas, mostrar_encabezado:value?.mostrar_encabezado !== false };
 };
 
 const normalizeRichTextColumns = value => normalizeLayoutColumns(value, normalizeRichTextDocument);
@@ -134,6 +136,10 @@ function TablaContenidoEditor({ value, disabled, variables, repeatFields = [], o
   };
   return <div style={{display:'grid', gap:8}}>
     <div className="text-muted" style={{fontSize:12}}>Define columnas de texto o casilla y las filas que debe mostrar la tabla.</div>
+    <label className="row" style={{gap:8, width:'fit-content', fontSize:13, cursor:disabled ? 'default' : 'pointer'}}>
+      <input type="checkbox" checked={table.mostrar_encabezado} disabled={disabled} onChange={event => update({ ...table, mostrar_encabezado:event.target.checked })} />
+      Mostrar encabezado
+    </label>
     <div className="table-wrap"><table className="tbl"><thead><tr>{table.columnas.map(column => <th key={column.id}><div className="row" style={{gap:4, minWidth:130}}><input className="input" value={column.titulo} disabled={disabled} onChange={event => updateColumn(column.id, { titulo:event.target.value })} /><select className="input" value={column.tipo} disabled={disabled} onChange={event => {
       const tipo = event.target.value;
       update({ ...table, columnas: table.columnas.map(item => item.id === column.id ? { ...item, tipo } : item), filas: table.filas.map(row => ({ ...row, valores: { ...row.valores, [column.id]: tipo === 'check' ? Boolean(row.valores[column.id]) : String(row.valores[column.id] || '') } })) });
