@@ -169,6 +169,7 @@ const richTextNodes = value => {
   const nodes = Array.isArray(document?.content) ? document.content : [];
   return nodes.length ? nodes : [{ type:'paragraph', content:[] }];
 };
+const isIntentionallyEmptyRichTextNode = node => node?.type === 'paragraph' && (!Array.isArray(node.content) || node.content.length === 0);
 const richTextNodeDocument = node => ({ type:'doc', content:[node] });
 const richTextParagraphGap = (nodes, index) => nodes[index]?.type === 'paragraph' && index < nodes.length - 1 ? 8 : 0;
 const richTextBlockUnits = block => {
@@ -611,8 +612,8 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   useEffect(() => { onMeasurementsChange?.(medidas); }, [medidas, onMeasurementsChange]);
 
   const todasLasAlturasMedidas = medidas?.key === measurementKey && unidades.every(unit => {
-    if (isRichTextColumnsStream(unit)) return unit.columns.every(column => column.nodes.every((_, index) => Number(medidas.nodosTextoRico?.[richTextNodeKey(unit.textBlockKey, column.id, index)]) > 0));
-    return Number(medidas.unidades?.[unit.key]) > 0;
+    if (isRichTextColumnsStream(unit)) return unit.columns.every(column => column.nodes.every((node, index) => Number(medidas.nodosTextoRico?.[richTextNodeKey(unit.textBlockKey, column.id, index)]) > 0 || isIntentionallyEmptyRichTextNode(node)));
+    return Number(medidas.unidades?.[unit.key]) > 0 || (unit.kind === 'rich-text-node' && isIntentionallyEmptyRichTextNode(unit.node));
   });
   const paginas = useMemo(() => {
     if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:isRepeatUnit(unit) && unit.index === 0, showTableHeader:unit.kind === 'repeat-table-row', continuation:false }))];
