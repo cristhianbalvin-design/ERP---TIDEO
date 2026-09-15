@@ -13,6 +13,7 @@ import BulletList from '@tiptap/extension-bullet-list';
 import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
 import History from '@tiptap/extension-history';
+import HardBreak from '@tiptap/extension-hard-break';
 
 export const FONT_SIZES = [
   { value: '12px', label: 'Pequeño' },
@@ -56,6 +57,7 @@ export const createRichTextExtensions = ({ includeHistory = true } = {}) => [
   Document,
   Paragraph,
   Text,
+  HardBreak,
   TextStyle,
   FontSize,
   LineHeight,
