@@ -8,7 +8,7 @@ import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
-import { PHONE_PATTERN, isValidPhone, isValidRuc, sanitizePhone, sanitizeRuc } from './lib/formValidators.js';
+import { DNI_PATTERN, PHONE_PATTERN, RUC_PATTERN, TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC, TIPO_DOCUMENTO_TAX_ID_EXTRANJERO, TAX_ID_EXTRANJERO_MAX_LENGTH, isValidDocumentoCliente, isValidPhone, sanitizeDocumentoCliente, sanitizePhone } from './lib/formValidators.js';
 import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
@@ -1458,7 +1458,8 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   const buildConvertirFormLead = (lead) => ({
     nombre_comercial: lead.empresa_nombre || lead.empresa_contacto || '',
     razon_social: lead.razon_social || lead.empresa_nombre || lead.empresa_contacto || '',
-    ruc: lead.ruc || '',
+    numero_documento: lead.numero_documento || '',
+    tipo_documento: lead.tipo_documento || TIPO_DOCUMENTO_RUC,
     fuente: lead.fuente || '',
     industria: lead.industria || '',
     contacto_nombre: lead.nombre_contacto || lead.nombre || '',
@@ -1480,10 +1481,10 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
   };
   const confirmarConvertirLead = () => {
     if (!modalConvertirLead || !convertirForm) return;
+    const esPersonaNatural = convertirForm.tipo_documento === TIPO_DOCUMENTO_DNI;
     const requeridos = [
-      'nombre_comercial',
-      'razon_social',
-      'ruc',
+      ...(!esPersonaNatural ? ['nombre_comercial', 'razon_social'] : []),
+      'numero_documento',
       'fuente',
       'industria',
       'contacto_nombre',
@@ -1498,8 +1499,8 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
       setConvertirError('Completa todos los campos obligatorios para crear la oportunidad.');
       return;
     }
-    if (!isValidRuc(convertirForm.ruc)) {
-      setConvertirError('El RUC debe tener 11 digitos y empezar con 1 o 2.');
+    if (!isValidDocumentoCliente(convertirForm.numero_documento, convertirForm.tipo_documento)) {
+      setConvertirError(esPersonaNatural ? 'El DNI debe tener 8 digitos.' : 'El documento es invalido.');
       return;
     }
     if (!isValidPhone(convertirForm.contacto_telefono)) {
@@ -2187,6 +2188,15 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
                     <div className="col" style={{gap:12}}>
                       <div className="input-group">
+                        <label>Tipo de documento *</label>
+                        <select className="input" value={convertirForm.tipo_documento} onChange={e => updateConvertirForm('tipo_documento', e.target.value)}>
+                          <option value={TIPO_DOCUMENTO_RUC}>RUC</option>
+                          <option value={TIPO_DOCUMENTO_DNI}>DNI</option>
+                          <option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option>
+                        </select>
+                      </div>
+                      {convertirForm.tipo_documento !== TIPO_DOCUMENTO_DNI && <>
+                      <div className="input-group">
                         <label>Nombre comercial *</label>
                         <input className="input" value={convertirForm.nombre_comercial} onChange={e => updateConvertirForm('nombre_comercial', e.target.value)} autoFocus />
                       </div>
@@ -2194,11 +2204,12 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
                         <label>Razon social *</label>
                         <input className="input" value={convertirForm.razon_social} onChange={e => updateConvertirForm('razon_social', e.target.value)} />
                       </div>
+                      </>}
                       <div style={mobileFormGrid}>
                         <div className="input-group">
-                          <label>RUC *</label>
-                          <input className="input" inputMode="numeric" maxLength={11} value={convertirForm.ruc}
-                            onChange={e => updateConvertirForm('ruc', sanitizeRuc(e.target.value))} placeholder="20xxxxxxxxx" />
+                          <label>{convertirForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Tax ID extranjero' : convertirForm.tipo_documento === TIPO_DOCUMENTO_DNI ? 'DNI' : 'RUC'} *</label>
+                          <input className="input" inputMode={convertirForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} maxLength={convertirForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : convertirForm.tipo_documento === TIPO_DOCUMENTO_DNI ? 8 : 11} pattern={convertirForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : convertirForm.tipo_documento === TIPO_DOCUMENTO_DNI ? DNI_PATTERN : RUC_PATTERN} value={convertirForm.numero_documento}
+                            onChange={e => updateConvertirForm('numero_documento', sanitizeDocumentoCliente(e.target.value, convertirForm.tipo_documento))} placeholder={convertirForm.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'Identificador fiscal extranjero' : convertirForm.tipo_documento === TIPO_DOCUMENTO_DNI ? '12345678' : '20xxxxxxxxx'} />
                         </div>
                         <div className="input-group">
                           <label>Fuente *</label>

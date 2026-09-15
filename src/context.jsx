@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
@@ -2150,20 +2151,24 @@ export function AppProvider({ children }) {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
 
-    const rucLead = datosConversion.ruc || lead.ruc;
+    const tipoDocumento = datosConversion.tipo_documento || lead.tipo_documento || TIPO_DOCUMENTO_RUC;
+    const esPersonaNatural = tipoDocumento === TIPO_DOCUMENTO_DNI;
+    const numeroDocumento = datosConversion.numero_documento ?? lead.numero_documento;
     const emailContacto = datosConversion.contacto_email || lead.email;
 
-    // Deduplicar cuenta por RUC
-    const cuentaExistente = rucLead && rucLead !== 'Pendiente'
-      ? cuentas.find(c => c.empresa_id === empresa.id && c.ruc === rucLead)
+    // Deduplicar cuenta por tipo y número de documento.
+    const cuentaExistente = numeroDocumento
+      ? cuentas.find(c => c.empresa_id === empresa.id && c.tipo_documento === tipoDocumento && c.ruc === numeroDocumento)
       : null;
 
     const cuentaId = cuentaExistente ? cuentaExistente.id : generateId('cta');
     const nuevaCuenta = cuentaExistente ? null : {
       id: cuentaId,
       empresa_id: empresa.id,
-      razon_social: datosConversion.razon_social || lead.razon_social || lead.empresa_contacto,
-      nombre_comercial: datosConversion.nombre_comercial || lead.empresa_contacto,
+      razon_social: esPersonaNatural ? null : (datosConversion.razon_social || lead.razon_social || lead.empresa_contacto),
+      nombre_comercial: esPersonaNatural
+        ? (datosConversion.contacto_nombre || lead.nombre || lead.nombre_contacto || 'Persona natural')
+        : (datosConversion.nombre_comercial || lead.empresa_contacto),
       tipo: 'prospecto',
       industria: datosConversion.industria || lead.industria || 'Por definir',
       tamano: 'Por definir',
@@ -2183,8 +2188,8 @@ export function AppProvider({ children }) {
       direccion: lead.direccion || 'Pendiente',
       telefono: lead.telefono,
       email: lead.email,
-      ruc: rucLead || 'Pendiente',
-      tipo_documento: datosConversion.tipo_documento || 'RUC',
+      ruc: numeroDocumento || null,
+      tipo_documento: tipoDocumento,
     };
 
     // Deduplicar contacto por email dentro de la misma cuenta

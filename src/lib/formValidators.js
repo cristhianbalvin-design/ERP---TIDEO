@@ -1,6 +1,8 @@
 export const PHONE_PATTERN = '^9\\d{8}$';
 export const RUC_PATTERN = '^[12]\\d{10}$';
+export const DNI_PATTERN = '^\\d{8}$';
 export const TIPO_DOCUMENTO_RUC = 'RUC';
+export const TIPO_DOCUMENTO_DNI = 'DNI';
 export const TIPO_DOCUMENTO_TAX_ID_EXTRANJERO = 'TAX_ID_EXTRANJERO';
 export const TAX_ID_EXTRANJERO_MIN_LENGTH = 3;
 export const TAX_ID_EXTRANJERO_MAX_LENGTH = 30;
@@ -21,6 +23,9 @@ export function sanitizeRuc(value = '') {
 }
 
 export function sanitizeDocumentoCliente(value = '', tipoDocumento = TIPO_DOCUMENTO_RUC) {
+  if (tipoDocumento === TIPO_DOCUMENTO_DNI) {
+    return String(value).replace(/\D/g, '').slice(0, 8);
+  }
   if (tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO) {
     return String(value).replace(/\s+/g, ' ').trimStart().slice(0, TAX_ID_EXTRANJERO_MAX_LENGTH);
   }
@@ -38,6 +43,9 @@ export function isValidRuc(value = '') {
 }
 
 export function isValidDocumentoCliente(value = '', tipoDocumento = TIPO_DOCUMENTO_RUC) {
+  if (tipoDocumento === TIPO_DOCUMENTO_DNI) {
+    return !value || /^\d{8}$/.test(String(value));
+  }
   if (tipoDocumento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO) {
     const taxId = String(value).trim();
     return taxId.length >= TAX_ID_EXTRANJERO_MIN_LENGTH && taxId.length <= TAX_ID_EXTRANJERO_MAX_LENGTH;
