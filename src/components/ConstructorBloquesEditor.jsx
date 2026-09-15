@@ -132,9 +132,9 @@ function TablaBlockEditor({ value, disabled, variables, repeatFields = [], onCha
   </div>;
 }
 
-function AvisoBloqueExcedido({ alFinal = false }) {
+function AvisoBloqueExcedido({ message, alFinal = false }) {
   return <div className="alert alert-warning document-builder-oversized-block-warning" style={{marginTop:10, marginBottom:alFinal ? 0 : 10}}>
-    <strong>Atención:</strong> Este bloque es más alto que una página y no se dividirá; considera separarlo en varios bloques.
+    <strong>Atención:</strong> {message || 'Este bloque es más alto que una página y no se dividirá; considera separarlo en varios bloques.'}
   </div>;
 }
 
@@ -163,7 +163,7 @@ function TextoRicoBlockEditor({ value, disabled, variables, onUploadImage, onCha
   />;
 }
 
-function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, isOversized, isNotEvaluable, oversizedBlockKeys, variables, repeatFields, repeatSources, documentosCondiciones, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
+function BloqueCard({ block, index, total, depth, children, categoria, disabled, saving, saved, oversizedWarning, isNotEvaluable, oversizedWarnings, variables, repeatFields, repeatSources, documentosCondiciones, onUploadImage, onChange, onSave, onRemove, onMove, onAddChild, onChangeBlock, onSaveBlock, onRemoveBlock, onMoveBlock }) {
   const typeLabel = { texto_rico:'Texto', tabla:'Tabla', grupo_repetible:'Grupo repetible', condiciones_generales:'Condiciones Generales' }[block.tipo_bloque] || block.tipo_bloque;
   const esCondicionesGenerales = block.tipo_bloque === 'condiciones_generales';
   const group = { ...emptyGroup(), ...(block.contenido_json || {}) };
@@ -173,19 +173,18 @@ function BloqueCard({ block, index, total, depth, children, categoria, disabled,
       <input className="input" placeholder="Título del bloque (opcional)" value={block.titulo || ''} disabled={disabled || esCondicionesGenerales} onChange={event => onChange({ titulo:event.target.value })} style={{flex:'1 1 220px'}} />
       {!disabled && <><button type="button" className="btn btn-ghost" onClick={() => onMove(index, -1)} disabled={index === 0}>↑</button><button type="button" className="btn btn-ghost" onClick={() => onMove(index, 1)} disabled={index === total - 1}>↓</button><button type="button" className="btn btn-secondary" onClick={onSave} disabled={saving}>{saving ? 'Guardando…' : saved ? 'Guardado ✓' : 'Guardar'}</button><button type="button" className="btn btn-ghost" onClick={onRemove}>Retirar</button></>}
     </div>
-    {isOversized && <AvisoBloqueExcedido />}
+    {oversizedWarning && <AvisoBloqueExcedido message={oversizedWarning} />}
     {isNotEvaluable && <div className="alert alert-info" style={{marginTop:10, marginBottom:10}}><strong>Vista administrativa:</strong> este grupo se medirá por ítem con datos reales de la cotización.</div>}
     <div style={{marginTop:10}}>
       {block.tipo_bloque === 'texto_rico' && <TextoRicoBlockEditor value={block.contenido_json} disabled={disabled} onChange={onChange} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} onUploadImage={onUploadImage} />}
       {block.tipo_bloque === 'tabla' && <TablaBlockEditor value={block.contenido_json} disabled={disabled} variables={[...variables, ...repeatFields.map(field => ({ grupo:'Ítem repetido', label:field.label, token:field.token }))]} repeatFields={repeatFields} onChange={onChange} />}
-      {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedBlockKeys={oversizedBlockKeys} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
+      {block.tipo_bloque === 'grupo_repetible' && <div style={{display:'grid', gap:10}}><div className="grid-2" style={{gap:8}}><div className="input-group"><label>Fuente de repetición</label><input className="input" placeholder="Ej. equipos" value={group.fuente_repeticion} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, fuente_repeticion:event.target.value } })} /></div><div className="input-group"><label>Datos reales</label><select className="input" value={group.fuente_repeticion_id || ''} disabled={disabled} onChange={event => { const source = getDocumentRepeatSource(categoria, event.target.value); onChange({ contenido_json:{ ...group, fuente_repeticion_id:event.target.value, fuente_repeticion:source?.label || group.fuente_repeticion } }); }}><option value="">Sin fuente estructurada (compatibilidad)</option>{repeatSources.map(source => <option key={source.id} value={source.id}>{source.label}</option>)}</select></div><div className="input-group"><label>Título por ítem</label><input className="input" placeholder="Ej. Ítem: {{item.descripcion}}" value={group.titulo_item} disabled={disabled} onChange={event => onChange({ contenido_json:{ ...group, titulo_item:event.target.value } })} /></div></div><div style={{borderTop:'1px solid var(--border)', paddingTop:10}}><strong style={{fontSize:13}}>Bloques por ítem</strong>{!block.id && <div className="text-muted" style={{fontSize:12, marginTop:6}}>Guarda primero el grupo para agregar bloques hijos.</div>}{block.id && <BloquesList blocks={children} parentId={block.id} depth={depth + 1} categoria={categoria} disabled={disabled} oversizedWarnings={oversizedWarnings} variables={variables} onUploadImage={onUploadImage} onChange={onChangeBlock} onSave={onSaveBlock} onRemove={onRemoveBlock} onMove={onMoveBlock} onAdd={onAddChild} />}</div></div>}
       {esCondicionesGenerales && <div className="input-group"><label>Documento de Condiciones a usar</label><select className="input" value={block.contenido_json?.condiciones_tipo_documento_id || ''} disabled={disabled} onChange={event => onChange({ contenido_json:{ condiciones_tipo_documento_id:event.target.value } })}><option value="">Seleccione…</option>{documentosCondiciones.map(documento => <option key={documento.id} value={documento.id}>{documento.nombre}</option>)}</select><div className="text-muted" style={{fontSize:12, marginTop:6}}>El contenido se toma de la versión publicada vigente del documento seleccionado.</div></div>}
     </div>
-    {isOversized && <AvisoBloqueExcedido alFinal />}
   </div>;
 }
 
-function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBlockKeys = new Set(), notEvaluableBlockKeys = new Set(), variables, documentosCondiciones = [], onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
+function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedWarnings = new Map(), notEvaluableBlockKeys = new Set(), variables, documentosCondiciones = [], onUploadImage, onChange, onSave, onRemove, onMove, onAdd }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const items = orderBlocks(blocks);
   const allBlocks = blocks._all || blocks;
@@ -194,7 +193,7 @@ function BloquesList({ blocks, parentId, depth, categoria, disabled, oversizedBl
   const repeatFields = parentSource?.fields || [];
   const decorateChildren = block => Object.assign(orderBlocks(allBlocks.filter(item => item.bloque_padre_id === block.id)), { _all:allBlocks, _savingId:blocks._savingId, _savedId:blocks._savedId });
   return <div style={{marginTop:10}}>
-    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} isOversized={oversizedBlockKeys.has(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedBlockKeys={oversizedBlockKeys} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} documentosCondiciones={documentosCondiciones} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
+    {items.map((block, index) => <BloqueCard key={block.client_key || block.id} block={block} index={index} total={items.length} depth={depth} children={decorateChildren(block)} categoria={categoria} disabled={disabled} saving={blocks._savingId === (block.client_key || block.id)} saved={blocks._savedId === (block.client_key || block.id)} oversizedWarning={oversizedWarnings.get(previewBlockKey(block))} isNotEvaluable={notEvaluableBlockKeys.has(previewBlockKey(block))} oversizedWarnings={oversizedWarnings} variables={variables} repeatFields={repeatFields} repeatSources={getDocumentRepeatSources(categoria)} documentosCondiciones={documentosCondiciones} onUploadImage={onUploadImage} onChange={patch => onChange(block, patch)} onSave={() => onSave(block)} onRemove={() => onRemove(block)} onMove={(itemIndex, direction) => onMove(parentId, itemIndex, direction)} onAddChild={onAdd} onChangeBlock={onChange} onSaveBlock={onSave} onRemoveBlock={onRemove} onMoveBlock={onMove} />)}
     {!disabled && <div style={{marginTop:8}}>{pickerOpen ? <div className="row" style={{gap:8, flexWrap:'wrap'}}><span className="text-muted" style={{fontSize:12}}>Tipo de bloque:</span><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'texto_rico'); setPickerOpen(false); }}>Texto</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'tabla'); setPickerOpen(false); }}>Tabla</button>{depth === 0 && <><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'grupo_repetible'); setPickerOpen(false); }}>Grupo repetible</button><button type="button" className="btn btn-secondary" onClick={() => { onAdd(parentId, 'condiciones_generales'); setPickerOpen(false); }}>Condiciones Generales</button></>}<button type="button" className="btn btn-ghost" onClick={() => setPickerOpen(false)}>Cancelar</button></div> : <button type="button" className="btn btn-secondary" onClick={() => setPickerOpen(true)}>+ Agregar bloque</button>}</div>}
   </div>;
 }
@@ -304,16 +303,25 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const rootBlocks = childrenFor(null);
   const measurementKeyActual = useMemo(() => previewMeasurementKey(draft || publicada, bloques, null, tipo?.categoria_base), [draft, publicada, bloques, tipo?.categoria_base]);
   const bloquesConFuenteReal = useMemo(() => new Set(rootBlocks.filter(block => block.tipo_bloque === 'grupo_repetible' && Boolean(getDocumentRepeatSource(tipo?.categoria_base, block.contenido_json?.fuente_repeticion_id))).map(previewBlockKey)), [rootBlocks, tipo?.categoria_base]);
-  const bloquesMayoresQuePagina = useMemo(() => {
-    const evaluables = rootBlocks.filter(block => !bloquesConFuenteReal.has(previewBlockKey(block)));
-    if (medidasVistaPrevia?.key !== measurementKeyActual || !evaluables.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Set();
+  const advertenciasSobredimensionadas = useMemo(() => {
+    const evaluables = rootBlocks.filter(block => !bloquesConFuenteReal.has(previewBlockKey(block)) && block.tipo_bloque !== 'texto_rico');
+    if (medidasVistaPrevia?.key !== measurementKeyActual || !evaluables.every(block => Number(medidasVistaPrevia.bloques?.[previewBlockKey(block)]) > 0)) return new Map();
     const encabezadoAlcance = normalizedPreviewScope((draft || publicada)?.encabezado_alcance);
     const pieAlcance = normalizedPreviewScope((draft || publicada)?.pie_alcance);
     const capacidadMaxima = Math.max(
       previewPageCapacity(0, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
       previewPageCapacity(1, encabezadoAlcance, pieAlcance, medidasVistaPrevia),
     );
-    return new Set(evaluables.filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima).map(previewBlockKey));
+    const warnings = new Map(evaluables
+      .filter(block => medidasVistaPrevia.bloques[previewBlockKey(block)] > capacidadMaxima)
+      .map(block => [previewBlockKey(block), 'Este bloque es más alto que una página y no se dividirá; considera separarlo en varios bloques.']));
+    (medidasVistaPrevia.textoRicoSobredimensionados || []).forEach(item => {
+      if (warnings.has(item.blockKey)) return;
+      warnings.set(item.blockKey, item.nodeType === 'paragraph'
+        ? `El párrafo ${item.paragraphIndex} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`
+        : `El elemento ${item.index + 1} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`);
+    });
+    return warnings;
   }, [medidasVistaPrevia, measurementKeyActual, rootBlocks, bloquesConFuenteReal, draft, publicada]);
 
   const crearBorrador = async (origen = publicada) => {
@@ -480,9 +488,9 @@ export function ConstructorBloquesEditor({ tipo, empresa, sociedadId, authUser, 
   const plantillaActiva = draft || publicada;
   const editable = Boolean(draft && puedeEditar);
   const cuerpoEditor = draft
-    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
+    ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled={!puedeEditar} oversizedWarnings={advertenciasSobredimensionadas} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={updateBlock} onSave={guardarConFeedback} onRemove={retirar} onMove={mover} onAdd={addBlock} />
     : publicada
-      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedBlockKeys={bloquesMayoresQuePagina} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
+      ? <BloquesList blocks={decoratedRoots} parentId={null} depth={0} categoria={tipo?.categoria_base} disabled oversizedWarnings={advertenciasSobredimensionadas} notEvaluableBlockKeys={bloquesConFuenteReal} variables={variables} documentosCondiciones={documentosCondiciones} onUploadImage={subirImagen} onChange={() => {}} onSave={() => {}} onRemove={() => {}} onMove={() => {}} onAdd={() => {}} />
       : <div className="text-muted">Crea el primer borrador para agregar bloques.</div>;
 
   return <div className={`card document-builder-editor document-builder-editor-${modoVista}`}><div className="card-head"><div><h3>{tipo.nombre}</h3><div className="text-muted">{publicada ? `Vigente: versión ${publicada.version}` : 'Sin versión publicada'}</div></div><div className="row" style={{gap:8}}>{plantillaActiva && <div className="segmented-control"><button type="button" className={`seg-btn ${modoVista === 'editar' ? 'active' : ''}`} onClick={() => setModoVista('editar')}>Editar</button><button type="button" className={`seg-btn ${modoVista === 'vista_previa' ? 'active' : ''}`} onClick={() => setModoVista('vista_previa')}>Vista previa</button></div>}{historial.length > 0 && <button type="button" className="btn btn-ghost" onClick={() => setMostrarHistorial(value => !value)}>Ver historial de versiones</button>}{puedeCrear && !draft && <button type="button" className="btn btn-secondary" onClick={() => crearBorrador(publicada)}> {publicada ? 'Editar: crear borrador' : 'Crear borrador'} </button>}{draft && puedeEditar && <><button type="button" className="btn btn-ghost" onClick={descartarBorrador} disabled={descartando}>{descartando ? 'Descartando…' : 'Descartar borrador'}</button><button type="button" className="btn btn-primary" onClick={publicar} disabled={publicando || descartando}>{publicando ? 'Publicando…' : `Publicar v${draft.version}`}</button></>}</div></div><div className="card-body document-builder-editor-body">
