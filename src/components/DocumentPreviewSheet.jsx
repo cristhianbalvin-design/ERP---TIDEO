@@ -558,7 +558,6 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const measureTableHeaderRefs = useRef(new Map());
   const measureTableWrapRefs = useRef(new Map());
   const [medidas, setMedidas] = useState(null);
-  const [previewReadyKey, setPreviewReadyKey] = useState(null);
   const encabezadoAlcance = normalizedPreviewScope(plantilla?.encabezado_alcance);
   const pieAlcance = normalizedPreviewScope(plantilla?.pie_alcance);
   const measurementKey = useMemo(() => previewMeasurementKey(plantilla, bloquesVistaPrevia, contexto, categoria), [plantilla, bloquesVistaPrevia, contexto, categoria]);
@@ -615,15 +614,6 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
     if (isRichTextColumnsStream(unit)) return unit.columns.every(column => column.nodes.every((_, index) => Number(medidas.nodosTextoRico?.[richTextNodeKey(unit.textBlockKey, column.id, index)]) > 0));
     return Number(medidas.unidades?.[unit.key]) > 0;
   });
-  useEffect(() => {
-    setPreviewReadyKey(null);
-    if (!todasLasAlturasMedidas) return undefined;
-    // Deja un frame adicional para que TipTap aplique su contenido antes de
-    // revelar la hoja visible; evita el salto inicial del encabezado/cuerpo.
-    const frame = window.requestAnimationFrame(() => setPreviewReadyKey(measurementKey));
-    return () => window.cancelAnimationFrame(frame);
-  }, [measurementKey, todasLasAlturasMedidas]);
-  const vistaPreviaLista = todasLasAlturasMedidas && previewReadyKey === measurementKey;
   const paginas = useMemo(() => {
     if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:isRepeatUnit(unit) && unit.index === 0, showTableHeader:unit.kind === 'repeat-table-row', continuation:false }))];
     return paginateDocumentPreviewUnits(unidades, encabezadoAlcance, pieAlcance, medidas);
@@ -655,7 +645,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
     {(instanciasSobredimensionadas.length > 0 || textosRicosSobredimensionados.length > 0) && <div className="alert alert-warning" style={{margin:'0 0 12px'}}><strong>Atención:</strong> {[...instanciasSobredimensionadas.map(unit => `El ítem ${unit.index + 1}${unit.block.titulo ? ` de ${unit.block.titulo}` : ''} es más alto que una página y no se dividirá.`), ...textosRicosSobredimensionados.map(item => item.nodeType === 'paragraph'
       ? `El párrafo ${item.paragraphIndex} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`
       : `El elemento ${item.index + 1} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`)].join(' ')}</div>}
-    <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}>{!vistaPreviaLista && <div className="document-preview-loading" role="status">Preparando vista previa…</div>}<div className="document-preview-pages" style={{visibility:vistaPreviaLista ? 'visible' : 'hidden'}} aria-hidden={!vistaPreviaLista}>{paginas.map((pagina, index) => {
+    <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}><div className="document-preview-pages">{paginas.map((pagina, index) => {
       const mostrarEncabezado = index === 0 || encabezadoAlcance === 'todas';
       const mostrarPie = index === 0 || pieAlcance === 'todas';
       return <div key={`pagina-${index}`} className="document-preview-sheet-frame"><article className="document-preview-sheet" aria-label={`Vista previa de documento, página ${index + 1}`}>
