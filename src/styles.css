@@ -4308,6 +4308,10 @@ body {
 .document-preview-footer { margin-top: 28px; padding-top: 0; border-top: 1px solid #dbe2ea; }
 .document-preview-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding-top: 0; }
 .document-preview-block { margin: 0 0 10px; }
+.document-preview-rich-text-flow { margin: 0; }
+.document-preview-rich-text-flow-final { margin-bottom: 10px; }
+.document-preview-rich-text-flow-node { min-width: 0; }
+.document-preview-text-block-heading { margin: 0 0 8px; font-size: 14px; color: #172033; }
 .document-preview-block h4 { margin: 0 0 8px; font-size: 14px; color: #172033; }
 .document-preview-conditions-segment { margin: 0 0 14px; }
 .document-preview-conditions-segment:last-child { margin-bottom: 0; }

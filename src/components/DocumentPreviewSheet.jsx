@@ -159,12 +159,51 @@ const normalizeSectionColumns = value => normalizeLayoutColumns(value, normalize
 const groupConfig = block => ({ fuente_repeticion:'', fuente_repeticion_id:'', titulo_item:'', ...(block.contenido_json || {}) });
 const itemIdentity = (item, index) => item?.id || item?.uuid || item?.codigo || index + 1;
 export const previewGroupTitleKey = (unit, continuation) => `${unit.groupKey}:${continuation ? 'continuacion' : 'inicio'}`;
+export const previewTextBlockTitleKey = (unit, continuation) => `${unit.textBlockKey}:${continuation ? 'continuacion' : 'inicio'}`;
+
+const isRichTextFlowUnit = unit => unit.kind === 'rich-text-node' || unit.kind === 'rich-text-columns-fragment';
+const isRichTextColumnsStream = unit => unit.kind === 'rich-text-columns-stream';
+const richTextNodeKey = (blockKey, columnId, index) => `${blockKey}:rich-text:${columnId}:${index}`;
+const richTextNodes = value => {
+  const document = normalizeRichTextDocument(value);
+  const nodes = Array.isArray(document?.content) ? document.content : [];
+  return nodes.length ? nodes : [{ type:'paragraph', content:[] }];
+};
+const richTextNodeDocument = node => ({ type:'doc', content:[node] });
+const richTextParagraphGap = (nodes, index) => nodes[index]?.type === 'paragraph' && index < nodes.length - 1 ? 8 : 0;
+const richTextBlockUnits = block => {
+  const blockKey = previewBlockKey(block);
+  if (hasLayoutColumns(block.contenido_json)) {
+    return [{
+      kind:'rich-text-columns-stream',
+      key:`${blockKey}:rich-text-columns`,
+      textBlockKey:blockKey,
+      block,
+      columns:normalizeLayoutColumns(block.contenido_json, normalizeRichTextDocument).map(column => ({
+        ...column,
+        nodes:richTextNodes(column.contenido_json),
+      })),
+    }];
+  }
+  const nodes = richTextNodes(block.contenido_json);
+  return nodes.map((node, index) => ({
+    kind:'rich-text-node',
+    key:richTextNodeKey(blockKey, 'legacy', index),
+    textBlockKey:blockKey,
+    block,
+    node,
+    index,
+    isLast:index === nodes.length - 1,
+    paragraphIndex:node?.type === 'paragraph' ? nodes.slice(0, index + 1).filter(item => item?.type === 'paragraph').length : null,
+  }));
+};
 
 // Mantiene el comportamiento previo para grupos sin una fuente estructurada o
 // cuando el editor administrativo no cuenta con datos transaccionales reales.
 export const createDocumentPreviewFlowUnits = (bloques, categoria, contexto) => {
   const raiz = orderDocumentPreviewBlocks(bloques.filter(block => !block.bloque_padre_id));
   return raiz.flatMap(block => {
+    if (block.tipo_bloque === 'texto_rico') return richTextBlockUnits(block);
     const group = block.tipo_bloque === 'grupo_repetible' ? groupConfig(block) : null;
     const source = group ? getDocumentRepeatSource(categoria, group.fuente_repeticion_id) : null;
     const items = source ? getRepeatSourceItems(contexto, source.id) : null;
@@ -198,12 +237,131 @@ export const createDocumentPreviewFlowUnits = (bloques, categoria, contexto) => 
   });
 };
 
+const textBlockHeadingHeight = (unit, continuation, medidas) => unit.block?.titulo
+  ? Number(medidas.titulosTextoRico?.[previewTextBlockTitleKey(unit, continuation)] || 0)
+  : 0;
+
+const richTextColumnRangeHeight = (stream, column, start, end, medidas) => {
+  let height = 0;
+  for (let index = start; index < end; index += 1) {
+    height += Number(medidas.nodosTextoRico?.[richTextNodeKey(stream.textBlockKey, column.id, index)] || 0);
+    height += (richTextParagraphGap(column.nodes, index) && index < end - 1) ? 8 : 0;
+  }
+  return height;
+};
+
+const nextRichTextColumnsFragment = (stream, cursors, maxHeight, medidas, fragmentIndex) => {
+  const ranges = stream.columns.map((column, columnIndex) => {
+    const start = cursors[columnIndex];
+    let end = start;
+    while (end < column.nodes.length) {
+      const nextHeight = richTextColumnRangeHeight(stream, column, start, end + 1, medidas);
+      if (end > start && nextHeight > maxHeight) break;
+      end += 1;
+      if (nextHeight > maxHeight) break;
+    }
+    return { start, end };
+  });
+  return {
+    kind:'rich-text-columns-fragment',
+    key:`${stream.key}:fragment:${fragmentIndex}`,
+    textBlockKey:stream.textBlockKey,
+    block:stream.block,
+    columns:stream.columns,
+    ranges,
+    index:fragmentIndex,
+    isLast:ranges.every((range, columnIndex) => range.end >= stream.columns[columnIndex].nodes.length),
+    height:Math.max(0, ...ranges.map((range, columnIndex) => richTextColumnRangeHeight(stream, stream.columns[columnIndex], range.start, range.end, medidas))),
+  };
+};
+
+const textFlowEntry = (unit, paginaActual, medidas) => {
+  const previous = paginaActual.at(-1)?.unit;
+  const showTextTitle = Boolean(unit.block?.titulo) && previous?.textBlockKey !== unit.textBlockKey;
+  const continuation = showTextTitle && unit.index > 0;
+  const titleHeight = showTextTitle ? textBlockHeadingHeight(unit, continuation, medidas) : 0;
+  const contentHeight = unit.kind === 'rich-text-columns-fragment'
+    ? unit.height + (unit.isLast ? 10 : 0)
+    : Number(medidas.unidades?.[unit.key] || 0);
+  return { unit, showTextTitle, continuation, alto:contentHeight + titleHeight };
+};
+
+const richTextOversizedNodes = (unidades, encabezadoAlcance, pieAlcance, medidas) => {
+  const capacity = Math.max(
+    previewPageCapacity(0, encabezadoAlcance, pieAlcance, medidas),
+    previewPageCapacity(1, encabezadoAlcance, pieAlcance, medidas),
+  );
+  const descriptors = [];
+  const add = ({ block, blockKey, node, index, paragraphIndex, height }) => {
+    const title = block?.titulo ? Math.max(
+      Number(medidas.titulosTextoRico?.[`${blockKey}:inicio`] || 0),
+      Number(medidas.titulosTextoRico?.[`${blockKey}:continuacion`] || 0),
+    ) : 0;
+    if (height + title <= capacity) return;
+    descriptors.push({
+      blockKey,
+      nodeType:node?.type || 'elemento',
+      index,
+      paragraphIndex,
+      blockTitle:block?.titulo || '',
+    });
+  };
+  unidades.forEach(unit => {
+    if (unit.kind === 'rich-text-node') {
+      add({ block:unit.block, blockKey:unit.textBlockKey, node:unit.node, index:unit.index, paragraphIndex:unit.paragraphIndex, height:Number(medidas.unidades?.[unit.key] || 0) });
+    }
+    if (isRichTextColumnsStream(unit)) unit.columns.forEach(column => {
+      let paragraphIndex = 0;
+      column.nodes.forEach((node, index) => {
+        if (node?.type === 'paragraph') paragraphIndex += 1;
+        add({ block:unit.block, blockKey:unit.textBlockKey, node, index, paragraphIndex:node?.type === 'paragraph' ? paragraphIndex : null, height:Number(medidas.nodosTextoRico?.[richTextNodeKey(unit.textBlockKey, column.id, index)] || 0) });
+      });
+    });
+  });
+  return descriptors;
+};
+
 export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlcance, medidas) => {
   const resultado = [];
   let paginaActual = [];
   let altoUsado = 0;
-  unidades.forEach(unit => {
+  const cerrarPagina = () => {
+    resultado.push(paginaActual);
+    paginaActual = [];
+    altoUsado = 0;
+  };
+  for (const unit of unidades) {
+    if (isRichTextColumnsStream(unit)) {
+      const cursors = unit.columns.map(() => 0);
+      let fragmentIndex = 0;
+      while (cursors.some((cursor, columnIndex) => cursor < unit.columns[columnIndex].nodes.length)) {
+        const createEntry = () => {
+          const continuation = fragmentIndex > 0;
+          const showTextTitle = Boolean(unit.block?.titulo) && paginaActual.at(-1)?.unit?.textBlockKey !== unit.textBlockKey;
+          const titleHeight = showTextTitle ? textBlockHeadingHeight({ ...unit, index:fragmentIndex }, continuation, medidas) : 0;
+          const pageCapacity = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
+          // Reserva el mismo espacio final que tenía un bloque completo para
+          // que el último fragmento no desborde al siguiente bloque.
+          const fragment = nextRichTextColumnsFragment(unit, cursors, Math.max(0, pageCapacity - altoUsado - titleHeight - 10), medidas, fragmentIndex);
+          return { unit:fragment, showTextTitle, continuation, alto:fragment.height + (fragment.isLast ? 10 : 0) + titleHeight };
+        };
+        let entry = createEntry();
+        let pageCapacity = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
+        if (paginaActual.length && altoUsado + entry.alto > pageCapacity) {
+          cerrarPagina();
+          entry = createEntry();
+          pageCapacity = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
+        }
+        paginaActual.push(entry);
+        altoUsado += entry.alto;
+        entry.unit.ranges.forEach((range, index) => { cursors[index] = range.end; });
+        fragmentIndex += 1;
+        if (!entry.unit.isLast) cerrarPagina();
+      }
+      continue;
+    }
     const colocar = () => {
+      if (isRichTextFlowUnit(unit)) return textFlowEntry(unit, paginaActual, medidas);
       const anterior = paginaActual.at(-1)?.unit;
       const showGroupTitle = isRepeatUnit(unit) && anterior?.groupKey !== unit.groupKey;
       const showTableHeader = unit.kind === 'repeat-table-row' && anterior?.tableKey !== unit.tableKey;
@@ -215,15 +373,13 @@ export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlc
     let entry = colocar();
     let altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
     if (paginaActual.length && altoUsado + entry.alto > altoDisponible) {
-      resultado.push(paginaActual);
-      paginaActual = [];
-      altoUsado = 0;
+      cerrarPagina();
       entry = colocar();
       altoDisponible = previewPageCapacity(resultado.length, encabezadoAlcance, pieAlcance, medidas);
     }
     paginaActual.push(entry);
     altoUsado += entry.alto;
-  });
+  }
   if (paginaActual.length || !resultado.length) resultado.push(paginaActual);
   return resultado;
 };
@@ -244,6 +400,45 @@ function VistaBloque({ block, bloques, categoria, contexto, measurementRef = nul
     {grupo && <div className="document-preview-repeat"><div className="document-preview-repeat-note">↻ Se repite por cada {grupo.fuente_repeticion || 'elemento'}</div>{grupo.titulo_item && <h4>{grupo.titulo_item}</h4>}{hijos.map(hijo => <VistaBloque key={hijo.client_key || hijo.id} block={hijo} bloques={bloques} categoria={categoria} contexto={contexto} />)}</div>}
     {condiciones && <VistaCondicionesGenerales condiciones={condiciones} categoria={categoria} contexto={contexto} />}
   </section>;
+}
+
+function TextBlockHeading({ unit, categoria, contexto, continuation = false, measurementRef = null }) {
+  if (!unit.block?.titulo) return null;
+  const title = renderTableText(unit.block.titulo, categoria, contexto);
+  return <h4 ref={measurementRef} className="document-preview-text-block-heading">{continuation ? `${title} (continuación)` : title}</h4>;
+}
+
+function RichTextFlowNode({ node, categoria, contexto, addParagraphGap = false, measurementRef = null }) {
+  return <div ref={measurementRef} className="document-preview-rich-text-flow-node" style={{marginBottom:addParagraphGap ? 8 : 0}}>
+    <DocumentPreviewRichText value={richTextNodeDocument(node)} categoria={categoria} contexto={contexto} />
+  </div>;
+}
+
+function RichTextFlowNodes({ nodes, start = 0, end = nodes.length, categoria, contexto, measurementRefForNode = null, includeParagraphGaps = true }) {
+  return <>{nodes.slice(start, end).map((node, offset) => {
+    const index = start + offset;
+    return <RichTextFlowNode key={index} node={node} categoria={categoria} contexto={contexto} addParagraphGap={includeParagraphGaps && richTextParagraphGap(nodes, index) > 0 && index < end - 1} measurementRef={measurementRefForNode?.(index)} />;
+  })}</>;
+}
+
+function VistaTextoRicoFlujo({ unit, categoria, contexto, showTextTitle = false, continuation = false, measurementRef = null }) {
+  const isColumnsFragment = unit.kind === 'rich-text-columns-fragment';
+  return <section ref={measurementRef} className={`document-preview-rich-text-flow${unit.isLast ? ' document-preview-rich-text-flow-final' : ''}`}>
+    {showTextTitle && <TextBlockHeading unit={unit} categoria={categoria} contexto={contexto} continuation={continuation} />}
+    {isColumnsFragment
+      ? <div className="document-preview-columns" style={{gridTemplateColumns:unit.columns.map(column => column.ancho).join(' ')}}>{unit.columns.map((column, columnIndex) => {
+        const range = unit.ranges[columnIndex];
+        return <div key={column.id} className="document-preview-column"><RichTextFlowNodes nodes={column.nodes} start={range.start} end={range.end} categoria={categoria} contexto={contexto} /></div>;
+      })}</div>
+      : <RichTextFlowNode node={unit.node} categoria={categoria} contexto={contexto} addParagraphGap={!unit.isLast && unit.node?.type === 'paragraph'} />}
+  </section>;
+}
+
+function MedicionTextoRicoColumnas({ unit, categoria, contexto, measureNodeRefs }) {
+  return <section className="document-preview-rich-text-flow"><div className="document-preview-columns" style={{gridTemplateColumns:unit.columns.map(column => column.ancho).join(' ')}}>{unit.columns.map(column => <div key={column.id} className="document-preview-column"><RichTextFlowNodes nodes={column.nodes} categoria={categoria} contexto={contexto} includeParagraphGaps={false} measurementRefForNode={index => node => {
+    const key = richTextNodeKey(unit.textBlockKey, column.id, index);
+    if (node) measureNodeRefs.current.set(key, node); else measureNodeRefs.current.delete(key);
+  }} /></div>)}</div></section>;
 }
 
 function VistaCondicionesGenerales({ condiciones, categoria, contexto }) {
@@ -280,6 +475,8 @@ function VistaUnidadFlujo({ entry, bloques, categoria, contexto, measurementRef 
   const { unit } = entry;
   if (unit.kind === 'repeat-instance') return <VistaInstanciaRepetida unit={unit} bloques={bloques} categoria={categoria} contexto={contexto} showGroupTitle={entry.showGroupTitle} continuation={entry.continuation} measurementRef={measurementRef} />;
   if (unit.kind === 'repeat-table-row') return null;
+  if (isRichTextFlowUnit(unit)) return <VistaTextoRicoFlujo unit={unit} categoria={categoria} contexto={contexto} showTextTitle={entry.showTextTitle} continuation={entry.continuation} measurementRef={measurementRef} />;
+  if (isRichTextColumnsStream(unit)) return <VistaBloque block={unit.block} bloques={bloques} categoria={categoria} contexto={contexto} measurementRef={measurementRef} />;
   return <VistaBloque block={unit.block} bloques={bloques} categoria={categoria} contexto={contexto} measurementRef={measurementRef} />;
 }
 
@@ -356,6 +553,8 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const measureFooterRef = useRef(null);
   const measureUnitRefs = useRef(new Map());
   const measureGroupTitleRefs = useRef(new Map());
+  const measureTextTitleRefs = useRef(new Map());
+  const measureRichTextNodeRefs = useRef(new Map());
   const measureTableHeaderRefs = useRef(new Map());
   const measureTableWrapRefs = useRef(new Map());
   const [medidas, setMedidas] = useState(null);
@@ -363,6 +562,9 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
   const pieAlcance = normalizedPreviewScope(plantilla?.pie_alcance);
   const measurementKey = useMemo(() => previewMeasurementKey(plantilla, bloquesVistaPrevia, contexto, categoria), [plantilla, bloquesVistaPrevia, contexto, categoria]);
   const titleMeasurements = useMemo(() => unidades.filter(unit => isRepeatUnit(unit) && unit.block.titulo).filter((unit, index, list) => list.findIndex(item => item.groupKey === unit.groupKey) === index), [unidades]);
+  const textTitleMeasurements = useMemo(() => unidades
+    .filter(unit => (unit.kind === 'rich-text-node' || isRichTextColumnsStream(unit)) && unit.block.titulo)
+    .filter((unit, index, list) => list.findIndex(item => item.textBlockKey === unit.textBlockKey) === index), [unidades]);
 
   useLayoutEffect(() => {
     let activo = true;
@@ -373,6 +575,11 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         [previewGroupTitleKey(unit, false), measureNodeHeight(measureGroupTitleRefs.current.get(previewGroupTitleKey(unit, false)))],
         [previewGroupTitleKey(unit, true), measureNodeHeight(measureGroupTitleRefs.current.get(previewGroupTitleKey(unit, true)))],
       ])));
+      const textTitleHeights = Object.fromEntries(textTitleMeasurements.flatMap(unit => ([
+        [previewTextBlockTitleKey(unit, false), measureNodeHeight(measureTextTitleRefs.current.get(previewTextBlockTitleKey(unit, false)))],
+        [previewTextBlockTitleKey(unit, true), measureNodeHeight(measureTextTitleRefs.current.get(previewTextBlockTitleKey(unit, true)))],
+      ])));
+      const richTextNodeHeights = Object.fromEntries([...measureRichTextNodeRefs.current.entries()].map(([key, node]) => [key, measureNodeHeight(node)]));
       const tableHeaderHeights = Object.fromEntries([...measureTableHeaderRefs.current.keys()].map(tableKey => {
         const headerHeight = measureNodeHeight(measureTableHeaderRefs.current.get(tableKey));
         const rowHeight = unidades.filter(unit => unit.kind === 'repeat-table-row' && unit.tableKey === tableKey).reduce((sum, unit) => sum + measureNodeHeight(measureUnitRefs.current.get(unit.key)), 0);
@@ -385,22 +592,28 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         bloques:Object.fromEntries(unidades.filter(unit => unit.kind === 'block').map(unit => [unit.key, unitHeights[unit.key]])),
         unidades:unitHeights,
         titulosGrupo:titleHeights,
+        titulosTextoRico:textTitleHeights,
+        nodosTextoRico:richTextNodeHeights,
         encabezadosTabla:tableHeaderHeights,
         encabezado:measureHeaderRef.current?.getBoundingClientRect().height || 0,
         pie:(measureFooterRef.current?.getBoundingClientRect().height || 0) + Number.parseFloat(footerStyles?.marginTop || 0),
       };
+      next.textoRicoSobredimensionados = richTextOversizedNodes(unidades, encabezadoAlcance, pieAlcance, next);
       setMedidas(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
     };
     const frame = window.requestAnimationFrame(medir);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(medir);
-    [measureSheetRef.current, measureHeaderRef.current, measureFooterRef.current, ...measureUnitRefs.current.values(), ...measureGroupTitleRefs.current.values(), ...measureTableHeaderRefs.current.values(), ...measureTableWrapRefs.current.values()].filter(Boolean).forEach(node => observer?.observe(node));
+    [measureSheetRef.current, measureHeaderRef.current, measureFooterRef.current, ...measureUnitRefs.current.values(), ...measureGroupTitleRefs.current.values(), ...measureTextTitleRefs.current.values(), ...measureRichTextNodeRefs.current.values(), ...measureTableHeaderRefs.current.values(), ...measureTableWrapRefs.current.values()].filter(Boolean).forEach(node => observer?.observe(node));
     document.fonts?.ready?.then(medir);
     return () => { activo = false; window.cancelAnimationFrame(frame); observer?.disconnect(); };
-  }, [measurementKey, unidades, titleMeasurements]);
+  }, [measurementKey, unidades, titleMeasurements, textTitleMeasurements]);
 
   useEffect(() => { onMeasurementsChange?.(medidas); }, [medidas, onMeasurementsChange]);
 
-  const todasLasAlturasMedidas = medidas?.key === measurementKey && unidades.every(unit => Number(medidas.unidades?.[unit.key]) > 0);
+  const todasLasAlturasMedidas = medidas?.key === measurementKey && unidades.every(unit => {
+    if (isRichTextColumnsStream(unit)) return unit.columns.every(column => column.nodes.every((_, index) => Number(medidas.nodosTextoRico?.[richTextNodeKey(unit.textBlockKey, column.id, index)]) > 0));
+    return Number(medidas.unidades?.[unit.key]) > 0;
+  });
   const paginas = useMemo(() => {
     if (!todasLasAlturasMedidas) return [unidades.map(unit => ({ unit, showGroupTitle:isRepeatUnit(unit) && unit.index === 0, showTableHeader:unit.kind === 'repeat-table-row', continuation:false }))];
     return paginateDocumentPreviewUnits(unidades, encabezadoAlcance, pieAlcance, medidas);
@@ -415,10 +628,13 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
       return Number(medidas.unidades?.[unit.key] || 0) + titulo + encabezadoTabla > capacidadMaxima;
     });
   }, [todasLasAlturasMedidas, unidades, encabezadoAlcance, pieAlcance, medidas]);
+  const textosRicosSobredimensionados = useMemo(() => todasLasAlturasMedidas ? medidas?.textoRicoSobredimensionados || [] : [], [todasLasAlturasMedidas, medidas]);
 
   const medicion = <div className="document-preview-measure" aria-hidden="true"><article ref={measureSheetRef} className="document-preview-sheet">
     <header ref={measureHeaderRef} className="document-preview-header"><VistaSeccionPlantilla value={plantilla?.encabezado_json} categoria={categoria} contexto={contexto} /></header>
-    <main className="document-preview-body">{unidades.filter(unit => unit.kind !== 'repeat-table-row').map(unit => <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloquesVistaPrevia} categoria={categoria} contexto={contexto} />)}<MedicionTablasRepetidas unidades={unidades} categoria={categoria} contexto={contexto} measureUnitRefs={measureUnitRefs} measureTableHeaderRefs={measureTableHeaderRefs} measureTableWrapRefs={measureTableWrapRefs} />{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}</main>
+    <main className="document-preview-body">{unidades.filter(unit => unit.kind !== 'repeat-table-row').map(unit => isRichTextColumnsStream(unit)
+      ? <MedicionTextoRicoColumnas key={unit.key} unit={unit} categoria={categoria} contexto={contexto} measureNodeRefs={measureRichTextNodeRefs} />
+      : <VistaUnidadFlujo key={unit.key} entry={{ unit, showGroupTitle:false, showTextTitle:false, continuation:false }} measurementRef={node => { if (node) measureUnitRefs.current.set(unit.key, node); else measureUnitRefs.current.delete(unit.key); }} bloques={bloquesVistaPrevia} categoria={categoria} contexto={contexto} />)}<MedicionTablasRepetidas unidades={unidades} categoria={categoria} contexto={contexto} measureUnitRefs={measureUnitRefs} measureTableHeaderRefs={measureTableHeaderRefs} measureTableWrapRefs={measureTableWrapRefs} />{titleMeasurements.flatMap(unit => [false, true].map(continuation => <GroupHeading key={previewGroupTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={{ ...(contexto || {}), item:unit.item }} continuation={continuation} measurementRef={node => { if (node) measureGroupTitleRefs.current.set(previewGroupTitleKey(unit, continuation), node); else measureGroupTitleRefs.current.delete(previewGroupTitleKey(unit, continuation)); }} />))}{textTitleMeasurements.flatMap(unit => [false, true].map(continuation => <TextBlockHeading key={previewTextBlockTitleKey(unit, continuation)} unit={unit} categoria={categoria} contexto={contexto} continuation={continuation} measurementRef={node => { if (node) measureTextTitleRefs.current.set(previewTextBlockTitleKey(unit, continuation), node); else measureTextTitleRefs.current.delete(previewTextBlockTitleKey(unit, continuation)); }} />))}</main>
     <footer ref={measureFooterRef} className="document-preview-footer"><VistaSeccionPlantilla value={plantilla?.pie_json} categoria={categoria} contexto={contexto} /></footer>
   </article></div>;
 
@@ -426,7 +642,9 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
 
   return <div className="document-preview">
     <div className="document-preview-toolbar"><span className="text-muted">Vista previa</span><div className="row" style={{gap:6}}><button type="button" className="btn btn-ghost" onClick={() => onZoom(zoom - 10)} disabled={zoom <= 50} aria-label="Alejar">−</button><span className="document-preview-zoom">{zoom}%</span><button type="button" className="btn btn-ghost" onClick={() => onZoom(zoom + 10)} disabled={zoom >= 150} aria-label="Acercar">+</button></div></div>
-    {instanciasSobredimensionadas.length > 0 && <div className="alert alert-warning" style={{margin:'0 0 12px'}}><strong>Atención:</strong> {instanciasSobredimensionadas.map(unit => `El ítem ${unit.index + 1}${unit.block.titulo ? ` de ${unit.block.titulo}` : ''} es más alto que una página y no se dividirá.`).join(' ')}</div>}
+    {(instanciasSobredimensionadas.length > 0 || textosRicosSobredimensionados.length > 0) && <div className="alert alert-warning" style={{margin:'0 0 12px'}}><strong>Atención:</strong> {[...instanciasSobredimensionadas.map(unit => `El ítem ${unit.index + 1}${unit.block.titulo ? ` de ${unit.block.titulo}` : ''} es más alto que una página y no se dividirá.`), ...textosRicosSobredimensionados.map(item => item.nodeType === 'paragraph'
+      ? `El párrafo ${item.paragraphIndex} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`
+      : `El elemento ${item.index + 1} del bloque «${item.blockTitle || 'Sin título'}» es más alto que una página y no puede dividirse.`)].join(' ')}</div>}
     <div className="document-preview-stage" style={{'--document-preview-scale': zoom / 100}}><div className="document-preview-pages">{paginas.map((pagina, index) => {
       const mostrarEncabezado = index === 0 || encabezadoAlcance === 'todas';
       const mostrarPie = index === 0 || pieAlcance === 'todas';
