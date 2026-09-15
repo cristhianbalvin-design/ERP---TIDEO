@@ -14302,6 +14302,85 @@ function RRHHAdmin() {
     .sort((a, b) => b._vacDisp - a._vacDisp);
   const solPend = solicitudesRRHH.filter(s => s.estado === 'pendiente' && personalAdminVisibleIds.has(s.personal_id));
 
+  const descargarPersonalAdministrativoExcel = () => {
+    if (!todosPersonal.length) {
+      addNotificacion('No hay personal administrativo para exportar.', 'error');
+      return;
+    }
+    const sociedadesPorId = new Map((sociedadesDisponibles || []).map(s => [s.id, s.nombre || s.razon_social || s.nombre_comercial || s.id]));
+    const cecosPorId = new Map((centrosCosto || []).map(c => [c.id, [c.codigo, c.nombre].filter(Boolean).join(' - ') || c.id]));
+    const turnosPorId = new Map((turnosOptions || []).map(t => [t.id, t.nombre || t.id]));
+    const usuariosPorId = new Map((usuariosEmpresa || []).map(u => [u.id, u]));
+    const idsPersonal = new Set(todosPersonal.map(p => p.id));
+    const filasPersonal = todosPersonal.map(p => {
+      const esHonorarios = normalizarModalidadContrato(p.modalidad_contrato || p.modalidad || p.tipo_contrato) === 'honorarios';
+      const contrato = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+      const sociedades = (resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id) || [])
+        .map(id => sociedadesPorId.get(id) || id)
+        .join(', ');
+      const posicion = posiciones.find(pos => pos.id === p.posicion_id);
+      const usuario = usuariosPorId.get(p.auth_user_id);
+      const fila = {
+        'Código': p.codigo || '',
+        'Colaborador': p.nombre || '',
+        'DNI / documento': p.dni || p.documento || '',
+        'Estado': p.estado || '',
+        'Modalidad': esHonorarios ? 'Honorarios' : (p.modalidad || 'Planilla'),
+        'Tipo de contrato': p.tipo_contrato || '',
+        'Cargo': p.cargo || '',
+        'Unidad organizacional': unidadNombrePorId.get(posicion?.unidad_organizacional_id) || p.area || '',
+        'Sede': p.sede || '',
+        'Centro de costo (CECO)': cecosPorId.get(p.centro_costo_id) || '',
+        'Turno': esHonorarios ? '' : (turnosPorId.get(p.turno_id) || ''),
+        'Jornada': labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general'),
+        'Fecha de ingreso': p.fecha_ingreso || p.fecha_inicio || '',
+        'Email corporativo': p.email || '',
+        'Email personal': p.email_personal || '',
+        'Teléfono': p.telefono || p.celular_personal || '',
+        'Dirección': p.direccion || '',
+        'Sociedad': sociedades,
+        'Contrato vigente - emisión': contrato?.fecha_emision || '',
+        'Contrato vigente - vencimiento': contrato?.fecha_vencimiento || '',
+        'Usuario de sistema': usuario?.nombre || usuario?.email || '',
+        'Vacaciones disponibles': esHonorarios ? '' : rrhhAdminCalcVacProp(p, solicitudesRRHH),
+      };
+      if (canFinanzasAdmin) {
+        fila['Moneda'] = p.moneda || 'PEN';
+        fila['Remuneración / monto mensual'] = p.sueldo_base ?? p.remuneracion ?? p.monto_mensual ?? '';
+        fila['Horas base al mes'] = p.horas_base_mes ?? '';
+        fila['Tarifa por hora'] = p.tarifa_hora ?? p.costo_hora_real ?? '';
+      }
+      return fila;
+    });
+    const filasDocumentos = (personalDocumentos || [])
+      .filter(doc => idsPersonal.has(doc.personal_id))
+      .map(doc => {
+        const persona = todosPersonal.find(p => p.id === doc.personal_id);
+        const tipo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc));
+        return {
+          'Código': persona?.codigo || '',
+          'Colaborador': persona?.nombre || '',
+          'Tipo de documento': tipo?.nombre || doc.tipo_documento_nombre || doc.tipo_doc || '',
+          'Estado': doc.estado_validacion || doc.estado || '',
+          'Fecha de emisión': doc.fecha_emision || '',
+          'Fecha de vencimiento': doc.fecha_vencimiento || '',
+          'Sociedad': sociedadesPorId.get(doc.sociedad_id) || '',
+          'Notas': doc.notas || '',
+        };
+      });
+    const libro = XLSX.utils.book_new();
+    const hojaPersonal = XLSX.utils.json_to_sheet(filasPersonal);
+    hojaPersonal['!cols'] = Object.keys(filasPersonal[0]).map(key => ({ wch: Math.min(Math.max(key.length + 2, ...filasPersonal.map(f => String(f[key] ?? '').length + 2)), 36) }));
+    XLSX.utils.book_append_sheet(libro, hojaPersonal, 'Personal administrativo');
+    const hojaDocumentos = filasDocumentos.length
+      ? XLSX.utils.json_to_sheet(filasDocumentos)
+      : XLSX.utils.aoa_to_sheet([['Código', 'Colaborador', 'Tipo de documento', 'Estado', 'Fecha de emisión', 'Fecha de vencimiento', 'Sociedad', 'Notas']]);
+    hojaDocumentos['!cols'] = [14, 32, 28, 18, 18, 20, 24, 42].map(wch => ({ wch }));
+    XLSX.utils.book_append_sheet(libro, hojaDocumentos, 'Documentos');
+    XLSX.writeFile(libro, `personal_administrativo_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    addNotificacion(`Excel descargado con ${todosPersonal.length} colaborador(es) administrativo(s).`);
+  };
+
   return (
     <>
       <div className="page-header">
@@ -14309,6 +14388,7 @@ function RRHHAdmin() {
         <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
           <div style={{display:'flex', gap:8}}>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
+            <button className="btn btn-secondary btn-sm" onClick={descargarPersonalAdministrativoExcel} title="Descargar todos los registros de personal administrativo en Excel">{I.download} Descargar Excel</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowCargaMasivaAdmin(true)} title="Carga masiva de colaboradores">{I.upload} Carga masiva</button>
             <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
