@@ -4265,6 +4265,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .document-preview-stage {
+  position: relative;
   height: clamp(460px, calc(100dvh - 220px), 860px);
   max-height: none;
   overflow: auto;
@@ -4275,6 +4276,14 @@ body {
   border-radius: 10px;
 }
 .dark .document-preview-stage { background: #162235; }
+.document-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
 .document-preview-pages { display: grid; justify-items: center; gap: 28px; }
 .document-preview-sheet-frame {
   width: calc(816px * var(--document-preview-scale, 1));
