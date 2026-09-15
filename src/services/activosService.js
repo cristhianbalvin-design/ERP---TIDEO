@@ -201,6 +201,12 @@ export const importarActivosMasivo = async (empresaId, filas) => {
 
       const valorAdquisicion = Number(String(fila.valor_adquisicion ?? '').replace(/[^0-9.]/g, '')) || 0;
       const vidaUtilAnos = parseInt(fila.vida_util_anos, 10) || 0;
+      const horasRaw = norm(fila.horas_disponibles_mes);
+      const horasDisponiblesMes = horasRaw === '' ? null : Number(horasRaw.replace(',', '.'));
+      if (horasRaw !== '' && (!Number.isFinite(horasDisponiblesMes) || horasDisponiblesMes < 0)) {
+        errores.push({ fila: codigo, error: `Horas disponibles al mes "${fila.horas_disponibles_mes}" debe ser un número mayor o igual a cero` });
+        continue;
+      }
       const estadoRaw = norm(fila.estado);
       const estadoActivo = normalizarEstadoActivo(estadoRaw);
 
@@ -232,6 +238,7 @@ export const importarActivosMasivo = async (empresaId, filas) => {
         valor_adquisicion: valorAdquisicion,
         moneda: norm(fila.moneda) || 'PEN',
         vida_util_anos: vidaUtilAnos,
+        horas_disponibles_mes: horasDisponiblesMes,
         documentos: '[]',
         observacion: norm(fila.observacion) || null,
       };

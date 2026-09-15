@@ -9047,12 +9047,43 @@ function ActivosFijos() {
 
   // ─── Importación Excel ─────────────────────────────────────────────────────
   const descargarPlantilla = () => {
-    const headers = ['codigo','nombre','tipo_categoria','marca','modelo','placa_serie','ubicacion','estado','centro_costo','responsable','fecha_alta','valor_adquisicion','moneda','vida_util_anos','observacion'];
-    const ejemplo = ['ACT-001','Volquete Volvo FMX','vehiculo','Volvo','FMX 440','ABC-123','Patio Sur','operativo','CC-OPS','Juan Pérez','2023-05-15','280000','PEN','10',''];
+    const headers = ['codigo','nombre','tipo_categoria','marca','modelo','placa_serie','ubicacion','estado','centro_costo','responsable','fecha_alta','valor_adquisicion','moneda','vida_util_anos','horas_disponibles_mes','observacion'];
+    const ejemplo = ['ACT-001','Volquete Volvo FMX','VEHICULOS','Volvo','FMX 440','ABC-123','Patio Sur','operativo','CC-OPS','Juan Pérez','2023-05-15','280000','PEN','10','208','Activo operativo de ejemplo'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
-    ws['!cols'] = headers.map((_, i) => ({ wch: i === 1 ? 28 : i === 0 ? 12 : 16 }));
+    ws['!cols'] = headers.map((_, i) => ({ wch: i === 1 ? 28 : ['observacion', 'tipo_categoria'].includes(headers[i]) ? 26 : i === 0 ? 14 : 19 }));
+
+    const instrucciones = [
+      ['Plantilla de importación de Activos Fijos'],
+      ['Complete únicamente la hoja "Activos". La primera fila contiene los encabezados y no debe modificarse.'],
+      [],
+      ['Campo', 'Instrucción'],
+      ['codigo *', 'Identificador único del activo. Si ya existe, se actualiza el registro.'],
+      ['nombre *', 'Nombre o descripción del activo.'],
+      ['tipo_categoria', `Use uno de estos valores: ${ACTIVO_TIPOS.map(tipo => tipo.value).join(', ')}.`],
+      ['marca / modelo / placa_serie / ubicacion', 'Opcionales.'],
+      ['estado', 'Operativo, en mantenimiento o dado de baja.'],
+      ['centro_costo', 'Opcional. Use el código o nombre exacto de la hoja "CECOs disponibles".'],
+      ['responsable', 'Nombre del responsable; opcional.'],
+      ['fecha_alta', 'Opcional. Formato recomendado: AAAA-MM-DD.'],
+      ['valor_adquisicion', 'Opcional. Número sin símbolo monetario.'],
+      ['moneda', 'Opcional. Ejemplos: PEN o USD.'],
+      ['vida_util_anos', 'Opcional. Número entero de años.'],
+      ['horas_disponibles_mes', 'Opcional. Horas disponibles por mes; número mayor o igual a cero.'],
+      ['observacion', 'Opcional.'],
+    ];
+    const wsInstrucciones = XLSX.utils.aoa_to_sheet(instrucciones);
+    wsInstrucciones['!cols'] = [{ wch: 28 }, { wch: 105 }];
+
+    const wsCecos = XLSX.utils.aoa_to_sheet([
+      ['codigo', 'nombre', 'uso en centro_costo'],
+      ...cecos.map(ceco => [ceco.codigo || '', ceco.nombre || '', ceco.codigo || ceco.nombre || '']),
+    ]);
+    wsCecos['!cols'] = [{ wch: 18 }, { wch: 42 }, { wch: 24 }];
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Activos');
+    XLSX.utils.book_append_sheet(wb, wsInstrucciones, 'Instrucciones');
+    XLSX.utils.book_append_sheet(wb, wsCecos, 'CECOs disponibles');
     XLSX.writeFile(wb, 'plantilla_activos.xlsx');
   };
 
