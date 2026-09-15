@@ -16,6 +16,7 @@ import History from '@tiptap/extension-history';
 import HardBreak from '@tiptap/extension-hard-break';
 
 export const FONT_SIZES = [
+  { value: '10px', label: 'Muy pequeño' },
   { value: '12px', label: 'Pequeño' },
   { value: '14px', label: 'Normal' },
   { value: '18px', label: 'Grande' },
