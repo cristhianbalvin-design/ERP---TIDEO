@@ -885,7 +885,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
-            if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
+            if (!esEdicion && form.ya_pagado && form.metodo_pago !== 'Caja chica' && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
