@@ -1182,7 +1182,7 @@ export const rrhhService = {
   },
 
   // Registra un pago de cuota. Actualiza saldo/cuotas_pagadas en el préstamo.
-  // Si se completan todas las cuotas, marca el préstamo 'cancelado' y pone
+  // Si el saldo llega a cero, marca el préstamo 'cancelado' y pone
   // cuota_prestamo_mes = 0 en el registro del trabajador.
   pagarCuotaPrestamo: async (empresaId, prestamoId, { monto, concepto = 'manual', periodo_id = null }) => {
     const supabase = await getSupabaseClient();
@@ -1192,9 +1192,19 @@ export const rrhhService = {
     if (fetchErr) throw fetchErr;
     if (prestamo.estado === 'cancelado') throw new Error('El préstamo ya está cancelado');
 
+    const saldoActual = Math.max(0, Number(prestamo.saldo || 0));
+    const montoPropuesto = Number(monto);
+    if (!Number.isFinite(montoPropuesto) || montoPropuesto <= 0) {
+      throw new Error('El monto del pago debe ser mayor que cero');
+    }
+    if (saldoActual <= 0) {
+      throw new Error('El préstamo no tiene saldo pendiente');
+    }
+    const montoAplicado = Math.min(montoPropuesto, saldoActual);
+    const saldoCalculado = Math.max(0, saldoActual - montoAplicado);
+    const nuevoSaldo = saldoCalculado <= 0.01 ? 0 : saldoCalculado;
     const nuevasCuotas = prestamo.cuotas_pagadas + 1;
-    const nuevoSaldo = Math.max(0, Number(prestamo.saldo || 0) - Number(monto));
-    const cancelado = nuevasCuotas >= prestamo.cuotas;
+    const cancelado = nuevoSaldo === 0;
 
     const { data: prestamoActualizado, error: updErr } = await supabase
       .from('prestamos_personal')
@@ -1204,7 +1214,7 @@ export const rrhhService = {
 
     const { data: pago, error: pagoErr } = await supabase
       .from('prestamo_pagos')
-      .insert([{ empresa_id: empresaId, prestamo_id: prestamoId, fecha: new Date().toISOString().split('T')[0], monto: Number(monto), concepto, periodo_id }])
+      .insert([{ empresa_id: empresaId, prestamo_id: prestamoId, fecha: new Date().toISOString().split('T')[0], monto: montoAplicado, concepto, periodo_id }])
       .select().single();
     if (pagoErr) throw pagoErr;
 

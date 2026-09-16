@@ -928,6 +928,28 @@ export const finanzasService = {
     return data;
   },
 
+  async anularCxP(cxpId, motivo, usuarioId = null) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('anular_cxp_finanzas', {
+      p_cxp_id: cxpId,
+      p_motivo: motivo,
+      p_usuario_id: usuarioId,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async eliminarCxPPreliminar(cxpId, motivo, usuarioId = null) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('eliminar_cxp_preliminar', {
+      p_cxp_id: cxpId,
+      p_motivo: motivo,
+      p_usuario_id: usuarioId,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async registrarPagoCxP(cxpId, monto) {
     const supabase = await getSupabaseClient();
     const { data: currentCxP, error: getError } = await supabase

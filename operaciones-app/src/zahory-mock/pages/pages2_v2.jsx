@@ -3,6 +3,7 @@ import { Icon, FooterBrand } from '../components/shell.jsx';
 import { ZAHORY_SAC_DATA } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { crearMaterialDesdeSolpe, crearSolpeInterna } from '../../services/solpeService.js';
 
 // ─── OTs Centro de Control Operativo ─────────────────────────────────────────
 
@@ -1110,13 +1111,101 @@ export const HistorialMinaPage = ({ onNav }) => {
 };
 
 // ---------- Solicitudes SOLPE ----------
+const nuevaLineaSolpe = () => ({ id: `itm_${crypto.randomUUID()}`, material_id: '', material_codigo: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
+
+const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId, usuarioId, grupos, familias, subfamilias, almacenes, onSelect }) => {
+  const [texto, setTexto] = useS2(item.descripcion || '');
+  const [abierto, setAbierto] = useS2(false);
+  const [crearAbierto, setCrearAbierto] = useS2(false);
+  const [guardando, setGuardando] = useS2(false);
+  const [error, setError] = useS2(null);
+  const [form, setForm] = useS2({ grupo_id:'', familia_id:'', subfamilia_id:'', descripcion:item.descripcion || '', unidad:item.unidad || '', nro_parte:'', unidades_contenidas:'1', almacen_id:'', ubicacion:'', observacion:'', precio_unitario:'0', stock_minimo:'0', punto_reorden:'0', stock_maximo:'0', stock_seguridad:'0', estado:'activo' });
+  const resultados = texto.trim().length >= 2
+    ? materiales.filter(material => material.estado !== 'inactivo' && `${material.codigo || ''} ${material.descripcion || ''}`.toLowerCase().includes(texto.trim().toLowerCase())).slice(0, 12)
+    : [];
+  const familiasFiltradas = familias.filter(familia => familia.grupo_id === form.grupo_id);
+  const subfamiliasFiltradas = subfamilias.filter(subfamilia => subfamilia.familia_id === form.familia_id);
+  const seleccionar = material => {
+    setTexto(material.descripcion || '');
+    setAbierto(false);
+    onSelect({ material_id:material.id, material_codigo:material.codigo || '', descripcion:material.descripcion || '', unidad:material.unidad || 'und' });
+  };
+  const guardar = async () => {
+    if (!form.grupo_id || !form.familia_id || !form.subfamilia_id || !form.descripcion.trim() || !form.unidad.trim()) {
+      setError('Grupo, familia, subfamilia, descripción y unidad son obligatorios.');
+      return;
+    }
+    setGuardando(true); setError(null);
+    try {
+      const material = await crearMaterialDesdeSolpe({ empresaId, usuarioId, datos:form });
+      seleccionar(material);
+      setCrearAbierto(false);
+    } catch (guardarError) {
+      setError(guardarError?.message || 'No se pudo crear el material.');
+    } finally { setGuardando(false); }
+  };
+  return <>
+    <div style={{ position:'relative' }}>
+      <input className="input" value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setAbierto(true); }} />
+      {abierto && texto.trim().length >= 2 && (
+        <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'#fff', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
+          {resultados.map(material => <button key={material.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)} style={{ display:'block', width:'100%', border:0, background:'transparent', textAlign:'left', padding:'8px', cursor:'pointer' }}><b>{material.codigo}</b> · {material.descripcion}<span className="muted" style={{ marginLeft:5 }}>{material.unidad || 'und'}</span></button>)}
+          {resultados.length === 0 && <div className="hint" style={{ padding:'8px' }}>Sin materiales coincidentes.</div>}
+          {puedeCrearMaterial && <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { setForm(actual => ({ ...actual, descripcion:texto })); setCrearAbierto(true); setAbierto(false); }} style={{ display:'block', width:'100%', border:0, borderTop:'1px solid var(--card-border)', background:'var(--orange-soft)', textAlign:'left', padding:'8px', cursor:'pointer', fontWeight:600 }}>+ Crear material: “{texto}”</button>}
+        </div>
+      )}
+    </div>
+    {crearAbierto && <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}><div className="card" style={{ width:'min(760px, 100%)' }}>
+      <div className="card-header"><h3>Nuevo material</h3><div className="spacer"/><button className="icon-btn" onClick={() => setCrearAbierto(false)}><Icon name="x" size={16}/></button></div>
+      <div className="card-body" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12 }}>
+        {error && <div style={{ gridColumn:'1/-1', color:'#b91c1c' }}>{error}</div>}
+        <div className="input-group"><label>Grupo *</label><select className="select" value={form.grupo_id} onChange={event => setForm(actual => ({ ...actual, grupo_id:event.target.value, familia_id:'', subfamilia_id:'' }))}><option value="">Seleccionar...</option>{grupos.map(grupo => <option key={grupo.id} value={grupo.id}>{grupo.codigo} - {grupo.nombre}</option>)}</select></div>
+        <div className="input-group"><label>Familia *</label><select className="select" value={form.familia_id} disabled={!form.grupo_id} onChange={event => setForm(actual => ({ ...actual, familia_id:event.target.value, subfamilia_id:'' }))}><option value="">Seleccionar...</option>{familiasFiltradas.map(familia => <option key={familia.id} value={familia.id}>{familia.codigo} - {familia.nombre}</option>)}</select></div>
+        <div className="input-group"><label>Subfamilia *</label><select className="select" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
+        <div className="input-group"><label>Código</label><input className="input" readOnly value={form.subfamilia_id ? 'Se genera al guardar' : 'Selecciona subfamilia'} style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
+        <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Descripción *</label><input className="input" value={form.descripcion} onChange={event => setForm(actual => ({ ...actual, descripcion:event.target.value }))}/></div>
+        <div className="input-group"><label>UM *</label><input className="input" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))} placeholder="und, kg, m"/></div>
+        <div className="input-group"><label>Nro. parte</label><input className="input" value={form.nro_parte} onChange={event => setForm(actual => ({ ...actual, nro_parte:event.target.value }))}/></div>
+        <div className="input-group"><label>Unidades contenidas</label><input className="input" type="number" min="0.01" step="0.01" value={form.unidades_contenidas} onChange={event => setForm(actual => ({ ...actual, unidades_contenidas:event.target.value }))}/></div>
+        <div className="input-group"><label>Almacén por defecto</label><select className="select" value={form.almacen_id} onChange={event => setForm(actual => ({ ...actual, almacen_id:event.target.value }))}><option value="">Sin asignar</option>{almacenes.map(almacen => <option key={almacen.id} value={almacen.id}>{almacen.nombre}</option>)}</select></div>
+        <div className="input-group"><label>Ubicación</label><input className="input" value={form.ubicacion} onChange={event => setForm(actual => ({ ...actual, ubicacion:event.target.value }))} placeholder="Ej: Pasillo A, Estante 3"/></div>
+        <div className="input-group"><label>Precio referencial general (PEN)</label><input className="input" type="number" min="0" step="0.01" value={form.precio_unitario} onChange={event => setForm(actual => ({ ...actual, precio_unitario:event.target.value }))}/></div>
+        <div className="input-group"><label>Stock mínimo</label><input className="input" type="number" min="0" step="0.01" value={form.stock_minimo} onChange={event => setForm(actual => ({ ...actual, stock_minimo:event.target.value }))}/></div>
+        <div className="input-group"><label>Punto de reorden</label><input className="input" type="number" min="0" step="0.01" value={form.punto_reorden} onChange={event => setForm(actual => ({ ...actual, punto_reorden:event.target.value }))}/></div>
+        <div className="input-group"><label>Stock máximo</label><input className="input" type="number" min="0" step="0.01" value={form.stock_maximo} onChange={event => setForm(actual => ({ ...actual, stock_maximo:event.target.value }))}/></div>
+        <div className="input-group"><label>Stock de seguridad</label><input className="input" type="number" min="0" step="0.01" value={form.stock_seguridad} onChange={event => setForm(actual => ({ ...actual, stock_seguridad:event.target.value }))}/></div>
+        <div className="input-group"><label>Estado</label><input className="input" readOnly value="Activo" style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
+        <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Observación</label><input className="input" value={form.observacion} onChange={event => setForm(actual => ({ ...actual, observacion:event.target.value }))}/></div>
+        <div style={{ gridColumn:'1/-1', display:'flex', justifyContent:'flex-end', gap:8 }}><button className="btn btn-secondary" onClick={() => setCrearAbierto(false)}>Cancelar</button><button className="btn btn-primary" disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : 'Guardar y seleccionar'}</button></div>
+      </div>
+    </div></div>}
+  </>;
+};
+
 export const SolicitudesPage = ({ onNav }) => {
-  const D = ZAHORY_SAC_DATA;
-  const [solpes,             setSolpes]             = useS2(D.solicitudesUrgentes);
-  const [repuestosState,     setRepuestosState]     = useS2(D.repuestos);
-  const [solpeAtendiendo,    setSolpeAtendiendo]    = useS2(null);
-  const [modalAtenderAbierto,setModalAtenderAbierto]= useS2(false);
-  const [toast,              setToast]              = useS2(null);
+  const { empresaId, estado: estadoSesion, usuario } = useSesionOperativa();
+  const [solpes, setSolpes] = useS2([]);
+  const [pestana, setPestana] = useS2('todos');
+  const [solpeAtendiendo, setSolpeAtendiendo] = useS2(null);
+  const [modalAtenderAbierto, setModalAtenderAbierto] = useS2(false);
+  const [cargando, setCargando] = useS2(true);
+  const [guardando, setGuardando] = useS2(false);
+  const [error, setError] = useS2(null);
+  const [toast, setToast] = useS2(null);
+  const [formularioAbierto, setFormularioAbierto] = useS2(false);
+  const [detalleAbierto, setDetalleAbierto] = useS2(null);
+  const [seguimientoCompra, setSeguimientoCompra] = useS2({ ocs:[], recepciones:[], error:null });
+  const [puedeCrearSolpe, setPuedeCrearSolpe] = useS2(false);
+  const [puedeCrearMaterial, setPuedeCrearMaterial] = useS2(false);
+  const [catalogoMateriales, setCatalogoMateriales] = useS2([]);
+  const [gruposMaterial, setGruposMaterial] = useS2([]);
+  const [familiasMaterial, setFamiliasMaterial] = useS2([]);
+  const [subfamiliasMaterial, setSubfamiliasMaterial] = useS2([]);
+  const [almacenesMaterial, setAlmacenesMaterial] = useS2([]);
+  const [otsFormulario, setOtsFormulario] = useS2([]);
+  const [areasFormulario, setAreasFormulario] = useS2([]);
+  const [cecosFormulario, setCecosFormulario] = useS2([]);
+  const [formSolpe, setFormSolpe] = useS2({ descripcion:'', tipo:'bien', prioridad:'normal', solicitante:'', centro_costo_id:'', ot_id:'', items:[nuevaLineaSolpe()] });
 
   const showToast = (msg) => {
     setToast(msg);
@@ -1128,45 +1217,210 @@ export const SolicitudesPage = ({ onNav }) => {
     setModalAtenderAbierto(true);
   };
 
-  const despacharDesdeStock = (solpe, item) => {
-    setRepuestosState(prev => prev.map(r =>
-      r.cod === item.cod ? { ...r, stock: r.stock - solpe.cantidad } : r
-    ));
-    setSolpes(prev => prev.map(s =>
-      s.id === solpe.id
-        ? { ...s, estado:'atendido', atendido_por:'A. Parado',
-            atendido_fecha: new Date().toISOString().split('T')[0] }
-        : s
-    ));
-    setModalAtenderAbierto(false);
-    showToast(`SOLPE ${solpe.id} atendida. Stock de ${item.cod} actualizado.`);
+  const cargarSolpes = useCallback(async () => {
+    if (estadoSesion !== 'listo' || !empresaId) return;
+    setCargando(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: filas, error: solpesError } = await supabase
+        .from('solpe_interna')
+        .select('id, codigo, descripcion, tipo, prioridad, urgencia, origen, origen_tipo, origen_id, material_id, cantidad_solicitada, disponible_actual, fecha, fecha_requerida, items, solicitante, solicitante_id, ot_id, estado, aprobada_por, aprobada_at, created_at')
+        .eq('empresa_id', empresaId)
+        .order('created_at', { ascending: false });
+      if (solpesError) throw solpesError;
+
+      const solpesReales = filas || [];
+      const idsOt = [...new Set(solpesReales.map(solpe => solpe.ot_id).filter(Boolean))];
+      const materialIdDeItem = solpe => (Array.isArray(solpe.items) ? solpe.items : [])
+        .map(item => item?.material_id)
+        .find(Boolean);
+      const idsMaterial = [...new Set(solpesReales
+        .flatMap(solpe => [solpe.material_id, materialIdDeItem(solpe)])
+        .filter(Boolean))];
+      const [otsResultado, materialesResultado] = await Promise.all([
+        idsOt.length
+          ? supabase.from('ordenes_trabajo').select('id, numero, direccion_ejecucion').eq('empresa_id', empresaId).in('id', idsOt)
+          : Promise.resolve({ data: [], error: null }),
+        idsMaterial.length
+          ? supabase.from('materiales').select('id, codigo, descripcion, unidad').eq('empresa_id', empresaId).in('id', idsMaterial)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (otsResultado.error) throw otsResultado.error;
+      if (materialesResultado.error) throw materialesResultado.error;
+
+      const otsPorId = new Map((otsResultado.data || []).map(ot => [ot.id, ot]));
+      const idsSede = [...new Set((otsResultado.data || []).map(ot => ot.direccion_ejecucion).filter(Boolean))];
+      const { data: sedes, error: sedesError } = idsSede.length
+        ? await supabase.from('sedes').select('id, nombre').eq('empresa_id', empresaId).in('id', idsSede)
+        : { data: [], error: null };
+      if (sedesError) throw sedesError;
+
+      const sedesPorId = new Map((sedes || []).map(sede => [sede.id, sede]));
+      const materialesPorId = new Map((materialesResultado.data || []).map(material => [material.id, material]));
+      setSolpes(solpesReales.map(solpe => {
+        const item = (Array.isArray(solpe.items) ? solpe.items : [])
+          .find(candidato => candidato?.material_id || candidato?.descripcion || candidato?.nombre) || null;
+        const material = materialesPorId.get(solpe.material_id || item?.material_id) || null;
+        const ot = otsPorId.get(solpe.ot_id) || null;
+        const direccion = ot?.direccion_ejecucion || null;
+        return {
+          ...solpe,
+          itemCodigo: material?.codigo || item?.codigo || item?.material_codigo || null,
+          descripcionVisible: solpe.descripcion || material?.descripcion || item?.descripcion || item?.nombre || 'Sin descripcion',
+          cantidadVisible: solpe.cantidad_solicitada ?? item?.cantidad ?? item?.cantidad_solicitada ?? null,
+          unidadVisible: material?.unidad || item?.unidad || '',
+          urgenciaVisible: ['alta', 'urgente'].includes(String(solpe.urgencia || solpe.prioridad || 'normal').toLowerCase()) ? 'urgente' : 'normal',
+          otNumero: ot?.numero || solpe.ot_id || null,
+          ubicacion: ot ? (sedesPorId.get(direccion)?.nombre || direccion || 'Sin ubicacion') : '—',
+        };
+      }));
+    } catch (cargaError) {
+      setSolpes([]);
+      setError(cargaError?.message || 'No se pudieron cargar las solicitudes SOLPE.');
+    } finally {
+      setCargando(false);
+    }
+  }, [empresaId, estadoSesion]);
+
+  useEffect(() => { cargarSolpes(); }, [cargarSolpes]);
+
+  const cargarDatosFormulario = useCallback(async () => {
+    if (estadoSesion !== 'listo' || !empresaId) return;
+    const supabase = getSupabaseClient();
+    const resultados = await Promise.all([
+      supabase.rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla:'solpe', target_accion:'crear' }),
+      supabase.rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla:'inventario', target_accion:'crear' }),
+      supabase.from('materiales').select('id,codigo,descripcion,unidad,estado,grupo_id,familia_id,subfamilia_id').eq('empresa_id', empresaId).order('codigo'),
+      supabase.from('material_grupos').select('id,codigo,nombre').eq('empresa_id', empresaId).order('codigo'),
+      supabase.from('material_familias').select('id,codigo,nombre,grupo_id').eq('empresa_id', empresaId).order('codigo'),
+      supabase.from('material_subfamilias').select('id,codigo,nombre,familia_id').eq('empresa_id', empresaId).order('codigo'),
+      supabase.from('almacenes').select('id,nombre').eq('empresa_id', empresaId).order('nombre'),
+      supabase.from('ordenes_trabajo').select('id,numero,estado').eq('empresa_id', empresaId).not('estado', 'in', '(cerrada,cancelada)').order('created_at', { ascending:false }),
+      supabase.from('areas_empresa').select('id,nombre,estado').eq('empresa_id', empresaId).eq('estado','activo').order('nombre'),
+      supabase.from('centros_costo').select('id,codigo,nombre,estado').eq('empresa_id', empresaId).eq('estado','activo').order('codigo'),
+    ]);
+    const [permisoSolpe, permisoMaterial, materiales, grupos, familias, subfamilias, almacenes, ots, areas, cecos] = resultados;
+    setPuedeCrearSolpe(!permisoSolpe.error && permisoSolpe.data === true);
+    setPuedeCrearMaterial(!permisoMaterial.error && permisoMaterial.data === true);
+    if (!materiales.error) setCatalogoMateriales(materiales.data || []);
+    if (!grupos.error) setGruposMaterial(grupos.data || []);
+    if (!familias.error) setFamiliasMaterial(familias.data || []);
+    if (!subfamilias.error) setSubfamiliasMaterial(subfamilias.data || []);
+    if (!almacenes.error) setAlmacenesMaterial(almacenes.data || []);
+    if (!ots.error) setOtsFormulario(ots.data || []);
+    if (!areas.error) setAreasFormulario(areas.data || []);
+    if (!cecos.error) setCecosFormulario(cecos.data || []);
+  }, [empresaId, estadoSesion]);
+
+  useEffect(() => { cargarDatosFormulario(); }, [cargarDatosFormulario]);
+
+  useEffect(() => {
+    if (!detalleAbierto?.id || !empresaId) return undefined;
+    let vigente = true;
+    const cargarSeguimiento = async () => {
+      const supabase = getSupabaseClient();
+      const [{ data: ocsDirectas, error: ocsError }, { data: procesos, error: procesosError }] = await Promise.all([
+        supabase.from('ordenes_compra').select('id,codigo,estado,items,solpe_id,proceso_compra_id').eq('empresa_id', empresaId).eq('solpe_id', detalleAbierto.id),
+        supabase.from('procesos_compra').select('id').eq('empresa_id', empresaId).eq('solpe_id', detalleAbierto.id),
+      ]);
+      if (!vigente) return;
+      if (ocsError || procesosError) { setSeguimientoCompra({ ocs:[], recepciones:[], error:'No tienes permiso para ver el seguimiento de compra.' }); return; }
+      const idsProceso = (procesos || []).map(proceso => proceso.id);
+      const { data: ocsProceso, error: ocsProcesoError } = idsProceso.length ? await supabase.from('ordenes_compra').select('id,codigo,estado,items,solpe_id,proceso_compra_id').eq('empresa_id', empresaId).in('proceso_compra_id', idsProceso) : { data:[], error:null };
+      if (ocsProcesoError) { setSeguimientoCompra({ ocs:[], recepciones:[], error:'No tienes permiso para ver el seguimiento de compra.' }); return; }
+      const ocs = [...(ocsDirectas || []), ...(ocsProceso || []).filter(oc => !(ocsDirectas || []).some(directa => directa.id === oc.id))];
+      const idsOc = (ocs || []).map(oc => oc.id);
+      const { data: recepciones, error: recepcionesError } = idsOc.length ? await supabase.from('recepciones').select('id,oc_id,estado,items_recibidos,fecha').eq('empresa_id', empresaId).in('oc_id', idsOc) : { data:[], error:null };
+      if (vigente) setSeguimientoCompra({ ocs:ocs || [], recepciones:recepciones || [], error:recepcionesError ? 'No tienes permiso para ver recepciones.' : null });
+    };
+    cargarSeguimiento();
+    return () => { vigente = false; };
+  }, [detalleAbierto?.id, empresaId]);
+
+  const confirmarAtencion = async () => {
+    if (!solpeAtendiendo || solpeAtendiendo.estado !== 'solicitada') return;
+    setGuardando(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { data: usuarioData, error: usuarioError } = await supabase.auth.getUser();
+      if (usuarioError) throw usuarioError;
+      const { data: solpeActualizada, error: actualizacionError } = await supabase
+        .from('solpe_interna')
+        .update({ estado: 'aprobada', aprobada_por: usuarioData?.user?.id || null, aprobada_at: new Date().toISOString() })
+        .eq('id', solpeAtendiendo.id)
+        .eq('estado', 'solicitada')
+        .select('id, estado, aprobada_por, aprobada_at')
+        .single();
+      if (actualizacionError) throw actualizacionError;
+      if (!solpeActualizada) throw new Error('La SOLPE ya no esta en estado solicitada. Actualiza la pantalla e intenta nuevamente.');
+      setSolpes(anterior => anterior.map(solpe => solpe.id === solpeActualizada.id ? { ...solpe, ...solpeActualizada } : solpe));
+      setModalAtenderAbierto(false);
+      setSolpeAtendiendo(null);
+      showToast(`SOLPE ${solpeActualizada.id} aprobada.`);
+    } catch (atencionError) {
+      setError(atencionError?.message || 'No se pudo aprobar la SOLPE.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
-  const generarOC = (solpe) => {
-    setModalAtenderAbierto(false);
-    showToast('Redirigiendo a Órdenes de Compra con SOLPE pre-cargada.');
-    setTimeout(() => onNav && onNav('compras-oc'), 800);
+  const actualizarLinea = (lineaId, cambios) => setFormSolpe(actual => ({
+    ...actual,
+    items: actual.items.map(linea => linea.id === lineaId ? { ...linea, ...cambios } : linea),
+  }));
+
+  const crearSolicitud = async () => {
+    if (!puedeCrearSolpe) { setError('Tu rol no tiene permiso para crear SOLPE.'); return; }
+    const items = formSolpe.items.filter(linea => linea.material_id && Number(linea.cantidad) > 0).map(linea => ({
+      id: linea.id,
+      material_id: linea.material_id,
+      material_codigo: linea.material_codigo || null,
+      descripcion: linea.descripcion,
+      cantidad: Number(linea.cantidad),
+      unidad: linea.unidad || 'und',
+      observacion: linea.observacion || '',
+    }));
+    if (!formSolpe.centro_costo_id || !formSolpe.descripcion.trim() || (formSolpe.tipo === 'bien' && !items.length)) {
+      setError('Descripción, CECO y al menos un material con cantidad son obligatorios para una SOLPE de bienes.');
+      return;
+    }
+    setGuardando(true); setError(null);
+    try {
+      const creada = await crearSolpeInterna({ empresaId, usuarioId:usuario?.id, datos:{ ...formSolpe, items } });
+      setFormularioAbierto(false);
+      setFormSolpe({ descripcion:'', tipo:'bien', prioridad:'normal', solicitante:'', centro_costo_id:'', ot_id:'', items:[nuevaLineaSolpe()] });
+      await cargarSolpes();
+      showToast(`SOLPE ${creada.codigo} creada.`);
+    } catch (creacionError) {
+      setError(creacionError?.message || 'No se pudo crear la SOLPE.');
+    } finally { setGuardando(false); }
   };
 
-  const itemAtendiendo = solpeAtendiendo
-    ? repuestosState.find(r => r.cod === solpeAtendiendo.item_id)
-    : null;
-
-  const hayStock = itemAtendiendo && itemAtendiendo.stock >= (solpeAtendiendo?.cantidad || 0);
+  const solpesVisibles = solpes.filter(solpe => pestana === 'todos' || solpe.estado === pestana);
+  const etiquetaEstado = estado => ({
+    solicitada: ['orange', 'Solicitada'],
+    aprobada: ['cyan', 'Aprobada'],
+    oc_generada: ['green', 'OC generada'],
+    borrador: ['gray', 'Borrador'],
+  }[estado] || ['gray', estado || 'Sin estado']);
 
   return (
     <div className="page">
+      {!formularioAbierto && <>
       <div className="page-header">
         <div><h1>Solicitudes SOLPE</h1><div className="sub">Pedidos desde mina y taller — para pasar a compras</div></div>
         <div className="spacer"/>
-        <button className="btn btn-secondary"><Icon name="download" size={13}/> Exportar a Excel</button>
+        <button className="btn btn-primary" disabled={!puedeCrearSolpe} onClick={() => setFormularioAbierto(true)}><Icon name="plus" size={13}/> Nueva SOLPE</button>
       </div>
       <div className="toolbar">
-        <div className="seg"><button className="active">Todos</button><button>Urgentes</button><button>Normales</button></div>
-        <select className="select"><option>Proyecto: Todos</option></select>
-        <select className="select"><option>Técnico: Todos</option></select>
-        <select className="select"><option>Estado: Todos</option></select>
+        <div className="seg">
+          {[['todos', 'Todos'], ['solicitada', 'Solicitada'], ['aprobada', 'Aprobada'], ['oc_generada', 'OC Generada']].map(([estado, etiqueta]) => (
+            <button key={estado} className={pestana === estado ? 'active' : ''} onClick={() => setPestana(estado)}>{etiqueta}</button>
+          ))}
+        </div>
       </div>
+      {error && <div className="card" style={{ padding:'12px 16px', marginBottom:'12px', color:'#b91c1c', border:'1px solid rgba(239,68,68,0.35)' }}>{error}</div>}
       <div className="card">
         <table className="tbl">
           <thead>
@@ -1176,17 +1430,19 @@ export const SolicitudesPage = ({ onNav }) => {
               <th className="num">Cant.</th>
               <th>Solicitado por</th>
               <th>Origen</th>
-              <th>Proyecto</th>
+              <th>Ubicación</th>
               <th>Fecha</th>
               <th>Estado</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {solpes.map((s) => (
+            {cargando && <tr><td colSpan="9" style={{ textAlign:'center', color:'#64748b', padding:'28px' }}>Cargando solicitudes SOLPE...</td></tr>}
+            {!cargando && solpesVisibles.length === 0 && <tr><td colSpan="9" style={{ textAlign:'center', color:'#64748b', padding:'28px' }}>No hay solicitudes en esta pestaña.</td></tr>}
+            {!cargando && solpesVisibles.map((s) => (
               <tr key={s.id}>
                 <td>
-                  {s.tipo === 'urgente'
+                  {s.urgenciaVisible === 'urgente'
                     ? <span style={{ background:'#ef4444', color:'#fff', fontWeight:700,
                                      fontSize:'10px', padding:'2px 8px', borderRadius:'5px' }}>URGENTE</span>
                     : <span style={{ background:'rgba(59,130,246,0.15)', color:'#3b82f6',
@@ -1194,76 +1450,101 @@ export const SolicitudesPage = ({ onNav }) => {
                   }
                 </td>
                 <td>
-                  <div style={{ fontWeight:600, fontSize:'13px', color:'#1F2937' }}>{s.descripcion}</div>
-                  {s.item_codigo && (
+                  <div style={{ fontWeight:600, fontSize:'13px', color:'#1F2937' }}>{s.descripcionVisible}</div>
+                  {s.itemCodigo && (
                     <div style={{ fontSize:'10px', fontFamily:'monospace', color:'#f59e0b', marginTop:'2px' }}>
-                      {s.item_codigo}
-                    </div>
-                  )}
-                  {s.costo_estimado_total != null && (
-                    <div style={{ fontSize:'10px', color:'#64748b', marginTop:'1px' }}>
-                      Est. ${s.costo_estimado_total.toFixed(2)}
+                      {s.itemCodigo}
                     </div>
                   )}
                 </td>
-                <td className="num mono">{s.cantidad} {s.unidad}</td>
-                <td>{s.solicitado_por}</td>
+                <td className="num mono">{s.cantidadVisible ?? '—'} {s.unidadVisible}</td>
+                <td>{s.solicitante || '—'}</td>
                 <td>
-                  {s.origen_id ? (
+                  {s.origen_tipo === 'ot' && s.ot_id ? (
                     <div>
                       <span style={{ fontSize:'10px', color:'#60a5fa', fontFamily:'monospace',
                                      cursor:'pointer', display:'block' }}
-                        onClick={() => {
-                          if (s.origen_tipo === 'ot') onNav && onNav('ots');
-                          if (s.origen_tipo === 'of') onNav && onNav('maestranza-of');
-                        }}>
-                        {s.origen_id}
+                        role="link" tabIndex={0}
+                        onClick={() => onNav && onNav('ots')}
+                        onKeyDown={event => { if (event.key === 'Enter') onNav && onNav('ots'); }}>
+                        {s.otNumero}
                       </span>
-                      <span style={{ fontSize:'9px', color:'#475569' }}>
-                        {s.origen_tipo === 'ot' ? 'Orden de Trabajo'
-                       : s.origen_tipo === 'of' ? 'Orden de Fabricación'
-                       : s.origen_tipo === 'stock_minimo' ? 'Stock mínimo'
-                       : 'Área interna'}
-                      </span>
+                      <span style={{ fontSize:'9px', color:'#475569' }}>Orden de Trabajo</span>
                     </div>
+                  ) : s.origen === 'automatico' ? (
+                    <div><span style={{ fontSize:'11px', color:'#475569' }}>Reorden automático</span><div style={{ fontSize:'9px', color:'#475569' }}>Stock mínimo</div></div>
                   ) : (
-                    <div>
-                      <span style={{ color:'#475569', fontSize:'11px' }}>—</span>
-                      <div style={{ fontSize:'9px', color:'#475569' }}>
-                        {s.origen_tipo === 'stock_minimo' ? 'Stock mínimo' : 'Área interna'}
-                      </div>
-                    </div>
+                    <span style={{ color:'#475569', fontSize:'11px' }}>Manual</span>
                   )}
                 </td>
                 <td>
-                  <div style={{ fontSize:'12px', color:'#94a3b8' }}>{s.proyecto}</div>
-                  {s.centro_costo && (
-                    <span style={{
-                      display:'inline-block', marginTop:'3px',
-                      background:'rgba(245,158,11,0.12)', color:'#f59e0b',
-                      fontSize:'8.5px', fontFamily:'monospace',
-                      padding:'1px 6px', borderRadius:'6px', fontWeight:600
-                    }}>{s.centro_costo}</span>
-                  )}
+                  <div style={{ fontSize:'12px', color:'#64748b' }}>{s.ubicacion}</div>
                 </td>
-                <td style={{ fontSize:'12px', color:'#64748b', fontFamily:'monospace' }}>{s.fecha}</td>
+                <td style={{ fontSize:'12px', color:'#64748b', fontFamily:'monospace' }}>{s.fecha || s.fecha_requerida || '—'}</td>
                 <td>
-                  {s.estado === 'atendido'
-                    ? <span className="badge green"><span className="dot"/>Atendido</span>
-                    : s.estado === 'en_proceso'
-                    ? <span className="badge cyan"><span className="dot"/>En proceso</span>
-                    : <span className="badge orange"><span className="dot"/>Pendiente</span>}
+                  {(() => { const [color, etiqueta] = etiquetaEstado(s.estado); return <span className={`badge ${color}`}><span className="dot"/>{etiqueta}</span>; })()}
                 </td>
                 <td>
-                  {s.estado === 'pendiente'
-                    ? <button className="btn btn-ghost btn-sm" onClick={() => handleAtender(s)}>Atender</button>
-                    : <button className="btn btn-ghost btn-sm">Ver</button>}
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setDetalleAbierto(s)}>Ver</button>
+                    {s.estado === 'solicitada' && <button className="btn btn-ghost btn-sm" onClick={() => handleAtender(s)}>Atender</button>}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      </>}
+
+      {formularioAbierto && <div>
+        <div className="page-header">
+          <div><div className="ops-eyebrow">Almacén y repuestos</div><h1>Nueva SOLPE</h1><div className="sub">Solicitud para seguimiento por Compras</div></div>
+          <div className="spacer"/><button className="btn btn-secondary" onClick={() => setFormularioAbierto(false)}>Volver a solicitudes</button>
+        </div>
+        <div className="card">
+          <div className="card-body" style={{ display:'grid', gap:14 }}>
+            <section className="ot-form-section">
+              <div className="ot-form-section-title">1. Necesidad</div>
+              <div className="ot-form-grid dbs"><div className="ot-form-field ot-form-full"><div className="label">Descripción de la necesidad</div><textarea className="input" rows={3} value={formSolpe.descripcion} onChange={event => setFormSolpe(actual => ({ ...actual, descripcion:event.target.value }))} placeholder="Describe el requerimiento..."/></div></div>
+            </section>
+            <section className="ot-form-section">
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}><div className="ot-form-section-title" style={{ margin:0 }}>2. Ítems solicitados</div><button className="btn btn-secondary btn-sm" onClick={() => setFormSolpe(actual => ({ ...actual, items:[...actual.items, nuevaLineaSolpe()] }))}>+ Agregar ítem</button></div>
+              <div className="table-wrap"><div style={{ minWidth:720 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'minmax(280px, 2fr) minmax(90px, .55fr) minmax(90px, .55fr) minmax(180px, 1fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
+              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(280px, 2fr) minmax(90px, .55fr) minmax(90px, .55fr) minmax(180px, 1fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
+                <SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/>
+                <input aria-label="Cantidad" className="input" type="number" min="0" step="any" value={linea.cantidad} onChange={event => actualizarLinea(linea.id, { cantidad:event.target.value })}/>
+                <input aria-label="Unidad" className="input" value={linea.unidad} onChange={event => actualizarLinea(linea.id, { unidad:event.target.value })}/>
+                <input aria-label="Observación" className="input" value={linea.observacion} onChange={event => actualizarLinea(linea.id, { observacion:event.target.value })}/>
+                <button className="icon-btn" title="Eliminar ítem" onClick={() => setFormSolpe(actual => ({ ...actual, items:actual.items.filter(item => item.id !== linea.id) }))}><Icon name="x" size={15}/></button>
+              </div>)}
+              </div></div>
+              {!puedeCrearMaterial && <div className="hint" style={{ marginTop:6 }}>Tu rol puede seleccionar materiales existentes, pero no crear materiales nuevos.</div>}
+            </section>
+            <section className="ot-form-section"><div className="ot-form-section-title">3. Datos de la solicitud</div><div className="ot-form-grid dbs">
+              <div className="ot-form-field"><div className="label">Tipo</div><select className="select" value={formSolpe.tipo} onChange={event => setFormSolpe(actual => ({ ...actual, tipo:event.target.value }))}><option value="bien">Bien</option><option value="servicio">Servicio</option></select></div>
+              <div className="ot-form-field"><div className="label">Urgencia</div><select className="select" value={formSolpe.prioridad} onChange={event => setFormSolpe(actual => ({ ...actual, prioridad:event.target.value }))}><option value="normal">Normal</option><option value="urgente">Urgente</option><option value="critica">Crítica</option></select></div>
+              <div className="ot-form-field"><div className="label">Área solicitante</div><select className="select" value={formSolpe.solicitante} onChange={event => setFormSolpe(actual => ({ ...actual, solicitante:event.target.value }))}><option value="">Seleccionar...</option>{areasFormulario.map(area => <option key={area.id} value={area.nombre}>{area.nombre}</option>)}</select></div>
+              <div className="ot-form-field"><div className="label">OT asociada</div><select className="select" value={formSolpe.ot_id} onChange={event => setFormSolpe(actual => ({ ...actual, ot_id:event.target.value }))}><option value="">Sin OT</option>{otsFormulario.map(ot => <option key={ot.id} value={ot.id}>{ot.numero || ot.id}</option>)}</select></div>
+              <div className="ot-form-field ot-form-full"><div className="label">Centro de costo (CECO)</div><select className="select" value={formSolpe.centro_costo_id} onChange={event => setFormSolpe(actual => ({ ...actual, centro_costo_id:event.target.value }))}><option value="">Seleccionar...</option>{cecosFormulario.map(ceco => <option key={ceco.id} value={ceco.id}>{ceco.codigo} - {ceco.nombre}</option>)}</select></div>
+            </div></section>
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}><button className="btn btn-secondary" onClick={() => setFormularioAbierto(false)}>Cancelar</button><button className="btn btn-primary" disabled={guardando} onClick={crearSolicitud}>{guardando ? 'Creando...' : 'Crear SOLPE'}</button></div>
+          </div>
+        </div>
+      </div>}
+
+      {detalleAbierto && <div style={{ position:'fixed', inset:0, zIndex:210, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}>
+        <div className="card" style={{ width:'min(760px, 100%)', maxHeight:'calc(100vh - 40px)', overflowY:'auto' }}>
+          <div className="card-header"><div><h3>{detalleAbierto.codigo || detalleAbierto.id}</h3><div className="sub">Detalle de SOLPE</div></div><div className="spacer"/><button className="icon-btn" onClick={() => setDetalleAbierto(null)}><Icon name="x" size={16}/></button></div>
+          <div className="card-body" style={{ display:'grid', gap:16 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10 }}><div><small>Solicitante</small><div>{detalleAbierto.solicitante || '—'}</div></div><div><small>OT</small><div>{detalleAbierto.otNumero || '—'}</div></div><div><small>Ubicación</small><div>{detalleAbierto.ubicacion || '—'}</div></div><div><small>Estado</small><div>{etiquetaEstado(detalleAbierto.estado)[1]}</div></div></div>
+            <div><b>Descripción</b><div>{detalleAbierto.descripcionVisible}</div></div>
+            <div><b>Ítems solicitados</b><table className="tbl" style={{ marginTop:8 }}><thead><tr><th>Material</th><th>Cantidad</th><th>Unidad</th><th>Observación</th></tr></thead><tbody>{(detalleAbierto.items || []).map((item, index) => <tr key={item.id || index}><td>{item.material_codigo && <span className="mono">{item.material_codigo} · </span>}{item.descripcion || '—'}</td><td>{item.cantidad || '—'}</td><td>{item.unidad || '—'}</td><td>{item.observacion || '—'}</td></tr>)}</tbody></table></div>
+            <div><b>Seguimiento de compra</b>{seguimientoCompra.error ? <div className="hint" style={{ marginTop:6 }}>{seguimientoCompra.error}</div> : seguimientoCompra.ocs.length ? <table className="tbl" style={{ marginTop:8 }}><thead><tr><th>OC</th><th>Estado</th><th>Recepciones</th></tr></thead><tbody>{seguimientoCompra.ocs.map(oc => <tr key={oc.id}><td>{oc.codigo || oc.id}</td><td>{oc.estado || '—'}</td><td>{seguimientoCompra.recepciones.filter(recepcion => recepcion.oc_id === oc.id).length}</td></tr>)}</tbody></table> : <div className="hint" style={{ marginTop:6 }}>Sin OC vinculada todavía.</div>}</div>
+          </div>
+        </div>
+      </div>}
 
       {/* Modal Atender SOLPE */}
       {modalAtenderAbierto && solpeAtendiendo && (
@@ -1271,7 +1552,7 @@ export const SolicitudesPage = ({ onNav }) => {
                       zIndex:200, display:'grid', placeItems:'center', padding:20 }}>
           <div className="card" style={{ width:'100%', maxWidth:480 }}>
             <div className="card-header" style={{ background:'var(--navy)', color:'white', borderRadius:'8px 8px 0 0' }}>
-              <h3>Atender SOLPE — {solpeAtendiendo.id}</h3>
+              <h3>Atender SOLPE — {solpeAtendiendo.codigo || solpeAtendiendo.id}</h3>
               <div className="spacer"/>
               <button className="icon-btn" onClick={() => setModalAtenderAbierto(false)}
                 style={{ color:'white' }}><Icon name="x" size={16}/></button>
@@ -1279,56 +1560,27 @@ export const SolicitudesPage = ({ onNav }) => {
             <div className="card-body" style={{ padding:'20px' }}>
               <div style={{ marginBottom:'16px' }}>
                 <div style={{ fontWeight:600, fontSize:'14px', color:'#1F2937' }}>
-                  {solpeAtendiendo.descripcion}
+                  {solpeAtendiendo.descripcionVisible}
                 </div>
-                {solpeAtendiendo.item_codigo && (
+                {solpeAtendiendo.itemCodigo && (
                   <div style={{ fontSize:'11px', fontFamily:'monospace', color:'#f59e0b', marginTop:'3px' }}>
-                    {solpeAtendiendo.item_codigo} · {solpeAtendiendo.cantidad} {solpeAtendiendo.unidad}
+                    {solpeAtendiendo.itemCodigo} · {solpeAtendiendo.cantidadVisible} {solpeAtendiendo.unidadVisible}
                   </div>
                 )}
               </div>
 
-              {hayStock ? (
-                <div style={{ background:'rgba(34,197,94,0.08)', border:'1px solid rgba(34,197,94,0.2)',
-                              borderRadius:'8px', padding:'12px', marginBottom:'16px' }}>
-                  <div style={{ color:'#22c55e', fontWeight:600, fontSize:'13px' }}>
-                    ✓ Hay stock disponible: {itemAtendiendo.stock} unidades
-                  </div>
-                  <div style={{ color:'#64748b', fontSize:'11px', marginTop:'3px' }}>
-                    Se puede atender desde el almacén sin generar OC.
-                  </div>
-                  <button onClick={() => despacharDesdeStock(solpeAtendiendo, itemAtendiendo)}
-                    style={{ marginTop:'10px', padding:'8px 16px',
-                             background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.3)',
-                             borderRadius:'6px', color:'#22c55e', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
-                    → Despachar desde almacén
-                  </button>
-                </div>
-              ) : (
-                <div style={{ background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.2)',
-                              borderRadius:'8px', padding:'12px', marginBottom:'16px' }}>
-                  <div style={{ color:'#ef4444', fontWeight:600, fontSize:'13px' }}>
-                    ✗ Sin stock — se debe generar orden de compra
-                  </div>
-                  {itemAtendiendo && (
-                    <div style={{ color:'#64748b', fontSize:'11px', marginTop:'3px' }}>
-                      Stock actual: {itemAtendiendo.stock} · Solicitado: {solpeAtendiendo.cantidad}
-                    </div>
-                  )}
-                  <button onClick={() => generarOC(solpeAtendiendo)}
-                    style={{ marginTop:'10px', padding:'8px 16px',
-                             background:'rgba(59,130,246,0.15)', border:'1px solid rgba(59,130,246,0.3)',
-                             borderRadius:'6px', color:'#3b82f6', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
-                    → Generar OC a proveedor
-                  </button>
-                </div>
-              )}
-
-              <button onClick={() => setModalAtenderAbierto(false)}
-                style={{ padding:'10px 20px', background:'none', border:'1px solid #E4E7EB',
-                         borderRadius:'6px', color:'#64748b', cursor:'pointer', fontSize:'13px' }}>
-                Cancelar
-              </button>
+              <div style={{ background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.2)', borderRadius:'8px', padding:'12px', marginBottom:'16px', color:'#475569', fontSize:'12px', lineHeight:1.45 }}>
+                Atender aprueba la SOLPE y registra quién la aprobó. Despachar y generar la OC se gestionan en flujos separados.
+              </div>
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:'8px' }}>
+                <button onClick={() => setModalAtenderAbierto(false)} disabled={guardando}
+                  style={{ padding:'10px 20px', background:'none', border:'1px solid #E4E7EB', borderRadius:'6px', color:'#64748b', cursor:'pointer', fontSize:'13px' }}>
+                  Cancelar
+                </button>
+                <button className="btn btn-primary" onClick={confirmarAtencion} disabled={guardando}>
+                  {guardando ? 'Aprobando...' : 'Aprobar SOLPE'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

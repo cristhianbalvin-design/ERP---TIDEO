@@ -171,6 +171,8 @@ const estadoBase = (overrides = {}) => ({
   sociedadesIdsAlcance: null,
   vistaConsolidada: false,
   permiteEscritura: false,
+  permisos: [],
+  esAdminEmpresa: false,
   cargando: false,
   error: null,
   estado: 'sin_sesion',
@@ -270,6 +272,8 @@ export async function cargarSesionOperativa({
       sociedadesIdsAlcance: contextoSociedad.sociedadesIdsAlcance,
       vistaConsolidada: sociedadActiva?.id === SOCIEDAD_TODAS_ID,
       permiteEscritura: filtroSociedad.permiteEscritura,
+      permisos: permisosRows || [],
+      esAdminEmpresa: Boolean(membresia.rol?.es_admin_empresa || membresia.rol?.es_superadmin),
       estado: 'listo',
     }));
   } catch (error) {

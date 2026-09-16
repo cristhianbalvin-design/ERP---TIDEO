@@ -52,6 +52,7 @@ import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
 import { contarDiasDescontablesAsistencia } from './utils/asistenciaNomina.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import { MaterialAutocomplete } from './pages_core.jsx';
 import {
   PHONE_PATTERN,
   DNI_PATTERN,
@@ -10571,7 +10572,7 @@ const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', so
 const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
-  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, inventario, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadSOLPE = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -10586,6 +10587,23 @@ function SOLPE() {
   const [errCeco, setErrCeco] = useState(false);
   const [errItems, setErrItems] = useState(false);
   const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
+  const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!empresa?.id || !isSupabaseConfigured()) return undefined;
+    getSupabaseClient()
+      .then(supabase => supabase.rpc('usuario_puede', {
+        target_empresa_id: empresa.id,
+        target_pantalla: 'inventario',
+        target_accion: 'crear',
+      }))
+      .then(({ data, error }) => {
+        if (vigente && !error) setPuedeCrearMaterial(data === true);
+      })
+      .catch(() => { if (vigente) setPuedeCrearMaterial(false); });
+    return () => { vigente = false; };
+  }, [empresa?.id]);
 
   const getOTNumero = (id) => ots.find(o => o.id === id)?.numero || id || '—';
   const otsEscrituraSOLPE = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadSOLPE.sociedadIdEscritura);
@@ -10606,16 +10624,16 @@ function SOLPE() {
   const handleSubmit = () => {
     if (!form.centro_costo_id) { setErrCeco(true); return; }
     if (form.tipo === 'bien') {
-      const hasValid = items.some(it => (it.material_id && it.material_id !== '__manual__' ? true : it.descripcion.trim() !== '') && String(it.cantidad).trim() !== '');
+      const hasValid = items.some(it => it.material_id && String(it.cantidad).trim() !== '');
       if (!hasValid) { setErrItems(true); return; }
     }
     const cleanItems = items
-      .filter(it => (it.material_id && it.material_id !== '__manual__') || it.descripcion.trim())
+      .filter(it => it.material_id)
       .map(it => {
         const mat = (materiales || []).find(m => m.id === it.material_id);
         return {
           id: it.id,
-          material_id: it.material_id && it.material_id !== '__manual__' ? it.material_id : null,
+          material_id: it.material_id,
           material_codigo: mat?.codigo || null,
           descripcion: mat ? (mat.descripcion || mat.nombre || it.descripcion) : it.descripcion,
           cantidad: parseFloat(it.cantidad) || 0,
@@ -10895,28 +10913,29 @@ function SOLPE() {
                 </label>
                 <button type="button" className="btn btn-sm btn-secondary" onClick={() => setItems(p => [...p, newItem()])}>+ Agregar ítem</button>
               </div>
-              {errItems && <div style={{color:'var(--danger,#ef4444)', fontSize:12, marginBottom:6}}>Agrega al menos un ítem con material/descripción y cantidad.</div>}
+              {errItems && <div style={{color:'var(--danger,#ef4444)', fontSize:12, marginBottom:6}}>Agrega al menos un material y su cantidad.</div>}
               <div style={{display:'flex', flexDirection:'column', gap:8}}>
                 {items.map((item, idx) => (
                   <div key={item.id} style={{border:'1px solid var(--border)', borderRadius:6, padding:'10px 10px 8px', background:'var(--surface)'}}>
                     <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8, marginBottom:6}}>
-                      <SearchSelect
-                        style={{fontSize:13}}
-                        value={item.material_id}
-                        placeholder="— Seleccionar del catálogo —"
-                        staticOption={{ id: '__manual__', label: '✏ Ingresar manualmente' }}
-                        options={(materiales || []).map(m => ({ id: m.id, label: etiquetaMaterial(m) }))}
-                        onChange={id => {
-                          const mat = (materiales || []).find(m => m.id === id);
-                          setItems(p => p.map((x, i) => i === idx ? { ...x, material_id: id, descripcion: mat ? (mat.descripcion || mat.nombre || '') : x.descripcion, unidad: mat?.unidad || x.unidad } : x));
+                      <MaterialAutocomplete
+                        value={{ mat_id: item.material_id, nombre: item.descripcion }}
+                        materiales={materiales || []}
+                        inventario={inventario || []}
+                        inlineOptions
+                        permitirCrearMaterial={puedeCrearMaterial}
+                        onChange={seleccion => {
+                          setItems(p => p.map((x, i) => i === idx ? {
+                            ...x,
+                            material_id: seleccion.mat_id || '',
+                            descripcion: seleccion.nombre || x.descripcion,
+                            unidad: seleccion.unidad || x.unidad,
+                          } : x));
                           if (errItems) setErrItems(false);
                         }}
                       />
                       <button type="button" className="btn btn-sm" style={{background:'var(--danger-light,#fee2e2)', color:'var(--danger,#ef4444)', border:'none', minWidth:28}} onClick={() => setItems(p => p.filter((_, i) => i !== idx))} title="Eliminar ítem">×</button>
                     </div>
-                    {item.material_id === '__manual__' && (
-                      <input className="input" style={{marginBottom:6, fontSize:13}} placeholder="Descripción del material o servicio..." value={item.descripcion} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, descripcion: e.target.value } : x))} />
-                    )}
                     <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:6}}>
                       <input className="input" type="number" min="0" step="any" style={{fontSize:13}} placeholder="Cantidad *" value={item.cantidad} onChange={e => { setItems(p => p.map((x, i) => i === idx ? { ...x, cantidad: e.target.value } : x)); if (errItems) setErrItems(false); }} />
                       <select className="select" style={{fontSize:13}} value={item.unidad} onChange={e => setItems(p => p.map((x, i) => i === idx ? { ...x, unidad: e.target.value } : x))}>

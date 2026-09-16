@@ -74,7 +74,7 @@ function preciosReferencialesPartesEnPen(material, convertirMonto, tipoCambioHoy
   };
 }
 
-function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false }) {
+export function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false, permitirCrearMaterial = true }) {
   const [query, setQuery] = useState(value?.nombre || '');
   const [open, setOpen] = useState(false);
   const [dropRect, setDropRect] = useState(null);
@@ -207,9 +207,11 @@ function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [
               </div>
             );
           })}
-          <div onMouseDown={() => abrirModal(query)} className="autocomplete-option autocomplete-create-option">
-            + Crear material: "{query}"
-          </div>
+          {permitirCrearMaterial && (
+            <div onMouseDown={() => abrirModal(query)} className="autocomplete-option autocomplete-create-option">
+              + Crear material: "{query}"
+            </div>
+          )}
         </div>
       )}
       {showModal && (
@@ -1109,6 +1111,17 @@ function Leads() {
     return <span style={{color:'var(--cyan)'}}>🔗</span>;
   };
 
+  const getEtiquetaTipoLead = (lead) => {
+    const tipo = String(lead.tipo_documento || '').trim().toUpperCase();
+    const documento = String(lead.numero_documento || '').replace(/\D/g, '');
+    const esPersona = tipo === TIPO_DOCUMENTO_DNI || (!tipo && documento.length === 8);
+    const esEmpresa = tipo === TIPO_DOCUMENTO_RUC || (!tipo && documento.length === 11);
+
+    if (esPersona) return { label: 'PERSONA', color: '#be185d', background: '#fce7f3', border: '#f9a8d4' };
+    if (esEmpresa) return { label: 'EMPRESA', color: '#1d4ed8', background: '#dbeafe', border: '#93c5fd' };
+    return null;
+  };
+
   const calcularScoreLead = (lead) => {
     let score = 0;
     const fuente = (lead.fuente || '').toLowerCase();
@@ -1287,6 +1300,7 @@ function Leads() {
                           const diasColor = diasSinActividad >= 7 ? 'badge-red' : diasSinActividad >= 3 ? 'badge-orange' : 'badge-gray';
                           const { score: lScore, label: lLabel, color: lColor } = calcularScoreLead(l);
                           const potencial = getLeadPotencial(l);
+                          const etiquetaTipoLead = getEtiquetaTipoLead(l);
                           return (
                         <div
                           key={l.id}
@@ -1302,6 +1316,18 @@ function Leads() {
                               {l.nombre}
                             </div>
                             <div className="row" style={{gap:4, flexShrink:0}}>
+                              {etiquetaTipoLead && (
+                                <span
+                                  title={`${l.tipo_documento || 'Documento'}: ${l.numero_documento || 'sin número'}`}
+                                  style={{
+                                    alignSelf:'center', padding:'3px 7px', borderRadius:999, border:`1px solid ${etiquetaTipoLead.border}`,
+                                    background:etiquetaTipoLead.background, color:etiquetaTipoLead.color, fontSize:9, fontWeight:800,
+                                    letterSpacing:'0.05em', lineHeight:1.1, boxShadow:'0 1px 2px rgba(15, 23, 42, 0.10)'
+                                  }}
+                                >
+                                  {etiquetaTipoLead.label}
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 className="icon-btn"

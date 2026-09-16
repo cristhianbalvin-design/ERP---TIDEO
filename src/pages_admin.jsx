@@ -135,6 +135,12 @@ const SPECIAL_PERMISSIONS = [
   { key: 'perfil_campo', label: 'Perfil de campo', aplicacion: 'operativa', control: 'perfil' },
 ];
 
+const normalizeRoleSearchText = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
 const USER_TABLE_COLUMNS = [
   { key: 'usuario', label: 'Usuario' },
   { key: 'email', label: 'Email' },
@@ -193,8 +199,37 @@ function Roles() {
   const [guardandoPermisos, setGuardandoPermisos] = useState(false);
   const [permisosDirty, setPermisosDirty] = useState(false);
   const [applicationView, setApplicationView] = useState(null);
-  const rolesCarouselRef = useRef(null);
-  const [rolesCarouselNav, setRolesCarouselNav] = useState({ canScroll: false, canLeft: false, canRight: false });
+  const [rolesPickerOpen, setRolesPickerOpen] = useState(false);
+  const [rolesSearch, setRolesSearch] = useState('');
+  const [rolesSearchIndex, setRolesSearchIndex] = useState(0);
+  const rolesPickerRef = useRef(null);
+  const rolesSearchInputRef = useRef(null);
+  const rolesOptionRefs = useRef({});
+  const rolesPickerRows = useMemo(() => Object.entries(roles).map(([key, item]) => ({
+    key,
+    item,
+    searchText: normalizeRoleSearchText([
+      key,
+      item?.nombre,
+      item?.descripcion,
+      item?.categoria,
+      item?.nivel_jerarquico,
+    ].filter(Boolean).join(' ')),
+    nameText: normalizeRoleSearchText(item?.nombre || key),
+  })), [roles]);
+  const filteredRoleRows = useMemo(() => {
+    const query = normalizeRoleSearchText(rolesSearch);
+    const tokens = query.split(/\s+/).filter(Boolean);
+    return rolesPickerRows
+      .filter(row => tokens.every(token => row.searchText.includes(token)))
+      .sort((a, b) => {
+        const aExact = query && a.nameText === query ? 0 : 1;
+        const bExact = query && b.nameText === query ? 0 : 1;
+        const aPrefix = query && a.nameText.startsWith(query) ? 0 : 1;
+        const bPrefix = query && b.nameText.startsWith(query) ? 0 : 1;
+        return aExact - bExact || aPrefix - bPrefix || a.nameText.localeCompare(b.nameText, 'es');
+      });
+  }, [rolesPickerRows, rolesSearch]);
   const functionalSections = useMemo(() => {
     const sections = new Map();
     MOCK.pantallasPermisos.filter(p => (
@@ -249,38 +284,50 @@ function Roles() {
     ])));
   }, [sel, functionalSections]);
 
-  const updateRolesCarouselNav = useCallback(() => {
-    const carousel = rolesCarouselRef.current;
-    if (!carousel) return;
-    const canScroll = carousel.scrollWidth > carousel.clientWidth + 1;
-    const canLeft = canScroll && carousel.scrollLeft > 1;
-    const canRight = canScroll && carousel.scrollLeft + carousel.clientWidth < carousel.scrollWidth - 1;
-    setRolesCarouselNav(previous => (
-      previous.canScroll === canScroll && previous.canLeft === canLeft && previous.canRight === canRight
-        ? previous
-        : { canScroll, canLeft, canRight }
-    ));
-  }, []);
+  useEffect(() => {
+    if (!rolesPickerOpen) return undefined;
+    const handleOutsidePointerDown = event => {
+      if (!rolesPickerRef.current?.contains(event.target)) setRolesPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsidePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointerDown);
+    };
+  }, [rolesPickerOpen]);
 
   useEffect(() => {
-    const carousel = rolesCarouselRef.current;
-    if (!carousel) return undefined;
-    updateRolesCarouselNav();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateRolesCarouselNav);
-    observer?.observe(carousel);
-    carousel.addEventListener('scroll', updateRolesCarouselNav, { passive: true });
-    window.addEventListener('resize', updateRolesCarouselNav);
-    return () => {
-      observer?.disconnect();
-      carousel.removeEventListener('scroll', updateRolesCarouselNav);
-      window.removeEventListener('resize', updateRolesCarouselNav);
-    };
-  }, [roles, rolKeys.length, updateRolesCarouselNav]);
+    if (!rolesPickerOpen) return;
+    const selectedIndex = filteredRoleRows.findIndex(row => row.key === sel);
+    setRolesSearchIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    const frame = window.requestAnimationFrame(() => rolesSearchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [rolesPickerOpen]);
 
-  const scrollRolesCarousel = direction => {
-    const carousel = rolesCarouselRef.current;
-    if (!carousel) return;
-    carousel.scrollBy({ left: direction * Math.max(180, carousel.clientWidth * 0.7), behavior: 'smooth' });
+  useEffect(() => {
+    setRolesSearchIndex(index => Math.min(index, Math.max(0, filteredRoleRows.length - 1)));
+    const activeRole = filteredRoleRows[rolesSearchIndex];
+    if (rolesPickerOpen && activeRole) rolesOptionRefs.current[activeRole.key]?.scrollIntoView({ block: 'nearest' });
+  }, [filteredRoleRows, rolesPickerOpen, rolesSearchIndex]);
+
+  const handleRolesSearchKeyDown = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setRolesPickerOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!filteredRoleRows.length) return;
+      setRolesSearchIndex(index => {
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        return (index + delta + filteredRoleRows.length) % filteredRoleRows.length;
+      });
+      return;
+    }
+    if (event.key === 'Enter' && filteredRoleRows[rolesSearchIndex]) {
+      event.preventDefault();
+      seleccionarRol(filteredRoleRows[rolesSearchIndex].key);
+    }
   };
 
   const handleNuevoRol = async () => {
@@ -446,6 +493,9 @@ function Roles() {
     setSel(roleId);
     setTab('permisos');
     setApplicationView(firstActiveApplication?.key || null);
+    setRolesPickerOpen(false);
+    setRolesSearch('');
+    setRolesSearchIndex(0);
   };
 
   if (!role) {
@@ -543,32 +593,68 @@ function Roles() {
       )}
 
       <div className="card" style={{marginBottom:20}}>
-        <div className="card-head"><h3>Roles</h3></div>
-        <div className="roles-carousel-shell">
-          {rolesCarouselNav.canScroll && rolesCarouselNav.canLeft && (
-            <button type="button" className="roles-carousel-nav roles-carousel-nav-left" onClick={() => scrollRolesCarousel(-1)} aria-label="Ver roles anteriores">
-              {I.chevLeft}
-            </button>
-          )}
-          <div ref={rolesCarouselRef} className="roles-carousel" onScroll={updateRolesCarouselNav}>
-            {Object.entries(roles).map(([key, item]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => seleccionarRol(key)}
-                aria-pressed={sel === key}
-                style={{flex:'0 0 auto', minWidth:150, padding:'10px 12px', borderRadius:8, border:sel === key ? '1px solid var(--cyan)' : '1px solid var(--border)', background:sel === key ? 'var(--surface-hover)' : 'var(--surface)', color:'var(--fg)', cursor:'pointer', textAlign:'left'}}
-              >
-                <strong style={{display:'block', fontSize:13}}>{item.nombre}</strong>
-                <span className="text-muted" style={{display:'block', fontSize:11, marginTop:3}}>{(usuariosActivosPorRol.get(key) || []).length} usuarios</span>
-              </button>
-            ))}
+        <div className="card-head roles-picker-head">
+          <div className="roles-picker-title">
+            <h3>Roles</h3>
+            <span className="text-muted">Selecciona un rol para administrar sus permisos.</span>
           </div>
-          {rolesCarouselNav.canScroll && rolesCarouselNav.canRight && (
-            <button type="button" className="roles-carousel-nav roles-carousel-nav-right" onClick={() => scrollRolesCarousel(1)} aria-label="Ver más roles">
-              {I.chevRight}
+          <div className="roles-picker" ref={rolesPickerRef}>
+            <button
+              type="button"
+              className="roles-picker-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={rolesPickerOpen}
+              onClick={() => setRolesPickerOpen(open => !open)}
+            >
+              <span className="roles-picker-trigger-copy">
+                <strong>{role.nombre}</strong>
+                <span className="text-muted">{usuariosRolSeleccionado.length} usuarios</span>
+              </span>
+              <span className={`roles-picker-chevron${rolesPickerOpen ? ' is-open' : ''}`}>{I.chev}</span>
             </button>
-          )}
+            {rolesPickerOpen && (
+              <div className="roles-picker-menu">
+                <div className="roles-picker-search-wrap">
+                  <input
+                    ref={rolesSearchInputRef}
+                    type="search"
+                    className="input roles-picker-search"
+                    value={rolesSearch}
+                    onChange={event => { setRolesSearch(event.target.value); setRolesSearchIndex(0); }}
+                    onKeyDown={handleRolesSearchKeyDown}
+                    placeholder="Buscar rol por nombre, categoría o descripción..."
+                    aria-label="Buscar rol"
+                  />
+                </div>
+                <div className="roles-picker-options" role="listbox" aria-label="Roles disponibles">
+                  {filteredRoleRows.length ? filteredRoleRows.map((row, index) => (
+                    <button
+                      key={row.key}
+                      ref={element => {
+                        if (element) rolesOptionRefs.current[row.key] = element;
+                        else delete rolesOptionRefs.current[row.key];
+                      }}
+                      type="button"
+                      role="option"
+                      aria-selected={sel === row.key}
+                      className={`roles-picker-option${sel === row.key ? ' is-selected' : ''}${index === rolesSearchIndex ? ' is-active' : ''}`}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => seleccionarRol(row.key)}
+                    >
+                      <span className="roles-picker-option-copy">
+                        <strong>{row.item.nombre}</strong>
+                        <span className="text-muted">{row.item.descripcion || row.item.categoria || 'Sin descripción'}</span>
+                      </span>
+                      <span className="roles-picker-option-users">{(usuariosActivosPorRol.get(row.key) || []).length} usuarios</span>
+                    </button>
+                  )) : (
+                    <div className="roles-picker-empty">No hay roles que coincidan con la búsqueda.</div>
+                  )}
+                </div>
+                <div className="roles-picker-hint">Usa ↑ ↓ para navegar · Enter para seleccionar · Esc para cerrar</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

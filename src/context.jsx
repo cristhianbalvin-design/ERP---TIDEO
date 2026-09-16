@@ -6607,6 +6607,93 @@ export function AppProvider({ children }) {
     return cuentaPagar.id;
   };
 
+  const cxpTienePagos = cxpId => (cxpPagos || []).some(p => p.cxp_id === cxpId);
+
+  const anularCxP = async (cxpId, motivo) => {
+    const cuentaPagar = (cxp || []).find(c => c.id === cxpId);
+    const motivoNormalizado = String(motivo || '').trim();
+    if (!cuentaPagar) throw new Error('No se encontró la cuenta por pagar. Actualiza la pantalla e inténtalo nuevamente.');
+    if (!motivoNormalizado) throw new Error('El motivo de anulación es obligatorio.');
+    if (String(cuentaPagar.estado || '').toLowerCase() === 'anulada') {
+      throw new Error('La cuenta por pagar ya está anulada.');
+    }
+
+    const tienePagos = cxpTienePagos(cxpId) || Number(cuentaPagar.monto_pagado || 0) > 0
+      || ['pagada', 'pago_parcial'].includes(String(cuentaPagar.estado || '').toLowerCase());
+    const movimientoVinculado = (movimientosTesoreria || []).some(m =>
+      m.cxp_id === cxpId || m.vinculo_id === cxpId || m.vinculado_id === cxpId
+    );
+    if (tienePagos || movimientoVinculado) {
+      throw new Error('No se puede anular una CxP con pagos o movimientos registrados. Primero debe revertirse el pago mediante el flujo correspondiente.');
+    }
+
+    const gastoVinculado = (comprasGastos || []).find(g => g.id === cuentaPagar.gasto_id || g.cxp_id === cxpId);
+    const now = new Date().toISOString();
+    if (isSupabaseConfigured()) {
+      await finanzasService.anularCxP(cxpId, motivoNormalizado, authUser?.id || null);
+    }
+
+    setCxp(prev => prev.map(c => c.id === cxpId
+      ? {
+        ...c,
+        estado: 'anulada',
+        saldo: 0,
+        motivo_anulacion: motivoNormalizado,
+        anulado_por: authUser?.id || null,
+        anulado_en: now,
+        updated_at: now,
+      }
+      : c));
+    if (gastoVinculado && gastoVinculado.estado_pago !== 'pagado') {
+      setComprasGastos(prev => prev.map(g => g.id === gastoVinculado.id
+        ? { ...g, cxp_id: null, estado_pago: 'pendiente' }
+        : g));
+    }
+    auditSync({
+      modulo: 'finanzas',
+      entidad: 'cxp',
+      entidad_id: cxpId,
+      accion: 'anular',
+      valor_anterior: cuentaPagar,
+      valor_nuevo: { estado: 'anulada', motivo: motivoNormalizado },
+    });
+    addNotificacion(`CxP ${cuentaPagar.factura_numero || cuentaPagar.concepto || cxpId} anulada. El historial se conserva y ya no genera saldo pendiente.`);
+    return true;
+  };
+
+  const eliminarCxP = async (cxpId, motivo) => {
+    const cuentaPagar = (cxp || []).find(c => c.id === cxpId);
+    const motivoNormalizado = String(motivo || '').trim();
+    if (!cuentaPagar) throw new Error('No se encontró la cuenta por pagar. Actualiza la pantalla e inténtalo nuevamente.');
+    if (!motivoNormalizado) throw new Error('El motivo de eliminación es obligatorio.');
+
+    const gastoVinculado = (comprasGastos || []).some(g => g.id === cuentaPagar.gasto_id || g.cxp_id === cxpId);
+    const movimientoVinculado = (movimientosTesoreria || []).some(m =>
+      m.cxp_id === cxpId || m.vinculo_id === cxpId || m.vinculado_id === cxpId
+    );
+    const tienePagos = cxpTienePagos(cxpId) || Number(cuentaPagar.monto_pagado || 0) > 0;
+    const tieneOrigen = Boolean(cuentaPagar.gasto_id || cuentaPagar.recibo_honorarios_id || cuentaPagar.recepcion_id);
+    if (tienePagos || gastoVinculado || movimientoVinculado || tieneOrigen || String(cuentaPagar.estado || '').toLowerCase() === 'anulada') {
+      throw new Error('Solo se pueden eliminar CxP preliminares sin pagos ni registros vinculados. Usa Anular para conservar la trazabilidad.');
+    }
+
+    if (isSupabaseConfigured()) {
+      await finanzasService.eliminarCxPPreliminar(cxpId, motivoNormalizado, authUser?.id || null);
+    }
+    setCxp(prev => prev.filter(c => c.id !== cxpId));
+    setCxpPagos(prev => prev.filter(p => p.cxp_id !== cxpId));
+    auditSync({
+      modulo: 'finanzas',
+      entidad: 'cxp',
+      entidad_id: cxpId,
+      accion: 'eliminar_preliminar',
+      valor_anterior: cuentaPagar,
+      valor_nuevo: { motivo: motivoNormalizado },
+    });
+    addNotificacion(`CxP ${cuentaPagar.factura_numero || cuentaPagar.concepto || cxpId} eliminada porque era un registro preliminar sin dependencias.`);
+    return true;
+  };
+
   const registrarEgresoCajaChica = async (datos) => {
     if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
       throw new Error('Selecciona una sociedad para el egreso de caja chica.');
@@ -10978,7 +11065,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,

@@ -218,7 +218,7 @@ function CxC() {
   const {
     cxc, cuentas, osClientes, facturas, usuarios,
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
-    registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, comisiones,
+    registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, anularFactura, comisiones,
     condonarMoraCxC, restaurarMoraCxC,
     navigate, role, empresa, addNotificacion, perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles = [],
@@ -265,6 +265,11 @@ function CxC() {
   const clienteDe = c => c?.cliente || c?.cuentas?.razon_social || (cuentas||[]).find(x=>x.id===c?.cuenta_id)?.razon_social || '-';
   const facturaNumeroDe = c => c?.facturas?.numero || c?.factura || (facturas||[]).find(f=>f.id===c?.factura_id)?.numero || '-';
   const osNumeroDe = c => c?.os_clientes?.numero || (osClientes||[]).find(o=>o.id===c?.os_cliente_id)?.numero || '-';
+  const cobrosRegistradosDe = c => (cobrosHistorial || []).filter(cb => cb.cxc_id === c?.id);
+  const facturaPuedeAnularseDe = c => {
+    const factura = (facturas || []).find(f => f.id === c?.factura_id) || c?.facturas;
+    return Boolean(c?.factura_id) && !['pagada', 'cobrada', 'anulada'].includes(String(factura?.estado || '').toLowerCase());
+  };
 
   const diasMoraDe = c => {
     if (saldoDe(c) <= 0 || estadoTerminalCxC(c)) return 0;
@@ -345,7 +350,9 @@ function CxC() {
   const [formGestion, setFormGestion] = useState({ tipo_gestion:'', resultado:'', fecha_proxima_accion:'', fecha_acordada_pago:'', notas:'' });
   const [editVencimiento, setEditVencimiento] = useState(null);
   const [savingVencimiento, setSavingVencimiento] = useState(false);
-  const [confirmAnular, setConfirmAnular] = useState(null); // CxC a anular
+  const [confirmAnular, setConfirmAnular] = useState(null); // Cobros de CxC a revertir
+  const [confirmAnularFacturaCxC, setConfirmAnularFacturaCxC] = useState(null);
+  const [motivoAnularFacturaCxC, setMotivoAnularFacturaCxC] = useState('');
   const [savingCondonar, setSavingCondonar] = useState(false);
   const [cxcImportRows, setCxcImportRows] = useState([]);
   const [cxcImportResult, setCxcImportResult] = useState(null);
@@ -556,6 +563,7 @@ function CxC() {
 
   const permisosEditarCxC = role?.permisos?.editar;
   const puedeEditarCxC = Boolean(role?.permisos?.todo || permisosEditarCxC === true || permisosEditarCxC?.includes?.('cxc'));
+  const puedeAnularCxC = Boolean(role?.permisos?.todo || role?.permisos?.anular === true || role?.permisos?.anular?.includes?.('cxc'));
 
   const abrirEdicionVencimiento = (c, e) => {
     if (e) e.stopPropagation();
@@ -1114,6 +1122,7 @@ function CxC() {
                     const meta  = ESTADO_META[est] || ESTADO_META.por_cobrar;
                     const vence = c.fecha_vencimiento||c.vence||'--';
                     const moneda = monedaCxCDe(c);
+                    const tieneCobros = cobrosRegistradosDe(c).length > 0;
                     return (
                       <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>abrirFicha(c)}>
                         <td>
@@ -1131,8 +1140,11 @@ function CxC() {
                         <td><span className={'badge '+meta.cls}>{meta.label}</span></td>
                         <td onClick={e=>e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                           {saldoDe(c)>0 && !estadoTerminalCxC(c) && <button className="btn btn-sm btn-primary" data-local-form="true" onClick={e=>abrirCobro(c,e)} style={{marginRight:6}}>Cobrar</button>}
-                          {puedeEditarCxC && !estadoTerminalCxC(c) && (
-                            <button className="icon-btn" title="Anular CxC" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
+                          {puedeEditarCxC && tieneCobros && !estadoTerminalCxC(c) && (
+                            <button className="icon-btn" title="Revertir cobros" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setConfirmAnular(c);}}>{I.trash}</button>
+                          )}
+                          {puedeAnularCxC && !tieneCobros && facturaPuedeAnularseDe(c) && !estadoTerminalCxC(c) && (
+                            <button className="icon-btn" title="Anular factura y CxC relacionada" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();setMotivoAnularFacturaCxC('');setConfirmAnularFacturaCxC(c);}}>{I.trash}</button>
                           )}
                         </td>
                       </tr>
@@ -1152,6 +1164,47 @@ function CxC() {
       })()}
 
       {fichaJSX}
+
+      {/* Modal: Anular factura y CxC relacionada */}
+      {confirmAnularFacturaCxC && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setConfirmAnularFacturaCxC(null)}/>
+          <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1001,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:'min(500px,92vw)',boxShadow:'0 8px 32px rgba(0,0,0,0.24)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+              <span style={{color:'var(--danger)',fontSize:22}}>{I.alert}</span>
+              <div style={{fontSize:17,fontWeight:700}}>Anular documento financiero</div>
+            </div>
+            <div className="card" style={{padding:14,marginBottom:16,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Factura</span><strong>{facturaNumeroDe(confirmAnularFacturaCxC)}</strong></div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Cliente</span><strong>{clienteDe(confirmAnularFacturaCxC)}</strong></div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Total</span><strong>{moneyCurrency(totalDe(confirmAnularFacturaCxC), confirmAnularFacturaCxC.moneda)}</strong></div>
+            </div>
+            <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:16}}>
+              <strong style={{color:'var(--danger)'}}>Antes de continuar:</strong>
+              <div style={{marginTop:4,color:'var(--fg-muted)'}}>La factura y la CxC relacionada quedarán anuladas. El registro se conservará para auditoría, dejará de generar saldo pendiente y no podrá cobrarse nuevamente.</div>
+              {confirmAnularFacturaCxC.valorizacion_id && <div style={{marginTop:6,color:'var(--fg-muted)'}}>Como proviene de una valorización, se aplicarán las reglas existentes de anulación para permitir su regularización.</div>}
+            </div>
+            <form onSubmit={e => {
+              e.preventDefault();
+              const motivo = motivoAnularFacturaCxC.trim();
+              if (!motivo) return;
+              addNotificacion('Procesando anulación de factura y CxC...');
+              anularFactura(confirmAnularFacturaCxC.factura_id, motivo);
+              setConfirmAnularFacturaCxC(null);
+              setMotivoAnularFacturaCxC('');
+            }}>
+              <div className="input-group">
+                <label>Motivo obligatorio</label>
+                <textarea className="input" rows={3} value={motivoAnularFacturaCxC} onChange={e => setMotivoAnularFacturaCxC(e.target.value)} placeholder="Explica por qué se anula el documento..." autoFocus />
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
+                <button type="button" className="btn btn-secondary" onClick={() => {setConfirmAnularFacturaCxC(null);setMotivoAnularFacturaCxC('');}}>Cancelar</button>
+                <button type="submit" className="btn btn-danger" disabled={!motivoAnularFacturaCxC.trim()}>Confirmar anulación</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
 
       {/* Modal: Revertir cobros de CxC */}
       {confirmAnular && (
@@ -1209,7 +1262,7 @@ function CxC() {
                   <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                     <button className="btn btn-secondary" onClick={()=>setConfirmAnular(null)}>Cancelar</button>
                     {!hayComisionPagada && (
-                      <button className="btn btn-danger" onClick={()=>{revertirCobroCxC(confirmAnular.id);setConfirmAnular(null);}}>Revertir cobros</button>
+                      <button className="btn btn-danger" onClick={()=>{addNotificacion('Procesando reversión de cobros y conciliaciones...');revertirCobroCxC(confirmAnular.id);setConfirmAnular(null);}}>Revertir cobros</button>
                     )}
                   </div>
                 </>
@@ -3572,7 +3625,7 @@ function Facturacion() {
   const [valSel, setValSel] = useState('');
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
-  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'', sociedad_id:'' });
+  const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id:'' });
   const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
@@ -3712,17 +3765,22 @@ function Facturacion() {
       : [{ seleccionado: Boolean(osSel), sociedadId: osOrigenFactura?.sociedad_id || null, label: `La OS Cliente ${osOrigenFactura?.numero || osSel || ''}`.trim() }],
     mensajeSinOrigen: 'La factura directa no tiene OS Cliente; selecciona una sociedad concreta antes de emitirla.',
   });
-  const mensajeFacturaDirecta = 'Selecciona una sociedad concreta en el selector superior para emitir una factura directa sin OS Cliente.';
+  const mensajeFacturaDirecta = 'Selecciona una sociedad en el formulario para emitir una factura directa sin OS Cliente.';
   const cebeVigenteParaFecha = (cebe, fecha) => Boolean(cebe)
     && cebe.estado === 'activo'
     && (!cebe.fecha_inicio || String(fecha || '').slice(0, 10) >= String(cebe.fecha_inicio).slice(0, 10))
     && (!cebe.fecha_fin || String(fecha || '').slice(0, 10) <= String(cebe.fecha_fin).slice(0, 10));
-  const cebesVigentes = filtrarOpcionesPorSociedadEscritura(
-    (centrosBeneficio || []).filter(cebe =>
-      (!empresa?.id || cebe.empresa_id === empresa.id) && cebeVigenteParaFecha(cebe, form.fecha_emision)
-    ),
-    modoVistaSociedadFacturacion.sociedadIdEscritura,
-  );
+  const sociedadIdFiltroCebe = mode === 'directa' && !osSel
+    ? form.sociedad_id
+    : modoVistaSociedadFacturacion.sociedadIdEscritura;
+  const cebesVigentes = mode === 'directa' && !osSel && !form.sociedad_id
+    ? []
+    : filtrarOpcionesPorSociedadEscritura(
+      (centrosBeneficio || []).filter(cebe =>
+        (!empresa?.id || cebe.empresa_id === empresa.id) && cebeVigenteParaFecha(cebe, form.fecha_emision)
+      ),
+      sociedadIdFiltroCebe,
+    );
   const cuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || '—'; };
   const rucCliente = id => getCuenta(id)?.ruc || '—';
 
@@ -3928,6 +3986,9 @@ function Facturacion() {
     if (field === 'fecha_vencimiento') setVencimientoManual(true);
     setForm(f => {
       const updated = { ...f, [field]: value };
+      if (field === 'sociedad_id' && mode === 'directa' && f.sociedad_id !== value) {
+        updated.centro_beneficio_id = '';
+      }
       if (field === 'fecha_emision' || field === 'condicion_pago') {
         const fe = field === 'fecha_emision' ? value : f.fecha_emision;
         const condicion = field === 'condicion_pago' ? value : f.condicion_pago;
@@ -3946,7 +4007,7 @@ function Facturacion() {
     setValSel(''); setCuentaSel(''); setOsSel('');
     setPartidas([{ id: Date.now(), descripcion:'', cantidad:1, precio_unitario:0 }]);
     setIgvPct(18);
-    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'PEN', centro_beneficio_id:'', sociedad_id:'' });
+    setForm({ tipo_documento:'factura', numero: nextNumero, fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: calcularVencimientoForm(today, condicionPagoInicial), glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id:'' });
     setVencimientoManual(false);
     setCondicionManual(false);
     setConfirmarExcesoFac(false);
@@ -4073,7 +4134,7 @@ function Facturacion() {
       : cuentaSel;
     if (!cuentaId) { alert('Debe seleccionar un cliente.'); return; }
     if (mode === 'val' && !valSel) { alert('Debe seleccionar una valorización.'); return; }
-    if (mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura) { alert(mensajeFacturaDirecta); return; }
+    if (mode === 'directa' && !osSel && !form.sociedad_id) { alert(mensajeFacturaDirecta); return; }
     if (destinoFactura.conflictMessage) { alert(destinoFactura.conflictMessage); return; }
     if (partidas.every(p => !p.descripcion && !p.precio_unitario)) { alert('Debe completar al menos una partida.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Debe seleccionar una sociedad para emitir la factura.'); return; }
@@ -5021,7 +5082,7 @@ function Facturacion() {
           </div>
           <div className="row" style={{gap:10}}>
             <button className="btn btn-secondary" onClick={() => setMode(null)} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleGuardar} disabled={saving || (mode === 'val' && !valSel) || (!cuentaSel && mode === 'directa') || (mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura) || Boolean(destinoFactura.conflictMessage) || (excedeOsSaldo && !confirmarExcesoFac)} title={mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura ? mensajeFacturaDirecta : destinoFactura.conflictMessage || undefined}>
+            <button className="btn btn-primary" onClick={handleGuardar} disabled={saving || (mode === 'val' && !valSel) || (!cuentaSel && mode === 'directa') || (mode === 'directa' && !osSel && !form.sociedad_id) || Boolean(destinoFactura.conflictMessage) || (excedeOsSaldo && !confirmarExcesoFac)} title={mode === 'directa' && !osSel && !form.sociedad_id ? mensajeFacturaDirecta : destinoFactura.conflictMessage || undefined}>
               {saving ? 'Emitiendo...' : <>{I.check} Emitir factura</>}
             </button>
           </div>
@@ -5041,6 +5102,7 @@ function Facturacion() {
 
             {/* Tipo y número */}
             <div className="card card-body">
+              <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => handleFormChange('sociedad_id', sociedad_id)} />
               <div className="grid-2" style={{gap:16}}>
                 <div className="input-group">
                   <label>Tipo de documento</label>
@@ -5109,10 +5171,10 @@ function Facturacion() {
                 </div>
               )}
               {(mode === 'val' || osSel) && <SociedadReadOnlyField {...destinoFactura} style={{marginTop:16}} />}
-              {mode === 'directa' && !osSel && !modoVistaSociedadFacturacion.permiteEscritura && <div className="alert alert-warning" style={{marginTop:16}}>{mensajeFacturaDirecta}</div>}
+              {mode === 'directa' && !osSel && !form.sociedad_id && <div className="alert alert-warning" style={{marginTop:16}}>{mensajeFacturaDirecta}</div>}
               <div className="input-group" style={{marginTop:16}}>
                 <label>CEBE <span style={{color:'var(--danger)'}}>*</span></label>
-                <select className="select" value={form.centro_beneficio_id} onChange={e => handleFormChange('centro_beneficio_id', e.target.value)}>
+                <select className="select" value={form.centro_beneficio_id} onChange={e => handleFormChange('centro_beneficio_id', e.target.value)} disabled={mode === 'directa' && !osSel && !form.sociedad_id}>
                   <option value="">Seleccionar CEBE...</option>
                   {cebesVigentes.map(cebe => <option key={cebe.id} value={cebe.id}>{cebe.codigo ? `${cebe.codigo} — ` : ''}{cebe.nombre}</option>)}
                 </select>
@@ -5122,7 +5184,6 @@ function Facturacion() {
                     : 'Obligatorio. Selecciona un CEBE activo y vigente para la fecha de emisión.'}
                 </div>
               </div>
-              <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => handleFormChange('sociedad_id', sociedad_id)} style={{marginTop:16}} />
             </div>
 
             {/* Partidas */}
@@ -7175,7 +7236,7 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], registrarPagoCxP, generarCxP, crearGasto, addNotificacion, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, generarCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7218,6 +7279,9 @@ function CxP() {
   const [panelCrear, setPanelCrear] = useState(false);
   const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
   const [sel, setSel] = useState(null);
+  const [accionCxP, setAccionCxP] = useState(null);
+  const [motivoAccionCxP, setMotivoAccionCxP] = useState('');
+  const [guardandoAccionCxP, setGuardandoAccionCxP] = useState(false);
   const [fichaTab, setFichaTab] = useState('pago');
   const [guardando, setGuardando] = useState(false);
   const [tabCxP, setTabCxP] = useState('general');
@@ -7434,6 +7498,8 @@ function CxP() {
 
   // Semáforo: verde >7d, naranja 0-7d, rojo vencida, gris pagada
   const semaforoDe = c => {
+    if (String(c?.estado || '').toLowerCase() === 'anulada')
+      return { bg: 'var(--fg-muted)', label: 'Anulada', badgeCls: 'badge-gray' };
     if (saldoDe(c) <= 0 || c.estado === 'pagada')
       return { bg: 'var(--fg-muted)', label: 'Pagada', badgeCls: 'badge-gray' };
     const vence = c?.fecha_vencimiento;
@@ -7504,6 +7570,19 @@ function CxP() {
   };
 
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
+  const puedeAnularCxP = Boolean(role?.permisos?.todo || role?.permisos?.anular === true || role?.permisos?.anular?.includes?.('cxp'));
+  const puedeEliminarCxP = Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.es_superadmin);
+  const cxpEsPreliminar = c => {
+    const estado = String(c?.estado || '').toLowerCase();
+    return !['pagada', 'pago_parcial', 'anulada'].includes(estado)
+      && Number(c?.monto_pagado || 0) <= 0
+      && pagosDe(c?.id).length === 0
+      && !c?.gasto_id
+      && !c?.recibo_honorarios_id
+      && !c?.recepcion_id
+      && !(movimientosTesoreria || []).some(m => m.cxp_id === c?.id || m.vinculo_id === c?.id || m.vinculado_id === c?.id)
+      && !(comprasGastos || []).some(g => g.cxp_id === c?.id || g.id === c?.gasto_id);
+  };
   const esTributoForm = tabCxP === 'tributos' || motivoCxP === 'tributo' || formCrear.tipo_comprobante === 'Tributo';
   const esDividendoForm = formCrear.tipo_beneficiario === DIVIDENDO_TIPO;
   const esRheForm = formCrear.tipo_comprobante === 'RHE';
@@ -7611,6 +7690,34 @@ function CxP() {
     setArchivoPagoError('');
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
+  };
+
+  const abrirAccionCxP = (c, tipo, event) => {
+    event?.stopPropagation?.();
+    setMotivoAccionCxP('');
+    setAccionCxP({ c, tipo });
+  };
+
+  const confirmarAccionCxP = async event => {
+    event.preventDefault();
+    if (!accionCxP || !motivoAccionCxP.trim() || guardandoAccionCxP) return;
+    const { c, tipo } = accionCxP;
+    setGuardandoAccionCxP(true);
+    addNotificacion(tipo === 'eliminar' ? 'Verificando dependencias antes de eliminar la CxP...' : 'Verificando dependencias antes de anular la CxP...');
+    try {
+      const resultado = tipo === 'eliminar'
+        ? await eliminarCxP(c.id, motivoAccionCxP.trim())
+        : await anularCxP(c.id, motivoAccionCxP.trim());
+      if (resultado) {
+        setSel(current => current?.id === c.id ? null : current);
+        setAccionCxP(null);
+        setMotivoAccionCxP('');
+      }
+    } catch (error) {
+      addNotificacion(`No se aplicó la acción: ${error?.message || 'Error desconocido.'}`);
+    } finally {
+      setGuardandoAccionCxP(false);
+    }
   };
 
   const guardarPago = async e => {
@@ -8040,6 +8147,12 @@ function CxP() {
                       {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver comprobante adjunto">{I.file}</a>}
                       {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
                       {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
+                      {puedeAnularCxP && !['pagada','pago_parcial','anulada'].includes(String(c.estado || '').toLowerCase()) && pagosDe(c.id).length === 0 && (
+                        <button className="icon-btn" title="Anular CxP" style={{color:'var(--danger)',marginLeft:6}} onClick={e => abrirAccionCxP(c, 'anular', e)}>{I.trash}</button>
+                      )}
+                      {puedeEliminarCxP && cxpEsPreliminar(c) && (
+                        <button className="icon-btn" title="Eliminar CxP preliminar" style={{color:'var(--danger)',marginLeft:4}} onClick={e => abrirAccionCxP(c, 'eliminar', e)}>{I.trash}</button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -8052,6 +8165,45 @@ function CxP() {
       </div>
 
       {/* ── Panel ficha (pago + historial) ─────────────────────────────── */}
+      {accionCxP && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => !guardandoAccionCxP && setAccionCxP(null)}/>
+          <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:1001,background:'var(--bg)',border:'1px solid var(--border)',borderRadius:12,padding:28,width:'min(510px,92vw)',boxShadow:'0 8px 32px rgba(0,0,0,0.24)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+              <span style={{color:'var(--danger)',fontSize:22}}>{I.alert}</span>
+              <div style={{fontSize:17,fontWeight:700}}>{accionCxP.tipo === 'eliminar' ? 'Eliminar CxP preliminar' : 'Anular CxP'}</div>
+            </div>
+            <div className="card" style={{padding:14,marginBottom:16,background:'var(--bg-subtle)',display:'flex',flexDirection:'column',gap:8}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Beneficiario</span><strong>{beneficiarioNombre(accionCxP.c)}</strong></div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Documento</span><strong>{accionCxP.c.factura_numero || accionCxP.c.concepto || 'Sin documento'}</strong></div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Total</span><strong>{money(totalDe(accionCxP.c), symOf(accionCxP.c.moneda))}</strong></div>
+              {mostrarBadgeSociedadCxP && <div style={{display:'flex',justifyContent:'space-between',fontSize:13}}><span style={{color:'var(--fg-muted)'}}>Sociedad</span><SociedadBadge sociedadId={accionCxP.c.sociedad_id} /></div>}
+            </div>
+            {accionCxP.tipo === 'eliminar' ? (
+              <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:16}}>
+                <strong style={{color:'var(--danger)'}}>Alerta: esta acción es permanente.</strong>
+                <div style={{marginTop:4,color:'var(--fg-muted)'}}>Solo se permitirá porque la CxP no tiene pagos, gastos, movimientos ni documentos vinculados. Si la verificación detecta una dependencia, la eliminación será rechazada y el registro deberá anularse.</div>
+              </div>
+            ) : (
+              <div style={{fontSize:13,padding:'10px 12px',borderRadius:6,background:'rgba(239,68,68,0.08)',border:'1px solid var(--danger)',marginBottom:16}}>
+                <strong style={{color:'var(--danger)'}}>Antes de continuar:</strong>
+                <div style={{marginTop:4,color:'var(--fg-muted)'}}>La CxP quedará anulada, dejará de generar saldo pendiente y el registro se conservará para auditoría. Si tenía un gasto pendiente vinculado, este quedará disponible nuevamente sin CxP asociada.</div>
+              </div>
+            )}
+            <form onSubmit={confirmarAccionCxP}>
+              <div className="input-group">
+                <label>Motivo obligatorio</label>
+                <textarea className="input" rows={3} value={motivoAccionCxP} onChange={e => setMotivoAccionCxP(e.target.value)} placeholder={accionCxP.tipo === 'eliminar' ? 'Explica por qué se elimina este preliminar...' : 'Explica por qué se anula la CxP...'} autoFocus disabled={guardandoAccionCxP} />
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
+                <button type="button" className="btn btn-secondary" onClick={() => setAccionCxP(null)} disabled={guardandoAccionCxP}>Cancelar</button>
+                <button type="submit" className="btn btn-danger" disabled={!motivoAccionCxP.trim() || guardandoAccionCxP}>{guardandoAccionCxP ? 'Verificando...' : accionCxP.tipo === 'eliminar' ? 'Confirmar eliminación' : 'Confirmar anulación'}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+
       {sel && (
         <>
           <div className="side-panel-backdrop" onClick={() => setSel(null)}/>

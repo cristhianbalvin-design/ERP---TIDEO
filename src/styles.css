@@ -618,39 +618,79 @@ body {
 }
 .card-head h3 { font-family: 'Sora', sans-serif; font-size: 15px; font-weight: 600; margin: 0; color: var(--fg); }
 
-/* Carrusel de Roles: conserva el scroll nativo, sin exponer su scrollbar. */
-.roles-carousel-shell { position: relative; padding: 0 8px 16px; }
-.roles-carousel {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 0 40px;
-  scroll-behavior: smooth;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.roles-carousel::-webkit-scrollbar { display: none; }
-.roles-carousel-nav {
-  position: absolute;
-  top: calc(50% - 8px);
-  z-index: 1;
-  width: 32px;
-  height: 32px;
-  padding: 0;
+.roles-picker-head { align-items: center; gap: 20px; flex-wrap: wrap; }
+.roles-picker-title { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+.roles-picker-title h3 { margin: 0; }
+.roles-picker-title .text-muted { font-size: 12px; }
+.roles-picker { position: relative; flex: 1 1 420px; min-width: 280px; max-width: 680px; margin-left: auto; }
+.roles-picker-trigger {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px 8px 14px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 16px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--surface);
-  color: var(--fg-muted);
-  box-shadow: var(--shadow-sm);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s, box-shadow .16s;
+}
+.roles-picker-trigger:hover,
+.roles-picker-trigger[aria-expanded="true"] { border-color: var(--cyan); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cyan) 13%, transparent); }
+.roles-picker-trigger-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.roles-picker-trigger-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.roles-picker-trigger-copy .text-muted { font-size: 11px; }
+.roles-picker-chevron { flex: 0 0 auto; color: var(--fg-muted); transition: transform .16s; }
+.roles-picker-chevron svg { width: 18px; height: 18px; }
+.roles-picker-chevron.is-open { transform: rotate(180deg); }
+.roles-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 20;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(15, 35, 65, .16);
+}
+.roles-picker-search-wrap { padding: 10px; border-bottom: 1px solid var(--border-subtle); }
+.roles-picker-search { width: 100%; min-height: 38px; }
+.roles-picker-options { max-height: 300px; overflow-y: auto; padding: 6px; }
+.roles-picker-option {
+  width: 100%;
+  min-height: 52px;
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
   cursor: pointer;
 }
-.roles-carousel-nav:hover { background: var(--surface-hover); color: var(--fg); }
-.roles-carousel-nav svg { width: 16px; height: 16px; }
-.roles-carousel-nav-left { left: 12px; }
-.roles-carousel-nav-right { right: 12px; }
+.roles-picker-option:hover,
+.roles-picker-option.is-active { background: var(--surface-hover); border-color: var(--border); }
+.roles-picker-option.is-selected { border-color: var(--cyan); }
+.roles-picker-option-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.roles-picker-option-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.roles-picker-option-copy .text-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.roles-picker-option-users { flex: 0 0 auto; color: var(--fg-muted); font-size: 11px; white-space: nowrap; }
+.roles-picker-empty { padding: 18px 12px; color: var(--fg-muted); font-size: 13px; text-align: center; }
+.roles-picker-hint { padding: 8px 12px; border-top: 1px solid var(--border-subtle); color: var(--fg-muted); font-size: 11px; }
+
+@media (max-width: 680px) {
+  .roles-picker-head { align-items: stretch; }
+  .roles-picker { min-width: 100%; max-width: none; }
+}
 
 /* Account gallery */
 .account-gallery {

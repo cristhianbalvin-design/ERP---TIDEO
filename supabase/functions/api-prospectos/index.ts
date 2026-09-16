@@ -35,14 +35,27 @@ serve(async (req) => {
     return json({ error: "API key inválido o sin permiso leads:write" }, 403);
   }
 
-  let body: Record<string, string>;
+  let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return json({ error: "Body JSON inválido" }, 400);
   }
 
-  const { nombre_contacto, nombre_empresa, email, telefono, cargo, fuente, notas, campana_id: campanaIdRaw, estado: estadoRaw, motivo_descarte } = body;
+  const {
+    nombre_contacto,
+    nombre_empresa,
+    email,
+    telefono,
+    cargo,
+    fuente,
+    notas,
+    campana_id: campanaIdRaw,
+    estado: estadoRaw,
+    motivo_descarte,
+    tipo_documento: tipoDocRaw,
+    numero_documento,
+  } = body as Record<string, string | null | undefined>;
 
   if (!nombre_contacto && !nombre_empresa) {
     return json({ error: "Se requiere al menos nombre_contacto o nombre_empresa" }, 400);
@@ -50,11 +63,22 @@ serve(async (req) => {
 
   // Validar estado contra el catálogo, fallback a "nuevo"
   const estadosValidos = ["nuevo", "en_contacto", "calificado", "convertido", "descartado"];
-  const estadoFinal = estadosValidos.includes(estadoRaw) ? estadoRaw : "nuevo";
+  const estadoFinal = typeof estadoRaw === "string" && estadosValidos.includes(estadoRaw) ? estadoRaw : "nuevo";
+
+  // Validar tipo_documento: 'RUC', 'DNI', 'TAX_ID_EXTRANJERO'
+  const tiposDocValidos = ["RUC", "DNI", "TAX_ID_EXTRANJERO"];
+  const tipoDocUpper = typeof tipoDocRaw === "string" ? tipoDocRaw.trim().toUpperCase() : "";
+  const tipoDocumento = tiposDocValidos.includes(tipoDocUpper)
+    ? tipoDocUpper
+    : (nombre_empresa && nombre_empresa.trim().length > 0 ? "RUC" : "DNI");
+
+  const empresaNombreFinal = (nombre_empresa && nombre_empresa.trim().length > 0)
+    ? nombre_empresa.trim()
+    : null;
 
   // Validar campana_id si viene en el body — si no es válida o no está activa, insertar con null
   let campanaId: string | null = null;
-  if (campanaIdRaw) {
+  if (campanaIdRaw && typeof campanaIdRaw === "string") {
     const { data: campana } = await supabase
       .from("campanas")
       .select("id")
@@ -65,7 +89,9 @@ serve(async (req) => {
     campanaId = campana?.id ?? null;
   }
 
-  const leadId = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const leadId = (body.id_lead && typeof body.id_lead === "string")
+    ? body.id_lead
+    : `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
   const { data: lead, error: insertError } = await supabase
     .from("leads")
@@ -73,7 +99,9 @@ serve(async (req) => {
       id: leadId,
       empresa_id: empresaId,
       nombre_contacto: nombre_contacto ?? "",
-      empresa_nombre: nombre_empresa ?? "",
+      empresa_nombre: empresaNombreFinal,
+      tipo_documento: tipoDocumento,
+      numero_documento: numero_documento ?? null,
       email: email ?? null,
       telefono: telefono ?? null,
       cargo: cargo ?? null,
