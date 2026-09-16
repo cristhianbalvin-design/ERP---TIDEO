@@ -4,6 +4,7 @@ import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { actualizarHojaCosteoSvc } from './services/crmService.js';
 import { CotizacionesGeneradasHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
+import { MaterialAutocomplete } from './pages_core.jsx';
 
 const STEPS = [
   { id: 'mano_obra', label: 'Mano de obra' },
@@ -59,6 +60,7 @@ export default function HojaCosteoWizard() {
   const [guardandoResumen, setGuardandoResumen] = useState(false);
   const [aprobacionPendiente, setAprobacionPendiente] = useState(false);
   const [aprobando, setAprobando] = useState(false);
+  const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
 
   const tarifaPorCargo = useMemo(() => new Map(
     tarifas
@@ -90,11 +92,18 @@ export default function HojaCosteoWizard() {
   const precioSugeridoTotal = precioSugeridoSinIgv == null ? null : precioSugeridoSinIgv * 1.18;
   const familiasMaterialSeleccionadas = useMemo(() => materialFamilias.filter(item => item.grupo_id === formMaterial.grupo_id), [materialFamilias, formMaterial.grupo_id]);
   const subfamiliasMaterialSeleccionadas = useMemo(() => materialSubfamilias.filter(item => item.familia_id === formMaterial.familia_id), [materialSubfamilias, formMaterial.familia_id]);
-  const materialesPorBusqueda = useMemo(() => {
-    const termino = formMaterial.busqueda.trim().toLocaleLowerCase('es-PE');
-    if (!termino) return [];
-    return materiales.filter(item => `${item.codigo || ''} ${item.descripcion || ''}`.toLocaleLowerCase('es-PE').includes(termino)).slice(0, 100);
-  }, [materiales, formMaterial.busqueda]);
+  const materialesParaAutocomplete = useMemo(() => materiales.map(item => ({
+    id: item.material_id,
+    empresa_id: item.empresa_id,
+    codigo: item.codigo,
+    descripcion: item.descripcion,
+    unidad: item.unidad,
+    grupo_id: item.grupo_id,
+    familia_id: item.familia_id,
+    subfamilia_id: item.subfamilia_id,
+    precio_unitario: 0,
+    costo_usd_calculado: item.costo_usd_calculado,
+  })), [materiales]);
   const materialesPorJerarquia = useMemo(() => materiales.filter(item => (
     (!formMaterial.grupo_id || item.grupo_id === formMaterial.grupo_id)
     && (!formMaterial.familia_id || item.familia_id === formMaterial.familia_id)
@@ -177,6 +186,22 @@ export default function HojaCosteoWizard() {
   };
 
   useEffect(() => { cargarDatos(); }, [hoja?.id, hoja?.moneda, empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let vigente = true;
+    if (!empresa?.id || !isSupabaseConfigured()) return undefined;
+    getSupabaseClient()
+      .then(sb => sb.rpc('usuario_puede', {
+        target_empresa_id: empresa.id,
+        target_pantalla: 'inventario',
+        target_accion: 'crear',
+      }))
+      .then(({ data, error }) => {
+        if (vigente && !error) setPuedeCrearMaterial(data === true);
+      })
+      .catch(() => { if (vigente) setPuedeCrearMaterial(false); });
+    return () => { vigente = false; };
+  }, [empresa?.id]);
 
   const totalesCabecera = (sobrescribe = {}) => {
     const totales = {
@@ -287,13 +312,49 @@ export default function HojaCosteoWizard() {
     }
   };
 
-  const seleccionarMaterial = materialId => {
-    const material = materialPorId.get(materialId);
+  const seleccionarMaterial = (materialId, materialOverride = null) => {
+    const material = materialOverride || materialPorId.get(materialId);
     setFormMaterial(prev => ({
       ...prev,
       material_id: materialId,
+      busqueda: material?.descripcion || prev.busqueda,
       costo_unitario_manual: material?.costo_usd_calculado != null ? String(convertirUsdAMonedaHoja(material.costo_usd_calculado) ?? '') : '',
     }));
+  };
+
+  const seleccionarMaterialDesdeAutocomplete = async seleccion => {
+    const materialId = seleccion?.mat_id || '';
+    if (!materialId) {
+      setFormMaterial(prev => ({ ...prev, material_id: '', costo_unitario_manual: '' }));
+      return;
+    }
+    const materialVista = materiales.find(item => item.material_id === materialId);
+    if (materialVista) {
+      seleccionarMaterial(materialId, materialVista);
+      return;
+    }
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.from('vw_materiales_costeo')
+        .select('material_id, empresa_id, codigo, descripcion, unidad, grupo_id, familia_id, subfamilia_id, costo_usd_calculado')
+        .eq('empresa_id', empresa.id).eq('material_id', materialId).maybeSingle();
+      if (error) throw error;
+      const materialNuevo = data || {
+        material_id: materialId,
+        empresa_id: empresa.id,
+        codigo: '',
+        descripcion: seleccion.nombre || '',
+        unidad: seleccion.unidad || '',
+        grupo_id: null,
+        familia_id: null,
+        subfamilia_id: null,
+        costo_usd_calculado: null,
+      };
+      setMateriales(prev => [...prev.filter(item => item.material_id !== materialId), materialNuevo]);
+      seleccionarMaterial(materialId, materialNuevo);
+    } catch (error) {
+      addToast(`No se pudo actualizar el material recién creado: ${error.message || error}`, 'error');
+    }
   };
 
   const agregarLineaMaterial = async event => {
@@ -602,15 +663,16 @@ export default function HojaCosteoWizard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
             <div className="input-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
               <label>Buscar material por código o nombre</label>
-              <input className="input" disabled={bloqueada || cargando} value={formMaterial.busqueda} onChange={e => setFormMaterial(prev => ({ ...prev, busqueda: e.target.value, material_id: '', costo_unitario_manual: '' }))} placeholder="Escribe código o descripción..." />
+              <MaterialAutocomplete
+                value={{ mat_id: formMaterial.material_id, nombre: materialSeleccionado?.descripcion || '' }}
+                materiales={materialesParaAutocomplete}
+                inventario={[]}
+                inlineOptions
+                permitirCrearMaterial={!bloqueada && !cargando && puedeCrearMaterial}
+                style={{ width: '100%' }}
+                onChange={seleccionarMaterialDesdeAutocomplete}
+              />
             </div>
-            {formMaterial.busqueda.trim() && <div className="input-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-              <label>Resultados de búsqueda ({materialesPorBusqueda.length})</label>
-              <select className="select" disabled={bloqueada || cargando || materialesPorBusqueda.length === 0} value={formMaterial.material_id} onChange={e => seleccionarMaterial(e.target.value)}>
-                <option value="">{materialesPorBusqueda.length ? 'Seleccionar material...' : 'No se encontraron materiales'}</option>
-                {materialesPorBusqueda.map(item => <option key={item.material_id} value={item.material_id}>{item.codigo ? `${item.codigo} — ` : ''}{item.descripcion}</option>)}
-              </select>
-            </div>}
             <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--fg-muted)', fontSize: 12 }}><span style={{ flex: 1, borderTop: '1px solid var(--border)' }} /><span>o navega por jerarquía</span><span style={{ flex: 1, borderTop: '1px solid var(--border)' }} /></div>
             <div className="input-group" style={{ margin: 0 }}>
               <label>Grupo</label>

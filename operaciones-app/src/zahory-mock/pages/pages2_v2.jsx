@@ -1113,6 +1113,26 @@ export const HistorialMinaPage = ({ onNav }) => {
 // ---------- Solicitudes SOLPE ----------
 const nuevaLineaSolpe = () => ({ id: `itm_${crypto.randomUUID()}`, material_id: '', material_codigo: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
 
+// Preview local equivalente al codigoAuto del maestro de Admin.
+// La generacion definitiva al guardar sigue siendo la RPC generar_codigo_material.
+const calcularCodigoMaterialSolpe = (subfamiliaId, grupos, familias, subfamilias, materiales, empresaId) => {
+  const subfamilia = subfamilias.find(item => item.id === subfamiliaId);
+  if (!subfamilia) return '';
+  const familia = familias.find(item => item.id === subfamilia.familia_id);
+  if (!familia) return '';
+  const grupo = grupos.find(item => item.id === familia.grupo_id);
+  if (!grupo || grupo.codigo == null || familia.codigo == null || subfamilia.codigo == null) return '';
+  const prefijo = String(grupo.codigo).padStart(2, '0') + String(familia.codigo).padStart(2, '0') + String(subfamilia.codigo).padStart(2, '0');
+  const existentes = (materiales || []).filter(material => material.subfamilia_id === subfamiliaId
+    && (material.empresa_id === empresaId || !material.empresa_id)
+    && typeof material.codigo === 'string' && material.codigo.length === 10 && material.codigo.startsWith(prefijo));
+  const maxCorrelativo = existentes.reduce((max, material) => {
+    const numero = parseInt(material.codigo.slice(6), 10);
+    return Number.isNaN(numero) ? max : Math.max(max, numero);
+  }, 0);
+  return prefijo + String(maxCorrelativo + 1).padStart(4, '0');
+};
+
 const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId, usuarioId, grupos, familias, subfamilias, almacenes, unidadesMedida = [], onSelect }) => {
   const [texto, setTexto] = useS2(item.descripcion || '');
   const [abierto, setAbierto] = useS2(false);
@@ -1131,6 +1151,7 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
   const familiasFiltradas = familias.filter(familia => familia.grupo_id === form.grupo_id);
   const subfamiliasFiltradas = subfamilias.filter(subfamilia => subfamilia.familia_id === form.familia_id);
   const unidadesOpciones = [...new Set([...(unidadesMedida || []), form.unidad, item.unidad].map(unidad => String(unidad || '').trim()).filter(Boolean))];
+  const codigoSugerido = useMemo(() => calcularCodigoMaterialSolpe(form.subfamilia_id, grupos, familias, subfamilias, materiales, empresaId), [form.subfamilia_id, grupos, familias, subfamilias, materiales, empresaId]);
 
   useEffect(() => {
     let vigente = true;
@@ -1187,8 +1208,8 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     } finally { setGuardando(false); }
   };
   return <>
-    <div style={{ position:'relative' }}>
-      <input className="input" value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
+    <div style={{ position:'relative', width:'100%', minWidth:0 }}>
+      <input className="input" style={{ width:'100%' }} value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
       {abierto && texto.trim().length >= 2 && (
         <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'#fff', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
           {buscando && <div className="hint" style={{ padding:'8px' }}>Buscando materiales...</div>}
@@ -1200,12 +1221,12 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     </div>
     {crearAbierto && <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}><div className="card" style={{ width:'min(760px, 100%)' }}>
       <div className="card-header"><h3>Nuevo material</h3><div className="spacer"/><button className="icon-btn" onClick={() => setCrearAbierto(false)}><Icon name="x" size={16}/></button></div>
-      <div className="card-body" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:12 }}>
+      <div className="card-body ot-form-grid dbs">
         {error && <div style={{ gridColumn:'1/-1', color:'#b91c1c' }}>{error}</div>}
         <div className="input-group"><label>Grupo *</label><select className="select" value={form.grupo_id} onChange={event => setForm(actual => ({ ...actual, grupo_id:event.target.value, familia_id:'', subfamilia_id:'' }))}><option value="">Seleccionar...</option>{grupos.map(grupo => <option key={grupo.id} value={grupo.id}>{grupo.codigo} - {grupo.nombre}</option>)}</select></div>
         <div className="input-group"><label>Familia *</label><select className="select" value={form.familia_id} disabled={!form.grupo_id} onChange={event => setForm(actual => ({ ...actual, familia_id:event.target.value, subfamilia_id:'' }))}><option value="">Seleccionar...</option>{familiasFiltradas.map(familia => <option key={familia.id} value={familia.id}>{familia.codigo} - {familia.nombre}</option>)}</select></div>
         <div className="input-group"><label>Subfamilia *</label><select className="select" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Código</label><input className="input" readOnly value={form.subfamilia_id ? 'Se genera al guardar' : 'Selecciona subfamilia'} style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
+        <div className="input-group"><label>Código · Auto</label><input className="input" readOnly value={codigoSugerido || 'Selecciona subfamilia'} style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
         <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Descripción *</label><input className="input" value={form.descripcion} onChange={event => setForm(actual => ({ ...actual, descripcion:event.target.value }))}/></div>
         <div className="input-group"><label>UM *</label><select className="select" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))}><option value="">Seleccionar...</option>{unidadesOpciones.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select></div>
         <div className="input-group"><label>Nro. parte</label><input className="input" value={form.nro_parte} onChange={event => setForm(actual => ({ ...actual, nro_parte:event.target.value }))}/></div>
@@ -1559,8 +1580,8 @@ export const SolicitudesPage = ({ onNav }) => {
             <section className="ot-form-section ot-form-section-popover">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}><div className="ot-form-section-title" style={{ margin:0 }}>2. Ítems solicitados</div><button className="btn btn-secondary btn-sm" onClick={() => setFormSolpe(actual => ({ ...actual, items:[...actual.items, nuevaLineaSolpe()] }))}>+ Agregar ítem</button></div>
               <div className="table-wrap" style={{ overflow:'visible' }}><div style={{ minWidth:720 }}>
-                <div style={{ display:'grid', gridTemplateColumns:'minmax(360px, 2.5fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
-              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(360px, 2.5fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'minmax(420px, 3fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
+              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(420px, 3fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
                 <SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} unidadesMedida={unidadesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/>
                 <input aria-label="Cantidad" className="input" type="number" min="0" step="any" value={linea.cantidad} onChange={event => actualizarLinea(linea.id, { cantidad:event.target.value })}/>
                 <select aria-label="Unidad" className="select" value={linea.unidad} onChange={event => actualizarLinea(linea.id, { unidad:event.target.value })}>{unidadesMaterial.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select>
