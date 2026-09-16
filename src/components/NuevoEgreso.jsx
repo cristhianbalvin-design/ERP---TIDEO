@@ -163,7 +163,9 @@ function loadDraft() {
 // ── Componente principal ──────────────────────────────────────────────────────
 // preconfig: { paso, tipoSel, form } — permite abrir directamente en paso 2
 // pre-cargado (ej. desde Caja Chica con metodo_pago='Caja chica' ya_pagado=true).
-export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null }) {
+// fondoCajaChicaFijo: cuando se abre desde el detalle de un fondo, impide
+// cambiar el egreso a otro fondo o convertirlo en un egreso general.
+export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null, fondoCajaChicaFijo = null }) {
   const {
     empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
@@ -178,6 +180,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     sociedadesDisponibles,
   });
   const sociedadIdEscrituraEgreso = modoVistaSociedadEgreso.sociedadIdEscritura;
+  const fondoCajaChicaFijoId = fondoCajaChicaFijo?.id || null;
 
   // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar
   const gastoId = useMemo(
@@ -210,7 +213,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [errActivoVidaUtil, setErrActivoVidaUtil] = useState(false);
   const [fondosCaja, setFondosCaja] = useState([]);
   const [loadingFondosCaja, setLoadingFondosCaja] = useState(false);
-  const [form, setForm]           = useState({ ...FORM_VACIO, fecha: today, ...(preconfig?.form || {}), ...(draft?.form || {}) });
+  const [form, setForm]           = useState({
+    ...FORM_VACIO,
+    fecha: today,
+    ...(preconfig?.form || {}),
+    ...(draft?.form || {}),
+    ...(fondoCajaChicaFijoId ? {
+      ya_pagado: true,
+      metodo_pago: 'Caja chica',
+      fondo_caja_chica_id: fondoCajaChicaFijoId,
+    } : {}),
+  });
+
+  useEffect(() => {
+    if (!fondoCajaChicaFijoId) return;
+    setForm(prev => ({
+      ...prev,
+      ya_pagado: true,
+      metodo_pago: 'Caja chica',
+      fondo_caja_chica_id: fondoCajaChicaFijoId,
+    }));
+  }, [fondoCajaChicaFijoId]);
 
   // Persistir borrador en sessionStorage mientras el usuario llena el formulario
   useEffect(() => {
@@ -220,9 +243,19 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const setF = (k, v) => {
     setForm(p => {
-      const next = { ...p, [k]: v };
+      const next = {
+        ...p,
+        [k]: fondoCajaChicaFijoId && ['ya_pagado', 'metodo_pago', 'fondo_caja_chica_id'].includes(k)
+          ? (k === 'ya_pagado' ? true : k === 'metodo_pago' ? 'Caja chica' : fondoCajaChicaFijoId)
+          : v,
+      };
       if (k === 'metodo_pago' && v !== 'Caja chica') next.fondo_caja_chica_id = '';
       if (k === 'ya_pagado' && !v) next.fondo_caja_chica_id = '';
+      if (fondoCajaChicaFijoId) {
+        next.ya_pagado = true;
+        next.metodo_pago = 'Caja chica';
+        next.fondo_caja_chica_id = fondoCajaChicaFijoId;
+      }
       if (k === 'ya_pagado' && v && !next.fecha_pago) next.fecha_pago = next.fecha || today;
       if (k === 'fecha' && !next.fecha_pago) next.fecha_pago = v;
       return next;
@@ -275,6 +308,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   });
 
   const esCapitalizacion = !!tipoSel?.es_capitalizacion;
+  const fondoCajaSeleccionado = fondosCaja.find(f => f.id === form.fondo_caja_chica_id) || fondoCajaChicaFijo;
+  const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
 
   // Cargar tipos de gasto y tipo de cambio al montar
   useEffect(() => {
@@ -555,23 +590,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 14px', borderRadius: 8,
+        opacity: fondoCajaChicaFijado ? 0.85 : 1,
         background: form.ya_pagado
           ? 'color-mix(in srgb, var(--green) 8%, var(--surface))'
           : 'color-mix(in srgb, var(--orange) 6%, var(--surface))',
         border: `1px solid ${form.ya_pagado ? 'color-mix(in srgb, var(--green) 25%, var(--border))' : 'color-mix(in srgb, var(--orange) 25%, var(--border))'}`,
       }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>¿Este gasto ya fue pagado?</div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{fondoCajaChicaFijado ? 'Pago desde la caja abierta' : '¿Este gasto ya fue pagado?'}</div>
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
-            {form.ya_pagado ? 'Sí — se registra como pagado' : 'No — quedará pendiente de pago (CxP)'}
+            {fondoCajaChicaFijado
+              ? 'Sí — este egreso se registrará exclusivamente en esta caja'
+              : form.ya_pagado ? 'Sí — se registra como pagado' : 'No — quedará pendiente de pago (CxP)'}
           </div>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{form.ya_pagado ? 'Sí' : 'No'}</span>
           <div
-            onClick={() => setF('ya_pagado', !form.ya_pagado)}
+            onClick={() => !fondoCajaChicaFijado && setF('ya_pagado', !form.ya_pagado)}
+            aria-disabled={fondoCajaChicaFijado}
             style={{
-              width: 40, height: 22, borderRadius: 11, cursor: 'pointer',
+              width: 40, height: 22, borderRadius: 11, cursor: fondoCajaChicaFijado ? 'not-allowed' : 'pointer',
               background: form.ya_pagado ? 'var(--green)' : 'var(--border)',
               position: 'relative', transition: 'background 0.2s',
             }}
@@ -591,8 +630,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="input-group">
               <label>Método de pago</label>
-              <select className="select" value={form.metodo_pago} onChange={e => setF('metodo_pago', e.target.value)}>
-                {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+              <select className="select" value={form.metodo_pago} disabled={fondoCajaChicaFijado} onChange={e => setF('metodo_pago', e.target.value)}>
+                {(fondoCajaChicaFijado ? ['Caja chica'] : METODOS_PAGO).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div className="input-group">
@@ -645,7 +684,19 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           {form.metodo_pago === 'Caja chica' && (
             <div className="input-group">
               <label>Fondo de caja chica <span style={{ color: 'var(--danger)' }}>*</span></label>
-              {loadingFondosCaja ? (
+              {fondoCajaChicaFijado ? (
+                <div style={{
+                  padding: '10px 12px', borderRadius: 8,
+                  border: '1px solid color-mix(in srgb, var(--cyan) 45%, var(--border))',
+                  background: 'color-mix(in srgb, var(--cyan) 8%, var(--surface))',
+                }}>
+                  <strong>{fondoCajaSeleccionado?.nombre || fondoCajaChicaFijoId}</strong>
+                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 3 }}>
+                    Disponible: {fondoCajaSeleccionado ? fmtCaja(fondoCajaSeleccionado.saldo_disponible, fondoCajaSeleccionado.moneda) : 'se validará al guardar'}
+                    {' · '}Este egreso quedará vinculado únicamente a esta caja.
+                  </div>
+                </div>
+              ) : loadingFondosCaja ? (
                 <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '8px 0' }}>Cargando fondos...</div>
               ) : fondosCaja.length > 0 ? (
                 <>
@@ -805,7 +856,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     const monto    = parseFloat(form.monto) || 0;
     const categoria = tipoSel?.categoria_er || 'Administrativos';
     const cecoNombre = cecos.find(c => c.id === form.centro_costo_id)?.nombre || '—';
-    const fondoCajaSel = fondosCaja.find(f => f.id === form.fondo_caja_chica_id);
+    const fondoCajaSel = fondoCajaSeleccionado;
     const cuentaPagoSel = cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id);
     const provNombre = form.proveedor_id
       ? (provsActivos.find(p => p.id === form.proveedor_id)?.razon_social || form.proveedor_id)
@@ -886,6 +937,16 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
     if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {
+      setErrFondo(true);
+      setPaso(2);
+      return;
+    }
+    if (fondoCajaChicaFijado && (
+      !form.ya_pagado
+      || form.metodo_pago !== 'Caja chica'
+      || form.fondo_caja_chica_id !== fondoCajaChicaFijoId
+    )) {
+      setForm(prev => ({ ...prev, ya_pagado: true, metodo_pago: 'Caja chica', fondo_caja_chica_id: fondoCajaChicaFijoId }));
       setErrFondo(true);
       setPaso(2);
       return;
@@ -1003,7 +1064,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           moneda:            form.moneda,
           responsable_id:    authUser?.id   || null,
           responsable_nombre: authUser?.email || null,
-          fondo_id:          form.fondo_caja_chica_id || null,
+          fondo_id:          fondoCajaChicaFijoId || form.fondo_caja_chica_id || null,
           ceco_id:           form.centro_costo_id,
           categoria,
           num_comprobante:   form.num_comprobante || null,

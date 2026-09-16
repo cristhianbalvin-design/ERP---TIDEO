@@ -6157,6 +6157,7 @@ function CajaChica() {
   const [loading, setLoading] = useState(false);
   const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
   const [preconfigNE, setPreconfigNE] = useState(null);
+  const [fondoEgresoFijo, setFondoEgresoFijo] = useState(null);
   const [panelFondo, setPanelFondo] = useState(false);
   const [formFondo, setFormFondo] = useState(CC_FONDO_FORM);
   const [savingFondo, setSavingFondo] = useState(false);
@@ -6308,12 +6309,14 @@ function CajaChica() {
     setFondoSelId(null);
     setRendicionForm(null);
     setArqueoFondo(null);
+    setFondoEgresoFijo(fondo || null);
     setPreconfigNE({ ...CC_PRECONFIG_RAPIDO, form: { ...CC_PRECONFIG_RAPIDO.form, fondo_caja_chica_id: fondo?.id || '' } });
     setPanelNuevoEgreso(true);
   };
   const cerrarNuevoEgreso = () => {
     setPanelNuevoEgreso(false);
     setPreconfigNE(null);
+    setFondoEgresoFijo(null);
     cargar();
   };
 
@@ -6830,7 +6833,13 @@ function CajaChica() {
       )}
 
       {panelNuevoEgreso && (
-        <NuevoEgreso origen="caja_chica" preconfig={preconfigNE} onClose={cerrarNuevoEgreso} onSaved={cerrarNuevoEgreso} />
+        <NuevoEgreso
+          origen="caja_chica"
+          preconfig={preconfigNE}
+          fondoCajaChicaFijo={fondoEgresoFijo}
+          onClose={cerrarNuevoEgreso}
+          onSaved={cerrarNuevoEgreso}
+        />
       )}
     </>
   );
