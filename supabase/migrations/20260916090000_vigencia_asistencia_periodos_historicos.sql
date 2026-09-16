@@ -1,4 +1,4 @@
--- 530 · La cobertura de asistencia debe resolver el período contractual que
+-- La cobertura de asistencia debe resolver el período contractual que
 -- cubre la fecha consultada, incluso si ese período quedó archivado por una
 -- renovación posterior. No reactiva períodos ni cambia documentos existentes.
 
