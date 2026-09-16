@@ -1113,18 +1113,60 @@ export const HistorialMinaPage = ({ onNav }) => {
 // ---------- Solicitudes SOLPE ----------
 const nuevaLineaSolpe = () => ({ id: `itm_${crypto.randomUUID()}`, material_id: '', material_codigo: '', descripcion: '', cantidad: '', unidad: 'und', observacion: '' });
 
-const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId, usuarioId, grupos, familias, subfamilias, almacenes, onSelect }) => {
+const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId, usuarioId, grupos, familias, subfamilias, almacenes, unidadesMedida = [], onSelect }) => {
   const [texto, setTexto] = useS2(item.descripcion || '');
   const [abierto, setAbierto] = useS2(false);
   const [crearAbierto, setCrearAbierto] = useS2(false);
   const [guardando, setGuardando] = useS2(false);
   const [error, setError] = useS2(null);
+  const [resultadosRemotos, setResultadosRemotos] = useS2([]);
+  const [buscando, setBuscando] = useS2(false);
+  const [busquedaError, setBusquedaError] = useS2(null);
   const [form, setForm] = useS2({ grupo_id:'', familia_id:'', subfamilia_id:'', descripcion:item.descripcion || '', unidad:item.unidad || '', nro_parte:'', unidades_contenidas:'1', almacen_id:'', ubicacion:'', observacion:'', precio_unitario:'0', stock_minimo:'0', punto_reorden:'0', stock_maximo:'0', stock_seguridad:'0', estado:'activo' });
-  const resultados = texto.trim().length >= 2
-    ? materiales.filter(material => material.estado !== 'inactivo' && `${material.codigo || ''} ${material.descripcion || ''}`.toLowerCase().includes(texto.trim().toLowerCase())).slice(0, 12)
+  const termino = texto.trim();
+  const resultadosLocales = termino.length >= 2
+    ? materiales.filter(material => material.estado !== 'inactivo' && `${material.codigo || ''} ${material.descripcion || ''}`.toLowerCase().includes(termino.toLowerCase())).slice(0, 12)
     : [];
+  const resultados = resultadosRemotos.length ? resultadosRemotos : resultadosLocales;
   const familiasFiltradas = familias.filter(familia => familia.grupo_id === form.grupo_id);
   const subfamiliasFiltradas = subfamilias.filter(subfamilia => subfamilia.familia_id === form.familia_id);
+  const unidadesOpciones = [...new Set([...(unidadesMedida || []), form.unidad, item.unidad].map(unidad => String(unidad || '').trim()).filter(Boolean))];
+
+  useEffect(() => {
+    let vigente = true;
+    if (termino.length < 2 || !empresaId) {
+      setResultadosRemotos([]);
+      setBuscando(false);
+      setBusquedaError(null);
+      return () => { vigente = false; };
+    }
+    setBuscando(true);
+    setBusquedaError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const patron = `%${termino.replace(/[%_]/g, '\\$&')}%`;
+        const [porCodigo, porDescripcion] = await Promise.all([
+          supabase.from('materiales').select('id,codigo,descripcion,unidad,estado,grupo_id,familia_id,subfamilia_id').eq('empresa_id', empresaId).neq('estado', 'inactivo').ilike('codigo', patron).limit(12),
+          supabase.from('materiales').select('id,codigo,descripcion,unidad,estado,grupo_id,familia_id,subfamilia_id').eq('empresa_id', empresaId).neq('estado', 'inactivo').ilike('descripcion', patron).limit(12),
+        ]);
+        if (porCodigo.error) throw porCodigo.error;
+        if (porDescripcion.error) throw porDescripcion.error;
+        if (vigente) {
+          const unicos = new Map([...(porCodigo.data || []), ...(porDescripcion.data || [])].map(material => [material.id, material]));
+          setResultadosRemotos([...unicos.values()].slice(0, 12));
+        }
+      } catch (consultaError) {
+        if (vigente) {
+          setResultadosRemotos([]);
+          setBusquedaError(consultaError?.message || 'No se pudo consultar el catálogo.');
+        }
+      } finally {
+        if (vigente) setBuscando(false);
+      }
+    }, 400);
+    return () => { vigente = false; clearTimeout(timer); };
+  }, [termino, empresaId]);
   const seleccionar = material => {
     setTexto(material.descripcion || '');
     setAbierto(false);
@@ -1146,11 +1188,12 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
   };
   return <>
     <div style={{ position:'relative' }}>
-      <input className="input" value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setAbierto(true); }} />
+      <input className="input" value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
       {abierto && texto.trim().length >= 2 && (
         <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'#fff', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
-          {resultados.map(material => <button key={material.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)} style={{ display:'block', width:'100%', border:0, background:'transparent', textAlign:'left', padding:'8px', cursor:'pointer' }}><b>{material.codigo}</b> · {material.descripcion}<span className="muted" style={{ marginLeft:5 }}>{material.unidad || 'und'}</span></button>)}
-          {resultados.length === 0 && <div className="hint" style={{ padding:'8px' }}>Sin materiales coincidentes.</div>}
+          {buscando && <div className="hint" style={{ padding:'8px' }}>Buscando materiales...</div>}
+          {!buscando && resultados.map(material => <button key={material.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)} style={{ display:'block', width:'100%', border:0, background:'transparent', textAlign:'left', padding:'8px', cursor:'pointer' }}><b>{material.codigo}</b> · {material.descripcion}<span className="muted" style={{ marginLeft:5 }}>{material.unidad || 'und'}</span></button>)}
+          {!buscando && resultados.length === 0 && <div className="hint" style={{ padding:'8px' }}>{busquedaError || 'Sin materiales coincidentes.'}</div>}
           {puedeCrearMaterial && <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { setForm(actual => ({ ...actual, descripcion:texto })); setCrearAbierto(true); setAbierto(false); }} style={{ display:'block', width:'100%', border:0, borderTop:'1px solid var(--card-border)', background:'var(--orange-soft)', textAlign:'left', padding:'8px', cursor:'pointer', fontWeight:600 }}>+ Crear material: “{texto}”</button>}
         </div>
       )}
@@ -1164,7 +1207,7 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
         <div className="input-group"><label>Subfamilia *</label><select className="select" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
         <div className="input-group"><label>Código</label><input className="input" readOnly value={form.subfamilia_id ? 'Se genera al guardar' : 'Selecciona subfamilia'} style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
         <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Descripción *</label><input className="input" value={form.descripcion} onChange={event => setForm(actual => ({ ...actual, descripcion:event.target.value }))}/></div>
-        <div className="input-group"><label>UM *</label><input className="input" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))} placeholder="und, kg, m"/></div>
+        <div className="input-group"><label>UM *</label><select className="select" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))}><option value="">Seleccionar...</option>{unidadesOpciones.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select></div>
         <div className="input-group"><label>Nro. parte</label><input className="input" value={form.nro_parte} onChange={event => setForm(actual => ({ ...actual, nro_parte:event.target.value }))}/></div>
         <div className="input-group"><label>Unidades contenidas</label><input className="input" type="number" min="0.01" step="0.01" value={form.unidades_contenidas} onChange={event => setForm(actual => ({ ...actual, unidades_contenidas:event.target.value }))}/></div>
         <div className="input-group"><label>Almacén por defecto</label><select className="select" value={form.almacen_id} onChange={event => setForm(actual => ({ ...actual, almacen_id:event.target.value }))}><option value="">Sin asignar</option>{almacenes.map(almacen => <option key={almacen.id} value={almacen.id}>{almacen.nombre}</option>)}</select></div>
@@ -1206,6 +1249,11 @@ export const SolicitudesPage = ({ onNav }) => {
   const [areasFormulario, setAreasFormulario] = useS2([]);
   const [cecosFormulario, setCecosFormulario] = useS2([]);
   const [formSolpe, setFormSolpe] = useS2({ descripcion:'', tipo:'bien', prioridad:'normal', solicitante:'', centro_costo_id:'', ot_id:'', items:[nuevaLineaSolpe()] });
+  const unidadesMaterial = useMemo(() => {
+    const unidades = new Set((catalogoMateriales || []).map(material => String(material.unidad || '').trim()).filter(Boolean));
+    unidades.add('und');
+    return [...unidades].sort((a, b) => a.localeCompare(b));
+  }, [catalogoMateriales]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -1301,8 +1349,8 @@ export const SolicitudesPage = ({ onNav }) => {
       supabase.from('centros_costo').select('id,codigo,nombre,estado').eq('empresa_id', empresaId).eq('estado','activo').order('codigo'),
     ]);
     const [permisoSolpe, permisoMaterial, materiales, grupos, familias, subfamilias, almacenes, ots, areas, cecos] = resultados;
-    setPuedeCrearSolpe(!permisoSolpe.error && permisoSolpe.data === true);
-    setPuedeCrearMaterial(!permisoMaterial.error && permisoMaterial.data === true);
+    setPuedeCrearSolpe(!permisoSolpe.error && Boolean(permisoSolpe.data));
+    setPuedeCrearMaterial(!permisoMaterial.error && Boolean(permisoMaterial.data));
     if (!materiales.error) setCatalogoMateriales(materiales.data || []);
     if (!grupos.error) setGruposMaterial(grupos.data || []);
     if (!familias.error) setFamiliasMaterial(familias.data || []);
@@ -1508,14 +1556,14 @@ export const SolicitudesPage = ({ onNav }) => {
               <div className="ot-form-section-title">1. Necesidad</div>
               <div className="ot-form-grid dbs"><div className="ot-form-field ot-form-full"><div className="label">Descripción de la necesidad</div><textarea className="input" rows={3} value={formSolpe.descripcion} onChange={event => setFormSolpe(actual => ({ ...actual, descripcion:event.target.value }))} placeholder="Describe el requerimiento..."/></div></div>
             </section>
-            <section className="ot-form-section">
+            <section className="ot-form-section ot-form-section-popover">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}><div className="ot-form-section-title" style={{ margin:0 }}>2. Ítems solicitados</div><button className="btn btn-secondary btn-sm" onClick={() => setFormSolpe(actual => ({ ...actual, items:[...actual.items, nuevaLineaSolpe()] }))}>+ Agregar ítem</button></div>
-              <div className="table-wrap"><div style={{ minWidth:720 }}>
-                <div style={{ display:'grid', gridTemplateColumns:'minmax(280px, 2fr) minmax(90px, .55fr) minmax(90px, .55fr) minmax(180px, 1fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
-              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(280px, 2fr) minmax(90px, .55fr) minmax(90px, .55fr) minmax(180px, 1fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
-                <SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/>
+              <div className="table-wrap" style={{ overflow:'visible' }}><div style={{ minWidth:720 }}>
+                <div style={{ display:'grid', gridTemplateColumns:'minmax(360px, 2.5fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
+              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(360px, 2.5fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
+                <SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} unidadesMedida={unidadesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/>
                 <input aria-label="Cantidad" className="input" type="number" min="0" step="any" value={linea.cantidad} onChange={event => actualizarLinea(linea.id, { cantidad:event.target.value })}/>
-                <input aria-label="Unidad" className="input" value={linea.unidad} onChange={event => actualizarLinea(linea.id, { unidad:event.target.value })}/>
+                <select aria-label="Unidad" className="select" value={linea.unidad} onChange={event => actualizarLinea(linea.id, { unidad:event.target.value })}>{unidadesMaterial.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select>
                 <input aria-label="Observación" className="input" value={linea.observacion} onChange={event => actualizarLinea(linea.id, { observacion:event.target.value })}/>
                 <button className="icon-btn" title="Eliminar ítem" onClick={() => setFormSolpe(actual => ({ ...actual, items:actual.items.filter(item => item.id !== linea.id) }))}><Icon name="x" size={15}/></button>
               </div>)}
