@@ -103,6 +103,7 @@ declare
   v_cxp public.cxp%rowtype;
   v_alcance uuid[];
   v_motivo text := nullif(trim(coalesce(p_motivo, '')), '');
+  v_tiene_detalle boolean := false;
 begin
   select * into v_cxp
   from public.cxp
@@ -137,17 +138,22 @@ begin
      or v_cxp.recepcion_id is not null then
     raise exception 'La CxP tiene un origen o documento vinculado';
   end if;
+  if to_regclass('public.estado_resultados_detalle') is not null then
+    execute 'select exists (select 1 from public.estado_resultados_detalle where cxp_id = $1)'
+      into v_tiene_detalle
+      using v_cxp.id;
+  end if;
   if exists (select 1 from public.compras_gastos g where g.cxp_id = v_cxp.id)
      or exists (
        select 1 from public.movimientos_tesoreria m
        where m.empresa_id = v_cxp.empresa_id
          and (
            m.vinculo_id = v_cxp.id
-           or m.vinculado_id = v_cxp.id
-         )
+         or m.vinculado_id = v_cxp.id
+       )
      )
      or exists (select 1 from public.devoluciones_proveedor d where d.cxp_ajuste_id = v_cxp.id)
-     or exists (select 1 from public.estado_resultados_detalle e where e.cxp_id = v_cxp.id)
+     or v_tiene_detalle
      or exists (select 1 from public.operaciones_intercompania i where i.cxp_id = v_cxp.id) then
     raise exception 'La CxP tiene registros financieros vinculados';
   end if;
