@@ -163,9 +163,10 @@ function loadDraft() {
 // ── Componente principal ──────────────────────────────────────────────────────
 // preconfig: { paso, tipoSel, form } — permite abrir directamente en paso 2
 // pre-cargado (ej. desde Caja Chica con metodo_pago='Caja chica' ya_pagado=true).
+// registroEditar: gasto existente que se reabre en modo edición.
 // fondoCajaChicaFijo: cuando se abre desde el detalle de un fondo, impide
 // cambiar el egreso a otro fondo o convertirlo en un egreso general.
-export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null, fondoCajaChicaFijo = null }) {
+export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null, fondoCajaChicaFijo = null, registroEditar = null }) {
   const {
     empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
@@ -181,11 +182,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   });
   const sociedadIdEscrituraEgreso = modoVistaSociedadEgreso.sociedadIdEscritura;
   const fondoCajaChicaFijoId = fondoCajaChicaFijo?.id || null;
+  const esEdicion = Boolean(registroEditar?.id);
+  const edicionPagoBloqueada = esEdicion;
 
   // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar
   const gastoId = useMemo(
-    () => `gasto_${Math.random().toString(36).slice(2, 14)}`,
-    [],
+    () => registroEditar?.id || `gasto_${Math.random().toString(36).slice(2, 14)}`,
+    [registroEditar?.id],
   );
   const fileRef = useRef(null);
 
@@ -193,12 +196,21 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const draft = useMemo(() => preconfig ? null : loadDraft(), []);
 
-  const [paso, setPaso]           = useState(draft?.paso || preconfig?.paso || 1);
-  const [tipoSel, setTipoSel]     = useState(draft?.tipoSel || preconfig?.tipoSel || null);
+  const [paso, setPaso]           = useState(esEdicion ? 2 : (draft?.paso || preconfig?.paso || 1));
+  const [tipoSel, setTipoSel]     = useState(
+    registroEditar
+      ? {
+          id: `edit_${registroEditar.id}`,
+          nombre: registroEditar.categoria || 'Gasto existente',
+          categoria_er: registroEditar.categoria || 'Administrativos',
+          es_capitalizacion: Boolean(registroEditar.es_activo_fijo),
+        }
+      : (draft?.tipoSel || preconfig?.tipoSel || null),
+  );
   const [tiposGasto, setTiposGasto] = useState([]);
   const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
-  const [archivoUrl, setArchivoUrl] = useState('');
+  const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || '');
   const [guardando, setGuardando] = useState(false);
   const [errCeco, setErrCeco]     = useState(false);
   const [errVence, setErrVence]   = useState(false);
@@ -207,15 +219,28 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [errFechaPago, setErrFechaPago] = useState(false);
   const [errCuentaPago, setErrCuentaPago] = useState(false);
   // Campos de activo fijo (solo cuando es_capitalizacion = true)
-  const [activoTipo, setActivoTipo]         = useState('equipo');
-  const [activoSerie, setActivoSerie]       = useState('');
-  const [activoVidaUtil, setActivoVidaUtil] = useState('');
+  const [activoTipo, setActivoTipo]         = useState(registroEditar?.activo_tipo || 'equipo');
+  const [activoSerie, setActivoSerie]       = useState(registroEditar?.numero_serie || '');
+  const [activoVidaUtil, setActivoVidaUtil] = useState(registroEditar?.vida_util_anos ? String(registroEditar.vida_util_anos) : '');
   const [errActivoVidaUtil, setErrActivoVidaUtil] = useState(false);
   const [fondosCaja, setFondosCaja] = useState([]);
   const [loadingFondosCaja, setLoadingFondosCaja] = useState(false);
   const [form, setForm]           = useState({
     ...FORM_VACIO,
     fecha: today,
+    ...(registroEditar ? {
+      fecha: registroEditar.fecha || today,
+      concepto: registroEditar.descripcion || '',
+      monto: registroEditar.monto == null ? '' : String(registroEditar.monto),
+      moneda: registroEditar.moneda || 'PEN',
+      centro_costo_id: registroEditar.centro_costo_id || '',
+      sociedad_id: registroEditar.sociedad_id || '',
+      ot_vinc_id: registroEditar.ot_vinc_id || '',
+      ya_pagado: registroEditar.estado_pago === 'pagado',
+      referencia_pago: registroEditar.referencia_pago || '',
+      fecha_pago: registroEditar.estado_pago === 'pagado' ? (registroEditar.fecha || today) : '',
+      proveedor_texto: registroEditar.proveedor_referencia || '',
+    } : {}),
     ...(preconfig?.form || {}),
     ...(draft?.form || {}),
     ...(fondoCajaChicaFijoId ? {
@@ -242,6 +267,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   }, [paso, tipoSel, form]);
 
   const setF = (k, v) => {
+    if (edicionPagoBloqueada && ['ya_pagado', 'metodo_pago'].includes(k)) return;
     setForm(p => {
       const next = {
         ...p,
@@ -343,6 +369,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   }, [empresa?.id]);
 
   useEffect(() => {
+    if (!registroEditar?.id || !tiposGasto.length) return;
+    const tipoExistente = tiposGasto.find(tipo => tipo.categoria_er === registroEditar.categoria);
+    if (tipoExistente && tipoSel?.id !== tipoExistente.id) setTipoSel(tipoExistente);
+  }, [registroEditar?.id, registroEditar?.categoria, tiposGasto, tipoSel?.id]);
+
+  useEffect(() => {
     let mounted = true;
     const loadFondos = async () => {
       if (!isSupabaseConfigured() || !empresa?.id) {
@@ -435,6 +467,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Paso 2: detalle y pago ────────────────────────────────────────────────
   const renderPaso2 = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {esEdicion && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 8, fontSize: 12,
+          background: 'color-mix(in srgb, var(--cyan) 8%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--cyan) 28%, var(--border))',
+          color: 'var(--fg-muted)',
+        }}>
+          <strong style={{ color: 'var(--fg)' }}>Editando egreso existente.</strong>{' '}
+          Guardar actualizará este registro y conservará sus vínculos contables.
+        </div>
+      )}
 
       {/* Aviso capitalización */}
       {esCapitalizacion && (
@@ -578,7 +622,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       {/* OT vinculada (opcional) */}
       <div className="input-group">
         <label>OT vinculada <span style={{ color: 'var(--fg-muted)', fontWeight: 400, fontSize: 11 }}>(opcional)</span></label>
-        <select className="select" value={form.ot_vinc_id} onChange={e => setF('ot_vinc_id', e.target.value)}>
+        <select className="select" value={form.ot_vinc_id} disabled={esEdicion && Boolean(registroEditar?.ot_vinc_id)} onChange={e => setF('ot_vinc_id', e.target.value)}>
           <option value="">— Sin OT —</option>
           {otsActivas.map(o => (
             <option key={o.id} value={o.id}>{etiquetaOT(o)} {o.descripcion ? `— ${o.descripcion}` : ''}</option>
@@ -597,20 +641,22 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         border: `1px solid ${form.ya_pagado ? 'color-mix(in srgb, var(--green) 25%, var(--border))' : 'color-mix(in srgb, var(--orange) 25%, var(--border))'}`,
       }}>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>{fondoCajaChicaFijado ? 'Pago desde la caja abierta' : '¿Este gasto ya fue pagado?'}</div>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{fondoCajaChicaFijado ? 'Pago desde la caja abierta' : esEdicion ? 'Estado de pago' : '¿Este gasto ya fue pagado?'}</div>
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
             {fondoCajaChicaFijado
               ? 'Sí — este egreso se registrará exclusivamente en esta caja'
-              : form.ya_pagado ? 'Sí — se registra como pagado' : 'No — quedará pendiente de pago (CxP)'}
+              : esEdicion
+                ? `${form.ya_pagado ? 'Pagado' : 'Pendiente'} — se conserva durante la edición`
+                : form.ya_pagado ? 'Sí — se registra como pagado' : 'No — quedará pendiente de pago (CxP)'}
           </div>
         </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
           <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{form.ya_pagado ? 'Sí' : 'No'}</span>
           <div
-            onClick={() => !fondoCajaChicaFijado && setF('ya_pagado', !form.ya_pagado)}
-            aria-disabled={fondoCajaChicaFijado}
+            onClick={() => !fondoCajaChicaFijado && !edicionPagoBloqueada && setF('ya_pagado', !form.ya_pagado)}
+            aria-disabled={fondoCajaChicaFijado || edicionPagoBloqueada}
             style={{
-              width: 40, height: 22, borderRadius: 11, cursor: fondoCajaChicaFijado ? 'not-allowed' : 'pointer',
+              width: 40, height: 22, borderRadius: 11, cursor: fondoCajaChicaFijado || edicionPagoBloqueada ? 'not-allowed' : 'pointer',
               background: form.ya_pagado ? 'var(--green)' : 'var(--border)',
               position: 'relative', transition: 'background 0.2s',
             }}
@@ -630,7 +676,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="input-group">
               <label>Método de pago</label>
-              <select className="select" value={form.metodo_pago} disabled={fondoCajaChicaFijado} onChange={e => setF('metodo_pago', e.target.value)}>
+              <select className="select" value={form.metodo_pago} disabled={fondoCajaChicaFijado || edicionPagoBloqueada} onChange={e => setF('metodo_pago', e.target.value)}>
                 {(fondoCajaChicaFijado ? ['Caja chica'] : METODOS_PAGO).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
@@ -827,7 +873,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4 }}>
-        <button className="btn btn-secondary" type="button" onClick={() => setPaso(1)}>← Atrás</button>
+        <button className="btn btn-secondary" type="button" disabled={esEdicion} onClick={() => setPaso(1)}>← Atrás</button>
         <button
           className="btn btn-primary"
           type="button"
@@ -835,7 +881,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             let ok = true;
             if (!form.centro_costo_id) { setErrCeco(true); ok = false; }
             if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); ok = false; }
-            if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); ok = false; }
+            if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); ok = false; }
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
@@ -923,7 +969,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             disabled={guardando}
             onClick={handleGuardar}
           >
-            {guardando ? 'Guardando...' : <>{I.save} Guardar egreso</>}
+            {guardando ? 'Guardando...' : <>{I.save} {esEdicion ? 'Guardar cambios' : 'Guardar egreso'}</>}
           </button>
         </div>
       </div>
@@ -935,7 +981,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (!form.centro_costo_id) { setErrCeco(true); setPaso(2); return; }
     if (destinoSociedadEgreso.conflictMessage) { alert(destinoSociedadEgreso.conflictMessage); setPaso(2); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
-    if (!form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
+    if (!esEdicion && !form.ya_pagado && !form.fecha_vencimiento) { setErrVence(true); setPaso(2); return; }
     if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) {
       setErrFondo(true);
       setPaso(2);
@@ -965,6 +1011,40 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             'Selecciona una sociedad para registrar el egreso.',
           )).sociedadId
         : (empresa?.multisociedad_habilitado ? form.sociedad_id : null);
+
+      if (esEdicion) {
+        const montoEdicion = parseFloat(form.monto) || 0;
+        const categoriaEdicion = tipoSel?.categoria_er || registroEditar.categoria || 'Administrativos';
+        const proveedorEdicion = form.proveedor_id
+          ? provsActivos.find(p => p.id === form.proveedor_id)
+          : null;
+        const proveedorNombreEdicion = proveedorEdicion
+          ? (proveedorEdicion.razon_social || proveedorEdicion.nombre_comercial || proveedorEdicion.id)
+          : (form.proveedor_texto || null);
+        const camposEdicion = {
+          descripcion: form.concepto.trim(),
+          categoria: categoriaEdicion,
+          monto: montoEdicion,
+          moneda: form.moneda,
+          fecha: form.fecha,
+          centro_costo_id: form.centro_costo_id,
+          proveedor_referencia: proveedorNombreEdicion,
+          referencia_pago: form.referencia_pago || null,
+          archivo_url: archivoUrl || null,
+          ot_vinc_id: registroEditar.ot_vinc_id || form.ot_vinc_id || null,
+          updated_at: new Date().toISOString(),
+        };
+        const actualizado = sb
+          ? await finanzasService.actualizarGasto(gastoId, camposEdicion)
+          : { ...registroEditar, ...camposEdicion };
+        const actualizadoLocal = { ...registroEditar, ...camposEdicion, id: gastoId };
+        setComprasGastos(prev => prev.map(g => g.id === gastoId ? (actualizado || actualizadoLocal) : g));
+        sessionStorage.removeItem(DRAFT_KEY);
+        addNotificacion('Gasto actualizado sin duplicar sus vínculos.');
+        onSaved?.({ gastoId, toastMsg: 'Gasto actualizado', editing: true, updated: actualizado || actualizadoLocal });
+        return;
+      }
+
       const monto     = parseFloat(form.monto) || 0;
       const categoria = tipoSel?.categoria_er || 'Administrativos';
       const tcVal     = form.moneda !== 'PEN' && tc
@@ -1240,7 +1320,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       <div className="side-panel" style={{ width: 'min(620px, 96vw)' }}>
         <div className="side-panel-head">
           <div>
-            <div className="eyebrow">Nuevo egreso</div>
+            <div className="eyebrow">{esEdicion ? 'Editar egreso' : 'Nuevo egreso'}</div>
             <div className="font-display" style={{ fontSize: 20, fontWeight: 700 }}>
               {pasoLabels[paso - 1]}
             </div>

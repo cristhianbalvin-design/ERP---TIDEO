@@ -24585,9 +24585,9 @@ const CG_FORM_INIT = {
 export function ComprasGastos() {
   const {
     comprasGastos, setComprasGastos,
-    centrosCosto, proveedores, ots,
+    centrosCosto, proveedores, ots, cxp, cajaChica, personalOperativo, personalAdmin, periodosNomina,
     crearGasto, generarCxP,
-    empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const modoVistaSociedadComprasGastos = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -24609,6 +24609,7 @@ export function ComprasGastos() {
   const [cxpVence, setCxpVence] = useState('');
   const [selCampo, setSelCampo] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
+  const [gastoEditando, setGastoEditando] = useState(null);
 
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cecosEscrituraComprasGastos = filtrarOpcionesPorSociedadEscritura(
@@ -24623,6 +24624,11 @@ export function ComprasGastos() {
   const setF = (k, v) => { setForm(p => ({ ...p, [k]: v })); if (k === 'centro_costo_id') setErrCeco(false); };
 
   const cerrarPanel = () => { setPanel(false); setForm(CG_FORM_INIT); setErrCeco(false); setCxpProvId(''); setCxpVence(''); };
+
+  const cerrarNuevoEgreso = () => {
+    setPanelNuevoEgreso(false);
+    setGastoEditando(null);
+  };
 
   const handleGuardar = async () => {
     if (!form.centro_costo_id) { setErrCeco(true); return; }
@@ -24671,6 +24677,58 @@ export function ComprasGastos() {
   const cecoNombre = (id) => centrosCosto?.find(c => c.id === id)?.nombre || id || '—';
   const otCodigo = (id) => ots?.find(o => o.id === id)?.codigo || id || null;
 
+  const otsPorId = useMemo(() => new Map((ots || []).map(o => [o.id, o])), [ots]);
+  const cxpPorId = useMemo(() => new Map((cxp || []).map(c => [c.id, c])), [cxp]);
+  const personalPorId = useMemo(
+    () => new Map([...(personalOperativo || []), ...(personalAdmin || [])].map(p => [p.id, p])),
+    [personalOperativo, personalAdmin],
+  );
+  const periodosNominaPorId = useMemo(
+    () => new Map((periodosNomina || []).map(p => [p.id, p])),
+    [periodosNomina],
+  );
+  const gastoIdsCajaChica = useMemo(
+    () => new Set((cajaChica || []).map(c => c.gasto_id).filter(Boolean)),
+    [cajaChica],
+  );
+
+  const vinculadoAGasto = (gasto) => {
+    if (gasto.ot_vinc_id) {
+      const ot = otsPorId.get(gasto.ot_vinc_id);
+      return `OT ${ot?.numero || ot?.codigo || ot?.codigo_ot || gasto.ot_vinc_id}`;
+    }
+    if (gasto.cxp_id) {
+      const cuenta = cxpPorId.get(gasto.cxp_id);
+      return `CxP ${cuenta?.factura_numero || cuenta?.referencia || cuenta?.concepto || gasto.cxp_id}`;
+    }
+    if (gasto.personal_id || gasto.periodo_nomina_id) {
+      const personal = gasto.personal_id ? personalPorId.get(gasto.personal_id) : null;
+      const periodo = gasto.periodo_nomina_id ? periodosNominaPorId.get(gasto.periodo_nomina_id) : null;
+      return `Personal/Nómina ${personal?.nombre || periodo?.periodo || periodo?.nombre || gasto.personal_id || gasto.periodo_nomina_id}`;
+    }
+    if (gastoIdsCajaChica.has(gasto.id)) return 'Caja Chica';
+    return 'Directo';
+  };
+
+  const motivoBloqueoEdicion = (gasto) => {
+    if (gasto.cxp_id) return 'Tiene una CxP generada; editarla desde CxP para conservar el impacto contable.';
+    if (gasto.periodo_nomina_id || gasto.personal_id) return 'Proviene de Personal/Nómina y se edita desde ese módulo.';
+    if (gastoIdsCajaChica.has(gasto.id)) return 'Está registrado en Caja Chica y se edita desde la caja correspondiente.';
+    if (gasto.es_activo_fijo) return 'Está capitalizado como activo fijo y requiere edición desde Activos Fijos.';
+    return null;
+  };
+  const puedeEditarGastos = !isSupabaseConfigured() || Boolean(
+    role?.permisos?.todo
+    || role?.permisos?.tenant_admin
+    || role?.permisos?.plataforma
+    || role?.permisos?.editar === true
+    || (Array.isArray(role?.permisos?.editar) && role.permisos.editar.includes('caja')),
+  );
+  const abrirEdicionGasto = (gasto) => {
+    setGastoEditando(gasto);
+    setPanelNuevoEgreso(true);
+  };
+
   const rows = (comprasGastos || []).filter(g => {
     if (tab === 'campo' && g.origen_registro !== 'campo') return false;
     if (tab === 'backoffice' && g.origen_registro !== 'backoffice') return false;
@@ -24698,7 +24756,7 @@ export function ComprasGastos() {
           <h1 className="page-title">Compras / Gastos</h1>
           <div className="page-sub">Registro de gastos directos — campo y backoffice</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>{I.plus} Nuevo egreso</button>
+        <button className="btn btn-primary" onClick={() => { setGastoEditando(null); setPanelNuevoEgreso(true); }}>{I.plus} Nuevo egreso</button>
       </div>
 
       <div className="kpi-grid">
@@ -24748,6 +24806,7 @@ export function ComprasGastos() {
                 <th>Monto</th>
                 <th>Estado pago</th>
                 <th>Origen</th>
+                <th>Vinculado a</th>
                 <th>Comprobante</th>
                 <th></th>
               </tr>
@@ -24778,10 +24837,26 @@ export function ComprasGastos() {
                         : <span className="badge badge-gray">Backoffice</span>
                       }
                     </td>
+                    <td style={{fontSize:12, whiteSpace:'nowrap'}}>{vinculadoAGasto(g)}</td>
                     <td style={{textAlign:'center'}}>
                       {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">—</span>}
                     </td>
                     <td>
+                      {(() => {
+                        const bloqueoEdicion = motivoBloqueoEdicion(g);
+                        const puedeEditar = puedeEditarGastos && !bloqueoEdicion;
+                        return (
+                          <button
+                            className="btn btn-ghost"
+                            style={{fontSize:12, padding:'2px 10px'}}
+                            disabled={!puedeEditar}
+                            title={bloqueoEdicion || (!puedeEditarGastos ? 'No tiene permiso para editar egresos.' : 'Editar egreso')}
+                            onClick={() => abrirEdicionGasto(g)}
+                          >
+                            {I.edit} Editar
+                          </button>
+                        );
+                      })()}
                       {esCampo && esPendRev && (
                         <button className="btn btn-ghost" style={{fontSize:12, padding:'2px 10px'}} onClick={() => setSelCampo(g)}>
                           {I.check} Revisar
@@ -24791,7 +24866,7 @@ export function ComprasGastos() {
                   </tr>
                 );
               }) : (
-                <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay registros para los filtros seleccionados.</td></tr>
+                <tr><td colSpan="10" className="text-center text-muted" style={{padding:32}}>No hay registros para los filtros seleccionados.</td></tr>
               )}
             </tbody>
           </table>
@@ -24801,8 +24876,9 @@ export function ComprasGastos() {
       {panelNuevoEgreso && (
         <NuevoEgreso
           origen="compras_gastos"
-          onClose={() => setPanelNuevoEgreso(false)}
-          onSaved={() => setPanelNuevoEgreso(false)}
+          registroEditar={gastoEditando}
+          onClose={cerrarNuevoEgreso}
+          onSaved={cerrarNuevoEgreso}
         />
       )}
 
