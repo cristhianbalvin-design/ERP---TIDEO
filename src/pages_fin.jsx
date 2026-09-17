@@ -2822,6 +2822,7 @@ function Tesoreria() {
   const sinCuentaEntries = sinCuentaTienePendientes ? totalesEntries(movimientosSinCuentaPorMoneda) : [['USD', 0]];
   const ingresosPeriodoCount = movimientosPeriodoTesoreria.filter(esIngresoMov).length;
   const facturasPendientesCount = cxcPendienteRows.length;
+  const pendienteCxCEntries = totalesEntries(pendienteCxC);
   const pendienteCxPEntries = totalesEntries(pendienteCxP);
   const sinVincularPorCuenta = useMemo(() => {
     const conciliadosIds = new Set(
@@ -2887,9 +2888,9 @@ function Tesoreria() {
         </div>
         <div style={metricCardStyle}>
           <div className="kpi-label">Por cobrar pendiente</div>
-          <div className="kpi-value" style={{fontSize:20, color:'var(--orange)'}}>{formatTotales(pendienteCxC)}</div>
-          {pendienteCxPEntries.map(([mon, val]) => (
-            <div key={mon} className="text-muted" style={{fontSize:11, marginTop:4}}>CxP pendiente: {moneyCurrency(val, mon)}</div>
+          <div className="kpi-value" style={{fontSize:20, color:'var(--orange)'}}>{moneyCurrency(pendienteCxCEntries[0]?.[1] || 0, pendienteCxCEntries[0]?.[0] || empresa?.moneda || 'PEN')}</div>
+          {pendienteCxCEntries.slice(1).map(([moneda, value]) => (
+            <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
           ))}
           <div className="text-muted" style={{fontSize:11, marginTop:8}}>{facturasPendientesCount} facturas por vencer</div>
         </div>
