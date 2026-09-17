@@ -74,6 +74,9 @@ begin
     raise exception 'SOCIEDAD_ORIGEN_INVALIDA: la sociedad no coincide con el comprobante origen.';
   end if;
   v_total_origen := coalesce(v_factura.total, 0);
+  if v_tipo = 'nota_credito' and v_total > v_total_origen then
+    raise exception 'MONTO_NC_EXCEDE_ORIGEN: el total de la Nota de Crédito (%) excede el total del comprobante origen (%).', v_total, v_total_origen;
+  end if;
 
   select * into v_cxc
   from public.cxc

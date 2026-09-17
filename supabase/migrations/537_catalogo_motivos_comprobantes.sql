@@ -29,8 +29,8 @@ values
   ('nota_debito', '01', 'Intereses por mora', 1),
   ('nota_debito', '02', 'Aumento en el valor', 2),
   ('nota_debito', '03', 'Penalidades/otros conceptos', 3),
-  ('nota_debito', '11', 'Ajustes de operaciones de exportación', 11),
-  ('nota_debito', '12', 'Ajustes afectos al IVAP', 12)
+  ('nota_debito', '10', 'Ajustes de operaciones de exportación', 10),
+  ('nota_debito', '11', 'Ajustes afectos al IVAP', 11)
 on conflict (tipo_documento, codigo_sunat) do update
   set descripcion = excluded.descripcion,
       orden = excluded.orden,
