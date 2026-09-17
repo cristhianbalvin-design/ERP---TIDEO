@@ -851,6 +851,9 @@ function CxC() {
     const tasa     = tasaEfectiva * 100;
     const cobros   = (cobrosHistorial||[]).filter(cb=>cb.cxc_id===c.id).sort((a,b)=>a.fecha_cobro.localeCompare(b.fecha_cobro));
     const gestiones= (gestionesCobranza||[]).filter(g=>g.cxc_id===c.id).sort((a,b)=>b.fecha_gestion.localeCompare(a.fecha_gestion));
+    const notasRelacionadas = (facturas||[])
+      .filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === c.factura_id)
+      .sort((a,b) => (b.fecha_emision||'').localeCompare(a.fecha_emision||''));
     const proyMora = d => Math.round(saldo * tasaEfectiva * (dias+d) * 100) / 100;
     const metaEst  = ESTADO_META[estado] || ESTADO_META.por_cobrar;
     const fechaVencimientoActual = c?.fecha_vencimiento || c?.vence || '';
@@ -860,6 +863,7 @@ function CxC() {
     const vencimientoColor = dias > 0 ? 'var(--danger)' : dias === 0 ? 'var(--orange)' : 'var(--fg)';
     const tituloEditarVencimiento = puedeEditarCxC ? 'Editar vencimiento' : 'Requiere permiso cxc:editar';
     const TABS_FICHA = [
+      { id:'notas',    label:`Notas relacionadas (${notasRelacionadas.length})` },
       { id:'resumen',  label:'Resumen'                       },
       { id:'pagos',    label:`Historial pagos (${cobros.length})` },
       { id:'gestion',  label:`Gestión (${gestiones.length})` },
@@ -969,6 +973,36 @@ function CxC() {
                   </div>
                 )}
               </div>
+          </div>
+        )}
+
+        {/* Tab Notas relacionadas */}
+        {fichaTab === 'notas' && (
+          <div className="card card-body">
+            {notasRelacionadas.length === 0 ? (
+              <div style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13,padding:24}}>No hay notas de crédito o débito relacionadas.</div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {notasRelacionadas.map(nota => (
+                  <div key={nota.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
+                    <div style={{minWidth:0}}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{padding:0,color:'var(--cyan)',fontWeight:700}}
+                        onClick={() => { setSelCxC(null); navigate('facturacion',{selFac:nota.id}); }}
+                      >
+                        {nota.numero || nota.id}
+                      </button>
+                      <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>
+                        {nota.tipo_documento === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} · {nota.fecha_emision || '—'} · Motivo: {nota.motivo_codigo || nota.motivo || '—'}
+                      </div>
+                    </div>
+                    <span className="num" style={{fontWeight:600,whiteSpace:'nowrap'}}>{moneyCurrency(nota.total || nota.monto, nota.moneda || c.moneda)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
