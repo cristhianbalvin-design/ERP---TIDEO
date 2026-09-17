@@ -11,6 +11,7 @@ import { SociedadFormField, SociedadReadOnlyField } from './SociedadFormField.js
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
+import { METODOS_PAGO, METODO_TRANSFERENCIA } from '../lib/metodosPago.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -40,7 +41,6 @@ const ACTIVO_TIPOS_WIZ = [
   { value: 'otro',        label: 'Otro' },
 ];
 
-const METODOS_PAGO = ['Transferencia bancaria', 'Caja chica', 'Tarjeta empresa', 'Efectivo', 'Yape / Plin', 'Otro'];
 const TIPOS_COMP   = ['Factura', 'Boleta', 'Recibo honorarios', 'Ticket', 'Sin comprobante'];
 
 const normTexto = s => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -132,7 +132,7 @@ const FORM_VACIO = {
   sociedad_id:      '',
   ot_vinc_id:       '',
   ya_pagado:        false,
-  metodo_pago:      'Transferencia bancaria',
+  metodo_pago:      METODO_TRANSFERENCIA,
   referencia_pago:  '',
   fecha_pago:       '',
   cuenta_bancaria_id: '',
@@ -151,13 +151,44 @@ function icono(name) {
 const fmtCaja = (value, moneda = 'PEN') =>
   new Intl.NumberFormat('es-PE', { style: 'currency', currency: moneda || 'PEN' }).format(Number(value || 0));
 
-const DRAFT_KEY = 'nuevo_egreso_draft';
+export const NUEVO_EGRESO_DRAFT_KEY = 'nuevo_egreso_draft';
 
 function loadDraft() {
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
+    const raw = sessionStorage.getItem(NUEVO_EGRESO_DRAFT_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
+}
+
+export function limpiarBorradorNuevoEgreso() {
+  try { sessionStorage.removeItem(NUEVO_EGRESO_DRAFT_KEY); } catch { /* storage no disponible */ }
+}
+
+const fechaParaInput = (value, fallback = '') => value ? String(value).slice(0, 10) : fallback;
+
+function formDesdeRegistro(registro, today) {
+  if (!registro) return {};
+  return {
+    ...FORM_VACIO,
+    fecha: fechaParaInput(registro.fecha, today),
+    concepto: registro.descripcion ?? registro.concepto ?? '',
+    monto: registro.monto == null ? '' : String(registro.monto),
+    moneda: registro.moneda || 'PEN',
+    centro_costo_id: registro.centro_costo_id || registro.ceco_id || '',
+    sociedad_id: registro.sociedad_id || '',
+    ot_vinc_id: registro.ot_vinc_id || '',
+    ya_pagado: registro.estado_pago === 'pagado',
+    metodo_pago: registro.metodo_pago || METODO_TRANSFERENCIA,
+    referencia_pago: registro.referencia_pago || '',
+    fecha_pago: fechaParaInput(registro.fecha_pago, registro.estado_pago === 'pagado' ? fechaParaInput(registro.fecha, today) : ''),
+    cuenta_bancaria_id: registro.cuenta_bancaria_id || '',
+    fondo_caja_chica_id: registro.fondo_caja_chica_id || '',
+    fecha_vencimiento: fechaParaInput(registro.fecha_vencimiento),
+    proveedor_id: registro.proveedor_id || '',
+    proveedor_texto: registro.proveedor_referencia || registro.proveedor || '',
+    num_comprobante: registro.num_comprobante || registro.factura_numero || '',
+    tipo_comprobante: registro.tipo_comprobante || 'Factura',
+  };
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -168,7 +199,7 @@ function loadDraft() {
 // cambiar el egreso a otro fondo o convertirlo en un egreso general.
 export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null, fondoCajaChicaFijo = null, registroEditar = null }) {
   const {
-    empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias,
+    empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias, cxp = [],
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     setComprasGastos, setCajaChica, setCxp, setCxpPagos, setMovimientosTesoreria,
     addNotificacion,
@@ -183,7 +214,84 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const sociedadIdEscrituraEgreso = modoVistaSociedadEgreso.sociedadIdEscritura;
   const fondoCajaChicaFijoId = fondoCajaChicaFijo?.id || null;
   const esEdicion = Boolean(registroEditar?.id);
-  const edicionPagoBloqueada = esEdicion;
+  // Se inicia bloqueado durante la consulta para evitar que una edición se
+  // guarde antes de confirmar si existe una CxP activa relacionada.
+  const [pagoGobernadoPorCxP, setPagoGobernadoPorCxP] = useState(esEdicion);
+  const [validandoCxP, setValidandoCxP] = useState(esEdicion);
+
+  useEffect(() => {
+    if (!registroEditar?.id) {
+      setPagoGobernadoPorCxP(false);
+      setValidandoCxP(false);
+      return undefined;
+    }
+
+    let cancelado = false;
+    const gastoIdEditado = registroEditar.id;
+    const tieneCxPActiva = cuenta => {
+      const estado = String(cuenta?.estado || '').trim().toLowerCase();
+      if (['pagada', 'anulada'].includes(estado)) return false;
+      const saldo = cuenta?.saldo != null
+        ? Number(cuenta.saldo)
+        : Number(cuenta?.monto_total || 0) - Number(cuenta?.monto_pagado || 0);
+      return saldo > 0;
+    };
+
+    const validarCxPRelacionada = async () => {
+      setValidandoCxP(true);
+      try {
+        let relaciones = [];
+        if (isSupabaseConfigured() && empresa?.id) {
+          const sb = await getSupabaseClient();
+          const consultas = [
+            sb
+              .from('cxp')
+              .select('id, estado, saldo, monto_total, monto_pagado, gasto_id')
+              .eq('empresa_id', empresa.id)
+              .eq('gasto_id', gastoIdEditado),
+          ];
+          if (registroEditar.cxp_id) {
+            consultas.push(
+              sb
+                .from('cxp')
+                .select('id, estado, saldo, monto_total, monto_pagado, gasto_id')
+                .eq('empresa_id', empresa.id)
+                .eq('id', registroEditar.cxp_id),
+            );
+          }
+          const resultados = await Promise.all(consultas);
+          resultados.forEach(({ data, error }) => {
+            if (error) throw error;
+            relaciones.push(...(data || []));
+          });
+        } else {
+          relaciones = (cxp || []).filter(cuenta => (
+            cuenta.gasto_id === gastoIdEditado
+            || (registroEditar.cxp_id && cuenta.id === registroEditar.cxp_id)
+          ));
+        }
+
+        if (!cancelado) {
+          setPagoGobernadoPorCxP(relaciones.some(tieneCxPActiva));
+        }
+      } catch (error) {
+        // Ante una consulta fallida se conserva el bloqueo: permitir el cambio
+        // sin poder validar la CxP podría desincronizar gasto, saldo y pago.
+        console.warn('[NuevoEgreso] no se pudo validar la CxP relacionada:', error?.message || error);
+        if (!cancelado) setPagoGobernadoPorCxP(true);
+      } finally {
+        if (!cancelado) setValidandoCxP(false);
+      }
+    };
+
+    validarCxPRelacionada();
+    return () => { cancelado = true; };
+  }, [empresa?.id, registroEditar?.id, registroEditar?.cxp_id, cxp]);
+
+  // Cuando existe CxP, el estado de pago se modifica desde CxP para
+  // conservar la trazabilidad de pagos, saldos y movimientos. Mientras se
+  // valida la relación real, el control permanece bloqueado por seguridad.
+  const edicionPagoBloqueada = esEdicion && (pagoGobernadoPorCxP || validandoCxP);
 
   // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar
   const gastoId = useMemo(
@@ -194,7 +302,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const today = new Date().toISOString().split('T')[0];
 
-  const draft = useMemo(() => preconfig ? null : loadDraft(), []);
+  // Un borrador de alta nunca debe sobrescribir los datos de un registro que se
+  // está editando. De lo contrario, el último egreso digitado aparece pegado
+  // al registro seleccionado.
+  const draft = useMemo(
+    () => (preconfig || registroEditar) ? null : loadDraft(),
+    [preconfig, registroEditar?.id],
+  );
 
   const [paso, setPaso]           = useState(esEdicion ? 2 : (draft?.paso || preconfig?.paso || 1));
   const [tipoSel, setTipoSel]     = useState(
@@ -228,21 +342,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [form, setForm]           = useState({
     ...FORM_VACIO,
     fecha: today,
-    ...(registroEditar ? {
-      fecha: registroEditar.fecha || today,
-      concepto: registroEditar.descripcion || '',
-      monto: registroEditar.monto == null ? '' : String(registroEditar.monto),
-      moneda: registroEditar.moneda || 'PEN',
-      centro_costo_id: registroEditar.centro_costo_id || '',
-      sociedad_id: registroEditar.sociedad_id || '',
-      ot_vinc_id: registroEditar.ot_vinc_id || '',
-      ya_pagado: registroEditar.estado_pago === 'pagado',
-      referencia_pago: registroEditar.referencia_pago || '',
-      fecha_pago: registroEditar.estado_pago === 'pagado' ? (registroEditar.fecha || today) : '',
-      proveedor_texto: registroEditar.proveedor_referencia || '',
-    } : {}),
+    ...formDesdeRegistro(registroEditar, today),
     ...(preconfig?.form || {}),
-    ...(draft?.form || {}),
+    ...(!registroEditar ? (draft?.form || {}) : {}),
     ...(fondoCajaChicaFijoId ? {
       ya_pagado: true,
       metodo_pago: 'Caja chica',
@@ -262,9 +364,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   // Persistir borrador en sessionStorage mientras el usuario llena el formulario
   useEffect(() => {
-    if (preconfig) return;
-    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ paso, tipoSel, form })); } catch { /* quota */ }
-  }, [paso, tipoSel, form]);
+    if (preconfig || registroEditar) return;
+    try { sessionStorage.setItem(NUEVO_EGRESO_DRAFT_KEY, JSON.stringify({ paso, tipoSel, form })); } catch { /* quota */ }
+  }, [paso, tipoSel, form, preconfig, registroEditar]);
 
   const setF = (k, v) => {
     if (edicionPagoBloqueada && ['ya_pagado', 'metodo_pago'].includes(k)) return;
@@ -276,6 +378,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           : v,
       };
       if (k === 'metodo_pago' && v !== 'Caja chica') next.fondo_caja_chica_id = '';
+      if (k === 'metodo_pago' && v !== METODO_TRANSFERENCIA) next.cuenta_bancaria_id = '';
       if (k === 'ya_pagado' && !v) next.fondo_caja_chica_id = '';
       if (fondoCajaChicaFijoId) {
         next.ya_pagado = true;
@@ -705,26 +808,28 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
                   </div>
                 )}
               </div>
-              <div className="input-group">
-                <label>Cuenta bancaria <span style={{ color: 'var(--danger)' }}>*</span></label>
-                <select
-                  className={`select${errCuentaPago ? ' input-error' : ''}`}
-                  value={form.cuenta_bancaria_id}
-                  onChange={e => setF('cuenta_bancaria_id', e.target.value)}
-                >
-                  <option value="">- Seleccionar cuenta -</option>
-                  {cuentasBancariasActivas.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {(c.alias || c.nombre || c.banco || c.id)} ({c.moneda || 'PEN'})
-                    </option>
-                  ))}
-                </select>
-                {errCuentaPago && (
-                  <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
-                    Seleccione la cuenta bancaria del pago.
-                  </div>
-                )}
-              </div>
+              {form.metodo_pago === METODO_TRANSFERENCIA && (
+                <div className="input-group">
+                  <label>Cuenta bancaria <span style={{ color: 'var(--danger)' }}>*</span></label>
+                  <select
+                    className={`select${errCuentaPago ? ' input-error' : ''}`}
+                    value={form.cuenta_bancaria_id}
+                    onChange={e => setF('cuenta_bancaria_id', e.target.value)}
+                  >
+                    <option value="">- Seleccionar cuenta -</option>
+                    {cuentasBancariasActivas.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {(c.alias || c.nombre || c.banco || c.id)} ({c.moneda || 'PEN'})
+                      </option>
+                    ))}
+                  </select>
+                  {errCuentaPago && (
+                    <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
+                      Seleccione la cuenta bancaria del pago.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {form.metodo_pago === 'Caja chica' && (
@@ -885,7 +990,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (!form.fecha || form.fecha > today) { setErrFecha(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
-            if (!esEdicion && form.ya_pagado && form.metodo_pago !== 'Caja chica' && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
+            if (!esEdicion && form.ya_pagado && form.metodo_pago === METODO_TRANSFERENCIA && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
@@ -924,7 +1029,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       ['Estado pago',    form.ya_pagado ? 'Pagado' : 'Pendiente'],
       form.ya_pagado ? ['Método',    form.metodo_pago] : null,
       form.ya_pagado && form.metodo_pago !== 'Caja chica' ? ['Fecha de pago', form.fecha_pago || form.fecha] : null,
-      form.ya_pagado && form.metodo_pago !== 'Caja chica' ? ['Cuenta bancaria', cuentaPagoSel ? `${cuentaPagoSel.alias || cuentaPagoSel.nombre || cuentaPagoSel.banco || cuentaPagoSel.id} (${cuentaPagoSel.moneda || 'PEN'})` : '-'] : null,
+      form.ya_pagado && form.metodo_pago === METODO_TRANSFERENCIA ? ['Cuenta bancaria', cuentaPagoSel ? `${cuentaPagoSel.alias || cuentaPagoSel.nombre || cuentaPagoSel.banco || cuentaPagoSel.id} (${cuentaPagoSel.moneda || 'PEN'})` : '-'] : null,
       form.ya_pagado && form.metodo_pago === 'Caja chica' ? ['Fondo caja chica', fondoCajaSel ? `${fondoCajaSel.nombre} (${fmtCaja(fondoCajaSel.saldo_disponible, fondoCajaSel.moneda)})` : 'â€”'] : null,
       form.ya_pagado && form.referencia_pago ? ['Referencia', form.referencia_pago] : null,
       !form.ya_pagado ? ['Vencimiento', form.fecha_vencimiento] : null,
@@ -1030,6 +1135,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           centro_costo_id: form.centro_costo_id,
           proveedor_referencia: proveedorNombreEdicion,
           referencia_pago: form.referencia_pago || null,
+          ...(!pagoGobernadoPorCxP ? {
+            estado_pago: form.ya_pagado ? 'pagado' : 'pendiente',
+            metodo_pago: form.ya_pagado ? form.metodo_pago : null,
+          } : {}),
           archivo_url: archivoUrl || null,
           ot_vinc_id: registroEditar.ot_vinc_id || form.ot_vinc_id || null,
           updated_at: new Date().toISOString(),
@@ -1039,7 +1148,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           : { ...registroEditar, ...camposEdicion };
         const actualizadoLocal = { ...registroEditar, ...camposEdicion, id: gastoId };
         setComprasGastos(prev => prev.map(g => g.id === gastoId ? (actualizado || actualizadoLocal) : g));
-        sessionStorage.removeItem(DRAFT_KEY);
+        limpiarBorradorNuevoEgreso();
         addNotificacion('Gasto actualizado sin duplicar sus vínculos.');
         onSaved?.({ gastoId, toastMsg: 'Gasto actualizado', editing: true, updated: actualizado || actualizadoLocal });
         return;
@@ -1080,6 +1189,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         origen_registro:    'backoffice',
         estado:             'registrado',
         estado_pago:        form.ya_pagado ? 'pagado' : 'pendiente',
+        metodo_pago:        form.ya_pagado ? form.metodo_pago : null,
         referencia_pago:    form.ya_pagado ? (form.referencia_pago || null) : null,
         creado_por:         authUser?.id || null,
         created_at:         new Date().toISOString(),
@@ -1110,6 +1220,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           origen_registro:  'backoffice',
           estado:           'registrado',
           estado_pago:      form.ya_pagado ? 'pagado' : 'pendiente',
+          metodo_pago:      form.ya_pagado ? form.metodo_pago : null,
           referencia_pago:  form.ya_pagado ? (form.referencia_pago || null) : null,
           centro_costo_id:  form.centro_costo_id,
           ...(form.ot_vinc_id ? { ot_vinc_id: form.ot_vinc_id } : {}),
@@ -1166,14 +1277,20 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       // ── 2b. CxP: gasto pendiente ──────────────────────────────────────
       } else if (form.ya_pagado) {
         const fechaPago = form.fecha_pago || form.fecha;
-        const cuentaPago = cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id);
-        if (!cuentaPago) throw new Error('Cuenta bancaria requerida para registrar el pago.');
+        const cuentaPago = form.metodo_pago === METODO_TRANSFERENCIA
+          ? cuentasBancariasActivas.find(c => c.id === form.cuenta_bancaria_id)
+          : null;
+        if (form.metodo_pago === METODO_TRANSFERENCIA && !cuentaPago) {
+          throw new Error('Cuenta bancaria requerida para registrar el pago.');
+        }
 
         const cxpId = `cxp_${Math.random().toString(36).slice(2, 14)}`;
         const pagoId = `cxpp_${Math.random().toString(36).slice(2, 14)}`;
         const movId = `tes_${Math.random().toString(36).slice(2, 14)}`;
         const tcPago = await getTipoCambioPorFecha(fechaPago, sb).catch(() => tc);
-        const cuentaNombre = cuentaPago.alias || cuentaPago.nombre || cuentaPago.banco || cuentaPago.id;
+        const cuentaNombre = cuentaPago
+          ? (cuentaPago.alias || cuentaPago.nombre || cuentaPago.banco || cuentaPago.id)
+          : null;
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
@@ -1208,8 +1325,9 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           cxp_id:            cxpId,
           fecha_pago:        fechaPago,
           monto,
+          metodo_pago:      form.metodo_pago || null,
           cuenta_bancaria:   cuentaNombre,
-          cuenta_bancaria_id: cuentaPago.id,
+          cuenta_bancaria_id: cuentaPago?.id || null,
           referencia:        form.referencia_pago || null,
           registrado_por:    authUser?.id || null,
           creado_en:         new Date().toISOString(),
@@ -1223,7 +1341,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           moneda:            form.moneda,
           fecha:             fechaPago,
           cuenta_bancaria:   cuentaNombre,
-          cuenta_bancaria_id: cuentaPago.id,
+          cuenta_bancaria_id: cuentaPago?.id || null,
           referencia:        form.referencia_pago || form.num_comprobante || '',
           vinculo_tipo:      'cxp',
           vinculo_id:        cxpId,
@@ -1293,7 +1411,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         toastMsg = 'Gasto registrado + CxP pendiente creada';
       }
 
-      sessionStorage.removeItem(DRAFT_KEY);
+      limpiarBorradorNuevoEgreso();
       addNotificacion(toastMsg);
       onSaved?.({ gastoId, toastMsg });
     } catch (err) {

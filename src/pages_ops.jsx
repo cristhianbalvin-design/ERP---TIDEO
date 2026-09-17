@@ -45,7 +45,7 @@ import { GEO_CONFIG_DEFAULT, evaluarGeofenceLocal, parseGps } from './services/g
 import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
 import { GeoMiniMapa } from './components/GeoMiniMapa.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
-import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
@@ -24729,6 +24729,14 @@ export function ComprasGastos() {
     setPanelNuevoEgreso(true);
   };
 
+  const abrirNuevoEgreso = () => {
+    // "Nuevo" siempre inicia un alta limpia; el borrador de una captura
+    // anterior no debe convertirse en datos del siguiente egreso.
+    limpiarBorradorNuevoEgreso();
+    setGastoEditando(null);
+    setPanelNuevoEgreso(true);
+  };
+
   const rows = (comprasGastos || []).filter(g => {
     if (tab === 'campo' && g.origen_registro !== 'campo') return false;
     if (tab === 'backoffice' && g.origen_registro !== 'backoffice') return false;
@@ -24756,7 +24764,7 @@ export function ComprasGastos() {
           <h1 className="page-title">Compras / Gastos</h1>
           <div className="page-sub">Registro de gastos directos — campo y backoffice</div>
         </div>
-        <button className="btn btn-primary" onClick={() => { setGastoEditando(null); setPanelNuevoEgreso(true); }}>{I.plus} Nuevo egreso</button>
+        <button className="btn btn-primary" onClick={abrirNuevoEgreso}>{I.plus} Nuevo egreso</button>
       </div>
 
       <div className="kpi-grid">
@@ -24875,6 +24883,7 @@ export function ComprasGastos() {
 
       {panelNuevoEgreso && (
         <NuevoEgreso
+          key={gastoEditando?.id || 'nuevo-egreso'}
           origen="compras_gastos"
           registroEditar={gastoEditando}
           onClose={cerrarNuevoEgreso}

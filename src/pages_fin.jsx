@@ -43,6 +43,7 @@ import {
   validarFilasCxcMasiva,
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
+import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
 import { NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
@@ -7296,7 +7297,7 @@ function CxP() {
   const [tabCxP, setTabCxP] = useState('general');
 
   // Form: pago
-  const [formPago, setFormPago] = useState({ monto: '', fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+  const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
   const [archivoPago, setArchivoPago] = useState(null);
   const [archivoPagoError, setArchivoPagoError] = useState('');
   const archivoPagoRef = useRef(null);
@@ -7694,7 +7695,7 @@ function CxP() {
   const abrirFicha = c => {
     setSel(c);
     setFichaTab('pago');
-    setFormPago({ monto: String(saldoDe(c)), fecha: today, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+    setFormPago({ monto: String(saldoDe(c)), fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
     setArchivoPago(null);
     setArchivoPagoError('');
     setFichaClasifCategoria(c.categoria_er || '');
@@ -7733,7 +7734,7 @@ function CxP() {
     e.preventDefault();
     const monto = Number(formPago.monto || 0);
     if (!sel || monto <= 0) return;
-    if (!formPago.cuenta_bancaria_id) {
+    if (formPago.metodo_pago === METODO_TRANSFERENCIA && !formPago.cuenta_bancaria_id) {
       addNotificacion('Seleccione la cuenta bancaria desde la que se realizó el pago.');
       return;
     }
@@ -8322,31 +8323,52 @@ function CxP() {
                         <input className="input" type="date" value={formPago.fecha} onChange={e => setFormPago(v => ({...v,fecha:e.target.value}))}/>
                       </div>
                       <div className="input-group">
-                        <label>Cuenta bancaria <span style={{color:'var(--danger)'}}>*</span></label>
+                        <label>Método de pago</label>
                         <select
                           className="input"
-                          value={formPago.cuenta_bancaria_id}
+                          value={formPago.metodo_pago}
                           onChange={e => {
-                            const cuenta = cuentasBancariasActivasCxP.find(item => item.id === e.target.value);
+                            const metodoPago = e.target.value;
                             setFormPago(v => ({
                               ...v,
-                              cuenta_bancaria_id: cuenta?.id || '',
-                              cuenta_bancaria: cuenta ? (cuenta.alias || cuenta.nombre || cuenta.banco || cuenta.id) : '',
+                              metodo_pago: metodoPago,
+                              ...(metodoPago === METODO_TRANSFERENCIA
+                                ? {}
+                                : { cuenta_bancaria: '', cuenta_bancaria_id: '' }),
                             }));
                           }}
-                          required
                         >
-                          <option value="">Seleccionar cuenta bancaria...</option>
-                          {cuentasBancariasActivasCxP.map(cuenta => (
-                            <option key={cuenta.id} value={cuenta.id}>
-                              {cuenta.alias || cuenta.nombre || cuenta.banco} · {cuenta.banco} · {cuenta.moneda || 'PEN'}
-                            </option>
-                          ))}
+                          {METODOS_PAGO.map(metodo => <option key={metodo} value={metodo}>{metodo}</option>)}
                         </select>
-                        {cuentasBancariasActivasCxP.length === 0 && (
-                          <span className="text-muted" style={{fontSize:11}}>No hay cuentas bancarias activas para la sociedad seleccionada.</span>
-                        )}
                       </div>
+                      {formPago.metodo_pago === METODO_TRANSFERENCIA && (
+                        <div className="input-group">
+                          <label>Cuenta bancaria <span style={{color:'var(--danger)'}}>*</span></label>
+                          <select
+                            className="input"
+                            value={formPago.cuenta_bancaria_id}
+                            onChange={e => {
+                              const cuenta = cuentasBancariasActivasCxP.find(item => item.id === e.target.value);
+                              setFormPago(v => ({
+                                ...v,
+                                cuenta_bancaria_id: cuenta?.id || '',
+                                cuenta_bancaria: cuenta ? (cuenta.alias || cuenta.nombre || cuenta.banco || cuenta.id) : '',
+                              }));
+                            }}
+                            required
+                          >
+                            <option value="">Seleccionar cuenta bancaria...</option>
+                            {cuentasBancariasActivasCxP.map(cuenta => (
+                              <option key={cuenta.id} value={cuenta.id}>
+                                {cuenta.alias || cuenta.nombre || cuenta.banco} · {cuenta.banco} · {cuenta.moneda || 'PEN'}
+                              </option>
+                            ))}
+                          </select>
+                          {cuentasBancariasActivasCxP.length === 0 && (
+                            <span className="text-muted" style={{fontSize:11}}>No hay cuentas bancarias activas para la sociedad seleccionada.</span>
+                          )}
+                        </div>
+                      )}
                       <div className="input-group">
                         <label>Referencia</label>
                         <input className="input" value={formPago.referencia} onChange={e => setFormPago(v => ({...v,referencia:e.target.value}))} placeholder="Operación bancaria"/>
@@ -8411,7 +8433,8 @@ function CxP() {
                           <span style={{fontSize:12,color:'var(--fg-muted)'}}>{p.fecha_pago}</span>
                         </div>
                         <div style={{fontSize:11,color:'var(--fg-muted)'}}>
-                          {p.cuenta_bancaria && <span>{p.cuenta_bancaria}</span>}
+                          {p.metodo_pago && <span>{p.metodo_pago}</span>}
+                          {p.cuenta_bancaria && <span> · {p.cuenta_bancaria}</span>}
                           {p.referencia && <span> · Ref: {p.referencia}</span>}
                         </div>
                         <div style={{marginTop:8}}>

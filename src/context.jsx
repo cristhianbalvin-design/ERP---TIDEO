@@ -6844,6 +6844,7 @@ export function AppProvider({ children }) {
       cxp_id: cxpId,
       fecha_pago: now,
       monto: montoPagado,
+      metodo_pago: datos.metodo_pago || null,
       cuenta_bancaria: datos.cuenta_bancaria || null,
       referencia: datos.referencia || null,
       registrado_por: authUser?.id || null,
