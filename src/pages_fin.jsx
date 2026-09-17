@@ -5443,6 +5443,7 @@ function Facturacion() {
                 {mostrarBadgeSociedadFacturacion && <th>Sociedad</th>}
                 <th>Cliente</th>
                 <th>Tipo</th>
+                <th>Factura afectada</th>
                 <th>Valorización</th>
                 <th>OS Cliente</th>
                 <th className="num">Subtotal</th>
@@ -5459,12 +5460,27 @@ function Facturacion() {
               {filtered.map(f => {
                 const os = getOs(f.os_cliente_id);
                 const val = (valorizaciones||[]).find(v => v.id === f.valorizacion_id);
+                const facturaAfectada = ['nota_credito', 'nota_debito'].includes(f.tipo_documento)
+                  ? (facturas || []).find(origen => origen.id === f.factura_origen_id)
+                  : null;
                 return (
                   <tr key={f.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelFac(f.id); setFichaTab('detalle'); }}>
                     <td className="mono" style={{fontWeight:600}}>{f.numero || f.id}</td>
                     {mostrarBadgeSociedadFacturacion && <td><SociedadBadge sociedadId={f.sociedad_id} /></td>}
                     <td style={{maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{f.cuentas?.razon_social || cuentaNombre(f.cuenta_id)}</td>
                     <td style={{fontSize:12}}>{TIPO_DOC_LABELS[f.tipo_documento] || f.tipo_documento || 'Factura'}</td>
+                    <td>
+                      {facturaAfectada ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{padding:0,fontSize:12,color:'var(--cyan)',whiteSpace:'nowrap'}}
+                          onClick={e => { e.stopPropagation(); setSelFac(facturaAfectada.id); setFichaTab('detalle'); }}
+                        >
+                          Afecta a {facturaAfectada.numero || facturaAfectada.id}
+                        </button>
+                      ) : '—'}
+                    </td>
                     <td className="mono text-muted" style={{fontSize:12}}>{val?.numero || f.valorizaciones?.numero || '—'}</td>
                     <td className="mono text-muted" style={{fontSize:12}}>{os?.numero || '—'}</td>
                     <td className="num">{moneyCurrency(f.subtotal, f.moneda)}</td>
@@ -5538,7 +5554,7 @@ function Facturacion() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={13 + (mostrarBadgeSociedadFacturacion ? 1 : 0)} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
+                <tr><td colSpan={14 + (mostrarBadgeSociedadFacturacion ? 1 : 0)} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>
                   {q || hasFilters ? 'No se encontraron resultados' : 'No hay facturas registradas'}
                 </td></tr>
               )}
