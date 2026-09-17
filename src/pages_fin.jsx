@@ -132,9 +132,13 @@ function DescargaAdjuntoPago({ registro, empresaId, entidadTipo }) {
   );
 }
 
-function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
+function AccionesAdjuntoCajaChica({ movimiento, empresaId, puedeSubir = false }) {
   const [adjuntos, setAdjuntos] = useState([]);
-  const [cargando, setCargando] = useState(Boolean(movimiento?.gasto_id));
+  const [cargando, setCargando] = useState(Boolean(movimiento?.id));
+  const [subiendo, setSubiendo] = useState(false);
+  const inputRef = useRef(null);
+  const entidadTipo = movimiento?.gasto_id ? 'compras_gastos' : 'caja_chica';
+  const entidadId = movimiento?.gasto_id || movimiento?.id;
 
   const adjuntoHistorico = () => (movimiento?.comprobante_url ? [{
     id: `comprobante_${movimiento.id}`,
@@ -146,7 +150,7 @@ function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
   useEffect(() => {
     let activo = true;
     const cargar = async () => {
-      if (!empresaId || !movimiento?.gasto_id || !isSupabaseMode()) {
+      if (!empresaId || !entidadId || !isSupabaseMode()) {
         if (activo) {
           setAdjuntos(adjuntoHistorico());
           setCargando(false);
@@ -158,8 +162,8 @@ function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
       try {
         const rows = await storageService.cargarAdjuntos({
           empresaId,
-          entidadTipo: 'compras_gastos',
-          entidadId: movimiento.gasto_id,
+          entidadTipo,
+          entidadId,
         });
         if (activo) {
           setAdjuntos(rows?.length ? rows : adjuntoHistorico());
@@ -172,7 +176,33 @@ function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
     };
     cargar();
     return () => { activo = false; };
-  }, [empresaId, movimiento?.id, movimiento?.gasto_id, movimiento?.comprobante_url]);
+  }, [empresaId, entidadTipo, entidadId, movimiento?.id, movimiento?.gasto_id, movimiento?.comprobante_url]);
+
+  const subir = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !empresaId || !entidadId) return;
+    const validacion = storageService.validarArchivo(file);
+    if (!validacion.ok) {
+      window.alert(validacion.error);
+      return;
+    }
+    setSubiendo(true);
+    try {
+      const nuevo = await storageService.subirAdjunto({
+        empresaId,
+        entidadTipo,
+        entidadId,
+        file,
+        categoria: 'comprobante',
+      });
+      setAdjuntos(prev => [...prev, nuevo]);
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo subir el comprobante.');
+    } finally {
+      setSubiendo(false);
+    }
+  };
 
   const descargar = async adjunto => {
     if (!adjunto) return;
@@ -193,9 +223,24 @@ function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
   };
 
   if (cargando) return <span className="text-muted">...</span>;
-  if (!adjuntos.length) return <span className="text-muted">-</span>;
+  if (!adjuntos.length) return puedeSubir ? (
+    <>
+      <button
+        type="button"
+        className="icon-btn"
+        title="Subir adjunto"
+        aria-label="Subir adjunto"
+        onClick={() => inputRef.current?.click()}
+        disabled={subiendo}
+        style={{color:'var(--orange)'}}
+      >
+        {I.upload}
+      </button>
+      <input ref={inputRef} type="file" onChange={subir} style={{display:'none'}} accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip" />
+    </>
+  ) : <span className="text-muted">-</span>;
   return (
-    <div style={{display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2}}>
+    <div style={{display:'flex', flexDirection:'row', alignItems:'center', gap:4}}>
       {adjuntos.map((item, index) => (
         <button
           key={item.id || `${movimiento.id}_adjunto_${index}`}
@@ -209,6 +254,12 @@ function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
           {I.download}
         </button>
       ))}
+      {puedeSubir && <>
+        <button type="button" className="icon-btn" title="Subir otro adjunto" aria-label="Subir otro adjunto" onClick={() => inputRef.current?.click()} disabled={subiendo} style={{color:'var(--orange)'}}>
+          {I.upload}
+        </button>
+        <input ref={inputRef} type="file" onChange={subir} style={{display:'none'}} accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip" />
+      </>}
     </div>
   );
 }
@@ -6556,7 +6607,7 @@ function CajaChica() {
                       <td className="text-muted">{ceco?.nombre || '-'}</td>
                       <td className="mono text-muted">
                         <div>{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</div>
-                        {tipo === 'egreso' && <DescargaAdjuntoCajaChica movimiento={m} empresaId={empresaId} />}
+                        {tipo === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}
                       </td>
                       <td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda)}</strong></td>
                       <td><span className={`badge ${m.estado === 'anulado' || m.estado === 'rechazada' ? 'badge-red' : 'badge-green'}`}>{m.estado || 'registrado'}</span></td>
@@ -6632,7 +6683,7 @@ function CajaChica() {
                   <table className="tbl">
                     <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
                     <tbody>{historialFondo.length ? historialFondo.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <DescargaAdjuntoCajaChica movimiento={m} empresaId={empresaId} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
                     )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
