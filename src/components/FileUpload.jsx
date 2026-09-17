@@ -226,7 +226,7 @@ export const FileUpload = forwardRef(function FileUpload({
         </span>
       </button>
       <div className="row" style={{gap:4, flexShrink:0}}>
-        <button type="button" className="icon-btn" title="Descargar" onClick={() => descargarAdjunto(adjunto)} disabled={disabled}>
+        <button type="button" className="icon-btn" title="Descargar" aria-label={`Descargar ${adjunto.nombre_original || 'archivo'}`} onClick={() => descargarAdjunto(adjunto)} disabled={disabled}>
           {I.download}
         </button>
         {!readOnly && (

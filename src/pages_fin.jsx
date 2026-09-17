@@ -131,6 +131,87 @@ function DescargaAdjuntoPago({ registro, empresaId, entidadTipo }) {
     </button>
   );
 }
+
+function DescargaAdjuntoCajaChica({ movimiento, empresaId }) {
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [cargando, setCargando] = useState(Boolean(movimiento?.gasto_id));
+
+  const adjuntoHistorico = () => (movimiento?.comprobante_url ? [{
+    id: `comprobante_${movimiento.id}`,
+    nombre_original: 'Comprobante',
+    url: movimiento.comprobante_url,
+    externo: true,
+  }] : []);
+
+  useEffect(() => {
+    let activo = true;
+    const cargar = async () => {
+      if (!empresaId || !movimiento?.gasto_id || !isSupabaseMode()) {
+        if (activo) {
+          setAdjuntos(adjuntoHistorico());
+          setCargando(false);
+        }
+        return;
+      }
+
+      setCargando(true);
+      try {
+        const rows = await storageService.cargarAdjuntos({
+          empresaId,
+          entidadTipo: 'compras_gastos',
+          entidadId: movimiento.gasto_id,
+        });
+        if (activo) {
+          setAdjuntos(rows?.length ? rows : adjuntoHistorico());
+        }
+      } catch {
+        if (activo) setAdjuntos(adjuntoHistorico());
+      } finally {
+        if (activo) setCargando(false);
+      }
+    };
+    cargar();
+    return () => { activo = false; };
+  }, [empresaId, movimiento?.id, movimiento?.gasto_id, movimiento?.comprobante_url]);
+
+  const descargar = async adjunto => {
+    if (!adjunto) return;
+    try {
+      const url = adjunto.externo
+        ? adjunto.url
+        : await storageService.obtenerUrlAdjunto(adjunto, 600, { download: true });
+      if (!url) return;
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = adjunto.nombre_original || 'comprobante';
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+    } catch (error) {
+      window.alert(error?.message || 'No se pudo descargar el comprobante.');
+    }
+  };
+
+  if (cargando) return <span className="text-muted">...</span>;
+  if (!adjuntos.length) return <span className="text-muted">-</span>;
+  return (
+    <div style={{display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2}}>
+      {adjuntos.map((item, index) => (
+        <button
+          key={item.id || `${movimiento.id}_adjunto_${index}`}
+          type="button"
+          className="icon-btn"
+          title={`Descargar ${item.nombre_original || 'comprobante'}`}
+          aria-label={`Descargar ${item.nombre_original || 'comprobante'}`}
+          onClick={() => descargar(item)}
+          style={{color:'var(--cyan)'}}
+        >
+          {I.download}
+        </button>
+      ))}
+    </div>
+  );
+}
 // Futuro: mover este umbral a Parametros Generales.
 const RHE_DESVIACION_UMBRAL = 0.20;
 const RHE_MESES = [
@@ -6473,7 +6554,10 @@ function CajaChica() {
                       <td><span className={`badge ${['reposicion', 'aporte'].includes(tipo) ? 'badge-green' : 'badge-cyan'}`}>{tipo}</span></td>
                       <td>{m.concepto || m.descripcion}</td>
                       <td className="text-muted">{ceco?.nombre || '-'}</td>
-                      <td className="mono text-muted">{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</td>
+                      <td className="mono text-muted">
+                        <div>{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</div>
+                        {tipo === 'egreso' && <DescargaAdjuntoCajaChica movimiento={m} empresaId={empresaId} />}
+                      </td>
                       <td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda)}</strong></td>
                       <td><span className={`badge ${m.estado === 'anulado' || m.estado === 'rechazada' ? 'badge-red' : 'badge-green'}`}>{m.estado || 'registrado'}</span></td>
                     </tr>
@@ -6546,10 +6630,10 @@ function CajaChica() {
                 <div style={{fontWeight:700,marginBottom:8}}>Historial</div>
                 <div className="table-wrap" style={{border:'1px solid var(--border)',borderRadius:8}}>
                   <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th className="num">Monto</th><th>Estado</th></tr></thead>
+                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
                     <tbody>{historialFondo.length ? historialFondo.map(m => (
-                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
-                    )) : <tr><td colSpan="5" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
+                      <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <DescargaAdjuntoCajaChica movimiento={m} empresaId={empresaId} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
+                    )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
                 </div>
               </div>
