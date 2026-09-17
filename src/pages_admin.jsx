@@ -65,6 +65,7 @@ import {
 import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
+import { listNavModules, listNavSections, useTenantNavLabels } from './services/navLabelsService.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -9087,6 +9088,281 @@ const FERIADOS_AMBITOS = [
   ['local', 'Local'],
 ];
 
+const NAV_SECTION_LABELS = {
+  business_intelligence: 'Business Intelligence',
+  plataforma: 'Plataforma',
+  integraciones: 'Integraciones',
+  crm_marketing: 'CRM & Marketing',
+  comercial: 'Comercial',
+  operaciones: 'Operaciones',
+  rrhh: 'RRHH',
+  logistica: 'Logística',
+  compras: 'Compras',
+  administracion: 'Administración',
+  customer_success: 'Customer Success',
+  inteligencia_artificial: 'Inteligencia Artificial',
+  campo_movil: 'Campo Móvil',
+  configuracion: 'Configuración',
+};
+
+const titleFromKey = value => String(value || '')
+  .split('_')
+  .filter(Boolean)
+  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+  .join(' ');
+
+function TenantNavLabelsSection({ active, empresaId, addNotificacion }) {
+  const {
+    labels,
+    sectionLabels,
+    loading: labelsLoading,
+    sectionLoading: sectionLabelsLoading,
+    error: labelsError,
+    sectionError: sectionLabelsError,
+    getLabel,
+    getSectionLabel,
+    saveLabel,
+    resetLabel,
+    saveSectionLabel,
+    resetSectionLabel,
+  } = useTenantNavLabels(empresaId, { enabled: active });
+  const [modules, setModules] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
+  const [modulesError, setModulesError] = useState(null);
+  const [sectionsError, setSectionsError] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [sectionDrafts, setSectionDrafts] = useState({});
+  const [savingKey, setSavingKey] = useState(null);
+  const [openSections, setOpenSections] = useState(() => new Set());
+
+  useEffect(() => {
+    if (!active || !empresaId) return undefined;
+    let mounted = true;
+    setModulesLoading(true);
+    setSectionsLoading(true);
+    setModulesError(null);
+    setSectionsError(null);
+    Promise.all([listNavModules(), listNavSections()])
+      .then(([moduleData, sectionData]) => {
+        if (!mounted) return;
+        setModules(moduleData);
+        setSections(sectionData);
+        setOpenSections(previous => previous.size ? previous : new Set(moduleData.map(row => row.section_key)));
+      })
+      .catch(error => {
+        if (mounted) {
+          setModulesError(error);
+          setSectionsError(error);
+        }
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setModulesLoading(false);
+        setSectionsLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [active, empresaId]);
+
+  useEffect(() => {
+    setDrafts(modules.reduce((result, module) => ({
+      ...result,
+      [module.key]: getLabel(module.key, module.default_label),
+    }), {}));
+  }, [modules, labels, getLabel]);
+
+  useEffect(() => {
+    setSectionDrafts(sections.reduce((result, section) => ({
+      ...result,
+      [section.key]: getSectionLabel(section.key, section.default_label),
+    }), {}));
+  }, [sections, sectionLabels, getSectionLabel]);
+
+  const groupedModules = useMemo(() => modules.reduce((groups, module) => {
+    const section = module.section_key || 'otros';
+    groups[section] = [...(groups[section] || []), module];
+    return groups;
+  }, {}), [modules]);
+
+  const sectionsWithModules = useMemo(() => {
+    const known = new Set(sections.map(section => section.key));
+    const missing = Object.keys(groupedModules)
+      .filter(key => !known.has(key))
+      .map(key => ({ key, default_label: NAV_SECTION_LABELS[key] || titleFromKey(key), order_index: 9999 }));
+    return [...sections, ...missing];
+  }, [sections, groupedModules]);
+
+  const toggleSection = section => setOpenSections(previous => {
+    const next = new Set(previous);
+    if (next.has(section)) next.delete(section);
+    else next.add(section);
+    return next;
+  });
+
+  const saveDraft = async module => {
+    const value = String(drafts[module.key] ?? '').trim();
+    const current = getLabel(module.key, module.default_label);
+    if (value === current) return;
+    setSavingKey(module.key);
+    try {
+      if (!value) {
+        await resetLabel(module.key);
+        setDrafts(previous => ({ ...previous, [module.key]: module.default_label }));
+      } else {
+        await saveLabel(module.key, value);
+      }
+      addNotificacion(`Nombre de "${module.default_label}" actualizado.`);
+    } catch (error) {
+      setDrafts(previous => ({ ...previous, [module.key]: current }));
+      addNotificacion(`No se pudo guardar el nombre: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const resetDraft = async module => {
+    if (!labels[module.key]) {
+      setDrafts(previous => ({ ...previous, [module.key]: module.default_label }));
+      return;
+    }
+    setSavingKey(module.key);
+    try {
+      await resetLabel(module.key);
+      setDrafts(previous => ({ ...previous, [module.key]: module.default_label }));
+      addNotificacion(`"${module.default_label}" volvió a su nombre original.`);
+    } catch (error) {
+      addNotificacion(`No se pudo restablecer el nombre: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const saveSectionDraft = async section => {
+    const value = String(sectionDrafts[section.key] ?? '').trim();
+    const current = getSectionLabel(section.key, section.default_label);
+    if (value === current) return;
+    const saveKey = `section:${section.key}`;
+    setSavingKey(saveKey);
+    try {
+      if (!value) {
+        await resetSectionLabel(section.key);
+        setSectionDrafts(previous => ({ ...previous, [section.key]: section.default_label }));
+      } else {
+        await saveSectionLabel(section.key, value);
+      }
+      addNotificacion(`Sección "${section.default_label}" actualizada.`);
+    } catch (error) {
+      setSectionDrafts(previous => ({ ...previous, [section.key]: current }));
+      addNotificacion(`No se pudo guardar la sección: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const resetSectionDraft = async section => {
+    if (!sectionLabels[section.key]) {
+      setSectionDrafts(previous => ({ ...previous, [section.key]: section.default_label }));
+      return;
+    }
+    const saveKey = `section:${section.key}`;
+    setSavingKey(saveKey);
+    try {
+      await resetSectionLabel(section.key);
+      setSectionDrafts(previous => ({ ...previous, [section.key]: section.default_label }));
+      addNotificacion(`"${section.default_label}" volvió a su nombre original.`);
+    } catch (error) {
+      addNotificacion(`No se pudo restablecer la sección: ${error?.message || 'error desconocido'}`);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  if (!active) return null;
+
+  return (
+    <div className="card params-card params-section params-section-nav_labels">
+      <div className="card-head">
+        <div>
+          <h3>Nombres del menú</h3>
+          <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Personaliza cómo se muestran los módulos en este tenant. Los cambios se aplican al sidebar al instante.
+          </div>
+        </div>
+        <span className="badge badge-cyan">Solo administrador</span>
+      </div>
+      <div className="card-body tenant-nav-labels-body">
+        {(modulesLoading || sectionsLoading || labelsLoading || sectionLabelsLoading) && <div className="params-inline-state">Cargando catálogo de navegación...</div>}
+        {(modulesError || sectionsError || labelsError || sectionLabelsError) && <div className="alert alert-warning">No se pudo cargar el catálogo de navegación. Verifica que las migraciones 533 y 534 estén aplicadas.</div>}
+        {!modulesLoading && !modulesError && !modules.length && <div className="params-inline-state">No hay módulos activos en el catálogo.</div>}
+        <div className="tenant-nav-labels-list">
+          {sectionsWithModules.map(section => {
+            const sectionModules = groupedModules[section.key] || [];
+            const isOpen = openSections.has(section.key);
+            const sectionSaveKey = `section:${section.key}`;
+            return (
+              <section className="tenant-nav-labels-group" key={section.key}>
+                <div className="tenant-nav-labels-group-head">
+                  <button type="button" className="tenant-nav-labels-group-toggle" onClick={() => toggleSection(section.key)} aria-expanded={isOpen}>
+                    <span>{getSectionLabel(section.key, section.default_label)}</span>
+                    <span className="text-muted">{sectionModules.length} {sectionModules.length === 1 ? 'módulo' : 'módulos'} {isOpen ? '⌃' : '⌄'}</span>
+                  </button>
+                  <div className="tenant-nav-label-edit tenant-nav-section-edit">
+                    <input
+                      className="input"
+                      value={sectionDrafts[section.key] ?? getSectionLabel(section.key, section.default_label)}
+                      onChange={event => setSectionDrafts(previous => ({ ...previous, [section.key]: event.target.value }))}
+                      onBlur={() => saveSectionDraft(section)}
+                      aria-label={`Nombre personalizado para la sección ${section.default_label}`}
+                      disabled={savingKey === sectionSaveKey}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={() => resetSectionDraft(section)}
+                      disabled={savingKey === sectionSaveKey || !sectionLabels[section.key]}
+                    >
+                      Restablecer
+                    </button>
+                  </div>
+                </div>
+                {isOpen && sectionModules.map(module => (
+                  <div className="tenant-nav-label-row" key={module.key}>
+                    <div className="tenant-nav-label-meta" style={{ paddingLeft: module.parent_key ? 20 : 0 }}>
+                      <strong>{module.default_label}</strong>
+                      <span>{module.key}</span>
+                    </div>
+                    <div className="tenant-nav-label-edit">
+                      <input
+                        className="input"
+                        value={drafts[module.key] ?? getLabel(module.key, module.default_label)}
+                        onChange={event => setDrafts(previous => ({ ...previous, [module.key]: event.target.value }))}
+                        onBlur={() => saveDraft(module)}
+                        aria-label={`Nombre personalizado para ${module.default_label}`}
+                        disabled={savingKey === module.key}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => resetDraft(module)}
+                        disabled={savingKey === module.key || !labels[module.key]}
+                      >
+                        Restablecer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FeriadosParametros({ empresaId, addNotificacion }) {
   const [anio, setAnio] = useState(String(new Date().getFullYear()));
   const [feriados, setFeriados] = useState([]);
@@ -9275,10 +9551,18 @@ function Parametros() {
       || (membresiaActiva && (role?.es_admin_empresa || role?.permisos?.tenant_admin || role?.permisos?.todo))
     )
   );
+  const puedeAdministrarEtiquetas = Boolean(
+    authUser?.es_admin_empresa
+    || authUser?.es_superadmin
+    || role?.es_admin_empresa
+    || role?.permisos?.tenant_admin
+    || role?.permisos?.todo
+  );
 
   useEffect(() => {
     if (paramSection === 'sociedades' && !puedeAdministrarSociedades) setParamSection('identidad');
-  }, [paramSection, puedeAdministrarSociedades]);
+    if (paramSection === 'nav_labels' && !puedeAdministrarEtiquetas) setParamSection('identidad');
+  }, [paramSection, puedeAdministrarSociedades, puedeAdministrarEtiquetas]);
 
   // ── Estado configuración de nómina ──
   const nominaBase = {
@@ -9701,6 +9985,9 @@ function Parametros() {
     { key: 'feriados', title: 'Feriados', description: 'Calendario de feriados y políticas de pago por régimen.' },
     { key: 'evaluaciones', title: 'Evaluaciones', description: 'Ponderaciones, escala y labels para evaluaciones de desempeno.' },
     { key: 'egresos_config', title: 'Egresos', description: 'Tipos de gasto, estructura del ER y categorías personalizadas. Importa desde Excel para configurar todo de una vez.' },
+    ...(puedeAdministrarEtiquetas
+      ? [{ key: 'nav_labels', title: 'Nombres del menú', description: 'Personaliza los nombres del sidebar para este tenant.' }]
+      : []),
   ];
   const activeParamSection = paramsSections.find(s => s.key === paramSection) || paramsSections[0];
 
@@ -9728,6 +10015,9 @@ function Parametros() {
       </div>
 
       <div className="params-workspace">
+        {paramSection === 'nav_labels' ? (
+          <TenantNavLabelsSection active={puedeAdministrarEtiquetas} empresaId={empresa?.id} addNotificacion={addNotificacion} />
+        ) : (
         <div className="params-section-stack">
           <div className="params-section-note">
             <strong>{activeParamSection.title}</strong>
@@ -10508,7 +10798,7 @@ function Parametros() {
             <SociedadesAdmin />
           )}
 
-          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && paramSection !== 'catalogo_documentos' && (
+          {paramSection !== 'tipo_cambio' && paramSection !== 'nomina' && paramSection !== 'evaluaciones' && paramSection !== 'cuentas' && paramSection !== 'egresos_config' && paramSection !== 'sociedades' && paramSection !== 'catalogo_documentos' && paramSection !== 'nav_labels' && (
           <div className="params-footer-actions">
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {I.save} {saving ? 'Guardando...' : 'Guardar cambios'}
@@ -10516,6 +10806,7 @@ function Parametros() {
           </div>
           )}
         </div>
+        )}
 
       </div>
     </div>

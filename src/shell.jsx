@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { I } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { useTenantNavLabels } from './services/navLabelsService.js';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 import { puedeVerPantalla } from './access/roleAccess.js';
 
@@ -167,6 +168,85 @@ const SEARCH_ALIASES = {
   solpe: 'solicitud pedido requerimiento compra',
 };
 
+const NAV_MODULE_KEYS = {
+  dashboard: 'bi.dashboard_general',
+  bi_comercial: 'bi.comercial',
+  bi_operativo: 'bi.operativo',
+  bi_financiero: 'bi.financiero',
+  tenants: 'plataforma.tenants',
+  planes: 'plataforma.planes',
+  metricas_saas: 'plataforma.metricas_saas',
+  api_keys: 'integraciones.api_keys',
+  cuentas: 'crm.cuentas_contactos',
+  leads: 'crm.leads_scoring',
+  marketing: 'crm.marketing_automation',
+  pipeline: 'crm.pipeline',
+  actividades: 'crm.actividades',
+  agenda_comercial: 'comercial.agenda',
+  hoja_costeo: 'comercial.hoja_costeo',
+  costeo_variables: 'comercial.variables_costeo',
+  cotizaciones: 'comercial.cotizaciones',
+  os_cliente: 'comercial.os_cliente',
+  panel_produccion: 'comercial.panel_produccion',
+  equipos_clientes: 'comercial.equipos_clientes',
+  planner: 'operaciones.planner',
+  backlog: 'operaciones.backlog',
+  ot: 'operaciones.ot',
+  partes: 'operaciones.partes',
+  cierre: 'operaciones.cierre',
+  tickets: 'operaciones.tickets',
+  mi_portal: 'rrhh.mi_portal',
+  reclutamiento: 'rrhh.reclutamiento',
+  rrhh_operativo: 'rrhh.operativo',
+  rrhh_admin: 'rrhh.administrativo',
+  asistencia: 'rrhh.asistencia',
+  turnos: 'rrhh.turnos',
+  nomina: 'rrhh.nomina',
+  comisiones: 'rrhh.comisiones',
+  solicitudes_rrhh: 'rrhh.solicitudes',
+  prestamos_personal: 'rrhh.prestamos_personal',
+  tareo_admin: 'rrhh.tareo_admin',
+  control_horas: 'rrhh.control_horas',
+  evaluaciones_desempeno: 'rrhh.evaluaciones_desempeno',
+  liquidaciones_cese: 'rrhh.liquidaciones_cese',
+  inventario: 'logistica.inventario',
+  solpe: 'logistica.solpe',
+  remision: 'logistica.remision',
+  proveedores: 'compras.proveedores',
+  cot_compras: 'compras.cotizaciones',
+  ordenes_compra: 'compras.ordenes_compra',
+  ordenes_servicio: 'compras.ordenes_servicio',
+  recepciones: 'compras.recepciones',
+  compras_gastos: 'compras.gastos',
+  ventas: 'administracion.ventas',
+  caja: 'administracion.caja',
+  activos_fijos: 'administracion.activos_fijos',
+  financiamiento: 'administracion.financiamiento',
+  cxc: 'administracion.cxc',
+  cxp: 'administracion.cxp',
+  facturacion: 'administracion.facturacion',
+  tesoreria: 'administracion.tesoreria',
+  resultados: 'administracion.resultados',
+  valorizacion: 'administracion.valorizacion',
+  presupuestos: 'administracion.presupuestos',
+  cs_onboarding: 'customer_success.onboarding',
+  cs_planes: 'customer_success.planes',
+  cs_health: 'customer_success.health',
+  cs_renovaciones: 'customer_success.renovaciones',
+  cs_fidelizacion: 'customer_success.fidelizacion',
+  bi_cs: 'customer_success.bi',
+  ia_comercial: 'ia.comercial',
+  ia_operativa: 'ia.operativa',
+  ia_financiera: 'ia.financiera',
+  campo: 'campo.vistas',
+  usuarios: 'configuracion.usuarios',
+  organigrama: 'configuracion.organigrama',
+  roles: 'configuracion.roles',
+  maestros: 'configuracion.maestros',
+  parametros: 'configuracion.parametros',
+  salud_implementacion_tenant: 'configuracion.salud_implementacion',
+};
+
 // Puntua coincidencias exactas, por palabra y por letras consecutivas para que
 // abreviaturas como "recep" o "produ" encuentren el modulo esperado.
 const puntuarBusquedaModulo = (consulta, item, seccion) => {
@@ -289,6 +369,7 @@ function buildSidebarBadges(app) {
 
 export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const app = useApp();
+  const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
@@ -308,17 +389,21 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       .filter(it => it.requiereVerCostos
         ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
-      .map(it => ({ ...it, badge: capBadge(badges[it.key]) }));
+      .map(it => {
+        const navKey = NAV_MODULE_KEYS[it.key] || it.key;
+        return { ...it, navKey, label: getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
+      });
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
     return {
       ...group,
       key,
+      section: getSectionLabel(key, group.section),
       icon: SECTION_ICONS[group.section] || visibleItems[0]?.icon || I.package,
       items: visibleItems,
       active: visibleItems.some(it => it.key === active),
     };
-  }).filter(Boolean), [active, role, badges, isSuperadmin]);
+  }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel]);
   const resultadosBusqueda = useMemo(() => {
     const consulta = normalizarBusqueda(busquedaModulo);
     if (!consulta) return [];
