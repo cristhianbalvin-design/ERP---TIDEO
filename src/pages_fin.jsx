@@ -7246,7 +7246,7 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
 })();
 
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, generarCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, generarCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7724,7 +7724,9 @@ function CxP() {
         setMotivoAccionCxP('');
       }
     } catch (error) {
-      addNotificacion(`No se aplicó la acción: ${error?.message || 'Error desconocido.'}`);
+      const mensaje = error?.message || error?.details || error?.hint || 'Error desconocido.';
+      addNotificacion(`No se aplicó la acción: ${mensaje}`);
+      addToast?.(`No se pudo ${tipo === 'eliminar' ? 'eliminar' : 'anular'} la CxP: ${mensaje}`);
     } finally {
       setGuardandoAccionCxP(false);
     }

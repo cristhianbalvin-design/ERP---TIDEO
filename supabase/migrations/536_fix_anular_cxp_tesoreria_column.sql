@@ -1,11 +1,5 @@
--- 532: Acciones financieras seguras para CxP.
--- La anulacion conserva trazabilidad; la eliminacion solo admite preliminares
--- sin pagos ni dependencias financieras.
-
-alter table public.cxp
-  add column if not exists motivo_anulacion text,
-  add column if not exists anulado_por text,
-  add column if not exists anulado_en timestamptz;
+-- 536: Corregir la RPC de anulacion de CxP.
+-- movimientos_tesoreria usa vinculo_id; vinculado_id pertenece a movimientos_banco.
 
 create or replace function public.anular_cxp_finanzas(
   p_cxp_id text,
@@ -147,9 +141,7 @@ begin
      or exists (
        select 1 from public.movimientos_tesoreria m
        where m.empresa_id = v_cxp.empresa_id
-         and (
-           m.vinculo_id = v_cxp.id
-       )
+         and m.vinculo_id = v_cxp.id
      )
      or exists (select 1 from public.devoluciones_proveedor d where d.cxp_ajuste_id = v_cxp.id)
      or v_tiene_detalle
