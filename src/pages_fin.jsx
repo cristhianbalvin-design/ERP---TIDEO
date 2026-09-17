@@ -3719,6 +3719,13 @@ const CONDICION_LABELS = {
 };
 const FAC_BADGE_CLASS = { emitida:'badge-cyan', cobro_parcial:'badge-orange', cobrada:'badge-green', vencida:'badge-red', anulada:'badge-gray' };
 const FAC_BADGE_LABEL = { emitida:'Emitida', cobro_parcial:'Cobro parcial', cobrada:'Cobrada', vencida:'Vencida', anulada:'Anulada' };
+const TIPOS_DOCUMENTO_BASE = ['factura', 'boleta'];
+const impactoIngresoDocumento = factura => {
+  const total = Number(factura?.total || factura?.monto || 0);
+  if (factura?.tipo_documento === 'nota_credito') return -total;
+  if (factura?.tipo_documento === 'nota_debito' || TIPOS_DOCUMENTO_BASE.includes(factura?.tipo_documento)) return total;
+  return 0;
+};
 
 function Facturacion() {
   const {
@@ -5303,11 +5310,26 @@ function Facturacion() {
   const hoy = new Date();
   const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
   const facMes = facturasVista.filter(f => f.estado !== 'anulada' && (f.fecha_emision||'').startsWith(mesActual));
-  const montoMesPEN = facMes.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
-  const montoMesUSD = facMes.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
-  const facPendiente = facturasVista.filter(f => ['emitida','cobro_parcial'].includes(f.estado));
-  const montoPendientePEN = facPendiente.filter(f => (f.moneda||'PEN') !== 'USD').reduce((s,f) => s + Number(f.total||0), 0);
-  const montoPendienteUSD = facPendiente.filter(f => (f.moneda||'PEN') === 'USD').reduce((s,f) => s + Number(f.total||0), 0);
+  const montoMesPEN = facMes
+    .filter(f => (f.moneda||'PEN') !== 'USD')
+    .reduce((s,f) => s + impactoIngresoDocumento(f), 0);
+  const montoMesUSD = facMes
+    .filter(f => (f.moneda||'PEN') === 'USD')
+    .reduce((s,f) => s + impactoIngresoDocumento(f), 0);
+  const facturasBaseVista = facturasVista.filter(f => TIPOS_DOCUMENTO_BASE.includes(f.tipo_documento));
+  const facturasBasePorId = new Map(facturasBaseVista.map(f => [f.id, f]));
+  // Las 9 facturas sin CxC del hallazgo previo no entran en este total porque
+  // no existe un saldo de CxC que sumar; ese hallazgo queda separado.
+  const cxcPendiente = (cxc || []).filter(c => {
+    const factura = facturasBasePorId.get(c.factura_id);
+    return factura && Number(c.saldo || 0) > 0 && !['anulada', 'cancelada', 'cobrada', 'pagada'].includes(String(c.estado || '').toLowerCase());
+  });
+  const montoPendientePEN = cxcPendiente
+    .filter(c => (c.moneda||'PEN') !== 'USD')
+    .reduce((s,c) => s + Number(c.saldo||0), 0);
+  const montoPendienteUSD = cxcPendiente
+    .filter(c => (c.moneda||'PEN') === 'USD')
+    .reduce((s,c) => s + Number(c.saldo||0), 0);
 
   const clienteOpts = [...new Map(facturasVista.map(f => [f.cuenta_id, cuentaNombre(f.cuenta_id)])).entries()].filter(([k]) => k);
   const hasFilters = fCliente||fTipo||fEstado||fMoneda||fEmitDesde||fEmitHasta||fVenceDesde||fVenceHasta;
@@ -5343,7 +5365,7 @@ function Facturacion() {
       <div className="kpi-grid" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
         <div className="kpi-card">
           <div className="kpi-label">Facturas emitidas este mes</div>
-          <div className="kpi-value" style={{marginTop:12}}>{facMes.length}</div>
+          <div className="kpi-value" style={{marginTop:12}}>{facMes.filter(f => TIPOS_DOCUMENTO_BASE.includes(f.tipo_documento)).length}</div>
           <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:4}}>Documentos emitidos</div>
           <div className="kpi-icon cyan">{I.receipt}</div>
         </div>
