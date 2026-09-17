@@ -49,6 +49,7 @@ import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
+import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -3982,6 +3983,17 @@ function Facturacion() {
 
   // ── Form change helper (auto-update fecha_vencimiento y numero al cambiar tipo) ────
   const handleFormChange = (field, value) => {
+    if (field === 'tipo_documento') {
+      if (value === 'nota_credito' || value === 'nota_debito') {
+        setNcndFacId(null);
+        setNcndForm(value === 'nota_credito' ? 'nc' : 'nd');
+        setNcMotivo(''); setNcNotas(''); setNcDevolucion(false);
+        setNdMotivo(''); setNdConcepto(''); setNdMonto(''); setNdConIgv(true); setNdNotas('');
+      } else if (ncndForm) {
+        setNcndForm(null);
+        setNcndFacId(null);
+      }
+    }
     if (field === 'condicion_pago') setCondicionManual(true);
     if (field === 'fecha_emision' || field === 'condicion_pago') setVencimientoManual(false);
     if (field === 'fecha_vencimiento') setVencimientoManual(true);
@@ -4393,6 +4405,57 @@ function Facturacion() {
   };
 
   // ── Nota de Crédito form ──────────────────────────────────────────────
+  if ((ncndForm === 'nc' || ncndForm === 'nd')) {
+    const tipoNota = ncndForm === 'nc' ? 'nota_credito' : 'nota_debito';
+    const onCancelNota = () => {
+      setNcndForm(null);
+      setNcndFacId(null);
+      if (mode === 'directa') setMode(null);
+      else setSelFac(ncndFacId);
+    };
+    const onEmitNota = async datos => {
+      const nota = ncndForm === 'nc'
+        ? await emitirNotaCredito(datos.facturaOrigenId, datos)
+        : await emitirNotaDebito(datos.facturaOrigenId, datos);
+      if (ncndForm === 'nc' && datos.devolucion && nota) {
+        const facOrigen = (facturas || []).find(f => f.id === datos.facturaOrigenId);
+        const fecha = new Date().toISOString().split('T')[0];
+        const fechaVencimiento = new Date(`${fecha}T00:00:00`);
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + 15);
+        await generarCxP({
+          tipo_beneficiario: 'cliente',
+          sociedad_id: facOrigen?.sociedad_id || null,
+          cuenta_id: facOrigen?.cuenta_id,
+          concepto: `Devolución NC — ${facOrigen?.numero || datos.facturaOrigenId} — ${cuentaNombre(facOrigen?.cuenta_id)}`,
+          factura_numero: `NC/${facOrigen?.numero || datos.facturaOrigenId}`,
+          fecha_emision: fecha,
+          fecha_vencimiento: fechaVencimiento.toISOString().split('T')[0],
+          monto_total: datos.total,
+          moneda: facOrigen?.moneda || 'PEN',
+          estado: 'por_pagar',
+          origen: 'nc_devolucion',
+          motivo_cxp: 'devolucion_nc',
+          nc_id: nota.id || null,
+        });
+      }
+      setNcndForm(null);
+      setNcndFacId(null);
+      if (mode === 'directa') setMode(null);
+      else setSelFac(nota?.id || datos.facturaOrigenId);
+    };
+    return (
+      <NotaAfectacionForm
+        tipoDocumento={tipoNota}
+        facturas={facturasVista}
+        cuentaNombre={cuentaNombre}
+        facturaInicialId={ncndFacId}
+        onCancel={onCancelNota}
+        onEmit={onEmitNota}
+        saving={saving}
+      />
+    );
+  }
+
   if (ncndForm === 'nc') {
     const facOrigen = (facturas||[]).find(x => x.id === ncndFacId);
     if (!facOrigen) { setNcndForm(null); return null; }
