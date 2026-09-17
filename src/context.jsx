@@ -6366,6 +6366,39 @@ export function AppProvider({ children }) {
   const emitirNotaCredito = async (facturaOrigenId, datos) => {
     const facOrigen = facturas.find(f => f.id === facturaOrigenId);
     if (!facOrigen) return null;
+    if (isSupabaseConfigured()) {
+      const resultado = await finanzasService.emitirNotaCxcAtomica({
+        factura_id: generateId('fac'),
+        factura_origen_id: facturaOrigenId,
+        empresa_id: empresa.id,
+        sociedad_id: facOrigen.sociedad_id || null,
+        tipo_documento: 'nota_credito',
+        motivo_codigo: datos.motivo_codigo || datos.motivo,
+        items: datos.items || [],
+        subtotal: datos.subtotal || datos.total,
+        igv: datos.igv || 0,
+        total: datos.total,
+        moneda: facOrigen.moneda || 'PEN',
+        fecha_emision: datos.fecha_emision || new Date().toISOString().split('T')[0],
+        notas: datos.notas || null,
+        concepto: datos.concepto || null,
+      });
+      const nota = resultado?.factura;
+      if (!nota?.id) throw new Error('La emisión no devolvió la Nota de Crédito creada.');
+      setFacturas(prev => prev
+        .map(f => f.id === facturaOrigenId && Number(datos.total || 0) >= Number(facOrigen.total || 0)
+          ? { ...f, estado: 'anulada', motivo_anulacion: `NC emitida: ${nota.numero}` }
+          : f)
+        .concat(nota));
+      if (resultado.cxc?.id) setCxc(prev => prev.map(c => c.id === resultado.cxc.id ? { ...c, ...resultado.cxc } : c));
+      if (resultado.os?.id) setOsClientes(prev => prev.map(os => os.id === resultado.os.id ? { ...os, ...resultado.os } : os));
+      if (Number(datos.total || 0) >= Number(facOrigen.total || 0) && facOrigen.valorizacion_id) {
+        setValorizaciones(prev => prev.map(v => v.id === facOrigen.valorizacion_id ? { ...v, estado: 'aprobada' } : v));
+      }
+      auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: nota.id, accion: 'emitir_nc', valor_nuevo: nota });
+      addNotificacion(`Nota de Crédito ${nota.numero} emitida.`);
+      return nota;
+    }
     const cxcVinc = cxc.find(c => {
       const estado = String(c?.estado || '').toLowerCase();
       const mismaFactura = c.factura_id === facturaOrigenId ||
@@ -6455,6 +6488,31 @@ export function AppProvider({ children }) {
   const emitirNotaDebito = async (facturaOrigenId, datos) => {
     const facOrigen = facturas.find(f => f.id === facturaOrigenId);
     if (!facOrigen) return null;
+    if (isSupabaseConfigured()) {
+      const resultado = await finanzasService.emitirNotaCxcAtomica({
+        factura_id: generateId('fac'),
+        factura_origen_id: facturaOrigenId,
+        empresa_id: empresa.id,
+        sociedad_id: facOrigen.sociedad_id || null,
+        tipo_documento: 'nota_debito',
+        motivo_codigo: datos.motivo_codigo || datos.motivo,
+        items: datos.items || [],
+        subtotal: datos.subtotal || datos.total,
+        igv: datos.igv || 0,
+        total: datos.total,
+        moneda: facOrigen.moneda || 'PEN',
+        fecha_emision: datos.fecha_emision || new Date().toISOString().split('T')[0],
+        notas: datos.notas || null,
+        concepto: datos.concepto || null,
+      });
+      const nota = resultado?.factura;
+      if (!nota?.id) throw new Error('La emisión no devolvió la Nota de Débito creada.');
+      setFacturas(prev => [...prev, nota]);
+      if (resultado.cxc?.id) setCxc(prev => prev.map(c => c.id === resultado.cxc.id ? { ...c, ...resultado.cxc } : c));
+      auditSync({ modulo: 'finanzas', entidad: 'facturas', entidad_id: nota.id, accion: 'emitir_nd', valor_nuevo: nota });
+      addNotificacion(`Nota de Débito ${nota.numero} emitida.`);
+      return nota;
+    }
     const cxcVinc = cxc.find(c => c.factura_id === facturaOrigenId);
     const ndCount = facturas.filter(f => f.tipo_documento === 'nota_debito').length + 1;
     const numero = `ND01-${String(ndCount).padStart(4,'0')}`;

@@ -419,6 +419,13 @@ export const finanzasService = {
     return data;
   },
 
+  async emitirNotaCxcAtomica(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('emitir_nota_cxc_atomica', { p_payload: payload });
+    if (error) throw error;
+    return data;
+  },
+
   async actualizarFactura(id, updates) {
     const supabase = await getSupabaseClient();
     const updateFn = async (p) => supabase.from('facturas').update(p).eq('id', id).select().single();
