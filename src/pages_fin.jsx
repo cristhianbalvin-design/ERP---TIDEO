@@ -2821,6 +2821,7 @@ function Tesoreria() {
   const sinCuentaTienePendientes = Object.values(movimientosSinCuentaPorMoneda || {}).some(value => Math.abs(Number(value || 0)) > 0.009);
   const sinCuentaEntries = sinCuentaTienePendientes ? totalesEntries(movimientosSinCuentaPorMoneda) : [['USD', 0]];
   const ingresosPeriodoCount = movimientosPeriodoTesoreria.filter(esIngresoMov).length;
+  const egresosPeriodoCount = movimientosEgresoPeriodo.length;
   const facturasPendientesCount = cxcPendienteRows.length;
   const pendienteCxCEntries = totalesEntries(pendienteCxC);
   const pendienteCxPEntries = totalesEntries(pendienteCxP);
@@ -2884,7 +2885,7 @@ function Tesoreria() {
           {pagosOrigenEntries.map(([moneda, value]) => (
             <div key={moneda} style={{fontSize:11, marginTop:4, color:'var(--orange)'}}>{moneyCurrency(value, moneda)} en origen</div>
           ))}
-          <div className="text-muted" style={{fontSize:11, marginTop:8}}>Convertido al TC del dia</div>
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{egresosPeriodoCount} pagos en el periodo</div>
         </div>
         <div style={metricCardStyle}>
           <div className="kpi-label">Por cobrar pendiente</div>
