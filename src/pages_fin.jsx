@@ -4607,6 +4607,9 @@ function Facturacion() {
     const valVinc = getVal(f.valorizacion_id);
     const cxcVinc = (cxc||[]).find(c => c.factura_id === f.id);
     const facOrigen = f.factura_origen_id ? (facturas||[]).find(x => x.id === f.factura_origen_id) : null;
+    const notasRelacionadas = (facturas||[])
+      .filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === f.id)
+      .sort((a,b) => (b.fecha_emision||'').localeCompare(a.fecha_emision||''));
     const items = f.items || [];
     const fechaEmisionLabel = f.fecha_emision || '—';
     const editandoEmisionFac = editEmisionFac?.id === f.id;
@@ -4626,6 +4629,36 @@ function Facturacion() {
       ...movsCxC.map(m => ({ tipo: 'cobro', fecha: m.fecha||'—', texto: `Cobro registrado: ${moneyCurrency(m.monto, m.moneda || cxcVinc?.moneda || f.moneda)} — Ref: ${m.referencia||'—'}` })),
       ...(f.estado === 'anulada' ? [{ tipo: 'anulacion', fecha: '—', texto: `Anulada${f.motivo_anulacion ? ': '+f.motivo_anulacion : ''}` }] : []),
     ];
+    const abrirNotaRelacionada = nota => {
+      setSelFac(nota.id);
+      setFichaTab('detalle');
+    };
+    const panelNotasRelacionadas = (
+      <div className="card" style={{padding:16}}>
+        <div style={{fontSize:11,color:'var(--cyan)',fontWeight:600,marginBottom:10,textTransform:'uppercase',letterSpacing:0.5}}>
+          Notas relacionadas ({notasRelacionadas.length})
+        </div>
+        {notasRelacionadas.length === 0 ? (
+          <div style={{fontSize:12,color:'var(--fg-muted)'}}>No hay notas de crédito o débito relacionadas.</div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {notasRelacionadas.map(nota => (
+              <div key={nota.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'8px 0',borderBottom:'1px solid var(--border)'}}>
+                <div style={{minWidth:0}}>
+                  <button type="button" className="btn btn-ghost" style={{padding:0,color:'var(--cyan)',fontWeight:700}} onClick={() => abrirNotaRelacionada(nota)}>
+                    {nota.numero || nota.id}
+                  </button>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>
+                    {TIPO_DOC_LABELS[nota.tipo_documento] || nota.tipo_documento} · {nota.fecha_emision || '—'} · Motivo: {nota.motivo_codigo || nota.motivo || '—'}
+                  </div>
+                </div>
+                <span className="num" style={{fontWeight:600,whiteSpace:'nowrap'}}>{moneyCurrency(nota.total || nota.monto, nota.moneda || f.moneda)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
 
     const TABS_FAC = [
       { id:'detalle', label:'Detalle' },
@@ -4873,8 +4906,8 @@ function Facturacion() {
         )}
 
         {/* Tab: Vinculaciones */}
-        {fichaTab === 'vinculaciones' && (
-          <div className="card card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
+         {fichaTab === 'vinculaciones' && (
+           <div className="card card-body" style={{display:'flex',flexDirection:'column',gap:12}}>
             {facOrigen && (
               <div style={{padding:'12px 14px',borderRadius:6,border:'1px solid color-mix(in srgb,var(--cyan) 30%,transparent)',background:'color-mix(in srgb,var(--cyan) 5%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                 <div>
@@ -4936,9 +4969,10 @@ function Facturacion() {
                 )}
               </div>
               {cxcVinc && <button className="btn btn-secondary btn-sm" style={{fontSize:11}} onClick={() => navigate('cxc')}>Ver CxC</button>}
-            </div>
-          </div>
-        )}
+             </div>
+             {panelNotasRelacionadas}
+           </div>
+         )}
 
         {/* Tab: Archivos */}
         {fichaTab === 'archivos' && (
@@ -4961,24 +4995,27 @@ function Facturacion() {
         )}
 
         {/* Tab: Historial */}
-        {fichaTab === 'historial' && (
-          <div className="card card-body">
-            {historialFac.length === 0 ? (
-              <div style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13,padding:24}}>Sin eventos registrados.</div>
-            ) : historialFac.map((h,i) => (
-              <div key={i} style={{display:'flex',gap:14,padding:'10px 0',borderBottom:i<historialFac.length-1?'1px solid var(--border)':'none'}}>
-                <div style={{
-                  width:8,height:8,borderRadius:'50%',marginTop:5,flexShrink:0,
-                  background: h.tipo==='cobro' ? 'var(--green)' : h.tipo==='anulacion' ? 'var(--danger)' : 'var(--cyan)',
-                }}/>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13}}>{h.texto}</div>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>{h.fecha}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+         {fichaTab === 'historial' && (
+           <div style={{display:'flex',flexDirection:'column',gap:12}}>
+             {panelNotasRelacionadas}
+             <div className="card card-body">
+               {historialFac.length === 0 ? (
+                 <div style={{textAlign:'center',color:'var(--fg-muted)',fontSize:13,padding:24}}>Sin eventos registrados.</div>
+               ) : historialFac.map((h,i) => (
+                 <div key={i} style={{display:'flex',gap:14,padding:'10px 0',borderBottom:i<historialFac.length-1?'1px solid var(--border)':'none'}}>
+                   <div style={{
+                     width:8,height:8,borderRadius:'50%',marginTop:5,flexShrink:0,
+                     background: h.tipo==='cobro' ? 'var(--green)' : h.tipo==='anulacion' ? 'var(--danger)' : 'var(--cyan)',
+                   }}/>
+                   <div style={{flex:1}}>
+                     <div style={{fontWeight:600,fontSize:13}}>{h.texto}</div>
+                     <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:2}}>{h.fecha}</div>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </div>
+         )}
         {renderPanelEditFac()}
         </div>{/* end side-panel-body */}
         </div>{/* end side-panel */}
