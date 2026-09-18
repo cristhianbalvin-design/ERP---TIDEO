@@ -2291,7 +2291,8 @@ function Tesoreria() {
   const {
     movimientosTesoreria, movimientosBanco, cxc, cxp, facturas, cuentas, cuentasBancarias = [],
     conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, empresa, addNotificacion, actualizarCuentaBancaria, crearCuentaBancaria,
-    registrarMovimientoManual, empresaConfig, financiamientos = [], periodosNomina = [],
+    registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
+    empresaConfig, financiamientos = [], periodosNomina = [],
     tipoCambioHoy, convertirMonto, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const modoVistaSociedadTesoreria = resolverFiltroSociedadesVista({
@@ -2604,6 +2605,43 @@ function Tesoreria() {
     () => movimientosBancoAlcance.filter(m => filtraPeriodoTesoreria(fechaBanco(m))),
     [movimientosBancoAlcance, periodoTesoreria],
   );
+
+  const historialLotes = useMemo(() => {
+    const grupos = new Map();
+    movimientosBancoAlcance
+      .filter(m => m.lote_importacion_id)
+      .forEach(movimiento => {
+        const lote = grupos.get(movimiento.lote_importacion_id) || {
+          id: movimiento.lote_importacion_id,
+          cuenta_bancaria_id: movimiento.cuenta_bancaria_id,
+          movimientos: [],
+        };
+        lote.movimientos.push(movimiento);
+        grupos.set(movimiento.lote_importacion_id, lote);
+      });
+
+    return [...grupos.values()]
+      .map(lote => ({
+        ...lote,
+        conciliados: lote.movimientos.filter(m => m.conciliado).length,
+        fecha: lote.movimientos.map(m => m.created_at || m.fecha).sort()[0],
+      }))
+      .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  }, [movimientosBancoAlcance]);
+
+  const borrarLote = async lote => {
+    const mensaje = lote.conciliados
+      ? `El lote contiene ${lote.conciliados} movimiento(s) conciliado(s). ¿Borrar todos los movimientos del lote?`
+      : '¿Borrar todos los movimientos de este lote?';
+    if (!window.confirm(mensaje)) return;
+
+    try {
+      await eliminarLoteImportacionBanco(lote.id);
+    } catch (error) {
+      addNotificacion(error?.message || 'No se pudo borrar el lote.');
+    }
+  };
+
   const vinculados = movimientosBancoPeriodo.filter(m => m.conciliado).length;
   const pendientes = movimientosBancoPeriodo.length - vinculados;
   const pctConciliado = movimientosBancoPeriodo.length > 0 ? Math.round(vinculados / movimientosBancoPeriodo.length * 100) : 0;
@@ -3326,6 +3364,7 @@ function Tesoreria() {
       )}
 
       {tab === 'extracto' && (
+        <>
         <div className="card">
           <div className="card-head">
             <h3>Extracto bancario cargado</h3>
@@ -3355,6 +3394,31 @@ function Tesoreria() {
             )}
           </div>
         </div>
+
+        {historialLotes.length > 0 && (
+          <div className="card mt-6">
+            <div className="card-head">
+              <h3>Historial de lotes importados</h3>
+            </div>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr><th>Fecha</th><th>Cuenta</th><th>Movimientos</th><th>Conciliados</th><th></th></tr>
+                </thead>
+                <tbody>{historialLotes.map(lote => (
+                  <tr key={lote.id}>
+                    <td>{lote.fecha || '—'}</td>
+                    <td>{cuentasBancariasPorId.get(lote.cuenta_bancaria_id)?.nombre || lote.cuenta_bancaria_id || '—'}</td>
+                    <td>{lote.movimientos.length}</td>
+                    <td>{lote.conciliados}</td>
+                    <td><button className="btn btn-sm btn-secondary" onClick={() => borrarLote(lote)}>Borrar lote</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Panel conciliar */}

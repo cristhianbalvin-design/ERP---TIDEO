@@ -7047,6 +7047,30 @@ export function AppProvider({ children }) {
     return { loteImportacionId, insertados };
   };
 
+  const eliminarLoteImportacionBanco = async loteImportacionId => {
+    if (!empresa?.id) throw new Error('No hay empresa activa.');
+
+    const movimientosDelLote = (movimientosBanco || [])
+      .filter(m => m.lote_importacion_id === loteImportacionId);
+    let resultado = {
+      eliminados: movimientosDelLote.length,
+      conciliados: movimientosDelLote.filter(m => m.conciliado).length,
+    };
+
+    if (isSupabaseConfigured()) {
+      resultado = await finanzasService.eliminarLoteImportacionBanco({
+        empresaId: empresa.id,
+        loteImportacionId,
+      });
+    }
+
+    setMovimientosBanco(prev =>
+      prev.filter(m => m.lote_importacion_id !== loteImportacionId)
+    );
+    addNotificacion(`${resultado.eliminados} movimiento(s) eliminado(s).`);
+    return resultado;
+  };
+
   const prepararCamposVinculacionBanco = async (movBanco, movimientoSistema) => {
     const cuentaBanco = (cuentasBancarias || []).find(c => c.id === movBanco?.cuenta_bancaria_id);
     if (!cuentaBanco || !movimientoSistema) return {};
@@ -11174,7 +11198,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,

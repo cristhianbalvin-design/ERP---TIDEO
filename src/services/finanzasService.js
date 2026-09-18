@@ -1131,6 +1131,28 @@ export const finanzasService = {
     };
   },
 
+  async eliminarLoteImportacionBanco({ empresaId, loteImportacionId }) {
+    const supabase = await getSupabaseClient();
+    const { data: movimientos, error: selectError } = await supabase
+      .from('movimientos_banco')
+      .select('id, conciliado')
+      .eq('empresa_id', empresaId)
+      .eq('lote_importacion_id', loteImportacionId);
+    if (selectError) throw selectError;
+
+    const { error: deleteError } = await supabase
+      .from('movimientos_banco')
+      .delete()
+      .eq('empresa_id', empresaId)
+      .eq('lote_importacion_id', loteImportacionId);
+    if (deleteError) throw deleteError;
+
+    return {
+      eliminados: movimientos?.length || 0,
+      conciliados: (movimientos || []).filter(m => m.conciliado).length,
+    };
+  },
+
   async conciliarMovimiento(movimientoId, vinculadoTipo, vinculadoId, extra = {}) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
