@@ -7191,7 +7191,7 @@ function Maestros() {
                     <p className="text-muted" style={{marginBottom:10, fontSize:12}}>{MAESTRO_XLSX_CFG[sel.id].hint}</p>
                   )}
                   {!esImportacionUnidades && <div style={{display:'flex', gap:10, alignItems:'center', marginBottom:14}}>
-                    <button className="btn btn-secondary btn-sm" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => descargarPlantillaMaestro()}>{I.download} Descargar plantilla</button>
                     <span className="text-muted" style={{fontSize:12}}>Descarga la plantilla con las columnas correctas y un ejemplo</span>
                   </div>}
                   <input type="file" accept=".xlsx,.xls" onChange={async e => {
@@ -7318,12 +7318,12 @@ function Maestros() {
                   </button>
                 )}
                 {sel.id === 'mst_tipos_servicio' ? <>
-                  <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>
+                  <button className="btn btn-secondary" onClick={() => descargarPlantillaMaestro()}>{I.download} Descargar plantilla</button>
                   <button className="btn btn-secondary" onClick={() => tiposServicioImportInputRef.current?.click()}>{I.download} Importar Excel</button>
                   <input ref={tiposServicioImportInputRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={cargarImportacionTiposServicio}/>
                 </> : <>
                   <button className="btn btn-secondary" onClick={() => { setImportSummary(null); setImportRows([]); setImportStep(1); setImportModal(true); }}>{I.download} Importar Excel</button>
-                  {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={descargarPlantillaMaestro}>{I.download} Descargar plantilla</button>}
+                  {sel.id === 'mst_unidades_organizacionales' && <button className="btn btn-secondary" onClick={() => descargarPlantillaMaestro()}>{I.download} Descargar plantilla</button>}
                   <button className="btn btn-secondary" onClick={exportarMaestro}>{I.download} Exportar</button>
                 </>}
                 {sel.id === 'mst_tipos_documento' && (
