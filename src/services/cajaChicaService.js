@@ -290,11 +290,7 @@ export const cajaChicaService = {
       payload?.sociedad_id,
       'La sociedad es obligatoria para registrar el egreso de caja chica.',
     );
-    const { data, error } = await supabase.rpc('registrar_egreso_caja_chica_atomico', {
-      p_payload: { ...payload, sociedad_id: sociedadId },
-    });
-    if (error) throw error;
-    return data;
+    return insertWithFallback(supabase, 'caja_chica', { ...payload, sociedad_id: sociedadId });
   },
 
   async solicitarRendicion(payload) {
