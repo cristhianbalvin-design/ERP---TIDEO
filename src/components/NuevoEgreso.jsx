@@ -23,13 +23,13 @@ const etiquetaOT = (ot) => ot?.numero || ot?.codigo || ot?.codigo_ot || 'OT sin 
 
 // ── Datos por defecto si el admin no configuró tipos ──────────────────────────
 const TIPOS_GASTO_DEFECTO = [
-  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package'   },
-  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench'    },
-  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building'  },
-  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck'     },
-  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt'   },
-  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck'     },
-  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', es_capitalizacion: true },
+  { id: 'def_1', nombre: 'Materiales e insumos',   categoria_er: 'Materiales',           icono: 'package', aplica_caja_chica: true  },
+  { id: 'def_2', nombre: 'Servicio de tercero',     categoria_er: 'Servicios terceros',   icono: 'wrench',  aplica_caja_chica: true  },
+  { id: 'def_3', nombre: 'Gasto administrativo',   categoria_er: 'Administrativos',      icono: 'building', aplica_caja_chica: true  },
+  { id: 'def_4', nombre: 'Gasto de campo/OT',      categoria_er: 'Materiales',           icono: 'truck',   aplica_caja_chica: true  },
+  { id: 'def_5', nombre: 'Servicio básico',         categoria_er: 'Administrativos',      icono: 'receipt', aplica_caja_chica: true  },
+  { id: 'def_6', nombre: 'Logística/transporte',   categoria_er: 'Logística',            icono: 'truck',   aplica_caja_chica: true  },
+  { id: 'def_7', nombre: 'Activo Fijo',             categoria_er: 'Inversiones / Activos', icono: 'package', aplica_caja_chica: true, es_capitalizacion: true },
 ];
 
 const ACTIVO_TIPOS_WIZ = [
@@ -446,15 +446,25 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       if (isSupabaseConfigured() && empresa?.id) {
         try {
           const sb = await getSupabaseClient();
-          const [tiposData, { data: catsData }] = await Promise.all([
-            finanzasService.getTiposGasto(empresa.id),
+          const tiposQuery = sb
+            .from('tipos_gasto_empresa')
+            .select('*')
+            .eq('empresa_id', empresa.id)
+            .eq('activo', true)
+            .order('orden');
+          if (origen === 'caja_chica') tiposQuery.eq('aplica_caja_chica', true);
+          const [{ data: tiposData, error: tiposError }, { data: catsData }] = await Promise.all([
+            tiposQuery,
             sb.from('er_categorias').select('nombre, es_capitalizacion').eq('empresa_id', empresa.id).eq('activo', true),
           ]);
+          if (tiposError) throw tiposError;
           const capMap = Object.fromEntries((catsData || []).map(c => [c.nombre, !!c.es_capitalizacion]));
-          const tipos = (tiposData.length ? tiposData : TIPOS_GASTO_DEFECTO).map(t => ({
-            ...t,
-            es_capitalizacion: capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'),
-          }));
+          const tipos = (tiposData?.length ? tiposData : TIPOS_GASTO_DEFECTO)
+            .filter(t => origen !== 'caja_chica' || t.aplica_caja_chica !== false)
+            .map(t => ({
+              ...t,
+              es_capitalizacion: capMap[t.categoria_er] ?? (t.categoria_er === 'Inversiones / Activos'),
+            }));
           setTiposGasto(tipos);
         } catch {
           setTiposGasto(TIPOS_GASTO_DEFECTO);
@@ -469,7 +479,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       } catch { /* TC no disponible — formulario sigue funcionando */ }
     };
     load();
-  }, [empresa?.id]);
+  }, [empresa?.id, origen]);
 
   useEffect(() => {
     if (!registroEditar?.id || !tiposGasto.length) return;
