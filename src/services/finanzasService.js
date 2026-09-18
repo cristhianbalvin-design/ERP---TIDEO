@@ -1084,6 +1084,53 @@ export const finanzasService = {
     return data;
   },
 
+  async importarMovimientosBanco({ empresaId, cuentaBancariaId, movimientos }) {
+    const supabase = await getSupabaseClient();
+    const movimientosConNumero = movimientos.filter(m => m.numero_operacion);
+    const numeros = [...new Set(
+      movimientosConNumero.map(m => m.numero_operacion)
+    )];
+    let existentes = [];
+
+    if (numeros.length > 0) {
+      const { data, error } = await supabase
+        .from('movimientos_banco')
+        .select('fecha, numero_operacion')
+        .eq('empresa_id', empresaId)
+        .eq('cuenta_bancaria_id', cuentaBancariaId)
+        .in('numero_operacion', numeros);
+      if (error) throw error;
+      existentes = data || [];
+    }
+
+    const clave = movimiento =>
+      `${movimiento.numero_operacion}|${movimiento.fecha}`;
+    const clavesVistas = new Set(existentes.map(clave));
+
+    const nuevos = movimientos.filter(movimiento => {
+      if (!movimiento.numero_operacion) return true;
+      const key = clave(movimiento);
+      if (clavesVistas.has(key)) return false;
+      clavesVistas.add(key);
+      return true;
+    });
+
+    if (nuevos.length === 0) {
+      return { insertados: [], omitidos: movimientos.length };
+    }
+
+    const { data, error } = await supabase
+      .from('movimientos_banco')
+      .insert(nuevos)
+      .select();
+    if (error) throw error;
+
+    return {
+      insertados: data || [],
+      omitidos: movimientos.length - (data || []).length,
+    };
+  },
+
   async conciliarMovimiento(movimientoId, vinculadoTipo, vinculadoId, extra = {}) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase

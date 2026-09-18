@@ -6997,6 +6997,56 @@ export function AppProvider({ children }) {
     return movimiento;
   };
 
+  const importarMovimientosBanco = async ({ cuentaBancariaId, movimientos }) => {
+    if (!empresa?.id) throw new Error('No hay empresa activa para importar el extracto.');
+    if (!cuentaBancariaId) throw new Error('Debe seleccionar una cuenta bancaria.');
+
+    const loteImportacionId = generateId('lote');
+    const movimientosConLote = movimientos.map(movimiento => ({
+      ...movimiento,
+      id: generateId('mb'),
+      empresa_id: empresa.id,
+      cuenta_bancaria_id: cuentaBancariaId,
+      lote_importacion_id: loteImportacionId,
+      conciliado: false,
+      vinculado_tipo: null,
+      vinculado_id: null,
+    }));
+
+    let insertados = movimientosConLote;
+
+    if (isSupabaseConfigured()) {
+      const resultado = await finanzasService.importarMovimientosBanco({
+        empresaId: empresa.id,
+        cuentaBancariaId,
+        movimientos: movimientosConLote,
+      });
+      insertados = resultado.insertados;
+    } else {
+      const clavesExistentes = new Set(
+        (movimientosBanco || [])
+          .filter(m => m.numero_operacion && m.cuenta_bancaria_id === cuentaBancariaId)
+          .map(m => `${m.numero_operacion}|${m.fecha}`)
+      );
+      insertados = movimientosConLote.filter(m => {
+        if (!m.numero_operacion) return true;
+        const key = `${m.numero_operacion}|${m.fecha}`;
+        if (clavesExistentes.has(key)) return false;
+        clavesExistentes.add(key);
+        return true;
+      });
+    }
+
+    setMovimientosBanco(prev => [...insertados, ...prev]);
+    addNotificacion(
+      insertados.length
+        ? `${insertados.length} movimiento(s) importado(s).`
+        : 'No se encontraron movimientos nuevos para importar.'
+    );
+
+    return { loteImportacionId, insertados };
+  };
+
   const prepararCamposVinculacionBanco = async (movBanco, movimientoSistema) => {
     const cuentaBanco = (cuentasBancarias || []).find(c => c.id === movBanco?.cuenta_bancaria_id);
     if (!cuentaBanco || !movimientoSistema) return {};
@@ -11124,7 +11174,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,

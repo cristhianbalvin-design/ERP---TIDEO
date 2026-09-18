@@ -1999,7 +1999,7 @@ function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
   );
 }
 
-function ImportarExtractoModal({ cuentasBancarias, onClose }) {
+function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
   const [step, setStep] = useState(1);
   const [cuentaId, setCuentaId] = useState('');
   const [periodo, setPeriodo] = useState(new Date().toISOString().slice(0, 7));
@@ -2012,6 +2012,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
   const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '' });
   const [errores, setErrores] = useState([]);
   const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
   const fileRef = useRef();
 
   const normalizeHeader = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -2108,9 +2109,35 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
     setStep(3);
   };
 
-  const confirmar = () => {
+  const normalizarFechaImportacion = value => {
+    const raw = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if (!match) return raw;
+    const [, day, month, yearValue] = match;
+    const year = yearValue.length === 2 ? `20${yearValue}` : yearValue;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  };
+
+  const confirmar = async () => {
     setImporting(true);
-    setTimeout(() => { setImporting(false); onClose(); }, 800);
+    setImportError('');
+    try {
+      const movimientos = csvRows.map(row => ({
+        fecha: normalizarFechaImportacion(row[colMap.fecha]),
+        descripcion: row[colMap.descripcion] || '',
+        monto: Math.abs(Number(row[colMap.monto] || 0)),
+        moneda: 'PEN',
+        tipo: row[colMap.tipo] || 'credito',
+        numero_operacion: row.numero_operacion || row.numero || row.operacion || null,
+      }));
+      await onImportar({ cuentaBancariaId: cuentaId, movimientos });
+      onClose();
+    } catch (error) {
+      setImportError(error?.message || 'No se pudo importar el extracto bancario.');
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -2216,6 +2243,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
         )}
         {step === 4 && (
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
+            {importError && <div style={{color:'var(--danger)', fontSize:13}}>{importError}</div>}
             <div style={{padding:16, background:'var(--surface-2)', borderRadius:8, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
               <div><div style={{fontSize:11, color:'var(--muted)'}}>Cuenta</div><strong>{(cuentasBancarias||[]).find(c=>c.id===cuentaId)?.nombre || cuentaId}</strong></div>
               <div><div style={{fontSize:11, color:'var(--muted)'}}>Período</div><strong>{periodo}</strong></div>
@@ -3434,7 +3462,7 @@ function Tesoreria() {
       )}
 
       {panelManual && <ManualMovimientoPanel cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setPanelManual(false)} onGuardar={registrarMovimientoManual} />}
-      {showImport && <ImportarExtractoModal cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setShowImport(false)} />}
+      {showImport && <ImportarExtractoModal cuentasBancarias={cuentasBancariasEscrituraTesoreria} onClose={() => setShowImport(false)} onImportar={importarMovimientosBanco} />}
     </>
   );
 }
