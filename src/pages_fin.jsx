@@ -2092,11 +2092,37 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     reader.readAsArrayBuffer(file);
   };
 
+  const inferirTipoMovimiento = row => {
+    const tipoRaw = colMap.tipo
+      ? normalizeHeader(row[colMap.tipo] || '')
+      : '';
+    const montoNumerico = Number(row[colMap.monto] || 0);
+
+    if (['debito', 'egreso', 'cargo'].some(valor => tipoRaw.includes(valor))) {
+      return 'debito';
+    }
+    if (['credito', 'ingreso', 'abono'].some(valor => tipoRaw.includes(valor))) {
+      return 'credito';
+    }
+    return montoNumerico < 0 ? 'debito' : 'credito';
+  };
+
+  const previewColumns = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'descripcion', label: 'Descripción' },
+    { key: 'monto', label: 'Monto' },
+    { key: 'tipo', label: 'Tipo' },
+    ...(colMap.numeroOperacion
+      ? [{ key: 'numeroOperacion', label: 'Número de operación' }]
+      : []),
+  ];
+
   const preview = useMemo(() => csvRows.slice(0, 5).map(r => ({
     fecha: r[colMap.fecha] || '',
     descripcion: r[colMap.descripcion] || '',
     monto: r[colMap.monto] || '',
-    tipo: r[colMap.tipo] || 'credito',
+    tipo: inferirTipoMovimiento(r),
+    numeroOperacion: r[colMap.numeroOperacion] || '',
   })), [csvRows, colMap]);
 
   const validar = () => {
@@ -2128,7 +2154,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
         descripcion: row[colMap.descripcion] || '',
         monto: Math.abs(Number(row[colMap.monto] || 0)),
         moneda: 'PEN',
-        tipo: row[colMap.tipo] || 'credito',
+        tipo: inferirTipoMovimiento(row),
         numero_operacion: row[colMap.numeroOperacion] || null,
       }));
       await onImportar({ cuentaBancariaId: cuentaId, movimientos });
@@ -2211,8 +2237,23 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
             ))}
             <p style={{margin:0, fontSize:12, color:'var(--muted)'}}>Vista previa (primeras 5 filas):</p>
             <div className="table-wrap" style={{maxHeight:160}}>
-              <table className="tbl"><thead><tr><th>Fecha</th><th>Descripción</th><th>Monto</th><th>Tipo</th></tr></thead>
-                <tbody>{preview.map((r,i) => <tr key={i}><td>{r.fecha}</td><td>{r.descripcion}</td><td>{r.monto}</td><td>{r.tipo}</td></tr>)}</tbody>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    {previewColumns.map(column => (
+                      <th key={column.key}>{column.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.map((row, index) => (
+                    <tr key={index}>
+                      {previewColumns.map(column => (
+                        <td key={column.key}>{row[column.key]}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
               </table>
             </div>
             <div className="row" style={{justifyContent:'flex-end', gap:8}}>
