@@ -1267,9 +1267,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           creado_en:         new Date().toISOString(),
         };
         if (sb) {
-          await cajaChicaService.registrarEgresoFondo(ccRecord).catch(err =>
-            console.warn('[NuevoEgreso] caja_chica insert:', err?.message),
-          );
+          await cajaChicaService.registrarEgresoFondo(ccRecord);
         }
         setCajaChica(prev => [ccRecord, ...prev]);
         toastMsg = 'Gasto registrado en compras_gastos + Caja chica';
