@@ -2005,21 +2005,59 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
   const [periodo, setPeriodo] = useState(new Date().toISOString().slice(0, 7));
   const [csvRows, setCsvRows] = useState([]);
   const [headers, setHeaders] = useState([]);
+  const [csvText, setCsvText] = useState('');
+  const [headerOffset, setHeaderOffset] = useState(0);
   const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '' });
   const [errores, setErrores] = useState([]);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef();
 
-  const parseCSV = (text) => {
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) return { headers: [], rows: [] };
-    const sep = lines[0].includes(';') ? ';' : ',';
-    const hs = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
-    const rows = lines.slice(1).map(l => {
-      const vals = l.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
+  const normalizeHeader = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const splitCSVLine = (line, sep) => line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
+
+  const detectHeaderOffset = lines => {
+    const expected = ['fecha', 'date', 'monto', 'amount', 'importe', 'saldo', 'descripcion', 'description', 'concepto', 'detalle'];
+    let maxPreviousColumns = 0;
+
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const sep = line.includes(';') ? ';' : ',';
+      const cols = splitCSVLine(line, sep);
+      const hasExpectedHeader = cols.some(cell => expected.some(token => normalizeHeader(cell).includes(token)));
+      const isSignificantlyWider = cols.length >= 5 && cols.length >= maxPreviousColumns + 2;
+      if (hasExpectedHeader || isSignificantlyWider) return i;
+      maxPreviousColumns = Math.max(maxPreviousColumns, cols.length);
+    }
+    return 0;
+  };
+
+  const parseCSV = (text, skipRows = null) => {
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+    if (lines.length < 2) return { headers: [], rows: [], headerOffset: 0 };
+
+    const headerOffset = skipRows === null
+      ? detectHeaderOffset(lines)
+      : Math.max(0, Math.min(Number(skipRows) || 0, Math.max(0, lines.length - 1)));
+    const headerLine = lines[headerOffset] || '';
+    if (!headerLine.trim()) return { headers: [], rows: [], headerOffset };
+
+    const sep = headerLine.includes(';') ? ';' : ',';
+    const hs = splitCSVLine(headerLine, sep);
+    const rows = lines.slice(headerOffset + 1).filter(l => l.trim()).map(l => {
+      const vals = splitCSVLine(l, sep);
       return Object.fromEntries(hs.map((h, i) => [h, vals[i] || '']));
     });
-    return { headers: hs, rows };
+    return { headers: hs, rows, headerOffset };
+  };
+
+  const applyParsedCSV = (text, skipRows = null) => {
+    const { headers: hs, rows, headerOffset: detectedOffset } = parseCSV(text, skipRows);
+    setHeaders(hs);
+    setCsvRows(rows);
+    if (skipRows === null) setHeaderOffset(detectedOffset);
+    const guess = f => hs.find(h => h.toLowerCase().includes(f)) || '';
+    setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type') });
   };
 
   const onFile = e => {
@@ -2027,11 +2065,9 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      const { headers: hs, rows } = parseCSV(ev.target.result);
-      setHeaders(hs);
-      setCsvRows(rows);
-      const guess = f => hs.find(h => h.toLowerCase().includes(f)) || '';
-      setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type') });
+      const text = String(ev.target.result || '');
+      setCsvText(text);
+      applyParsedCSV(text);
       setStep(2);
     };
     reader.readAsText(file, 'UTF-8');
@@ -2084,6 +2120,23 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
         )}
         {step === 2 && (
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
+            <div className="input-group">
+              <label>Saltar N filas antes del encabezado</label>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                value={headerOffset}
+                onChange={e => {
+                  const next = Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+                  setHeaderOffset(next);
+                  applyParsedCSV(csvText, next);
+                }}
+              />
+              <div style={{fontSize:11, color:'var(--muted)', marginTop:4}}>
+                La detección automática descarta las filas de metadata anteriores al encabezado.
+              </div>
+            </div>
             <p style={{margin:0, fontSize:13, color:'var(--muted)'}}>Mapea las columnas de tu archivo a los campos del sistema. ({csvRows.length} filas detectadas)</p>
             {['fecha','descripcion','monto','tipo'].map(f => (
               <div className="input-group" key={f}><label style={{textTransform:'capitalize'}}>{f}</label>
