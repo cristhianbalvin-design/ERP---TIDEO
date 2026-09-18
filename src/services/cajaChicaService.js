@@ -67,7 +67,7 @@ function calcularFondos(fondos = [], egresos = [], rendiciones = [], arqueos = [
     const repuesto = rendicionesFondo
       .filter(r => ['aprobada', 'repuesta'].includes(String(r.estado || '').toLowerCase()))
       .reduce((s, r) => s + Number(r.monto_aprobado || 0), 0);
-    const disponible = Math.max(0, Number(fondo.monto_asignado || 0) + aportado - gastado + repuesto);
+    const disponible = Number(fondo.monto_asignado || 0) + aportado - gastado + repuesto;
     const rendicion_vigente = rendicionesFondo
       .filter(r => !['rechazada', 'repuesta'].includes(String(r.estado || '').toLowerCase()))
       .sort((a, b) => String(b.creado_en || '').localeCompare(String(a.creado_en || '')))[0] || null;
