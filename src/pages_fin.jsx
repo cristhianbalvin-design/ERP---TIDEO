@@ -15,6 +15,7 @@ import {
   montoMovimientoEnCuenta,
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
+import { sumByCurrency } from './lib/currency.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -56,6 +57,17 @@ import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
+const renderCurrencyTotals = (totals = {}) => {
+  const entries = Object.entries(totals);
+  if (!entries.length) return money(0);
+  const ordered = [...entries].sort(([a], [b]) => {
+    if (a === 'PEN') return -1;
+    if (b === 'PEN') return 1;
+    return a.localeCompare(b);
+  });
+  if (ordered.length === 1) return moneyCurrency(ordered[0][1], ordered[0][0]);
+  return ordered.map(([moneda, value]) => <div key={moneda}>{moneyCurrency(value, moneda)}</div>);
+};
 const normText = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const filtrarPorVistaSociedad = (registros = [], modoVista, sociedadIdDe = registro => registro?.sociedad_id) => {
   if (modoVista.sinFiltro) return registros;
@@ -6554,11 +6566,13 @@ function CajaChica() {
 
   const fondosActivos = fondosVista.filter(f => f.estado === 'activo');
   const fondosAlerta = fondosActivos.filter(f => f.requiere_reposicion);
-  const saldoTotal = fondosActivos.reduce((s, f) => s + Number(f.saldo_disponible || 0), 0);
-  const asignadoTotal = fondosActivos.reduce((s, f) => s + Number(f.monto_asignado || 0), 0);
-  const egresosMes = movimientosVista
-    .filter(m => m.tipo_movimiento === 'egreso' && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7))
-    .reduce((s, m) => s + Math.abs(Number(m.monto_movimiento || m.monto || 0)), 0);
+  const saldoTotalPorMoneda = sumByCurrency(fondosActivos, f => f.saldo_disponible, f => f.moneda || 'PEN');
+  const asignadoTotalPorMoneda = sumByCurrency(fondosActivos, f => f.monto_asignado, f => f.moneda || 'PEN');
+  const egresosMesPorMoneda = sumByCurrency(
+    movimientosVista.filter(m => m.tipo_movimiento === 'egreso' && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) === new Date().toISOString().slice(0, 7)),
+    m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
+    m => m.moneda || 'PEN',
+  );
 
   const abrirEgreso = fondo => {
     // El formulario de egreso es un panel independiente: cerrar primero el
@@ -6847,9 +6861,9 @@ function CajaChica() {
       </div>
 
       <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Saldo disponible</div><div className="kpi-value" style={{color:'var(--cyan)'}}>{money(saldoTotal)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Asignado</div><div className="kpi-value">{money(asignadoTotal)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Egresos mes</div><div className="kpi-value">{money(egresosMes)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Saldo disponible</div><div className="kpi-value" style={{color:'var(--cyan)'}}>{renderCurrencyTotals(saldoTotalPorMoneda)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Asignado</div><div className="kpi-value">{renderCurrencyTotals(asignadoTotalPorMoneda)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Egresos mes</div><div className="kpi-value">{renderCurrencyTotals(egresosMesPorMoneda)}</div></div>
         <div className="kpi-card"><div className="kpi-label">Alertas</div><div className="kpi-value" style={{color:fondosAlerta.length?'var(--orange)':'var(--green)'}}>{fondosAlerta.length}</div></div>
       </div>
 
