@@ -2253,7 +2253,9 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
             <p style={{margin:0, fontSize:13, color:'var(--muted)'}}>Al confirmar, los movimientos se importarán como extracto bancario y estarán disponibles para conciliar.</p>
             <div className="row" style={{justifyContent:'flex-end', gap:8}}>
               <button className="btn btn-secondary" onClick={() => setStep(3)}>Atrás</button>
-              <button className="btn btn-primary" onClick={confirmar} disabled={importing}>{importing ? 'Importando...' : `${I.check} Confirmar importación`}</button>
+              <button className="btn btn-primary" onClick={confirmar} disabled={importing}>
+                {importing ? 'Importando...' : <>{I.check} Confirmar importación</>}
+              </button>
             </div>
           </div>
         )}
