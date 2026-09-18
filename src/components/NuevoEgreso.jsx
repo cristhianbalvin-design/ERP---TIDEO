@@ -293,11 +293,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // valida la relación real, el control permanece bloqueado por seguridad.
   const edicionPagoBloqueada = esEdicion && (pagoGobernadoPorCxP || validandoCxP);
 
-  // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar
-  const gastoId = useMemo(
-    () => registroEditar?.id || `gasto_${Math.random().toString(36).slice(2, 14)}`,
-    [registroEditar?.id],
-  );
+  // Pre-generamos el ID del gasto para poder enlazarlo a FileUpload antes de guardar.
+  // En altas, un fallo posterior al insert debe poder iniciar el siguiente intento
+  // con un ID nuevo sin cerrar el wizard.
+  const nuevoGastoId = () => `gasto_${Math.random().toString(36).slice(2, 14)}`;
+  const [gastoId, setGastoId] = useState(() => registroEditar?.id || nuevoGastoId());
   const fileRef = useRef(null);
 
   const today = new Date().toISOString().split('T')[0];
@@ -1444,13 +1444,27 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       onSaved?.({ gastoId, toastMsg });
     } catch (err) {
       console.error('[NuevoEgreso] handleGuardar:', err);
-      if (gastoPersistidoSupabase && form.ya_pagado && form.metodo_pago !== 'Caja chica') {
+      if (gastoPersistidoSupabase && form.ya_pagado) {
         try {
           const sb = await getSupabaseClient();
-          await sb.from('compras_gastos').delete().eq('id', gastoId);
-        } catch (_) {}
+          const { data: eliminados, error: eliminarError } = await sb
+            .from('compras_gastos')
+            .delete()
+            .eq('id', gastoId)
+            .select('id');
+          if (eliminarError || !eliminados?.length) {
+            const { error: anularError } = await sb
+              .from('compras_gastos')
+              .update({ estado: 'anulado', updated_at: new Date().toISOString() })
+              .eq('id', gastoId);
+            if (anularError) throw anularError;
+          }
+        } catch (rollbackError) {
+          console.warn('[NuevoEgreso] no se pudo compensar compras_gastos:', rollbackError?.message || rollbackError);
+        }
       }
       setComprasGastos(prev => prev.filter(g => g.id !== gastoId));
+      if (!esEdicion) setGastoId(nuevoGastoId());
       const mensajeError = err?.message || 'Error al guardar el egreso. Intente nuevamente.';
       setErrorGuardado(mensajeError);
       addNotificacion(mensajeError);
