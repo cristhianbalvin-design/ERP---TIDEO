@@ -74,6 +74,33 @@ function preciosReferencialesPartesEnPen(material, convertirMonto, tipoCambioHoy
   };
 }
 
+const UNIDADES_MEDIDA_MATERIAL = [
+  ['und', 'Unidad'],
+  ['pza', 'Pieza'],
+  ['par', 'Par'],
+  ['doc', 'Docena'],
+  ['caja', 'Caja'],
+  ['paquete', 'Paquete'],
+  ['rollo', 'Rollo'],
+  ['saco', 'Saco'],
+  ['juego', 'Juego'],
+  ['set', 'Set'],
+  ['kg', 'Kilogramo'],
+  ['g', 'Gramo'],
+  ['t', 'Tonelada'],
+  ['lb', 'Libra'],
+  ['m', 'Metro'],
+  ['cm', 'Centímetro'],
+  ['mm', 'Milímetro'],
+  ['m²', 'Metro cuadrado'],
+  ['cm²', 'Centímetro cuadrado'],
+  ['m³', 'Metro cúbico'],
+  ['lt', 'Litro'],
+  ['ml', 'Mililitro'],
+  ['gl', 'Galón'],
+  ['glb', 'Global'],
+];
+
 export function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false, permitirCrearMaterial = true }) {
   const [query, setQuery] = useState(value?.nombre || '');
   const [open, setOpen] = useState(false);
@@ -189,7 +216,6 @@ export function MaterialAutocomplete({ value, onChange, materiales = [], inventa
     <div ref={ref} style={{ position: 'relative', ...style }}>
       <input
         className="input"
-        style={{ fontSize: 11, padding: '3px 5px', width: '100%' }}
         value={query}
         placeholder="Buscar material..."
         onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange({ mat_id: '', nombre: '', unidad: '', costo_unit: 0, stock: 0 }); }}
@@ -252,7 +278,10 @@ export function MaterialAutocomplete({ value, onChange, materiales = [], inventa
                 </div>
                 <div className="input-group">
                   <label>UM *</label>
-                  <input className="input" value={modalForm.unidad} onChange={e => setModalForm(p => ({ ...p, unidad: e.target.value }))} placeholder="und, kg, m" />
+                  <select className="select" value={modalForm.unidad} onChange={e => setModalForm(p => ({ ...p, unidad: e.target.value }))}>
+                    <option value="">Seleccionar...</option>
+                    {UNIDADES_MEDIDA_MATERIAL.map(([value, label]) => <option key={value} value={value}>{label} ({value})</option>)}
+                  </select>
                 </div>
                 <div className="input-group">
                   <label>Nro parte</label>
