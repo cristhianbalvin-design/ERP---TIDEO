@@ -6440,6 +6440,7 @@ function CajaChica() {
   const [fFondo, setFFondo] = useState('');
   const [fPeriodo, setFPeriodo] = useState(new Date().toISOString().slice(0, 7));
   const [fCeco, setFCeco] = useState('');
+  const [movimientosTab, setMovimientosTab] = useState('ingresos');
 
   const perm = accion => {
     const p = role?.permisos || {};
@@ -6845,6 +6846,19 @@ function CajaChica() {
     if (fCeco && (m.ceco_id || m.centro_costo_id) !== fCeco) return false;
     return true;
   });
+  const movimientosIngresos = movsFiltrados.filter(m => ['aporte', 'reposicion'].includes(m.tipo_movimiento));
+  const movimientosEgresos = movsFiltrados.filter(m => m.tipo_movimiento === 'egreso');
+  const totalIngresosPorMoneda = sumByCurrency(
+    movimientosIngresos,
+    m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
+    m => m.moneda || 'PEN',
+  );
+  const totalEgresosPorMoneda = sumByCurrency(
+    movimientosEgresos,
+    m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
+    m => m.moneda || 'PEN',
+  );
+  const movimientosVisibles = movimientosTab === 'ingresos' ? movimientosIngresos : movimientosEgresos;
   const historialFondo = fondoSel ? movimientosVista.filter(m => m.fondo_id === fondoSel.id) : [];
 
   return (
@@ -6926,7 +6940,7 @@ function CajaChica() {
       {tab === 'movimientos' && (
         <div className="card mt-6">
           <div className="card-head" style={{alignItems:'flex-end'}}>
-            <div><h3>Movimientos consolidados</h3><div style={{fontSize:12,color:'var(--fg-muted)'}}>Egresos, reposiciones y registros legacy.</div></div>
+            <div><h3>Movimientos consolidados</h3><div style={{fontSize:12,color:'var(--fg-muted)'}}>Aportes, reposiciones y egresos de caja chica.</div></div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
               <select className="select" style={{width:180}} value={fFondo} onChange={e=>setFFondo(e.target.value)}>
                 <option value="">Todos los fondos</option>
@@ -6939,11 +6953,37 @@ function CajaChica() {
               </select>
             </div>
           </div>
+          <div style={{display:'flex',gap:8,padding:'0 20px 14px',borderBottom:'1px solid var(--border-subtle)'}}>
+            {[
+              { key: 'ingresos', label: 'Ingresos', total: totalIngresosPorMoneda },
+              { key: 'egresos', label: 'Egresos', total: totalEgresosPorMoneda },
+            ].map(t => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setMovimientosTab(t.key)}
+                style={{
+                  flex: '1 1 0',
+                  padding: '10px 14px',
+                  border: '1px solid',
+                  borderColor: movimientosTab === t.key ? 'var(--cyan)' : 'var(--border)',
+                  borderRadius: 8,
+                  background: movimientosTab === t.key ? 'color-mix(in srgb, var(--cyan) 8%, var(--surface))' : 'var(--surface)',
+                  color: movimientosTab === t.key ? 'var(--cyan)' : 'var(--fg-muted)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{fontSize:12, fontWeight:700}}>{t.label}</div>
+                <div style={{fontSize:15, fontWeight:700, marginTop:3}}>{renderCurrencyTotals(t.total)}</div>
+              </button>
+            ))}
+          </div>
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr><th>Fecha</th>{mostrarBadgeSociedadCajaChica && <th>Sociedad</th>}<th>Fondo</th><th>Tipo</th><th>Concepto</th><th>CECO</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
               <tbody>
-                {movsFiltrados.length ? movsFiltrados.map(m => {
+                {movimientosVisibles.length ? movimientosVisibles.map(m => {
                   const tipo = m.tipo_movimiento || 'egreso';
                   const ceco = cecoDe(m.ceco_id || m.centro_costo_id);
                   return (
