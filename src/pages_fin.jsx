@@ -2007,6 +2007,8 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
   const [headers, setHeaders] = useState([]);
   const [csvText, setCsvText] = useState('');
   const [headerOffset, setHeaderOffset] = useState(0);
+  const [fileBuffer, setFileBuffer] = useState(null);
+  const [encoding, setEncoding] = useState('utf-8');
   const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '' });
   const [errores, setErrores] = useState([]);
   const [importing, setImporting] = useState(false);
@@ -2060,17 +2062,33 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
     setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type') });
   };
 
+  const decodeBuffer = (buffer, selectedEncoding) =>
+    new TextDecoder(selectedEncoding).decode(buffer);
+
+  const decodeAuto = buffer => {
+    let detectedEncoding = 'utf-8';
+    let text = decodeBuffer(buffer, detectedEncoding);
+    if (text.includes('\uFFFD')) {
+      detectedEncoding = 'windows-1252';
+      text = decodeBuffer(buffer, detectedEncoding);
+    }
+    return { text, encoding: detectedEncoding };
+  };
+
   const onFile = e => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      const text = String(ev.target.result || '');
+      const buffer = ev.target.result;
+      const { text, encoding: detectedEncoding } = decodeAuto(buffer);
+      setFileBuffer(buffer);
+      setEncoding(detectedEncoding);
       setCsvText(text);
       applyParsedCSV(text);
       setStep(2);
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
   };
 
   const preview = useMemo(() => csvRows.slice(0, 5).map(r => ({
@@ -2136,6 +2154,24 @@ function ImportarExtractoModal({ cuentasBancarias, onClose }) {
               <div style={{fontSize:11, color:'var(--muted)', marginTop:4}}>
                 La detección automática descarta las filas de metadata anteriores al encabezado.
               </div>
+            </div>
+            <div className="input-group">
+              <label>Encoding</label>
+              <select
+                className="input"
+                value={encoding}
+                onChange={e => {
+                  const next = e.target.value;
+                  const text = decodeBuffer(fileBuffer, next);
+                  setEncoding(next);
+                  setCsvText(text);
+                  applyParsedCSV(text, headerOffset);
+                }}
+              >
+                <option value="utf-8">UTF-8</option>
+                <option value="windows-1252">Windows-1252</option>
+                <option value="iso-8859-1">Latin-1</option>
+              </select>
             </div>
             <p style={{margin:0, fontSize:13, color:'var(--muted)'}}>Mapea las columnas de tu archivo a los campos del sistema. ({csvRows.length} filas detectadas)</p>
             {['fecha','descripcion','monto','tipo'].map(f => (
