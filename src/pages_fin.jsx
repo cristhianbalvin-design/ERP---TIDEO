@@ -2009,7 +2009,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
   const [headerOffset, setHeaderOffset] = useState(0);
   const [fileBuffer, setFileBuffer] = useState(null);
   const [encoding, setEncoding] = useState('utf-8');
-  const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '' });
+  const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '', numeroOperacion: '' });
   const [errores, setErrores] = useState([]);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
@@ -2060,7 +2060,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     setCsvRows(rows);
     if (skipRows === null) setHeaderOffset(detectedOffset);
     const guess = f => hs.find(h => h.toLowerCase().includes(f)) || '';
-    setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type') });
+    setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type'), numeroOperacion: guess('operacion') || guess('numero') || guess('operation') });
   };
 
   const decodeBuffer = (buffer, selectedEncoding) =>
@@ -2129,7 +2129,7 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
         monto: Math.abs(Number(row[colMap.monto] || 0)),
         moneda: 'PEN',
         tipo: row[colMap.tipo] || 'credito',
-        numero_operacion: row.numero_operacion || row.numero || row.operacion || null,
+        numero_operacion: row[colMap.numeroOperacion] || null,
       }));
       await onImportar({ cuentaBancariaId: cuentaId, movimientos });
       onClose();
@@ -2201,8 +2201,8 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
               </select>
             </div>
             <p style={{margin:0, fontSize:13, color:'var(--muted)'}}>Mapea las columnas de tu archivo a los campos del sistema. ({csvRows.length} filas detectadas)</p>
-            {['fecha','descripcion','monto','tipo'].map(f => (
-              <div className="input-group" key={f}><label style={{textTransform:'capitalize'}}>{f}</label>
+            {['fecha','descripcion','monto','tipo','numeroOperacion'].map(f => (
+              <div className="input-group" key={f}><label style={{textTransform:'capitalize'}}>{f === 'numeroOperacion' ? 'Número de operación' : f}</label>
                 <select className="input" value={colMap[f]} onChange={e => setColMap(p => ({...p, [f]: e.target.value}))}>
                   <option value="">-- no mapear --</option>
                   {headers.map(h => <option key={h} value={h}>{h}</option>)}
