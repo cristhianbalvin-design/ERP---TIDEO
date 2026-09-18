@@ -6441,6 +6441,7 @@ function CajaChica() {
   const [fPeriodo, setFPeriodo] = useState(new Date().toISOString().slice(0, 7));
   const [fCeco, setFCeco] = useState('');
   const [movimientosTab, setMovimientosTab] = useState('ingresos');
+  const [historialTab, setHistorialTab] = useState('ingresos');
 
   const perm = accion => {
     const p = role?.permisos || {};
@@ -6860,6 +6861,19 @@ function CajaChica() {
   );
   const movimientosVisibles = movimientosTab === 'ingresos' ? movimientosIngresos : movimientosEgresos;
   const historialFondo = fondoSel ? movimientosVista.filter(m => m.fondo_id === fondoSel.id) : [];
+  const historialIngresos = historialFondo.filter(m => ['aporte', 'reposicion'].includes(m.tipo_movimiento));
+  const historialEgresos = historialFondo.filter(m => m.tipo_movimiento === 'egreso');
+  const totalHistorialIngresosPorMoneda = sumByCurrency(
+    historialIngresos,
+    m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
+    m => m.moneda || fondoSel?.moneda || 'PEN',
+  );
+  const totalHistorialEgresosPorMoneda = sumByCurrency(
+    historialEgresos,
+    m => Math.abs(Number(m.monto_movimiento || m.monto || 0)),
+    m => m.moneda || fondoSel?.moneda || 'PEN',
+  );
+  const historialVisibles = historialTab === 'ingresos' ? historialIngresos : historialEgresos;
 
   return (
     <>
@@ -7068,10 +7082,36 @@ function CajaChica() {
               )}
               <div>
                 <div style={{fontWeight:700,marginBottom:8}}>Historial</div>
+                <div style={{display:'flex',gap:8,marginBottom:10}}>
+                  {[
+                    { key: 'ingresos', label: 'Ingresos', total: totalHistorialIngresosPorMoneda },
+                    { key: 'egresos', label: 'Egresos', total: totalHistorialEgresosPorMoneda },
+                  ].map(t => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setHistorialTab(t.key)}
+                      style={{
+                        flex: '1 1 0',
+                        padding: '9px 12px',
+                        border: '1px solid',
+                        borderColor: historialTab === t.key ? 'var(--cyan)' : 'var(--border)',
+                        borderRadius: 8,
+                        background: historialTab === t.key ? 'color-mix(in srgb, var(--cyan) 8%, var(--surface))' : 'var(--surface)',
+                        color: historialTab === t.key ? 'var(--cyan)' : 'var(--fg-muted)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{fontSize:12, fontWeight:700}}>{t.label}</div>
+                      <div style={{fontSize:14, fontWeight:700, marginTop:2}}>{renderCurrencyTotals(t.total)}</div>
+                    </button>
+                  ))}
+                </div>
                 <div className="table-wrap" style={{border:'1px solid var(--border)',borderRadius:8}}>
                   <table className="tbl">
                     <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Comprobante</th><th className="num">Monto</th><th>Estado</th></tr></thead>
-                    <tbody>{historialFondo.length ? historialFondo.map(m => (
+                    <tbody>{historialVisibles.length ? historialVisibles.map(m => (
                       <tr key={`${m.tipo_movimiento}_${m.id}`}><td className="text-muted">{String(m.fecha_movimiento || m.fecha || '').slice(0,10)}</td><td><span className={`badge ${['reposicion', 'aporte'].includes(m.tipo_movimiento) ? 'badge-green' : 'badge-cyan'}`}>{m.tipo_movimiento}</span></td><td>{m.concepto || m.descripcion}</td><td>{m.tipo_movimiento === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}</td><td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda || fondoSel.moneda)}</strong></td><td><span className="badge badge-gray">{m.estado || 'registrado'}</span></td></tr>
                     )) : <tr><td colSpan="6" className="text-center text-muted" style={{padding:24}}>Sin movimientos vinculados.</td></tr>}</tbody>
                   </table>
