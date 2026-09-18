@@ -73,6 +73,7 @@ import { calcularEstadoCicloMinero, calcularYGuardarRoster, getSnapshotsRoster, 
 import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUnidadMineraAsignacion } from './services/unidadMineraService.js';
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
+import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/ImportarCuentasModal.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -226,6 +227,36 @@ function Cuentas() {
   const [filtroResponsable, setFiltroResponsable] = useState('');
   const [filtroCondiciones, setFiltroCondiciones] = useState('');
   const comercialesAsignables = getAssignableUsers({ users: usuarios, roles, categories: ['comercial'], includeAdmins: true, empresaId: empresa?.id, viewer: authUser });
+  const fileInputCuentasRef = useRef(null);
+  const [importCuentasRows, setImportCuentasRows] = useState(null);
+
+  const handleFileUploadCuentas = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target.result;
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheetName = wb.SheetNames.find(n => {
+          const norm = n.trim().toLowerCase();
+          return norm === 'cuentas' || norm === 'plantilla cuentas' || norm === 'datos';
+        }) || wb.SheetNames.find(n => n.trim().toLowerCase() !== 'instrucciones') || wb.SheetNames[0];
+
+        const ws = wb.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        if (!json.length) {
+          addNotificacion?.('El archivo no contiene filas de datos.');
+        } else {
+          setImportCuentasRows(json);
+        }
+      } catch (err) {
+        addNotificacion?.('Error al leer el archivo Excel: ' + (err?.message || ''));
+      }
+      e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  };
   const cuentaContactos = sel ? contactos.filter(c => c.cuenta_id === sel.id) : [];
   const contactoPrincipal = cuentaContactos.find(c => c.principal || c.es_principal) || cuentaContactos[0] || null;
   const cuentasPorId = useMemo(() => new Map((cuentas || []).map(cuenta => [cuenta.id, cuenta])), [cuentas]);
@@ -735,7 +766,12 @@ function Cuentas() {
           <h1 className="page-title">Cuentas y Contactos</h1>
           <div className="page-sub">{hayFiltros ? `${cuentasFiltradas.length} de ${cuentasBase.length} cuentas` : `${cuentasBase.length} cuentas activas`}</div>
         </div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
+        <div className="row" style={{gap:10, alignItems:'center'}}>
+          <input type="file" ref={fileInputCuentasRef} accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFileUploadCuentas}/>
+          <button className="btn btn-secondary" onClick={descargarPlantillaCuentas}>{I.download} Descargar plantilla</button>
+          <button className="btn btn-secondary" onClick={() => fileInputCuentasRef.current?.click()}>{I.download} Importar plantilla</button>
+          <button className="btn btn-primary" data-local-form="true" onClick={() => setNewOpen(true)}>{I.plus} Nueva cuenta</button>
+        </div>
       </div>
       <div style={{marginBottom:16, padding:'12px 16px', background:'rgba(6,182,212,0.06)', border:'1px solid var(--border)', borderLeft:'3px solid var(--cyan)', borderRadius:8, fontSize:13}}>
         <strong>Recomendación: </strong><span className="text-muted">El flujo ideal es registrar primero un <strong>Lead</strong> y convertirlo desde el módulo de Leads. Esto pre-completa la cuenta con el RUC, razón social e industria del prospecto.</span>
@@ -1663,6 +1699,18 @@ function Cuentas() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Importar Cuentas desde Excel */}
+      {importCuentasRows && (
+        <ImportarCuentasModal
+          dataRows={importCuentasRows}
+          cuentasActuales={cuentas}
+          comercialesAsignables={comercialesAsignables}
+          usuarios={usuarios}
+          onClose={() => setImportCuentasRows(null)}
+          onImported={() => setImportCuentasRows(null)}
+        />
       )}
     </>
   );
