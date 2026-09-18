@@ -202,7 +202,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias, cxp = [],
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     setComprasGastos, setCajaChica, setCxp, setCxpPagos, setMovimientosTesoreria,
-    addNotificacion,
+    addNotificacion, addToast,
   } = useApp();
   const modoVistaSociedadEgreso = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -326,6 +326,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [tc, setTc]               = useState(null);
   const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || '');
   const [guardando, setGuardando] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState('');
   const [errCeco, setErrCeco]     = useState(false);
   const [errVence, setErrVence]   = useState(false);
   const [errFecha, setErrFecha]   = useState(false);
@@ -370,6 +371,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   const setF = (k, v) => {
     if (edicionPagoBloqueada && ['ya_pagado', 'metodo_pago'].includes(k)) return;
+    setErrorGuardado('');
     setForm(p => {
       const next = {
         ...p,
@@ -398,6 +400,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   };
 
   const seleccionarSociedad = (sociedadId) => {
+    setErrorGuardado('');
     setForm(prev => {
       const cecoSeleccionado = (centrosCosto || []).find(ceco => ceco.id === prev.centro_costo_id);
       const otSeleccionada = (ots || []).find(ot => ot.id === prev.ot_vinc_id);
@@ -1076,6 +1079,22 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           </tbody>
         </table>
 
+        {errorGuardado && (
+          <div
+            role="alert"
+            style={{
+              padding: '12px 14px',
+              borderRadius: 8,
+              color: 'var(--danger)',
+              background: 'color-mix(in srgb, var(--danger) 9%, var(--surface))',
+              border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--border))',
+              fontSize: 13,
+            }}
+          >
+            {errorGuardado}
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8 }}>
           <button className="btn btn-secondary" type="button" onClick={() => setPaso(2)}>← Atrás</button>
           <button
@@ -1093,6 +1112,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
+    setErrorGuardado('');
     if (!form.centro_costo_id) { setErrCeco(true); setPaso(2); return; }
     if (destinoSociedadEgreso.conflictMessage) { alert(destinoSociedadEgreso.conflictMessage); setPaso(2); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
@@ -1431,7 +1451,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         } catch (_) {}
       }
       setComprasGastos(prev => prev.filter(g => g.id !== gastoId));
-      addNotificacion(err?.message || 'Error al guardar el egreso. Intente nuevamente.');
+      const mensajeError = err?.message || 'Error al guardar el egreso. Intente nuevamente.';
+      setErrorGuardado(mensajeError);
+      addNotificacion(mensajeError);
+      addToast(mensajeError, 'error');
     } finally {
       setGuardando(false);
     }
