@@ -201,6 +201,7 @@ const itemIdentity = (item, index) => item?.id || item?.uuid || item?.codigo || 
 export const previewGroupTitleKey = (unit, continuation) => `${unit.groupKey}:${continuation ? 'continuacion' : 'inicio'}`;
 export const previewTextBlockTitleKey = (unit, continuation) => `${unit.textBlockKey}:${continuation ? 'continuacion' : 'inicio'}`;
 export const previewConditionsTitleKey = (unit, continuation) => `${unit.conditionsBlockKey}:${continuation ? 'continuacion' : 'inicio'}`;
+export const previewConditionsUnitKey = (unit, showConditionsTitle, continuation) => `${unit.key}:${showConditionsTitle ? (continuation ? 'continuacion' : 'inicio') : 'sin-titulo'}`;
 
 const isRichTextFlowUnit = unit => unit.kind === 'rich-text-node' || unit.kind === 'rich-text-columns-fragment';
 const isRichTextColumnsStream = unit => unit.kind === 'rich-text-columns-stream';
@@ -244,7 +245,7 @@ const richTextBlockUnits = block => {
 const conditionsSegmentUnits = block => {
   const blockKey = previewBlockKey(block);
   const segmentos = Array.isArray(block.contenido_json?.segmentos) ? block.contenido_json.segmentos : [];
-  if (!segmentos.length) return [{ kind:'block', key:blockKey, block }];
+  if (!segmentos.length) return [{ kind:'block', key:blockKey, block, forcePageBreakBefore:true }];
   return segmentos.map((segment, index) => ({
     kind:'conditions-segment',
     key:`${blockKey}:conditions-segment:${segment.id || segment.orden || index}`,
@@ -253,6 +254,7 @@ const conditionsSegmentUnits = block => {
     segment,
     index,
     isLast:index === segmentos.length - 1,
+    forcePageBreakBefore:index === 0,
   }));
 };
 
@@ -349,14 +351,12 @@ const conditionsFlowEntry = (unit, paginaActual, medidas) => {
   const previous = paginaActual.at(-1)?.unit;
   const showConditionsTitle = Boolean(unit.block?.titulo) && previous?.conditionsBlockKey !== unit.conditionsBlockKey;
   const continuation = showConditionsTitle && unit.index > 0;
-  const titleHeight = showConditionsTitle
-    ? Number(medidas.titulosCondiciones?.[previewConditionsTitleKey(unit, continuation)] || 0)
-    : 0;
+  const measuredHeight = Number(medidas.unidadesCondiciones?.[previewConditionsUnitKey(unit, showConditionsTitle, continuation)] || 0);
   return {
     unit,
     showConditionsTitle,
     continuation,
-    alto:Number(medidas.unidades?.[unit.key] || 0) + titleHeight,
+    alto:measuredHeight || Number(medidas.unidades?.[unit.key] || 0),
   };
 };
 
@@ -405,6 +405,7 @@ export const paginateDocumentPreviewUnits = (unidades, encabezadoAlcance, pieAlc
     altoUsado = 0;
   };
   for (const unit of unidades) {
+    if (unit.forcePageBreakBefore && paginaActual.length) cerrarPagina();
     if (isRichTextColumnsStream(unit)) {
       const cursors = unit.columns.map(() => 0);
       let fragmentIndex = 0;
@@ -642,11 +643,12 @@ const measureNodeHeight = node => {
   if (!node) return 0;
   const styles = window.getComputedStyle(node);
   const rect = node.getBoundingClientRect();
+  const scrollHeight = Number(node.scrollHeight) || 0;
   const marginTop = Number.parseFloat(styles.marginTop || 0) || 0;
   const marginBottom = Number.parseFloat(styles.marginBottom || 0) || 0;
   // Las alturas de layout pueden ser fraccionarias; redondear hacia arriba
   // hace que la paginación sea conservadora respecto al recorte de la hoja.
-  return Math.ceil(rect.height + marginTop + marginBottom);
+  return Math.ceil(Math.max(rect.height, scrollHeight) + marginTop + marginBottom);
 };
 
 // Sin contexto, conserva los tokens literales del editor administrativo.
@@ -693,6 +695,14 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         [previewConditionsTitleKey(unit, false), measureNodeHeight(measureConditionsTitleRefs.current.get(previewConditionsTitleKey(unit, false)))],
         [previewConditionsTitleKey(unit, true), measureNodeHeight(measureConditionsTitleRefs.current.get(previewConditionsTitleKey(unit, true)))],
       ])));
+      const conditionsUnitHeights = Object.fromEntries(unidades.filter(unit => isConditionsSegmentUnit(unit)).flatMap(unit => {
+        const baseHeight = Number(unitHeights[unit.key] || 0);
+        return [
+          [previewConditionsUnitKey(unit, false, false), baseHeight],
+          [previewConditionsUnitKey(unit, true, false), baseHeight + Number(conditionsTitleHeights[previewConditionsTitleKey(unit, false)] || 0)],
+          [previewConditionsUnitKey(unit, true, true), baseHeight + Number(conditionsTitleHeights[previewConditionsTitleKey(unit, true)] || 0)],
+        ];
+      }));
       const richTextNodeHeights = Object.fromEntries([...measureRichTextNodeRefs.current.entries()].map(([key, node]) => [key, measureNodeHeight(node)]));
       const repeatedTables = [...new Map(unidades
         .filter(unit => unit.kind === 'repeat-table-row')
@@ -709,6 +719,7 @@ export function DocumentPreviewSheet({ plantilla, bloques = [], categoria = 'cot
         key:measurementKey,
         bloques:Object.fromEntries(unidades.filter(unit => unit.kind === 'block').map(unit => [unit.key, unitHeights[unit.key]])),
         unidades:unitHeights,
+        unidadesCondiciones:conditionsUnitHeights,
         titulosGrupo:titleHeights,
         titulosTextoRico:textTitleHeights,
         titulosCondiciones:conditionsTitleHeights,

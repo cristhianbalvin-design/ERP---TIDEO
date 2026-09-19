@@ -4459,13 +4459,13 @@ body {
 .document-preview-header { padding-bottom: 16px; border-bottom: 1px solid #dbe2ea; }
 .document-preview-footer { margin-top: 16px; padding-top: 0; border-top: 1px solid #dbe2ea; }
 .document-preview-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding-top: 0; }
-.document-preview-block { margin: 0 0 10px; }
+.document-preview-block { margin: 0 0 10px; break-inside: avoid; }
 .document-preview-rich-text-flow { margin: 0; }
 .document-preview-rich-text-flow-final { margin-bottom: 10px; }
 .document-preview-rich-text-flow-node { min-width: 0; }
 .document-preview-text-block-heading { margin: 0 0 8px; font-size: 14px; color: #172033; }
 .document-preview-block h4 { margin: 0 0 8px; font-size: 14px; color: #172033; }
-.document-preview-conditions-segment { margin: 0 0 14px; }
+.document-preview-conditions-segment { margin: 0 0 14px; break-inside: avoid; }
 .document-preview-conditions-segment:last-child { margin-bottom: 0; }
 .document-preview-conditions-message { color: #475569; font-size: 13px; font-style: italic; }
 .document-preview-sheet .rich-text-preview-content { line-height: 1.55; font-size: 13px; }
@@ -4491,6 +4491,7 @@ body {
 .rich-text-preview-content .rich-text-two-column-side:last-child { text-align: right; }
 .document-preview-table-wrap { overflow-x: auto; }
 .document-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.document-preview-table tr { break-inside: avoid; }
 .document-preview-table th,
 .document-preview-table td { padding: 7px 8px; border: 1px solid #cbd5e1; text-align: left; vertical-align: top; }
 .document-preview-table th { background: #eff6ff; font-weight: 700; }
