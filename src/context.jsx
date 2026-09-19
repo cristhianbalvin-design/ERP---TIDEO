@@ -4,7 +4,7 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -2689,112 +2689,16 @@ export function AppProvider({ children }) {
     if (empresa?.multisociedad_habilitado && !hc.sociedad_id) {
       throw new Error('La Hoja de Costeo no tiene sociedad. Corrígela antes de aprobarla.');
     }
-    const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
-    const monedaHC = hc.moneda || oppDeHC?.moneda || empresa?.moneda || 'PEN';
-    if (isSupabaseConfigured()) {
-      try {
-        const sb = await getSupabaseClient();
-        const { data: numeroCotHC, error: numeroError } = await sb.rpc('siguiente_numero_cotizacion', {
-          p_empresa_id: empresa.id,
-        });
-        if (numeroError) throw numeroError;
-        if (!numeroCotHC) throw new Error('No se pudo reservar el número de cotización.');
-
-        const cotBase = {
-          id: generateId('cot'),
-          oportunidad_id: hc.oportunidad_id,
-          cuenta_id: hc.cuenta_id,
-          numero: numeroCotHC,
-          version: 1,
-          estado: 'borrador',
-          fecha: new Date().toISOString().split('T')[0],
-          moneda: monedaHC,
-          validez: '30 dias',
-          subtotal: hc.precio_sugerido_sin_igv,
-          base_imponible: hc.precio_sugerido_sin_igv,
-          igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
-          total: hc.precio_sugerido_total,
-          items: construirItemsCotizacionDesdeHC(hc),
-          hoja_costeo_id: hcId,
-          activo_id: hc.activo_id || null,
-          recepcion_id: hc.recepcion_id || null,
-          sociedad_id: hc.sociedad_id || null,
-        };
-        const result = await crmPersist(sb => empresa?.multisociedad_habilitado
-          ? aprobarHojaCosteoSociedadRpc(sb, empresa.id, hcId, cotBase)
-          : aprobarHojaCosteoRpc(sb, empresa.id, hcId, cotBase));
-        const cotFinal = {
-          ...cotBase,
-          ...(result?.data?.cotizacion || {}),
-          activo_id: hc.activo_id || null,
-          recepcion_id: hc.recepcion_id || null,
-        };
-        const hcFinal = result?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
-        const cotizacionResult = await crmPersist(sb => svcActualizarCotizacion(sb, cotFinal.id, {
-          items: cotFinal.items,
-          moneda: cotFinal.moneda,
-          subtotal: cotFinal.subtotal,
-          base_imponible: cotFinal.base_imponible,
-          igv_pct: 18,
-          igv: cotFinal.igv,
-          total: cotFinal.total,
-          subtotal_impl: cotFinal.subtotal,
-          igv_impl: cotFinal.igv,
-          total_impl: cotFinal.total,
-          activo_id: cotFinal.activo_id,
-          recepcion_id: cotFinal.recepcion_id,
-        }));
-        if (cotizacionResult?.error) throw cotizacionResult.error;
-        if (cotFinal.recepcion_id) await marcarRecepcionActivoClienteCotizada(empresa.id, cotFinal.recepcion_id);
-        setCotizaciones(prev => prev.some(c => c.id === cotFinal.id)
-          ? prev.map(c => c.id === cotFinal.id ? { ...c, ...cotFinal } : c)
-          : [...prev, cotFinal]
-        );
-        if (cotFinal.oportunidad_id && Number(cotFinal.subtotal || 0) > 0) {
-          sincronizarMontoOportunidadYLead(cotFinal.oportunidad_id, { monto: cotFinal.subtotal, moneda: cotFinal.moneda });
-        }
-        setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, ...hcFinal } : h));
-        auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
-        addNotificacion('HC aprobada. Cotización borrador generada.');
-        navigate('cotizaciones', { detail: cotFinal.id });
-        return;
-      } catch (error) {
-        const message = error?.message || 'No se pudo aprobar la Hoja de Costeo en Supabase.';
-        addNotificacion(`No se aprobo la HC: ${message}`);
-        throw error;
-      }
-    }
-
-    const itemsCot = construirItemsCotizacionDesdeHC(hc);
-    const cotId = await crearCotizacion({
-      oportunidad_id: hc.oportunidad_id,
-      cuenta_id: hc.cuenta_id,
-      moneda: monedaHC,
-      validez: '30 días',
-      subtotal: hc.precio_sugerido_sin_igv,
-      base_imponible: hc.precio_sugerido_sin_igv,
-      igv_pct: 18,
-      igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
-      total: hc.precio_sugerido_total,
-      subtotal_impl: hc.precio_sugerido_sin_igv,
-      igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
-      total_impl: hc.precio_sugerido_total,
-      items: itemsCot,
-      hoja_costeo_id: hcId,
-      activo_id: hc.activo_id || null,
-      recepcion_id: hc.recepcion_id || null,
-    });
     try {
-      await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { estado: 'aprobada', cotizacion_id: cotId }));
+      await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { estado: 'aprobada' }));
     } catch (error) {
       const message = error?.message || 'No se pudo aprobar la Hoja de Costeo en Supabase.';
-      addNotificacion(`No se aprobo la HC: ${message}`);
+      addNotificacion(`No se aprobó la HC: ${message}`);
       throw error;
     }
-    setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, estado: 'aprobada', cotizacion_id: cotId } : h));
-    auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotId } });
-    addNotificacion(`HC aprobada. Cotización borrador generada.`);
-    navigate('cotizaciones', { detail: cotId });
+    setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, estado: 'aprobada' } : h));
+    auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'aprobar', valor_anterior: hc, valor_nuevo: { estado: 'aprobada' } });
+    addNotificacion('HC aprobada. Elige el tipo de cotización para continuar.');
   };
 
   const crearCotizacion = async (datos) => {
@@ -2866,6 +2770,43 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'comercial', entidad: 'cotizaciones', entidad_id: cot.id, accion: 'crear', valor_nuevo: cot });
     addNotificacion(`Cotización ${cot.numero} generada con éxito.`);
     return cot.id;
+  };
+
+  const crearCotizacionDesdeHojaCosteo = async (hcId) => {
+    const hc = hojasCosteo.find(h => h.id === hcId);
+    if (!hc) throw new Error('No se encontró la Hoja de Costeo aprobada.');
+    if (hc.estado !== 'aprobada') throw new Error('La Hoja de Costeo debe estar aprobada antes de generar una cotización.');
+    const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
+    const monedaHC = hc.moneda || oppDeHC?.moneda || empresa?.moneda || 'PEN';
+    const cotId = await crearCotizacion({
+      oportunidad_id: hc.oportunidad_id,
+      cuenta_id: hc.cuenta_id,
+      moneda: monedaHC,
+      validez: '30 días',
+      subtotal: hc.precio_sugerido_sin_igv,
+      base_imponible: hc.precio_sugerido_sin_igv,
+      igv_pct: 18,
+      igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+      total: hc.precio_sugerido_total,
+      subtotal_impl: hc.precio_sugerido_sin_igv,
+      igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+      total_impl: hc.precio_sugerido_total,
+      items: construirItemsCotizacionDesdeHC(hc),
+      hoja_costeo_id: hcId,
+      activo_id: hc.activo_id || null,
+      recepcion_id: hc.recepcion_id || null,
+      sociedad_id: hc.sociedad_id || null,
+    });
+    try {
+      await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { cotizacion_id: cotId }));
+    } catch (error) {
+      const message = error?.message || 'No se pudo vincular la cotización con la Hoja de Costeo.';
+      addNotificacion(`La cotización se creó, pero no se pudo vincular a la HC: ${message}`);
+      throw error;
+    }
+    setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, cotizacion_id: cotId } : h));
+    auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'vincular_cotizacion', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotId } });
+    return cotId;
   };
 
   const ETAPA_ORDER = ['calificacion', 'propuesta', 'negociacion', 'ganada'];
@@ -11102,7 +11043,7 @@ export function AppProvider({ children }) {
     oportunidades, setOportunidades, oppHistorialEtapas,
     actividades, setActividades,
     agendaEventos, setAgendaEventos, crearAgendaEvento, actualizarAgendaEvento, eliminarAgendaEvento,
-    hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo,
+    hojasCosteo, setHojasCosteo, crearHojaCosteo, actualizarHojaCosteo, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo,
     cotizaciones, setCotizaciones, actualizarCotizacion,
     osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,

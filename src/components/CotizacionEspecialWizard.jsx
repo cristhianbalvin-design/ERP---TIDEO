@@ -224,6 +224,23 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const [plantillaLoading, setPlantillaLoading] = useState(Boolean(especialId));
   const [plantillaError, setPlantillaError] = useState('');
   const vistaPreviaRef = useRef(null);
+  const resumenCotizacionRef = useRef(null);
+  const [alturaResumenCotizacion, setAlturaResumenCotizacion] = useState(null);
+
+  useEffect(() => {
+    if (!cotizacion) return undefined;
+    const resumen = resumenCotizacionRef.current;
+    if (!resumen) return undefined;
+    const medir = () => {
+      const altura = Math.ceil(resumen.getBoundingClientRect().height);
+      setAlturaResumenCotizacion(actual => actual === altura ? actual : altura);
+    };
+    medir();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(medir);
+    observer.observe(resumen);
+    return () => observer.disconnect();
+  }, [cotizacion?.id]);
 
   const tipo = tipos.find(row => row.id === form.tipo_documento_id) || null;
   const tiposVisibles = useMemo(() => empresa?.multisociedad_habilitado
@@ -662,11 +679,11 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     {cotizacion.estado === 'aceptada' && <div className="alert alert-success">Aceptada {cotizacion.aceptacion_tipo === 'digital' ? 'digitalmente' : 'manualmente'}{cotizacion.aceptacion_nombre ? ` por ${cotizacion.aceptacion_nombre}` : ''}{cotizacion.aceptacion_fecha ? ` el ${new Date(cotizacion.aceptacion_fecha).toLocaleDateString('es-PE')}` : ''}.</div>}
     {plantillaNuevaDisponible && <div className="alert alert-warning row" style={{justifyContent:'space-between', gap:12, alignItems:'center'}}><span>Hay una versión más reciente de esta plantilla (v{plantillaNuevaDisponible.version}).</span><button type="button" className="btn btn-secondary" disabled={actualizandoPlantilla} onClick={actualizarPlantilla}>{actualizandoPlantilla ? 'Actualizando…' : 'Actualizar a la versión más reciente'}</button></div>}
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
-    <div className="grid-2" style={{alignItems:'start'}}><div style={{display:'grid', gap:16}}>
+    <div className="grid-2 cotizacion-especial-preview-layout" style={{alignItems:'start', '--cotizacion-preview-height': alturaResumenCotizacion ? `${alturaResumenCotizacion}px` : undefined}}><div ref={resumenCotizacionRef} style={{display:'grid', gap:16}}>
       <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
       <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
-    </div><section className="card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef}><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section>{aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}</div></div>;
+    </div><section className="card cotizacion-especial-preview-card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body cotizacion-especial-preview-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef} className="cotizacion-especial-preview-content"><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section>{aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}</div></div>;
 
   return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
     <div className="card"><div className="card-body">

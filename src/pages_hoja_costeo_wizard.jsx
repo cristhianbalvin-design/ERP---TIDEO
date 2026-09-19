@@ -4,6 +4,7 @@ import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { actualizarHojaCosteoSvc } from './services/crmService.js';
 import { CotizacionesGeneradasHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
+import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 import { MaterialAutocomplete } from './pages_core.jsx';
 
 const STEPS = [
@@ -17,7 +18,7 @@ const STEPS = [
 const numero = value => Number(value || 0);
 
 export default function HojaCosteoWizard() {
-  const { activeParams, hojasCosteo, setHojasCosteo, empresa, navigate, addToast, aprobarHojaCosteo } = useApp();
+  const { activeParams, hojasCosteo, setHojasCosteo, empresa, navigate, addToast, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo } = useApp();
   const hojaId = activeParams?.hojaId || activeParams?.id;
   const hoja = (hojasCosteo || []).find(item => item.id === hojaId);
   const monedaHoja = hoja?.moneda === 'USD' ? 'USD' : 'PEN';
@@ -60,6 +61,8 @@ export default function HojaCosteoWizard() {
   const [guardandoResumen, setGuardandoResumen] = useState(false);
   const [aprobacionPendiente, setAprobacionPendiente] = useState(false);
   const [aprobando, setAprobando] = useState(false);
+  const [selectorTipoCotizacion, setSelectorTipoCotizacion] = useState(false);
+  const [generandoCotizacion, setGenerandoCotizacion] = useState(false);
   const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
 
   const tarifaPorCargo = useMemo(() => new Map(
@@ -606,6 +609,7 @@ export default function HojaCosteoWizard() {
       setAprobando(true);
       try {
         await aprobarHojaCosteo(hoja.id);
+        setSelectorTipoCotizacion(true);
       } catch (error) {
         addToast(`No se pudo aprobar la Hoja de Costeo: ${error.message || error}`, 'error');
       } finally {
@@ -623,6 +627,35 @@ export default function HojaCosteoWizard() {
     }
     const guardado = await guardarResumen();
     if (guardado) setAprobacionPendiente(true);
+  };
+
+  const generarCotizacionEstandar = async () => {
+    if (!hoja?.id || generandoCotizacion) return;
+    setSelectorTipoCotizacion(false);
+    setGenerandoCotizacion(true);
+    try {
+      const cotizacionId = await crearCotizacionDesdeHojaCosteo(hoja.id);
+      navigate('cotizaciones', { detail: cotizacionId });
+    } catch (error) {
+      addToast(`No se pudo generar la Cotización Estándar: ${error?.message || error}`, 'error');
+    } finally {
+      setGenerandoCotizacion(false);
+    }
+  };
+
+  const generarCotizacionEspecial = plantilla => {
+    if (!hoja?.id) return;
+    setSelectorTipoCotizacion(false);
+    navigate('cotizaciones', {
+      especial: 'nueva',
+      hoja_costeo_id: hoja.id,
+      plantilla_documento_id: plantilla.id,
+      tipo_documento_id: plantilla.tipo_documento_id,
+      cuenta_id: hoja.cuenta_id || null,
+      oportunidad_id: hoja.oportunidad_id || null,
+      activo_id: hoja.activo_id || null,
+      recepcion_id: hoja.recepcion_id || null,
+    });
   };
 
   const enviarARevision = async () => {
@@ -1105,6 +1138,14 @@ export default function HojaCosteoWizard() {
           </div>
         </aside>
       </div>
+      {selectorTipoCotizacion && <SelectorTipoCotizacion
+        empresaId={empresa?.id}
+        forzarSelector
+        onEstandar={generarCotizacionEstandar}
+        onEspecial={generarCotizacionEspecial}
+        onCancel={() => setSelectorTipoCotizacion(false)}
+        onError={mensaje => addToast(mensaje, 'error')}
+      />}
     </div>
   );
 }

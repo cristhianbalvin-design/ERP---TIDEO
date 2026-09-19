@@ -4375,6 +4375,30 @@ body {
 .dark .seg-btn.active { background: var(--surface-hover); color: var(--white); }
 
 .document-preview { min-width: 0; }
+.cotizacion-especial-preview-layout > .cotizacion-especial-preview-card {
+  display: flex;
+  flex-direction: column;
+  height: var(--cotizacion-preview-height, auto);
+  min-height: 0;
+}
+.cotizacion-especial-preview-card > .cotizacion-especial-preview-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.cotizacion-especial-preview-content,
+.cotizacion-especial-preview-content > .document-preview {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.cotizacion-especial-preview-content .document-preview-stage {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 460px;
+}
 .document-builder-editor { min-height: 0; }
 .document-builder-editor-body { min-height: clamp(460px, calc(100dvh - 220px), 820px); }
 .document-builder-editor-editar .rich-text-editor-content { min-height: 180px; }
