@@ -13,6 +13,7 @@ import { maestrosService } from './services/maestrosService.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
+import { proveedorFamiliaService } from './services/proveedorFamiliaService.js';
 import {
   rrhhService,
   CONTRATO_DURACION_OPCIONES,
@@ -5716,6 +5717,7 @@ export function PlaceholderCompras({ titulo }) {
 function Proveedores() {
   const {
     proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, empresa, role, addNotificacion,
+    materialGrupos = [], materialFamilias = [],
     registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
     posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [],
   } = useApp();
@@ -5755,8 +5757,8 @@ function Proveedores() {
     return ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
   };
   const visibleTabs = role.permisos?.ver_finanzas
-    ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos']
-    : ['resumen','documentos','evaluaciones','historial','contactos'];
+    ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos','familias']
+    : ['resumen','documentos','evaluaciones','historial','contactos','familias'];
   const list = proveedores.filter(p => {
     if (tab === 'homologados') return p.estado === 'homologado';
     if (tab === 'evaluacion') return p.estado === 'en_evaluacion' || p.estado === 'potencial';
@@ -5988,7 +5990,7 @@ function Proveedores() {
       : null;
     const tabLabels = {
       resumen:'Resumen', finanzas:'Condiciones financieras', documentos:'Documentos',
-      evaluaciones:'Evaluaciones', historial:'Historial OC', contactos:'Contactos'
+      evaluaciones:'Evaluaciones', historial:'Historial OC', contactos:'Contactos', familias:'Familias que cubre'
     };
     return (
       <>
@@ -6081,6 +6083,14 @@ function Proveedores() {
         {detailTab === 'contactos' && (
           <div className="card"><div className="card-head"><h3>Contactos</h3><button className="btn btn-secondary btn-sm">{I.plus} Agregar contacto</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Nombre</th><th>Cargo</th><th>Telefono</th><th>Email</th><th>Principal</th></tr></thead><tbody>{contactos.map(c => <tr key={c.id}><td><strong>{c.nombre}</strong></td><td>{c.cargo}</td><td>{c.telefono}</td><td>{c.email}</td><td>{c.principal ? 'Si' : 'No'}</td></tr>)}</tbody></table></div></div>
         )}
+        {detailTab === 'familias' && (
+          <FamiliasProveedorTab
+            proveedor={sel}
+            empresaId={empresa?.id}
+            materialGrupos={materialGrupos}
+            materialFamilias={materialFamilias}
+          />
+        )}
       </>
     );
   }
@@ -6170,6 +6180,168 @@ function Proveedores() {
       </>}
       {importRows && <ImportarProveedoresPreview dataRows={importRows} proveedoresActuales={proveedores} posicionesCompras={posicionesCompras} ocupantesPorPosicion={ocupantesPorPosicion} labelPosicionCompras={labelPosicionCompras} onClose={() => setImportRows(null)} onImported={() => setImportRows(null)} />}
     </>
+  );
+}
+
+function FamiliasProveedorTab({ proveedor, empresaId, materialGrupos = [], materialFamilias = [] }) {
+  const [familiasAsignadas, setFamiliasAsignadas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [savingFamiliaId, setSavingFamiliaId] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({});
+  const [error, setError] = useState('');
+
+  const tenantMatches = Boolean(empresaId && proveedor?.empresa_id === empresaId);
+  const gruposTenant = useMemo(
+    () => materialGrupos.filter(grupo => grupo.empresa_id === empresaId),
+    [materialGrupos, empresaId]
+  );
+  const familiasTenant = useMemo(
+    () => materialFamilias.filter(familia => familia.empresa_id === empresaId),
+    [materialFamilias, empresaId]
+  );
+  const grupoIds = useMemo(() => new Set(gruposTenant.map(grupo => grupo.id)), [gruposTenant]);
+  const familiasPorGrupo = useMemo(
+    () => gruposTenant.map(grupo => ({
+      grupo,
+      familias: familiasTenant.filter(familia => familia.grupo_id === grupo.id),
+    })),
+    [gruposTenant, familiasTenant]
+  );
+  const familiasSinGrupoValido = useMemo(
+    () => familiasTenant.filter(familia => !grupoIds.has(familia.grupo_id)),
+    [familiasTenant, grupoIds]
+  );
+  const asignadas = useMemo(() => new Set(familiasAsignadas), [familiasAsignadas]);
+
+  const cargarAsignaciones = useCallback(async () => {
+    if (!tenantMatches || !proveedor?.id) {
+      setFamiliasAsignadas([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const rows = await proveedorFamiliaService.listarPorProveedor(empresaId, proveedor.id);
+      setFamiliasAsignadas(rows.map(row => row.familia_id));
+    } catch (err) {
+      setFamiliasAsignadas([]);
+      setError(err?.message || 'No se pudieron cargar las familias asignadas.');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresaId, proveedor?.id, tenantMatches]);
+
+  useEffect(() => {
+    cargarAsignaciones();
+  }, [cargarAsignaciones]);
+
+  const toggleFamilia = async (familiaId, checked) => {
+    if (!tenantMatches || savingFamiliaId) return;
+    const anteriores = familiasAsignadas;
+    setSavingFamiliaId(familiaId);
+    setError('');
+    setFamiliasAsignadas(current => checked
+      ? [...new Set([...current, familiaId])]
+      : current.filter(id => id !== familiaId));
+    try {
+      if (checked) await proveedorFamiliaService.asignarFamilia(empresaId, proveedor.id, familiaId);
+      else await proveedorFamiliaService.quitarFamilia(empresaId, proveedor.id, familiaId);
+    } catch (err) {
+      setFamiliasAsignadas(anteriores);
+      setError(err?.message || 'No se pudo guardar la asignación.');
+    } finally {
+      setSavingFamiliaId(null);
+    }
+  };
+
+  const toggleGrupo = (grupoId) => {
+    setExpandedGroups(current => ({ ...current, [grupoId]: !(current[grupoId] ?? true) }));
+  };
+
+  if (!tenantMatches) {
+    return <div className="alert alert-danger">El proveedor seleccionado no pertenece al tenant activo.</div>;
+  }
+
+  return (
+    <div className="col" style={{ gap: 14 }}>
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
+      <div className="card" style={{ padding: 16 }}>
+        <div className="card-head"><h3>Servicios que ofrece</h3><span className="text-muted">Solo lectura</span></div>
+        <div className="text-muted" style={{ whiteSpace: 'pre-wrap' }}>{proveedor.servicios || 'Sin servicios registrados.'}</div>
+      </div>
+      <div className="card" style={{ padding: 16 }}>
+        <div className="card-head">
+          <div>
+            <h3>Familias que cubre</h3>
+            <div className="text-muted" style={{ fontSize: 12 }}>Marca o desmarca una familia para guardar el cambio inmediatamente.</div>
+          </div>
+          <span className="badge badge-cyan">{asignadas.size} asignadas</span>
+        </div>
+        {loading ? <div className="text-muted">Cargando familias asignadas...</div> : (
+          <div className="col" style={{ gap: 8 }}>
+            {familiasPorGrupo.map(({ grupo, familias }) => {
+              const isExpanded = expandedGroups[grupo.id] ?? true;
+              return (
+                <div key={grupo.id} style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGrupo(grupo.id)}
+                    aria-expanded={isExpanded}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 12px', border: 0, background: 'var(--surface-hover)', color: 'var(--fg)', cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <span aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
+                    <strong>{grupo.codigo} · {grupo.nombre}</strong>
+                    <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 11 }}>{familias.length} familias</span>
+                  </button>
+                  {isExpanded && (
+                    <div className="col" style={{ gap: 2, padding: '6px 12px 8px' }}>
+                      {familias.map(familia => (
+                        <label key={familia.id} className="row" style={{ gap: 8, padding: '7px 4px', cursor: savingFamiliaId ? 'wait' : 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            className="checkbox"
+                            checked={asignadas.has(familia.id)}
+                            disabled={savingFamiliaId === familia.id || Boolean(savingFamiliaId)}
+                            onChange={event => toggleFamilia(familia.id, event.target.checked)}
+                          />
+                          <span><span className="mono" style={{ fontSize: 11, color: 'var(--cyan-dk)' }}>{familia.codigo}</span> {familia.nombre}</span>
+                          {savingFamiliaId === familia.id && <span className="text-muted" style={{ fontSize: 11 }}>Guardando...</span>}
+                        </label>
+                      ))}
+                      {!familias.length && <div className="text-muted" style={{ fontSize: 12, padding: '6px 4px' }}>Sin familias en este grupo.</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {familiasSinGrupoValido.length > 0 && (
+              <div style={{ border: '1px solid var(--warning)', borderRadius: 6 }}>
+                <div className="alert alert-warning" style={{ margin: 0, borderRadius: '6px 6px 0 0' }}>
+                  {familiasSinGrupoValido.length} familia(s) sin grupo válido. No se corrigió su relación de catálogo.
+                </div>
+                <div className="col" style={{ gap: 2, padding: '6px 12px 8px' }}>
+                  {familiasSinGrupoValido.map(familia => (
+                    <label key={familia.id} className="row" style={{ gap: 8, padding: '7px 4px', cursor: savingFamiliaId ? 'wait' : 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        checked={asignadas.has(familia.id)}
+                        disabled={savingFamiliaId === familia.id || Boolean(savingFamiliaId)}
+                        onChange={event => toggleFamilia(familia.id, event.target.checked)}
+                      />
+                      <span><span className="mono" style={{ fontSize: 11, color: 'var(--cyan-dk)' }}>{familia.codigo}</span> {familia.nombre}</span>
+                      {savingFamiliaId === familia.id && <span className="text-muted" style={{ fontSize: 11 }}>Guardando...</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!familiasPorGrupo.length && !familiasSinGrupoValido.length && <div className="text-muted">No hay familias disponibles para este tenant.</div>}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
