@@ -484,9 +484,9 @@ function CotizacionesInner() {
   const getCuenta = id => cuentas.find(c => c.id === id);
   const getCuentaNombre = id => { const c = getCuenta(id); return c?.razon_social || c?.nombre_comercial || id || 'N/A'; };
   const getContacto = id => contactos?.find(c => c.id === id);
-  const abrirEntradaDirecta = tipo => {
+  const abrirEntradaDirecta = (tipo, lineaNegocio) => {
     setSelectorNuevaCotizacion(false);
-    setEntradaDirecta({ tipo, cuenta_id:'', error:'', saving:false });
+    setEntradaDirecta({ tipo, linea_negocio: lineaNegocio || null, cuenta_id:'', error:'', saving:false });
   };
   const confirmarEntradaDirecta = async event => {
     event.preventDefault();
@@ -500,7 +500,7 @@ function CotizacionesInner() {
       return;
     }
     if (entradaDirecta.tipo === 'estandar') {
-      navigate('cotizaciones', { active_tab:'nueva', cuenta_id:cuenta.id });
+      navigate('cotizaciones', { active_tab:'nueva', cuenta_id:cuenta.id, linea_negocio: entradaDirecta.linea_negocio || null });
       setEntradaDirecta(null);
       return;
     }
@@ -508,6 +508,7 @@ function CotizacionesInner() {
     try {
       const hojaId = await crearHojaCosteo({
         cuenta_id:cuenta.id,
+        linea_negocio: entradaDirecta.linea_negocio || null,
         sociedad_id:empresa?.multisociedad_habilitado ? modoVistaSociedadCotizaciones.sociedadIdEscritura : null,
         moneda:cuenta.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN',
       });
@@ -576,7 +577,8 @@ function CotizacionesInner() {
       activo_id: recepcionOrigen.activo_id,
       recepcion_id: recepcionOrigen.id,
       cuenta_id: cuentaOrigen.id,
-      sociedad_id: recepcionOrigen.sociedad_id || modoVistaSociedadCotizaciones.sociedadIdEscritura || null,
+       sociedad_id: recepcionOrigen.sociedad_id || modoVistaSociedadCotizaciones.sociedadIdEscritura || null,
+       linea_negocio: activeParams?.linea_negocio || null,
       recepcion_numero: recepcionOrigen.numero,
       activo_codigo: activoOrigen.codigo,
       activo_nombre: activoOrigen.nombre,
@@ -612,7 +614,8 @@ function CotizacionesInner() {
     const cotBaseDeHC = hcBase ? {
       moneda: opp?.moneda || hcBase.moneda,
       igv_pct: 18,
-      oportunidad_id: opp?.id || null,
+       oportunidad_id: opp?.id || null,
+       linea_negocio: activeParams?.linea_negocio || null,
       cuenta_id: opp?.cuenta_id || hcBase.cuenta_id,
       hoja_costeo_id: hcBase.id,
       activo_id: hcBase.activo_id || null,
@@ -625,7 +628,9 @@ function CotizacionesInner() {
       igv_impl: igvHC,
       total_impl: subtotalHC + igvHC,
       items: itemsHC,
-    } : (cuentaDirecta ? { cuenta_id:cuentaDirecta.id, moneda:cuentaDirecta.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN' } : null);
+    } : (cuentaDirecta
+      ? { cuenta_id:cuentaDirecta.id, linea_negocio: activeParams?.linea_negocio || null, moneda:cuentaDirecta.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN' }
+      : (opp ? { oportunidad_id:opp.id, linea_negocio: activeParams?.linea_negocio || null, cuenta_id:opp.cuenta_id || null, moneda:opp.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN' } : null));
     return (
       <EditorCotizacion
         opp={opp}
@@ -800,7 +805,7 @@ function CotizacionesInner() {
         <button type="button" className="btn btn-primary" disabled={!modoVistaSociedadCotizaciones.permiteEscritura} title={!modoVistaSociedadCotizaciones.permiteEscritura ? 'Selecciona una sociedad concreta para crear una cotización.' : undefined} onClick={() => setSelectorNuevaCotizacion(true)}>+ Nueva Cotización</button>
       </div>
 
-      {selectorNuevaCotizacion && <SelectorTipoCotizacion empresaId={empresa?.id} onHojaCosteo={() => abrirEntradaDirecta('hoja_costeo')} onEstandar={() => abrirEntradaDirecta('estandar')} onEspecial={plantilla => { setSelectorNuevaCotizacion(false); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:plantilla.id, tipo_documento_id:plantilla.tipo_documento_id }); }} onCancel={() => setSelectorNuevaCotizacion(false)} onError={mensaje => addNotificacion(mensaje)} />}
+      {selectorNuevaCotizacion && <SelectorTipoCotizacion empresaId={empresa?.id} onHojaCosteo={lineaNegocio => abrirEntradaDirecta('hoja_costeo', lineaNegocio)} onEstandar={lineaNegocio => abrirEntradaDirecta('estandar', lineaNegocio)} onEspecial={(_plantilla, _lineaNegocio) => { setSelectorNuevaCotizacion(false); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:_plantilla.id, tipo_documento_id:_plantilla.tipo_documento_id }); }} onCancel={() => setSelectorNuevaCotizacion(false)} onError={mensaje => addNotificacion(mensaje)} />}
       {entradaDirecta && <div className="modal-backdrop"><form className="modal" style={{ maxWidth:520 }} onSubmit={confirmarEntradaDirecta}><div className="modal-head"><div><h2>{entradaDirecta.tipo === 'hoja_costeo' ? 'Nueva Hoja de Costeo' : 'Nueva Cotización Estándar'}</h2><div className="text-muted" style={{ fontSize:12 }}>Selecciona el cliente para continuar.</div></div><button type="button" className="icon-btn" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>{I.x}</button></div><div className="modal-body"><div className="input-group"><label>Cuenta *</label><select className="select" required value={entradaDirecta.cuenta_id} disabled={entradaDirecta.saving} onChange={event => setEntradaDirecta(actual => ({ ...actual, cuenta_id:event.target.value, error:'' }))}><option value="">Selecciona una cuenta…</option>{cuentas.filter(cuenta => cuenta.empresa_id === empresa?.id).map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.razon_social || cuenta.nombre_comercial}</option>)}</select></div>{entradaDirecta.error && <div className="alert alert-danger" style={{ marginTop:14 }}>{entradaDirecta.error}</div>}</div><div className="modal-foot"><button type="button" className="btn btn-secondary" disabled={entradaDirecta.saving} onClick={() => setEntradaDirecta(null)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={entradaDirecta.saving}>{entradaDirecta.saving ? 'Creando…' : 'Continuar'}</button></div></form></div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 8, marginBottom: 16 }}>
@@ -1682,6 +1687,7 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
     try {
       await onSave({
         oportunidad_id: cotizacionBase?.oportunidad_id || opp?.id,
+        linea_negocio: cotizacionBase?.linea_negocio || null,
         cuenta_id:      cotizacionBase?.cuenta_id      || opp?.cuenta_id,
         // Cuando la cotización nace desde una recepción, estos vínculos se conservan bloqueados.
         activo_id: cotizacionBase?.activo_id || null,

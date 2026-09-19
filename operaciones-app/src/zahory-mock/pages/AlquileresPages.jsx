@@ -46,9 +46,8 @@ const fmtFechaLarga = (iso) => {
 
 // Opciones del formulario de nuevo contrato
 const CTFORM_INIT = {
-  clienteId: '', unidadMinera: '', equipoId: '',
-  fechaInicio: '', fechaFin: '', tarifaMonto: '', moneda: 'USD',
-  tarifaPeriodicidad: 'hora', minimoFacturable: '', metaDmr: '85',
+  clienteId: '', unidadMinera: '', equipos: [],
+  fechaInicio: '', fechaFin: '', moneda: 'USD', minimoFacturable: '', metaDmr: '85',
   centroCostoId: '', centroBeneficioId: '',
 };
 
@@ -915,6 +914,7 @@ export const ContratosRentalPage = ({ onNav }) => {
   const [clientes,             setClientes]             = useState([]);
   const [unidadesMineras,      setUnidadesMineras]      = useState([]);
   const [equipos,              setEquipos]              = useState([]);
+  const [tarifasEstandar,      setTarifasEstandar]      = useState({});
   const [centrosCosto,         setCentrosCosto]         = useState([]);
   const [centrosBeneficio,     setCentrosBeneficio]     = useState([]);
   const [cargandoCatalogos,    setCargandoCatalogos]    = useState(false);
@@ -1036,6 +1036,26 @@ export const ContratosRentalPage = ({ onNav }) => {
 
   const setCtField = (k, v) => setCtForm(f => ({ ...f, [k]: v }));
 
+  const agregarEquipo = activoId => {
+    if (!activoId) return;
+    setCtForm(form => form.equipos.some(equipo => equipo.activoId === activoId)
+      ? form
+      : { ...form, equipos: [...form.equipos, { activoId, tarifaOverride: '' }] });
+  };
+
+  const quitarEquipo = activoId => {
+    setCtForm(form => ({ ...form, equipos: form.equipos.filter(equipo => equipo.activoId !== activoId) }));
+  };
+
+  const setTarifaOverride = (activoId, value) => {
+    setCtForm(form => ({
+      ...form,
+      equipos: form.equipos.map(equipo => equipo.activoId === activoId
+        ? { ...equipo, tarifaOverride: value }
+        : equipo),
+    }));
+  };
+
   useEffect(() => {
     let activo = true;
     if (!modalNuevo || !sesion.empresaId || !sesion.sociedadId || !sesion.permiteEscritura) return undefined;
@@ -1061,9 +1081,17 @@ export const ContratosRentalPage = ({ onNav }) => {
         const error = [cuentasRes, unidadesRes, equiposRes, cecoRes, cebeRes].find(resultado => resultado.error)?.error;
         if (error) throw error;
         if (!activo) return;
+        const equiposDisponibles = equiposRes.data || [];
+        const equipoIds = equiposDisponibles.map(equipo => equipo.id);
+        const tarifasRes = equipoIds.length
+          ? await supabase.from('tarifas_estandar_equipos').select('activo_id,tarifa_hora,moneda').in('activo_id', equipoIds)
+          : { data: [], error: null };
+        if (tarifasRes.error) throw tarifasRes.error;
+        if (!activo) return;
         setClientes(cuentasRes.data || []);
         setUnidadesMineras(unidadesRes.data || []);
-        setEquipos(equiposRes.data || []);
+        setEquipos(equiposDisponibles);
+        setTarifasEstandar(Object.fromEntries((tarifasRes.data || []).map(tarifa => [tarifa.activo_id, tarifa])));
         setCentrosCosto(cecoRes.data || []);
         setCentrosBeneficio(cebeRes.data || []);
       } catch (error) {
@@ -1128,11 +1156,12 @@ export const ContratosRentalPage = ({ onNav }) => {
       setErrorGuardar('Aún no se resolvió la empresa y sociedad activas.');
       return;
     }
-    const tarifa = Number(ctForm.tarifaMonto);
     const dmr = Number(ctForm.metaDmr);
     const minimo = ctForm.minimoFacturable === '' ? null : Number(ctForm.minimoFacturable);
-    if (!ctForm.clienteId || !ctForm.equipoId || !ctForm.fechaInicio || !ctForm.fechaFin || !Number.isFinite(tarifa) || tarifa < 0 || !Number.isFinite(dmr) || dmr < 0 || dmr > 100 || (minimo !== null && (!Number.isFinite(minimo) || minimo < 0))) {
-      setErrorGuardar('Completa Cliente, Equipo, fechas, tarifa y una meta DMR válida entre 0 y 100.');
+    const tieneTarifaInvalida = ctForm.equipos.some(equipo => equipo.tarifaOverride !== '' && (!Number.isFinite(Number(equipo.tarifaOverride)) || Number(equipo.tarifaOverride) < 0));
+    const tieneEquipoSinTarifa = ctForm.equipos.some(equipo => tarifasEstandar[equipo.activoId]?.tarifa_hora == null && equipo.tarifaOverride === '');
+    if (!ctForm.clienteId || !ctForm.equipos.length || !ctForm.fechaInicio || !ctForm.fechaFin || tieneTarifaInvalida || tieneEquipoSinTarifa || !Number.isFinite(dmr) || dmr < 0 || dmr > 100 || (minimo !== null && (!Number.isFinite(minimo) || minimo < 0))) {
+      setErrorGuardar('Completa Cliente, al menos un equipo con tarifa estándar u override, fechas y una meta DMR válida entre 0 y 100.');
       return;
     }
     if (ctForm.fechaFin < ctForm.fechaInicio) {
@@ -1153,13 +1182,11 @@ export const ContratosRentalPage = ({ onNav }) => {
           empresa_id: sesion.empresaId,
           sociedad_id: sesion.sociedadId,
           numero,
-          cuenta_id: ctForm.clienteId,
-          unidad_minera: ctForm.unidadMinera || null,
-          fecha_inicio: ctForm.fechaInicio,
-          fecha_fin: ctForm.fechaFin,
-          tarifa_monto: tarifa,
-          tarifa_periodicidad: ctForm.tarifaPeriodicidad,
-          minimo_facturable: minimo,
+           cuenta_id: ctForm.clienteId,
+           unidad_minera: ctForm.unidadMinera || null,
+           fecha_inicio: ctForm.fechaInicio,
+           fecha_fin: ctForm.fechaFin,
+           minimo_facturable: minimo,
           meta_dmr: dmr,
           moneda: ctForm.moneda,
           centro_costo_id: ctForm.centroCostoId || null,
@@ -1169,10 +1196,13 @@ export const ContratosRentalPage = ({ onNav }) => {
         if (!esNumeroContratoDuplicado(error) || intento === 4) throw error;
       }
       if (!contrato) throw new Error('No se pudo asignar un número de contrato disponible.');
-      const { error: equipoError } = await supabase.from('contratos_alquiler_equipos').insert({
-        contrato_alquiler_id: contrato.id,
-        equipo_id: ctForm.equipoId,
-      });
+      const { error: equipoError } = await supabase.from('contratos_alquiler_equipos').insert(
+        ctForm.equipos.map(equipo => ({
+          contrato_alquiler_id: contrato.id,
+          equipo_id: equipo.activoId,
+          tarifa_hora_override: equipo.tarifaOverride === '' ? null : Number(equipo.tarifaOverride),
+        })),
+      );
       if (equipoError) {
         // No dejamos un contrato nuevo sin el único equipo exigido por este flujo.
         await supabase.from('contratos_alquiler').delete().eq('id', contrato.id);
@@ -1774,20 +1804,30 @@ export const ContratosRentalPage = ({ onNav }) => {
                   <div className="field" style={{ minWidth:0 }}><label>Número de Contrato</label><input className="input" style={{ width:'100%', minWidth:0 }} value={numeroSugerido} readOnly /></div>
                   <div className="field" style={{ minWidth:0 }}><label>Cliente *</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.clienteId} onChange={e => setCtField('clienteId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando clientes...' : 'Seleccionar...'}</option>{clientes.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{etiquetaCuenta(cuenta)}{cuenta.ruc ? ` · ${cuenta.ruc}` : ''}</option>)}</select></div>
                   <div className="field" style={{ minWidth:0 }}><label>Unidad Minera</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.unidadMinera} onChange={e => setCtField('unidadMinera', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando unidades...' : 'Sin unidad minera'}</option>{unidadesMineras.map(unidad => <option key={unidad.id} value={unidad.id}>{etiquetaCatalogo(unidad)}</option>)}</select></div>
-                  <div className="field" style={{ minWidth:0 }}><label>Equipo Asignado *</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.equipoId} onChange={e => setCtField('equipoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando equipos...' : 'Seleccionar...'}</option>{equipos.map(equipo => <option key={equipo.id} value={equipo.id}>{etiquetaCatalogo(equipo)}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>Activos se filtra por empresa: el maestro no tiene sociedad_id.</div></div>
+                   <div className="field" style={{ minWidth:0, gridColumn:'1 / -1' }}><label>Equipos asignados *</label><select className="select" style={{ width:'100%', minWidth:0 }} value="" onChange={e => agregarEquipo(e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando equipos...' : 'Seleccionar y agregar equipo...'}</option>{equipos.filter(equipo => !ctForm.equipos.some(seleccionado => seleccionado.activoId === equipo.id)).map(equipo => <option key={equipo.id} value={equipo.id}>{etiquetaCatalogo(equipo)}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>Activos propios operativos de la empresa; puedes agregar más de uno.</div></div>
                   <div className="field" style={{ minWidth:0 }}><label>Fecha de Inicio *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" value={ctForm.fechaInicio} onChange={e => setCtField('fechaInicio', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                   <div className="field" style={{ minWidth:0 }}><label>Fecha de Vencimiento *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" min={ctForm.fechaInicio || undefined} value={ctForm.fechaFin} onChange={e => setCtField('fechaFin', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                 </div>
               </div>
 
               <div>
-                <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>B — Parámetros de Cobro</div>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:12 }}>
-                  <div className="field"><label>Tarifa *</label><input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={ctForm.tarifaMonto} onChange={e => setCtField('tarifaMonto', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
-                  <div className="field"><label>Moneda *</label><select className="select" value={ctForm.moneda} onChange={e => setCtField('moneda', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="USD">USD</option><option value="PEN">PEN</option></select></div>
-                  <div className="field"><label>Unidad de tarifa *</label><select className="select" value={ctForm.tarifaPeriodicidad} onChange={e => setCtField('tarifaPeriodicidad', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="hora">Hora</option><option value="dia">Día</option><option value="mes">Mes</option></select></div>
-                  <div className="field"><label>Mínimo garantizado</label><input className="input" type="number" min="0" step="0.01" placeholder="Opcional" value={ctForm.minimoFacturable} onChange={e => setCtField('minimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
-                </div>
+                 <div style={{ fontSize:11, fontWeight:800, letterSpacing:.8, textTransform:'uppercase', color:'var(--cyan)', marginBottom:10 }}>B — Tarifas por equipo</div>
+                 <div style={{ display:'grid', gap:10 }}>
+                   {ctForm.equipos.length === 0 && <div className="sub">Agrega al menos un equipo para consultar su tarifa estándar.</div>}
+                   {ctForm.equipos.map(linea => {
+                     const equipo = equipos.find(item => item.id === linea.activoId);
+                     const tarifa = tarifasEstandar[linea.activoId];
+                     return <div key={linea.activoId} style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) minmax(170px, 220px) auto', gap:10, alignItems:'end', padding:10, border:'1px solid var(--border)', borderRadius:8 }}>
+                       <div><div style={{ fontWeight:700 }}>{etiquetaCatalogo(equipo)}</div><div className="sub">Estándar: {tarifa ? `${Number(tarifa.tarifa_hora).toFixed(2)} ${tarifa.moneda}/h` : 'Sin tarifa estándar cargada'}</div></div>
+                       <div className="field"><label>Override por hora</label><input className="input" type="number" min="0" step="0.01" placeholder={tarifa ? 'Usar estándar' : 'Obligatorio sin estándar'} value={linea.tarifaOverride} onChange={e => setTarifaOverride(linea.activoId, e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitarEquipo(linea.activoId)} disabled={Boolean(contratoGuardado)}>Quitar</button>
+                     </div>;
+                   })}
+                   <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:12 }}>
+                     <div className="field"><label>Moneda del contrato *</label><select className="select" value={ctForm.moneda} onChange={e => setCtField('moneda', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="USD">USD</option><option value="PEN">PEN</option></select></div>
+                     <div className="field"><label>Mínimo garantizado</label><input className="input" type="number" min="0" step="0.01" placeholder="Opcional" value={ctForm.minimoFacturable} onChange={e => setCtField('minimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                   </div>
+                 </div>
               </div>
 
               <div>

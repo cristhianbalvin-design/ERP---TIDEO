@@ -49,6 +49,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     real_detalle: ot.real_detalle || null,
     centro_costo_id: ot.centro_costo_id || null,
     centro_beneficio_id: ot.centro_beneficio_id || null,
+    linea_negocio: ot.linea_negocio || ot.lineaNegocio || null,
     es_adicional: ot.es_adicional || false,
     participantes_admin: ot.participantes_admin || [],
   };
@@ -109,6 +110,9 @@ export async function actualizarOT(supabase, otId, datos) {
   }
   if (datos.centro_costo_id !== undefined) row.centro_costo_id = datos.centro_costo_id || null;
   if (datos.centro_beneficio_id !== undefined) row.centro_beneficio_id = datos.centro_beneficio_id || null;
+  if (datos.linea_negocio !== undefined || datos.lineaNegocio !== undefined) {
+    row.linea_negocio = datos.linea_negocio || datos.lineaNegocio || null;
+  }
   if (datos.facturable !== undefined) row.facturable = Boolean(datos.facturable);
   if (datos.es_adicional !== undefined) row.es_adicional = Boolean(datos.es_adicional);
   if (datos.avance !== undefined) {

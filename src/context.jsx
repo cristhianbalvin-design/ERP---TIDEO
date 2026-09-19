@@ -2615,6 +2615,7 @@ export function AppProvider({ children }) {
     };
     const calculada = calcularHojaCosteo(hc);
     const monedaSolicitada = calculada.moneda;
+    const lineaNegocioSolicitada = calculada.linea_negocio || null;
     const enlacesRecepcion = {
       activo_id: datos.activo_id || null,
       recepcion_id: datos.recepcion_id || null,
@@ -2631,6 +2632,13 @@ export function AppProvider({ children }) {
           }));
           if (enlaceResult?.error) throw enlaceResult.error;
           Object.assign(calculada, enlacesRecepcion);
+        }
+        if (!calculada.oportunidad_id && lineaNegocioSolicitada) {
+          const lineaResult = await crmPersist(sb => actualizarHojaCosteoSvc(sb, calculada.id, {
+            linea_negocio: lineaNegocioSolicitada,
+          }));
+          if (lineaResult?.error) throw lineaResult.error;
+          calculada.linea_negocio = lineaNegocioSolicitada;
         }
         if (monedaSolicitada && monedaSolicitada !== 'PEN') {
           await crmPersist(sb => actualizarHojaCosteoSvc(sb, calculada.id, { moneda: monedaSolicitada }));

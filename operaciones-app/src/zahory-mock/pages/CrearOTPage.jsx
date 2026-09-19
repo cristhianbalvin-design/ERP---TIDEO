@@ -1720,6 +1720,7 @@ export const CrearOTPage = ({ onNav }) => {
       centro_beneficio_id: form.centro_beneficio_id || null,
       tipo_trabajo: form.tipoTrabajo,
       cargo_financiero: form.tipoCargo,
+      linea_negocio: form.lineaNegocio || null,
       tecnico_responsable_id: form.tecnico || null,
       motivo_rework: form.tipoCargo === 'Reclamo_Rework' ? form.motivoRetrabajo.trim() : null,
       horometro_actual: requiereHorometroRaiz

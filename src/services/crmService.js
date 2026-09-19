@@ -341,6 +341,7 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     id: cot.id,
     empresa_id: empresaId,
     oportunidad_id: cot.oportunidad_id || null,
+    linea_negocio: cot.linea_negocio || null,
     cuenta_id: cot.cuenta_id || null,
     contacto_id: cot.contacto_id || null,
     responsable_id: cot.responsable_id || null,
@@ -407,6 +408,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
     'centro_beneficio_id', 'responsable_id', 'sociedad_id', 'os_cliente_id', 'activo_id', 'recepcion_id',
+    'linea_negocio',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -550,6 +552,7 @@ export async function persistirHojaCosteo(supabase, empresaId, hc) {
     empresa_id: empresaId,
     numero: hc.numero,
     oportunidad_id: hc.oportunidad_id || null,
+    linea_negocio: hc.linea_negocio || null,
     cuenta_id: hc.cuenta_id || null,
     cotizacion_id: hc.cotizacion_id || null,
     activo_id: hc.activo_id || null,
@@ -661,6 +664,7 @@ export async function actualizarHojaCosteoSvc(supabase, hcId, datos) {
     'costo_total', 'precio_sugerido_sin_igv', 'precio_sugerido_total', 'cotizacion_id',
     'gasto_administrativo_manual_pct',
     'activo_id', 'recepcion_id',
+    'linea_negocio',
   ];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
