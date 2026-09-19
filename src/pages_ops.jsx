@@ -5812,6 +5812,65 @@ function Proveedores() {
     XLSX.utils.book_append_sheet(wb, sheetData, 'Proveedores');
     XLSX.writeFile(wb, 'plantilla_proveedores.xlsx');
   };
+  const handleDescargarReporteProveedores = () => {
+    const nombreEmpresa = empresa?.nombre_comercial || empresa?.razon_social || 'Empresa';
+    const fechaReporte = new Date().toLocaleString('es-PE');
+    const estadoLabel = (estado) => String(estado || '').replaceAll('_', ' ') || '-';
+    const responsableLabel = (proveedor) => nombreResponsableCompras(proveedor.responsable_compras_posicion_id) || 'Sin asignar';
+    const filas = proveedores.map(proveedor => ({
+      Codigo: proveedor.codigo || '',
+      RUC: proveedor.ruc || '',
+      Pais: proveedor.pais || '',
+      'Razon social': proveedor.razon_social || '',
+      'Nombre comercial': proveedor.nombre_comercial || '',
+      Categoria: proveedor.categoria || proveedor.rubro || '',
+      Estado: estadoLabel(proveedor.estado),
+      'Servicios que ofrece': proveedor.servicios || '',
+      'Contacto principal': proveedor.contacto_nombre || '',
+      'Cargo contacto': proveedor.contacto_cargo || '',
+      Telefono: proveedor.telefono || '',
+      Email: proveedor.email || '',
+      Web: proveedor.web || '',
+      Direccion: proveedor.direccion || '',
+      'Responsable de compras': responsableLabel(proveedor),
+      Calificacion: proveedor.calificacion_promedio ?? '',
+      Evaluaciones: proveedor.total_evaluaciones ?? 0,
+      'Condicion de pago': proveedor.condicion_pago || '',
+      Moneda: proveedor.moneda || '',
+      'Sujeto a retencion': proveedor.sujeto_retencion ? 'Si' : 'No',
+      '% retencion': proveedor.pct_retencion ?? 0,
+      'Limite de gasto mensual': proveedor.limite_gasto_mensual ?? 0,
+      'Total OCs': proveedor.total_ocs ?? 0,
+      'Monto total comprado': proveedor.monto_total_comprado ?? 0,
+      'Fecha ultima OC': proveedor.fecha_ultima_oc || '',
+      Notas: proveedor.notas || '',
+    }));
+    const resumen = [
+      ['Reporte de proveedores'],
+      ['Empresa', nombreEmpresa],
+      ['Fecha de descarga', fechaReporte],
+      ['Total de proveedores', proveedores.length],
+      ['Homologados', kpi.homologados],
+      ['En evaluacion', kpi.evaluacion],
+      ['Observados', kpi.observados],
+      ['Bloqueados', kpi.bloqueados],
+    ];
+    const wb = XLSX.utils.book_new();
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumen);
+    const wsProveedores = XLSX.utils.json_to_sheet(filas);
+    wsResumen['!cols'] = [{ wch: 24 }, { wch: 32 }];
+    wsProveedores['!cols'] = [
+      { wch: 14 }, { wch: 15 }, { wch: 12 }, { wch: 30 }, { wch: 25 }, { wch: 16 },
+      { wch: 16 }, { wch: 38 }, { wch: 24 }, { wch: 22 }, { wch: 15 }, { wch: 30 },
+      { wch: 30 }, { wch: 36 }, { wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 18 },
+      { wch: 10 }, { wch: 16 }, { wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 22 },
+      { wch: 16 }, { wch: 40 },
+    ];
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+    XLSX.utils.book_append_sheet(wb, wsProveedores, 'Proveedores');
+    XLSX.writeFile(wb, `reporte_proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    addNotificacion(`Reporte descargado: ${proveedores.length} proveedores.`, 'success');
+  };
   const handleFileUploadProveedores = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -6032,6 +6091,7 @@ function Proveedores() {
         <div><h1 className="page-title">Proveedores</h1><div className="page-sub">Registro, homologacion, evaluacion y ficha completa</div></div>
         <div className="row" style={{gap:10}}>
           <input type="file" ref={fileInputRef} accept=".xlsx" style={{display:'none'}} onChange={handleFileUploadProveedores}/>
+          <button className="btn btn-secondary" onClick={handleDescargarReporteProveedores}>{I.download} Descargar reporte</button>
           <button className="btn btn-secondary" onClick={handleDescargarPlantillaProveedores}>{I.download} Descargar plantilla</button>
           <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>{I.download} Importar Excel</button>
           <button className="btn btn-primary" data-local-form="true" onClick={() => { resetForm(); setPanel(true); }}>{I.plus} Nuevo proveedor</button>
