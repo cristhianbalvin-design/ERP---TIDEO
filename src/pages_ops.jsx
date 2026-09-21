@@ -14,6 +14,7 @@ import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import { proveedorFamiliaService } from './services/proveedorFamiliaService.js';
+import { ImportarProveedorFamiliasModal } from './components/ImportarProveedorFamiliasModal.jsx';
 import {
   rrhhService,
   CONTRATO_DURACION_OPCIONES,
@@ -5782,6 +5783,7 @@ function Proveedores() {
   };
   const fileInputRef = useRef(null);
   const [importRows, setImportRows] = useState(null);
+  const [importProveedorFamiliasOpen, setImportProveedorFamiliasOpen] = useState(false);
   const handleDescargarPlantillaProveedores = () => {
     const wsData = [
       ['ruc','pais','razon_social','nombre_comercial','categoria','estado','servicios','contacto_nombre','contacto_cargo','telefono','email','web','direccion','responsable_compras','notas'],
@@ -6100,6 +6102,7 @@ function Proveedores() {
       <div className="page-header">
         <div><h1 className="page-title">Proveedores</h1><div className="page-sub">Registro, homologacion, evaluacion y ficha completa</div></div>
         <div className="row" style={{gap:10}}>
+          <button className="btn btn-secondary" onClick={() => setImportProveedorFamiliasOpen(true)}>Emparejar Proveedores y Familias</button>
           <input type="file" ref={fileInputRef} accept=".xlsx" style={{display:'none'}} onChange={handleFileUploadProveedores}/>
           <button className="btn btn-secondary" onClick={handleDescargarReporteProveedores}>{I.download} Descargar reporte</button>
           <button className="btn btn-secondary" onClick={handleDescargarPlantillaProveedores}>{I.download} Descargar plantilla</button>
@@ -6179,6 +6182,7 @@ function Proveedores() {
         </div>
       </>}
       {importRows && <ImportarProveedoresPreview dataRows={importRows} proveedoresActuales={proveedores} posicionesCompras={posicionesCompras} ocupantesPorPosicion={ocupantesPorPosicion} labelPosicionCompras={labelPosicionCompras} onClose={() => setImportRows(null)} onImported={() => setImportRows(null)} />}
+      {importProveedorFamiliasOpen && <ImportarProveedorFamiliasModal empresaId={empresa?.id} addNotificacion={addNotificacion} onClose={() => setImportProveedorFamiliasOpen(false)} />}
     </>
   );
 }
