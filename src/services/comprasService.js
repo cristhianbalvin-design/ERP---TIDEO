@@ -140,6 +140,35 @@ export function calcularLeadTimeDias(fechaEmision, fechaRecepcion = todayIsoDate
   return Math.round((fin - inicio) / 86400000);
 }
 
+function calcularEstadoOcPorRecepcionLocal({ ordenCompra, recepciones, recepcionId, fechaRecepcion = todayIsoDate(), fechaEmision }) {
+  if (!ordenCompra?.id) throw new Error('La orden de compra es obligatoria');
+  const recepcion = (recepciones || []).find(r => String(r.id) === String(recepcionId));
+  if (!recepcion) throw new Error('La recepción no existe');
+
+  const pedido = (ordenCompra.items || []).reduce((sum, item) => sum + (Number(item.cantidad) || 0), 0);
+  const recepcionesOc = (recepciones || []).filter(r => String(r.orden_compra_id || '') === String(ordenCompra.id));
+  const recibido = recepcionesOc.reduce((sum, r) => sum + (r.items_recibidos || []).reduce((lineSum, item) => lineSum + (Number(item.recibido) || 0), 0), 0);
+  const porcentaje = pedido > 0 ? Number(Math.min(100, Math.max(0, (recibido / pedido) * 100)).toFixed(2)) : 0;
+  const tipo = (recepcion.items_recibidos || []).some(item => (Number(item.recibido) || 0) < (Number(item.pedido) || 0)) ? 'parcial' : 'total';
+  const estado = porcentaje >= 100 ? 'cerrada' : 'recibida_parcial';
+
+  return {
+    ordenCompra: {
+      ...ordenCompra,
+      estado,
+      porcentaje_recibido: porcentaje,
+      fecha_recepcion_real: fechaRecepcion,
+      lead_time_dias: calcularLeadTimeDias(fechaEmision, fechaRecepcion),
+    },
+    recepcion: { ...recepcion, tipo },
+    pedido,
+    recibido,
+    porcentaje_recibido: porcentaje,
+    estado,
+    tipo,
+  };
+}
+
 export const comprasService = {
 
   // ─── Proveedores ──────────────────────────────────────────────
@@ -286,22 +315,23 @@ export const comprasService = {
     if (error) throw error;
     return data;
   },
-  cerrarOrdenCompraPorRecepcion: async (id, { fechaRecepcion = todayIsoDate(), fechaEmision } = {}) => {
-    const cambios = {
-      estado: 'cerrada',
-      porcentaje_recibido: 100,
-      fecha_recepcion_real: fechaRecepcion,
-      lead_time_dias: calcularLeadTimeDias(fechaEmision, fechaRecepcion)
-    };
+  recalcularEstadoOcPorRecepcion: async ({ ordenCompraId, recepcionId, fechaRecepcion = todayIsoDate(), fechaEmision, modo = 'database', ordenCompra, recepciones } = {}) => {
+    if (modo === 'local') {
+      return calcularEstadoOcPorRecepcionLocal({ ordenCompra, recepciones, recepcionId, fechaRecepcion, fechaEmision });
+    }
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ordenes_compra')
-      .update({ ...cambios, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('recalcular_estado_oc_por_recepcion', {
+      p_orden_compra_id: ordenCompraId,
+      p_recepcion_id: recepcionId,
+      p_fecha_recepcion: fechaRecepcion,
+      p_fecha_emision: fechaEmision || null,
+    });
     if (error) throw error;
-    return data;
+    return {
+      ...(data || {}),
+      ordenCompra: data?.orden_compra || null,
+      recepcion: data?.recepcion || null,
+    };
   },
   calcularLeadTimeDias,
 
