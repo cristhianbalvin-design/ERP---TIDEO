@@ -137,6 +137,9 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'item.unidad': item.unidad || '',
     'item.precio_unitario': money(item.precio_unitario, moneda),
     'item.subtotal': money(item.subtotal, moneda),
+    'item.codigo': item.codigo || '',
+    'item.marca': item.marca || '',
+    'item.modelo': item.modelo || '',
   };
   return values[key] ?? '';
 }

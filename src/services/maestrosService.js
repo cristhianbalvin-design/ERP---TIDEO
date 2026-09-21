@@ -477,6 +477,19 @@ export const maestrosService = {
     if (error) { console.error('Error fetching monedas/impuestos/unidades:', error); return []; }
     return data;
   },
+  getUnidadesMedida: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('monedas_impuestos_unidades')
+      .select('id,empresa_id,codigo,nombre,detalle,estado')
+      .eq('empresa_id', empresaId)
+      .eq('tipo', 'unidad')
+      .eq('estado', 'activo')
+      .order('codigo', { ascending: true });
+    if (error) { console.error('Error fetching unidades de medida:', error); return []; }
+    return data || [];
+  },
   crearMonedaImpuestoUnidad: async (empresaId, item) => {
     const supabase = await getSupabaseClient();
     const payload = {

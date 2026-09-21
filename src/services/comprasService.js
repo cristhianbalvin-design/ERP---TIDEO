@@ -308,6 +308,15 @@ export const comprasService = {
       ORDENES_COMPRA_OPTIONAL_COLUMNS
     );
   },
+  registrarCoberturaSolpeOc: async (solpeId, ocId) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_cobertura_solpe_oc', {
+      p_solpe_id: solpeId,
+      p_oc_id: ocId,
+    });
+    if (error) throw error;
+    return data;
+  },
   actualizarOrdenCompra: async (id, cambios) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase

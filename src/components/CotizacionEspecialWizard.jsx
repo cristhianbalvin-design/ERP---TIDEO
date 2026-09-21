@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
 import { DocumentPreviewSheet } from './DocumentPreviewSheet.jsx';
+import { NuevaCuentaModal } from './NuevaCuentaModal.jsx';
 import { marcarRecepcionActivoClienteCotizada } from '../services/recepcionesActivosClienteService.js';
+import { maestrosService } from '../services/maestrosService.js';
 
-const nuevoItem = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random()}`, descripcion:'', cantidad:1, unidad:'und', precio_unitario:0 });
+const nuevoItem = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random()}`, descripcion:'', cantidad:1, unidad:'UND', precio_unitario:0 });
 const nuevoHito = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `hito-${Date.now()}-${Math.random()}`, concepto:'', porcentaje:0, condicion:'' });
 const numero = value => {
   const parsed = Number(value);
@@ -12,7 +14,7 @@ const numero = value => {
 const formatMoney = (value, moneda = 'PEN') => new Intl.NumberFormat('es-PE', { style:'currency', currency:moneda || 'PEN', maximumFractionDigits:2 }).format(numero(value));
 const today = () => new Date().toISOString().slice(0, 10);
 const emptyForm = () => ({
-  tipo_documento_id:'', plantilla_documento_id:'', origen_items:'manual', hoja_costeo_id:'', cuenta_id:'', oportunidad_id:'', moneda:'PEN',
+  tipo_documento_id:'', plantilla_documento_id:'', origen_items:'manual', hoja_costeo_id:'', cuenta_id:'', oportunidad_id:'', linea_negocio:'', moneda:'PEN',
   items:[nuevoItem()], contacto_id:'', validez_tipo:'dias', validez_dias:30, validez_fecha:'', hitos_activos:false, hitos_pago:[],
 });
 const conClavesItems = (items = []) => items.map((item, index) => ({ ...item, client_key:item.client_key || `item-${item.id || index}-${globalThis.crypto?.randomUUID?.() || Math.random()}` }));
@@ -24,6 +26,11 @@ const serializarItems = items => items.map((item, index) => ({
   cantidad:numero(item.cantidad),
   unidad:String(item.unidad || '').trim(),
   precio_unitario:numero(item.precio_unitario),
+  ...(Object.hasOwn(item, 'codigo') ? { codigo:item.codigo ?? '' } : {}),
+  ...(Object.hasOwn(item, 'marca') ? { marca:item.marca ?? '' } : {}),
+  ...(Object.hasOwn(item, 'modelo') ? { modelo:item.modelo ?? '' } : {}),
+  ...(item.activo_id ? { activo_id:item.activo_id } : {}),
+  ...(item.contrato_alquiler_id ? { contrato_alquiler_id:item.contrato_alquiler_id } : {}),
 }));
 const mismaPartidaOrigen = (items = []) => items.map(({ client_key, ...item }) => item);
 const mismosItemsOrigen = (a = [], b = []) => JSON.stringify(mismaPartidaOrigen(a)) === JSON.stringify(mismaPartidaOrigen(b));
@@ -109,15 +116,24 @@ function ReferenciaHojaCosteo({ hoja, moneda }) {
   </div>;
 }
 
-function ItemsEditor({ items, moneda, disabled, onChange }) {
+function ItemsEditor({ items, moneda, disabled, onChange, unidades = [] }) {
   const totals = previewTotals(items);
+  const codigosCatalogo = new Set(unidades.map(unidad => String(unidad.codigo || '').toUpperCase()));
+  const unidadesVisibles = [
+    ...items
+      .map(item => String(item.unidad || '').trim())
+      .filter(valor => valor && !codigosCatalogo.has(valor.toUpperCase()))
+      .filter((valor, index, valores) => valores.findIndex(actual => actual.toUpperCase() === valor.toUpperCase()) === index)
+      .map(valor => ({ id:`legacy-${valor}`, codigo:valor, nombre:'Valor existente' })),
+    ...unidades,
+  ];
   const patch = (key, field, value) => onChange(items.map(item => item.client_key === key ? { ...item, [field]:value } : item));
   return <>
     <div className="table-wrap"><table className="tbl"><thead><tr><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Precio unit.</th><th>Subtotal</th>{!disabled && <th />}</tr></thead><tbody>
       {items.map((item, index) => <tr key={item.client_key || item.id || index}>
         <td><input className="input" value={item.descripcion || ''} disabled={disabled} onChange={event => patch(item.client_key, 'descripcion', event.target.value)} /></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.cantidad ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'cantidad', event.target.value)} /></td>
-        <td><input className="input" value={item.unidad || ''} disabled={disabled} onChange={event => patch(item.client_key, 'unidad', event.target.value)} /></td>
+        <td><select className="input" value={item.unidad || ''} disabled={disabled} onChange={event => patch(item.client_key, 'unidad', event.target.value)}><option value="">Seleccione…</option>{unidadesVisibles.map(unidad => <option key={unidad.id || unidad.codigo} value={unidad.codigo}>{unidad.codigo} — {unidad.nombre}</option>)}</select></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.precio_unitario ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'precio_unitario', event.target.value)} /></td>
         <td className="num">{formatMoney(numero(item.cantidad) * numero(item.precio_unitario), moneda)}</td>
         {!disabled && <td><button type="button" className="btn btn-ghost" onClick={() => onChange(items.filter(row => row.client_key !== item.client_key))} disabled={items.length <= 1}>×</button></td>}
@@ -202,12 +218,15 @@ function AceptacionManualEspecialModal({ onClose, onConfirmar }) {
   </div></div>;
 }
 
-export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, oportunidadInicialId = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
+export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialId = null, lineaNegocioInicial = null, plantillaInicialId = null, tipoDocumentoInicialId = null, cuentaInicialId = null, oportunidadInicialId = null, proyectoInicialId = null, contratoAlquilerInicialId = null, itemsIniciales = [], monedaInicial = null, activoInicialId = null, recepcionInicialId = null, recepcionNumeroInicial = null, activoCodigoInicial = null, activoNombreInicial = null, empresa, empresaConfig, cuentas = [], oportunidades = [], contactos = [], hojasCosteo = [], adaptarHojaCosteo, sociedadIdEscritura, crearCuenta, comercialesAsignables = [], onBack, onCreated, onEmitted, onGenerarOS, onVerOS }) {
   const [tipos, setTipos] = useState([]);
   const [plantillas, setPlantillas] = useState([]);
   const [bloques, setBloques] = useState([]);
   const [contenidoEmitido, setContenidoEmitido] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [unidades, setUnidades] = useState([]);
+  const [cuentasLocales, setCuentasLocales] = useState(cuentas);
+  const [nuevaCuentaAbierta, setNuevaCuentaAbierta] = useState(false);
   const [cotizacion, setCotizacion] = useState(null);
   const [paso, setPaso] = useState(1);
   const [loading, setLoading] = useState(Boolean(especialId));
@@ -226,6 +245,22 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const vistaPreviaRef = useRef(null);
   const resumenCotizacionRef = useRef(null);
   const [alturaResumenCotizacion, setAlturaResumenCotizacion] = useState(null);
+
+  useEffect(() => {
+    setCuentasLocales(actuales => {
+      const porId = new Map(actuales.map(cuenta => [cuenta.id, cuenta]));
+      cuentas.forEach(cuenta => porId.set(cuenta.id, cuenta));
+      return [...porId.values()];
+    });
+  }, [cuentas]);
+
+  useEffect(() => {
+    let activa = true;
+    maestrosService.getUnidadesMedida(empresa?.id).then(data => {
+      if (activa) setUnidades(data);
+    });
+    return () => { activa = false; };
+  }, [empresa?.id]);
 
   useEffect(() => {
     if (!cotizacion) return undefined;
@@ -247,7 +282,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     ? tipos.filter(row => row.sociedad_id === sociedadIdEscritura)
     : tipos.filter(row => !row.sociedad_id), [tipos, empresa?.multisociedad_habilitado, sociedadIdEscritura]);
   const plantilla = plantillas.find(row => row.id === form.plantilla_documento_id) || null;
-  const cuenta = cuentas.find(row => row.id === form.cuenta_id) || null;
+  const cuenta = cuentasLocales.find(row => row.id === form.cuenta_id) || null;
   const oportunidad = oportunidades.find(row => row.id === form.oportunidad_id) || null;
   const contacto = contactos.find(row => row.id === form.contacto_id) || null;
   const editable = Boolean(cotizacion && cotizacion.estado === 'borrador');
@@ -351,7 +386,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     if (queryError) throw queryError;
     setCotizacion(data);
     setForm({
-      tipo_documento_id:data.tipo_documento_id, plantilla_documento_id:data.plantilla_documento_id, origen_items:data.origen_items, hoja_costeo_id:data.hoja_costeo_id || '', cuenta_id:data.cuenta_id, oportunidad_id:data.oportunidad_id || '', moneda:data.moneda || 'PEN',
+      tipo_documento_id:data.tipo_documento_id, plantilla_documento_id:data.plantilla_documento_id, origen_items:data.origen_items, hoja_costeo_id:data.hoja_costeo_id || '', cuenta_id:data.cuenta_id, oportunidad_id:data.oportunidad_id || '', linea_negocio:data.linea_negocio || '', moneda:data.moneda || 'PEN',
       items:conClavesItems(data.items || []), contacto_id:data.contacto_id || '', validez_tipo:data.validez_tipo || 'dias', validez_dias:data.validez_dias ?? 30, validez_fecha:data.validez_fecha || '', hitos_activos:Boolean(data.hitos_activos), hitos_pago:conClavesHitos(data.hitos_pago || []),
     });
   }, []);
@@ -363,15 +398,19 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     cargarCotizacion(especialId).catch(err => setError(mensajeError(err))).finally(() => setLoading(false));
   }, [especialId, cargarCotizacion]);
   useEffect(() => {
-    if (especialId || (!plantillaInicialId && !tipoDocumentoInicialId && !cuentaInicialId && !oportunidadInicialId)) return;
+    if (especialId || (!plantillaInicialId && !tipoDocumentoInicialId && !cuentaInicialId && !oportunidadInicialId && !proyectoInicialId && !itemsIniciales.length)) return;
     setForm(current => ({
       ...current,
+      origen_items: itemsIniciales.length ? 'manual' : current.origen_items,
       tipo_documento_id: tipoDocumentoInicialId || current.tipo_documento_id,
       plantilla_documento_id: plantillaInicialId || current.plantilla_documento_id,
       cuenta_id: cuentaInicialId || current.cuenta_id,
       oportunidad_id: oportunidadInicialId || current.oportunidad_id,
+      linea_negocio: lineaNegocioInicial || current.linea_negocio,
+      moneda: monedaInicial || current.moneda,
+      items: itemsIniciales.length ? conClavesItems(itemsIniciales) : current.items,
     }));
-  }, [especialId, plantillaInicialId, tipoDocumentoInicialId, cuentaInicialId, oportunidadInicialId]);
+  }, [especialId, plantillaInicialId, tipoDocumentoInicialId, cuentaInicialId, oportunidadInicialId, proyectoInicialId, itemsIniciales, monedaInicial, lineaNegocioInicial]);
   useEffect(() => {
     if (especialId || !hojaCosteoInicialId) return;
     const hoja = hojasCosteo.find(row => row.id === hojaCosteoInicialId);
@@ -387,12 +426,13 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
         hoja_costeo_id:hoja.id,
         cuenta_id:cuentaId,
         oportunidad_id:hoja.oportunidad_id || '',
+        linea_negocio:hoja.linea_negocio || lineaNegocioInicial || current.linea_negocio,
         moneda:hoja.moneda || current.moneda,
         items:itemsHoja,
         contacto_id:'',
       };
     });
-  }, [especialId, hojaCosteoInicialId, hojasCosteo, oportunidades, adaptarHojaCosteo]);
+  }, [especialId, hojaCosteoInicialId, lineaNegocioInicial, hojasCosteo, oportunidades, adaptarHojaCosteo]);
   useEffect(() => {
     if (!readonly) {
       setContenidoEmitido(null);
@@ -498,7 +538,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     const hoja = hojasDisponibles.find(row => row.id === hojaCosteoId);
     const oppHC = oportunidades.find(row => row.id === hoja?.oportunidad_id);
     const cuentaId = hoja?.cuenta_id || oppHC?.cuenta_id || '';
-    setForm(current => ({ ...current, origen_items:'hoja_costeo', hoja_costeo_id:hojaCosteoId, cuenta_id:cuentaId, oportunidad_id:hoja?.oportunidad_id || '', moneda:hoja?.moneda || current.moneda, items:hoja ? conClavesItems(adaptarHojaCosteo?.(hoja) || []) : [] }));
+    setForm(current => ({ ...current, origen_items:'hoja_costeo', hoja_costeo_id:hojaCosteoId, cuenta_id:cuentaId, oportunidad_id:hoja?.oportunidad_id || '', linea_negocio:hoja?.linea_negocio || current.linea_negocio, moneda:hoja?.moneda || current.moneda, items:hoja ? conClavesItems(adaptarHojaCosteo?.(hoja) || []) : [] }));
   };
   const validarPaso = target => {
     if (target > 1 && (!form.tipo_documento_id || !form.plantilla_documento_id)) return 'Seleccione un tipo y una plantilla publicada.';
@@ -531,6 +571,13 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
       if (rpcError) throw rpcError;
       const created = Array.isArray(data) ? data[0] : data;
       if (!created?.id) throw new Error('El servidor no devolvió el identificador del borrador creado.');
+      if (form.linea_negocio) {
+        const { error: lineaError } = await sb
+          .from('cotizaciones_especiales')
+          .update({ linea_negocio: form.linea_negocio, proyecto_id:proyectoInicialId || null, contrato_alquiler_id:contratoAlquilerInicialId || null })
+          .eq('id', created.id);
+        if (lineaError) throw lineaError;
+      }
       if (recepcionVinculadaId) await marcarRecepcionActivoClienteCotizada(empresa?.id, recepcionVinculadaId);
       onCreated?.(created.id);
     } catch (err) { setError(mensajeError(err)); }
@@ -681,14 +728,14 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     {readonly && <div className="alert alert-info">Documento emitido: los datos y el contexto mostrado son el snapshot persistido.</div>}
     <div className="grid-2 cotizacion-especial-preview-layout" style={{alignItems:'start', '--cotizacion-preview-height': alturaResumenCotizacion ? `${alturaResumenCotizacion}px` : undefined}}><div ref={resumenCotizacionRef} style={{display:'grid', gap:16}}>
       <ReferenciaHojaCosteo hoja={hojaCosteoReferencia} moneda={form.moneda} />
-      <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
+      <section className="card"><div className="card-head"><h3>Ítems</h3>{editable && form.origen_items === 'manual' && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarItems}>{saving ? 'Guardando…' : 'Guardar ítems'}</button>}</div><div className="card-body">{form.origen_items === 'hoja_costeo' && <div className="alert alert-info">Ítems vinculados a Hoja de Costeo aprobada; no son editables manualmente.</div>}<ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={readonly || form.origen_items !== 'manual'} onChange={items => setForm(current => ({ ...current, items }))} /></div></section>
       <section className="card"><div className="card-head"><h3>Contacto, validez y hitos</h3>{editable && <button type="button" className="btn btn-secondary" disabled={saving} onClick={guardarDatos}>{saving ? 'Guardando…' : 'Guardar datos'}</button>}</div><div className="card-body">{selectorDatos}<hr style={{border:0, borderTop:'1px solid var(--border)', margin:'18px 0'}} /><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} disabled={readonly} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></div></section>
     </div><section className="card cotizacion-especial-preview-card"><div className="card-head"><h3>Vista previa</h3><span className="text-muted">Valores {readonly ? 'emitidos' : 'actuales'}</span></div><div className="card-body cotizacion-especial-preview-body">{plantillaVistaPrevia ? <div ref={vistaPreviaRef} className="cotizacion-especial-preview-content"><DocumentPreviewSheet plantilla={plantillaVistaPrevia} bloques={bloquesVistaPrevia} categoria="cotizacion" contexto={contexto} /></div> : plantillaError ? <div className="alert alert-danger">{plantillaError}</div> : plantillaLoading ? <div className="text-muted">Cargando {readonly ? 'documento emitido' : 'plantilla'}…</div> : <div className="alert alert-danger">No se pudo cargar {readonly ? 'el documento emitido' : 'la plantilla de esta cotización'}.</div>}</div></section>{aceptacionManualAbierta && <AceptacionManualEspecialModal onClose={() => setAceptacionManualAbierta(false)} onConfirmar={registrarAceptacionManual} />}</div></div>;
 
-  return <div className="page-content"><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
+  return <div className="page-content"><NuevaCuentaModal open={nuevaCuentaAbierta} empresa={empresa} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} zIndex={1200} onClose={() => setNuevaCuentaAbierta(false)} onCreated={cuenta => { setCuentasLocales(actuales => [cuenta, ...actuales.filter(item => item.id !== cuenta.id)]); setForm(current => ({ ...current, cuenta_id:cuenta.id, contacto_id:'' })); }} /><div className="page-header"><div><button type="button" className="btn btn-ghost" onClick={onBack}>← Cotizaciones</button><h1 className="page-title">Nueva Cotización Especial</h1><div className="page-sub">Paso {paso} de 5</div></div></div>{error && <div className="alert alert-danger">{error}</div>}{origenBloqueado}
     <div className="card"><div className="card-body">
       {paso === 1 && <><h3>1. Tipo y plantilla</h3><div className="grid-2"><div className="input-group"><label>Tipo de documento</label><select className="input" value={form.tipo_documento_id} onChange={event => cambiarTipo(event.target.value)}><option value="">Seleccione…</option>{tiposVisibles.map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div><div className="input-group"><label>Plantilla publicada</label><select className="input" value={form.plantilla_documento_id} disabled={!form.tipo_documento_id} onChange={event => setForm(current => ({ ...current, plantilla_documento_id:event.target.value }))}><option value="">Seleccione…</option>{plantillas.map(row => <option key={row.id} value={row.id}>v{row.version} — {row.nombre_interno}</option>)}</select></div></div></>}
-      {paso === 2 && <><h3>2. Origen de ítems</h3><div className="row" style={{gap:12, marginBottom:14}}><label><input type="radio" checked={form.origen_items === 'manual'} onChange={() => setForm(current => ({ ...current, origen_items:'manual', hoja_costeo_id:'' }))} /> Manual</label><label><input type="radio" checked={form.origen_items === 'hoja_costeo'} onChange={() => setForm(current => ({ ...current, origen_items:'hoja_costeo', items:[] }))} /> Hoja de Costeo</label></div>{form.origen_items === 'hoja_costeo' ? <div className="input-group"><label>Hoja de Costeo aprobada</label><select className="input" value={form.hoja_costeo_id} onChange={event => seleccionarHC(event.target.value)}><option value="">Seleccione…</option>{hojasDisponibles.map(row => <option key={row.id} value={row.id}>{row.numero || row.id}</option>)}</select></div> : null}<div className="grid-2" style={{marginTop:14}}><div className="input-group"><label>Cuenta</label><select className="input" value={form.cuenta_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, cuenta_id:event.target.value, contacto_id:'' }))}><option value="">Seleccione…</option>{cuentas.filter(row => row.empresa_id === empresa?.id).map(row => <option key={row.id} value={row.id}>{row.razon_social || row.nombre_comercial}</option>)}</select></div><div className="input-group"><label>Oportunidad (opcional)</label><select className="input" value={form.oportunidad_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, oportunidad_id:event.target.value }))}><option value="">Sin oportunidad</option>{oportunidades.filter(row => row.empresa_id === empresa?.id && (!form.cuenta_id || row.cuenta_id === form.cuenta_id)).map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div></div><div className="input-group" style={{marginTop:14}}><label>Moneda</label><select className="input" value={form.moneda} onChange={event => setForm(current => ({ ...current, moneda:event.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div><div style={{marginTop:16}}><ItemsEditor items={form.items} moneda={form.moneda} disabled={form.origen_items === 'hoja_costeo'} onChange={items => setForm(current => ({ ...current, items }))} /></div></>}
+      {paso === 2 && <><h3>2. Origen de ítems</h3><div className="row" style={{gap:12, marginBottom:14}}><label><input type="radio" checked={form.origen_items === 'manual'} onChange={() => setForm(current => ({ ...current, origen_items:'manual', hoja_costeo_id:'' }))} /> Manual</label><label><input type="radio" checked={form.origen_items === 'hoja_costeo'} onChange={() => setForm(current => ({ ...current, origen_items:'hoja_costeo', items:[] }))} /> Hoja de Costeo</label></div>{form.origen_items === 'hoja_costeo' ? <div className="input-group"><label>Hoja de Costeo aprobada</label><select className="input" value={form.hoja_costeo_id} onChange={event => seleccionarHC(event.target.value)}><option value="">Seleccione…</option>{hojasDisponibles.map(row => <option key={row.id} value={row.id}>{row.numero || row.id}</option>)}</select></div> : null}<div className="grid-2" style={{marginTop:14}}><div className="input-group"><label>Cuenta</label><select className="input" value={form.cuenta_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => { if (event.target.value === '__crear_nueva__') { setNuevaCuentaAbierta(true); return; } setForm(current => ({ ...current, cuenta_id:event.target.value, contacto_id:'' })); }}><option value="">Seleccione…</option>{cuentasLocales.filter(row => row.empresa_id === empresa?.id).map(row => <option key={row.id} value={row.id}>{row.razon_social || row.nombre_comercial}</option>)}<option value="__crear_nueva__">+ Crear nueva cuenta</option></select></div><div className="input-group"><label>Oportunidad (opcional)</label><select className="input" value={form.oportunidad_id} disabled={form.origen_items === 'hoja_costeo'} onChange={event => setForm(current => ({ ...current, oportunidad_id:event.target.value }))}><option value="">Sin oportunidad</option>{oportunidades.filter(row => row.empresa_id === empresa?.id && (!form.cuenta_id || row.cuenta_id === form.cuenta_id)).map(row => <option key={row.id} value={row.id}>{row.nombre}</option>)}</select></div></div><div className="input-group" style={{marginTop:14}}><label>Moneda</label><select className="input" value={form.moneda} onChange={event => setForm(current => ({ ...current, moneda:event.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option><option value="EUR">EUR</option></select></div><div style={{marginTop:16}}><ItemsEditor items={form.items} unidades={unidades} moneda={form.moneda} disabled={form.origen_items === 'hoja_costeo'} onChange={items => setForm(current => ({ ...current, items }))} /></div></>}
       {paso === 3 && <><h3>3. Contacto y validez</h3>{selectorDatos}</>}
       {paso === 4 && <><h3>4. Hitos de pago</h3><HitosEditor hitos={form.hitos_pago} activos={form.hitos_activos} total={totals.total} moneda={form.moneda} onActivosChange={hitos_activos => setForm(current => ({ ...current, hitos_activos, hitos_pago:hitos_activos && !current.hitos_pago.length ? [nuevoHito()] : current.hitos_pago }))} onChange={hitos_pago => setForm(current => ({ ...current, hitos_pago }))} /></>}
       {paso === 5 && <><h3>5. Revisión y creación</h3><div className="alert alert-info">La vista previa usa los valores actuales. El servidor seguirá siendo la fuente de verdad al crear el borrador.</div><ResumenTotales totals={totals} moneda={form.moneda} /><div style={{marginTop:16}}>{plantilla ? <DocumentPreviewSheet plantilla={plantilla} bloques={bloques} categoria="cotizacion" contexto={contexto} /> : <div className="text-muted">Seleccione una plantilla publicada para ver la composición.</div>}</div></>}

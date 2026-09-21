@@ -194,26 +194,6 @@ function Cuentas() {
   const [deleteCuentaError, setDeleteCuentaError] = useState('');
   const [contactEditId, setContactEditId] = useState(null);
   const [contactForm, setContactForm] = useState({ nombre:'', cargo:'', telefono:'', email:'', principal:false });
-  const [formCuenta, setFormCuenta] = useState({
-    razon_social: '',
-    nombre_comercial: '',
-    ruc: '',
-    tipo_documento: TIPO_DOCUMENTO_RUC,
-    pais: 'Perú',
-    tipo: 'prospecto',
-    industria: '',
-    tamano: '',
-    telefono_empresa: '',
-    email_corporativo: '',
-    direccion: '',
-    nombre_contacto: '',
-    cargo_contacto: '',
-    telefono: '',
-    email: '',
-    responsable_comercial: '',
-    fuente_origen: '',
-    notas: ''
-  });
   const [activeTab, setActiveTab] = useState('Resumen');
   const [fichasEquiposCliente, setFichasEquiposCliente] = useState([]);
   const [equiposClienteLoading, setEquiposClienteLoading] = useState(false);
@@ -455,11 +435,6 @@ function Cuentas() {
     }
   };
 
-  const updateCuentaForm = (field, value) => {
-    setFormCuenta(prev => ({ ...prev, [field]: value }));
-  };
-
-  const formCuentaBase = { razon_social:'', nombre_comercial:'', ruc:'', tipo_documento:TIPO_DOCUMENTO_RUC, pais:'Perú', tipo:'prospecto', industria:'', tamano:'', telefono_empresa:'', email_corporativo:'', direccion:'', nombre_contacto:'', cargo_contacto:'', telefono:'', email:'', responsable_comercial:'', fuente_origen:'', notas:'' };
   const contactFormBase = { nombre:'', cargo:'', telefono:'', email:'', principal:false };
 
   const startNuevoContacto = () => {
@@ -676,61 +651,6 @@ function Cuentas() {
     }
   };
 
-  const guardarCuenta = (e) => {
-    e.preventDefault();
-    if (!isValidDocumentoCliente(formCuenta.ruc, formCuenta.tipo_documento)) {
-      addNotificacion?.(mensajeDocumentoInvalido(formCuenta.tipo_documento));
-      return;
-    }
-    if (!formCuenta.nombre_comercial.trim()) {
-      addNotificacion?.(esPersonaNatural(formCuenta.tipo_documento) ? 'El nombre completo es obligatorio.' : 'El nombre comercial es obligatorio.');
-      return;
-    }
-    if (!esPersonaNatural(formCuenta.tipo_documento) && !formCuenta.razon_social.trim()) {
-      addNotificacion?.('La razon social es obligatoria para este tipo de documento.');
-      return;
-    }
-    if (formCuenta.telefono && !isValidPhone(formCuenta.telefono)) {
-      addNotificacion?.('El telefono debe tener 9 digitos y comenzar con 9.');
-      return;
-    }
-    const nueva = {
-      id: `cta_${Date.now().toString(36)}`,
-      empresa_id: empresa.id,
-      razon_social: esPersonaNatural(formCuenta.tipo_documento) ? null : (formCuenta.razon_social || 'Nueva cuenta sin nombre'),
-      nombre_comercial: formCuenta.nombre_comercial || formCuenta.razon_social || 'Nueva cuenta',
-      tipo: formCuenta.tipo || 'prospecto',
-      pais: formCuenta.pais || 'Perú',
-      industria: formCuenta.industria || 'Por definir',
-      tamano: formCuenta.tamano || 'Por definir',
-      estado: 'activo',
-      responsable_comercial: formCuenta.responsable_comercial || 'Sin asignar',
-      responsable_cs: null,
-      condicion_pago: 'Por definir',
-      limite_credito: 0,
-      riesgo_financiero: 'bajo',
-      health_score: null,
-      riesgo_churn: null,
-      fecha_ultima_compra: null,
-      margen_acumulado: null,
-      saldo_cxc: 0,
-      direccion: formCuenta.direccion || 'Por definir',
-      telefono_empresa: formCuenta.telefono_empresa || null,
-      email_corporativo: formCuenta.email_corporativo || null,
-      telefono: formCuenta.telefono,
-      email: formCuenta.email,
-      ruc: formCuenta.ruc || null,
-      tipo_documento: formCuenta.tipo_documento || TIPO_DOCUMENTO_RUC,
-      fuente_origen: formCuenta.fuente_origen || null,
-      notas: formCuenta.notas || null,
-      nombre_contacto: formCuenta.nombre_contacto,
-      cargo_contacto: formCuenta.cargo_contacto
-    };
-    crearCuenta(nueva);
-    addNotificacion?.(`Cuenta creada: ${nueva.razon_social}`);
-    setNewOpen(false);
-    setFormCuenta(formCuentaBase);
-  };
 
   const canVerEquipo = role?.permisos?.ver_agenda_equipo || role?.permisos?.todo;
   const industriasDisponibles = [...new Set(cuentas.map(c => c.industria).filter(Boolean).filter(i => i !== 'Por definir'))].sort();
@@ -901,81 +821,15 @@ function Cuentas() {
         })}
       </div>
 
-      {newOpen && <>
-        <div className="side-panel-backdrop" onClick={() => setNewOpen(false)}/>
-        <div className="side-panel" style={{width:'min(620px, 96vw)'}}>
-          <div className="side-panel-head">
-            <div>
-              <div className="eyebrow">Formulario de registro</div>
-              <div className="font-display" style={{fontSize:22, fontWeight:700, marginTop:2}}>Nueva cuenta</div>
-            </div>
-            <button className="icon-btn" onClick={() => setNewOpen(false)}>{I.x}</button>
-          </div>
-          <form className="side-panel-body" onSubmit={guardarCuenta}>
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Datos de la empresa</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Tipo de documento</label><select className="select" value={formCuenta.tipo_documento} onChange={e=>updateCuentaForm('tipo_documento', e.target.value)}><option value={TIPO_DOCUMENTO_RUC}>RUC</option><option value={TIPO_DOCUMENTO_DNI}>DNI</option><option value={TIPO_DOCUMENTO_TAX_ID_EXTRANJERO}>Tax ID extranjero</option></select></div>
-              <div className="input-group"><label>{etiquetaDocumento(formCuenta.tipo_documento)} <span style={{fontSize:11,color:'var(--fg-subtle)',fontWeight:400}}>{formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? '· 3 a 30 caracteres' : esPersonaNatural(formCuenta.tipo_documento) ? '· 8 dígitos' : '· 11 dígitos'}</span></label><input className="input" value={formCuenta.ruc} onChange={e=>updateCuentaForm('ruc', sanitizeDocumentoCliente(e.target.value, formCuenta.tipo_documento))} placeholder={placeholderDocumento(formCuenta.tipo_documento)} inputMode={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? 'text' : 'numeric'} pattern={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? undefined : esPersonaNatural(formCuenta.tipo_documento) ? DNI_PATTERN : RUC_PATTERN} maxLength={formCuenta.tipo_documento === TIPO_DOCUMENTO_TAX_ID_EXTRANJERO ? TAX_ID_EXTRANJERO_MAX_LENGTH : esPersonaNatural(formCuenta.tipo_documento) ? 8 : 11}/></div>
-              <div className="input-group"><label>{esPersonaNatural(formCuenta.tipo_documento) ? 'Nombre completo *' : 'Nombre comercial *'}</label><input className="input" required value={formCuenta.nombre_comercial} onChange={e=>updateCuentaForm('nombre_comercial', e.target.value)} placeholder={esPersonaNatural(formCuenta.tipo_documento) ? 'Nombre completo de la persona' : 'Si es diferente a la razón social'}/></div>
-              {!esPersonaNatural(formCuenta.tipo_documento) && <div className="input-group"><label>Razón social *</label><input className="input" required value={formCuenta.razon_social} onChange={e=>updateCuentaForm('razon_social', e.target.value)} autoFocus placeholder="Nombre legal de la empresa"/></div>}
-              <div className="input-group"><label>País</label><select className="select" value={formCuenta.pais} onChange={e=>updateCuentaForm('pais', e.target.value)}>
-                {['Perú','Chile','Colombia','México','Ecuador','Bolivia','Argentina','Brasil','Uruguay','Otro'].map(p=><option key={p}>{p}</option>)}
-              </select></div>
-              <div className="input-group"><label>Tipo de cuenta</label><select className="select" value={formCuenta.tipo} onChange={e=>updateCuentaForm('tipo', e.target.value)}>
-                <option value="prospecto">Prospecto</option>
-                <option value="cliente">Cliente</option>
-                <option value="partner">Partner</option>
-                <option value="proveedor_estrategico">Proveedor estratégico</option>
-              </select></div>
-              <div className="input-group"><label>Industria</label><select className="select" value={formCuenta.industria} onChange={e=>updateCuentaForm('industria', e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {['Minería','Industrial','Construcción','Agroindustria','Facilities','Energía','Petróleo & Gas','Logística','Otro'].map(i=><option key={i}>{i}</option>)}
-              </select></div>
-              <div className="input-group"><label>Tamaño empresa</label><select className="select" value={formCuenta.tamano} onChange={e=>updateCuentaForm('tamano', e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {['pequeña','mediana','grande','corporativo'].map(t=><option key={t}>{t}</option>)}
-              </select></div>
-              <div className="input-group"><label>Teléfono empresa</label><input className="input" type="tel" inputMode="numeric" value={formCuenta.telefono_empresa} onChange={e=>updateCuentaForm('telefono_empresa', e.target.value)} placeholder="01XXXXXXX o 9XXXXXXXX"/></div>
-              <div className="input-group"><label>Email corporativo</label><input className="input" type="email" value={formCuenta.email_corporativo} onChange={e=>updateCuentaForm('email_corporativo', e.target.value)} placeholder="info@empresa.pe"/></div>
-              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Dirección</label><input className="input" value={formCuenta.direccion} onChange={e=>updateCuentaForm('direccion', e.target.value)} placeholder="Dirección fiscal o principal"/></div>
-            </div>
-
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Contacto principal</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Nombre del contacto</label><input className="input" value={formCuenta.nombre_contacto} onChange={e=>updateCuentaForm('nombre_contacto', e.target.value)} placeholder="Nombre y apellido"/></div>
-              <div className="input-group"><label>Cargo</label><input className="input" value={formCuenta.cargo_contacto} onChange={e=>updateCuentaForm('cargo_contacto', e.target.value)} placeholder="Ej: Gerente de Operaciones"/></div>
-              <div className="input-group"><label>Teléfono directo</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formCuenta.telefono} onChange={e=>updateCuentaForm('telefono', sanitizePhone(e.target.value))} placeholder="9XXXXXXXX"/></div>
-              <div className="input-group"><label>Email personal</label><input className="input" type="email" value={formCuenta.email} onChange={e=>updateCuentaForm('email', e.target.value)} placeholder="contacto@empresa.pe"/></div>
-            </div>
-
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Asignación</div>
-            <div className="grid-2" style={{gap:14, marginBottom:20}}>
-              <div className="input-group"><label>Responsable comercial *</label><select className="select" required value={formCuenta.responsable_comercial} onChange={e=>updateCuentaForm('responsable_comercial', e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {comercialesAsignables.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
-              </select></div>
-              <div className="input-group"><label>Fuente de origen</label><select className="select" value={formCuenta.fuente_origen} onChange={e=>updateCuentaForm('fuente_origen', e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {['Referido','Prospección directa','Evento / Feria','Web','Otro'].map(f=><option key={f}>{f}</option>)}
-              </select></div>
-            </div>
-
-            <div style={{fontWeight:600, fontSize:13, marginBottom:10, color:'var(--fg-muted)'}}>Notas iniciales</div>
-            <div style={{marginBottom:20}}>
-              <textarea className="input" rows={3} style={{resize:'vertical', minHeight:72}} value={formCuenta.notas} onChange={e=>updateCuentaForm('notas', e.target.value)} placeholder="Contexto inicial, cómo llegó el prospecto, observaciones relevantes..."/>
-            </div>
-
-            <div style={{padding:'10px 14px', background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.3)', borderRadius:8, fontSize:12, color:'var(--fg-muted)', marginBottom:20}}>
-              Las <strong>condiciones comerciales</strong> (crédito, forma de pago, clasificación) se completan en una segunda etapa desde el área de Finanzas/Administración.
-            </div>
-
-            <div className="row" style={{justifyContent:'flex-end', gap:10}}>
-              <button type="button" className="btn btn-secondary" onClick={() => setNewOpen(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">Guardar cuenta</button>
-            </div>
-          </form>
-        </div>
-      </>}
+      <NuevaCuentaModal
+        open={newOpen}
+        empresa={empresa}
+        crearCuenta={crearCuenta}
+        comercialesAsignables={comercialesAsignables}
+        onClose={() => setNewOpen(false)}
+        onCreated={() => setNewOpen(false)}
+        onNotify={addNotificacion}
+      />
 
       {sel && <>
         <div className="side-panel-backdrop" onClick={() => setSel(null)}/>
@@ -6594,20 +6448,14 @@ const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
   return match[2] === tableName ? match[1] : null;
 };
 const normEstadoSolpe = s => String(s?.estado || '').trim().toLowerCase();
-const solpeTieneOC = (s, ordenesCompra = [], procesosCompra = []) => {
-  const sid = s?.id;
-  if (!sid) return false;
-  if (['oc_generada', 'oc generada'].includes(normEstadoSolpe(s))) return true;
-  return (ordenesCompra || []).some(oc => {
-    if (oc.solpe_id === sid || oc.origen_solpe_id === sid) return true;
-    return (procesosCompra || []).some(p => p.id === oc.proceso_compra_id && p.solpe_id === sid);
-  });
-};
-const solpeDisponibleParaOC = (s, ordenesCompra = [], procesosCompra = []) => normEstadoSolpe(s) === 'aprobada' && !solpeTieneOC(s, ordenesCompra, procesosCompra);
+const solpeTieneLineasPendientes = s => (Array.isArray(s?.items) ? s.items : [])
+  .some(item => !item?.oc_id);
+const solpeDisponibleParaOC = s => ['aprobada', 'oc_parcial'].includes(normEstadoSolpe(s)) && solpeTieneLineasPendientes(s);
 const solpeOCLabel = s => `${s?.numero || s?.codigo || s?.id || 'SOLPE'}${s?.descripcion ? ` - ${s.descripcion}` : ''}`;
 const itemsSolpeParaOC = (s) => {
   const items = Array.isArray(s?.items) ? s.items : [];
   return items.length ? items.map(it => ({
+    solpe_item_id: it.id || null,
     material_id: it.material_id || '',
     codigo: it.material_codigo || it.codigo || '',
     descripcion: it.descripcion || it.nombre || 'Item de compra',
@@ -6782,7 +6630,7 @@ function OrdenesCompra() {
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const proveedoresOC = homologados.length ? homologados : proveedores;
-  const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s, ordenesCompra, procesosCompra));
+  const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s));
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
   const otDestinoOC = (ots || []).find(o => o.id === form.ot_id);
@@ -6811,14 +6659,14 @@ function OrdenesCompra() {
     handledSolpeParamRef.current = solpeId;
   }, [activeParams?.action, activeParams?.solpeId, solpes]);
 
-  const marcarSolpeOCGenerada = async (solpeId, oc) => {
-    if (!solpeId) return;
-    if (isSupabaseConfigured()) {
-      const sb = await getSupabaseClient();
-      const { error } = await sb.from('solpe_interna').update({ estado:'oc_generada', updated_at:new Date().toISOString() }).eq('id', solpeId);
-      if (error) throw error;
-    }
-    setSolpes(prev => prev.map(s => s.id === solpeId ? { ...s, estado:'oc_generada', orden_compra_id:oc?.id || s.orden_compra_id, orden_compra_codigo:oc?.codigo || s.orden_compra_codigo } : s));
+  const registrarCoberturaSolpeOC = async (solpeId, oc) => {
+    if (!solpeId || !oc?.id) return null;
+    if (!isSupabaseConfigured()) return null;
+    const resultado = await comprasService.registrarCoberturaSolpeOc(solpeId, oc.id);
+    setSolpes(prev => prev.map(s => s.id === solpeId
+      ? { ...s, estado: resultado?.estado || s.estado, items: resultado?.items || s.items }
+      : s));
+    return resultado;
   };
 
   const crear = async (emitir=true) => {
@@ -6863,7 +6711,7 @@ function OrdenesCompra() {
     try {
       const { ocGuardada, payloadUsado } = await crearOCCompatible(oc);
       if (form.solpe_id && (!('solpe_id' in payloadUsado) || !('solpe_codigo' in payloadUsado) || !('origen_tipo' in payloadUsado))) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
-      if (form.solpe_id) await marcarSolpeOCGenerada(form.solpe_id, ocGuardada);
+      if (form.solpe_id) await registrarCoberturaSolpeOC(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
       setForm(nuevaOCForm(proveedoresOC[0]?.id));
       setPanel(false);
@@ -7054,7 +6902,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
   return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.origen_compra === 'solpe' ? '__solpe__' : (form.proceso_compra_id || '')} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option><option value="__solpe__">Desde SOLPE</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><SearchSelect value={form.proveedor_id} placeholder="Buscar proveedor..." options={proveedores.map(p => ({ id:p.id, label:`${p.razon_social}${p.estado==='observado'?' - observado':''}`, searchText:[p.razon_social, p.nombre_comercial, p.ruc, p.codigo].filter(Boolean).join(' ') }))} onChange={proveedor_id=>setForm(v=>({...v,proveedor_id}))}/></div>
-      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE aprobada</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs aprobadas sin OC generada.</div>}</div>}
+      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE con líneas pendientes</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs con líneas pendientes.</div>}</div>}
       <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
@@ -10902,7 +10750,7 @@ function SearchSelect({ value, onChange, options, placeholder = 'Seleccionar...'
 
 const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '', ot_id: '' };
 
-const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
+const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_parcial: 'badge-orange', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
   const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, inventario, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();

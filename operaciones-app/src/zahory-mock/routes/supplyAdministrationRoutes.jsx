@@ -44,7 +44,7 @@ export function renderSupplyAdministrationRoute(route, context) {
     case 'costos': return <CostosPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
     case 'clientes': return <ClientesContratosPage />;
     case 'equipos': return <EquiposPage />;
-    case 'proyectos': return <ProyectosTarifasPage />;
+    case 'proyectos': return <ProyectosTarifasPage onNav={onNavigate} />;
     case 'usuarios': return <><AdministrativeAppLinkPage title="Usuarios y Roles" adminRoute="usuarios" /><UsuariosPage /></>;
     case 'configuracion':
     case 'config': return <ConfiguracionPage />;

@@ -4,6 +4,9 @@ const COTIZACION_ITEM_FIELDS = [
   { id:'unidad', label:'Unidad', token:'{{item.unidad}}' },
   { id:'precio_unitario', label:'Precio unitario', token:'{{item.precio_unitario}}' },
   { id:'subtotal', label:'Subtotal', token:'{{item.subtotal}}' },
+  { id:'codigo', label:'Código del activo', token:'{{item.codigo}}' },
+  { id:'marca', label:'Marca del activo', token:'{{item.marca}}' },
+  { id:'modelo', label:'Modelo del activo', token:'{{item.modelo}}' },
 ];
 
 export const DOCUMENT_REPEAT_SOURCES = {

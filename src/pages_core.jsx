@@ -24,6 +24,7 @@ import {
 } from './lib/formValidators.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
+import { AdvertenciaHojaCosteoDuplicada } from './components/AdvertenciaHojaCosteoDuplicada.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -2293,7 +2294,7 @@ function Pipeline() {
   const {
     oportunidades, cuentas, actividades, agendaEventos, hojasCosteo, cotizaciones, osClientes,
     oppHistorialEtapas, personalAdmin,
-    crearAgendaEvento, crearOportunidad, crearHojaCosteo, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    crearAgendaEvento, crearOportunidad, actualizarLineaNegocioOportunidad, crearHojaCosteo, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     navigate, activeParams, searchQuery, usuarios, roles, role, empresa, monedasActivas, authUser, addToast,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
@@ -2328,6 +2329,7 @@ function Pipeline() {
   const [loadingServiciosOpp, setLoadingServiciosOpp] = useState(false);
   const [creandoHojaCosteoId, setCreandoHojaCosteoId] = useState(null);
   const [confirmacionHojaCosteo, setConfirmacionHojaCosteo] = useState(null);
+  const [advertenciaHojaCosteo, setAdvertenciaHojaCosteo] = useState(null);
   const [selectorNuevaCotizacion, setSelectorNuevaCotizacion] = useState(null);
   const modoVistaSociedadCosteo = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -2391,7 +2393,7 @@ function Pipeline() {
       moneda: oportunidad.moneda === 'USD' ? 'USD' : 'PEN',
     });
   };
-  const crearHojaCosteoDesdeOportunidad = async (oportunidad, moneda) => {
+  const crearHojaCosteoDesdeOportunidad = async (oportunidad, moneda, reemplazarAprobadas = false) => {
     if (!oportunidad?.id || creandoHojaCosteoId) return;
     if (!modoVistaSociedadCosteo.permiteEscritura) {
       addToast('Selecciona una sociedad concreta en el selector superior para crear una Hoja de Costeo.', 'error');
@@ -2405,14 +2407,34 @@ function Pipeline() {
         sociedad_id: empresa?.multisociedad_habilitado ? modoVistaSociedadCosteo.sociedadIdEscritura : null,
         responsable_costeo: oportunidad.responsable || null,
         moneda: moneda === 'USD' ? 'USD' : 'PEN',
-      });
+      }, { reemplazarAprobadas });
       setConfirmacionHojaCosteo(null);
       navigate('hoja_costeo_wizard', { hojaId });
     } catch (error) {
+      if (error?.code === 'HC_DUPLICADA_APROBADA_SIN_COTIZACION') {
+        setConfirmacionHojaCosteo(null);
+        setAdvertenciaHojaCosteo({ oportunidad, moneda, hojas: error.hojasCosteo || [] });
+        return;
+      }
       addToast(`No se pudo crear la Hoja de Costeo: ${error?.message || error}`, 'error');
     } finally {
       setCreandoHojaCosteoId(null);
     }
+  };
+  const prepararHojaCosteoDesdeSelector = async (oportunidad, lineaNegocio) => {
+    const lineaActual = oportunidad?.linea_negocio || null;
+    if (lineaNegocio && lineaNegocio !== lineaActual) {
+      try {
+        const actualizada = await actualizarLineaNegocioOportunidad(oportunidad.id, lineaNegocio);
+        setSelectorNuevaCotizacion(null);
+        abrirConfirmacionHojaCosteo({ ...oportunidad, ...actualizada, linea_negocio: lineaNegocio });
+      } catch (error) {
+        addToast(`No se pudo guardar la línea de negocio: ${error?.message || error}`, 'error');
+      }
+      return;
+    }
+    setSelectorNuevaCotizacion(null);
+    abrirConfirmacionHojaCosteo(oportunidad);
   };
   const guardarNuevaOpp = (event) => {
     event.preventDefault();
@@ -3124,7 +3146,7 @@ function Pipeline() {
                         {I.file} Nueva Cotización
                       </button>
                     )}
-                    {selectorNuevaCotizacion?.id === sel.id && <SelectorTipoCotizacion empresaId={empresa?.id} lineaNegocioInicial={selectorNuevaCotizacion.linea_negocio || ''} onHojaCosteo={_lineaNegocio => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); abrirConfirmacionHojaCosteo(oportunidad); }} onEstandar={lineaNegocio => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { opp: oportunidad.id, active_tab: 'nueva', linea_negocio: lineaNegocio }); }} onEspecial={(plantilla, _lineaNegocio) => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:plantilla.id, tipo_documento_id:plantilla.tipo_documento_id, cuenta_id:oportunidad.cuenta_id || null, oportunidad_id:oportunidad.id }); }} onCancel={() => setSelectorNuevaCotizacion(null)} onError={mensaje => addToast(mensaje, 'error')} />}
+                    {selectorNuevaCotizacion?.id === sel.id && <SelectorTipoCotizacion empresaId={empresa?.id} cuentaIdInicial={selectorNuevaCotizacion.cuenta_id || ''} lineaNegocioInicial={selectorNuevaCotizacion.linea_negocio || ''} onHojaCosteo={lineaNegocio => { const oportunidad = selectorNuevaCotizacion; prepararHojaCosteoDesdeSelector(oportunidad, lineaNegocio); }} onEstandar={(lineaNegocio, tarifarioContexto) => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { opp: oportunidad.id, active_tab: 'nueva', cuenta_id: tarifarioContexto?.cuenta_id || oportunidad.cuenta_id || null, proyecto_id:tarifarioContexto?.proyecto_id || null, contrato_alquiler_id:tarifarioContexto?.contrato_alquiler_id || null, tarifario_contexto:tarifarioContexto || null, linea_negocio: tarifarioContexto ? 'flota_alquileres' : lineaNegocio }); }} onEspecial={(plantilla, lineaNegocio, tarifarioContexto) => { const oportunidad = selectorNuevaCotizacion; setSelectorNuevaCotizacion(null); navigate('cotizaciones', { especial:'nueva', plantilla_documento_id:plantilla.id, tipo_documento_id:plantilla.tipo_documento_id, cuenta_id:tarifarioContexto?.cuenta_id || oportunidad.cuenta_id || null, oportunidad_id:oportunidad.id, proyecto_id:tarifarioContexto?.proyecto_id || null, contrato_alquiler_id:tarifarioContexto?.contrato_alquiler_id || null, tarifario_contexto:tarifarioContexto || null, linea_negocio: tarifarioContexto ? 'flota_alquileres' : (lineaNegocio || oportunidad.linea_negocio || null) }); }} onCancel={() => setSelectorNuevaCotizacion(null)} onError={mensaje => addToast(mensaje, 'error')} />}
                     <div className="row" style={{gap:8, marginTop:2}}>
                       {sel.etapa === 'negociacion' && (
                         <button className="btn flex-1" style={{justifyContent:'center', background:'var(--green-lt)', color:'var(--green-dk)', border:'1px solid rgba(76,175,80,0.3)', fontWeight:600}}
@@ -3767,6 +3789,23 @@ function Pipeline() {
             </div>
           </div>
         </div>
+      )}
+
+      {advertenciaHojaCosteo && (
+        <AdvertenciaHojaCosteoDuplicada
+          hojas={advertenciaHojaCosteo.hojas}
+          saving={Boolean(creandoHojaCosteoId)}
+          onCancel={() => {
+            const hoja = advertenciaHojaCosteo.hojas[0];
+            setAdvertenciaHojaCosteo(null);
+            if (hoja?.id) navigate('hoja_costeo_wizard', { hojaId: hoja.id });
+          }}
+          onContinue={() => {
+            const { oportunidad, moneda } = advertenciaHojaCosteo;
+            setAdvertenciaHojaCosteo(null);
+            crearHojaCosteoDesdeOportunidad(oportunidad, moneda, true);
+          }}
+        />
       )}
 
       {pendingPerdida && (

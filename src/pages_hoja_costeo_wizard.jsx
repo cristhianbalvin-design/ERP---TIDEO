@@ -3,7 +3,7 @@ import { I, moneyD } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { actualizarHojaCosteoSvc } from './services/crmService.js';
-import { CotizacionesGeneradasHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
+import { CotizacionesGeneradasHojaCosteo, listarCotizacionesGeneradasPorHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 import { MaterialAutocomplete } from './pages_core.jsx';
 
@@ -15,7 +15,57 @@ const STEPS = [
   { id: 'resumen', label: 'Resumen' },
 ];
 
+const UNIDADES_MEDIDA_COMUNES = [
+  ['und', 'Unidad (und)'],
+  ['pza', 'Pieza (pza)'],
+  ['kg', 'Kilogramo (kg)'],
+  ['g', 'Gramo (g)'],
+  ['t', 'Tonelada (t)'],
+  ['m', 'Metro (m)'],
+  ['cm', 'Centímetro (cm)'],
+  ['mm', 'Milímetro (mm)'],
+  ['m2', 'Metro cuadrado (m²)'],
+  ['m3', 'Metro cúbico (m³)'],
+  ['l', 'Litro (l)'],
+  ['ml', 'Mililitro (ml)'],
+  ['gal', 'Galón (gal)'],
+  ['km', 'Kilómetro (km)'],
+  ['hora', 'Hora'],
+  ['dia', 'Día'],
+  ['semana', 'Semana'],
+  ['mes', 'Mes'],
+  ['turno', 'Turno'],
+  ['viaje', 'Viaje'],
+  ['servicio', 'Servicio'],
+  ['par', 'Par'],
+  ['juego', 'Juego'],
+  ['docena', 'Docena'],
+  ['caja', 'Caja'],
+  ['paquete', 'Paquete'],
+  ['rollo', 'Rollo'],
+  ['saco', 'Saco'],
+  ['bulto', 'Bulto'],
+  ['lote', 'Lote'],
+  ['pallet', 'Pallet'],
+];
+
+function SelectorUnidadMedida({ value, onChange, disabled }) {
+  const valorActual = String(value || '');
+  const existeEnCatalogo = UNIDADES_MEDIDA_COMUNES.some(([codigo]) => codigo === valorActual);
+  const opciones = existeEnCatalogo || !valorActual
+    ? UNIDADES_MEDIDA_COMUNES
+    : [[valorActual, `Valor actual: ${valorActual}`], ...UNIDADES_MEDIDA_COMUNES];
+
+  return (
+    <select className="input" disabled={disabled} value={valorActual} onChange={onChange}>
+      <option value="">Selecciona una unidad</option>
+      {opciones.map(([codigo, etiqueta]) => <option key={codigo} value={codigo}>{etiqueta}</option>)}
+    </select>
+  );
+}
+
 const numero = value => Number(value || 0);
+const redondearUnaDecimal = value => value == null ? null : Math.round((numero(value) + Number.EPSILON) * 10) / 10;
 
 export default function HojaCosteoWizard() {
   const { activeParams, hojasCosteo, setHojasCosteo, empresa, navigate, addToast, aprobarHojaCosteo, crearCotizacionDesdeHojaCosteo } = useApp();
@@ -63,6 +113,8 @@ export default function HojaCosteoWizard() {
   const [aprobando, setAprobando] = useState(false);
   const [selectorTipoCotizacion, setSelectorTipoCotizacion] = useState(false);
   const [generandoCotizacion, setGenerandoCotizacion] = useState(false);
+  const [cotizacionesVinculadas, setCotizacionesVinculadas] = useState([]);
+  const [cotizacionesVerificadas, setCotizacionesVerificadas] = useState(false);
   const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
 
   const tarifaPorCargo = useMemo(() => new Map(
@@ -122,9 +174,12 @@ export default function HojaCosteoWizard() {
     return numero(tipoCambioPenUsd) > 0 ? montoUsd / numero(tipoCambioPenUsd) : null;
   };
   const money = value => moneyD(numero(value), simboloMoneda);
+  const moneyUnaDecimal = value => value == null
+    ? '—'
+    : `${simboloMoneda} ${numero(value).toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
   const tarifaPlanillaEnMoneda = convertirUsdAMonedaHoja(tarifaPlanilla);
   const costoMaterialCalculadoEnMoneda = convertirUsdAMonedaHoja(materialSeleccionado?.costo_usd_calculado);
-  const costoHoraActivoCalculadoEnMoneda = convertirUsdAMonedaHoja(activoSeleccionado?.costo_hora_activo_usd);
+  const costoHoraActivoCalculadoEnMoneda = redondearUnaDecimal(convertirUsdAMonedaHoja(activoSeleccionado?.costo_hora_activo_usd));
   const activoUsaMontoDirecto = Boolean(activoSeleccionado && costoHoraActivoCalculadoEnMoneda == null && numero(formActivo.costo_hora_manual) <= 0);
 
   const cargarDatos = async () => {
@@ -439,7 +494,7 @@ export default function HojaCosteoWizard() {
     }
 
     const costoCalculado = costoHoraActivoCalculadoEnMoneda;
-    const costoManual = numero(formActivo.costo_hora_manual);
+    const costoManual = redondearUnaDecimal(formActivo.costo_hora_manual);
     const costoHora = costoManual > 0 ? costoManual : costoCalculado;
     const usaMontoDirecto = costoHora == null || numero(costoHora) <= 0;
     const horas = numero(formActivo.horas_uso_estimadas);
@@ -603,6 +658,25 @@ export default function HojaCosteoWizard() {
   }, [paso, cargando, hoja?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    let activa = true;
+    setCotizacionesVerificadas(false);
+    if (!hoja?.id) {
+      setCotizacionesVinculadas([]);
+      return () => { activa = false; };
+    }
+    listarCotizacionesGeneradasPorHojaCosteo(hoja.id)
+      .then(data => {
+        if (!activa) return;
+        setCotizacionesVinculadas(data);
+        setCotizacionesVerificadas(true);
+      })
+      .catch(() => {
+        if (activa) setCotizacionesVinculadas([]);
+      });
+    return () => { activa = false; };
+  }, [hoja?.id]);
+
+  useEffect(() => {
     if (!aprobacionPendiente || !hoja?.id || bloqueada || aprobando) return;
     const aprobar = async () => {
       setAprobacionPendiente(false);
@@ -629,12 +703,12 @@ export default function HojaCosteoWizard() {
     if (guardado) setAprobacionPendiente(true);
   };
 
-  const generarCotizacionEstandar = async () => {
+  const generarCotizacionEstandar = async lineaNegocio => {
     if (!hoja?.id || generandoCotizacion) return;
     setSelectorTipoCotizacion(false);
     setGenerandoCotizacion(true);
     try {
-      const cotizacionId = await crearCotizacionDesdeHojaCosteo(hoja.id);
+      const cotizacionId = await crearCotizacionDesdeHojaCosteo(hoja.id, lineaNegocio || hoja.linea_negocio || null);
       navigate('cotizaciones', { detail: cotizacionId });
     } catch (error) {
       addToast(`No se pudo generar la Cotización Estándar: ${error?.message || error}`, 'error');
@@ -643,7 +717,7 @@ export default function HojaCosteoWizard() {
     }
   };
 
-  const generarCotizacionEspecial = plantilla => {
+  const generarCotizacionEspecial = (plantilla, lineaNegocio) => {
     if (!hoja?.id) return;
     setSelectorTipoCotizacion(false);
     navigate('cotizaciones', {
@@ -651,12 +725,18 @@ export default function HojaCosteoWizard() {
       hoja_costeo_id: hoja.id,
       plantilla_documento_id: plantilla.id,
       tipo_documento_id: plantilla.tipo_documento_id,
+      linea_negocio: lineaNegocio || hoja.linea_negocio || null,
       cuenta_id: hoja.cuenta_id || null,
       oportunidad_id: hoja.oportunidad_id || null,
       activo_id: hoja.activo_id || null,
       recepcion_id: hoja.recepcion_id || null,
     });
   };
+
+  const pendienteCotizar = hoja?.estado === 'aprobada'
+    && cotizacionesVerificadas
+    && !hoja?.cotizacion_id
+    && cotizacionesVinculadas.length === 0;
 
   const enviarARevision = async () => {
     if (bloqueada || guardandoResumen || hoja?.estado !== 'borrador') return;
@@ -806,7 +886,7 @@ export default function HojaCosteoWizard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) repeat(3, minmax(100px, 1fr)) auto', gap: 12, alignItems: 'end' }}>
             <div className="input-group" style={{ margin: 0 }}><label>Descripción</label><input className="input" disabled={bloqueada || guardandoEsteBloque} value={formJson.descripcion} onChange={e => setFormJson(prev => ({ ...prev, descripcion: e.target.value }))} placeholder="Concepto del costo" /></div>
             <div className="input-group" style={{ margin: 0 }}><label>Cantidad</label><input type="number" className="input" min="0.01" step="0.01" disabled={bloqueada || guardandoEsteBloque} value={formJson.cantidad} onChange={e => setFormJson(prev => ({ ...prev, cantidad: e.target.value }))} placeholder="0.00" /></div>
-            <div className="input-group" style={{ margin: 0 }}><label>Unidad</label><input className="input" disabled={bloqueada || guardandoEsteBloque} value={formJson.unidad} onChange={e => setFormJson(prev => ({ ...prev, unidad: e.target.value }))} placeholder="und" /></div>
+            <div className="input-group" style={{ margin: 0 }}><label>Unidad de medida</label><SelectorUnidadMedida disabled={bloqueada || guardandoEsteBloque} value={formJson.unidad} onChange={e => setFormJson(prev => ({ ...prev, unidad: e.target.value }))} /></div>
             <div className="input-group" style={{ margin: 0 }}><label>Costo unitario</label><input type="number" className="input" min="0.01" step="0.01" disabled={bloqueada || guardandoEsteBloque} value={formJson.costo_unitario} onChange={e => setFormJson(prev => ({ ...prev, costo_unitario: e.target.value }))} placeholder={`${simboloMoneda} 0.00`} /></div>
             <button className="btn btn-secondary" type="submit" disabled={bloqueada || guardandoEsteBloque}>{I.plus} {guardandoEsteBloque ? 'Guardando...' : 'Agregar línea'}</button>
           </div>
@@ -818,7 +898,7 @@ export default function HojaCosteoWizard() {
               <tr key={linea.id}>
                 <td><input className="input" disabled={bloqueada || guardandoEsteBloque} value={linea.descripcion || ''} onChange={e => editarLineaJson(campo, linea.id, 'descripcion', e.target.value)} onBlur={() => guardarBloqueJson(campo, esServicio ? serviciosTerceros : logistica)} /></td>
                 <td><input type="number" className="input num" min="0" step="0.01" disabled={bloqueada || guardandoEsteBloque} value={linea.cantidad ?? ''} onChange={e => editarLineaJson(campo, linea.id, 'cantidad', e.target.value)} onBlur={() => guardarBloqueJson(campo, esServicio ? serviciosTerceros : logistica)} /></td>
-                <td><input className="input" disabled={bloqueada || guardandoEsteBloque} value={linea.unidad || ''} onChange={e => editarLineaJson(campo, linea.id, 'unidad', e.target.value)} onBlur={() => guardarBloqueJson(campo, esServicio ? serviciosTerceros : logistica)} /></td>
+                <td><SelectorUnidadMedida disabled={bloqueada || guardandoEsteBloque} value={linea.unidad} onChange={e => editarLineaJson(campo, linea.id, 'unidad', e.target.value)} onBlur={() => guardarBloqueJson(campo, esServicio ? serviciosTerceros : logistica)} /></td>
                 <td><input type="number" className="input num" min="0" step="0.01" disabled={bloqueada || guardandoEsteBloque} value={linea.costo_unitario ?? ''} onChange={e => editarLineaJson(campo, linea.id, 'costo_unitario', e.target.value)} onBlur={() => guardarBloqueJson(campo, esServicio ? serviciosTerceros : logistica)} /></td>
                 <td className="num" style={{ fontWeight: 700 }}>{money(numero(linea.cantidad) * numero(linea.costo_unitario))}</td>
                 {!bloqueada && <td><button type="button" className="icon-btn text-danger" disabled={guardandoEsteBloque} onClick={() => eliminarLineaJson(campo, linea.id)} title="Eliminar línea">{I.trash}</button></td>}
@@ -868,13 +948,13 @@ export default function HojaCosteoWizard() {
               <div className="input-group" style={{ margin: 0 }}>
                 <label>Costo/hora calculado</label>
                 <div className="input" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)' }}>
-                  {costoHoraActivoCalculadoEnMoneda != null ? money(costoHoraActivoCalculadoEnMoneda) : '—'}
+                  {costoHoraActivoCalculadoEnMoneda != null ? moneyUnaDecimal(costoHoraActivoCalculadoEnMoneda) : '—'}
                   {costoHoraActivoCalculadoEnMoneda != null && <span style={{ marginLeft: 8 }} className="badge badge-cyan">Referencia</span>}
                 </div>
               </div>
               <div className="input-group" style={{ margin: 0 }}>
                 <label>Costo/hora manual</label>
-                <input type="number" className="input" min="0.01" step="0.01" disabled={bloqueada || cargando} value={formActivo.costo_hora_manual} onChange={e => setFormActivo(prev => ({ ...prev, costo_hora_manual: e.target.value, monto_depreciacion_directo: e.target.value ? '' : prev.monto_depreciacion_directo }))} placeholder={`${simboloMoneda} 0.00`} />
+                <input type="number" className="input" min="0.1" step="0.1" disabled={bloqueada || cargando} value={formActivo.costo_hora_manual} onChange={e => setFormActivo(prev => ({ ...prev, costo_hora_manual: e.target.value, monto_depreciacion_directo: e.target.value ? '' : prev.monto_depreciacion_directo }))} onBlur={() => setFormActivo(prev => ({ ...prev, costo_hora_manual: prev.costo_hora_manual === '' ? '' : String(redondearUnaDecimal(prev.costo_hora_manual)) }))} placeholder={`${simboloMoneda} 0.0`} />
                 <div className="text-muted" style={{ fontSize: 12, marginTop: 5 }}>{costoHoraActivoCalculadoEnMoneda != null ? 'Puedes ajustar la sugerencia sin cambiar la configuración del activo.' : 'Ingresa un costo/hora o registra un monto de depreciación directo.'}</div>
               </div>
               {activoUsaMontoDirecto ? (
@@ -1107,6 +1187,12 @@ export default function HojaCosteoWizard() {
         <span className={`badge ${bloqueada ? 'badge-green' : 'badge-gray'}`} style={{ alignSelf: 'flex-start', textTransform: 'uppercase' }}>{hoja.estado || 'borrador'}</span>
       </div>
 
+      {pendienteCotizar && (
+        <div className="alert alert-warning" style={{ marginBottom: 12, fontSize: 13 }}>
+          Esta Hoja de Costeo está aprobada, pero aún no tiene una cotización vinculada. La aprobación no genera la cotización automáticamente.
+        </div>
+      )}
+
       <CotizacionesGeneradasHojaCosteo hojaCosteoId={hoja.id} navigate={navigate} />
 
       <nav aria-label="Pasos del wizard" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))', gap: 8, margin: '12px 0 20px', overflowX: 'auto' }}>
@@ -1140,6 +1226,7 @@ export default function HojaCosteoWizard() {
       </div>
       {selectorTipoCotizacion && <SelectorTipoCotizacion
         empresaId={empresa?.id}
+        lineaNegocioInicial={hoja.linea_negocio || ''}
         forzarSelector
         onEstandar={generarCotizacionEstandar}
         onEspecial={generarCotizacionEspecial}

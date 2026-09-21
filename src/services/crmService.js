@@ -327,7 +327,7 @@ export async function persistirOportunidad(supabase, empresaId, opp) {
 
 export async function actualizarOportunidad(supabase, oppId, datos) {
   const allowed = ['etapa', 'estado', 'probabilidad', 'monto_estimado', 'moneda', 'fecha_cierre_estimada', 'fecha_cierre_real', 'motivo_perdida', 'forecast_ponderado', 'notas', 'competidor',
-    'acuerdo_pct', 'acuerdo_bonificacion', 'acuerdo_justificacion', 'acuerdo_estado',
+    'linea_negocio', 'acuerdo_pct', 'acuerdo_bonificacion', 'acuerdo_justificacion', 'acuerdo_estado',
     'acuerdo_aprobado_por', 'acuerdo_aprobado_id', 'acuerdo_fecha_aprobacion', 'acuerdo_motivo_rechazo'];
   const row = Object.fromEntries(
     allowed.filter(k => datos[k] !== undefined).map(k => [k, datos[k]])
@@ -343,6 +343,8 @@ export async function persistirCotizacion(supabase, empresaId, cot) {
     oportunidad_id: cot.oportunidad_id || null,
     linea_negocio: cot.linea_negocio || null,
     cuenta_id: cot.cuenta_id || null,
+    proyecto_id: cot.proyecto_id || null,
+    contrato_alquiler_id: cot.contrato_alquiler_id || null,
     contacto_id: cot.contacto_id || null,
     responsable_id: cot.responsable_id || null,
     activo_id: cot.activo_id || null,
@@ -408,6 +410,7 @@ export async function actualizarCotizacion(supabase, cotId, datos) {
     'aprobacion_tipo', 'aprobacion_canal', 'aprobacion_fecha_cliente',
     'aprobacion_notas', 'aprobacion_registrada_por', 'aprobacion_registrada_at', 'aprobacion_archivos',
     'centro_beneficio_id', 'responsable_id', 'sociedad_id', 'os_cliente_id', 'activo_id', 'recepcion_id',
+    'proyecto_id', 'contrato_alquiler_id',
     'linea_negocio',
   ];
   const row = Object.fromEntries(

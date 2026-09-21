@@ -11,7 +11,8 @@ const ACTIVOS_RENTAL  = ZAHORY_SAC_DATA.flota_equipos_rental;
 const CONTRATOS_MOCK  = ZAHORY_SAC_DATA.contratosRental;
 
 // ── Helpers de fecha y estado ─────────────────────────────────────────────
-const HOY = new Date('2026-05-13');
+const HOY = new Date();
+HOY.setHours(0, 0, 0, 0);
 
 // En el maestro histórico, tipo_categoria también contiene descripciones
 // específicas de flota (SCOOPTRAM, JUMBO, CARGADOR, etc.). Por eso se excluyen
@@ -33,9 +34,48 @@ const calcEstadoContrato = (vencStr) => {
 };
 
 const ESTADO_CT_CFG = {
+  'Borrador':   { cls: 'badge slate',  label: 'Borrador'   },
   'Vigente':    { cls: 'badge green',  label: 'Vigente'    },
   'Por Vencer': { cls: 'badge orange', label: 'Por Vencer' },
   'Vencido':    { cls: 'badge red',    label: 'Vencido'    },
+  'Suspendido': { cls: 'badge slate',  label: 'Suspendido' },
+  'Cerrado':    { cls: 'badge slate',  label: 'Cerrado'    },
+  'Cancelado':  { cls: 'badge red',    label: 'Cancelado'  },
+};
+
+const calcularEstadoBandeja = contrato => {
+  const estado = String(contrato?.estado || '').toLowerCase();
+  if (estado === 'cancelado') return 'Cancelado';
+  if (estado === 'cerrado') return 'Cerrado';
+  if (estado === 'suspendido') return 'Suspendido';
+  if (estado === 'borrador') return 'Borrador';
+
+  const fechaFin = contrato?.fecha_fin || contrato?.vencimiento;
+  const vencimiento = fechaFin ? new Date(`${fechaFin}T00:00:00`) : null;
+  if (estado === 'vencido' || (vencimiento && vencimiento < HOY)) return 'Vencido';
+
+  if (vencimiento) {
+    const dias = Math.floor((vencimiento - HOY) / 86400000);
+    if (dias <= 45) return 'Por Vencer';
+  }
+  return 'Vigente';
+};
+
+const ESTADO_CONTRATO_LABELS = {
+  vigente: 'Vigente',
+  suspendido: 'Suspendido',
+  vencido: 'Vencido',
+  cerrado: 'Cerrado',
+  cancelado: 'Cancelado',
+};
+
+const TRANSICIONES_ESTADO_CONTRATO = {
+  borrador: ['vigente'],
+  vigente: ['suspendido', 'vencido', 'cerrado', 'cancelado'],
+  suspendido: ['vigente', 'cancelado'],
+  vencido: ['cancelado'],
+  cerrado: ['cancelado'],
+  cancelado: [],
 };
 
 const fmtFechaLarga = (iso) => {
@@ -47,7 +87,8 @@ const fmtFechaLarga = (iso) => {
 // Opciones del formulario de nuevo contrato
 const CTFORM_INIT = {
   clienteId: '', unidadMinera: '', equipos: [],
-  fechaInicio: '', fechaFin: '', moneda: 'USD', minimoFacturable: '', metaDmr: '85',
+  proyectoId: '',
+  fechaInicio: '', fechaFin: '', moneda: 'USD', minimoFacturable: '', unidadMinimoFacturable: 'hora', periodicidadMinimoFacturable: 'mes', metaDmr: '85',
   centroCostoId: '', centroBeneficioId: '',
 };
 
@@ -912,6 +953,7 @@ export const ContratosRentalPage = ({ onNav }) => {
   const [fichaAbierta,         setFichaAbierta]         = useState(false);
   const [numeroSugerido,       setNumeroSugerido]       = useState('');
   const [clientes,             setClientes]             = useState([]);
+  const [proyectosContrato,   setProyectosContrato]   = useState([]);
   const [unidadesMineras,      setUnidadesMineras]      = useState([]);
   const [equipos,              setEquipos]              = useState([]);
   const [tarifasEstandar,      setTarifasEstandar]      = useState({});
@@ -925,7 +967,169 @@ export const ContratosRentalPage = ({ onNav }) => {
   const [errorArchivo,         setErrorArchivo]         = useState('');
   const [subiendoArchivo,      setSubiendoArchivo]      = useState(false);
 
-  const contratos = ZAHORY_SAC_DATA.contratosRental;
+  const [contratos, setContratos] = useState([]);
+  const [cargandoContratos, setCargandoContratos] = useState(false);
+  const [errorContratos, setErrorContratos] = useState('');
+  const [puedeEditarContratos, setPuedeEditarContratos] = useState(false);
+  const [cargandoPermisoContratos, setCargandoPermisoContratos] = useState(false);
+  const [estadoActualizandoId, setEstadoActualizandoId] = useState(null);
+  const [errorEstadoContrato, setErrorEstadoContrato] = useState('');
+
+  useEffect(() => {
+    let activo = true;
+    if (!sesion.empresaId) {
+      setPuedeEditarContratos(false);
+      setCargandoPermisoContratos(false);
+      return undefined;
+    }
+
+    const comprobarPermisoEdicion = async () => {
+      setCargandoPermisoContratos(true);
+      try {
+        const { data, error } = await getSupabaseClient().rpc('usuario_puede', {
+          target_empresa_id: sesion.empresaId,
+          target_pantalla: 'contratos_alquiler',
+          target_accion: 'editar',
+        });
+        if (error) throw error;
+        if (activo) setPuedeEditarContratos(Boolean(data));
+      } catch {
+        if (activo) setPuedeEditarContratos(false);
+      } finally {
+        if (activo) setCargandoPermisoContratos(false);
+      }
+    };
+
+    comprobarPermisoEdicion();
+    return () => { activo = false; };
+  }, [sesion.empresaId, sesion.usuario?.id]);
+
+  useEffect(() => {
+    let activo = true;
+    if (!sesion.empresaId) {
+      setContratos([]);
+      return undefined;
+    }
+
+    const cargarContratos = async () => {
+      setCargandoContratos(true);
+      setErrorContratos('');
+      try {
+        const supabase = getSupabaseClient();
+        const contratosRes = await supabase.from('contratos_alquiler')
+          .select('id,empresa_id,sociedad_id,numero,cuenta_id,unidad_minera,objeto,fecha_inicio,fecha_fin,minimo_facturable,unidad_minimo_facturable,periodicidad_minimo_facturable,meta_dmr,moneda,estado,centro_costo_id,centro_beneficio_id,proyecto_id,created_at,updated_at')
+          .eq('empresa_id', sesion.empresaId)
+          .order('created_at', { ascending: false });
+        if (contratosRes.error) throw contratosRes.error;
+
+        const contratosData = contratosRes.data || [];
+        const cuentaIds = [...new Set(contratosData.map(contrato => contrato.cuenta_id).filter(Boolean))];
+        const sedeIds = [...new Set(contratosData.map(contrato => contrato.unidad_minera).filter(Boolean))];
+        const proyectoIds = [...new Set(contratosData.map(contrato => contrato.proyecto_id).filter(Boolean))];
+        const centroCostoIds = [...new Set(contratosData.map(contrato => contrato.centro_costo_id).filter(Boolean))];
+        const contratoIds = contratosData.map(contrato => contrato.id);
+        const porIds = (tabla, columnas, ids, columnaId = 'id') => ids.length
+          ? supabase.from(tabla).select(columnas).in(columnaId, ids)
+          : Promise.resolve({ data: [], error: null });
+
+        const [cuentasRes, sedesRes, proyectosRes, centrosCostoRes, equiposRes] = await Promise.all([
+          porIds('cuentas', 'id,nombre_comercial,razon_social', cuentaIds),
+          porIds('sedes', 'id,nombre,codigo,tipo', sedeIds),
+          porIds('proyectos', 'id,codigo,nombre,cuenta_id', proyectoIds),
+          centroCostoIds.length
+            ? supabase.from('centros_costo').select('id,codigo,nombre,empresa_id,sociedad_id,estado')
+              .eq('empresa_id', sesion.empresaId).in('id', centroCostoIds)
+            : Promise.resolve({ data: [], error: null }),
+          contratoIds.length
+            ? supabase.from('contratos_alquiler_equipos').select('id,contrato_alquiler_id,equipo_id,tarifa_hora_override').in('contrato_alquiler_id', contratoIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        const catalogErrors = [cuentasRes, sedesRes, proyectosRes, centrosCostoRes, equiposRes].find(resultado => resultado.error)?.error;
+        if (catalogErrors) throw catalogErrors;
+
+        const equiposData = equiposRes.data || [];
+        const equipoIds = [...new Set(equiposData.map(equipo => equipo.equipo_id).filter(Boolean))];
+        const [activosRes, tarifasRes] = await Promise.all([
+          porIds('activos', 'id,codigo,nombre,marca,modelo,estado,propietario_tipo', equipoIds),
+          porIds('tarifas_estandar_equipos', 'activo_id,tarifa_hora,moneda', equipoIds, 'activo_id'),
+        ]);
+        const equipoErrors = [activosRes, tarifasRes].find(resultado => resultado.error)?.error;
+        if (equipoErrors) throw equipoErrors;
+
+        const porId = rows => new Map((rows || []).map(row => [row.id, row]));
+        const cuentasPorId = porId(cuentasRes.data);
+        const sedesPorId = porId(sedesRes.data);
+        const proyectosPorId = porId(proyectosRes.data);
+        const centrosCostoPorSociedad = new Map((centrosCostoRes.data || []).map(centro => [`${centro.sociedad_id}:${centro.id}`, centro]));
+        const activosPorId = porId(activosRes.data);
+        const tarifasPorActivo = new Map((tarifasRes.data || []).map(tarifa => [tarifa.activo_id, tarifa]));
+        const equiposPorContrato = new Map();
+        equiposData.forEach(equipo => {
+          const lista = equiposPorContrato.get(equipo.contrato_alquiler_id) || [];
+          const activo = activosPorId.get(equipo.equipo_id);
+          const tarifa = tarifasPorActivo.get(equipo.equipo_id);
+          lista.push({
+            id: equipo.equipo_id,
+            codigo: activo?.codigo || equipo.equipo_id,
+            nombre: activo?.nombre || 'Equipo sin descripción',
+            marca: activo?.marca || '',
+            modelo: activo?.modelo || '',
+            tarifa: equipo.tarifa_hora_override ?? tarifa?.tarifa_hora ?? null,
+            moneda: tarifa?.moneda || 'USD',
+            tarifaOverride: equipo.tarifa_hora_override,
+          });
+          equiposPorContrato.set(equipo.contrato_alquiler_id, lista);
+        });
+
+        const normalizados = contratosData.map(contrato => {
+          const equipos = equiposPorContrato.get(contrato.id) || [];
+          const primerEquipo = equipos[0] || null;
+          const cuenta = cuentasPorId.get(contrato.cuenta_id);
+          const sede = sedesPorId.get(contrato.unidad_minera);
+          const proyecto = proyectosPorId.get(contrato.proyecto_id);
+          const centroCosto = centrosCostoPorSociedad.get(`${contrato.sociedad_id}:${contrato.centro_costo_id}`);
+          return {
+            ...contrato,
+            numero: contrato.numero,
+            cliente: cuenta?.nombre_comercial || cuenta?.razon_social || contrato.cuenta_id || '—',
+            unidadMinera: sede?.nombre || contrato.unidad_minera || '—',
+            inicio: contrato.fecha_inicio,
+            vencimiento: contrato.fecha_fin,
+            estadoBandeja: calcularEstadoBandeja(contrato),
+            centro_costo: centroCosto
+              ? [centroCosto.codigo, centroCosto.nombre].filter(Boolean).join(' · ')
+              : 'Sin centro de costo',
+            proyectoCodigo: proyecto?.codigo || null,
+            proyectoNombre: proyecto?.nombre || null,
+            equipos,
+            equipo: primerEquipo?.codigo || '—',
+            equipoModelo: [primerEquipo?.marca, primerEquipo?.modelo].filter(Boolean).join(' ') || primerEquipo?.nombre || '—',
+            tarifa: primerEquipo?.tarifa ?? null,
+            tarifaMoneda: primerEquipo?.moneda || contrato.moneda,
+            minimo: contrato.minimo_facturable,
+            unidadMinimo: contrato.unidad_minimo_facturable,
+            periodicidadMinimo: contrato.periodicidad_minimo_facturable,
+            metaDMR: contrato.meta_dmr,
+            horometro_actual: null,
+            dmr_real_actual: null,
+            liquidaciones: [],
+            ot_ids: [],
+          };
+        });
+        if (activo) setContratos(normalizados);
+      } catch (error) {
+        if (activo) {
+          setContratos([]);
+          setErrorContratos(error.message || 'No se pudieron cargar los contratos reales.');
+        }
+      } finally {
+        if (activo) setCargandoContratos(false);
+      }
+    };
+
+    cargarContratos();
+    return () => { activo = false; };
+  }, [sesion.empresaId]);
 
   // ── Helpers DMR ──────────────────────────────────────────────────────────
   const getDmrStatus = (contrato) => {
@@ -970,6 +1174,29 @@ export const ContratosRentalPage = ({ onNav }) => {
     setFichaAbierta(true);
   };
 
+  const cambiarEstadoContrato = async (contrato, nuevoEstado) => {
+    if (!contrato?.id || !nuevoEstado || !puedeEditarContratos || !sesion.permiteEscritura) return;
+    setEstadoActualizandoId(contrato.id);
+    setErrorEstadoContrato('');
+    try {
+      const { data, error } = await getSupabaseClient()
+        .from('contratos_alquiler')
+        .update({ estado: nuevoEstado })
+        .eq('id', contrato.id)
+        .select('id,estado')
+        .single();
+      if (error) throw error;
+
+      setContratos(actuales => actuales.map(actual => actual.id === contrato.id
+        ? { ...actual, estado: data.estado, estadoBandeja: calcularEstadoBandeja({ ...actual, estado: data.estado }) }
+        : actual));
+    } catch (error) {
+      setErrorEstadoContrato(error?.message || 'No se pudo cambiar el estado del contrato.');
+    } finally {
+      setEstadoActualizandoId(null);
+    }
+  };
+
   const cerrarFicha = () => {
     setFichaAbierta(false);
     setContratoSeleccionado(null);
@@ -981,6 +1208,10 @@ export const ContratosRentalPage = ({ onNav }) => {
 
   // ── Acciones contextuales por estado ────────────────────────────────────
   const getAcciones = (contrato) => {
+    return [
+      { label: 'Ver detalle', icon: '👁', action: () => abrirFicha(contrato.id) },
+    ];
+    /*
     const estado = calcEstadoContrato(contrato.vencimiento);
     switch (estado) {
       case 'Vigente':
@@ -1005,14 +1236,15 @@ export const ContratosRentalPage = ({ onNav }) => {
       default:
         return [];
     }
+    */
   };
 
   // ── Tabs de filtro ───────────────────────────────────────────────────────
   const TABS_FILTRO = [
-    { key: 'activos',    label: 'Activos',    filter: c => ['Vigente','Por Vencer'].includes(calcEstadoContrato(c.vencimiento)) },
-    { key: 'vigente',    label: 'Vigentes',   filter: c => calcEstadoContrato(c.vencimiento) === 'Vigente'                      },
-    { key: 'por_vencer', label: 'Por Vencer', filter: c => calcEstadoContrato(c.vencimiento) === 'Por Vencer'                   },
-    { key: 'vencido',    label: 'Vencidos',   filter: c => calcEstadoContrato(c.vencimiento) === 'Vencido'                      },
+    { key: 'activos',    label: 'Activos',    filter: c => ['Borrador', 'Vigente', 'Por Vencer'].includes(c.estadoBandeja) },
+    { key: 'vigente',    label: 'Vigentes',   filter: c => c.estadoBandeja === 'Vigente'                                    },
+    { key: 'por_vencer', label: 'Por Vencer', filter: c => c.estadoBandeja === 'Por Vencer'                                  },
+    { key: 'vencido',    label: 'Vencidos',   filter: c => c.estadoBandeja === 'Vencido'                                    },
     { key: 'todos',      label: 'Todos',      filter: () => true                                                                 },
   ];
 
@@ -1034,7 +1266,7 @@ export const ContratosRentalPage = ({ onNav }) => {
   const fichaRitmo           = fichaHorasAcum ? fichaHorasAcum / FICHA_DIAS_TRANSCU : null;
   const fichaHorasProyectadas = fichaRitmo ? Math.round(fichaRitmo * FICHA_DIAS_MES) : null;
 
-  const setCtField = (k, v) => setCtForm(f => ({ ...f, [k]: v }));
+  const setCtField = (k, v) => setCtForm(f => ({ ...f, [k]: v, ...(k === 'clienteId' ? { proyectoId: '' } : {}) }));
 
   const agregarEquipo = activoId => {
     if (!activoId) return;
@@ -1104,6 +1336,33 @@ export const ContratosRentalPage = ({ onNav }) => {
     cargarCatalogos();
     return () => { activo = false; };
   }, [modalNuevo, sesion.empresaId, sesion.sociedadId, sesion.permiteEscritura]);
+
+  useEffect(() => {
+    let activo = true;
+    setProyectosContrato([]);
+    if (!modalNuevo || !sesion.empresaId || !ctForm.clienteId || !sesion.permiteEscritura) return undefined;
+
+    const cargarProyectos = async () => {
+      try {
+        const { data, error } = await getSupabaseClient()
+          .from('proyectos')
+          .select('id,codigo,nombre,cuenta_id,estado')
+          .eq('empresa_id', sesion.empresaId)
+          .eq('cuenta_id', ctForm.clienteId)
+          .eq('estado', 'activo')
+          .order('nombre');
+        if (error) throw error;
+        if (activo) setProyectosContrato(data || []);
+      } catch {
+        // El selector es opcional: si el usuario no tiene acceso al maestro,
+        // el alta contractual existente sigue funcionando sin proyecto.
+        if (activo) setProyectosContrato([]);
+      }
+    };
+
+    cargarProyectos();
+    return () => { activo = false; };
+  }, [modalNuevo, sesion.empresaId, sesion.permiteEscritura, ctForm.clienteId]);
 
   const limpiarModalContrato = () => {
     setModalNuevo(false);
@@ -1184,9 +1443,12 @@ export const ContratosRentalPage = ({ onNav }) => {
           numero,
            cuenta_id: ctForm.clienteId,
            unidad_minera: ctForm.unidadMinera || null,
+           proyecto_id: ctForm.proyectoId || null,
            fecha_inicio: ctForm.fechaInicio,
            fecha_fin: ctForm.fechaFin,
            minimo_facturable: minimo,
+           unidad_minimo_facturable: ctForm.unidadMinimoFacturable,
+           periodicidad_minimo_facturable: ctForm.periodicidadMinimoFacturable,
           meta_dmr: dmr,
           moneda: ctForm.moneda,
           centro_costo_id: ctForm.centroCostoId || null,
@@ -1262,6 +1524,10 @@ export const ContratosRentalPage = ({ onNav }) => {
       </div>
 
       {/* ── Tabla de contratos ─────────────────────────────────────────── */}
+      {errorContratos && <div className="alert alert-error" style={{ marginBottom:12 }}>{errorContratos}</div>}
+      {errorEstadoContrato && <div className="alert alert-error" style={{ marginBottom:12 }}>{errorEstadoContrato}</div>}
+      {cargandoContratos && <div className="sub" style={{ padding:'18px 0' }}>Cargando contratos reales...</div>}
+
       <div className="card">
         <div className="table-wrap">
         <table className="tbl">
@@ -1272,19 +1538,15 @@ export const ContratosRentalPage = ({ onNav }) => {
               <th style={{ width:155 }}>Equipo</th>
               <th style={{ width:120 }}>Horómetro</th>
               <th style={{ width:155 }}>Condiciones</th>
-              <th style={{ width:150 }}>DMR</th>
+              <th style={{ width:150 }}>Meta DMR</th>
               <th style={{ width:105 }}>Estado</th>
               <th style={{ width:150 }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {contratosFiltrados.map(c => {
-              const estado    = calcEstadoContrato(c.vencimiento);
-              const cfg       = ESTADO_CT_CFG[estado];
-              const dmrStatus = getDmrStatus(c);
-              const horasPM   = getHorasParaPM(c);
-              const pmAlerta  = getPmAlerta(horasPM);
-              const horasAcum = getHorasAcumuladasMes(c);
+              const estado    = c.estadoBandeja;
+              const cfg       = ESTADO_CT_CFG[estado] || ESTADO_CT_CFG.Borrador;
               const acciones  = getAcciones(c);
               return (
                 <tr key={c.id} className="clickable">
@@ -1300,7 +1562,7 @@ export const ContratosRentalPage = ({ onNav }) => {
                       }}
                       onClick={() => abrirFicha(c.id)}
                     >
-                      {c.id}
+                      {c.numero}
                     </button>
                     <div style={{ fontSize:11, color:'var(--text-muted)', paddingLeft:4, marginBottom:3 }}>
                       {fmtFechaLarga(c.inicio)} — {fmtFechaLarga(c.vencimiento)}
@@ -1322,23 +1584,19 @@ export const ContratosRentalPage = ({ onNav }) => {
 
                   {/* C3: Equipo — indicador PM ───────────────────────────── */}
                   <td>
-                    <span className="chip" style={{ fontFamily:'ui-monospace,monospace', fontSize:11.5 }}>
-                      {c.equipo}
-                    </span>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>{c.equipoModelo}</div>
-                    {pmAlerta && (
-                      <span style={{
-                        fontSize:'9px', color:pmAlerta.color, fontWeight:600,
-                        display:'block', marginTop:2,
-                      }}>
-                        {pmAlerta.label}
-                      </span>
-                    )}
+                    {c.equipos.length > 0 ? c.equipos.map(equipo => (
+                      <div key={equipo.id} style={{ marginBottom:4 }}>
+                        <span className="chip" style={{ fontFamily:'ui-monospace,monospace', fontSize:11.5 }}>
+                          {equipo.codigo}
+                        </span>
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>{[equipo.marca, equipo.modelo].filter(Boolean).join(' ') || equipo.nombre}</div>
+                      </div>
+                    )) : <span style={{ color:'var(--text-muted)' }}>Sin equipo</span>}
                   </td>
 
                   {/* C2: Horómetro actual ────────────────────────────────── */}
                   <td>
-                    {c.horometro_actual ? (
+                    {false ? (
                       <div>
                         <span style={{ fontWeight:600, fontSize:13 }}>
                           {c.horometro_actual.toLocaleString()} h
@@ -1355,30 +1613,16 @@ export const ContratosRentalPage = ({ onNav }) => {
                   {/* Condiciones ─────────────────────────────────────────── */}
                   <td>
                     <div style={{ fontFamily:'ui-monospace,monospace', fontWeight:700, fontSize:13, color:'var(--navy)' }}>
-                      ${c.tarifa.toFixed(2)} / hr
+                      {c.tarifa == null ? 'Sin tarifa' : `${c.tarifaMoneda} ${Number(c.tarifa).toFixed(2)} / hora`}
                     </div>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:1 }}>
-                      {c.minimo} h mínimas / mes
+                      {c.minimo == null ? 'Sin mínimo' : `Mínimo: ${c.minimo} ${c.unidadMinimo} / ${c.periodicidadMinimo}`}
                     </div>
                   </td>
 
                   {/* C1: DMR real vs meta con semáforo ───────────────────── */}
                   <td>
-                    {dmrStatus ? (
-                      <div className="dmr-cell">
-                        <span style={{ color:DMR_COLORS[dmrStatus].real, fontWeight:700, fontSize:13 }}>
-                          {c.dmr_real_actual.toFixed(1)}%
-                        </span>
-                        <span style={{ color:'#64748b', fontSize:'10px' }}>
-                          / meta {c.metaDMR}%
-                        </span>
-                        <span style={{ fontSize:'9px', color:DMR_COLORS[dmrStatus].real, fontWeight:600 }}>
-                          {DMR_COLORS[dmrStatus].label}
-                        </span>
-                      </div>
-                    ) : (
-                      <span style={{ color:'#94a3b8' }}>—</span>
-                    )}
+                    <span style={{ color:'#64748b', fontSize:12 }}>Meta DMR: {c.metaDMR}%</span>
                   </td>
 
                   {/* Estado ──────────────────────────────────────────────── */}
@@ -1399,11 +1643,31 @@ export const ContratosRentalPage = ({ onNav }) => {
                           {acc.icon}
                         </button>
                       ))}
+                      {puedeEditarContratos && !cargandoPermisoContratos && (
+                        <select
+                          aria-label={`Cambiar estado de ${c.numero}`}
+                          value=""
+                          disabled={estadoActualizandoId === c.id || !sesion.permiteEscritura}
+                          title={!sesion.permiteEscritura ? 'Selecciona una sociedad para editar contratos.' : 'Cambiar estado'}
+                          onChange={event => cambiarEstadoContrato(c, event.target.value)}
+                          style={{ maxWidth: 142, fontSize: 11, padding: '3px 4px' }}
+                        >
+                          <option value="">Cambiar estado...</option>
+                          {(TRANSICIONES_ESTADO_CONTRATO[c.estado] || []).map(nuevoEstado => (
+                            <option key={nuevoEstado} value={nuevoEstado}>
+                              {ESTADO_CONTRATO_LABELS[nuevoEstado]}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </td>
                 </tr>
               );
             })}
+            {!cargandoContratos && contratosFiltrados.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign:'center', color:'var(--text-muted)', padding:24 }}>No hay contratos para este filtro.</td></tr>
+            )}
           </tbody>
         </table>
         </div>
@@ -1431,11 +1695,11 @@ export const ContratosRentalPage = ({ onNav }) => {
               <div style={{ flex:1 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
                   <span style={{ fontFamily:'ui-monospace,monospace', fontWeight:800, fontSize:15 }}>
-                    {fc.id}
+                    {fc.numero}
                   </span>
-                  <span className={ESTADO_CT_CFG[calcEstadoContrato(fc.vencimiento)].cls} style={{ fontSize:10 }}>
+                  <span className={(ESTADO_CT_CFG[fc.estadoBandeja] || ESTADO_CT_CFG.Borrador).cls} style={{ fontSize:10 }}>
                     <span className="dot"/>
-                    {ESTADO_CT_CFG[calcEstadoContrato(fc.vencimiento)].label}
+                    {(ESTADO_CT_CFG[fc.estadoBandeja] || ESTADO_CT_CFG.Borrador).label}
                   </span>
                   <span style={{
                     background:'rgba(245,158,11,0.25)', color:'#fbbf24',
@@ -1464,7 +1728,7 @@ export const ContratosRentalPage = ({ onNav }) => {
             }}>
               {[
                 { key:'resumen',    label:'Resumen'       },
-                { key:'dmr',        label:'DMR Histórico' },
+                { key:'dmr',        label:'Meta DMR'       },
                 { key:'ots',        label:'OTs'           },
                 { key:'horometros', label:'Horómetros'    },
               ].map(t => (
@@ -1513,10 +1777,9 @@ export const ContratosRentalPage = ({ onNav }) => {
                       Condiciones del contrato
                     </div>
                     {[
-                      ['Tarifa',          `$${fc.tarifa.toFixed(2)} / hora`],
-                      ['Horas mínimas',   `${fc.minimo} h / mes`],
+                      ['Tarifa',          fc.tarifa == null ? 'Sin tarifa' : `${fc.tarifaMoneda} ${Number(fc.tarifa).toFixed(2)} / hora`],
+                      ['Mínimo garantizado', fc.minimo == null ? 'Sin mínimo' : `${fc.minimo} ${fc.unidadMinimo} / ${fc.periodicidadMinimo}`],
                       ['Meta DMR',        `${fc.metaDMR}%`],
-                      ['Penalidad DMR',   '0.5 × tarifa × horas × diferencia%'],
                       ['Mantenimiento',   'Incluido en tarifa'],
                     ].map(([label, val]) => (
                       <div key={label} style={{
@@ -1562,6 +1825,16 @@ export const ContratosRentalPage = ({ onNav }) => {
 
               {/* Tab: DMR Histórico ──────────────────────────────────────── */}
               {tabFicha === 'dmr' && (
+                <div style={{ background:'#F8FAFC', borderRadius:8, padding:'14px' }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:.6, marginBottom:10 }}>
+                    Meta contractual
+                  </div>
+                  <div style={{ fontSize:24, fontWeight:800, color:'var(--navy)' }}>Meta DMR: {fc.metaDMR}%</div>
+                  <div style={{ marginTop:8, fontSize:12, color:'#64748b' }}>El DMR real todavía no está disponible en una fuente operativa confiable.</div>
+                </div>
+              )}
+
+              {false && tabFicha === 'dmr' && (
                 <div>
                   <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:.6, marginBottom:14 }}>
                     DMR real vs meta por período
@@ -1696,7 +1969,7 @@ export const ContratosRentalPage = ({ onNav }) => {
                     </div>
                   ) : (
                     <div style={{ color:'#94a3b8', fontSize:12.5, textAlign:'center', padding:'20px 0' }}>
-                      Sin horómetros activos — contrato cerrado
+                      Sin dato de horómetro disponible para este contrato
                     </div>
                   )}
 
@@ -1804,6 +2077,7 @@ export const ContratosRentalPage = ({ onNav }) => {
                   <div className="field" style={{ minWidth:0 }}><label>Número de Contrato</label><input className="input" style={{ width:'100%', minWidth:0 }} value={numeroSugerido} readOnly /></div>
                   <div className="field" style={{ minWidth:0 }}><label>Cliente *</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.clienteId} onChange={e => setCtField('clienteId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando clientes...' : 'Seleccionar...'}</option>{clientes.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{etiquetaCuenta(cuenta)}{cuenta.ruc ? ` · ${cuenta.ruc}` : ''}</option>)}</select></div>
                   <div className="field" style={{ minWidth:0 }}><label>Unidad Minera</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.unidadMinera} onChange={e => setCtField('unidadMinera', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando unidades...' : 'Sin unidad minera'}</option>{unidadesMineras.map(unidad => <option key={unidad.id} value={unidad.id}>{etiquetaCatalogo(unidad)}</option>)}</select></div>
+                  <div className="field" style={{ minWidth:0 }}><label>Proyecto (opcional)</label><select className="select" style={{ width:'100%', minWidth:0 }} value={ctForm.proyectoId} onChange={e => setCtField('proyectoId', e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado) || !ctForm.clienteId}><option value="">Sin proyecto</option>{proyectosContrato.map(proyecto => <option key={proyecto.id} value={proyecto.id}>{proyecto.codigo} · {proyecto.nombre}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>{ctForm.clienteId ? 'Proyectos activos de la cuenta seleccionada.' : 'Selecciona primero una cuenta.'}</div></div>
                    <div className="field" style={{ minWidth:0, gridColumn:'1 / -1' }}><label>Equipos asignados *</label><select className="select" style={{ width:'100%', minWidth:0 }} value="" onChange={e => agregarEquipo(e.target.value)} disabled={cargandoCatalogos || Boolean(contratoGuardado)}><option value="">{cargandoCatalogos ? 'Cargando equipos...' : 'Seleccionar y agregar equipo...'}</option>{equipos.filter(equipo => !ctForm.equipos.some(seleccionado => seleccionado.activoId === equipo.id)).map(equipo => <option key={equipo.id} value={equipo.id}>{etiquetaCatalogo(equipo)}</option>)}</select><div className="sub" style={{ fontSize:11, marginTop:4 }}>Activos propios operativos de la empresa; puedes agregar más de uno.</div></div>
                   <div className="field" style={{ minWidth:0 }}><label>Fecha de Inicio *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" value={ctForm.fechaInicio} onChange={e => setCtField('fechaInicio', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
                   <div className="field" style={{ minWidth:0 }}><label>Fecha de Vencimiento *</label><input className="input" style={{ width:'100%', minWidth:0 }} type="date" min={ctForm.fechaInicio || undefined} value={ctForm.fechaFin} onChange={e => setCtField('fechaFin', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
@@ -1826,6 +2100,8 @@ export const ContratosRentalPage = ({ onNav }) => {
                    <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:12 }}>
                      <div className="field"><label>Moneda del contrato *</label><select className="select" value={ctForm.moneda} onChange={e => setCtField('moneda', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="USD">USD</option><option value="PEN">PEN</option></select></div>
                      <div className="field"><label>Mínimo garantizado</label><input className="input" type="number" min="0" step="0.01" placeholder="Opcional" value={ctForm.minimoFacturable} onChange={e => setCtField('minimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}/></div>
+                     <div className="field"><label>Unidad del mínimo</label><select className="select" value={ctForm.unidadMinimoFacturable} onChange={e => setCtField('unidadMinimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="hora">Hora</option><option value="dia">Día</option><option value="mes">Mes</option></select></div>
+                     <div className="field"><label>Periodicidad del mínimo</label><select className="select" value={ctForm.periodicidadMinimoFacturable} onChange={e => setCtField('periodicidadMinimoFacturable', e.target.value)} disabled={Boolean(contratoGuardado)}><option value="dia">Día</option><option value="semana">Semana</option><option value="mes">Mes</option></select></div>
                    </div>
                  </div>
               </div>
