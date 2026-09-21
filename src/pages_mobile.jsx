@@ -2977,7 +2977,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
 function ComprasView({ screen, setScreen }) {
   const {
-    authUser, usuarios, crearGasto, generarCxP, ots, centrosCosto, empresa,
+    authUser, usuarios, crearGasto, crearCxP, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -3068,12 +3068,13 @@ function ComprasView({ screen, setScreen }) {
       };
       if (genCxP) {
         const cxpId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
-        await generarCxP({
+        await crearCxP({
           id: cxpId, proveedor_id: null, tipo_beneficiario: 'proveedor',
           factura_numero: campos.num_factura || null,
           concepto: campos.proveedor || 'Gasto en campo',
           fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
           monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto',
+          mecanismo_origen: 'gasto_movil',
           categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
           ot_vinc_id: otId || null,
         });

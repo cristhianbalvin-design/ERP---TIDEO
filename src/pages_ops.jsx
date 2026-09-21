@@ -7726,7 +7726,7 @@ function ModalNotaCredito({ devolucion, recepcionId, onClose, onRegistrar }) {
   );
 }
 
-function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, proveedores, devolucionesProveedor, canDev, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
+function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, proveedores, devolucionesProveedor, canDev, canCompleteInvoice, hasCxp, onCompletarFactura, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
   const [anulando, setAnulando] = useState(null);
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const [modalNC, setModalNC] = useState(null);
@@ -7761,6 +7761,12 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div><span className="text-muted">Fecha</span><div>{recepcion.fecha || '-'}</div></div>
             <div><span className="text-muted">Estado</span><div><span className={'badge ' + (estadoRec === 'observada' ? 'badge-orange' : 'badge-green')}>{estadoRec}</span></div></div>
           </div>
+
+          {canCompleteInvoice && !hasCxp && (
+            <button className="btn btn-primary" style={{alignSelf:'flex-start'}} onClick={onCompletarFactura}>
+              {I.file} Completar factura y generar CxP
+            </button>
+          )}
 
           {items.length > 0 && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
@@ -7847,10 +7853,38 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
   );
 }
 
+function ModalCompletarFacturaRecepcion({ recepcion, onClose, onCompletar }) {
+  const [numero, setNumero] = useState(recepcion?.factura_proveedor_numero || '');
+  const [fecha, setFecha] = useState(recepcion?.factura_proveedor_fecha || new Date().toISOString().split('T')[0]);
+  const [monto, setMonto] = useState(recepcion?.factura_proveedor_monto != null ? String(recepcion.factura_proveedor_monto) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const guardar = async () => {
+    if (!numero.trim()) { setError('Ingresa el numero de factura del proveedor.'); return; }
+    setSaving(true); setError('');
+    try { await onCompletar({ recepcionId: recepcion.id, facturaNumero: numero.trim(), fechaEmision: fecha, facturaProvFecha: fecha, facturaProvMonto: monto ? Number(monto) : null }); onClose(); }
+    catch (e) { setError(e?.message || 'No se pudo completar la factura.'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{width:'min(460px,94vw)'}}>
+        <div className="modal-head"><div><h3>Completar factura de recepcion</h3><div className="text-muted" style={{fontSize:12}}>{recepcion?.codigo || recepcion?.id}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+        <div className="modal-body" style={{display:'grid',gap:14}}>
+          <div className="input-group"><label>N° de factura <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={numero} onChange={e => setNumero(e.target.value)} placeholder="001-001234" required /></div>
+          <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Fecha de emision</label><input className="input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div><div className="input-group"><label>Monto total</label><input className="input" type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" /></div></div>
+          {error && <div style={{color:'var(--danger)',fontSize:13}}>⚠ {error}</div>}
+          <div className="row" style={{justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={guardar} disabled={saving || !numero.trim()}>{saving ? 'Guardando...' : 'Generar CxP'}</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Recepciones() {
   const {
     ordenesCompra, ordenesServicio, recepciones, entradasOcPendientes, proveedores, cxp,
-    registrarRecepcionConCxP, empresa, empresaConfig, authUser, materiales,
+    registrarRecepcionConCxP, completarRecepcionConCxP, empresa, empresaConfig, authUser, materiales,
     devolucionesProveedor, crearDevolucionCtx, enviarDevolucionCtx,
     aceptarDevolucionCtx, anularDevolucionCtx, role, perfilSociedad,
     sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
@@ -7891,11 +7925,13 @@ function Recepciones() {
   const filtroSociedadesRecepcionesKey = `${filtroSociedadesRecepciones.sinFiltro ? 'sin_filtro' : 'acotado'}:${filtroSociedadesRecepciones.sociedadesIds.join('|')}`;
   const [panel, setPanel] = useState(false);
   const [detalleRec, setDetalleRec] = useState(null);
+  const [completarRec, setCompletarRec] = useState(null);
   const [modalDevOpen, setModalDevOpen] = useState(false);
   const [origen, setOrigen] = useState('');
   const [obs, setObs] = useState('');
   const [tab, setTab] = useState('todos');
   const canDev = !!(role?.permisos?.todo || role?.permisos?.crear?.includes('compras') || role?.permisos?.crear?.includes('recepciones') || role?.permisos?.anular?.includes('compras'));
+  const canCompleteInvoice = !!(role?.permisos?.todo || role?.permisos?.editar?.includes?.('recepciones'));
   const [facturaNum, setFacturaNum] = useState('');
   const [facturaEmision, setFacturaEmision] = useState(new Date().toISOString().split('T')[0]);
   const [facturaVencimiento, setFacturaVencimiento] = useState('');
@@ -7943,7 +7979,14 @@ function Recepciones() {
     ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
     ...ordenesServicioVistaRecepciones.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
   ];
-  const rows = recepcionesVista.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
+  const cxpPorRecepcion = useMemo(() => new Set((cxp || []).filter(c => c.recepcion_id).map(c => c.recepcion_id)), [cxp]);
+  const recepcionesPendientesFactura = useMemo(
+    () => recepcionesVista.filter(r => !cxpPorRecepcion.has(r.id)),
+    [recepcionesVista, cxpPorRecepcion],
+  );
+  const rows = tab === 'pendientes_factura'
+    ? recepcionesPendientesFactura
+    : recepcionesVista.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
   const toleranciaPctRecepcion = Number(empresaConfig?.tolerancia_precio_compras ?? 5);
   const toleranciaRecepcion = toleranciaPctRecepcion / 100;
   const ocItemKey = (item, idx) => `${item.id || item.material_id || item.codigo || item.descripcion || 'item'}_${idx}`;
@@ -8140,7 +8183,7 @@ function Recepciones() {
         <div className="kpi-card"><div className="kpi-label">CxP abiertas</div><div className="kpi-value">{cxp.filter(c => c.estado !== 'pagada').length}</div></div>
         <div className="kpi-card"><div className="kpi-label">Devoluciones activas</div><div className="kpi-value">{devolucionesProveedor.filter(d => !['anulada','nota_credito_recibida'].includes(d.estado)).length}</div></div>
       </div>
-      <div className="tabs">{[['todos','Todos'],['conforme','Conforme'],['observada','Observada']].map(([k,l]) => <div key={k} className={'tab '+(tab===k?'active':'')} onClick={() => setTab(k)}>{l}</div>)}</div>
+      <div className="tabs">{[['todos','Todos'],['conforme','Conforme'],['observada','Observada'],['pendientes_factura',`Pendientes de facturar (${recepcionesPendientesFactura.length})`]].map(([k,l]) => <div key={k} className={'tab '+(tab===k?'active':'')} onClick={() => setTab(k)}>{l}</div>)}</div>
       <div className="card">
         <div className="table-wrap">
           <table className="tbl">
@@ -8156,9 +8199,9 @@ function Recepciones() {
                   <td>{info.descripcion}</td>
                   <td>{r.fecha}</td>
                   <td><span className={'badge '+(r.estado==='observada'?'badge-orange':'badge-green')}>{r.estado}</span></td>
-                  <td>{r.cxp_generada ? 'Si' : '-'}</td>
+                  <td>{cxpPorRecepcion.has(r.id) ? 'Si' : <span className="badge badge-orange">Pendiente</span>}</td>
                   <td>{nDev > 0 ? <span className="badge badge-cyan">{nDev}</span> : '-'}</td>
-                  <td><button className="btn btn-sm btn-ghost" onClick={() => setDetalleRec(r)}>Ver</button></td>
+                  <td><button className="btn btn-sm btn-ghost" onClick={() => setDetalleRec(r)}>Ver</button>{canCompleteInvoice && !cxpPorRecepcion.has(r.id) && <button className="btn btn-sm btn-primary" style={{marginLeft:6}} onClick={() => setCompletarRec(r)}>Completar</button>}</td>
                 </tr>
               );
             }) : <tr><td colSpan="9" className="text-center text-muted" style={{padding:32}}>No hay recepciones registradas.</td></tr>}</tbody>
@@ -8250,8 +8293,8 @@ function Recepciones() {
                 <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Factura del proveedor</div>
                 <div style={{fontSize:12,color:'var(--muted)',marginBottom:12}}>Documento fisico recibido del proveedor</div>
                 <div className="input-group">
-                  <label>N° de factura <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" value={facturaProvNumero} onChange={e => setFacturaProvNumero(e.target.value)} placeholder="001-001234" required/>
+                  <label>N° de factura</label>
+                  <input className="input" value={facturaProvNumero} onChange={e => setFacturaProvNumero(e.target.value)} placeholder="001-001234 (opcional)"/>
                 </div>
                 <div className="grid-2 mt-4" style={{gap:12,gridTemplateColumns:'1fr 1fr'}}>
                   <div className="input-group">
@@ -8317,7 +8360,7 @@ function Recepciones() {
                   <button type="button" className="btn btn-primary" style={{background:'#f59e0b',border:'none'}} onClick={e => guardar(e, true)}>Confirmar igualmente</button>
                 )}
                 {validacionWarnings.length === 0 && (
-                  <button className="btn btn-primary" type="submit" disabled={!origen || !facturaProvNumero.trim() || !facturaEmision || !facturaVencimiento || uploadingFile}>
+                  <button className="btn btn-primary" type="submit" disabled={!origen || uploadingFile}>
                     Confirmar recepcion
                   </button>
                 )}
@@ -8334,6 +8377,9 @@ function Recepciones() {
           proveedores={proveedores}
           devolucionesProveedor={devolucionesProveedor}
           canDev={canDev}
+          canCompleteInvoice={canCompleteInvoice}
+          hasCxp={cxpPorRecepcion.has(detalleRec.id)}
+          onCompletarFactura={() => setCompletarRec(detalleRec)}
           onClose={() => setDetalleRec(null)}
           onIniciarDev={() => setModalDevOpen(true)}
           onEnviar={async (devId) => { try { await enviarDevolucionCtx(devId); } catch (e) { alert(e.message); } }}
@@ -8349,6 +8395,7 @@ function Recepciones() {
           onCrear={async (datos) => { await crearDevolucionCtx(datos); setModalDevOpen(false); }}
         />
       )}
+      {completarRec && <ModalCompletarFacturaRecepcion recepcion={completarRec} onClose={() => setCompletarRec(null)} onCompletar={completarRecepcionConCxP} />}
     </>
   );
 }
@@ -8645,7 +8692,7 @@ function TabAnalisisGasto({ ocsSource, gastosSource, provSource }) {
 }
 
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, generarCxP, centrosCosto, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, crearCxP, centrosCosto, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCompras = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -8705,7 +8752,7 @@ function Compras() {
     };
     if (!esActivoFijo && estadoPago === 'pendiente') {
       const cxpPrefixId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
-      await generarCxP({
+      await crearCxP({
         id: cxpPrefixId,
         proveedor_id: gastoCxpProvId || null,
         tipo_beneficiario: 'proveedor',
@@ -8717,6 +8764,7 @@ function Compras() {
         moneda: gastoForm.moneda || 'PEN',
         estado: 'por_pagar',
         origen: 'gasto',
+        mecanismo_origen: 'compras_gastos',
         categoria_er: gastoData.categoria,
         centro_costo_id: gastoData.centro_costo_id,
       });
@@ -18430,7 +18478,7 @@ function ControlAsistencia() {
 function Nomina() {
   const {
     turnos, registrosAsistencia, personalOperativo, personalAdmin, trabajadoresDatosNomina,
-    periodosNomina, setPeriodosNomina, isDataLoaded, crearPeriodoNominaCtx, crearGasto, generarCxP, role, empresa, authUser, addNotificacion, addToast, empresaConfig,
+    periodosNomina, setPeriodosNomina, isDataLoaded, crearPeriodoNominaCtx, crearGasto, crearCxP, role, empresa, authUser, addNotificacion, addToast, empresaConfig,
     comisiones = [], setComisiones, afpParametros = [],
     asignacionesJornada = [],
     portalBoletaAcuses = [],
@@ -19343,7 +19391,7 @@ function Nomina() {
     // ── CxPs separadas por institución ──
     // 1. Neto planilla → trabajadores
     if (totalNeto > 0) {
-      await generarCxP({
+      await crearCxP({
         tipo_beneficiario: 'colectivo',
         concepto: `Planilla de trabajadores — ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
@@ -19351,11 +19399,12 @@ function Nomina() {
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'planilla',
         periodo_nomina_id: periodo.id,
         sociedad_id: periodo.sociedad_id || null,
+        mecanismo_origen: 'nomina',
       });
     }
     // 2. EsSalud → SUNAT/EsSalud
     if (totalEssalud > 0) {
-      await generarCxP({
+      await crearCxP({
         tipo_beneficiario: 'colectivo',
         concepto: `EsSalud — ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
@@ -19363,12 +19412,13 @@ function Nomina() {
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'essalud',
         periodo_nomina_id: periodo.id,
         sociedad_id: periodo.sociedad_id || null,
+        mecanismo_origen: 'nomina',
       });
     }
     // 3. Aportes previsionales (AFP + ONP)
     const labelPensiones = tieneAfp && tieneOnp ? 'AFP / ONP' : tieneAfp ? 'AFP' : 'ONP';
     if (totalPensiones > 0) {
-      await generarCxP({
+      await crearCxP({
         tipo_beneficiario: 'colectivo',
         concepto: `Aportes previsionales ${labelPensiones} — ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
@@ -19376,11 +19426,12 @@ function Nomina() {
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'pensiones',
         periodo_nomina_id: periodo.id,
         sociedad_id: periodo.sociedad_id || null,
+        mecanismo_origen: 'nomina',
       });
     }
     // 4. Retenciones IR 5ta → SUNAT
     if (totalIr > 0) {
-      await generarCxP({
+      await crearCxP({
         tipo_beneficiario: 'colectivo',
         concepto: `Retención IR 5ta categoría — ${periodo.periodo}`,
         fecha_emision: fechaCierre, fecha_vencimiento: vence,
@@ -19388,6 +19439,7 @@ function Nomina() {
         estado: 'por_pagar', origen: 'nomina', motivo_cxp: 'ir_5ta',
         periodo_nomina_id: periodo.id,
         sociedad_id: periodo.sociedad_id || null,
+        mecanismo_origen: 'nomina',
       });
     }
 
@@ -24870,7 +24922,7 @@ export function ComprasGastos() {
   const {
     comprasGastos, setComprasGastos,
     centrosCosto, proveedores, ots, cxp, cajaChica, personalOperativo, personalAdmin, periodosNomina,
-    crearGasto, generarCxP,
+    crearGasto, crearCxP,
     empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const modoVistaSociedadComprasGastos = resolverFiltroSociedadesVista({
@@ -24920,7 +24972,7 @@ export function ComprasGastos() {
     const monto = parseFloat(form.monto) || 0;
     const gastoData = { ...form, monto, tipo: 'gasto', origen_registro: 'backoffice' };
     if (form.estado_pago === 'pendiente') {
-      await generarCxP({
+      await crearCxP({
         id: `cxp_${Math.random().toString(36).slice(2,10)}`,
         proveedor_id: cxpProvId || null,
         tipo_beneficiario: 'proveedor',
@@ -24932,6 +24984,7 @@ export function ComprasGastos() {
         moneda: form.moneda || 'PEN',
         estado: 'por_pagar',
         origen: 'gasto',
+        mecanismo_origen: 'compras_gastos',
         categoria_er: form.categoria,
         centro_costo_id: form.centro_costo_id,
       });

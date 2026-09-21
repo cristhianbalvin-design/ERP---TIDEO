@@ -347,6 +347,17 @@ export const comprasService = {
     if (error) throw error;
     return data;
   },
+  actualizarRecepcion: async (recepcionId, cambios) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('recepciones')
+      .update({ ...cambios })
+      .eq('id', recepcionId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
 
   // ─── Tránsitos de OC ─────────────────────────────────────────
   getOrdenCompraTransitos: async (empresaId) => {
@@ -641,13 +652,13 @@ export const devolucionesService = {
     const cxpAjusteId = mkId('cxp');
 
     // Crear CxP de tipo ajuste (nota de crédito) con monto negativo
-    const { error: cxpErr } = await supabase.from('cxp').insert({
+    const cxpPayload = {
       id: cxpAjusteId,
       empresa_id: empresaId,
       sociedad_id: dev.sociedad_id || null,
       proveedor_id: dev.proveedor_id,
       tipo_comprobante: 'nota_credito',
-      numero_comprobante: numero_nc || dev.numero_devolucion,
+      factura_numero: numero_nc || dev.numero_devolucion,
       fecha_emision: fecha_nc || new Date().toISOString().split('T')[0],
       fecha_vencimiento: fecha_nc || new Date().toISOString().split('T')[0],
       monto_total: -montoAjuste,
@@ -656,11 +667,18 @@ export const devolucionesService = {
       moneda,
       estado: 'pendiente_pago',
       origen: 'nc_devolucion',
+      motivo_cxp: 'devolucion_proveedor',
+      concepto: `Nota de crédito por devolución ${dev.numero_devolucion}`,
       recepcion_id: dev.recepcion_id,
       referencia_id: devolucionId,
       referencia_tipo: 'devolucion_proveedor',
       descripcion: `Nota de crédito por devolución ${dev.numero_devolucion}`,
       creado_por: usuarioId || null,
+    };
+    const { data: cxpCreada, error: cxpErr } = await supabase.rpc('generar_cxp_centralizado', {
+      p_payload: cxpPayload,
+      p_origen: 'devolucion_proveedor',
+      p_operacion: 'crear',
     });
     if (cxpErr) throw cxpErr;
 
@@ -670,12 +688,17 @@ export const devolucionesService = {
       if (cxpOrigen) {
         const nuevoSaldo = Math.max(0, Number(cxpOrigen.saldo) - montoAjuste);
         const nuevoEstado = nuevoSaldo <= 0 ? 'pagada' : 'pendiente_pago';
-        await supabase.from('cxp').update({
-          saldo: nuevoSaldo,
-          monto_pagado: Number(cxpOrigen.monto_pagado) + montoAjuste,
-          estado: nuevoEstado,
-          updated_at: new Date().toISOString(),
-        }).eq('id', cxp_origen_id);
+        const { error: ajusteErr } = await supabase.rpc('generar_cxp_centralizado', {
+          p_payload: {
+            id: cxp_origen_id,
+            saldo: nuevoSaldo,
+            monto_pagado: Number(cxpOrigen.monto_pagado) + montoAjuste,
+            estado: nuevoEstado,
+          },
+          p_origen: 'devolucion_proveedor',
+          p_operacion: 'actualizar',
+        });
+        if (ajusteErr) throw ajusteErr;
       }
     }
 
@@ -686,7 +709,7 @@ export const devolucionesService = {
       .select()
       .single();
     if (upErr) throw upErr;
-    return { devolucion: updated, cxp_ajuste_id: cxpAjusteId };
+    return { devolucion: updated, cxp_ajuste_id: cxpAjusteId, cxp: cxpCreada };
   },
 
   // Anular devolución: si es borrador → elimina lógicamente; si es enviada → revierte WMS

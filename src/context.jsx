@@ -4,7 +4,7 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
 import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
@@ -2317,6 +2317,23 @@ export function AppProvider({ children }) {
     auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: opp.id, accion: 'crear', valor_nuevo: opp });
   };
 
+  const actualizarLineaNegocioOportunidad = async (oppId, lineaNegocio) => {
+    const anterior = oportunidades.find(o => o.id === oppId);
+    if (!anterior) throw new Error('No se encontró la oportunidad para actualizar la línea de negocio.');
+    const valor = lineaNegocio || null;
+    if ((anterior.linea_negocio || null) === valor) return anterior;
+    const patch = { linea_negocio: valor };
+    setOportunidades(prev => prev.map(o => o.id === oppId ? { ...o, ...patch } : o));
+    try {
+      await crmPersist(sb => actualizarOportunidad(sb, oppId, patch));
+    } catch (error) {
+      setOportunidades(prev => prev.map(o => o.id === oppId ? anterior : o));
+      throw error;
+    }
+    auditSync({ modulo: 'crm', entidad: 'oportunidades', entidad_id: oppId, accion: 'editar', valor_anterior: anterior, valor_nuevo: patch });
+    return { ...anterior, ...patch };
+  };
+
   const actualizarEtapaOportunidad = (oppId, nuevaEtapa) => {
     const opp = oportunidades.find(o => o.id === oppId);
     if (!opp) return false;
@@ -2569,34 +2586,68 @@ export function AppProvider({ children }) {
     };
   };
 
-  const construirItemsCotizacionDesdeHC = (hc) => {
-    const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95) / 100;
-    const divisor = 1 - margen;
-    const secciones = [
-      ...(hc.mano_obra || []).map(i => ({ ...i, tipo: 'mano_obra' })),
-      ...(hc.materiales || []).map(i => ({ ...i, tipo: 'material' })),
-      ...(hc.servicios_terceros || []).map(i => ({ ...i, tipo: 'servicio_tercero' })),
-      ...(hc.logistica || []).map(i => ({ ...i, tipo: 'logistica' }))
-    ];
-    return secciones.map((i, index) => {
-      const cantidad = Number(i.cantidad || 0);
-      const costoUnitario = Number(i.costo_unitario ?? i.precio_unitario ?? 0);
-      const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
-      return {
-        id: i.id || index + 1,
-        descripcion: i.descripcion || 'Partida de costeo',
-        tipo: i.tipo === 'material' ? 'material' : 'servicio',
-        cantidad,
-        unidad: i.unidad || 'und',
-        precio_unitario: precioUnitario,
-        subtotal: cantidad * precioUnitario
-      };
-    });
+  const buscarHojasCosteoCompetidoras = async (datos = {}) => {
+    const oportunidadId = datos.oportunidad_id || null;
+    const cuentaId = datos.cuenta_id || oportunidades.find(o => o.id === oportunidadId)?.cuenta_id || null;
+    const activoId = datos.activo_id || null;
+    if (!oportunidadId && !cuentaId) return [];
+
+    const coincide = hoja => {
+      if (hoja.estado !== 'aprobada' || hoja.cotizacion_id) return false;
+      if (oportunidadId) return hoja.oportunidad_id === oportunidadId;
+      if (activoId) return !hoja.oportunidad_id && hoja.cuenta_id === cuentaId && hoja.activo_id === activoId;
+      return !hoja.oportunidad_id && hoja.cuenta_id === cuentaId && !hoja.activo_id;
+    };
+
+    if (!isSupabaseConfigured()) {
+      const cotizacionesVinculadas = new Set(
+        cotizaciones.filter(cotizacion => cotizacion.hoja_costeo_id).map(cotizacion => cotizacion.hoja_costeo_id)
+      );
+      return hojasCosteo.filter(hoja => coincide(hoja) && !cotizacionesVinculadas.has(hoja.id));
+    }
+
+    const sb = await getSupabaseClient();
+    let consulta = sb
+      .from('hojas_costeo')
+      .select('id,numero,empresa_id,oportunidad_id,cuenta_id,activo_id,estado,cotizacion_id')
+      .eq('empresa_id', empresa.id)
+      .eq('estado', 'aprobada');
+    if (oportunidadId) {
+      consulta = consulta.eq('oportunidad_id', oportunidadId);
+    } else if (activoId) {
+      consulta = consulta.is('oportunidad_id', null).eq('cuenta_id', cuentaId).eq('activo_id', activoId);
+    } else {
+      consulta = consulta.is('oportunidad_id', null).eq('cuenta_id', cuentaId).is('activo_id', null);
+    }
+    const { data: candidatas, error: candidatasError } = await consulta.order('created_at', { ascending: false });
+    if (candidatasError) throw candidatasError;
+    if (!candidatas?.length) return [];
+
+    const ids = candidatas.map(hoja => hoja.id);
+    const [estandarResult, especialResult] = await Promise.all([
+      sb.from('cotizaciones').select('hoja_costeo_id').in('hoja_costeo_id', ids),
+      sb.from('cotizaciones_especiales').select('hoja_costeo_id').in('hoja_costeo_id', ids),
+    ]);
+    if (estandarResult.error) throw estandarResult.error;
+    if (especialResult.error) throw especialResult.error;
+    const cotizacionesVinculadas = new Set([
+      ...(estandarResult.data || []).map(cotizacion => cotizacion.hoja_costeo_id),
+      ...(especialResult.data || []).map(cotizacion => cotizacion.hoja_costeo_id),
+    ]);
+    return candidatas.filter(hoja => !hoja.cotizacion_id && !cotizacionesVinculadas.has(hoja.id));
   };
 
-  const crearHojaCosteo = async (datos) => {
+  const crearHojaCosteo = async (datos, opciones = {}) => {
     if (empresa?.multisociedad_habilitado && !datos.sociedad_id) {
       throw new Error('Selecciona una sociedad para crear la Hoja de Costeo.');
+    }
+    const reemplazarAprobadas = Boolean(opciones.reemplazarAprobadas);
+    const hojasCompetidoras = await buscarHojasCosteoCompetidoras(datos);
+    if (hojasCompetidoras.length && !reemplazarAprobadas) {
+      const error = new Error('Ya existe una Hoja de Costeo aprobada sin cotización asociada.');
+      error.code = 'HC_DUPLICADA_APROBADA_SIN_COTIZACION';
+      error.hojasCosteo = hojasCompetidoras;
+      throw error;
     }
     const hc = {
       id: generateId('hc'),
@@ -2652,7 +2703,17 @@ export function AppProvider({ children }) {
       addNotificacion(`No se creo la Hoja de Costeo: ${message}`);
       throw error;
     }
-    setHojasCosteo(prev => [...prev, calculada]);
+    if (reemplazarAprobadas && hojasCompetidoras.length) {
+      for (const hoja of hojasCompetidoras) {
+        await crmPersist(sb => actualizarHojaCosteoSvc(sb, hoja.id, { estado: 'descartada' }));
+        auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hoja.id, accion: 'descartar', valor_anterior: hoja, valor_nuevo: { estado: 'descartada' } });
+      }
+    }
+    const idsDescartados = new Set(hojasCompetidoras.map(hoja => hoja.id));
+    setHojasCosteo(prev => [
+      ...prev.map(hoja => idsDescartados.has(hoja.id) ? { ...hoja, estado: 'descartada' } : hoja),
+      calculada,
+    ]);
     auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: calculada.id, accion: 'crear', valor_nuevo: calculada });
     addNotificacion(`Hoja de Costeo ${calculada.numero} creada.`);
     return calculada.id;
@@ -2780,41 +2841,120 @@ export function AppProvider({ children }) {
     return cot.id;
   };
 
-  const crearCotizacionDesdeHojaCosteo = async (hcId) => {
+  const crearCotizacionDesdeHojaCosteo = async (hcId, lineaNegocio = null) => {
     const hc = hojasCosteo.find(h => h.id === hcId);
     if (!hc) throw new Error('No se encontró la Hoja de Costeo aprobada.');
     if (hc.estado !== 'aprobada') throw new Error('La Hoja de Costeo debe estar aprobada antes de generar una cotización.');
     const oppDeHC = oportunidades.find(o => o.id === hc.oportunidad_id);
     const monedaHC = hc.moneda || oppDeHC?.moneda || empresa?.moneda || 'PEN';
-    const cotId = await crearCotizacion({
+    const lineaResuelta = lineaNegocio || hc.linea_negocio || null;
+
+    if (!isSupabaseConfigured()) {
+      const margen = Math.min(Math.max(Number(hc.margen_objetivo_pct || 35), 0), 95) / 100;
+      const divisor = 1 - margen;
+      const items = [
+        ...(hc.mano_obra || []).map(item => ({ ...item, tipo: 'mano_obra' })),
+        ...(hc.materiales || []).map(item => ({ ...item, tipo: 'material' })),
+        ...(hc.servicios_terceros || []).map(item => ({ ...item, tipo: 'servicio_tercero' })),
+        ...(hc.logistica || []).map(item => ({ ...item, tipo: 'logistica' })),
+      ].map((item, index) => {
+        const cantidad = Number(item.cantidad || 0);
+        const costoUnitario = Number(item.costo_unitario ?? item.precio_unitario ?? 0);
+        const precioUnitario = divisor > 0 ? Math.round(costoUnitario / divisor) : costoUnitario;
+        return {
+          id: item.id || index + 1,
+          descripcion: item.descripcion || 'Partida de costeo',
+          tipo: item.tipo === 'material' ? 'material' : 'servicio',
+          cantidad,
+          unidad: item.unidad || 'und',
+          precio_unitario: precioUnitario,
+          subtotal: cantidad * precioUnitario,
+        };
+      });
+      const cotId = await crearCotizacion({
+        oportunidad_id: hc.oportunidad_id,
+        linea_negocio: lineaResuelta,
+        cuenta_id: hc.cuenta_id,
+        moneda: monedaHC,
+        validez: '30 días',
+        subtotal: hc.precio_sugerido_sin_igv,
+        base_imponible: hc.precio_sugerido_sin_igv,
+        igv_pct: 18,
+        igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+        total: hc.precio_sugerido_total,
+        subtotal_impl: hc.precio_sugerido_sin_igv,
+        igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
+        total_impl: hc.precio_sugerido_total,
+        items,
+        hoja_costeo_id: hcId,
+        activo_id: hc.activo_id || null,
+        recepcion_id: hc.recepcion_id || null,
+        sociedad_id: hc.sociedad_id || null,
+      });
+      await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { cotizacion_id: cotId }));
+      setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, cotizacion_id: cotId } : h));
+      auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'vincular_cotizacion', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotId } });
+      return cotId;
+    }
+
+    const sb = await getSupabaseClient();
+    const { data: numeroCot, error: numeroError } = await sb.rpc('siguiente_numero_cotizacion', { p_empresa_id: empresa.id });
+    if (numeroError) throw numeroError;
+    const cotBase = {
+      id: generateId('cot'),
       oportunidad_id: hc.oportunidad_id,
       cuenta_id: hc.cuenta_id,
+      numero: numeroCot,
+      version: 1,
+      estado: 'borrador',
+      fecha: new Date().toISOString().split('T')[0],
       moneda: monedaHC,
-      validez: '30 días',
+      validez: '30 dias',
       subtotal: hc.precio_sugerido_sin_igv,
       base_imponible: hc.precio_sugerido_sin_igv,
       igv_pct: 18,
       igv: Math.round(hc.precio_sugerido_sin_igv * 0.18),
       total: hc.precio_sugerido_total,
-      subtotal_impl: hc.precio_sugerido_sin_igv,
-      igv_impl: Math.round(hc.precio_sugerido_sin_igv * 0.18),
-      total_impl: hc.precio_sugerido_total,
-      items: construirItemsCotizacionDesdeHC(hc),
       hoja_costeo_id: hcId,
       activo_id: hc.activo_id || null,
       recepcion_id: hc.recepcion_id || null,
       sociedad_id: hc.sociedad_id || null,
-    });
-    try {
-      await crmPersist(sb => actualizarHojaCosteoSvc(sb, hcId, { cotizacion_id: cotId }));
-    } catch (error) {
-      const message = error?.message || 'No se pudo vincular la cotización con la Hoja de Costeo.';
-      addNotificacion(`La cotización se creó, pero no se pudo vincular a la HC: ${message}`);
-      throw error;
+    };
+    const resultado = await crmPersist(sb2 => empresa?.multisociedad_habilitado
+      ? aprobarHojaCosteoSociedadRpc(sb2, empresa.id, hcId, cotBase)
+      : aprobarHojaCosteoRpc(sb2, empresa.id, hcId, cotBase));
+    const cotFinal = {
+      ...cotBase,
+      ...(resultado?.data?.cotizacion || {}),
+      activo_id: hc.activo_id || null,
+      recepcion_id: hc.recepcion_id || null,
+    };
+    const hcFinal = resultado?.data?.hoja_costeo || { ...hc, estado: 'aprobada', cotizacion_id: cotFinal.id };
+    if (hc.estado === 'aprobada' && hcFinal.cotizacion_id !== cotFinal.id) {
+      const vinculacion = await crmPersist(sb2 => actualizarHojaCosteoSvc(sb2, hcId, { cotizacion_id: cotFinal.id }));
+      if (vinculacion?.error) throw vinculacion.error;
+      hcFinal.cotizacion_id = cotFinal.id;
     }
-    setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, cotizacion_id: cotId } : h));
-    auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'vincular_cotizacion', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotId } });
-    return cotId;
+    const extras = {
+      activo_id: cotFinal.activo_id,
+      recepcion_id: cotFinal.recepcion_id,
+      ...(hc.oportunidad_id ? {} : { linea_negocio: lineaResuelta }),
+    };
+    const extrasResult = await crmPersist(sb2 => svcActualizarCotizacion(sb2, cotFinal.id, extras));
+    if (extrasResult?.error) throw extrasResult.error;
+    Object.assign(cotFinal, extras);
+
+    setCotizaciones(prev => prev.some(c => c.id === cotFinal.id)
+      ? prev.map(c => c.id === cotFinal.id ? { ...c, ...cotFinal } : c)
+      : [...prev, cotFinal]);
+    setHojasCosteo(prev => prev.map(h => h.id === hcId ? { ...h, ...hcFinal } : h));
+    if (cotFinal.recepcion_id) await marcarRecepcionActivoClienteCotizada(empresa.id, cotFinal.recepcion_id);
+    if (cotFinal.oportunidad_id && Number(cotFinal.subtotal || 0) > 0) {
+      sincronizarMontoOportunidadYLead(cotFinal.oportunidad_id, { monto: cotFinal.subtotal, moneda: cotFinal.moneda });
+    }
+    auditSync({ modulo: 'comercial', entidad: 'hojas_costeo', entidad_id: hcId, accion: 'vincular_cotizacion', valor_anterior: hc, valor_nuevo: { estado: 'aprobada', cotizacion_id: cotFinal.id } });
+    addNotificacion(`Cotización ${cotFinal.numero} generada con éxito.`);
+    return cotFinal.id;
   };
 
   const ETAPA_ORDER = ['calificacion', 'propuesta', 'negociacion', 'ganada'];
@@ -5972,9 +6112,10 @@ export function AppProvider({ children }) {
     });
     cuentaPagar = { ...cuentaPagar, gasto_id: gastoDevengo.id };
 
-    // INSERT directo con await — error visible inmediatamente si falla
+    // El origen Comisiones/RHE pasa por el autorizador centralizado.
     if (isSupabaseConfigured()) {
-      await finanzasService.generarCxP(cuentaPagar);
+      const cuentaGuardada = await finanzasService.generarCxPCentralizado(cuentaPagar, 'comisiones_rhe');
+      cuentaPagar = { ...cuentaPagar, ...cuentaGuardada };
       const sb = await getSupabaseClient();
       await insertarCompraGastoSeguro(sb, gastoDevengo);
     }
@@ -6573,8 +6714,8 @@ export function AppProvider({ children }) {
     sociedad_id: cxp.sociedad_id || null,
   });
 
-  const generarCxP = async (datos = {}) => {
-    const { no_devengar_er, ...datosDb } = datos || {};
+  const crearCxP = async (datos = {}) => {
+    const { no_devengar_er, mecanismo_origen: mecanismoOrigen, ...datosDb } = datos || {};
     const sociedadId = resolverSociedadOperacion(datosDb, { exigirSociedad: true });
     let cuentaPagar = {
       id: generateId('cxp'),
@@ -6587,7 +6728,7 @@ export function AppProvider({ children }) {
     };
     const cxpParaDevengo = { ...cuentaPagar, no_devengar_er };
     const yaDevengado = (comprasGastos || []).some(g => g.cxp_id === cuentaPagar.id);
-    if (yaDevengado) console.log('[generarCxP] Devengo omitido: ya existe compras_gastos con cxp_id', cuentaPagar.id);
+    if (yaDevengado) console.log('[crearCxP] Devengo omitido: ya existe compras_gastos con cxp_id', cuentaPagar.id);
     const gastoDevengo = !cxpExcluidaEr(cxpParaDevengo) && !yaDevengado && montoDevengoCxP(cxpParaDevengo) > 0
       ? buildDevengoCxP(cxpParaDevengo)
       : null;
@@ -6600,14 +6741,16 @@ export function AppProvider({ children }) {
       auditSync({ modulo: 'compras', entidad: 'compras_gastos', entidad_id: gastoDevengo.id, accion: 'devengar_cxp', valor_nuevo: gastoDevengo });
     }
 
-    if (isSupabaseConfigured()) {
-      finSync(async () => {
-        await finanzasService.generarCxP(cuentaPagar);
-        if (gastoDevengo) {
-          const sb = await getSupabaseClient();
-          await insertarCompraGastoSeguro(sb, gastoDevengo);
-        }
-      });
+    if (isSupabaseConfigured() && mecanismoOrigen) {
+      const cuentaGuardada = await finanzasService.generarCxPCentralizado(cuentaPagar, mecanismoOrigen);
+      cuentaPagar = { ...cuentaPagar, ...cuentaGuardada };
+      setCxp(prev => prev.map(c => c.id === cuentaPagar.id ? cuentaPagar : c));
+      if (gastoDevengo) {
+        const sb = await getSupabaseClient();
+        await insertarCompraGastoSeguro(sb, gastoDevengo);
+      }
+    } else if (isSupabaseConfigured()) {
+      throw new Error('Toda CxP en Supabase debe declarar un origen centralizado.');
     }
     auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: cuentaPagar.id, accion: 'crear', valor_nuevo: cuentaPagar });
     addNotificacion(gastoDevengo ? 'Cuenta por Pagar registrada y devengo ER creado.' : 'Cuenta por Pagar registrada.');
@@ -6921,22 +7064,13 @@ export function AppProvider({ children }) {
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
-        await finanzasService.registrarPagoCxP(cxpId, montoPagado);
-        const pagoGuardado = await finanzasService.insertarCxpPago(registroPago);
-        await adjuntarComprobantePago(pagoGuardado);
-        await finanzasService.registrarMovimientoTesoreria(movimiento);
-        if (nuevoEstado === 'pagada' && gastoIdVinculado) {
-          const sb = await getSupabaseClient();
-          await sb.from('compras_gastos').update({ estado_pago: 'pagado' }).eq('id', gastoIdVinculado);
-        }
-        if (nuevoEstado === 'pagada' && reciboId) {
-          const sb = await getSupabaseClient();
-          await sb.from('recibos_honorarios').update({ estado: 'pagado' }).eq('id', reciboId);
-          const recibo = recibosHonorarios.find(r => r.id === reciboId);
-          for (const cId of (recibo?.comisiones_ids || [])) {
-            await sb.from('comisiones').update({ estado: 'pagada', pagado_en: new Date().toISOString(), recibo_id: reciboId }).eq('id', cId);
-          }
-        }
+        const resultado = await finanzasService.registrarPagoCxPAtomico({
+          cxpId,
+          monto: montoPagado,
+          pago: registroPago,
+          movimiento,
+        });
+        await adjuntarComprobantePago(resultado?.pago || registroPago);
       });
     } else {
       await adjuntarComprobantePago(registroPago);
@@ -8791,6 +8925,7 @@ export function AppProvider({ children }) {
         precio_unitario_oc: Number(item.precio_unitario || 0)
       }))
       : [];
+    const tieneFacturaProveedor = Boolean(String(facturaProvNumero || facturaNumero || '').trim());
     const recepcion = {
       id: generateId('rec'),
       empresa_id: empresa.id,
@@ -8805,7 +8940,7 @@ export function AppProvider({ children }) {
       estado: observaciones ? 'observada' : 'confirmada',
       recibido_por: authUser?.id || null,
       proveedor_id: base.proveedor_id,
-      cxp_generada: !observaciones,
+      cxp_generada: !observaciones && tieneFacturaProveedor,
       factura_proveedor_numero: facturaProvNumero || facturaNumero || null,
       factura_proveedor_fecha: facturaProvFecha || fechaEmisionParam || null,
       factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : null,
@@ -8840,7 +8975,7 @@ export function AppProvider({ children }) {
       }
     }
 
-    const recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: !observaciones };
+    const recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: !observaciones && tieneFacturaProveedor };
     setRecepciones(prev => [recepcionLocal, ...prev]);
     auditSync({ modulo: 'compras', entidad: 'recepciones', entidad_id: recepcionLocal.id, accion: 'registrar', valor_nuevo: recepcionLocal });
 
@@ -8946,12 +9081,12 @@ export function AppProvider({ children }) {
       }
     });
 
-    if (!observaciones) {
+    if (!observaciones && tieneFacturaProveedor) {
       const anticiposOC = isOC ? ocAnticipos.filter(a => a.orden_compra_id === base.id) : [];
       const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
       const totalOC = Number(base.total || 0);
       const saldoCxP = Math.max(0, Math.round((totalOC - totalAnticipado) * 100) / 100);
-      await generarCxP({
+      await crearCxP({
         tipo_beneficiario: 'proveedor',
         proveedor_id: base.proveedor_id,
         factura_numero: facturaNumero || `PROV-${base.codigo || base.id}`,
@@ -8966,12 +9101,74 @@ export function AppProvider({ children }) {
         estado: saldoCxP <= 0 ? 'pagada' : 'por_pagar',
         origen: 'recepcion',
         recepcion_id: recepcionLocal.id,
+        mecanismo_origen: 'recepcion_create',
         ...(archivoFacturaUrl ? { archivo_factura_url: archivoFacturaUrl } : {})
       });
     }
 
-    addNotificacion(`Recepcion registrada. ${observaciones ? 'Quedo observada.' : 'CxP generada.'}`);
+    addNotificacion(`Recepcion registrada. ${observaciones ? 'Quedo observada.' : tieneFacturaProveedor ? 'CxP generada.' : 'Quedo pendiente de factura.'}`);
     return recepcionLocal;
+  };
+
+  const completarRecepcionConCxP = async ({ recepcionId, facturaNumero = '', fechaEmision = '', fechaVencimiento = '', archivoFacturaUrl = '', facturaProvFecha = '', facturaProvMonto = null }) => {
+    const recepcion = (recepciones || []).find(r => r.id === recepcionId);
+    if (!recepcion) throw new Error('No se encontro la recepcion. Actualiza la pantalla e intentalo nuevamente.');
+    const numero = String(facturaNumero || '').trim();
+    if (!numero) throw new Error('El numero de factura del proveedor es obligatorio.');
+    if ((cxp || []).some(c => c.recepcion_id === recepcionId)) throw new Error('La recepcion ya tiene una CxP vinculada.');
+
+    const ocId = recepcion.orden_compra_id || recepcion.oc_id;
+    const osId = recepcion.orden_servicio_id || recepcion.os_id;
+    const base = (ordenesCompra || []).find(o => o.id === ocId) || (ordenesServicio || []).find(o => o.id === osId) || {};
+    const fecha = fechaEmision || facturaProvFecha || recepcion.factura_proveedor_fecha || recepcion.fecha || new Date().toISOString().split('T')[0];
+    const vencimiento = fechaVencimiento || (() => {
+      const d = new Date(`${fecha}T00:00:00`);
+      d.setDate(d.getDate() + 30);
+      return d.toISOString().split('T')[0];
+    })();
+    const anticipos = ocId ? ocAnticipos.filter(a => a.orden_compra_id === ocId) : [];
+    const totalAnticipado = anticipos.reduce((s, a) => s + Number(a.monto || 0), 0);
+    const monto = Number(facturaProvMonto ?? recepcion.factura_proveedor_monto ?? base.total ?? 0);
+    const saldo = Math.max(0, Math.round((monto - totalAnticipado) * 100) / 100);
+    const payload = {
+      id: generateId('cxp'),
+      empresa_id: empresa.id,
+      tipo_beneficiario: 'proveedor',
+      proveedor_id: recepcion.proveedor_id || base.proveedor_id || null,
+      factura_numero: numero,
+      concepto: `Recepcion ${recepcion.codigo || recepcion.id}${totalAnticipado > 0 ? ` (anticipo descontado: S/ ${totalAnticipado.toFixed(2)})` : ''}`,
+      fecha_emision: fecha,
+      fecha_vencimiento: vencimiento,
+      monto_total: saldo,
+      monto_pagado: 0,
+      saldo,
+      moneda: base.moneda || 'PEN',
+      sociedad_id: recepcion.sociedad_id || base.sociedad_id || null,
+      estado: saldo <= 0 ? 'pagada' : 'por_pagar',
+      origen: 'recepcion',
+      tipo_comprobante: 'Factura',
+      recepcion_id: recepcionId,
+      factura_proveedor_numero: numero,
+      factura_proveedor_fecha: facturaProvFecha || fecha,
+      factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : null,
+      ...(archivoFacturaUrl ? { archivo_factura_url: archivoFacturaUrl } : {}),
+    };
+    const guardada = isSupabaseConfigured()
+      ? await finanzasService.generarCxPCentralizado(payload, 'recepcion_complete')
+      : { ...payload, creado_por: authUser?.id || null };
+    const recepcionActualizada = {
+      ...recepcion,
+      factura_proveedor_numero: numero,
+      factura_proveedor_fecha: facturaProvFecha || fecha,
+      factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : recepcion.factura_proveedor_monto || null,
+      archivo_factura_url: archivoFacturaUrl || recepcion.archivo_factura_url || null,
+      cxp_generada: true,
+    };
+    setRecepciones(prev => prev.map(r => r.id === recepcionId ? recepcionActualizada : r));
+    setCxp(prev => [guardada, ...prev.filter(c => c.id !== guardada.id)]);
+    auditSync({ modulo: 'finanzas', entidad: 'cxp', entidad_id: guardada.id, accion: 'crear', valor_nuevo: guardada });
+    addNotificacion('Factura completada. CxP generada y vinculada a la recepcion.');
+    return guardada;
   };
 
   // ─── Acciones WMS ────────────────────────────────────────────────────────────
@@ -11127,7 +11324,7 @@ export function AppProvider({ children }) {
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,
     convertirLead, descartarLead, reactivarLead,
-    crearOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
+    crearOportunidad, actualizarLineaNegocioOportunidad, actualizarEtapaOportunidad, marcarGanada, marcarPerdida,
     probabilidadPorEtapaOpp, forecastPorEtapaOpp,
     actualizarAcuerdoComision, enviarAcuerdoAAprobacion, retirarAcuerdoComision, aprobarAcuerdoComision, rechazarAcuerdoComision, obtenerHistorialAcuerdo,
     crearCotizacion, aprobarCotizacion, aprobarCotizacionInterna, registrarAprobacionManual, subirVersionCotizacion,
@@ -11147,7 +11344,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, generarCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
@@ -11156,7 +11353,7 @@ export function AppProvider({ children }) {
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
-    crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, registrarEvaluacionProveedorCtx,
+    crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, completarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
     recargarInventario, recargarEntradasOcPendientes, registrarEntradaManualCtx, registrarTransferenciaCtx, registrarAjusteCtx,
     reservarStockCtx, getKardexMaterialCtx, iniciarConteoCtx, guardarAvanceConteoCtx, cerrarConteoCtx, recargarConteosInventarioCtx, getAnaliticaInventarioCtx,

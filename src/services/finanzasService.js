@@ -889,24 +889,13 @@ export const finanzasService = {
     return data;
   },
 
-  async generarCxP(payload) {
+  async generarCxPCentralizado(payload, origen) {
     const supabase = await getSupabaseClient();
-    const { sociedadId } = await validarSociedadActivaParaEscritura(
-      supabase,
-      payload?.empresa_id,
-      payload?.sociedad_id,
-      'La sociedad es obligatoria para crear la cuenta por pagar.',
-    );
-    const insert = async (p) => supabase.from('cxp').insert(p).select().single();
-    let p = { ...payload, sociedad_id: sociedadId };
-    for (let i = 0; i < 8; i++) {
-      const { data, error } = await insert(p);
-      if (!error) return data;
-      const col = error.message?.match(/column "([^"]+)" of relation/)?.[1] || error.message?.match(/'([^']+)' column/)?.[1];
-      if (!col || !(col in p)) throw error;
-      delete p[col];
-    }
-    const { data, error } = await insert(p);
+    const { data, error } = await supabase.rpc('generar_cxp_centralizado', {
+      p_payload: payload,
+      p_origen: origen,
+      p_operacion: 'crear',
+    });
     if (error) throw error;
     return data;
   },
@@ -923,14 +912,13 @@ export const finanzasService = {
     return data;
   },
 
-  async actualizarCxP(cxpId, campos) {
+  async actualizarCxPCentralizado(cxpId, campos, origen) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('cxp')
-      .update(campos)
-      .eq('id', cxpId)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('generar_cxp_centralizado', {
+      p_payload: { id: cxpId, ...(campos || {}) },
+      p_origen: origen,
+      p_operacion: 'actualizar',
+    });
     if (error) throw error;
     return data;
   },
@@ -957,25 +945,14 @@ export const finanzasService = {
     return data;
   },
 
-  async registrarPagoCxP(cxpId, monto) {
+  async registrarPagoCxPAtomico({ cxpId, monto, pago, movimiento }) {
     const supabase = await getSupabaseClient();
-    const { data: currentCxP, error: getError } = await supabase
-      .from('cxp')
-      .select('*')
-      .eq('id', cxpId)
-      .single();
-    if (getError) throw getError;
-
-    const nuevoMontoPagado = Number(currentCxP.monto_pagado) + Number(monto);
-    const nuevoSaldo = Number(currentCxP.monto_total) - nuevoMontoPagado;
-    const nuevoEstado = nuevoSaldo <= 0 ? 'pagada' : 'pago_parcial';
-
-    const { data, error } = await supabase
-      .from('cxp')
-      .update({ monto_pagado: nuevoMontoPagado, saldo: nuevoSaldo, estado: nuevoEstado })
-      .eq('id', cxpId)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('registrar_pago_cxp_atomico', {
+      p_cxp_id: cxpId,
+      p_monto: monto,
+      p_pago: pago,
+      p_movimiento: movimiento,
+    });
     if (error) throw error;
     return data;
   },
@@ -997,80 +974,16 @@ export const finanzasService = {
       gasto_id: gastoId || cxp?.gasto_id || movimiento?.gasto_id || null,
     };
 
-    try {
-      const { data, error } = await supabase.rpc('registrar_gasto_pagado_auto', { p_payload: payload });
-      if (!error) return data || payload;
-      if (!/registrar_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
-    } catch (error) {
-      if (!/registrar_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
-    }
-
-    const creados = { cxp: null, pago: null, movimiento: null };
-    try {
-      const cxpGuardada = await insertOneTolerante(supabase, 'cxp', cxpValidada);
-      creados.cxp = cxpGuardada;
-      const pagoGuardado = await insertOneTolerante(supabase, 'cxp_pagos', pagoValidado);
-      creados.pago = pagoGuardado;
-      const movNormalizado = await normalizarMovimientoTesoreriaCobro(supabase, movimiento);
-      const movGuardado = await insertOneTolerante(supabase, 'movimientos_tesoreria', movNormalizado);
-      creados.movimiento = movGuardado;
-      if (gastoId) {
-        await updateOneTolerante(supabase, 'compras_gastos', gastoId, {
-          cxp_id: cxp.id,
-          estado_pago: 'pagado',
-        });
-      }
-      return { cxp: cxpGuardada, pago: pagoGuardado, movimiento: movGuardado };
-    } catch (error) {
-      if (creados.movimiento?.id) {
-        await supabase.from('movimientos_tesoreria').delete().eq('id', creados.movimiento.id).catch(() => null);
-      }
-      if (creados.pago?.id) {
-        await supabase.from('cxp_pagos').delete().eq('id', creados.pago.id).catch(() => null);
-      }
-      if (creados.cxp?.id) {
-        await supabase.from('cxp').delete().eq('id', creados.cxp.id).catch(() => null);
-      }
-      if (gastoId) {
-        await supabase.from('compras_gastos').update({ cxp_id: null, estado_pago: 'pendiente' }).eq('id', gastoId).catch(() => null);
-      }
-      throw error;
-    }
+    const { data, error } = await supabase.rpc('registrar_gasto_pagado_auto', { p_payload: payload });
+    if (error) throw error;
+    return data || payload;
   },
 
   async revertirGastoPagadoAutomatico(gastoId) {
     const supabase = await getSupabaseClient();
-    try {
-      const { data, error } = await supabase.rpc('revertir_gasto_pagado_auto', { p_gasto_id: gastoId });
-      if (!error) return data || true;
-      if (!/revertir_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
-    } catch (error) {
-      if (!/revertir_gasto_pagado_auto|function.*not.*exist|schema cache/i.test(error.message || '')) throw error;
-    }
-
-    const { data: cxpRows, error: cxpError } = await supabase
-      .from('cxp')
-      .select('*')
-      .eq('gasto_id', gastoId);
-    if (cxpError) throw cxpError;
-    const cxpAuto = (cxpRows || []).find(c => String(c.origen || '').toLowerCase() === 'auto_gasto');
-    const cxpRel = cxpAuto || (cxpRows || [])[0] || null;
-    if (cxpRel?.id) {
-      await supabase.from('cxp_pagos').delete().eq('cxp_id', cxpRel.id);
-    }
-    await supabase.from('movimientos_tesoreria').delete().eq('gasto_id', gastoId).catch(() => null);
-    if (cxpAuto?.id) {
-      await updateOneTolerante(supabase, 'cxp', cxpAuto.id, {
-        estado: 'por_pagar',
-        monto_pagado: 0,
-        saldo: Number(cxpAuto.monto_total || 0),
-      });
-    }
-    await updateOneTolerante(supabase, 'compras_gastos', gastoId, {
-      estado_pago: 'pendiente',
-      ...(cxpAuto?.id ? { cxp_id: cxpAuto.id } : {}),
-    });
-    return true;
+    const { data, error } = await supabase.rpc('revertir_gasto_pagado_auto', { p_gasto_id: gastoId });
+    if (error) throw error;
+    return data || true;
   },
 
   async getMovimientosBanco(empresaId) {

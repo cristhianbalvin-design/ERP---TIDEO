@@ -4003,7 +4003,7 @@ function Facturacion() {
   const {
     facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias, centrosBeneficio, empresa,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
-    registrarCobroCxC, generarCxC, generarCxP, navigate, activeParams, searchQuery,
+    registrarCobroCxC, generarCxC, crearCxP, addNotificacion, navigate, activeParams, searchQuery,
     empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
 
@@ -4825,6 +4825,16 @@ function Facturacion() {
       else setSelFac(ncndFacId);
     };
     const onEmitNota = async datos => {
+      if (ncndForm === 'nc' && datos.devolucion) {
+        const puedeCrearCxPNc = Boolean(role?.permisos?.todo
+          || role?.permisos?.crear?.includes?.('cxp')
+          || role?.permisos?.crear?.includes?.('facturacion')
+          || role?.permisos?.editar?.includes?.('facturacion'));
+        if (!puedeCrearCxPNc) {
+          addNotificacion('No tienes permiso para registrar la CxP de la devolucion por Nota de Credito.');
+          return;
+        }
+      }
       const nota = ncndForm === 'nc'
         ? await emitirNotaCredito(datos.facturaOrigenId, datos)
         : await emitirNotaDebito(datos.facturaOrigenId, datos);
@@ -4833,8 +4843,10 @@ function Facturacion() {
         const fecha = new Date().toISOString().split('T')[0];
         const fechaVencimiento = new Date(`${fecha}T00:00:00`);
         fechaVencimiento.setDate(fechaVencimiento.getDate() + 15);
-        await generarCxP({
-          tipo_beneficiario: 'cliente',
+        await crearCxP({
+          // cxp no admite 'cliente' en producción; una NC de devolución
+          // se registra como colectivo, conservando nc_id y el concepto.
+          tipo_beneficiario: 'colectivo',
           sociedad_id: facOrigen?.sociedad_id || null,
           cuenta_id: facOrigen?.cuenta_id,
           concepto: `Devolución NC — ${facOrigen?.numero || datos.facturaOrigenId} — ${cuentaNombre(facOrigen?.cuenta_id)}`,
@@ -4847,6 +4859,7 @@ function Facturacion() {
           origen: 'nc_devolucion',
           motivo_cxp: 'devolucion_nc',
           nc_id: nota.id || null,
+          mecanismo_origen: 'nc_devolucion',
         });
       }
       setNcndForm(null);
@@ -7598,8 +7611,30 @@ const cxpTributoTipoLabel = c => TRIBUTO_LABEL[c?.tributo_tipo] || c?.tributo_ti
   return match ? match[1].trim() : 'Tributo';
 })();
 
+function ModalCompletarFacturaCxP({ recepcion, onClose, onCompletar }) {
+  const [numero, setNumero] = useState(recepcion?.factura_proveedor_numero || '');
+  const [fecha, setFecha] = useState(recepcion?.factura_proveedor_fecha || new Date().toISOString().split('T')[0]);
+  const [monto, setMonto] = useState(recepcion?.factura_proveedor_monto != null ? String(recepcion.factura_proveedor_monto) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const guardar = async () => {
+    if (!numero.trim()) { setError('Ingresa el numero de factura del proveedor.'); return; }
+    setSaving(true); setError('');
+    try { await onCompletar({ recepcionId: recepcion.id, facturaNumero: numero.trim(), fechaEmision: fecha, facturaProvFecha: fecha, facturaProvMonto: monto ? Number(monto) : null }); onClose(); }
+    catch (e) { setError(e?.message || 'No se pudo completar la factura.'); }
+    finally { setSaving(false); }
+  };
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal" onClick={e => e.stopPropagation()} style={{width:'min(460px,94vw)'}}>
+    <div className="modal-head"><div><h3>Completar factura de recepcion</h3><div className="text-muted" style={{fontSize:12}}>{recepcion?.codigo || recepcion?.id}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div>
+    <div className="modal-body" style={{display:'grid',gap:14}}><div className="input-group"><label>N° de factura <span style={{color:'var(--danger)'}}>*</span></label><input className="input" value={numero} onChange={e => setNumero(e.target.value)} placeholder="001-001234" /></div>
+      <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Fecha de emision</label><input className="input" type="date" value={fecha} onChange={e => setFecha(e.target.value)} /></div><div className="input-group"><label>Monto total</label><input className="input" type="number" min="0" step="0.01" value={monto} onChange={e => setMonto(e.target.value)} placeholder="0.00" /></div></div>
+      {error && <div style={{color:'var(--danger)',fontSize:13}}>⚠ {error}</div>}<div className="row" style={{justifyContent:'flex-end',gap:8}}><button className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={guardar} disabled={saving || !numero.trim()}>{saving ? 'Guardando...' : 'Generar CxP'}</button></div>
+    </div>
+  </div></div>;
+}
+
 function CxP() {
-  const { cxp, cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, generarCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { cxp, recepciones = [], cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, crearCxP, completarRecepcionConCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7613,6 +7648,16 @@ function CxP() {
     () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadCxP),
     [cxp, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
   );
+  const recepcionesVistaCxP = useMemo(
+    () => filtrarPorVistaSociedad(recepciones || [], modoVistaSociedadCxP),
+    [recepciones, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
+  );
+  const cxpRecepcionIdsCxP = useMemo(() => new Set(cxpVista.filter(c => c.recepcion_id).map(c => c.recepcion_id)), [cxpVista]);
+  const recepcionesPendientesFacturaCxP = useMemo(
+    () => recepcionesVistaCxP.filter(r => !cxpRecepcionIdsCxP.has(r.id)),
+    [recepcionesVistaCxP, cxpRecepcionIdsCxP],
+  );
+  const canCompleteInvoiceCxP = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes?.('recepciones'));
   const cecos = filtrarOpcionesPorSociedadEscritura(
     (centrosCosto || []).filter(c => c.estado === 'activo'),
     modoVistaSociedadCxP.sociedadIdEscritura,
@@ -7648,6 +7693,7 @@ function CxP() {
   const [fichaTab, setFichaTab] = useState('pago');
   const [guardando, setGuardando] = useState(false);
   const [tabCxP, setTabCxP] = useState('general');
+  const [completarRecepcion, setCompletarRecepcion] = useState(null);
 
   // Form: pago
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
@@ -8016,22 +8062,23 @@ function CxP() {
   };
 
   // ── Datos filtrados y KPIs ────────────────────────────────────────────────
-  const cxpFiltrada = cxpVista.filter(c => {
+  const cxpFiltradaSinMes = cxpVista.filter(c => {
     if (c.estado === 'anulada') return false;
     if (tabCxP === 'tributos' && !cxpEsTributo(c)) return false;
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
-    if (filtMes !== 'todos') {
-      const fecha = c.fecha_emision || c.emision || '';
-      if (!fecha.startsWith(filtMes)) return false;
-    }
     if (filtBusqueda) {
       const ben = beneficiarioDetalle(c);
       const nombre = (ben?.nombre || '').toLowerCase();
       if (!nombre.includes(filtBusqueda.toLowerCase())) return false;
     }
     return true;
+  });
+  const cxpFiltrada = cxpFiltradaSinMes.filter(c => {
+    if (filtMes === 'todos') return true;
+    const fecha = c.fecha_emision || c.emision || '';
+    return fecha.startsWith(filtMes);
   });
   const cxpTributos = cxpVista.filter(cxpEsTributo);
 
@@ -8043,6 +8090,25 @@ function CxP() {
   const saldosUSD  = cxpFiltrada.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
   const vencidoPEN = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0);
   const vencidoUSD = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
+  const cxpPagadaPorId = useMemo(
+    () => new Map(cxpFiltradaSinMes.map(c => [c.id, c])),
+    [cxpFiltradaSinMes],
+  );
+  const anioActual = today.slice(0, 4);
+  const pagosAcumulados = (cxpPagos || []).filter(pago => {
+    const cxpRelacionada = cxpPagadaPorId.get(pago.cxp_id);
+    if (!cxpRelacionada) return false;
+    const fechaPago = pago.fecha_pago || pago.fecha || '';
+    return filtMes === 'todos'
+      ? fechaPago.startsWith(anioActual)
+      : fechaPago.startsWith(filtMes);
+  });
+  const montoPagadoPEN = pagosAcumulados
+    .filter(pago => (cxpPagadaPorId.get(pago.cxp_id)?.moneda || 'PEN') !== 'USD')
+    .reduce((s, pago) => s + Number(pago.monto || 0), 0);
+  const montoPagadoUSD = pagosAcumulados
+    .filter(pago => cxpPagadaPorId.get(pago.cxp_id)?.moneda === 'USD')
+    .reduce((s, pago) => s + Number(pago.monto || 0), 0);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const abrirFicha = c => {
@@ -8188,6 +8254,7 @@ function CxP() {
         ...(esRheInterno ? { categoria_er: rheCategoriaErAsignada } : cxpCategoriaEr ? { categoria_er: cxpCategoriaEr } : {}),
         ...(cxpCentroCostoId ? { centro_costo_id: cxpCentroCostoId } : {}),
         ...(!esTributo && !esDividendo && cxpYaRegistrado ? { no_devengar_er: true } : {}),
+        mecanismo_origen: esRhe ? 'comisiones_rhe' : 'cxp_manual',
       };
       if (isSupabaseConfigured() && cxpPayload.proveedor_id && cxpPayload.factura_numero) {
         const revision = await revisarDuplicadoCxP({
@@ -8205,7 +8272,7 @@ function CxP() {
           if (!window.confirm(`Posible error: el número ${cxpPayload.factura_numero} ya existe para ${proveedoresConMismoNumero} en esta sociedad. ¿Deseas registrarla de todas formas para el proveedor seleccionado?`)) return;
         }
       }
-      await generarCxP(cxpPayload);
+      await crearCxP(cxpPayload);
       resetCrearCxP();
     } finally {
       setGuardando(false);
@@ -8220,7 +8287,7 @@ function CxP() {
         categoria_er:    fichaClasifCategoria || null,
         centro_costo_id: fichaClasifCeco || null,
       };
-      await finanzasService.actualizarCxP(sel.id, camposCxP);
+      await finanzasService.actualizarCxPCentralizado(sel.id, camposCxP, 'cxp_clasificacion');
       // Propagar al compras_gastos vinculado para que el ER lo refleje
       if (sel.gasto_id) {
         const camposGasto = { categoria: fichaClasifCategoria || sel.categoria_er || 'Gastos operativos' };
@@ -8385,6 +8452,7 @@ function CxP() {
         {[
           { id:'general', label:`General (${cxpVista.length})` },
           { id:'tributos', label:`Tributos (${cxpTributos.length})` },
+          { id:'pendientes_factura', label:`Recepciones pendientes (${recepcionesPendientesFacturaCxP.length})` },
         ].map(t => (
           <div key={t.id} className={'tab '+(tabCxP===t.id?'active':'')} onClick={() => setTabCxP(t.id)}>{t.label}</div>
         ))}
@@ -8413,13 +8481,16 @@ function CxP() {
           <div className="kpi-icon orange">{I.clock}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-label">Pagadas</div>
-          <div className="kpi-value" style={{marginTop:12}}>{cxpVista.filter(c => c.estado === 'pagada').length}</div>
+          <div className="kpi-label">Monto pagado acumulado</div>
+          <div className="kpi-value" style={{fontSize:20, display:'flex', flexDirection:'column', gap:4, marginTop:12}}>
+            <span>{money(montoPagadoPEN)}</span>
+            {montoPagadoUSD > 0 && <span style={{fontSize:16, color:'var(--fg-muted)'}}>{money(montoPagadoUSD,'US$')}</span>}
+          </div>
           <div className="kpi-icon green">{I.check}</div>
         </div>
       </div>
 
-      <div className="card">
+      <div className="card" style={{display:tabCxP === 'pendientes_factura' ? 'none' : undefined}}>
         <div className="card-head row" style={{gap:12, flexWrap:'wrap'}}>
           <input className="input" placeholder="Buscar beneficiario..." value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
           <select className="input" style={{flex:'1 1 140px'}} value={filtTipo} onChange={e => setFiltTipo(e.target.value)}>
@@ -8528,6 +8599,18 @@ function CxP() {
           </table>
         </div>
       </div>
+
+      {tabCxP === 'pendientes_factura' && (
+        <div className="card">
+          <div className="card-head"><div><strong>Recepciones pendientes de facturar</strong><div className="text-muted" style={{fontSize:12,marginTop:4}}>Recepciones sin ninguna CxP vinculada por recepcion_id.</div></div></div>
+          <div className="table-wrap"><table className="tbl"><thead><tr><th>Recepcion</th><th>Fecha</th><th>Factura proveedor</th><th>Monto</th><th>Accion</th></tr></thead><tbody>
+            {recepcionesPendientesFacturaCxP.length ? recepcionesPendientesFacturaCxP.map(r => (
+              <tr key={r.id}><td className="mono">{r.codigo || r.id}</td><td>{r.fecha || '-'}</td><td>{r.factura_proveedor_numero || <span className="badge badge-orange">Pendiente</span>}</td><td className="num">{r.factura_proveedor_monto != null ? money(r.factura_proveedor_monto) : '-'}</td><td>{canCompleteInvoiceCxP ? <button className="btn btn-sm btn-primary" onClick={() => setCompletarRecepcion(r)}>Completar factura</button> : <span className="text-muted">Sin permiso de edición de Recepciones</span>}</td></tr>
+            )) : <tr><td colSpan="5" className="text-center text-muted" style={{padding:32}}>No hay recepciones pendientes de facturar.</td></tr>}
+          </tbody></table></div>
+        </div>
+      )}
+      {completarRecepcion && <ModalCompletarFacturaCxP recepcion={completarRecepcion} onClose={() => setCompletarRecepcion(null)} onCompletar={completarRecepcionConCxP} />}
 
       {/* ── Panel ficha (pago + historial) ─────────────────────────────── */}
       {accionCxP && (

@@ -1431,9 +1431,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           created_at:        new Date().toISOString(),
         };
         if (sb) {
-          await finanzasService.generarCxP(cxpRecord).catch(err =>
-            console.warn('[NuevoEgreso] cxp insert:', err?.message),
-          );
+          await finanzasService.generarCxPCentralizado(cxpRecord, 'nuevo_egreso');
         }
         setCxp(prev => [cxpRecord, ...prev]);
         toastMsg = 'Gasto registrado + CxP pendiente creada';

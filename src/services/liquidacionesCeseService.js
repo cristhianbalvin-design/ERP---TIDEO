@@ -414,9 +414,8 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
   const baseConcepto = `Liquidación por cese — ${TIPOS_CESE_LABELS[liq.tipo_cese] || liq.tipo_cese} — ${beneficiario}`;
   const concepto     = params.observaciones ? `${baseConcepto} | ${params.observaciones}` : baseConcepto;
 
-  const { data: cxp, error: cxpErr } = await supabase
-    .from('cxp')
-    .insert({
+  const { data: cxp, error: cxpErr } = await supabase.rpc('generar_cxp_centralizado', {
+    p_payload: {
       id:               crypto.randomUUID(),
       empresa_id:       liq.empresa_id,
       sociedad_id:      params.sociedad_id || null,
@@ -430,10 +429,14 @@ export async function confirmarLiquidacion(liquidacionId, params = {}, confirmed
       fecha_emision:    now.toISOString().slice(0, 10),
       fecha_vencimiento: fechaVenc.toISOString().slice(0, 10),
       estado:           'pendiente',
-      moneda:           params.moneda || 'PEN'
-    })
-    .select('*')
-    .single();
+      moneda:           params.moneda || 'PEN',
+      origen:           'liquidacion_cese',
+      tipo_comprobante: 'Liquidacion',
+      motivo_cxp:       'liquidacion_cese',
+    },
+    p_origen: 'liquidacion_create',
+    p_operacion: 'crear',
+  });
   if (cxpErr) throw cxpErr;
 
   // Actualizar liquidación
@@ -505,12 +508,19 @@ export async function anularLiquidacion(liquidacionId, motivo, anuladoPor = null
       .eq('id', liq.personal_id);
 
     if (liq.cxp_id) {
-      const { data: cxpAnu } = await supabase
-        .from('cxp')
-        .update({ estado: 'anulada' })
-        .eq('id', liq.cxp_id)
-        .select('*')
-        .single();
+      const { data: cxpAnu, error: cxpAnuErr } = await supabase.rpc('generar_cxp_centralizado', {
+        p_payload: {
+          id: liq.cxp_id,
+          estado: 'anulada',
+          saldo: 0,
+          motivo_anulacion: motivo || null,
+          anulado_por: anuladoPor || null,
+          anulado_en: now,
+        },
+        p_origen: 'liquidation_anular',
+        p_operacion: 'actualizar',
+      });
+      if (cxpAnuErr) throw cxpAnuErr;
       cxp = cxpAnu;
     }
   }
