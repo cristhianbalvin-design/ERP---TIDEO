@@ -125,8 +125,9 @@ begin
     if nullif(btrim(v_line.item->>'id'), '') is not null then
       select x.ordinality
         into v_match_ordinal
-        from jsonb_array_elements(coalesce(v_oc.items, '[]'::jsonb)) with ordinality as x(item, ordinality)
+       from jsonb_array_elements(coalesce(v_oc.items, '[]'::jsonb)) with ordinality as x(item, ordinality)
        where nullif(btrim(x.item->>'solpe_item_id'), '') = nullif(btrim(v_line.item->>'id'), '')
+         and nullif(btrim(x.item->>'material_id'), '') = nullif(btrim(v_line.item->>'material_id'), '')
          and not (x.ordinality = any(v_used_oc_ordinals))
        order by x.ordinality
        limit 1;
