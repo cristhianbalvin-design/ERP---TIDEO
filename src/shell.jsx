@@ -26,9 +26,7 @@ const SIDEBAR = [
   ]},
   { section: 'CRM & Marketing', items: [
     { key: 'cuentas', label: 'Cuentas y Contactos', icon: I.users },
-    { key: 'leads', label: 'Leads y Scoring', icon: I.target },
     { key: 'marketing', label: 'Marketing Automation', icon: I.plus },
-    { key: 'pipeline', label: 'Pipeline', icon: I.pipe },
     { key: 'actividades', label: 'Actividades', icon: I.calendar },
   ]},
   { section: 'Comercial', items: [
@@ -36,6 +34,8 @@ const SIDEBAR = [
     { key: 'hoja_costeo', label: 'Hoja de Costeo', icon: I.receipt },
     { key: 'costeo_variables', label: 'Variables de Costeo', icon: I.dollar, requiereVerCostos: true },
     { key: 'cotizaciones', label: 'Cotizaciones', icon: I.file },
+    { key: 'leads', label: 'Leads y Scoring', icon: I.target },
+    { key: 'pipeline', label: 'Pipeline', icon: I.pipe },
     { key: 'os_cliente', label: 'OS Cliente', icon: I.clipboard },
     { key: 'panel_produccion', label: 'Panel de Producción', icon: I.trend, accessAnyOf: ['os_cliente'] },
     { key: 'equipos_clientes', label: 'Equipos de Clientes', icon: I.package, accessAnyOf: ['os_cliente'] },
