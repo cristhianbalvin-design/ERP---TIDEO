@@ -6681,6 +6681,7 @@ function OrdenesCompra() {
       const cantidad = Number(item.cantidad || 0);
       const precio = Number(item.precio_unitario || 0);
       return {
+        solpe_item_id: item.solpe_item_id || null,
         material_id: item.material_id || null,
         codigo: mat?.codigo || item.codigo || null,
         descripcion: item.descripcion || mat?.descripcion || 'Item de compra',
