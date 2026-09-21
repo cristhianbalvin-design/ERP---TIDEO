@@ -8933,7 +8933,7 @@ export function AppProvider({ children }) {
       orden_compra_id: isOC ? base.id : null,
       orden_servicio_id: isOC ? null : base.id,
       sociedad_id: base.sociedad_id || null,
-      tipo: observaciones ? 'observada' : 'total',
+      tipo: isOC ? null : (observaciones ? 'observada' : 'total'),
       fecha,
       items_recibidos: itemsRecibidos,
       observaciones,
@@ -8975,30 +8975,38 @@ export function AppProvider({ children }) {
       }
     }
 
-    const recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: !observaciones && tieneFacturaProveedor };
+    let recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: !observaciones && tieneFacturaProveedor };
+    let recalculoEstadoOC = null;
+    if (isOC) {
+      try {
+        recalculoEstadoOC = await comprasService.recalcularEstadoOcPorRecepcion({
+          ordenCompraId: base.id,
+          recepcionId: recepcionLocal.id,
+          fechaRecepcion: fecha,
+          fechaEmision: base.fecha_emision,
+          modo: isSupabaseConfigured() ? 'database' : 'local',
+          ordenCompra: base,
+          recepciones: [recepcionLocal, ...(recepciones || [])],
+        });
+        if (recalculoEstadoOC?.recepcion) {
+          recepcionLocal = { ...recepcionLocal, ...recalculoEstadoOC.recepcion };
+        }
+      } catch (error) {
+        addNotificacion(`Compras no pudo recalcular la recepción: ${error.message}`);
+      }
+    }
     setRecepciones(prev => [recepcionLocal, ...prev]);
     auditSync({ modulo: 'compras', entidad: 'recepciones', entidad_id: recepcionLocal.id, accion: 'registrar', valor_nuevo: recepcionLocal });
 
     if (isOC) {
-      const cambios = {
-        estado: 'cerrada',
-        porcentaje_recibido: 100,
-        fecha_recepcion_real: fecha,
-        lead_time_dias: comprasService.calcularLeadTimeDias(base.fecha_emision, fecha)
-      };
-      setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...cambios } : o));
+      if (recalculoEstadoOC?.ordenCompra) {
+        setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...recalculoEstadoOC.ordenCompra } : o));
+      }
       setOcTransitos(prev => prev.map(t =>
         t.orden_compra_id === base.id && ['registrado', 'en_transito'].includes(t.estado)
           ? { ...t, estado: 'recibido', updated_at: new Date().toISOString() }
           : t
       ));
-      if (isSupabaseConfigured()) {
-        comprasService.cerrarOrdenCompraPorRecepcion(base.id, { fechaRecepcion: fecha, fechaEmision: base.fecha_emision })
-          .then(data => {
-            if (data) setOrdenesCompra(prev => prev.map(o => o.id === base.id ? { ...o, ...data } : o));
-          })
-          .catch(error => addNotificacion(`Compras no persistio en Supabase: ${error.message}`));
-      }
       if (itemsRecibidos.length) {
         if (isSupabaseConfigured() && !observaciones && tieneEntradaFisicaPendiente) {
           comprasService.ajustarValorizacionOcPendiente(empresa.id, {
