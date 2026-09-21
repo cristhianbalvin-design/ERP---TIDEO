@@ -8392,6 +8392,86 @@ function CxP() {
     }
   };
 
+  const descargarReporteCxp = () => {
+    const sociedadesPorId = new Map((sociedadesDisponibles || []).map(sociedad => [
+      sociedad.id,
+      sociedad.nombre_comercial || sociedad.razon_social || sociedad.nombre || sociedad.codigo || sociedad.id,
+    ]));
+    const idsCxpExportados = new Set(cxpVista.map(c => c.id));
+    const filasCxp = cxpVista.map(c => {
+      const beneficiario = beneficiarioDetalle(c);
+      const semaforo = semaforoDe(c);
+      return {
+        'ID CxP': c.id || '',
+        'Sociedad': sociedadesPorId.get(c.sociedad_id) || c.sociedad_id || 'Sin sociedad',
+        'Beneficiario': beneficiario?.nombre || '-',
+        'Tipo de beneficiario': beneficiario?.tipo || c.tipo_beneficiario || 'proveedor',
+        'Origen': c.origen || 'manual',
+        'Tipo de comprobante': c.tipo_comprobante || '',
+        'N° documento': c.factura_numero || '',
+        'Concepto': c.concepto || '',
+        'RUC emisor': c.ruc_emisor || '',
+        'Fecha de emisión': c.fecha_emision || c.emision || '',
+        'Fecha de vencimiento': c.fecha_vencimiento || '',
+        'Moneda': c.moneda || 'PEN',
+        'Monto total': totalDe(c),
+        'Monto pagado': pagadoDe(c),
+        'Saldo': saldoDe(c),
+        'Estado': c.estado || '',
+        'Semáforo': semaforo.label,
+        'CECO': cecoNombreDe(c.centro_costo_id),
+        'Categoría ER': c.categoria_er || '',
+        'No devengar en ER': c.no_devengar_er ? 'Sí' : 'No',
+        'Monto bruto': c.monto_bruto ?? '',
+        'Retención IR': c.retencion_ir ?? '',
+        'Tipo de tributo': cxpTributoTipoLabel(c) || '',
+        'Periodo tributario': cxpTributoPeriodo(c) || '',
+        'Formulario tributario': c.tributo_formulario || '',
+        'Socio': c.socio_nombre || '',
+        'Personal ID': c.personal_id || '',
+        'OT vinculada': c.ot_vinc_id || '',
+        'Gasto ID': c.gasto_id || '',
+        'Recepción ID': c.recepcion_id || '',
+        'Creado': c.created_at || '',
+      };
+    });
+    const filasPagos = (cxpPagos || [])
+      .filter(pago => idsCxpExportados.has(pago.cxp_id))
+      .map(pago => ({
+        'ID pago': pago.id || '',
+        'ID CxP': pago.cxp_id || '',
+        'Fecha de pago': pago.fecha_pago || pago.fecha || '',
+        'Monto': Number(pago.monto || 0),
+        'Método de pago': pago.metodo_pago || '',
+        'Referencia': pago.referencia || '',
+        'Cuenta bancaria': pago.cuenta_bancaria || pago.cuenta_bancaria_id || '',
+        'Estado': pago.estado || '',
+        'Creado': pago.created_at || '',
+      }));
+
+    const libro = XLSX.utils.book_new();
+    const hojaCxp = XLSX.utils.json_to_sheet(filasCxp);
+    hojaCxp['!cols'] = [
+      { wch: 38 }, { wch: 24 }, { wch: 30 }, { wch: 18 }, { wch: 16 }, { wch: 20 },
+      { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 10 },
+      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 24 },
+      { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 18 },
+      { wch: 22 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 },
+      { wch: 24 },
+    ];
+    XLSX.utils.book_append_sheet(libro, hojaCxp, 'Cuentas por Pagar');
+
+    const hojaPagos = XLSX.utils.json_to_sheet(filasPagos);
+    hojaPagos['!cols'] = [
+      { wch: 38 }, { wch: 38 }, { wch: 18 }, { wch: 14 }, { wch: 20 },
+      { wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 24 },
+    ];
+    XLSX.utils.book_append_sheet(libro, hojaPagos, 'Pagos');
+
+    XLSX.writeFile(libro, `reporte_cuentas_por_pagar_${today}.xlsx`);
+    addNotificacion(`Reporte de CxP descargado: ${filasCxp.length} cuenta(s) y ${filasPagos.length} pago(s).`);
+  };
+
   const selBeneficiario = sel ? beneficiarioDetalle(sel) : null;
   const selGastoOrigen = sel ? gastoOrigenDe(sel) : null;
   const selSemaforo = sel ? semaforoDe(sel) : null;
@@ -8435,6 +8515,9 @@ function CxP() {
           <input ref={cxpImportFileRef} type="file" accept=".xlsx,.xls" onChange={leerArchivoCxpMasivo} style={{display:'none'}} />
           <button className="btn btn-secondary" onClick={descargarPlantillaCxp} style={{fontSize:13}}>
             {I.download} Descargar plantilla
+          </button>
+          <button className="btn btn-secondary" onClick={descargarReporteCxp} style={{fontSize:13}} title="Descargar todas las cuentas por pagar visibles para este usuario">
+            {I.download} Descargar reporte Excel
           </button>
           <button className="btn btn-secondary" onClick={() => cxpImportFileRef.current?.click()} disabled={cxpImportCargando} style={{fontSize:13}}>
             {I.upload} {cxpImportCargando ? 'Analizando...' : 'Subir plantilla masiva'}
