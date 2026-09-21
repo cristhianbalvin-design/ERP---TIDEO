@@ -6455,6 +6455,7 @@ const solpeOCLabel = s => `${s?.numero || s?.codigo || s?.id || 'SOLPE'}${s?.des
 const itemsSolpeParaOC = (s) => {
   const items = Array.isArray(s?.items) ? s.items : [];
   return items.length ? items.map(it => ({
+    solpe_id: s?.id || null,
     solpe_item_id: it.id || null,
     material_id: it.material_id || '',
     codigo: it.material_codigo || it.codigo || '',
@@ -6681,6 +6682,7 @@ function OrdenesCompra() {
       const cantidad = Number(item.cantidad || 0);
       const precio = Number(item.precio_unitario || 0);
       return {
+        solpe_id: item.solpe_id || null,
         solpe_item_id: item.solpe_item_id || null,
         material_id: item.material_id || null,
         codigo: mat?.codigo || item.codigo || null,
@@ -10932,7 +10934,10 @@ function SOLPE() {
       {solpeSeleccionada && (() => {
         const s = solpes.find(x => x.id === solpeSeleccionada.id) || solpeSeleccionada;
         const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
-        const ocsSolpe = [...(ordenesCompra||[]).filter(oc => oc.solpe_id === s.id)];
+        const ocsSolpe = [...(ordenesCompra||[]).filter(oc => (
+          oc.solpe_id === s.id ||
+          (Array.isArray(oc.items) && oc.items.some(item => item?.solpe_id === s.id))
+        ))];
         (procesosCompra||[]).filter(p => p.solpe_id === s.id).forEach(pc => {
           (ordenesCompra||[]).filter(oc => oc.proceso_compra_id === pc.id && !ocsSolpe.find(x => x.id === oc.id)).forEach(oc => ocsSolpe.push(oc));
         });
