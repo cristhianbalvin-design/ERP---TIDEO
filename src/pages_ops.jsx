@@ -6594,20 +6594,14 @@ const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
   return match[2] === tableName ? match[1] : null;
 };
 const normEstadoSolpe = s => String(s?.estado || '').trim().toLowerCase();
-const solpeTieneOC = (s, ordenesCompra = [], procesosCompra = []) => {
-  const sid = s?.id;
-  if (!sid) return false;
-  if (['oc_generada', 'oc generada'].includes(normEstadoSolpe(s))) return true;
-  return (ordenesCompra || []).some(oc => {
-    if (oc.solpe_id === sid || oc.origen_solpe_id === sid) return true;
-    return (procesosCompra || []).some(p => p.id === oc.proceso_compra_id && p.solpe_id === sid);
-  });
-};
-const solpeDisponibleParaOC = (s, ordenesCompra = [], procesosCompra = []) => normEstadoSolpe(s) === 'aprobada' && !solpeTieneOC(s, ordenesCompra, procesosCompra);
+const solpeTieneLineasPendientes = s => (Array.isArray(s?.items) ? s.items : [])
+  .some(item => !item?.oc_id);
+const solpeDisponibleParaOC = s => ['aprobada', 'oc_parcial'].includes(normEstadoSolpe(s)) && solpeTieneLineasPendientes(s);
 const solpeOCLabel = s => `${s?.numero || s?.codigo || s?.id || 'SOLPE'}${s?.descripcion ? ` - ${s.descripcion}` : ''}`;
 const itemsSolpeParaOC = (s) => {
   const items = Array.isArray(s?.items) ? s.items : [];
   return items.length ? items.map(it => ({
+    solpe_item_id: it.id || null,
     material_id: it.material_id || '',
     codigo: it.material_codigo || it.codigo || '',
     descripcion: it.descripcion || it.nombre || 'Item de compra',
@@ -6782,7 +6776,7 @@ function OrdenesCompra() {
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const proveedoresOC = homologados.length ? homologados : proveedores;
-  const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s, ordenesCompra, procesosCompra));
+  const solpesDisponibles = (solpes || []).filter(s => solpeDisponibleParaOC(s));
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
   const otDestinoOC = (ots || []).find(o => o.id === form.ot_id);
@@ -6811,14 +6805,14 @@ function OrdenesCompra() {
     handledSolpeParamRef.current = solpeId;
   }, [activeParams?.action, activeParams?.solpeId, solpes]);
 
-  const marcarSolpeOCGenerada = async (solpeId, oc) => {
-    if (!solpeId) return;
-    if (isSupabaseConfigured()) {
-      const sb = await getSupabaseClient();
-      const { error } = await sb.from('solpe_interna').update({ estado:'oc_generada', updated_at:new Date().toISOString() }).eq('id', solpeId);
-      if (error) throw error;
-    }
-    setSolpes(prev => prev.map(s => s.id === solpeId ? { ...s, estado:'oc_generada', orden_compra_id:oc?.id || s.orden_compra_id, orden_compra_codigo:oc?.codigo || s.orden_compra_codigo } : s));
+  const registrarCoberturaSolpeOC = async (solpeId, oc) => {
+    if (!solpeId || !oc?.id) return null;
+    if (!isSupabaseConfigured()) return null;
+    const resultado = await comprasService.registrarCoberturaSolpeOc(solpeId, oc.id);
+    setSolpes(prev => prev.map(s => s.id === solpeId
+      ? { ...s, estado: resultado?.estado || s.estado, items: resultado?.items || s.items }
+      : s));
+    return resultado;
   };
 
   const crear = async (emitir=true) => {
@@ -6863,7 +6857,7 @@ function OrdenesCompra() {
     try {
       const { ocGuardada, payloadUsado } = await crearOCCompatible(oc);
       if (form.solpe_id && (!('solpe_id' in payloadUsado) || !('solpe_codigo' in payloadUsado) || !('origen_tipo' in payloadUsado))) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
-      if (form.solpe_id) await marcarSolpeOCGenerada(form.solpe_id, ocGuardada);
+      if (form.solpe_id) await registrarCoberturaSolpeOC(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
       setForm(nuevaOCForm(proveedoresOC[0]?.id));
       setPanel(false);
@@ -7054,7 +7048,7 @@ function PanelOC({ form, setForm, proveedores, procesos, solpes = [], ots, centr
   return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.origen_compra === 'solpe' ? '__solpe__' : (form.proceso_compra_id || '')} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option><option value="__solpe__">Desde SOLPE</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><SearchSelect value={form.proveedor_id} placeholder="Buscar proveedor..." options={proveedores.map(p => ({ id:p.id, label:`${p.razon_social}${p.estado==='observado'?' - observado':''}`, searchText:[p.razon_social, p.nombre_comercial, p.ruc, p.codigo].filter(Boolean).join(' ') }))} onChange={proveedor_id=>setForm(v=>({...v,proveedor_id}))}/></div>
-      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE aprobada</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs aprobadas sin OC generada.</div>}</div>}
+      {form.origen_compra === 'solpe' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Buscar SOLPE con líneas pendientes</label><input className="input" value={solpeQuery} onChange={e=>setSolpeQuery(e.target.value)} placeholder="Numero, descripcion o solicitante"/><select className="select" style={{marginTop:8}} value={form.solpe_id || ''} onChange={e=>aplicarSolpe(e.target.value)}><option value="">Seleccionar SOLPE...</option>{solpesFiltradas.map(s=><option key={s.id} value={s.id}>{solpeOCLabel(s)}</option>)}</select>{solpesFiltradas.length === 0 && <div className="text-muted" style={{fontSize:12, marginTop:4}}>No hay SOLPEs con líneas pendientes.</div>}</div>}
       <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
@@ -10902,7 +10896,7 @@ function SearchSelect({ value, onChange, options, placeholder = 'Seleccionar...'
 
 const SOLPE_FORM_INIT = { descripcion: '', tipo: 'bien', prioridad: 'normal', solicitante: '', centro_costo_id: '', ot_id: '' };
 
-const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
+const SOLPE_ESTADO_BADGE = { borrador: 'badge-gray', solicitada: 'badge-orange', aprobada: 'badge-blue', atendida: 'badge-green', oc_parcial: 'badge-orange', oc_generada: 'badge-green', 'oc generada': 'badge-green' };
 
 function SOLPE() {
   const { solpes, ots, searchQuery, crearSOLPE, enviarSOLPE, atenderSOLPE, centrosCosto, addToast, materiales, inventario, navigate, areasEmpresa, ordenesCompra, procesosCompra, recepciones, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
