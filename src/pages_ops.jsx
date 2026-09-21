@@ -76,6 +76,7 @@ import { getUnidadMineraAsignaciones, crearUnidadMineraAsignacion, actualizarUni
 import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/ImportarCuentasModal.jsx';
+import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -6908,7 +6909,7 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
     (!filtroPrv || o.proveedor_id === filtroPrv)
   );
   const calcLineas = (oc) => {
-    const recs = (recepciones || []).filter(r => r.oc_id === oc.id);
+    const recs = (recepciones || []).filter(r => r.orden_compra_id === oc.id);
     return (oc.items || []).map(item => {
       const pedido = Number(item.cantidad || 0);
       const recibido = recs.reduce((sum, r) => {
