@@ -10,6 +10,7 @@ const numero = value => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+const redondearMoneda = value => Math.round(numero(value) * 100) / 100;
 
 const nombreCuenta = cuenta => cuenta?.razon_social || cuenta?.nombre_comercial || cuenta?.id || 'Cuenta';
 const nombreActivo = activo => [activo?.codigo, activo?.nombre, activo?.marca, activo?.modelo].filter(Boolean).join(' · ') || activo?.id;
@@ -158,7 +159,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
   const actualizarLinea = (activoId, patch) => setLineas(actual => actual.map(linea => linea.activoId === activoId ? { ...linea, ...patch } : linea));
   const alternarActivo = activoId => setLineas(actual => actual.some(linea => linea.activoId === activoId)
     ? actual.filter(linea => linea.activoId !== activoId)
-    : [...actual, { activoId, horas: 1, unidad: 'HORA', contratoId: '' }]);
+    : [...actual, { activoId, horas: 1, unidad: 'HORA', contratoId: '', horas_minimas_garantizadas: 1, duracion_meses: 1 }]);
 
   const resumenLineas = lineas.map(linea => {
     const activo = activosPorId.get(linea.activoId);
@@ -173,7 +174,14 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
     setError('');
     if (!cuentaId) return setError('Selecciona una cuenta para continuar.');
     if (!lineas.length) return setError('Selecciona al menos un equipo con tarifa estándar.');
-    const invalidas = resumenLineas.filter(linea => !linea.tarifa || numero(linea.horas) <= 0 || (linea.candidatos.length > 1 && !linea.contratoId));
+    const invalidas = resumenLineas.filter(linea => (
+      !linea.tarifa
+      || numero(linea.horas) <= 0
+      || numero(linea.horas_minimas_garantizadas ?? linea.horas) <= 0
+      || numero(linea.costo_hora_adicional ?? linea.precio) < 0
+      || numero(linea.duracion_meses) <= 0
+      || (linea.candidatos.length > 1 && !linea.contratoId)
+    ));
     if (invalidas.length) return setError('Completa las horas y selecciona un contrato cuando haya más de una coincidencia vigente.');
     const contratosElegidos = [...new Set(resumenLineas.map(linea => linea.contrato?.id).filter(Boolean))];
     if (contratosElegidos.length > 1) return setError('Una cotización solo puede trazarse a un contrato. Selecciona equipos del mismo contrato o genera cotizaciones separadas.');
@@ -187,13 +195,18 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
       cantidad: numero(linea.horas),
       unidad: linea.unidad || 'HORA',
       precio_unitario: linea.precio,
-      total: Math.round(numero(linea.horas) * linea.precio * 100) / 100,
+      total: redondearMoneda(numero(linea.horas) * linea.precio),
       incluido: false,
       codigo: linea.activo?.codigo || '',
       marca: linea.activo?.marca || '',
       modelo: linea.activo?.modelo || '',
       año_fabricacion: linea.activo?.año_fabricacion ?? null,
       año_overhaul: linea.activo?.año_overhaul ?? null,
+      horas_minimas_garantizadas: numero(linea.horas_minimas_garantizadas ?? linea.horas),
+      costo_hora_adicional: numero(linea.costo_hora_adicional ?? linea.precio),
+      duracion_meses: numero(linea.duracion_meses),
+      costo_mes: redondearMoneda(numero(linea.horas_minimas_garantizadas ?? linea.horas) * linea.precio),
+      costo_periodo: redondearMoneda(numero(linea.horas_minimas_garantizadas ?? linea.horas) * linea.precio * numero(linea.duracion_meses)),
       activo_id: linea.activoId,
       contrato_alquiler_id: linea.contrato?.id || null,
     }));
@@ -203,7 +216,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
   return <>
     <NuevaCuentaModal open={nuevaCuentaAbierta} empresa={{ id: empresaId }} crearCuenta={crearCuenta} comercialesAsignables={comercialesAsignables} zIndex={1200} onClose={() => setNuevaCuentaAbierta(false)} onCreated={cuentaNueva => { setCuentas(actuales => [cuentaNueva, ...actuales.filter(item => item.id !== cuentaNueva.id)]); setCuentaId(cuentaNueva.id); }} />
     <NuevoProyectoModal open={nuevoProyectoAbierto} empresaId={empresaId} cuentas={cuentas} cuentaInicialId={cuentaId} cuentaFija zIndex={1300} onClose={() => setNuevoProyectoAbierto(false)} onCreated={proyectoNuevo => { setProyectos(actuales => [proyectoNuevo, ...actuales.filter(item => item.id !== proyectoNuevo.id)]); setProyectoId(proyectoNuevo.id); setNuevoProyectoAbierto(false); }} />
-    {createPortal(<div className="modal-backdrop"><div className="modal" style={{ maxWidth: 920 }}>
+    {createPortal(<div className="modal-backdrop"><div className="modal" style={{ maxWidth: 1280 }}>
       <div className="modal-head"><div><h2>Cotizar desde Tarifario</h2><div className="text-muted" style={{ fontSize: 12 }}>Flota &amp; Alquileres · tarifa estándar y override vigente por contrato.</div></div><button className="icon-btn" onClick={onCancel}>{I.x}</button></div>
       <div className="modal-body">
         {error && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{error}</div>}
@@ -214,7 +227,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
           </div>
           {proyecto && <div className="alert alert-info" style={{ marginTop: 12 }}>Proyecto: <strong>{proyecto.codigo} · {proyecto.nombre}</strong>. Si un equipo tiene más de un contrato vigente, deberás elegir uno.</div>}
           <div style={{ marginTop: 16 }}><div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}><h3 style={{ margin: 0 }}>Equipos con tarifa estándar</h3>{cargandoContratos && <span className="text-muted">Consultando contratos…</span>}</div>
-            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Horas estimadas</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
+            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Horas estimadas</th><th style={{ width: 150 }}>Horas mínimas garantizadas</th><th style={{ width: 150 }}>US / hora adicional</th><th style={{ width: 120 }}>Duración (meses)</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
               {activosTarifados.map(activo => {
                 const linea = resumenLineas.find(item => item.activoId === activo.id);
                 const tarifa = tarifasPorActivo.get(activo.id);
@@ -224,11 +237,14 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
                   <td>{tarifa.moneda || 'PEN'}</td>
                   <td className="num">{numero(tarifa.tarifa_hora).toFixed(2)}</td>
                   <td>{linea && <input className="input" type="number" min="0.01" step="0.01" value={linea.horas} onChange={event => actualizarLinea(activo.id, { horas: event.target.value })} />}</td>
+                  <td>{linea && <input className="input" type="number" min="0.01" step="0.01" value={linea.horas_minimas_garantizadas ?? linea.horas} onChange={event => actualizarLinea(activo.id, { horas_minimas_garantizadas: event.target.value })} />}</td>
+                  <td>{linea && <input className="input" type="number" min="0" step="0.01" value={linea.costo_hora_adicional ?? linea.precio} onChange={event => actualizarLinea(activo.id, { costo_hora_adicional: event.target.value })} />}</td>
+                  <td>{linea && <input className="input" type="number" min="0.01" step="0.01" value={linea.duracion_meses ?? 1} onChange={event => actualizarLinea(activo.id, { duracion_meses: event.target.value })} />}</td>
                   <td>{linea && <select className="input" value={linea.unidad || 'HORA'} onChange={event => actualizarLinea(activo.id, { unidad: event.target.value })}>{opcionesUnidades.map(unidad => <option key={unidad.id || unidad.codigo} value={unidad.codigo}>{unidad.codigo} — {unidad.nombre}</option>)}</select>}</td>
                   <td>{linea?.candidatos?.length > 1 ? <select className="input" value={linea.contratoId} onChange={event => actualizarLinea(activo.id, { contratoId: event.target.value })}><option value="">Selecciona contrato…</option>{linea.candidatos.map(contrato => <option key={contrato.id} value={contrato.id}>{contrato.numero}{contrato.tarifa_hora_override != null ? ` · override ${numero(contrato.tarifa_hora_override).toFixed(2)}` : ' · estándar'}</option>)}</select> : linea?.contrato ? <span className="badge badge-green">{linea.contrato.numero}{linea.contrato.tarifa_hora_override != null ? ` · ${numero(linea.contrato.tarifa_hora_override).toFixed(2)}` : ' · estándar'}</span> : <span className="text-muted">Estándar</span>}</td>
                 </tr>;
               })}
-              {!activosTarifados.length && <tr><td colSpan="7" className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No hay equipos propios con tarifa estándar registrada.</td></tr>}
+              {!activosTarifados.length && <tr><td colSpan="10" className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No hay equipos propios con tarifa estándar registrada.</td></tr>}
             </tbody></table></div>
           </div>
         </>}

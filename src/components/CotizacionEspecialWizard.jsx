@@ -31,6 +31,11 @@ const serializarItems = items => items.map((item, index) => ({
   ...(Object.hasOwn(item, 'modelo') ? { modelo:item.modelo ?? '' } : {}),
   ...(Object.hasOwn(item, 'año_fabricacion') ? { año_fabricacion:item.año_fabricacion ?? null } : {}),
   ...(Object.hasOwn(item, 'año_overhaul') ? { año_overhaul:item.año_overhaul ?? null } : {}),
+  ...(Object.hasOwn(item, 'horas_minimas_garantizadas') ? { horas_minimas_garantizadas:item.horas_minimas_garantizadas ?? null } : {}),
+  ...(Object.hasOwn(item, 'costo_hora_adicional') ? { costo_hora_adicional:item.costo_hora_adicional ?? null } : {}),
+  ...(Object.hasOwn(item, 'duracion_meses') ? { duracion_meses:item.duracion_meses ?? null } : {}),
+  ...(Object.hasOwn(item, 'costo_mes') ? { costo_mes:item.costo_mes ?? null } : {}),
+  ...(Object.hasOwn(item, 'costo_periodo') ? { costo_periodo:item.costo_periodo ?? null } : {}),
   ...(item.activo_id ? { activo_id:item.activo_id } : {}),
   ...(item.contrato_alquiler_id ? { contrato_alquiler_id:item.contrato_alquiler_id } : {}),
 }));

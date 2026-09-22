@@ -37,6 +37,10 @@ export const VARIABLES_COTIZACION = [
   { grupo: 'Activo', label: 'Modelo del activo', token: '{{item.modelo}}' },
   { grupo: 'Activo', label: 'Año de fabricación', token: '{{item.año_fabricacion}}' },
   { grupo: 'Activo', label: 'Año de overhaul', token: '{{item.año_overhaul}}' },
+  { grupo: 'Activo', label: 'Horas mínimas garantizadas', token: '{{item.horas_minimas_garantizadas}}' },
+  { grupo: 'Activo', label: 'Costo por hora adicional', token: '{{item.costo_hora_adicional}}' },
+  { grupo: 'Activo', label: 'Costo mensual', token: '{{item.costo_mes}}' },
+  { grupo: 'Activo', label: 'Costo del período', token: '{{item.costo_periodo}}' },
 ];
 
 export const VARIABLES_CONTRATO_LABORAL = [
@@ -152,6 +156,10 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'item.modelo': item.modelo || '',
     'item.año_fabricacion': item.año_fabricacion ?? '',
     'item.año_overhaul': item.año_overhaul ?? '',
+    'item.horas_minimas_garantizadas': item.horas_minimas_garantizadas ?? '',
+    'item.costo_hora_adicional': item.costo_hora_adicional == null ? '' : money(item.costo_hora_adicional, moneda),
+    'item.costo_mes': item.costo_mes == null ? '' : money(item.costo_mes, moneda),
+    'item.costo_periodo': item.costo_periodo == null ? '' : money(item.costo_periodo, moneda),
   };
   const resultado = values[key] ?? '';
   return resultado;

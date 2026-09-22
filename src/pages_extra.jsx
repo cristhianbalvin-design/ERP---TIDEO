@@ -1724,6 +1724,11 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
       ...(Object.hasOwn(p, 'modelo') ? { modelo:p.modelo ?? '' } : {}),
       ...(Object.hasOwn(p, 'año_fabricacion') ? { año_fabricacion:p.año_fabricacion ?? null } : {}),
       ...(Object.hasOwn(p, 'año_overhaul') ? { año_overhaul:p.año_overhaul ?? null } : {}),
+      ...(Object.hasOwn(p, 'horas_minimas_garantizadas') ? { horas_minimas_garantizadas:p.horas_minimas_garantizadas ?? null } : {}),
+      ...(Object.hasOwn(p, 'costo_hora_adicional') ? { costo_hora_adicional:p.costo_hora_adicional ?? null } : {}),
+      ...(Object.hasOwn(p, 'duracion_meses') ? { duracion_meses:p.duracion_meses ?? null } : {}),
+      ...(Object.hasOwn(p, 'costo_mes') ? { costo_mes:p.costo_mes ?? null } : {}),
+      ...(Object.hasOwn(p, 'costo_periodo') ? { costo_periodo:p.costo_periodo ?? null } : {}),
       ...(p.activo_id ? { activo_id:p.activo_id } : {}),
       ...(p.contrato_alquiler_id ? { contrato_alquiler_id:p.contrato_alquiler_id } : {}),
     }));
