@@ -6600,7 +6600,7 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
-  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], crearOrdenCompraCtx } = useApp();
+  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], ots = [], centrosCosto = [], sociedadesDisponibles = [], crearOrdenCompraCtx } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -6609,6 +6609,7 @@ function BandejaSourcing() {
   const [guardando, setGuardando] = useState(() => new Set());
   const [draggedKey, setDraggedKey] = useState('');
   const [generandoProveedor, setGenerandoProveedor] = useState('');
+  const [erroresSociedad, setErroresSociedad] = useState({});
 
   const cargarLineas = useCallback(async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -6657,6 +6658,12 @@ function BandejaSourcing() {
   const guardarAsignacion = async (linea, proveedorId) => {
     const key = sourcingLineaKey(linea);
     const anterior = linea.proveedor_asignado_id || null;
+    setErroresSociedad(prev => {
+      const next = { ...prev };
+      if (anterior) delete next[anterior];
+      if (proveedorId) delete next[proveedorId];
+      return next;
+    });
     setGuardando(prev => new Set(prev).add(key));
     setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
       ? { ...item, proveedor_asignado_id: proveedorId || null }
@@ -6681,6 +6688,35 @@ function BandejaSourcing() {
     }
   };
 
+  const resolverSociedadLinea = linea => {
+    const solpe = solpesContext.find(item => item.id === linea.solpe_id);
+    const ot = (ots || []).find(item => item.id === solpe?.ot_id);
+    const ceco = (centrosCosto || []).find(item => item.id === solpe?.centro_costo_id);
+    return resolverSociedadDestino({
+      sociedades: sociedadesDisponibles,
+      origenes: [
+        {
+          seleccionado: Boolean(solpe?.ot_id),
+          sociedadId: ot?.sociedad_id || null,
+          label: ('La OT ' + (ot?.numero || solpe?.ot_id || '')).trim(),
+        },
+        {
+          seleccionado: Boolean(solpe?.centro_costo_id),
+          sociedadId: ceco?.sociedad_id || null,
+          label: ('El CECO ' + (ceco?.codigo || solpe?.centro_costo_id || '')).trim(),
+        },
+      ],
+      mensajeSinOrigen: 'No se pudo determinar la sociedad: la SOLPE no tiene OT ni CECO derivable.',
+    });
+  };
+
+  const nombreSociedad = sociedadId => {
+    const sociedad = sociedadesDisponibles.find(item => item.id === sociedadId);
+    return sociedad
+      ? (sociedad.codigo ? sociedad.codigo + ' - ' : '') + (sociedad.nombre || sociedad.razon_social || sociedad.id)
+      : sociedadId || 'sin determinar';
+  };
+
   const actualizarSolpesDesdeCobertura = resultado => {
     const resultados = Array.isArray(resultado?.solpes) ? resultado.solpes : [];
     if (!resultados.length) return;
@@ -6692,6 +6728,42 @@ function BandejaSourcing() {
 
   const generarOCDesdeColumna = async columna => {
     if (!columna?.lineas?.length || generandoProveedor) return;
+    const resoluciones = columna.lineas.map(linea => ({
+      linea,
+      resolucion: resolverSociedadLinea(linea),
+    }));
+    const detallesConflicto = resoluciones
+      .filter(item => item.resolucion.conflictMessage || !item.resolucion.sociedadId)
+      .map(item => {
+        const linea = item.linea;
+        const resolucion = item.resolucion;
+        const etiqueta = (linea.material_codigo || linea.material_id || 'Material') + ' · ' + (linea.solpe_codigo || linea.solpe_id);
+        return etiqueta + ': ' + (resolucion.conflictMessage || resolucion.emptyMessage || 'No se pudo determinar la sociedad.');
+      });
+    const sociedadesLinea = [...new Set(resoluciones.map(item => item.resolucion.sociedadId).filter(Boolean))];
+    if (detallesConflicto.length || sociedadesLinea.length !== 1) {
+      const detalles = detallesConflicto.length
+        ? detallesConflicto
+        : resoluciones.map(item => {
+          const linea = item.linea;
+          const etiqueta = (linea.material_codigo || linea.material_id || 'Material') + ' · ' + (linea.solpe_codigo || linea.solpe_id);
+          return etiqueta + ': ' + nombreSociedad(item.resolucion.sociedadId);
+        });
+      setErroresSociedad(prev => ({
+        ...prev,
+        [columna.proveedorId]: {
+          titulo: 'No se puede generar la OC: hay un conflicto de sociedades.',
+          detalles,
+        },
+      }));
+      return;
+    }
+    setErroresSociedad(prev => {
+      const next = { ...prev };
+      delete next[columna.proveedorId];
+      return next;
+    });
+    const sociedadId = sociedadesLinea[0];
     const primeraLinea = columna.lineas[0];
     const sourceSolpes = columna.lineas.map(linea => solpesContext.find(solpe => solpe.id === linea.solpe_id)).filter(Boolean);
     const primeraSolpe = sourceSolpes.find(solpe => solpe.id === primeraLinea.solpe_id) || sourceSolpes[0];
@@ -6701,7 +6773,7 @@ function BandejaSourcing() {
     const payload = {
       id: 'oc_' + Date.now(),
       empresa_id: empresa?.id,
-      sociedad_id: primeraSolpe?.sociedad_id || null,
+      sociedad_id: sociedadId,
       codigo: 'OC-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6),
       proceso_compra_id: null,
       solpe_id: primeraLinea.solpe_id || null,
@@ -6854,6 +6926,12 @@ function BandejaSourcing() {
             <span className="badge">En espera</span>
           </div>
           <div style={{display:'grid', gap:10, marginTop:12}}>{columna.lineas.map(linea => renderTarjeta(linea, true))}</div>
+          {erroresSociedad[columna.proveedorId] && <div className="alert alert-danger" style={{marginTop:14, fontSize:12}} role="alert">
+            <strong>{erroresSociedad[columna.proveedorId].titulo}</strong>
+            <ul style={{margin:'8px 0 0', paddingLeft:18}}>
+              {erroresSociedad[columna.proveedorId].detalles.map(detalle => <li key={detalle}>{detalle}</li>)}
+            </ul>
+          </div>}
           <div style={{borderTop:'1px solid var(--border-subtle)', marginTop:14, paddingTop:12}}>
             <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{moneyD(columna.total)} comprometido</div>
             <button
