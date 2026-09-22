@@ -6838,12 +6838,6 @@ function BandejaSourcing() {
           ? <p className="text-muted" style={{marginTop:16}}>No hay líneas sin asignar con estos filtros.</p>
           : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasSinAsignar.map(linea => renderTarjeta(linea))}</div>}
       </section>
-      <section className="card" data-testid="sourcing-column-assigned-legacy" style={{display:'none'}}>
-        <div className="card-head"><div><h3>Asignadas</h3><div className="text-muted">{lineasAsignadas.length} línea(s)</div></div><span className="badge">En espera</span></div>
-        {!lineasAsignadas.length
-          ? <p className="text-muted" style={{marginTop:16}}>Asigna una línea para verla aquí.</p>
-          : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasAsignadas.map(linea => renderTarjeta(linea, true))}</div>}
-      </section>
       {columnasProveedor.map(columna => {
         const proveedor = proveedores.find(item => item.id === columna.proveedorId);
         const nombre = proveedor?.razon_social || proveedor?.nombre_comercial || columna.proveedorId;
