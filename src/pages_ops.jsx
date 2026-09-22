@@ -6607,6 +6607,7 @@ function BandejaSourcing() {
   const [familiaFiltro, setFamiliaFiltro] = useState('');
   const [solpeFiltro, setSolpeFiltro] = useState('');
   const [guardando, setGuardando] = useState(() => new Set());
+  const [draggedKey, setDraggedKey] = useState('');
 
   const cargarLineas = useCallback(async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -6637,6 +6638,20 @@ function BandejaSourcing() {
     (!familiaFiltro || (linea.familia_id || 'sin_familia') === familiaFiltro) &&
     (!solpeFiltro || linea.solpe_id === solpeFiltro)
   )), [familiaFiltro, lineas, solpeFiltro]);
+  const columnasProveedor = useMemo(() => {
+    const agrupados = new Map();
+    lineasAsignadas.forEach(linea => {
+      const proveedorId = linea.proveedor_asignado_id;
+      if (!agrupados.has(proveedorId)) agrupados.set(proveedorId, []);
+      agrupados.get(proveedorId).push(linea);
+    });
+    return Array.from(agrupados.entries()).map(([proveedorId, lineasProveedor]) => ({
+      proveedorId,
+      lineas: lineasProveedor,
+      solpes: new Set(lineasProveedor.map(linea => linea.solpe_id)),
+      total: lineasProveedor.reduce((sum, linea) => sum + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0),
+    })).sort((a, b) => String(a.proveedorId).localeCompare(String(b.proveedorId)));
+  }, [lineasAsignadas]);
 
   const guardarAsignacion = async (linea, proveedorId) => {
     const key = sourcingLineaKey(linea);
@@ -6665,16 +6680,41 @@ function BandejaSourcing() {
     }
   };
 
+  const soltarEnColumna = (event, proveedorId) => {
+    event.preventDefault();
+    const key = event.dataTransfer?.getData('text/plain');
+    const linea = lineas.find(item => sourcingLineaKey(item) === key);
+    if (linea && (linea.proveedor_asignado_id || null) !== (proveedorId || null)) {
+      guardarAsignacion(linea, proveedorId || null);
+    }
+    setDraggedKey('');
+  };
+
   const renderTarjeta = (linea, asignada = false) => {
     const key = sourcingLineaKey(linea);
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
-    return <article className="card" key={key} data-testid={'sourcing-card-' + key} style={{padding:14, margin:0}}>
+    return <article
+      className="card"
+      key={key}
+      data-testid={'sourcing-card-' + key}
+      draggable={asignada && !guardando.has(key)}
+      onDragStart={asignada ? event => {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', key);
+        setDraggedKey(key);
+      } : undefined}
+      onDragEnd={asignada ? () => setDraggedKey('') : undefined}
+      style={{padding:14, margin:0, cursor:asignada ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1}}
+    >
       <div className="row" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
         <div>
           <strong>{linea.material_codigo || linea.material_id || 'Sin código'}</strong>
           <div style={{marginTop:4}}>{linea.material_descripcion || 'Sin descripción'}</div>
         </div>
-        <span className="badge">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
+        <div className="row" style={{gap:6, alignItems:'flex-start'}}>
+          <span className="badge">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
+          {asignada && <button type="button" className="btn btn-ghost btn-sm" onClick={() => guardarAsignacion(linea, null)} disabled={guardando.has(key)} aria-label="Quitar proveedor">×</button>}
+        </div>
       </div>
       <div className="text-muted" style={{fontSize:12, marginTop:10}}>Cantidad: <strong>{linea.cantidad ?? '-'}</strong> {linea.unidad || ''}</div>
       <div className="text-muted" style={{fontSize:12, marginTop:4}}>SOLPE: <strong>{linea.solpe_codigo || linea.solpe_id}</strong></div>
@@ -6718,18 +6758,42 @@ function BandejaSourcing() {
     {error && <div className="card" style={{padding:16, borderColor:'var(--red)', color:'var(--red)'}}>{error}</div>}
     {!loading && !error && !lineas.length && <div className="card" style={{padding:28, textAlign:'center'}}><h3>No hay líneas pendientes</h3><p className="text-muted">Las SOLPEs aprobadas u oc_parcial sin OC aparecerán aquí.</p></div>}
     {!!lineas.length && <div className="sourcing-board" data-testid="sourcing-board" style={{display:'flex', gap:16, alignItems:'flex-start', overflowX:'auto', paddingBottom:10}}>
-      <section className="card" data-testid="sourcing-column-unassigned" style={{padding:14, minWidth:330, flex:'0 0 330px'}}>
+      <section
+        className="card"
+        data-testid="sourcing-column-unassigned"
+        style={{padding:14, minWidth:330, flex:'0 0 330px'}}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+        onDrop={event => soltarEnColumna(event, null)}
+      >
         <div className="card-head"><div><h3>Sin asignar</h3><div className="text-muted">{lineasSinAsignar.length} línea(s) visibles</div></div><span className="badge">Pendientes</span></div>
         {!lineasSinAsignar.length
           ? <p className="text-muted" style={{marginTop:16}}>No hay líneas sin asignar con estos filtros.</p>
           : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasSinAsignar.map(linea => renderTarjeta(linea))}</div>}
       </section>
-      <section className="card" data-testid="sourcing-column-assigned" style={{padding:14, minWidth:330, flex:'0 0 330px'}}>
+      <section className="card" data-testid="sourcing-column-assigned-legacy" style={{display:'none'}}>
         <div className="card-head"><div><h3>Asignadas</h3><div className="text-muted">{lineasAsignadas.length} línea(s)</div></div><span className="badge">En espera</span></div>
         {!lineasAsignadas.length
           ? <p className="text-muted" style={{marginTop:16}}>Asigna una línea para verla aquí.</p>
           : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasAsignadas.map(linea => renderTarjeta(linea, true))}</div>}
       </section>
+      {columnasProveedor.map(columna => {
+        const proveedor = proveedores.find(item => item.id === columna.proveedorId);
+        const nombre = proveedor?.razon_social || proveedor?.nombre_comercial || columna.proveedorId;
+        return <section
+          className="card"
+          key={columna.proveedorId}
+          data-testid={'sourcing-column-provider-' + columna.proveedorId}
+          style={{padding:14, minWidth:330, flex:'0 0 330px'}}
+          onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+          onDrop={event => soltarEnColumna(event, columna.proveedorId)}
+        >
+          <div className="card-head">
+            <div><h3>{nombre}</h3><div className="text-muted">{columna.lineas.length} línea(s) · {columna.solpes.size} SOLPE(s)</div></div>
+            <span className="badge">En espera</span>
+          </div>
+          <div style={{display:'grid', gap:10, marginTop:12}}>{columna.lineas.map(linea => renderTarjeta(linea, true))}</div>
+        </section>;
+      })}
     </div>}
   </>;
 }
