@@ -1719,6 +1719,11 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
       precio_unitario: p.incluido ? 0 : toCotNumber(p.precio_unitario),
       total: p.incluido ? 0 : calcPartidaTotal(p),
       incluido: p.incluido || false,
+      ...(Object.hasOwn(p, 'codigo') ? { codigo:p.codigo ?? '' } : {}),
+      ...(Object.hasOwn(p, 'marca') ? { marca:p.marca ?? '' } : {}),
+      ...(Object.hasOwn(p, 'modelo') ? { modelo:p.modelo ?? '' } : {}),
+      ...(Object.hasOwn(p, 'año_fabricacion') ? { año_fabricacion:p.año_fabricacion ?? null } : {}),
+      ...(Object.hasOwn(p, 'año_overhaul') ? { año_overhaul:p.año_overhaul ?? null } : {}),
       ...(p.activo_id ? { activo_id:p.activo_id } : {}),
       ...(p.contrato_alquiler_id ? { contrato_alquiler_id:p.contrato_alquiler_id } : {}),
     }));
