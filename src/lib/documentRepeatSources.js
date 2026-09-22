@@ -7,6 +7,8 @@ const COTIZACION_ITEM_FIELDS = [
   { id:'codigo', label:'Código del activo', token:'{{item.codigo}}' },
   { id:'marca', label:'Marca del activo', token:'{{item.marca}}' },
   { id:'modelo', label:'Modelo del activo', token:'{{item.modelo}}' },
+  { id:'año_fabricacion', label:'Año de fabricación del activo', token:'{{item.año_fabricacion}}' },
+  { id:'año_overhaul', label:'Año de overhaul del activo', token:'{{item.año_overhaul}}' },
 ];
 
 export const DOCUMENT_REPEAT_SOURCES = {
