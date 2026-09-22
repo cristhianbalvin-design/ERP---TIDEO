@@ -6600,7 +6600,7 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
-  const { empresa, addToast, proveedores = [] } = useApp();
+  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], crearOrdenCompraCtx } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -6608,6 +6608,7 @@ function BandejaSourcing() {
   const [solpeFiltro, setSolpeFiltro] = useState('');
   const [guardando, setGuardando] = useState(() => new Set());
   const [draggedKey, setDraggedKey] = useState('');
+  const [generandoProveedor, setGenerandoProveedor] = useState('');
 
   const cargarLineas = useCallback(async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -6677,6 +6678,73 @@ function BandejaSourcing() {
         next.delete(key);
         return next;
       });
+    }
+  };
+
+  const actualizarSolpesDesdeCobertura = resultado => {
+    const resultados = Array.isArray(resultado?.solpes) ? resultado.solpes : [];
+    if (!resultados.length) return;
+    setSolpes?.(prev => prev.map(solpe => {
+      const cobertura = resultados.find(item => item.solpe_id === solpe.id);
+      return cobertura ? { ...solpe, estado: cobertura.estado || solpe.estado, items: cobertura.items || solpe.items } : solpe;
+    }));
+  };
+
+  const generarOCDesdeColumna = async columna => {
+    if (!columna?.lineas?.length || generandoProveedor) return;
+    const primeraLinea = columna.lineas[0];
+    const sourceSolpes = columna.lineas.map(linea => solpesContext.find(solpe => solpe.id === linea.solpe_id)).filter(Boolean);
+    const primeraSolpe = sourceSolpes.find(solpe => solpe.id === primeraLinea.solpe_id) || sourceSolpes[0];
+    const subtotal = Math.round(columna.lineas.reduce((sum, linea) => sum + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0) * 100) / 100;
+    const proveedor = (primeraLinea.proveedores_candidatos || []).find(candidato => candidato.proveedor_id === columna.proveedorId);
+    const proveedorCatalogo = proveedores.find(item => item.id === columna.proveedorId);
+    const payload = {
+      id: 'oc_' + Date.now(),
+      empresa_id: empresa?.id,
+      sociedad_id: primeraSolpe?.sociedad_id || null,
+      codigo: 'OC-' + new Date().getFullYear() + '-' + String(Date.now()).slice(-6),
+      proceso_compra_id: null,
+      solpe_id: primeraLinea.solpe_id || null,
+      solpe_codigo: primeraLinea.solpe_codigo || primeraLinea.solpe_id || null,
+      origen_tipo: 'solpe',
+      proveedor_id: columna.proveedorId,
+      ot_id: primeraSolpe?.ot_id || null,
+      centro_costo_id: primeraSolpe?.centro_costo_id || null,
+      descripcion: 'Sourcing consolidado - ' + sourceSolpes.length + ' SOLPE(s)',
+      items: columna.lineas.map(linea => ({
+        solpe_id: linea.solpe_id || null,
+        solpe_item_id: linea.solpe_item_id || null,
+        material_id: linea.material_id || null,
+        codigo: linea.material_codigo || null,
+        descripcion: linea.material_descripcion || 'Item de compra',
+        cantidad: Number(linea.cantidad || 0),
+        unidad: linea.unidad || 'Und',
+        precio_unitario: Number(linea.precio_unitario || 0),
+        subtotal: Math.round(Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0) * 100) / 100,
+      })),
+      subtotal,
+      igv: Math.round(subtotal * 0.18 * 100) / 100,
+      total: Math.round(subtotal * 1.18 * 100) / 100,
+      condicion_pago: proveedorCatalogo?.condicion_pago || proveedor?.condicion_pago || 'Contado',
+      moneda: 'PEN',
+      fecha_emision: new Date().toISOString().slice(0, 10),
+      fecha_entrega_esperada: null,
+      estado: 'emitida',
+      porcentaje_recibido: 0,
+      notas_proveedor: '',
+      notas_internas: 'Generada desde Bandeja de Sourcing (' + columna.solpes.size + ' SOLPEs)',
+    };
+    setGenerandoProveedor(columna.proveedorId);
+    try {
+      const { ocGuardada } = await crearOCCompatible(crearOrdenCompraCtx, payload);
+      const resultado = await comprasService.registrarCoberturaSolpeOc(primeraLinea.solpe_id, ocGuardada.id);
+      actualizarSolpesDesdeCobertura(resultado);
+      addNotificacion?.((ocGuardada.codigo || payload.codigo) + ' generada con ' + columna.lineas.length + ' línea(s) de ' + columna.solpes.size + ' SOLPE(s).');
+      await cargarLineas();
+    } catch (e) {
+      addToast?.('No se pudo generar la OC: ' + (e?.message || 'error desconocido'));
+    } finally {
+      setGenerandoProveedor('');
     }
   };
 
@@ -6792,6 +6860,16 @@ function BandejaSourcing() {
             <span className="badge">En espera</span>
           </div>
           <div style={{display:'grid', gap:10, marginTop:12}}>{columna.lineas.map(linea => renderTarjeta(linea, true))}</div>
+          <div style={{borderTop:'1px solid var(--border-subtle)', marginTop:14, paddingTop:12}}>
+            <div className="text-muted" style={{fontSize:12, marginBottom:8}}>{moneyD(columna.total)} comprometido</div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{width:'100%'}}
+              onClick={() => generarOCDesdeColumna(columna)}
+              disabled={Boolean(generandoProveedor)}
+            >{generandoProveedor === columna.proveedorId ? 'Generando...' : 'Generar OC'}</button>
+          </div>
         </section>;
       })}
     </div>}
