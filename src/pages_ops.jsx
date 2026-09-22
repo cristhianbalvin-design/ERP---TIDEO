@@ -6452,6 +6452,20 @@ const solpeTieneLineasPendientes = s => (Array.isArray(s?.items) ? s.items : [])
   .some(item => !item?.oc_id);
 const solpeDisponibleParaOC = s => ['aprobada', 'oc_parcial'].includes(normEstadoSolpe(s)) && solpeTieneLineasPendientes(s);
 const solpeOCLabel = s => `${s?.numero || s?.codigo || s?.id || 'SOLPE'}${s?.descripcion ? ` - ${s.descripcion}` : ''}`;
+const crearOCCompatible = async (crearOrdenCompraCtx, payloadBase) => {
+  let payload = { ...payloadBase };
+  for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
+    try {
+      return { ocGuardada: await crearOrdenCompraCtx(payload), payloadUsado: payload };
+    } catch (error) {
+      const columna = schemaCacheMissingColumn(error);
+      if (!columna || !OC_COLUMNAS_OPCIONALES_INSERT.has(columna) || !(columna in payload)) throw error;
+      const { [columna]: _omitida, ...payloadSinColumna } = payload;
+      payload = payloadSinColumna;
+    }
+  }
+  throw new Error('No se pudo guardar la OC por columnas opcionales no sincronizadas.');
+};
 const itemsSolpeParaOC = (s) => {
   const items = Array.isArray(s?.items) ? s.items : [];
   return items.length ? items.map(it => ({
@@ -6615,7 +6629,7 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
-  const { empresa, addToast } = useApp();
+  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], crearOrdenCompraCtx } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -6624,6 +6638,7 @@ function BandejaSourcing() {
   const [seleccionadas, setSeleccionadas] = useState(() => new Set());
   const [proveedorLote, setProveedorLote] = useState('');
   const [guardando, setGuardando] = useState(() => new Set());
+  const [generandoProveedor, setGenerandoProveedor] = useState('');
 
   const cargarLineas = useCallback(async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -6656,6 +6671,20 @@ function BandejaSourcing() {
     (!solpeFiltro || linea.solpe_id === solpeFiltro)
   )), [familiaFiltro, lineas, solpeFiltro]);
   const lineasAsignadas = useMemo(() => lineas.filter(linea => linea.proveedor_asignado_id), [lineas]);
+  const carritos = useMemo(() => {
+    const agrupados = new Map();
+    lineasAsignadas.forEach(linea => {
+      const proveedorId = linea.proveedor_asignado_id;
+      if (!agrupados.has(proveedorId)) agrupados.set(proveedorId, []);
+      agrupados.get(proveedorId).push(linea);
+    });
+    return Array.from(agrupados.entries()).map(([proveedorId, lineasProveedor]) => ({
+      proveedorId,
+      lineas: lineasProveedor,
+      solpes: new Set(lineasProveedor.map(linea => linea.solpe_id)),
+      total: lineasProveedor.reduce((sum, linea) => sum + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0),
+    })).sort((a, b) => String(a.proveedorId).localeCompare(String(b.proveedorId)));
+  }, [lineasAsignadas]);
   const seleccionadasVisibles = lineasFiltradas.filter(linea => seleccionadas.has(sourcingLineaKey(linea)));
   const proveedoresComunes = useMemo(() => {
     if (!seleccionadasVisibles.length) return [];
@@ -6721,6 +6750,73 @@ function BandejaSourcing() {
     setProveedorLote('');
   };
 
+  const actualizarSolpesDesdeCobertura = resultado => {
+    const resultados = Array.isArray(resultado?.solpes) ? resultado.solpes : [];
+    if (!resultados.length) return;
+    setSolpes?.(prev => prev.map(solpe => {
+      const cobertura = resultados.find(item => item.solpe_id === solpe.id);
+      return cobertura ? { ...solpe, estado: cobertura.estado || solpe.estado, items: cobertura.items || solpe.items } : solpe;
+    }));
+  };
+
+  const generarOCDesdeCarrito = async carrito => {
+    if (!carrito?.lineas?.length || generandoProveedor) return;
+    const sourceSolpes = carrito.lineas.map(linea => solpesContext.find(solpe => solpe.id === linea.solpe_id)).filter(Boolean);
+    const primeraLinea = carrito.lineas[0];
+    const primeraSolpe = sourceSolpes.find(solpe => solpe.id === primeraLinea.solpe_id) || sourceSolpes[0];
+    const subtotal = Math.round(carrito.lineas.reduce((sum, linea) => sum + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0) * 100) / 100;
+    const proveedor = (primeraLinea.proveedores_candidatos || []).find(candidato => candidato.proveedor_id === carrito.proveedorId);
+    const proveedorCatalogo = proveedores.find(item => item.id === carrito.proveedorId);
+    const payload = {
+      id: `oc_${Date.now()}`,
+      empresa_id: empresa?.id,
+      sociedad_id: primeraSolpe?.sociedad_id || null,
+      codigo: `OC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      proceso_compra_id: null,
+      solpe_id: primeraLinea.solpe_id || null,
+      solpe_codigo: primeraLinea.solpe_codigo || primeraLinea.solpe_id || null,
+      origen_tipo: 'solpe',
+      proveedor_id: carrito.proveedorId,
+      ot_id: primeraSolpe?.ot_id || null,
+      centro_costo_id: primeraSolpe?.centro_costo_id || null,
+      descripcion: `Sourcing consolidado - ${sourceSolpes.length} SOLPE(s)`,
+      items: carrito.lineas.map(linea => ({
+        solpe_id: linea.solpe_id || null,
+        solpe_item_id: linea.solpe_item_id || null,
+        material_id: linea.material_id || null,
+        codigo: linea.material_codigo || null,
+        descripcion: linea.material_descripcion || 'Item de compra',
+        cantidad: Number(linea.cantidad || 0),
+        unidad: linea.unidad || 'Und',
+        precio_unitario: Number(linea.precio_unitario || 0),
+        subtotal: Math.round(Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0) * 100) / 100,
+      })),
+      subtotal,
+      igv: Math.round(subtotal * 0.18 * 100) / 100,
+      total: Math.round(subtotal * 1.18 * 100) / 100,
+      condicion_pago: proveedorCatalogo?.condicion_pago || proveedor?.condicion_pago || 'Contado',
+      moneda: 'PEN',
+      fecha_emision: new Date().toISOString().slice(0, 10),
+      fecha_entrega_esperada: null,
+      estado: 'emitida',
+      porcentaje_recibido: 0,
+      notas_proveedor: '',
+      notas_internas: `Generada desde Bandeja de Sourcing (${carrito.solpes.size} SOLPEs)`,
+    };
+    setGenerandoProveedor(carrito.proveedorId);
+    try {
+      const { ocGuardada } = await crearOCCompatible(crearOrdenCompraCtx, payload);
+      const resultado = await comprasService.registrarCoberturaSolpeOc(primeraLinea.solpe_id, ocGuardada.id);
+      actualizarSolpesDesdeCobertura(resultado);
+      addNotificacion?.(`${ocGuardada.codigo || payload.codigo} generada con ${carrito.lineas.length} línea(s) de ${carrito.solpes.size} SOLPE(s).`);
+      await cargarLineas();
+    } catch (e) {
+      addToast?.(`No se pudo generar la OC: ${e?.message || 'error desconocido'}`);
+    } finally {
+      setGenerandoProveedor('');
+    }
+  };
+
   const opcionesProveedor = linea => {
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos : [];
     const asignado = linea.proveedor_asignado_id && !candidatos.some(c => c.proveedor_id === linea.proveedor_asignado_id)
@@ -6774,6 +6870,7 @@ function BandejaSourcing() {
         </tr>;
       })}
     </tbody></table></div></div>}
+    <div className="card mt-6" data-testid="sourcing-carts"><div className="card-head"><div><h3>Carritos por proveedor</h3><div className="text-muted">Líneas asignadas pendientes de generar OC</div></div></div>{!carritos.length ? <p className="text-muted">Asigna proveedores a las líneas para formar un carrito.</p> : <div className="grid-2">{carritos.map(carrito => { const proveedor = proveedores.find(item => item.id === carrito.proveedorId); return <div className="card" key={carrito.proveedorId} style={{padding:16}}><div className="card-head"><div><h3>{proveedor?.razon_social || proveedor?.nombre_comercial || carrito.proveedorId}</h3><div className="text-muted">{carrito.lineas.length} línea(s) · {carrito.solpes.size} SOLPE(s)</div></div><button className="btn btn-primary btn-sm" onClick={()=>generarOCDesdeCarrito(carrito)} disabled={generandoProveedor && generandoProveedor !== carrito.proveedorId}>{generandoProveedor === carrito.proveedorId ? 'Generando...' : 'Generar OC'}</button></div><div className="text-muted" style={{fontSize:12}}>{moneyD(carrito.total)} comprometido</div><ul style={{margin:'12px 0 0', paddingLeft:18}}>{carrito.lineas.map(linea=><li key={sourcingLineaKey(linea)}>{linea.material_codigo || linea.material_descripcion} · {linea.solpe_codigo || linea.solpe_id}</li>)}</ul></div>; })}</div>}</div>
   </>;
 }
 
@@ -6863,22 +6960,8 @@ function OrdenesCompra() {
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
     const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:form.solpe_id ? `SOLPE origen: ${form.solpe_codigo || form.solpe_id}` : '', creado_por: authUser?.id || null };
-    const crearOCCompatible = async (payloadBase) => {
-      let payload = { ...payloadBase };
-      for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
-        try {
-          return { ocGuardada: await crearOrdenCompraCtx(payload), payloadUsado: payload };
-        } catch (error) {
-          const columna = schemaCacheMissingColumn(error);
-          if (!columna || !OC_COLUMNAS_OPCIONALES_INSERT.has(columna) || !(columna in payload)) throw error;
-          const { [columna]: _omitida, ...payloadSinColumna } = payload;
-          payload = payloadSinColumna;
-        }
-      }
-      throw new Error('No se pudo guardar la OC por columnas opcionales no sincronizadas.');
-    };
     try {
-      const { ocGuardada, payloadUsado } = await crearOCCompatible(oc);
+      const { ocGuardada, payloadUsado } = await crearOCCompatible(crearOrdenCompraCtx, oc);
       if (form.solpe_id && (!('solpe_id' in payloadUsado) || !('solpe_codigo' in payloadUsado) || !('origen_tipo' in payloadUsado))) setOrdenesCompra(prev => prev.map(o => o.id === ocGuardada.id ? { ...o, solpe_id:form.solpe_id, solpe_codigo:form.solpe_codigo || selectedSolpe?.numero || selectedSolpe?.codigo, origen_tipo:'solpe' } : o));
       if (form.solpe_id) await registrarCoberturaSolpeOC(form.solpe_id, ocGuardada);
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
