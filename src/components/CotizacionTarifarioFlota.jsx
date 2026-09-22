@@ -156,7 +156,17 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
 
   const cuenta = cuentas.find(item => item.id === cuentaId) || null;
   const proyecto = proyectos.find(item => item.id === proyectoId) || null;
-  const actualizarLinea = (activoId, patch) => setLineas(actual => actual.map(linea => linea.activoId === activoId ? { ...linea, ...patch } : linea));
+  const actualizarLinea = (activoId, patch) => setLineas(actual => actual.map(linea => {
+    if (linea.activoId !== activoId) return linea;
+    const siguiente = { ...linea, ...patch };
+    if (Object.hasOwn(patch, 'horas') && !linea.horas_minimas_garantizadas_editadas) {
+      siguiente.horas_minimas_garantizadas = patch.horas;
+    }
+    if (Object.hasOwn(patch, 'horas_minimas_garantizadas')) {
+      siguiente.horas_minimas_garantizadas_editadas = true;
+    }
+    return siguiente;
+  }));
   const alternarActivo = activoId => setLineas(actual => actual.some(linea => linea.activoId === activoId)
     ? actual.filter(linea => linea.activoId !== activoId)
     : [...actual, { activoId, horas: 1, unidad: 'HORA', contratoId: '', horas_minimas_garantizadas: 1, duracion_meses: 1 }]);
