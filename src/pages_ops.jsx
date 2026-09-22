@@ -8243,7 +8243,7 @@ function Recepciones() {
     return { codigo: oc?.codigo || os?.codigo || '-', proveedor_id: oc?.proveedor_id || os?.proveedor_id || r.proveedor_id, descripcion: oc?.descripcion || os?.descripcion || '-' };
   };
   const origenes = [
-    ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
+    ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada' && o.estado !== 'borrador').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
     ...ordenesServicioVistaRecepciones.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
   ];
   const cxpPorRecepcion = useMemo(() => new Set((cxp || []).filter(c => c.recepcion_id).map(c => c.recepcion_id)), [cxp]);
