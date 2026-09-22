@@ -30,6 +30,7 @@ const Partes              = lazy(() => import('./pages_ops.jsx').then(m => ({ de
 const Compras             = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Compras })));
 const Proveedores         = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Proveedores })));
 const CotizacionesCompras = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.CotizacionesCompras })));
+const BandejaSourcing      = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.BandejaSourcing })));
 const OrdenesCompra       = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.OrdenesCompra })));
 const OrdenesServicio     = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.OrdenesServicio })));
 const Recepciones         = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Recepciones })));
@@ -287,7 +288,7 @@ function MainLayout({ onShowApplicationWelcome }) {
   const activeAllowed = active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
     : puedeVerPantalla(role, active,
-      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
+      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'sourcing_bandeja' ? ['ordenes_compra'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -363,6 +364,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'partes':           return <Partes/>;
       case 'proveedores':      return <Proveedores/>;
       case 'cot_compras':      return <CotizacionesCompras/>;
+      case 'sourcing_bandeja': return <BandejaSourcing/>;
       case 'ordenes_compra':   return <OrdenesCompra/>;
       case 'ordenes_servicio': return <OrdenesServicio/>;
       case 'recepciones':      return <Recepciones/>;

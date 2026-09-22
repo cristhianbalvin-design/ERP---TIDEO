@@ -72,6 +72,7 @@ const SIDEBAR = [
   { section: 'Compras', items: [
     { key: 'proveedores', label: 'Proveedores', icon: I.users },
     { key: 'cot_compras', label: 'Cotizaciones', icon: I.file },
+    { key: 'sourcing_bandeja', label: 'Bandeja de Sourcing', icon: I.cart, accessAnyOf: ['ordenes_compra'] },
     { key: 'ordenes_compra', label: 'Ordenes de Compra', icon: I.cart },
     { key: 'ordenes_servicio', label: 'Ordenes de Servicio', icon: I.wrench },
     { key: 'recepciones', label: 'Recepciones', icon: I.check },
@@ -214,6 +215,7 @@ const NAV_MODULE_KEYS = {
   remision: 'logistica.remision',
   proveedores: 'compras.proveedores',
   cot_compras: 'compras.cotizaciones',
+  sourcing_bandeja: 'compras.ordenes_compra',
   ordenes_compra: 'compras.ordenes_compra',
   ordenes_servicio: 'compras.ordenes_servicio',
   recepciones: 'compras.recepciones',
