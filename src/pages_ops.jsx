@@ -6610,6 +6610,9 @@ function BandejaSourcing() {
   const [draggedKey, setDraggedKey] = useState('');
   const [generandoProveedores, setGenerandoProveedores] = useState(() => new Set());
   const [erroresSociedad, setErroresSociedad] = useState({});
+  const [otroProveedorAbierto, setOtroProveedorAbierto] = useState('');
+  const [confirmacionFamilia, setConfirmacionFamilia] = useState(null);
+  const [habilitandoFamilia, setHabilitandoFamilia] = useState(false);
 
   const cargarLineas = useCallback(async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -6679,12 +6682,62 @@ function BandejaSourcing() {
         ? { ...item, proveedor_asignado_id: anterior }
         : item));
       addToast?.('No se pudo guardar el proveedor: ' + (e?.message || 'error desconocido'));
+      return false;
     } finally {
       setGuardando(prev => {
         const next = new Set(prev);
         next.delete(key);
         return next;
       });
+    }
+    return true;
+  };
+
+  const proveedoresParaAsignacion = useMemo(() => proveedores
+    .filter(proveedor => proveedor.estado !== 'bloqueado' && proveedor.estado !== 'inactivo')
+    .map(proveedor => ({
+      id: proveedor.id,
+      label: `${proveedor.codigo ? proveedor.codigo + ' - ' : ''}${proveedor.razon_social || proveedor.nombre_comercial || proveedor.id}${proveedor.estado === 'observado' ? ' - observado' : ''}`,
+      searchText: [proveedor.codigo, proveedor.razon_social, proveedor.nombre_comercial, proveedor.ruc].filter(Boolean).join(' '),
+    })), [proveedores]);
+
+  const asignarOtroProveedor = async (linea, proveedorId) => {
+    setOtroProveedorAbierto('');
+    if (!proveedorId || proveedorId === linea.proveedor_asignado_id) return;
+    const guardado = await guardarAsignacion(linea, proveedorId);
+    if (guardado) {
+      const proveedor = proveedores.find(item => item.id === proveedorId);
+      setConfirmacionFamilia({
+        proveedorId,
+        familiaId: linea.familia_id || null,
+        familiaNombre: linea.familia_nombre || linea.familia_codigo || 'esta familia',
+        proveedorNombre: proveedor?.razon_social || proveedor?.nombre_comercial || proveedorId,
+      });
+    }
+  };
+
+  const esRelacionFamiliaDuplicada = error => {
+    const texto = String(error?.message || error?.details || '').toLowerCase();
+    return error?.code === '23505' || texto.includes('proveedor_familia_unq') || texto.includes('duplicate key') || texto.includes('duplicad');
+  };
+
+  const habilitarFamiliaProveedor = async () => {
+    if (!confirmacionFamilia?.familiaId || !empresa?.id) return;
+    setHabilitandoFamilia(true);
+    try {
+      await proveedorFamiliaService.asignarFamilia(
+        empresa.id,
+        confirmacionFamilia.proveedorId,
+        confirmacionFamilia.familiaId,
+      );
+    } catch (e) {
+      if (!esRelacionFamiliaDuplicada(e)) {
+        addToast?.('No se pudo habilitar el proveedor para la familia: ' + (e?.message || 'error desconocido'));
+        return;
+      }
+    } finally {
+      setHabilitandoFamilia(false);
+      setConfirmacionFamilia(null);
     }
   };
 
@@ -6878,6 +6931,21 @@ function BandejaSourcing() {
           </div>}
         {guardando.has(key) && <div className="text-muted" style={{fontSize:11, marginTop:6}}>Guardando...</div>}
       </div>}
+      <div style={{marginTop:8}}>
+        {otroProveedorAbierto === key
+          ? <div className="row" style={{gap:6, alignItems:'flex-start'}}>
+            <div style={{minWidth:240, flex:1}}>
+              <SearchSelect
+                value=""
+                placeholder="Buscar otro proveedor..."
+                options={proveedoresParaAsignacion}
+                onChange={proveedorId => asignarOtroProveedor(linea, proveedorId)}
+              />
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto('')} disabled={guardando.has(key)}>Cancelar</button>
+          </div>
+          : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto(key)} disabled={guardando.has(key)}>+ Otro proveedor</button>}
+      </div>
     </article>;
   };
 
@@ -6948,6 +7016,24 @@ function BandejaSourcing() {
           </div>
         </section>;
       })}
+    </div>}
+    {confirmacionFamilia && <div className="side-panel-backdrop" onClick={() => !habilitandoFamilia && setConfirmacionFamilia(null)}>
+      <div className="side-panel" style={{width:'min(520px,96vw)'}} onClick={event => event.stopPropagation()}>
+        <div className="side-panel-head">
+          <div><div className="eyebrow">Relación proveedor-familia</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>¿Habilitar para futuras compras?</div></div>
+          <button type="button" className="icon-btn" onClick={() => setConfirmacionFamilia(null)} disabled={habilitandoFamilia}>{I.x}</button>
+        </div>
+        <div className="side-panel-body">
+          <p>La línea quedó asignada a <strong>{confirmacionFamilia.proveedorNombre}</strong>.</p>
+          {confirmacionFamilia.familiaId
+            ? <p className="text-muted">Puedes habilitar este proveedor para <strong>{confirmacionFamilia.familiaNombre}</strong> en futuras asignaciones, o mantener esta compra como puntual.</p>
+            : <div className="alert alert-warning">La línea no tiene una familia válida; solo puede mantenerse como compra puntual.</div>}
+          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:18}}>
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmacionFamilia(null)} disabled={habilitandoFamilia}>Solo esta compra</button>
+            <button type="button" className="btn btn-primary" onClick={habilitarFamiliaProveedor} disabled={habilitandoFamilia || !confirmacionFamilia.familiaId}>{habilitandoFamilia ? 'Habilitando...' : 'Habilitar para esta familia en adelante'}</button>
+          </div>
+        </div>
+      </div>
     </div>}
   </>;
 }
