@@ -6600,6 +6600,141 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
+  const { empresa, addToast, proveedores = [] } = useApp();
+  const [lineas, setLineas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [familiaFiltro, setFamiliaFiltro] = useState('');
+  const [solpeFiltro, setSolpeFiltro] = useState('');
+  const [guardando, setGuardando] = useState(() => new Set());
+
+  const cargarLineas = useCallback(async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) {
+      setLineas([]);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      setLineas(await comprasService.obtenerLineasSourcing(empresa.id));
+    } catch (e) {
+      setError(e?.message || 'No se pudo cargar la bandeja de sourcing.');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => { cargarLineas(); }, [cargarLineas]);
+
+  const familias = useMemo(() => Array.from(new Map(
+    lineas.map(linea => [linea.familia_id || 'sin_familia', linea.familia_nombre || linea.familia_codigo || 'Sin familia'])
+  ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
+  const solpes = useMemo(() => Array.from(new Map(
+    lineas.map(linea => [linea.solpe_id, linea.solpe_codigo || linea.solpe_id])
+  ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
+  const lineasAsignadas = useMemo(() => lineas.filter(linea => linea.proveedor_asignado_id), [lineas]);
+  const lineasSinAsignar = useMemo(() => lineas.filter(linea => !linea.proveedor_asignado_id && (
+    (!familiaFiltro || (linea.familia_id || 'sin_familia') === familiaFiltro) &&
+    (!solpeFiltro || linea.solpe_id === solpeFiltro)
+  )), [familiaFiltro, lineas, solpeFiltro]);
+
+  const guardarAsignacion = async (linea, proveedorId) => {
+    const key = sourcingLineaKey(linea);
+    const anterior = linea.proveedor_asignado_id || null;
+    setGuardando(prev => new Set(prev).add(key));
+    setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
+      ? { ...item, proveedor_asignado_id: proveedorId || null }
+      : item));
+    try {
+      await comprasService.asignarProveedorLineaSourcing({
+        solpeId: linea.solpe_id,
+        solpeItemId: linea.solpe_item_id,
+        proveedorId: proveedorId || null,
+      });
+    } catch (e) {
+      setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
+        ? { ...item, proveedor_asignado_id: anterior }
+        : item));
+      addToast?.('No se pudo guardar el proveedor: ' + (e?.message || 'error desconocido'));
+    } finally {
+      setGuardando(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const renderTarjeta = (linea, asignada = false) => {
+    const key = sourcingLineaKey(linea);
+    const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
+    return <article className="card" key={key} data-testid={'sourcing-card-' + key} style={{padding:14, margin:0}}>
+      <div className="row" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
+        <div>
+          <strong>{linea.material_codigo || linea.material_id || 'Sin código'}</strong>
+          <div style={{marginTop:4}}>{linea.material_descripcion || 'Sin descripción'}</div>
+        </div>
+        <span className="badge">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
+      </div>
+      <div className="text-muted" style={{fontSize:12, marginTop:10}}>Cantidad: <strong>{linea.cantidad ?? '-'}</strong> {linea.unidad || ''}</div>
+      <div className="text-muted" style={{fontSize:12, marginTop:4}}>SOLPE: <strong>{linea.solpe_codigo || linea.solpe_id}</strong></div>
+      {!asignada && <div style={{marginTop:12}}>
+        <div className="text-muted" style={{fontSize:12, marginBottom:7}}>Asignar proveedor</div>
+        {!candidatos.length
+          ? <span className="text-muted" style={{fontSize:12}}>Sin candidatos disponibles</span>
+          : <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+            {candidatos.map((candidato, index) => <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              key={candidato.proveedor_id}
+              onClick={() => guardarAsignacion(linea, candidato.proveedor_id)}
+              disabled={guardando.has(key)}
+              title={'Ranking ' + (index + 1)}
+            >{sourcingProveedorLabel(candidato)}{index === 0 ? ' · sugerido' : ''}</button>)}
+          </div>}
+        {guardando.has(key) && <div className="text-muted" style={{fontSize:11, marginTop:6}}>Guardando...</div>}
+      </div>}
+    </article>;
+  };
+
+  return <>
+    <div className="page-header">
+      <div><h1 className="page-title">Bandeja de Sourcing</h1><div className="page-sub">Asigna proveedor por línea y consolida tus órdenes de compra.</div></div>
+      <button className="btn btn-secondary" onClick={cargarLineas} disabled={loading}>{loading ? 'Actualizando...' : 'Actualizar'}</button>
+    </div>
+    <div className="kpi-grid">
+      <div className="kpi-card"><div className="kpi-label">Líneas pendientes</div><div className="kpi-value">{lineas.length}</div></div>
+      <div className="kpi-card"><div className="kpi-label">Con proveedor asignado</div><div className="kpi-value">{lineasAsignadas.length}</div></div>
+      <div className="kpi-card"><div className="kpi-label">SOLPEs involucradas</div><div className="kpi-value">{new Set(lineas.map(linea => linea.solpe_id)).size}</div></div>
+      <div className="kpi-card"><div className="kpi-label">Familias</div><div className="kpi-value">{familias.length}</div></div>
+    </div>
+    <div className="card" style={{padding:14, marginBottom:16}}>
+      <div className="grid-2" style={{gap:12}}>
+        <div className="input-group"><label>Familia</label><select className="select" value={familiaFiltro} onChange={e => setFamiliaFiltro(e.target.value)}><option value="">Todas las familias</option>{familias.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div>
+        <div className="input-group"><label>SOLPE de origen</label><select className="select" value={solpeFiltro} onChange={e => setSolpeFiltro(e.target.value)}><option value="">Todas las SOLPEs</option>{solpes.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div>
+      </div>
+      <div className="text-muted" style={{fontSize:12, marginTop:10}}>Los filtros afectan únicamente a la columna Sin asignar.</div>
+    </div>
+    {error && <div className="card" style={{padding:16, borderColor:'var(--red)', color:'var(--red)'}}>{error}</div>}
+    {!loading && !error && !lineas.length && <div className="card" style={{padding:28, textAlign:'center'}}><h3>No hay líneas pendientes</h3><p className="text-muted">Las SOLPEs aprobadas u oc_parcial sin OC aparecerán aquí.</p></div>}
+    {!!lineas.length && <div className="sourcing-board" data-testid="sourcing-board" style={{display:'flex', gap:16, alignItems:'flex-start', overflowX:'auto', paddingBottom:10}}>
+      <section className="card" data-testid="sourcing-column-unassigned" style={{padding:14, minWidth:330, flex:'0 0 330px'}}>
+        <div className="card-head"><div><h3>Sin asignar</h3><div className="text-muted">{lineasSinAsignar.length} línea(s) visibles</div></div><span className="badge">Pendientes</span></div>
+        {!lineasSinAsignar.length
+          ? <p className="text-muted" style={{marginTop:16}}>No hay líneas sin asignar con estos filtros.</p>
+          : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasSinAsignar.map(linea => renderTarjeta(linea))}</div>}
+      </section>
+      <section className="card" data-testid="sourcing-column-assigned" style={{padding:14, minWidth:330, flex:'0 0 330px'}}>
+        <div className="card-head"><div><h3>Asignadas</h3><div className="text-muted">{lineasAsignadas.length} línea(s)</div></div><span className="badge">En espera</span></div>
+        {!lineasAsignadas.length
+          ? <p className="text-muted" style={{marginTop:16}}>Asigna una línea para verla aquí.</p>
+          : <div style={{display:'grid', gap:10, marginTop:12}}>{lineasAsignadas.map(linea => renderTarjeta(linea, true))}</div>}
+      </section>
+    </div>}
+  </>;
+}
+
+function BandejaSourcingLegacy() {
   const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], crearOrdenCompraCtx } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
