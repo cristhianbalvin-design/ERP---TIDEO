@@ -29,6 +29,8 @@ const serializarItems = items => items.map((item, index) => ({
   ...(Object.hasOwn(item, 'codigo') ? { codigo:item.codigo ?? '' } : {}),
   ...(Object.hasOwn(item, 'marca') ? { marca:item.marca ?? '' } : {}),
   ...(Object.hasOwn(item, 'modelo') ? { modelo:item.modelo ?? '' } : {}),
+  ...(Object.hasOwn(item, 'año_fabricacion') ? { año_fabricacion:item.año_fabricacion ?? null } : {}),
+  ...(Object.hasOwn(item, 'año_overhaul') ? { año_overhaul:item.año_overhaul ?? null } : {}),
   ...(item.activo_id ? { activo_id:item.activo_id } : {}),
   ...(item.contrato_alquiler_id ? { contrato_alquiler_id:item.contrato_alquiler_id } : {}),
 }));

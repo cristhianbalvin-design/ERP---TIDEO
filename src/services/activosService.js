@@ -10,7 +10,7 @@ const pick = (src, keys) => keys.reduce((a, k) => { if (src[k] !== undefined) a[
 const ACTIVO_FIELDS = [
   'codigo', 'nombre', 'tipo_categoria', 'marca', 'modelo', 'placa_serie',
   'ubicacion', 'estado', 'centro_costo_id', 'responsable_id', 'responsable_nombre',
-  'fecha_alta', 'valor_adquisicion', 'moneda', 'vida_util_anos', 'horas_disponibles_mes',
+  'fecha_alta', 'valor_adquisicion', 'moneda', 'vida_util_anos', 'año_fabricacion', 'año_overhaul', 'horas_disponibles_mes',
   'documentos', 'observacion', 'compras_gasto_id',
   'propietario_tipo', 'cliente_propietario_id',
 ];
@@ -201,6 +201,19 @@ export const importarActivosMasivo = async (empresaId, filas) => {
 
       const valorAdquisicion = Number(String(fila.valor_adquisicion ?? '').replace(/[^0-9.]/g, '')) || 0;
       const vidaUtilAnos = parseInt(fila.vida_util_anos, 10) || 0;
+      const anioFabricacionRaw = norm(fila.año_fabricacion);
+      const anioFabricacion = anioFabricacionRaw === '' ? null : Number(anioFabricacionRaw);
+      const anioOverhaulRaw = norm(fila.año_overhaul);
+      const anioOverhaul = anioOverhaulRaw === '' ? null : Number(anioOverhaulRaw);
+      const anioValido = (raw, value) => raw === '' || (Number.isInteger(value) && value >= 1800);
+      if (!anioValido(anioFabricacionRaw, anioFabricacion)) {
+        errores.push({ fila: codigo, error: `Año de fabricación "${fila.año_fabricacion}" debe ser un año entero mayor o igual a 1800` });
+        continue;
+      }
+      if (!anioValido(anioOverhaulRaw, anioOverhaul)) {
+        errores.push({ fila: codigo, error: `Año de overhaul "${fila.año_overhaul}" debe ser un año entero mayor o igual a 1800` });
+        continue;
+      }
       const horasRaw = norm(fila.horas_disponibles_mes);
       const horasDisponiblesMes = horasRaw === '' ? null : Number(horasRaw.replace(',', '.'));
       if (horasRaw !== '' && (!Number.isFinite(horasDisponiblesMes) || horasDisponiblesMes < 0)) {
@@ -238,6 +251,8 @@ export const importarActivosMasivo = async (empresaId, filas) => {
         valor_adquisicion: valorAdquisicion,
         moneda: norm(fila.moneda) || 'PEN',
         vida_util_anos: vidaUtilAnos,
+        año_fabricacion: anioFabricacion,
+        año_overhaul: anioOverhaul,
         horas_disponibles_mes: horasDisponiblesMes,
         documentos: '[]',
         observacion: norm(fila.observacion) || null,

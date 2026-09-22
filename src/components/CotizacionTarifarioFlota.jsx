@@ -49,7 +49,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
         const [cuentasRes, proyectosRes, activosRes] = await Promise.all([
           sb.from('cuentas').select('id,razon_social,nombre_comercial,moneda,estado').eq('empresa_id', empresaId).eq('estado', 'activo').order('nombre_comercial'),
           sb.from('proyectos').select('id,cuenta_id,codigo,nombre,estado').eq('empresa_id', empresaId).order('nombre'),
-          sb.from('activos').select('id,codigo,nombre,marca,modelo,estado,propietario_tipo').eq('empresa_id', empresaId).eq('propietario_tipo', 'propio').neq('estado', 'dado_baja').order('codigo'),
+          sb.from('activos').select('id,codigo,nombre,marca,modelo,año_fabricacion,año_overhaul,estado,propietario_tipo').eq('empresa_id', empresaId).eq('propietario_tipo', 'propio').neq('estado', 'dado_baja').order('codigo'),
         ]);
         const primerError = [cuentasRes, proyectosRes, activosRes].find(result => result.error)?.error;
         if (primerError) throw primerError;
@@ -192,6 +192,8 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
       codigo: linea.activo?.codigo || '',
       marca: linea.activo?.marca || '',
       modelo: linea.activo?.modelo || '',
+      año_fabricacion: linea.activo?.año_fabricacion ?? null,
+      año_overhaul: linea.activo?.año_overhaul ?? null,
       activo_id: linea.activoId,
       contrato_alquiler_id: linea.contrato?.id || null,
     }));

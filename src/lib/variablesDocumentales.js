@@ -27,6 +27,16 @@ export const VARIABLES_COTIZACION = [
   { grupo: 'Pago', label: 'Porcentaje saldo', token: '{{pago.saldo_pct}}' },
   { grupo: 'Oportunidad', label: 'Nombre oportunidad', token: '{{oportunidad.nombre}}' },
   { grupo: 'Oportunidad', label: 'Servicio de interes', token: '{{oportunidad.servicio_interes}}' },
+  { grupo: 'Ítem', label: 'Descripción del ítem', token: '{{item.descripcion}}' },
+  { grupo: 'Ítem', label: 'Cantidad del ítem', token: '{{item.cantidad}}' },
+  { grupo: 'Ítem', label: 'Unidad del ítem', token: '{{item.unidad}}' },
+  { grupo: 'Ítem', label: 'Precio unitario del ítem', token: '{{item.precio_unitario}}' },
+  { grupo: 'Ítem', label: 'Subtotal del ítem', token: '{{item.subtotal}}' },
+  { grupo: 'Activo', label: 'Código del activo', token: '{{item.codigo}}' },
+  { grupo: 'Activo', label: 'Marca del activo', token: '{{item.marca}}' },
+  { grupo: 'Activo', label: 'Modelo del activo', token: '{{item.modelo}}' },
+  { grupo: 'Activo', label: 'Año de fabricación', token: '{{item.año_fabricacion}}' },
+  { grupo: 'Activo', label: 'Año de overhaul', token: '{{item.año_overhaul}}' },
 ];
 
 export const VARIABLES_CONTRATO_LABORAL = [
@@ -140,8 +150,11 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'item.codigo': item.codigo || '',
     'item.marca': item.marca || '',
     'item.modelo': item.modelo || '',
+    'item.año_fabricacion': item.año_fabricacion ?? '',
+    'item.año_overhaul': item.año_overhaul ?? '',
   };
-  return values[key] ?? '';
+  const resultado = values[key] ?? '';
+  return resultado;
 }
 
 export function valorVariableContratoLaboral(key, ctx = {}) {
@@ -188,7 +201,7 @@ export function valorVariableContratoLaboral(key, ctx = {}) {
 
 export const CATALOGOS_VARIABLES = {
   cotizacion: {
-    grupos: ['empresa', 'cliente', 'contacto', 'cotizacion', 'pago', 'oportunidad'],
+    grupos: ['empresa', 'cliente', 'contacto', 'cotizacion', 'pago', 'oportunidad', 'item', 'activo'],
     variables: VARIABLES_COTIZACION,
     resolver: valorVariableCotizacion,
   },
@@ -203,9 +216,12 @@ export const obtenerVariablesDocumentales = categoria => CATALOGOS_VARIABLES[cat
 
 export function renderTextoDocumental(texto = '', categoria, ctx = {}) {
   const resolver = CATALOGOS_VARIABLES[categoria]?.resolver;
-  return String(texto || '').replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, key) => {
-    const value = resolver?.(key, ctx);
-    return value == null ? '' : String(value);
+  const textoOriginal = String(texto || '');
+  return textoOriginal.replace(/\{\{\s*([\p{L}\p{M}\p{N}_.]+)\s*\}\}/gu, (_, key) => {
+    const keyNormalizada = key.normalize('NFC');
+    const value = resolver?.(keyNormalizada, ctx);
+    const resultado = value == null ? '' : String(value);
+    return keyNormalizada.startsWith('item.') && resultado === '' ? '\u00A0' : resultado;
   });
 }
 
