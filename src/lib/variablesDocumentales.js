@@ -70,6 +70,11 @@ const money = (n, moneda = 'PEN') => {
   const value = Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   return `${sym} ${value}`;
 };
+const moneyPreciso = (n, moneda = 'PEN') => {
+  const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? 'EUR' : 'S/';
+  const value = Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${sym} ${value}`;
+};
 
 const firstHito = (cotizacion = {}) => {
   const hitos = Array.isArray(cotizacion.hitos_pago) ? cotizacion.hitos_pago : [];
@@ -157,9 +162,9 @@ export function valorVariableCotizacion(key, ctx = {}) {
     'item.año_fabricacion': item.año_fabricacion ?? '',
     'item.año_overhaul': item.año_overhaul ?? '',
     'item.horas_minimas_garantizadas': item.horas_minimas_garantizadas ?? '',
-    'item.costo_hora_adicional': item.costo_hora_adicional == null ? '' : money(item.costo_hora_adicional, moneda),
-    'item.costo_mes': item.costo_mes == null ? '' : money(item.costo_mes, moneda),
-    'item.costo_periodo': item.costo_periodo == null ? '' : money(item.costo_periodo, moneda),
+    'item.costo_hora_adicional': item.costo_hora_adicional == null ? '' : moneyPreciso(item.costo_hora_adicional, moneda),
+    'item.costo_mes': item.costo_mes == null ? '' : moneyPreciso(item.costo_mes, moneda),
+    'item.costo_periodo': item.costo_periodo == null ? '' : moneyPreciso(item.costo_periodo, moneda),
   };
   const resultado = values[key] ?? '';
   return resultado;

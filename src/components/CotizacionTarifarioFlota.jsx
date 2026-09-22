@@ -227,7 +227,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
           </div>
           {proyecto && <div className="alert alert-info" style={{ marginTop: 12 }}>Proyecto: <strong>{proyecto.codigo} · {proyecto.nombre}</strong>. Si un equipo tiene más de un contrato vigente, deberás elegir uno.</div>}
           <div style={{ marginTop: 16 }}><div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}><h3 style={{ margin: 0 }}>Equipos con tarifa estándar</h3>{cargandoContratos && <span className="text-muted">Consultando contratos…</span>}</div>
-            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Horas estimadas</th><th style={{ width: 150 }}>Horas mínimas garantizadas</th><th style={{ width: 150 }}>US / hora adicional</th><th style={{ width: 120 }}>Duración (meses)</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
+            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Horas estimadas</th><th style={{ width: 150 }}>Horas mínimas garantizadas</th><th style={{ width: 160 }}>Costo US/hora adicional</th><th style={{ width: 120 }}>Duración (meses)</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
               {activosTarifados.map(activo => {
                 const linea = resumenLineas.find(item => item.activoId === activo.id);
                 const tarifa = tarifasPorActivo.get(activo.id);
