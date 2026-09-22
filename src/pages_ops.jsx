@@ -6447,6 +6447,7 @@ const schemaCacheMissingColumn = (error, tableName = 'ordenes_compra') => {
   if (!match) return null;
   return match[2] === tableName ? match[1] : null;
 };
+const normEstadoSolpe = s => String(s?.estado || '').trim().toLowerCase();
 const crearOCCompatible = async (crearOrdenCompraCtx, payloadBase) => {
   let payload = { ...payloadBase };
   for (let intento = 0; intento <= OC_COLUMNAS_OPCIONALES_INSERT.size; intento += 1) {
