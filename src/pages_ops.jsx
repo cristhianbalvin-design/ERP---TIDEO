@@ -6608,7 +6608,7 @@ function BandejaSourcing() {
   const [solpeFiltro, setSolpeFiltro] = useState('');
   const [guardando, setGuardando] = useState(() => new Set());
   const [draggedKey, setDraggedKey] = useState('');
-  const [generandoProveedor, setGenerandoProveedor] = useState('');
+  const [generandoProveedores, setGenerandoProveedores] = useState(() => new Set());
   const [erroresSociedad, setErroresSociedad] = useState({});
 
   const cargarLineas = useCallback(async () => {
@@ -6727,7 +6727,7 @@ function BandejaSourcing() {
   };
 
   const generarOCDesdeColumna = async columna => {
-    if (!columna?.lineas?.length || generandoProveedor) return;
+    if (!columna?.lineas?.length || generandoProveedores.has(columna.proveedorId)) return;
     const resoluciones = columna.lineas.map(linea => ({
       linea,
       resolucion: resolverSociedadLinea(linea),
@@ -6806,7 +6806,7 @@ function BandejaSourcing() {
       notas_proveedor: '',
       notas_internas: 'Generada desde Bandeja de Sourcing (' + columna.solpes.size + ' SOLPEs)',
     };
-    setGenerandoProveedor(columna.proveedorId);
+    setGenerandoProveedores(prev => new Set(prev).add(columna.proveedorId));
     try {
       const { ocGuardada } = await crearOCCompatible(crearOrdenCompraCtx, payload);
       const resultado = await comprasService.registrarCoberturaSolpeOc(primeraLinea.solpe_id, ocGuardada.id);
@@ -6816,7 +6816,11 @@ function BandejaSourcing() {
     } catch (e) {
       addToast?.('No se pudo generar la OC: ' + (e?.message || 'error desconocido'));
     } finally {
-      setGenerandoProveedor('');
+      setGenerandoProveedores(prev => {
+        const next = new Set(prev);
+        next.delete(columna.proveedorId);
+        return next;
+      });
     }
   };
 
@@ -6939,8 +6943,8 @@ function BandejaSourcing() {
               className="btn btn-primary"
               style={{width:'100%'}}
               onClick={() => generarOCDesdeColumna(columna)}
-              disabled={Boolean(generandoProveedor)}
-            >{generandoProveedor === columna.proveedorId ? 'Generando...' : 'Generar OC'}</button>
+              disabled={generandoProveedores.has(columna.proveedorId)}
+            >{generandoProveedores.has(columna.proveedorId) ? 'Generando...' : 'Generar OC'}</button>
           </div>
         </section>;
       })}
