@@ -6412,6 +6412,29 @@ function proveedorById(proveedores, id) {
 
 const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
 const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
+const formOCDesdeOrden = (oc = {}) => ({
+  ...OC_FORM_INIT,
+  proveedor_id: oc.proveedor_id || '',
+  origen_compra: oc.origen_tipo || 'directa',
+  proceso_compra_id: oc.proceso_compra_id || '',
+  solpe_id: oc.solpe_id || '',
+  solpe_codigo: oc.solpe_codigo || '',
+  ot_id: oc.ot_id || '',
+  centro_costo_id: oc.centro_costo_id || '',
+  sociedad_id: oc.sociedad_id || '',
+  descripcion: oc.descripcion || '',
+  fecha_entrega_esperada: oc.fecha_entrega_esperada || '',
+  items: Array.isArray(oc.items) && oc.items.length
+    ? oc.items.map(item => ({
+      ...item,
+      material_id: item.material_id || '',
+      descripcion: item.descripcion || '',
+      cantidad: item.cantidad ?? 1,
+      unidad: item.unidad || 'Und',
+      precio_unitario: item.precio_unitario ?? 0,
+    }))
+    : OC_FORM_INIT.items,
+});
 const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
 const OC_TRANSITO_TIPO_LABEL = { recojo_propio: 'Recojo propio', despacho_proveedor: 'Despacho proveedor' };
 const OC_TRANSITO_ESTADO_BADGE = { registrado: 'badge-gray', en_transito: 'badge-orange', recibido: 'badge-green', cancelado: 'badge-red' };
@@ -6600,7 +6623,7 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
-  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], ots = [], centrosCosto = [], sociedadesDisponibles = [], crearOrdenCompraCtx } = useApp();
+  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], ots = [], centrosCosto = [], sociedadesDisponibles = [], crearOrdenCompraCtx, navigate } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -6854,7 +6877,7 @@ function BandejaSourcing() {
       moneda: 'PEN',
       fecha_emision: new Date().toISOString().slice(0, 10),
       fecha_entrega_esperada: null,
-      estado: 'emitida',
+      estado: 'borrador',
       porcentaje_recibido: 0,
       notas_proveedor: '',
       notas_internas: 'Generada desde Bandeja de Sourcing (' + columna.solpes.size + ' SOLPEs)',
@@ -6866,6 +6889,7 @@ function BandejaSourcing() {
       actualizarSolpesDesdeCobertura(resultado);
       addNotificacion?.((ocGuardada.codigo || payload.codigo) + ' generada con ' + columna.lineas.length + ' línea(s) de ' + columna.solpes.size + ' SOLPE(s).');
       await cargarLineas();
+      navigate?.('ordenes_compra', { action: 'edit', ocId: ocGuardada.id });
     } catch (e) {
       addToast?.('No se pudo generar la OC: ' + (e?.message || 'error desconocido'));
     } finally {
@@ -7039,7 +7063,7 @@ function BandejaSourcing() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
   const modoVistaSociedadOC = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7054,6 +7078,8 @@ function OrdenesCompra() {
   const [sel, setSel] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
   const [form, setForm] = useState(OC_FORM_INIT);
+  const [editandoOC, setEditandoOC] = useState(null);
+  const handledOcParamRef = useRef('');
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const proveedoresOC = homologados.length ? homologados : proveedores;
@@ -7074,6 +7100,17 @@ function OrdenesCompra() {
     if (!panel || form.proveedor_id || !proveedoresOC.length) return;
     setForm(v => ({ ...v, proveedor_id: proveedoresOC[0].id }));
   }, [panel, form.proveedor_id, proveedoresOC]);
+
+  useEffect(() => {
+    const ocId = activeParams?.ocId;
+    if (activeParams?.action !== 'edit' || !ocId || handledOcParamRef.current === ocId) return;
+    const oc = (ordenesCompra || []).find(item => item.id === ocId);
+    if (!oc) return;
+    setForm(formOCDesdeOrden(oc));
+    setEditandoOC(oc);
+    setPanel(true);
+    handledOcParamRef.current = ocId;
+  }, [activeParams?.action, activeParams?.ocId, ordenesCompra]);
 
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
@@ -7100,10 +7137,17 @@ function OrdenesCompra() {
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
-    const oc = { id:`oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:`OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'', creado_por: authUser?.id || null };
+    const oc = { id:editandoOC?.id || `oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:editandoOC?.codigo || `OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:editandoOC?.fecha_emision || new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:editandoOC?.porcentaje_recibido || 0, notas_proveedor:editandoOC?.notas_proveedor || '', notas_internas:editandoOC?.notas_internas || '', creado_por:editandoOC?.creado_por || authUser?.id || null };
     try {
-      const { ocGuardada, payloadUsado } = await crearOCCompatible(crearOrdenCompraCtx, oc);
+      let ocGuardada;
+      if (editandoOC?.id) {
+        const { id: _id, ...cambios } = oc;
+        ocGuardada = await actualizarOrdenCompraCtx(editandoOC.id, cambios);
+      } else {
+        ({ ocGuardada } = await crearOCCompatible(crearOrdenCompraCtx, oc));
+      }
       addNotificacion(`${oc.codigo} ${emitir?'emitida':'guardada como borrador'}.`);
+      setEditandoOC(null);
       setForm(nuevaOCForm(proveedoresOC[0]?.id));
       setPanel(false);
     } catch (error) {
@@ -7126,12 +7170,12 @@ function OrdenesCompra() {
   if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
-      <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
+      <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setEditandoOC(null); setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} onClose={()=>setPanel(false)} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
@@ -7227,7 +7271,7 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
   );
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, onClose, onCrear }) {
+function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, modoEdicion = false, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const lineas = form.items?.length ? form.items : [{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:0 }];
   const materialKey = lineas.map(i => i.material_id || '').join('|');
@@ -7274,7 +7318,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
     return () => { alive = false; };
   }, [empresaId, form.proveedor_id, materialKey]);
 
-  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>Nueva OC</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
+  return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{modoEdicion ? 'Revisar orden de compra' : 'Nueva OC'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id || ''} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><SearchSelect value={form.proveedor_id} placeholder="Buscar proveedor..." options={proveedores.map(p => ({ id:p.id, label:`${p.razon_social}${p.estado==='observado'?' - observado':''}`, searchText:[p.razon_social, p.nombre_comercial, p.ruc, p.codigo].filter(Boolean).join(' ') }))} onChange={proveedor_id=>setForm(v=>({...v,proveedor_id}))}/></div>
       <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
