@@ -9621,7 +9621,7 @@ function ActivosFijos() {
     codigo: '', nombre: '', tipo_categoria: 'equipo', marca: '', modelo: '',
     placa_serie: '', ubicacion: '', estado: 'operativo', centro_costo_id: '',
     responsable_nombre: '', fecha_alta: today, valor_adquisicion: '',
-    moneda: 'PEN', vida_util_anos: '', horas_disponibles_mes: '', observacion: '', compras_gasto_id: null,
+    moneda: 'PEN', vida_util_anos: '', año_fabricacion: '', año_overhaul: '', horas_disponibles_mes: '', observacion: '', compras_gasto_id: null,
   };
   const [form, setForm] = useState(initForm);
   const [formDocs, setFormDocs] = useState([]);
@@ -9707,7 +9707,7 @@ function ActivosFijos() {
   };
   const abrirEditar = (a) => {
     setSelActivo(a);
-    setForm({ ...initForm, ...a, valor_adquisicion: a.valor_adquisicion ?? '', vida_util_anos: a.vida_util_anos ?? '', horas_disponibles_mes: a.horas_disponibles_mes ?? '' });
+    setForm({ ...initForm, ...a, valor_adquisicion: a.valor_adquisicion ?? '', vida_util_anos: a.vida_util_anos ?? '', año_fabricacion: a.año_fabricacion ?? '', año_overhaul: a.año_overhaul ?? '', horas_disponibles_mes: a.horas_disponibles_mes ?? '' });
     setFormDocs(Array.isArray(a.documentos) ? a.documentos : []);
     setPanel('editar');
   };
@@ -9724,6 +9724,8 @@ function ActivosFijos() {
         documentos: formDocs,
         valor_adquisicion: Number(form.valor_adquisicion) || 0,
         vida_util_anos: parseInt(form.vida_util_anos, 10) || 0,
+        año_fabricacion: form.año_fabricacion === '' ? null : Number(form.año_fabricacion),
+        año_overhaul: form.año_overhaul === '' ? null : Number(form.año_overhaul),
         horas_disponibles_mes: form.horas_disponibles_mes === '' ? null : Number(form.horas_disponibles_mes),
         centro_costo_id: form.centro_costo_id || null,
       };
@@ -9752,8 +9754,8 @@ function ActivosFijos() {
 
   // ─── Importación Excel ─────────────────────────────────────────────────────
   const descargarPlantilla = () => {
-    const headers = ['codigo','nombre','tipo_categoria','marca','modelo','placa_serie','ubicacion','estado','centro_costo','responsable','fecha_alta','valor_adquisicion','moneda','vida_util_anos','horas_disponibles_mes','observacion'];
-    const ejemplo = ['ACT-001','Volquete Volvo FMX','VEHICULOS','Volvo','FMX 440','ABC-123','Patio Sur','operativo','CC-OPS','Juan Pérez','2023-05-15','280000','PEN','10','208','Activo operativo de ejemplo'];
+    const headers = ['codigo','nombre','tipo_categoria','marca','modelo','placa_serie','ubicacion','estado','centro_costo','responsable','fecha_alta','valor_adquisicion','moneda','vida_util_anos','año_fabricacion','año_overhaul','horas_disponibles_mes','observacion'];
+    const ejemplo = ['ACT-001','Volquete Volvo FMX','VEHICULOS','Volvo','FMX 440','ABC-123','Patio Sur','operativo','CC-OPS','Juan Pérez','2023-05-15','280000','PEN','10','2018','2024','208','Activo operativo de ejemplo'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
     ws['!cols'] = headers.map((_, i) => ({ wch: i === 1 ? 28 : ['observacion', 'tipo_categoria'].includes(headers[i]) ? 26 : i === 0 ? 14 : 19 }));
 
@@ -9773,6 +9775,8 @@ function ActivosFijos() {
       ['valor_adquisicion', 'Opcional. Número sin símbolo monetario.'],
       ['moneda', 'Opcional. Ejemplos: PEN o USD.'],
       ['vida_util_anos', 'Opcional. Número entero de años.'],
+      ['año_fabricacion', 'Opcional. Año de fabricación del activo.'],
+      ['año_overhaul', 'Opcional. Año del overhaul registrado manualmente.'],
       ['horas_disponibles_mes', 'Opcional. Horas disponibles por mes; número mayor o igual a cero.'],
       ['observacion', 'Opcional.'],
     ];
@@ -10086,6 +10090,8 @@ function ActivosFijos() {
               <div className="input-group"><label>Valor adquisición</label><input className="input" type="number" min="0" step="0.01" value={form.valor_adquisicion} onChange={e => setForm(v => ({ ...v, valor_adquisicion: e.target.value }))} /></div>
               <div className="input-group"><label>Moneda</label><select className="select" value={form.moneda} onChange={e => setForm(v => ({ ...v, moneda: e.target.value }))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
               <div className="input-group"><label>Vida útil (años)</label><input className="input" type="number" min="0" step="1" value={form.vida_util_anos} onChange={e => setForm(v => ({ ...v, vida_util_anos: e.target.value }))} /></div>
+              <div className="input-group"><label>Año de fabricación</label><input className="input" type="number" min="1800" step="1" value={form.año_fabricacion} onChange={e => setForm(v => ({ ...v, año_fabricacion: e.target.value }))} /></div>
+              <div className="input-group"><label>Año de overhaul</label><input className="input" type="number" min="1800" step="1" value={form.año_overhaul} onChange={e => setForm(v => ({ ...v, año_overhaul: e.target.value }))} /></div>
               <div className="input-group"><label>Horas disponibles al mes</label><input className="input" type="number" min="0" step="0.01" value={form.horas_disponibles_mes} onChange={e => setForm(v => ({ ...v, horas_disponibles_mes: e.target.value }))} /></div>
               <div className="input-group"><label>CECO por defecto</label><select className="select" value={form.centro_costo_id} onChange={e => setForm(v => ({ ...v, centro_costo_id: e.target.value }))}><option value="">Sin CECO</option>{cecos.map(c => <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>)}</select></div>
             </div>
@@ -10157,6 +10163,8 @@ function ActivosFijos() {
                   ['Responsable', selActivo.responsable_nombre || '-'],
                   ['CECO', cecoNombre(selActivo.centro_costo_id)],
                   ['Fecha alta', selActivo.fecha_alta || '-'],
+                  ['Año fabricación', selActivo.año_fabricacion || '-'],
+                  ['Año overhaul', selActivo.año_overhaul || '-'],
                 ].map(([l, v]) => <div key={l}><div style={{ fontSize: 10, color: 'var(--fg-muted)' }}>{l}</div><div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div></div>)}
               </div>
             </div>
