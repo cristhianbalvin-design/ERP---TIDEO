@@ -6611,6 +6611,172 @@ function CotizacionesCompras() {
   );
 }
 
+const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_id || ''}`;
+const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
+
+function BandejaSourcing() {
+  const { empresa, addToast } = useApp();
+  const [lineas, setLineas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [familiaFiltro, setFamiliaFiltro] = useState('');
+  const [solpeFiltro, setSolpeFiltro] = useState('');
+  const [seleccionadas, setSeleccionadas] = useState(() => new Set());
+  const [proveedorLote, setProveedorLote] = useState('');
+  const [guardando, setGuardando] = useState(() => new Set());
+
+  const cargarLineas = useCallback(async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) {
+      setLineas([]);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      setLineas(await comprasService.obtenerLineasSourcing(empresa.id));
+      setSeleccionadas(new Set());
+      setProveedorLote('');
+    } catch (e) {
+      setError(e?.message || 'No se pudo cargar la bandeja de sourcing.');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => { cargarLineas(); }, [cargarLineas]);
+
+  const familias = useMemo(() => Array.from(new Map(
+    lineas.map(linea => [linea.familia_id || 'sin_familia', linea.familia_nombre || linea.familia_codigo || 'Sin familia'])
+  ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
+  const solpes = useMemo(() => Array.from(new Map(
+    lineas.map(linea => [linea.solpe_id, linea.solpe_codigo || linea.solpe_id])
+  ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
+  const lineasFiltradas = useMemo(() => lineas.filter(linea => (
+    (!familiaFiltro || (linea.familia_id || 'sin_familia') === familiaFiltro) &&
+    (!solpeFiltro || linea.solpe_id === solpeFiltro)
+  )), [familiaFiltro, lineas, solpeFiltro]);
+  const lineasAsignadas = useMemo(() => lineas.filter(linea => linea.proveedor_asignado_id), [lineas]);
+  const seleccionadasVisibles = lineasFiltradas.filter(linea => seleccionadas.has(sourcingLineaKey(linea)));
+  const proveedoresComunes = useMemo(() => {
+    if (!seleccionadasVisibles.length) return [];
+    const ids = seleccionadasVisibles.reduce((acc, linea) => {
+      const candidatos = new Set((linea.proveedores_candidatos || []).map(c => c.proveedor_id).filter(Boolean));
+      return new Set([...acc].filter(id => candidatos.has(id)));
+    }, new Set((seleccionadasVisibles[0].proveedores_candidatos || []).map(c => c.proveedor_id).filter(Boolean)));
+    return Array.from(ids).map(id => {
+      const candidato = (seleccionadasVisibles.flatMap(linea => linea.proveedores_candidatos || [])).find(c => c.proveedor_id === id);
+      return { id, label: sourcingProveedorLabel(candidato) };
+    }).sort((a, b) => a.label.localeCompare(b.label));
+  }, [seleccionadasVisibles]);
+
+  const toggleSeleccion = key => setSeleccionadas(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const toggleTodasVisibles = () => setSeleccionadas(prev => {
+    const next = new Set(prev);
+    const todas = lineasFiltradas.length > 0 && lineasFiltradas.every(linea => next.has(sourcingLineaKey(linea)));
+    lineasFiltradas.forEach(linea => {
+      const key = sourcingLineaKey(linea);
+      if (todas) next.delete(key); else next.add(key);
+    });
+    return next;
+  });
+
+  const guardarAsignacion = async (linea, proveedorId) => {
+    const key = sourcingLineaKey(linea);
+    const anterior = linea.proveedor_asignado_id || null;
+    setGuardando(prev => new Set(prev).add(key));
+    setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
+      ? { ...item, proveedor_asignado_id: proveedorId || null }
+      : item));
+    try {
+      await comprasService.asignarProveedorLineaSourcing({
+        solpeId: linea.solpe_id,
+        solpeItemId: linea.solpe_item_id,
+        proveedorId: proveedorId || null,
+      });
+    } catch (e) {
+      setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
+        ? { ...item, proveedor_asignado_id: anterior }
+        : item));
+      addToast?.(`No se pudo guardar el proveedor: ${e?.message || 'error desconocido'}`);
+      throw e;
+    } finally {
+      setGuardando(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
+
+  const asignarLote = async () => {
+    if (!proveedorLote || !seleccionadasVisibles.length) return;
+    for (const linea of seleccionadasVisibles) {
+      try { await guardarAsignacion(linea, proveedorLote); } catch { /* cada línea revierte individualmente */ }
+    }
+    setSeleccionadas(new Set());
+    setProveedorLote('');
+  };
+
+  const opcionesProveedor = linea => {
+    const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos : [];
+    const asignado = linea.proveedor_asignado_id && !candidatos.some(c => c.proveedor_id === linea.proveedor_asignado_id)
+      ? [{ proveedor_id: linea.proveedor_asignado_id, proveedor_codigo: linea.proveedor_asignado_id, nombre_comercial: 'Proveedor asignado' }]
+      : [];
+    return [...asignado, ...candidatos];
+  };
+
+  return <>
+    <div className="page-header">
+      <div><h1 className="page-title">Bandeja de Sourcing</h1><div className="page-sub">Asignación de proveedor por línea de material</div></div>
+      <button className="btn btn-secondary" onClick={cargarLineas} disabled={loading}>{loading ? 'Actualizando...' : 'Actualizar'}</button>
+    </div>
+    <div className="kpi-grid">
+      <div className="kpi-card"><div className="kpi-label">Líneas pendientes</div><div className="kpi-value">{lineas.length}</div></div>
+      <div className="kpi-card"><div className="kpi-label">Con proveedor asignado</div><div className="kpi-value">{lineasAsignadas.length}</div></div>
+      <div className="kpi-card"><div className="kpi-label">SOLPEs involucradas</div><div className="kpi-value">{new Set(lineas.map(linea => linea.solpe_id)).size}</div></div>
+      <div className="kpi-card"><div className="kpi-label">Familias</div><div className="kpi-value">{familias.length}</div></div>
+    </div>
+    <div className="card" style={{padding:14, marginBottom:16}}>
+      <div className="grid-2" style={{gap:12}}>
+        <div className="input-group"><label>Familia</label><select className="select" value={familiaFiltro} onChange={e=>setFamiliaFiltro(e.target.value)}><option value="">Todas las familias</option>{familias.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
+        <div className="input-group"><label>SOLPE de origen</label><select className="select" value={solpeFiltro} onChange={e=>setSolpeFiltro(e.target.value)}><option value="">Todas las SOLPEs</option>{solpes.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div>
+      </div>
+      <div className="row mt-4" style={{justifyContent:'space-between', gap:12}}>
+        <span className="text-muted">{seleccionadasVisibles.length} línea(s) seleccionada(s)</span>
+        <div className="row" style={{gap:8}}>
+          <select className="select" style={{minWidth:230}} value={proveedorLote} onChange={e=>setProveedorLote(e.target.value)} disabled={!proveedoresComunes.length}>
+            <option value="">Proveedor común...</option>
+            {proveedoresComunes.map(proveedor=><option key={proveedor.id} value={proveedor.id}>{proveedor.label}</option>)}
+          </select>
+          <button className="btn btn-primary" onClick={asignarLote} disabled={!proveedorLote || !seleccionadasVisibles.length}>Asignar seleccionadas</button>
+        </div>
+      </div>
+    </div>
+    {error && <div className="card" style={{padding:16, borderColor:'var(--red)', color:'var(--red)'}}>{error}</div>}
+    {!loading && !error && !lineasFiltradas.length && <div className="card" style={{padding:28, textAlign:'center'}}><h3>No hay líneas pendientes</h3><p className="text-muted">Las SOLPEs aprobadas u oc_parcial sin OC aparecerán aquí.</p></div>}
+    {!!lineasFiltradas.length && <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th><input type="checkbox" checked={lineasFiltradas.length > 0 && lineasFiltradas.every(linea => seleccionadas.has(sourcingLineaKey(linea)))} onChange={toggleTodasVisibles} aria-label="Seleccionar líneas visibles"/></th><th>Material</th><th>Familia</th><th>Cantidad</th><th>SOLPE origen</th><th>Proveedor</th></tr></thead><tbody>
+      {lineasFiltradas.map(linea => {
+        const key = sourcingLineaKey(linea);
+        const candidatos = opcionesProveedor(linea);
+        const sugerido = candidatos[0]?.proveedor_id || '';
+        const valor = linea.proveedor_asignado_id || sugerido;
+        return <tr key={key} data-testid={`sourcing-line-${key}`}>
+          <td><input type="checkbox" checked={seleccionadas.has(key)} onChange={()=>toggleSeleccion(key)} aria-label={`Seleccionar ${linea.solpe_item_id}`}/></td>
+          <td><strong>{linea.material_codigo || linea.material_id || 'Sin código'}</strong><div className="text-muted" style={{fontSize:12}}>{linea.material_descripcion || 'Sin descripción'}</div></td>
+          <td>{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</td>
+          <td>{linea.cantidad ?? '-'} {linea.unidad || ''}</td>
+          <td><strong>{linea.solpe_codigo || linea.solpe_id}</strong><div className="text-muted" style={{fontSize:12}}>{linea.solpe_descripcion || ''}</div></td>
+          <td><select className="select" value={valor} onChange={e=>guardarAsignacion(linea, e.target.value || null)} disabled={guardando.has(key) || !candidatos.length} aria-label={`Proveedor para ${linea.solpe_item_id}`}><option value="">Sin asignar</option>{candidatos.map((candidato, index)=><option key={candidato.proveedor_id} value={candidato.proveedor_id}>{sourcingProveedorLabel(candidato)}{!linea.proveedor_asignado_id && index === 0 ? ' — sugerido' : ''}{linea.proveedor_asignado_id === candidato.proveedor_id ? ' — asignado' : ''}</option>)}</select>{guardando.has(key) && <div className="text-muted" style={{fontSize:11, marginTop:4}}>Guardando...</div>}</td>
+        </tr>;
+      })}
+    </tbody></table></div></div>}
+  </>;
+}
+
 function OrdenesCompra() {
   const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, solpes, setSolpes, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
   const modoVistaSociedadOC = resolverFiltroSociedadesVista({

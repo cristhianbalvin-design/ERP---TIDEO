@@ -281,6 +281,25 @@ export const comprasService = {
     if (error) { console.error('Error fetching ordenes compra:', error); return []; }
     return data;
   },
+  obtenerLineasSourcing: async (empresaId) => {
+    if (!empresaId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('obtener_lineas_sourcing', {
+      p_empresa_id: empresaId,
+    });
+    if (error) throw error;
+    return data || [];
+  },
+  asignarProveedorLineaSourcing: async ({ solpeId, solpeItemId, proveedorId = null } = {}) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('asignar_proveedor_linea_sourcing', {
+      p_solpe_id: solpeId,
+      p_solpe_item_id: solpeItemId,
+      p_proveedor_id: proveedorId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
   getPrecioHistoricoProveedor: async (empresaId, proveedorId, materialId) => {
     if (!empresaId || !proveedorId || !materialId) return null;
     const supabase = await getSupabaseClient();
