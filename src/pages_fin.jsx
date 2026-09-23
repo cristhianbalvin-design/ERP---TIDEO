@@ -7706,9 +7706,20 @@ function CxP() {
   const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '', es_compra_con_oc: false, orden_compra_id: '' };
   const [formCrear, setFormCrear] = useState(FORM_VACIO);
   const [archivoCrearUrl, setArchivoCrearUrl] = useState('');
+  const saldoPendienteOrdenCompraCxP = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
   const ESTADOS_OC_CXP_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']), []);
   const ordenesCompraCxpOptions = useMemo(() => (ordenesCompra || [])
-    .filter(oc => (!empresa?.id || oc.empresa_id === empresa.id) && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase()))
+    .filter(oc => (
+      (!empresa?.id || oc.empresa_id === empresa.id)
+      && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
+      && saldoPendienteOrdenCompraCxP(oc) > 0
+    ))
     .map(oc => {
       const proveedor = (proveedores || []).find(p => p.id === oc.proveedor_id);
       const proveedorNombre = proveedor?.razon_social || proveedor?.nombre_comercial || oc.proveedor_id || 'Proveedor sin nombre';
@@ -7719,7 +7730,7 @@ function CxP() {
         searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
       };
     }),
-    [ordenesCompra, proveedores, empresa?.id, ESTADOS_OC_CXP_SELECCIONABLES],
+    [ordenesCompra, cxp, proveedores, empresa?.id, ESTADOS_OC_CXP_SELECCIONABLES],
   );
   // Campos viáticos reembolso
   const [motivoCxP, setMotivoCxP] = useState('');
@@ -8023,13 +8034,6 @@ function CxP() {
   const ordenCompraSeleccionadaCxP = esCompraConOcForm
     ? (ordenesCompra || []).find(oc => oc.id === formCrear.orden_compra_id && (!empresa?.id || oc.empresa_id === empresa.id) && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase()))
     : null;
-  const saldoPendienteOrdenCompraCxP = oc => {
-    if (!oc) return 0;
-    const facturado = (cxp || [])
-      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
-      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
-    return Math.max(0, Number(oc.total || 0) - facturado);
-  };
   const mostrarVinculoOcCxP = !esTributoForm && !esDividendoForm && !esRheForm && !esViaticosForm && formCrear.tipo_beneficiario === 'proveedor';
   const seleccionarOrdenCompraCxP = ordenCompraId => {
     const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
@@ -9590,7 +9594,7 @@ function CxP() {
                         onChange={seleccionarOrdenCompraCxP}
                       />
                       <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
-                        Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial.
+                        Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial y saldo pendiente de facturar.
                       </div>
                     </div>
                   )}
