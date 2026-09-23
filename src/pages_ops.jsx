@@ -7080,6 +7080,7 @@ function OrdenesCompra() {
   const [form, setForm] = useState(OC_FORM_INIT);
   const [editandoOC, setEditandoOC] = useState(null);
   const handledOcParamRef = useRef('');
+  const editRequestRef = useRef(0);
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const proveedoresOC = homologados.length ? homologados : proveedores;
@@ -7099,7 +7100,7 @@ function OrdenesCompra() {
   const abrirEdicionOC = oc => {
     handledOcParamRef.current = '';
     setSel(null);
-    navigate('ordenes_compra', { action: 'edit', ocId: oc.id });
+    navigate('ordenes_compra', { action: 'edit', ocId: oc.id, editRequestId: ++editRequestRef.current });
   };
 
   useEffect(() => {
@@ -7109,14 +7110,15 @@ function OrdenesCompra() {
 
   useEffect(() => {
     const ocId = activeParams?.ocId;
-    if (activeParams?.action !== 'edit' || !ocId || handledOcParamRef.current === ocId) return;
+    const editRequestId = activeParams?.editRequestId || ocId;
+    if (activeParams?.action !== 'edit' || !ocId || handledOcParamRef.current === editRequestId) return;
     const oc = (ordenesCompra || []).find(item => item.id === ocId);
     if (!oc) return;
     setForm(formOCDesdeOrden(oc));
     setEditandoOC(oc);
     setPanel(true);
-    handledOcParamRef.current = ocId;
-  }, [activeParams?.action, activeParams?.ocId, ordenesCompra]);
+    handledOcParamRef.current = editRequestId;
+  }, [activeParams?.action, activeParams?.ocId, activeParams?.editRequestId, ordenesCompra]);
 
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
