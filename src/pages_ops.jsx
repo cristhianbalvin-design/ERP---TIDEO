@@ -6915,7 +6915,7 @@ function BandejaSourcing() {
     const key = sourcingLineaKey(linea);
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
     return <article
-      className="card"
+      className="card sourcing-card"
       key={key}
       data-testid={'sourcing-card-' + key}
       draggable={asignada && !guardando.has(key)}
@@ -6927,13 +6927,13 @@ function BandejaSourcing() {
       onDragEnd={asignada ? () => setDraggedKey('') : undefined}
       style={{padding:14, margin:0, cursor:asignada ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1}}
     >
-      <div className="row" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
+      <div className="row sourcing-card-head" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
         <div>
           <strong>{linea.material_codigo || linea.material_id || 'Sin código'}</strong>
           <div style={{marginTop:4}}>{linea.material_descripcion || 'Sin descripción'}</div>
         </div>
-        <div className="row" style={{gap:6, alignItems:'flex-start'}}>
-          <span className="badge">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
+        <div className="row sourcing-card-actions" style={{gap:6, alignItems:'flex-start'}}>
+          <span className="badge sourcing-card-family">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
           {asignada && <button type="button" className="btn btn-ghost btn-sm" onClick={() => guardarAsignacion(linea, null)} disabled={guardando.has(key)} aria-label="Quitar proveedor">×</button>}
         </div>
       </div>
@@ -6943,10 +6943,10 @@ function BandejaSourcing() {
         <div className="text-muted" style={{fontSize:12, marginBottom:7}}>Asignar proveedor</div>
         {!candidatos.length
           ? <span className="text-muted" style={{fontSize:12}}>Sin candidatos disponibles</span>
-          : <div className="row" style={{gap:6, flexWrap:'wrap'}}>
+          : <div className="row sourcing-provider-chips" style={{gap:6, flexWrap:'wrap'}}>
             {candidatos.map((candidato, index) => <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm sourcing-provider-chip"
               key={candidato.proveedor_id}
               onClick={() => guardarAsignacion(linea, candidato.proveedor_id)}
               disabled={guardando.has(key)}
