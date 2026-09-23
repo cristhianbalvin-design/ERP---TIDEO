@@ -6410,6 +6410,9 @@ function proveedorById(proveedores, id) {
   return proveedores.find(p => p.id === id) || { razon_social:'Proveedor no encontrado', nombre_comercial:'', calificacion_promedio:null, condicion_pago:'', estado:'inactivo' };
 }
 
+const ESTADOS_OC_RECEPCIONABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']);
+const ocEsRecepcionable = orden => ESTADOS_OC_RECEPCIONABLES.has(String(orden?.estado || '').toLowerCase());
+
 const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
 const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
 const formOCDesdeOrden = (oc = {}) => ({
@@ -7096,6 +7099,12 @@ function OrdenesCompra() {
     mensajeSinOrigen: 'Selecciona una OT o CECO para resolver la sociedad destino de la OC.',
   });
 
+  const abrirEdicionOC = oc => {
+    handledOcParamRef.current = '';
+    setSel(null);
+    navigate('ordenes_compra', { action: 'edit', ocId: oc.id });
+  };
+
   useEffect(() => {
     if (!panel || form.proveedor_id || !proveedoresOC.length) return;
     setForm(v => ({ ...v, proveedor_id: proveedoresOC[0].id }));
@@ -7167,21 +7176,21 @@ function OrdenesCompra() {
       setConfirmando(false);
     }
   };
-  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
+  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onEdit={abrirEdicionOC} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setEditandoOC(null); setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
-      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
+      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
       {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
 
-function OrdenesTable({ list, proveedores, onSel, onRecepcion }) {
-  return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{moneyD(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>onSel(o)}>Ver detalle</button> <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button></td></tr>})}</tbody></table></div></div>;
+function OrdenesTable({ list, proveedores, onSel, onEdit, onRecepcion }) {
+  return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{moneyD(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>o.estado === 'borrador' ? onEdit(o) : onSel(o)}>{o.estado === 'borrador' ? 'Editar' : 'Ver detalle'}</button>{ocEsRecepcionable(o) ? <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button> : <span className="text-muted" style={{fontSize:11, marginLeft:8}} title="La OC debe estar emitida y no cerrada o anulada">Recepcion no disponible</span>}</td></tr>})}</tbody></table></div></div>;
 }
 
 function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
@@ -7356,7 +7365,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
     <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {moneyD(subtotal)}</p><p><strong>IGV 18%:</strong> {moneyD(subtotal*0.18)}</p><p><strong>Total:</strong> {moneyD(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
-function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRecepcion }) {
+function DetalleOrden({ orden, proveedor, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
   const { ordenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
@@ -7397,10 +7406,11 @@ function DetalleOrden({ orden, proveedor, onBack, onConfirmar, confirmando, onRe
           <div className="page-sub">{proveedor.razon_social} — {moneyD(totalOC)}</div>
         </div>
         <div className="row">
+          {ordenActual.estado === 'borrador' && <button className="btn btn-secondary" onClick={() => onEdit(ordenActual)}>Editar</button>}
           {ordenActual.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar} disabled={confirmando}>{confirmando ? 'Confirmando...' : 'Marcar confirmada'}</button>}
           {ordenActual.estado === 'confirmada' && <span className="badge badge-green" style={{padding:'6px 12px'}}>OC Confirmada</span>}
           <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar anticipo</button>
-          <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button>
+          {ocEsRecepcionable(ordenActual) ? <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button> : <span className="text-muted" style={{fontSize:12}}>{ordenActual.estado === 'borrador' ? 'Emite la OC antes de recepcionar' : 'Recepcion no disponible para este estado'}</span>}
         </div>
       </div>
 
