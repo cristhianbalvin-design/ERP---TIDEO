@@ -7695,12 +7695,18 @@ function CxP() {
   const [guardando, setGuardando] = useState(false);
   const [tabCxP, setTabCxP] = useState('general');
   const [completarRecepcion, setCompletarRecepcion] = useState(null);
+  const [preconfigNuevoEgreso, setPreconfigNuevoEgreso] = useState(null);
 
-  const abrirNuevoEgreso = () => {
+  const abrirNuevoEgreso = (preconfig = null) => {
     // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
     // conserva mientras el usuario permanece dentro de esta captura.
     limpiarBorradorNuevoEgreso();
+    setPreconfigNuevoEgreso(preconfig);
     setPanelNuevoEgreso(true);
+  };
+  const cerrarNuevoEgreso = () => {
+    setPanelNuevoEgreso(false);
+    setPreconfigNuevoEgreso(null);
   };
 
   // Form: pago
@@ -8052,6 +8058,29 @@ function CxP() {
       monto_total: ordenCompraId ? saldoPendiente.toFixed(2) : prev.monto_total,
     }));
   };
+
+  useEffect(() => {
+    if (activeParams?.action !== 'nuevo_egreso_oc' || !activeParams?.ocId) return;
+    const orden = (ordenesCompra || []).find(oc => (
+      oc.id === activeParams.ocId
+      && (!empresa?.id || oc.empresa_id === empresa.id)
+    ));
+    if (!orden) return;
+    const saldoPendiente = saldoPendienteOrdenCompraCxP(orden);
+    abrirNuevoEgreso({
+      paso: 2,
+      form: {
+        es_compra_con_oc: true,
+        orden_compra_id: orden.id,
+        proveedor_id: orden.proveedor_id || '',
+        sociedad_id: orden.sociedad_id || '',
+        centro_costo_id: orden.centro_costo_id || '',
+        monto: saldoPendiente.toFixed(2),
+        concepto: orden.descripcion || '',
+      },
+    });
+    navigate('cxp', {});
+  }, [activeParams?.action, activeParams?.ocId, ordenesCompra, cxp, empresa?.id]);
   const otOrigenCxPId = esViaticosForm ? viaticosOtId : esRheForm ? rheOtId : '';
   const otOrigenCxP = (ots || []).find(ot => ot.id === otOrigenCxPId);
   const cecoOrigenCxP = (centrosCosto || []).find(ceco => ceco.id === cxpCentroCostoId);
@@ -9092,8 +9121,9 @@ function CxP() {
       {panelNuevoEgreso && (
         <NuevoEgreso
           origen="cxp"
-          onClose={() => setPanelNuevoEgreso(false)}
-          onSaved={() => setPanelNuevoEgreso(false)}
+          preconfig={preconfigNuevoEgreso}
+          onClose={cerrarNuevoEgreso}
+          onSaved={cerrarNuevoEgreso}
         />
       )}
 

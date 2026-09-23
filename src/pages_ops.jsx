@@ -6406,6 +6406,18 @@ function estadoOcBadge(estado) {
     : 'badge-gray';
 }
 
+function estadoFisicoOC(estado) {
+  if (estado === 'cerrada') return 'Recibido completo';
+  if (estado === 'recibida_parcial') return 'Recibido parcial';
+  return 'No recibido';
+}
+
+function estadoFisicoOCBadge(estado) {
+  if (estado === 'cerrada') return 'badge-green';
+  if (estado === 'recibida_parcial') return 'badge-orange';
+  return 'badge-gray';
+}
+
 function proveedorById(proveedores, id) {
   return proveedores.find(p => p.id === id) || { razon_social:'Proveedor no encontrado', nombre_comercial:'', calificacion_promedio:null, condicion_pago:'', estado:'inactivo' };
 }
@@ -7202,14 +7214,14 @@ function OrdenesCompra() {
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setEditandoOC(null); setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
-      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
+      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})} onRegistrarCxP={o => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: o.id })}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
       {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
 
-function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onRecepcion }) {
+function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onRecepcion, onRegistrarCxP }) {
   return (
     <div className="card">
       <div className="table-wrap">
@@ -7233,6 +7245,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
               const p = proveedorById(proveedores, o.proveedor_id);
               const esBorrador = o.estado === 'borrador';
               const cxpResumen = cxpPorOrdenCompra?.get(o.id);
+              const estadoFisico = estadoFisicoOC(o.estado);
               return (
                 <tr
                   key={o.id}
@@ -7249,9 +7262,17 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                   <td className="mono">{o.ot_id || '-'}</td>
                   <td>
                     <span className={'badge ' + estadoOcBadge(o.estado)}>{o.estado.replace('_', ' ')}</span>
-                    {cxpResumen && <div style={{ marginTop: 4 }}><span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-                      {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-                    </span></div>}
+                    <div style={{ marginTop: 4 }}>
+                      <span className={'badge ' + estadoFisicoOCBadge(o.estado)}>Físico: {estadoFisico}</span>
+                    </div>
+                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
+                        {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
+                      </span> : <span className="badge badge-gray">CxP: no registrada</span>}
+                      {!cxpResumen && ocEsRecepcionable(o) && <button className="btn btn-sm btn-secondary" onClick={event => { event.stopPropagation(); onRegistrarCxP(o); }}>
+                        Registrar CxP
+                      </button>}
+                    </div>
                   </td>
                   <td>{o.fecha_emision}</td>
                   <td>{o.fecha_entrega_esperada}</td>
@@ -7508,6 +7529,18 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <button className="btn btn-ghost btn-sm" onClick={onBack}>Volver</button>
           <h1 className="page-title">{ordenActual.codigo}</h1>
           <div className="page-sub">{proveedor.razon_social} — {moneyD(totalOC)}</div>
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            <span className={'badge ' + estadoOcBadge(ordenActual.estado)}>Estado: {ordenActual.estado.replace('_', ' ')}</span>
+            <span className={'badge ' + estadoFisicoOCBadge(ordenActual.estado)}>Físico: {estadoFisicoOC(ordenActual.estado)}</span>
+            {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
+              {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
+            </span> : <>
+              <span className="badge badge-gray">CxP: no registrada</span>
+              {ocEsRecepcionable(ordenActual) && <button className="btn btn-sm btn-secondary" onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}>
+                Registrar CxP
+              </button>}
+            </>}
+          </div>
         </div>
         <div className="row">
           {ordenActual.estado === 'borrador' && <button className="btn btn-secondary" onClick={() => onEdit(ordenActual)}>Editar</button>}
