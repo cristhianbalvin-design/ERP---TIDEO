@@ -7737,9 +7737,10 @@ function CxP() {
       const proveedor = (proveedores || []).find(p => p.id === oc.proveedor_id);
       const proveedorNombre = proveedor?.razon_social || proveedor?.nombre_comercial || oc.proveedor_id || 'Proveedor sin nombre';
       const codigo = oc.codigo || oc.id;
+      const saldoPendiente = saldoPendienteOrdenCompraCxP(oc);
       return {
         id: oc.id,
-        label: `${codigo} — ${proveedorNombre}`,
+        label: `${codigo} — ${proveedorNombre} · Saldo: ${moneyCurrency(saldoPendiente, oc.moneda || 'PEN')}`,
         searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
       };
     }),
@@ -9534,6 +9535,10 @@ function CxP() {
                       <label>N° factura / documento</label>
                       <input className="input" value={formCrear.factura_numero} onChange={e => setFormCrear(v => ({...v,factura_numero:e.target.value}))} placeholder="E001-001234"/>
                     </div>
+                    <div className="input-group" style={{gridColumn:'1/-1'}}>
+                      <label>Concepto (opcional)</label>
+                      <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
+                    </div>
                     <div className="input-group">
                       <label>Moneda</label>
                       <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
@@ -9541,19 +9546,58 @@ function CxP() {
                         <option value="USD">USD — Dólares</option>
                       </select>
                     </div>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
-                      <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
-                      {ordenCompraSeleccionadaCxP && (
-                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
-                          Saldo pendiente de esta OC: <strong>{moneyCurrency(saldoPendienteOrdenCompraCxP(ordenCompraSeleccionadaCxP), ordenCompraSeleccionadaCxP.moneda || formCrear.moneda || 'PEN')}</strong>
+                  </div>
+                  {mostrarVinculoOcCxP && (
+                    <>
+                      <label style={{
+                        display:'flex', alignItems:'center', gap:10, cursor:'pointer',
+                        padding:'10px 14px', borderRadius:8,
+                        background: formCrear.es_compra_con_oc
+                          ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))'
+                          : 'var(--bg-subtle)',
+                        border: `1px solid ${formCrear.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(formCrear.es_compra_con_oc)}
+                          onChange={e => setFormCrear(v => ({
+                            ...v,
+                            es_compra_con_oc: e.target.checked,
+                            orden_compra_id: e.target.checked ? v.orden_compra_id : '',
+                          }))}
+                          style={{width:16, height:16, cursor:'pointer', flexShrink:0}}
+                        />
+                        <div>
+                          <div style={{fontSize:13, fontWeight:600}}>Esta factura corresponde a una Orden de Compra</div>
+                          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
+                            Vincula la obligación de pago con la OC para evitar una CxP duplicada al recepcionar.
+                          </div>
+                        </div>
+                      </label>
+                      {esCompraConOcForm && (
+                        <div className="input-group">
+                          <label>Orden de Compra de origen <span style={{color:'var(--danger)'}}>*</span></label>
+                          <SearchSelect
+                            value={formCrear.orden_compra_id}
+                            placeholder={ordenesCompraCxpOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs con saldo pendiente disponibles'}
+                            options={ordenesCompraCxpOptions}
+                            onChange={seleccionarOrdenCompraCxP}
+                          />
+                          <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                            Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de facturar.
+                          </div>
                         </div>
                       )}
-                    </div>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>Concepto (opcional)</label>
-                      <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
-                    </div>
+                    </>
+                  )}
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
+                    {ordenCompraSeleccionadaCxP && (
+                      <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                        Saldo pendiente de esta OC: <strong>{moneyCurrency(saldoPendienteOrdenCompraCxP(ordenCompraSeleccionadaCxP), ordenCompraSeleccionadaCxP.moneda || formCrear.moneda || 'PEN')}</strong>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -9602,49 +9646,6 @@ function CxP() {
                     </div>
                   </div>
                 </label>
-              )}
-              {mostrarVinculoOcCxP && (
-                <>
-                  <label style={{
-                    display:'flex', alignItems:'center', gap:10, cursor:'pointer',
-                    padding:'10px 14px', borderRadius:8,
-                    background: formCrear.es_compra_con_oc
-                      ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))'
-                      : 'var(--bg-subtle)',
-                    border: `1px solid ${formCrear.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formCrear.es_compra_con_oc)}
-                      onChange={e => setFormCrear(v => ({
-                        ...v,
-                        es_compra_con_oc: e.target.checked,
-                        orden_compra_id: e.target.checked ? v.orden_compra_id : '',
-                      }))}
-                      style={{width:16, height:16, cursor:'pointer', flexShrink:0}}
-                    />
-                    <div>
-                      <div style={{fontSize:13, fontWeight:600}}>Esta factura corresponde a una Orden de Compra</div>
-                      <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
-                        Vincula la obligación de pago con la OC para evitar una CxP duplicada al recepcionar.
-                      </div>
-                    </div>
-                  </label>
-                  {esCompraConOcForm && (
-                    <div className="input-group">
-                      <label>Orden de Compra de origen <span style={{color:'var(--danger)'}}>*</span></label>
-                      <SearchSelect
-                        value={formCrear.orden_compra_id}
-                        placeholder={ordenesCompraCxpOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs con saldo pendiente disponibles'}
-                        options={ordenesCompraCxpOptions}
-                        onChange={seleccionarOrdenCompraCxP}
-                      />
-                      <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
-                        Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de facturar.
-                      </div>
-                    </div>
-                  )}
-                </>
               )}
               <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">

@@ -458,9 +458,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       const proveedor = provsActivos.find(p => p.id === oc.proveedor_id);
       const proveedorNombre = proveedor?.razon_social || proveedor?.nombre_comercial || oc.proveedor_id || 'Proveedor sin nombre';
       const codigo = oc.codigo || oc.id;
+      const saldoPendiente = saldoPendienteOrdenCompra(oc);
       return {
         id: oc.id,
-        label: `${codigo} — ${proveedorNombre}`,
+        label: `${codigo} — ${proveedorNombre} · Saldo: ${fmtCaja(saldoPendiente, oc.moneda || 'PEN')}`,
         searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
       };
     }),
@@ -759,8 +760,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           placeholder="Ej: Materiales para OT-045, Servicio de limpieza..."
         />
       </div>
-      <SociedadReadOnlyField {...destinoSociedadEgreso} />
-
       {/* Fecha del gasto */}
       <div className="input-group">
         <label>Fecha del gasto <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -778,41 +777,15 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         )}
       </div>
 
-      {/* Monto + Moneda */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-        <div className="input-group">
-          <label>Monto <span style={{ color: 'var(--danger)' }}>*</span></label>
-          <input
-            className="input" type="number" min="0.01" step="0.01"
-            value={form.monto} onChange={e => setF('monto', e.target.value)} placeholder="0.00"
-          />
-          {ordenCompraSeleccionada && (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-              Saldo pendiente de esta OC: <strong>{fmtCaja(saldoPendienteOrdenCompra(ordenCompraSeleccionada), ordenCompraSeleccionada.moneda || form.moneda || 'PEN')}</strong>
-            </div>
-          )}
-        </div>
-        <div className="input-group">
-          <label>Moneda</label>
-          <select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
-            <option value="PEN">PEN</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-          </select>
-        </div>
+      {/* Moneda */}
+      <div className="input-group">
+        <label>Moneda</label>
+        <select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
+          <option value="PEN">PEN</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
       </div>
-
-      {/* Equivalente PEN si moneda != PEN */}
-      {form.moneda !== 'PEN' && form.monto && (
-        <div style={{
-          fontSize: 12, color: 'var(--fg-muted)', padding: '8px 12px',
-          background: 'var(--bg-alt)', borderRadius: 6,
-        }}>
-          Equivalente: <strong>S/ {montoPEN.toFixed(2)}</strong>
-          {tc ? <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>TC automático</span>
-               : <span style={{ marginLeft: 6, color: 'var(--orange)' }}>Sin TC disponible</span>}
-        </div>
-      )}
 
       {!esPagoCajaChica && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -856,6 +829,34 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           )}
         </div>
       )}
+
+      {/* Monto */}
+      <div className="input-group">
+        <label>Monto <span style={{ color: 'var(--danger)' }}>*</span></label>
+        <input
+          className="input" type="number" min="0.01" step="0.01"
+          value={form.monto} onChange={e => setF('monto', e.target.value)} placeholder="0.00"
+        />
+        {ordenCompraSeleccionada && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+            Saldo pendiente de esta OC: <strong>{fmtCaja(saldoPendienteOrdenCompra(ordenCompraSeleccionada), ordenCompraSeleccionada.moneda || form.moneda || 'PEN')}</strong>
+          </div>
+        )}
+      </div>
+
+      {/* Equivalente PEN si moneda != PEN */}
+      {form.moneda !== 'PEN' && form.monto && (
+        <div style={{
+          fontSize: 12, color: 'var(--fg-muted)', padding: '8px 12px',
+          background: 'var(--bg-alt)', borderRadius: 6,
+        }}>
+          Equivalente: <strong>S/ {montoPEN.toFixed(2)}</strong>
+          {tc ? <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>TC automático</span>
+               : <span style={{ marginLeft: 6, color: 'var(--orange)' }}>Sin TC disponible</span>}
+        </div>
+      )}
+
+      <SociedadReadOnlyField {...destinoSociedadEgreso} />
 
       {ocSeleccionadaEnFormulario && empresa?.multisociedad_habilitado ? (
         <div className="input-group">
