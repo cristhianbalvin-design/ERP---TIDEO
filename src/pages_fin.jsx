@@ -9539,13 +9539,23 @@ function CxP() {
                       <label>Concepto (opcional)</label>
                       <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
                     </div>
+                  </div>
+                  <div className="grid-2" style={{gap:12}}>
                     <div className="input-group">
-                      <label>Moneda</label>
-                      <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
-                        <option value="PEN">PEN — Soles</option>
-                        <option value="USD">USD — Dólares</option>
-                      </select>
+                      <label>Fecha de emisión</label>
+                      <input className="input" type="date" value={formCrear.fecha_emision} onChange={e => onEmisionChange(e.target.value)}/>
                     </div>
+                    <div className="input-group">
+                      <label>Fecha de vencimiento</label>
+                      <input className="input" type="date" value={formCrear.fecha_vencimiento} onChange={e => setFormCrear(v => ({...v,fecha_vencimiento:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label>Moneda</label>
+                    <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                      <option value="PEN">PEN — Soles</option>
+                      <option value="USD">USD — Dólares</option>
+                    </select>
                   </div>
                   {mostrarVinculoOcCxP && (
                     <>
@@ -9647,7 +9657,7 @@ function CxP() {
                   </div>
                 </label>
               )}
-              <div className="grid-2" style={{gap:12, marginTop:4}}>
+              {(esTributoForm || esDividendoForm || esRheForm || esViaticosForm) && <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">
                   <label>Fecha de emisión</label>
                   <input className="input" type="date" value={formCrear.fecha_emision} onChange={e => onEmisionChange(e.target.value)}/>
@@ -9656,7 +9666,7 @@ function CxP() {
                   <label>Fecha de vencimiento</label>
                   <input className="input" type="date" value={formCrear.fecha_vencimiento} onChange={e => setFormCrear(v => ({...v,fecha_vencimiento:e.target.value}))}/>
                 </div>
-              </div>
+              </div>}
               <div className="input-group">
                 <label>Adjuntar comprobante (foto o PDF)</label>
                 <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
