@@ -339,6 +339,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [errFechaPago, setErrFechaPago] = useState(false);
   const [errCuentaPago, setErrCuentaPago] = useState(false);
   const [errOrdenCompra, setErrOrdenCompra] = useState('');
+  const valoresManualesAntesDeOcRef = useRef(null);
   // Campos de activo fijo (solo cuando es_capitalizacion = true)
   const [activoTipo, setActivoTipo]         = useState(registroEditar?.activo_tipo || 'equipo');
   const [activoSerie, setActivoSerie]       = useState(registroEditar?.numero_serie || '');
@@ -390,6 +391,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       if (k === 'metodo_pago' && v === 'Caja chica') {
         next.es_compra_con_oc = false;
         next.orden_compra_id = '';
+        const valoresManuales = valoresManualesAntesDeOcRef.current;
+        next.sociedad_id = valoresManuales?.sociedad_id || '';
+        next.centro_costo_id = valoresManuales?.centro_costo_id || '';
+        valoresManualesAntesDeOcRef.current = null;
       }
       if (k === 'ya_pagado' && !v) next.fondo_caja_chica_id = '';
       if (fondoCajaChicaFijoId) {
@@ -473,6 +478,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
   const esPagoCajaChica = Boolean(form.ya_pagado && form.metodo_pago === 'Caja chica');
   const esCompraConOc = Boolean(form.es_compra_con_oc && !esPagoCajaChica);
+  const ocSeleccionadaEnFormulario = Boolean(esCompraConOc && form.orden_compra_id);
   const ordenCompraSeleccionada = esCompraConOc
     ? (ordenesCompra || []).find(oc => (
         oc.id === form.orden_compra_id
@@ -483,17 +489,44 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const seleccionarOrdenCompra = ordenCompraId => {
     const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
     setErrOrdenCompra('');
-    setForm(prev => ({
-      ...prev,
-      orden_compra_id: ordenCompraId || '',
-      proveedor_id: ordenCompraId ? (orden?.proveedor_id || '') : '',
-      proveedor_texto: ordenCompraId ? '' : prev.proveedor_texto,
-    }));
+    if (ordenCompraId && !form.orden_compra_id && !valoresManualesAntesDeOcRef.current) {
+      valoresManualesAntesDeOcRef.current = {
+        sociedad_id: form.sociedad_id,
+        centro_costo_id: form.centro_costo_id,
+      };
+    }
+    setForm(prev => {
+      if (ordenCompraId) {
+        return {
+          ...prev,
+          orden_compra_id: ordenCompraId,
+          proveedor_id: orden?.proveedor_id || '',
+          proveedor_texto: '',
+          sociedad_id: orden?.sociedad_id || '',
+          centro_costo_id: orden?.centro_costo_id || '',
+        };
+      }
+      const restaurados = prev.orden_compra_id ? valoresManualesAntesDeOcRef.current : null;
+      valoresManualesAntesDeOcRef.current = null;
+      return {
+        ...prev,
+        orden_compra_id: '',
+        proveedor_id: '',
+        ...(restaurados || {}),
+      };
+    });
   };
 
   useEffect(() => {
     if (!esPagoCajaChica || (!form.es_compra_con_oc && !form.orden_compra_id)) return;
-    setForm(prev => ({ ...prev, es_compra_con_oc: false, orden_compra_id: '' }));
+    const valoresManuales = valoresManualesAntesDeOcRef.current;
+    valoresManualesAntesDeOcRef.current = null;
+    setForm(prev => ({
+      ...prev,
+      es_compra_con_oc: false,
+      orden_compra_id: '',
+      ...(valoresManuales || { sociedad_id: '', centro_costo_id: '' }),
+    }));
     setErrOrdenCompra('');
   }, [esPagoCajaChica, form.es_compra_con_oc, form.orden_compra_id]);
 
@@ -766,7 +799,24 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         </div>
       )}
 
-      <SociedadFormField value={form.sociedad_id} onChange={seleccionarSociedad} />
+      {ocSeleccionadaEnFormulario && empresa?.multisociedad_habilitado ? (
+        <div className="input-group">
+          <label>Sociedad <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <select className="select" value={form.sociedad_id || ''} disabled>
+            <option value="">Sin sociedad en la OC</option>
+            {sociedadesDisponibles.map(sociedad => (
+              <option key={sociedad.id} value={sociedad.id}>
+                {sociedad.codigo ? `${sociedad.codigo} — ` : ''}{sociedad.nombre}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+            La sociedad se toma de la Orden de Compra seleccionada.
+          </div>
+        </div>
+      ) : (
+        <SociedadFormField value={form.sociedad_id} onChange={seleccionarSociedad} />
+      )}
 
       {/* CECO (obligatorio) */}
       <div className="input-group">
@@ -775,13 +825,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           className={`select${errCeco ? ' input-error' : ''}`}
           value={form.centro_costo_id}
           onChange={e => setF('centro_costo_id', e.target.value)}
-          disabled={empresa?.multisociedad_habilitado && !form.sociedad_id}
+          disabled={ocSeleccionadaEnFormulario || (empresa?.multisociedad_habilitado && !form.sociedad_id)}
         >
           <option value="">{empresa?.multisociedad_habilitado && !form.sociedad_id ? 'Selecciona primero una sociedad...' : '— Seleccionar CECO —'}</option>
           {cecos.map(c => (
             <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>
           ))}
         </select>
+        {ocSeleccionadaEnFormulario && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+            El Centro de Costo se toma de la Orden de Compra seleccionada.
+          </div>
+        )}
         {errCeco && (
           <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
             El CECO es obligatorio.
@@ -1258,6 +1313,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             'Selecciona una sociedad para registrar el egreso.',
           )).sociedadId
         : (empresa?.multisociedad_habilitado ? form.sociedad_id : null);
+      const sociedadCxPId = esCompraConOc
+        ? (ordenCompraSeleccionada?.sociedad_id || null)
+        : sociedadOperacionId;
+      const centroCostoCxPId = esCompraConOc
+        ? (ordenCompraSeleccionada?.centro_costo_id || null)
+        : form.centro_costo_id;
 
       if (esEdicion) {
         const montoEdicion = parseFloat(form.monto) || 0;
@@ -1434,7 +1495,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       sociedadOperacionId,
+          sociedad_id:       sociedadCxPId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1450,7 +1511,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
-          centro_costo_id:   form.centro_costo_id,
+          centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
           orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
@@ -1520,7 +1581,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       sociedadOperacionId,
+          sociedad_id:       sociedadCxPId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1534,7 +1595,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
-          centro_costo_id:   form.centro_costo_id,
+          centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
           orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
