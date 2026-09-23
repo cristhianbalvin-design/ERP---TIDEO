@@ -7187,7 +7187,85 @@ function OrdenesCompra() {
 }
 
 function OrdenesTable({ list, proveedores, onSel, onEdit, onRecepcion }) {
-  return <div className="card"><div className="table-wrap"><table className="tbl"><thead><tr><th>N OC</th><th>Proveedor</th><th>Concepto</th><th>Monto total</th><th>OT</th><th>Estado</th><th>Emision</th><th>Entrega esperada</th><th>Recibido</th><th>Acciones</th></tr></thead><tbody>{list.map(o=>{ const p=proveedorById(proveedores,o.proveedor_id); return <tr key={o.id}><td className="mono">{o.codigo}</td><td><strong>{p.razon_social}</strong><div className="text-muted" style={{fontSize:11}}>{ratingText(p.calificacion_promedio)}</div></td><td>{o.descripcion}</td><td>{moneyD(o.total||0)}</td><td className="mono">{o.ot_id||'-'}</td><td><span className={'badge '+estadoOcBadge(o.estado)}>{o.estado.replace('_',' ')}</span></td><td>{o.fecha_emision}</td><td>{o.fecha_entrega_esperada}</td><td><div style={{width:80,height:6,background:'var(--bg-subtle)',borderRadius:99}}><div style={{width:`${o.porcentaje_recibido||0}%`,height:6,background:'var(--green)',borderRadius:99}}/></div><span className="text-muted" style={{fontSize:11}}>{o.porcentaje_recibido||0}%</span></td><td><button className="btn btn-sm btn-secondary" onClick={()=>o.estado === 'borrador' ? onEdit(o) : onSel(o)}>{o.estado === 'borrador' ? 'Editar' : 'Ver detalle'}</button>{ocEsRecepcionable(o) ? <button className="btn btn-sm btn-ghost" onClick={()=>onRecepcion(o)}>Registrar recepcion</button> : <span className="text-muted" style={{fontSize:11, marginLeft:8}} title="La OC debe estar emitida y no cerrada o anulada">Recepcion no disponible</span>}</td></tr>})}</tbody></table></div></div>;
+  return (
+    <div className="card">
+      <div className="table-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>N OC</th>
+              <th>Proveedor</th>
+              <th>Concepto</th>
+              <th>Monto total</th>
+              <th>OT</th>
+              <th>Estado</th>
+              <th>Emision</th>
+              <th>Entrega esperada</th>
+              <th>Recibido</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map(o => {
+              const p = proveedorById(proveedores, o.proveedor_id);
+              const esBorrador = o.estado === 'borrador';
+              return (
+                <tr
+                  key={o.id}
+                  onClick={() => esBorrador && onEdit(o)}
+                  style={esBorrador ? { cursor: 'pointer' } : undefined}
+                >
+                  <td className="mono">{o.codigo}</td>
+                  <td>
+                    <strong>{p.razon_social}</strong>
+                    <div className="text-muted" style={{ fontSize: 11 }}>{ratingText(p.calificacion_promedio)}</div>
+                  </td>
+                  <td>{o.descripcion}</td>
+                  <td>{moneyD(o.total || 0)}</td>
+                  <td className="mono">{o.ot_id || '-'}</td>
+                  <td><span className={'badge ' + estadoOcBadge(o.estado)}>{o.estado.replace('_', ' ')}</span></td>
+                  <td>{o.fecha_emision}</td>
+                  <td>{o.fecha_entrega_esperada}</td>
+                  <td>
+                    <div style={{ width: 80, height: 6, background: 'var(--bg-subtle)', borderRadius: 99 }}>
+                      <div style={{ width: `${o.porcentaje_recibido || 0}%`, height: 6, background: 'var(--green)', borderRadius: 99 }} />
+                    </div>
+                    <span className="text-muted" style={{ fontSize: 11 }}>{o.porcentaje_recibido || 0}%</span>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={event => {
+                        event.stopPropagation();
+                        esBorrador ? onEdit(o) : onSel(o);
+                      }}
+                    >
+                      {esBorrador ? 'Editar' : 'Ver detalle'}
+                    </button>
+                    {ocEsRecepcionable(o) ? (
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        onClick={event => {
+                          event.stopPropagation();
+                          onRecepcion(o);
+                        }}
+                      >
+                        Registrar recepcion
+                      </button>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 11, marginLeft: 8 }} title="La OC debe estar emitida y no cerrada o anulada">
+                        Recepcion no disponible
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
