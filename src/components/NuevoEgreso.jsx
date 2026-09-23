@@ -447,7 +447,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
     return Math.max(0, Number(oc.total || 0) - facturado);
   };
-  const ESTADOS_OC_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']), []);
+  const ESTADOS_OC_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']), []);
   const ordenesCompraOptions = useMemo(() => (ordenesCompra || [])
     .filter(oc => (
       (!empresa?.id || oc.empresa_id === empresa.id)
@@ -844,13 +844,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
               <label>Orden de Compra de origen <span style={{ color: 'var(--danger)' }}>*</span></label>
               <SearchSelect
                 value={form.orden_compra_id}
-                placeholder={ordenesCompraOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs recepcionables disponibles'}
+                placeholder={ordenesCompraOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs con saldo pendiente disponibles'}
                 options={ordenesCompraOptions}
                 onChange={seleccionarOrdenCompra}
               />
               {errOrdenCompra && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{errOrdenCompra}</div>}
               <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial y saldo pendiente de facturar.
+                Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de facturar.
               </div>
             </div>
           )}

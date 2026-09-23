@@ -6424,6 +6424,8 @@ function proveedorById(proveedores, id) {
 
 const ESTADOS_OC_RECEPCIONABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']);
 const ocEsRecepcionable = orden => ESTADOS_OC_RECEPCIONABLES.has(String(orden?.estado || '').toLowerCase());
+const ESTADOS_OC_CXP_VINCULABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']);
+const ocEsVinculableCxP = orden => ESTADOS_OC_CXP_VINCULABLES.has(String(orden?.estado || '').toLowerCase());
 
 const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
 const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
@@ -7269,7 +7271,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                       {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
                         {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
                       </span> : <span className="badge badge-gray">CxP: no registrada</span>}
-                      {!cxpResumen && ocEsRecepcionable(o) && <button className="btn btn-sm btn-secondary" onClick={event => { event.stopPropagation(); onRegistrarCxP(o); }}>
+                      {!cxpResumen && ocEsVinculableCxP(o) && <button className="btn btn-sm btn-secondary" onClick={event => { event.stopPropagation(); onRegistrarCxP(o); }}>
                         Registrar CxP
                       </button>}
                     </div>
@@ -7536,7 +7538,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
               {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
             </span> : <>
               <span className="badge badge-gray">CxP: no registrada</span>
-              {ocEsRecepcionable(ordenActual) && <button className="btn btn-sm btn-secondary" onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}>
+              {ocEsVinculableCxP(ordenActual) && <button className="btn btn-sm btn-secondary" onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}>
                 Registrar CxP
               </button>}
             </>}
