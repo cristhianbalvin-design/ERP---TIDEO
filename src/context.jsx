@@ -9109,6 +9109,7 @@ export function AppProvider({ children }) {
         estado: saldoCxP <= 0 ? 'pagada' : 'por_pagar',
         origen: 'recepcion',
         recepcion_id: recepcionLocal.id,
+        orden_compra_id: isOC ? base.id : null,
         mecanismo_origen: 'recepcion_create',
         ...(archivoFacturaUrl ? { archivo_factura_url: archivoFacturaUrl } : {})
       });
@@ -9156,6 +9157,7 @@ export function AppProvider({ children }) {
       origen: 'recepcion',
       tipo_comprobante: 'Factura',
       recepcion_id: recepcionId,
+      orden_compra_id: ocId || null,
       factura_proveedor_numero: numero,
       factura_proveedor_fecha: facturaProvFecha || fecha,
       factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : null,
