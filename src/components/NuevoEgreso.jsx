@@ -440,11 +440,19 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     sociedadIdEscrituraEgreso,
   );
   const provsActivos = (proveedores || []).filter(p => p.estado !== 'inactivo');
+  const saldoPendienteOrdenCompra = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
   const ESTADOS_OC_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']), []);
   const ordenesCompraOptions = useMemo(() => (ordenesCompra || [])
     .filter(oc => (
       (!empresa?.id || oc.empresa_id === empresa.id)
       && ESTADOS_OC_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
+      && saldoPendienteOrdenCompra(oc) > 0
     ))
     .map(oc => {
       const proveedor = provsActivos.find(p => p.id === oc.proveedor_id);
@@ -456,7 +464,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
       };
     }),
-    [ordenesCompra, empresa?.id, ESTADOS_OC_SELECCIONABLES, provsActivos],
+    [ordenesCompra, cxp, empresa?.id, ESTADOS_OC_SELECCIONABLES, provsActivos],
   );
   const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
     (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase())),
@@ -486,13 +494,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         && ESTADOS_OC_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
       ))
     : null;
-  const saldoPendienteOrdenCompra = oc => {
-    if (!oc) return 0;
-    const facturado = (cxp || [])
-      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
-      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
-    return Math.max(0, Number(oc.total || 0) - facturado);
-  };
   const seleccionarOrdenCompra = ordenCompraId => {
     const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
     const saldoPendiente = saldoPendienteOrdenCompra(orden);
@@ -849,7 +850,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
               />
               {errOrdenCompra && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{errOrdenCompra}</div>}
               <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial.
+                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial y saldo pendiente de facturar.
               </div>
             </div>
           )}
