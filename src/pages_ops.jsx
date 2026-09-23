@@ -6967,7 +6967,6 @@ function BandejaSourcing() {
               onChange={proveedorId => asignarOtroProveedor(linea, proveedorId)}
               style={{minWidth:240, flex:1}}
             />
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto('')} disabled={guardando.has(key)}>Cancelar</button>
           </div>
           : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto(key)} disabled={guardando.has(key)}>+ Otro proveedor</button>}
       </div>
