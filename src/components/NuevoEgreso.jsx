@@ -8,6 +8,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.j
 import { getTipoCambioHoy, getTipoCambioPorFecha, convertirMonto } from '../services/tipoCambioService.js';
 import { prepararVinculacionMovimientoCuenta } from '../services/tesoreriaService.js';
 import { SociedadFormField, SociedadReadOnlyField } from './SociedadFormField.jsx';
+import { SearchSelect } from './SearchSelect.jsx';
 import { resolverFiltroSociedadesVista } from '../services/sociedadesService.js';
 import { resolverSociedadDestino } from '../services/sociedadDestinoService.js';
 import { validarSociedadActivaParaEscritura } from '../services/sociedadEscrituraService.js';
@@ -142,6 +143,8 @@ const FORM_VACIO = {
   proveedor_texto:  '',
   num_comprobante:  '',
   tipo_comprobante: 'Factura',
+  es_compra_con_oc: false,
+  orden_compra_id:  '',
 };
 
 function icono(name) {
@@ -188,6 +191,8 @@ function formDesdeRegistro(registro, today) {
     proveedor_texto: registro.proveedor_referencia || registro.proveedor || '',
     num_comprobante: registro.num_comprobante || registro.factura_numero || '',
     tipo_comprobante: registro.tipo_comprobante || 'Factura',
+    es_compra_con_oc: Boolean(registro.orden_compra_id),
+    orden_compra_id: registro.orden_compra_id || '',
   };
 }
 
@@ -199,7 +204,7 @@ function formDesdeRegistro(registro, today) {
 // cambiar el egreso a otro fondo o convertirlo en un egreso general.
 export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preconfig = null, fondoCajaChicaFijo = null, registroEditar = null }) {
   const {
-    empresa, authUser, centrosCosto, ots, proveedores, cuentasBancarias, cxp = [],
+    empresa, authUser, centrosCosto, ots, proveedores, ordenesCompra = [], cuentasBancarias, cxp = [],
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
     setComprasGastos, setCajaChica, setCxp, setCxpPagos, setMovimientosTesoreria,
     addNotificacion, addToast,
@@ -333,6 +338,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [errFondo, setErrFondo]   = useState(false);
   const [errFechaPago, setErrFechaPago] = useState(false);
   const [errCuentaPago, setErrCuentaPago] = useState(false);
+  const [errOrdenCompra, setErrOrdenCompra] = useState('');
+  const valoresManualesAntesDeOcRef = useRef(null);
   // Campos de activo fijo (solo cuando es_capitalizacion = true)
   const [activoTipo, setActivoTipo]         = useState(registroEditar?.activo_tipo || 'equipo');
   const [activoSerie, setActivoSerie]       = useState(registroEditar?.numero_serie || '');
@@ -381,6 +388,14 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       };
       if (k === 'metodo_pago' && v !== 'Caja chica') next.fondo_caja_chica_id = '';
       if (k === 'metodo_pago' && v !== METODO_TRANSFERENCIA) next.cuenta_bancaria_id = '';
+      if (k === 'metodo_pago' && v === 'Caja chica') {
+        next.es_compra_con_oc = false;
+        next.orden_compra_id = '';
+        const valoresManuales = valoresManualesAntesDeOcRef.current;
+        next.sociedad_id = valoresManuales?.sociedad_id || '';
+        next.centro_costo_id = valoresManuales?.centro_costo_id || '';
+        valoresManualesAntesDeOcRef.current = null;
+      }
       if (k === 'ya_pagado' && !v) next.fondo_caja_chica_id = '';
       if (fondoCajaChicaFijoId) {
         next.ya_pagado = true;
@@ -397,6 +412,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     if (k === 'fondo_caja_chica_id' || k === 'metodo_pago' || k === 'ya_pagado') setErrFondo(false);
     if (k === 'fecha_pago' || k === 'ya_pagado') setErrFechaPago(false);
     if (k === 'cuenta_bancaria_id' || k === 'metodo_pago' || k === 'ya_pagado') setErrCuentaPago(false);
+    if (k === 'es_compra_con_oc' || k === 'metodo_pago') setErrOrdenCompra('');
   };
 
   const seleccionarSociedad = (sociedadId) => {
@@ -424,6 +440,32 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
     sociedadIdEscrituraEgreso,
   );
   const provsActivos = (proveedores || []).filter(p => p.estado !== 'inactivo');
+  const saldoPendienteOrdenCompra = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
+  const ESTADOS_OC_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']), []);
+  const ordenesCompraOptions = useMemo(() => (ordenesCompra || [])
+    .filter(oc => (
+      (!empresa?.id || oc.empresa_id === empresa.id)
+      && ESTADOS_OC_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
+      && saldoPendienteOrdenCompra(oc) > 0
+    ))
+    .map(oc => {
+      const proveedor = provsActivos.find(p => p.id === oc.proveedor_id);
+      const proveedorNombre = proveedor?.razon_social || proveedor?.nombre_comercial || oc.proveedor_id || 'Proveedor sin nombre';
+      const codigo = oc.codigo || oc.id;
+      return {
+        id: oc.id,
+        label: `${codigo} — ${proveedorNombre}`,
+        searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
+      };
+    }),
+    [ordenesCompra, cxp, empresa?.id, ESTADOS_OC_SELECCIONABLES, provsActivos],
+  );
   const cuentasBancariasActivas = filtrarOpcionesPorSociedadEscritura(
     (cuentasBancarias || []).filter(c => !['inactivo', 'eliminado'].includes(String(c.estado || '').toLowerCase())),
     sociedadIdEscrituraEgreso,
@@ -442,6 +484,61 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const esCapitalizacion = !!tipoSel?.es_capitalizacion;
   const fondoCajaSeleccionado = fondosCaja.find(f => f.id === form.fondo_caja_chica_id) || fondoCajaChicaFijo;
   const fondoCajaChicaFijado = Boolean(fondoCajaChicaFijoId);
+  const esPagoCajaChica = Boolean(form.ya_pagado && form.metodo_pago === 'Caja chica');
+  const esCompraConOc = Boolean(form.es_compra_con_oc && !esPagoCajaChica);
+  const ocSeleccionadaEnFormulario = Boolean(esCompraConOc && form.orden_compra_id);
+  const ordenCompraSeleccionada = esCompraConOc
+    ? (ordenesCompra || []).find(oc => (
+        oc.id === form.orden_compra_id
+        && (!empresa?.id || oc.empresa_id === empresa.id)
+        && ESTADOS_OC_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
+      ))
+    : null;
+  const seleccionarOrdenCompra = ordenCompraId => {
+    const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
+    const saldoPendiente = saldoPendienteOrdenCompra(orden);
+    setErrOrdenCompra('');
+    if (ordenCompraId && !form.orden_compra_id && !valoresManualesAntesDeOcRef.current) {
+      valoresManualesAntesDeOcRef.current = {
+        sociedad_id: form.sociedad_id,
+        centro_costo_id: form.centro_costo_id,
+      };
+    }
+    setForm(prev => {
+      if (ordenCompraId) {
+        return {
+          ...prev,
+          orden_compra_id: ordenCompraId,
+          proveedor_id: orden?.proveedor_id || '',
+          proveedor_texto: '',
+          sociedad_id: orden?.sociedad_id || '',
+          centro_costo_id: orden?.centro_costo_id || '',
+          monto: saldoPendiente.toFixed(2),
+        };
+      }
+      const restaurados = prev.orden_compra_id ? valoresManualesAntesDeOcRef.current : null;
+      valoresManualesAntesDeOcRef.current = null;
+      return {
+        ...prev,
+        orden_compra_id: '',
+        proveedor_id: '',
+        ...(restaurados || {}),
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!esPagoCajaChica || (!form.es_compra_con_oc && !form.orden_compra_id)) return;
+    const valoresManuales = valoresManualesAntesDeOcRef.current;
+    valoresManualesAntesDeOcRef.current = null;
+    setForm(prev => ({
+      ...prev,
+      es_compra_con_oc: false,
+      orden_compra_id: '',
+      ...(valoresManuales || { sociedad_id: '', centro_costo_id: '' }),
+    }));
+    setErrOrdenCompra('');
+  }, [esPagoCajaChica, form.es_compra_con_oc, form.orden_compra_id]);
 
   // Cargar tipos de gasto y tipo de cambio al montar
   useEffect(() => {
@@ -689,6 +786,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             className="input" type="number" min="0.01" step="0.01"
             value={form.monto} onChange={e => setF('monto', e.target.value)} placeholder="0.00"
           />
+          {ordenCompraSeleccionada && (
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+              Saldo pendiente de esta OC: <strong>{fmtCaja(saldoPendienteOrdenCompra(ordenCompraSeleccionada), ordenCompraSeleccionada.moneda || form.moneda || 'PEN')}</strong>
+            </div>
+          )}
         </div>
         <div className="input-group">
           <label>Moneda</label>
@@ -712,7 +814,67 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         </div>
       )}
 
-      <SociedadFormField value={form.sociedad_id} onChange={seleccionarSociedad} />
+      {!esPagoCajaChica && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            padding: '10px 14px', borderRadius: 8,
+            background: form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))' : 'var(--bg-subtle)',
+            border: `1px solid ${form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
+          }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.es_compra_con_oc)}
+              onChange={e => {
+                const checked = e.target.checked;
+                setF('es_compra_con_oc', checked);
+                if (!checked) seleccionarOrdenCompra('');
+              }}
+              style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Esta factura corresponde a una Orden de Compra</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
+                Vincula la CxP con la OC para evitar generar una obligación duplicada al recepcionar.
+              </div>
+            </div>
+          </label>
+          {esCompraConOc && (
+            <div className="input-group">
+              <label>Orden de Compra de origen <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <SearchSelect
+                value={form.orden_compra_id}
+                placeholder={ordenesCompraOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs recepcionables disponibles'}
+                options={ordenesCompraOptions}
+                onChange={seleccionarOrdenCompra}
+              />
+              {errOrdenCompra && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{errOrdenCompra}</div>}
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial y saldo pendiente de facturar.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {ocSeleccionadaEnFormulario && empresa?.multisociedad_habilitado ? (
+        <div className="input-group">
+          <label>Sociedad <span style={{ color: 'var(--danger)' }}>*</span></label>
+          <select className="select" value={form.sociedad_id || ''} disabled>
+            <option value="">Sin sociedad en la OC</option>
+            {sociedadesDisponibles.map(sociedad => (
+              <option key={sociedad.id} value={sociedad.id}>
+                {sociedad.codigo ? `${sociedad.codigo} — ` : ''}{sociedad.nombre}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+            La sociedad se toma de la Orden de Compra seleccionada.
+          </div>
+        </div>
+      ) : (
+        <SociedadFormField value={form.sociedad_id} onChange={seleccionarSociedad} />
+      )}
 
       {/* CECO (obligatorio) */}
       <div className="input-group">
@@ -721,13 +883,18 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           className={`select${errCeco ? ' input-error' : ''}`}
           value={form.centro_costo_id}
           onChange={e => setF('centro_costo_id', e.target.value)}
-          disabled={empresa?.multisociedad_habilitado && !form.sociedad_id}
+          disabled={ocSeleccionadaEnFormulario || (empresa?.multisociedad_habilitado && !form.sociedad_id)}
         >
           <option value="">{empresa?.multisociedad_habilitado && !form.sociedad_id ? 'Selecciona primero una sociedad...' : '— Seleccionar CECO —'}</option>
           {cecos.map(c => (
             <option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} — ` : ''}{c.nombre}</option>
           ))}
         </select>
+        {ocSeleccionadaEnFormulario && (
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+            El Centro de Costo se toma de la Orden de Compra seleccionada.
+          </div>
+        )}
         {errCeco && (
           <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
             El CECO es obligatorio.
@@ -901,12 +1068,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
 
       {form.ya_pagado && <div className="input-group">
         <label>Proveedor o beneficiario{form.ya_pagado ? ' (opcional)' : ''}</label>
-        <select className="select" value={form.proveedor_id} onChange={e => setF('proveedor_id', e.target.value)}>
+        <select className="select" value={form.proveedor_id} disabled={esCompraConOc && Boolean(form.orden_compra_id)} onChange={e => setF('proveedor_id', e.target.value)}>
           <option value="">- Ingreso libre -</option>
           {provsActivos.map(p => (
             <option key={p.id} value={p.id}>{p.razon_social || p.nombre_comercial || p.id}</option>
           ))}
         </select>
+        {esCompraConOc && form.orden_compra_id && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>El proveedor se toma de la Orden de Compra seleccionada.</div>}
         {!form.proveedor_id && (
           <input
             className="input" style={{ marginTop: 6 }}
@@ -935,12 +1103,13 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           </div>
           <div className="input-group">
             <label>Proveedor o beneficiario</label>
-            <select className="select" value={form.proveedor_id} onChange={e => setF('proveedor_id', e.target.value)}>
+            <select className="select" value={form.proveedor_id} disabled={esCompraConOc && Boolean(form.orden_compra_id)} onChange={e => setF('proveedor_id', e.target.value)}>
               <option value="">— Ingreso libre —</option>
               {provsActivos.map(p => (
                 <option key={p.id} value={p.id}>{p.razon_social || p.nombre_comercial || p.id}</option>
               ))}
             </select>
+            {esCompraConOc && form.orden_compra_id && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>El proveedor se toma de la Orden de Compra seleccionada.</div>}
             {!form.proveedor_id && (
               <input
                 className="input" style={{ marginTop: 6 }}
@@ -1004,6 +1173,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             if (form.ya_pagado && form.metodo_pago === 'Caja chica' && !form.fondo_caja_chica_id) { setErrFondo(true); ok = false; }
             if (form.ya_pagado && form.metodo_pago !== 'Caja chica' && !(form.fecha_pago || form.fecha)) { setErrFechaPago(true); ok = false; }
             if (!esEdicion && form.ya_pagado && form.metodo_pago === METODO_TRANSFERENCIA && !form.cuenta_bancaria_id) { setErrCuentaPago(true); ok = false; }
+            if (esCompraConOc && !form.orden_compra_id) { setErrOrdenCompra('Selecciona la Orden de Compra de origen.'); ok = false; }
+            if (esCompraConOc && form.orden_compra_id && !ordenCompraSeleccionada) { setErrOrdenCompra('La Orden de Compra seleccionada ya no está disponible para vincular esta CxP.'); ok = false; }
             if (esCapitalizacion && !activoVidaUtil) { setErrActivoVidaUtil(true); ok = false; }
             if (!form.concepto.trim() || !parseFloat(form.monto)) return;
             if (ok) setPaso(3);
@@ -1046,6 +1217,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
       form.ya_pagado && form.metodo_pago === 'Caja chica' ? ['Fondo caja chica', fondoCajaSel ? `${fondoCajaSel.nombre} (${fmtCaja(fondoCajaSel.saldo_disponible, fondoCajaSel.moneda)})` : 'â€”'] : null,
       form.ya_pagado && form.referencia_pago ? ['Referencia', form.referencia_pago] : null,
       !form.ya_pagado ? ['Vencimiento', form.fecha_vencimiento] : null,
+      esCompraConOc ? ['Orden de Compra', ordenCompraSeleccionada?.codigo || ordenCompraSeleccionada?.id || form.orden_compra_id] : null,
       ['Proveedor / beneficiario', provNombre],
       form.num_comprobante ? ['Comprobante', `${form.tipo_comprobante} ${form.num_comprobante}`] : null,
       archivoUrl ? ['Archivo', '✓ Adjunto cargado'] : null,
@@ -1113,6 +1285,16 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   // ── Lógica de persistencia ────────────────────────────────────────────────
   const handleGuardar = async () => {
     setErrorGuardado('');
+    if (esCompraConOc && !form.orden_compra_id) {
+      setErrOrdenCompra('Selecciona la Orden de Compra de origen.');
+      setPaso(2);
+      return;
+    }
+    if (esCompraConOc && !ordenCompraSeleccionada) {
+      setErrOrdenCompra('La Orden de Compra seleccionada ya no está disponible para vincular esta CxP.');
+      setPaso(2);
+      return;
+    }
     if (!form.centro_costo_id) { setErrCeco(true); setPaso(2); return; }
     if (destinoSociedadEgreso.conflictMessage) { alert(destinoSociedadEgreso.conflictMessage); setPaso(2); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Selecciona una sociedad.'); setPaso(2); return; }
@@ -1146,6 +1328,12 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             'Selecciona una sociedad para registrar el egreso.',
           )).sociedadId
         : (empresa?.multisociedad_habilitado ? form.sociedad_id : null);
+      const sociedadCxPId = esCompraConOc
+        ? (ordenCompraSeleccionada?.sociedad_id || null)
+        : sociedadOperacionId;
+      const centroCostoCxPId = esCompraConOc
+        ? (ordenCompraSeleccionada?.centro_costo_id || null)
+        : form.centro_costo_id;
 
       if (esEdicion) {
         const montoEdicion = parseFloat(form.monto) || 0;
@@ -1322,7 +1510,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       sociedadOperacionId,
+          sociedad_id:       sociedadCxPId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1338,9 +1526,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
-          centro_costo_id:   form.centro_costo_id,
+          centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
+          orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
           origen:            'auto_gasto',
           no_devengar_er:    true,
           estado:            'pagada',
@@ -1407,7 +1596,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         const cxpRecord = {
           id:                cxpId,
           empresa_id:        empresa.id,
-          sociedad_id:       sociedadOperacionId,
+          sociedad_id:       sociedadCxPId,
           proveedor_id:      form.proveedor_id || null,
           nombre_emisor:     !form.proveedor_id ? (form.proveedor_texto || null) : null,
           tipo_beneficiario: 'proveedor',
@@ -1421,9 +1610,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           factura_numero:    form.num_comprobante || null,
           archivo_factura_url: archivoUrl || null,
           categoria_er:      categoria,
-          centro_costo_id:   form.centro_costo_id,
+          centro_costo_id:   centroCostoCxPId,
           ot_vinc_id:        form.ot_vinc_id || null,
           gasto_id:          gastoId,
+          orden_compra_id:   esCompraConOc ? form.orden_compra_id : null,
           origen:            'gasto',
           estado:            'por_pagar',
           monto_pagado:      0,
