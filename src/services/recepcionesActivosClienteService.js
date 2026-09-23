@@ -100,15 +100,11 @@ export const devolverRecepcionActivoCliente = async (empresaId, recepcionId, dat
 
 export const marcarRecepcionActivoClienteCotizada = async (empresaId, recepcionId) => {
   const supabase = await getSupabaseClient();
-  const { data, error } = await supabase
-    .from('recepciones_activos_cliente')
-    .update({ estado: 'cotizado' })
-    .eq('empresa_id', empresaId)
-    .eq('id', recepcionId)
-    .eq('estado', 'pendiente_cotizar')
-    .select('id,estado')
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('marcar_recepcion_activo_cliente_cotizada', {
+    p_empresa_id: empresaId,
+    p_recepcion_id: recepcionId,
+  });
   if (error) throw error;
   if (!data) throw new Error('La recepción ya no está pendiente de cotizar; no se creó la cotización vinculada.');
-  return data;
+  return Array.isArray(data) ? data[0] : data;
 };
