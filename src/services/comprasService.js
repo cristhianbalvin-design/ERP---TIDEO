@@ -16,15 +16,19 @@ function getSchemaCacheMissingColumn(error, tableName) {
   return table === tableName ? column : null;
 }
 
-async function insertWithOptionalColumnFallback(supabase, tableName, row, optionalColumns) {
-  let payload = { ...row };
+function normalizarFechaEntregaOrdenCompra(payload = {}) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'fecha_entrega_esperada')) return payload;
+  return {
+    ...payload,
+    fecha_entrega_esperada: payload.fecha_entrega_esperada === '' ? null : payload.fecha_entrega_esperada,
+  };
+}
+
+async function executeWithOptionalColumnFallback({ tableName, payload: initialPayload, optionalColumns, operation, operationLabel }) {
+  let payload = { ...initialPayload };
 
   for (let attempt = 0; attempt <= optionalColumns.size; attempt++) {
-    const { data, error } = await supabase
-      .from(tableName)
-      .insert([payload])
-      .select()
-      .single();
+    const { data, error } = await operation(payload);
 
     if (!error) return data;
 
@@ -35,10 +39,39 @@ async function insertWithOptionalColumnFallback(supabase, tableName, row, option
 
     const { [missingColumn]: _removed, ...nextPayload } = payload;
     payload = nextPayload;
-    console.warn(`Retrying ${tableName} insert without optional column "${missingColumn}" because Supabase schema cache rejected it.`);
+    console.warn(`Retrying ${tableName} ${operationLabel} without optional column "${missingColumn}" because Supabase schema cache rejected it.`);
   }
 
   throw new Error(`No se pudo guardar ${tableName}: demasiadas columnas opcionales faltantes.`);
+}
+
+async function insertWithOptionalColumnFallback(supabase, tableName, row, optionalColumns) {
+  return executeWithOptionalColumnFallback({
+    tableName,
+    payload: row,
+    optionalColumns,
+    operationLabel: 'insert',
+    operation: payload => supabase
+      .from(tableName)
+      .insert([payload])
+      .select()
+      .single(),
+  });
+}
+
+async function updateWithOptionalColumnFallback(supabase, tableName, id, changes, optionalColumns) {
+  return executeWithOptionalColumnFallback({
+    tableName,
+    payload: { ...changes, updated_at: new Date().toISOString() },
+    optionalColumns,
+    operationLabel: 'update',
+    operation: payload => supabase
+      .from(tableName)
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single(),
+  });
 }
 
 function _evolucion12Meses(gastos) {
@@ -323,7 +356,7 @@ export const comprasService = {
     return insertWithOptionalColumnFallback(
       supabase,
       'ordenes_compra',
-      { ...oc, empresa_id: empresaId },
+      { ...normalizarFechaEntregaOrdenCompra(oc), empresa_id: empresaId },
       ORDENES_COMPRA_OPTIONAL_COLUMNS
     );
   },
@@ -338,10 +371,13 @@ export const comprasService = {
   },
   actualizarOrdenCompra: async (id, cambios) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ordenes_compra').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', id).select().single();
-    if (error) throw error;
-    return data;
+    return updateWithOptionalColumnFallback(
+      supabase,
+      'ordenes_compra',
+      id,
+      normalizarFechaEntregaOrdenCompra(cambios),
+      ORDENES_COMPRA_OPTIONAL_COLUMNS,
+    );
   },
   recalcularEstadoOcPorRecepcion: async ({ ordenCompraId, recepcionId, fechaRecepcion = todayIsoDate(), fechaEmision, modo = 'database', ordenCompra, recepciones } = {}) => {
     if (modo === 'local') {
