@@ -6961,14 +6961,12 @@ function BandejaSourcing() {
       <div style={{marginTop:8}}>
         {otroProveedorAbierto === key
           ? <div className="row" style={{gap:6, alignItems:'flex-start'}}>
-            <div style={{minWidth:240, flex:1}}>
-              <SearchSelect
-                value=""
-                placeholder="Buscar otro proveedor..."
-                options={proveedoresParaAsignacion}
-                onChange={proveedorId => asignarOtroProveedor(linea, proveedorId)}
-              />
-            </div>
+            <InlineCombobox
+              placeholder="Buscar otro proveedor..."
+              options={proveedoresParaAsignacion}
+              onChange={proveedorId => asignarOtroProveedor(linea, proveedorId)}
+              style={{minWidth:240, flex:1}}
+            />
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto('')} disabled={guardando.has(key)}>Cancelar</button>
           </div>
           : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto(key)} disabled={guardando.has(key)}>+ Otro proveedor</button>}
@@ -11169,6 +11167,71 @@ function SearchSelect({ value, onChange, options, placeholder = 'Seleccionar...'
                 onMouseLeave={e => e.currentTarget.style.background = staticOption.id === value ? 'color-mix(in srgb, var(--primary) 10%, transparent)' : 'transparent'}
               >{staticOption.label}</div>
             )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InlineCombobox({ options = [], placeholder = 'Buscar...', onChange, disabled = false, style = {} }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const normalizarBusqueda = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const filtered = useMemo(() => {
+    const q = normalizarBusqueda(query.trim());
+    return q
+      ? options.filter(option => normalizarBusqueda(option.searchText || option.label).includes(q))
+      : options;
+  }, [options, query]);
+
+  useEffect(() => {
+    const handler = event => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const seleccionar = option => {
+    onChange(option.id);
+    setQuery('');
+    setOpen(false);
+  };
+
+  return (
+    <div ref={ref} style={{position:'relative', ...style}}>
+      <input
+        ref={inputRef}
+        className="input"
+        value={query}
+        placeholder={placeholder}
+        disabled={disabled}
+        onFocus={() => setOpen(true)}
+        onChange={event => { setQuery(event.target.value); setOpen(true); }}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            setOpen(false);
+            setQuery('');
+            inputRef.current?.blur();
+          }
+        }}
+      />
+      {open && !disabled && (
+        <div style={{position:'absolute', top:'calc(100% + 2px)', left:0, right:0, zIndex:10000, background:'var(--surface, #fff)', border:'1px solid var(--border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.22)', overflow:'hidden'}}>
+          <div style={{maxHeight:220, overflowY:'auto'}}>
+            {filtered.length === 0
+              ? <div style={{padding:'9px 12px', color:'var(--fg-muted)', fontSize:13}}>Sin resultados</div>
+              : filtered.map(option => <button
+                type="button"
+                key={option.id}
+                style={{display:'block', width:'100%', padding:'8px 12px', border:0, textAlign:'left', cursor:'pointer', color:'inherit', background:'var(--surface, #fff)', fontSize:13}}
+                onMouseDown={event => { event.preventDefault(); seleccionar(option); }}
+                onMouseEnter={event => { event.currentTarget.style.background = 'var(--bg-subtle)'; }}
+                onMouseLeave={event => { event.currentTarget.style.background = 'var(--surface, #fff)'; }}
+              >{option.label}</button>)}
           </div>
         </div>
       )}
