@@ -11177,6 +11177,7 @@ function SearchSelect({ value, onChange, options, placeholder = 'Seleccionar...'
 function InlineCombobox({ options = [], placeholder = 'Buscar...', onChange, disabled = false, style = {} }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState(null);
   const ref = useRef(null);
   const inputRef = useRef(null);
   const normalizarBusqueda = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -11194,6 +11195,26 @@ function InlineCombobox({ options = [], placeholder = 'Buscar...', onChange, dis
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const actualizarPosicion = () => {
+      if (!inputRef.current) return;
+      const rect = inputRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 2,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+    actualizarPosicion();
+    window.addEventListener('resize', actualizarPosicion);
+    window.addEventListener('scroll', actualizarPosicion, true);
+    return () => {
+      window.removeEventListener('resize', actualizarPosicion);
+      window.removeEventListener('scroll', actualizarPosicion, true);
+    };
+  }, [open]);
 
   const seleccionar = option => {
     onChange(option.id);
@@ -11219,8 +11240,8 @@ function InlineCombobox({ options = [], placeholder = 'Buscar...', onChange, dis
           }
         }}
       />
-      {open && !disabled && (
-        <div style={{position:'absolute', top:'calc(100% + 2px)', left:0, right:0, zIndex:10000, background:'var(--surface, #fff)', border:'1px solid var(--border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.22)', overflow:'hidden'}}>
+      {open && !disabled && dropdownPosition && (
+        <div style={{position:'fixed', top:dropdownPosition.top, left:dropdownPosition.left, width:dropdownPosition.width, zIndex:10000, background:'var(--surface, #fff)', border:'1px solid var(--border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.22)', overflow:'hidden'}}>
           <div style={{maxHeight:220, overflowY:'auto'}}>
             {filtered.length === 0
               ? <div style={{padding:'9px 12px', color:'var(--fg-muted)', fontSize:13}}>Sin resultados</div>
