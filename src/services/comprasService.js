@@ -16,6 +16,14 @@ function getSchemaCacheMissingColumn(error, tableName) {
   return table === tableName ? column : null;
 }
 
+function normalizarFechaEntregaOrdenCompra(payload = {}) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'fecha_entrega_esperada')) return payload;
+  return {
+    ...payload,
+    fecha_entrega_esperada: payload.fecha_entrega_esperada === '' ? null : payload.fecha_entrega_esperada,
+  };
+}
+
 async function executeWithOptionalColumnFallback({ tableName, payload: initialPayload, optionalColumns, operation, operationLabel }) {
   let payload = { ...initialPayload };
 
@@ -348,7 +356,7 @@ export const comprasService = {
     return insertWithOptionalColumnFallback(
       supabase,
       'ordenes_compra',
-      { ...oc, empresa_id: empresaId },
+      { ...normalizarFechaEntregaOrdenCompra(oc), empresa_id: empresaId },
       ORDENES_COMPRA_OPTIONAL_COLUMNS
     );
   },
@@ -367,7 +375,7 @@ export const comprasService = {
       supabase,
       'ordenes_compra',
       id,
-      cambios,
+      normalizarFechaEntregaOrdenCompra(cambios),
       ORDENES_COMPRA_OPTIONAL_COLUMNS,
     );
   },
