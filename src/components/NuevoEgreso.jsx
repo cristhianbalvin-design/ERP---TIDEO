@@ -486,8 +486,16 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         && ESTADOS_OC_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
       ))
     : null;
+  const saldoPendienteOrdenCompra = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
   const seleccionarOrdenCompra = ordenCompraId => {
     const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
+    const saldoPendiente = saldoPendienteOrdenCompra(orden);
     setErrOrdenCompra('');
     if (ordenCompraId && !form.orden_compra_id && !valoresManualesAntesDeOcRef.current) {
       valoresManualesAntesDeOcRef.current = {
@@ -504,6 +512,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           proveedor_texto: '',
           sociedad_id: orden?.sociedad_id || '',
           centro_costo_id: orden?.centro_costo_id || '',
+          monto: saldoPendiente.toFixed(2),
         };
       }
       const restaurados = prev.orden_compra_id ? valoresManualesAntesDeOcRef.current : null;
@@ -776,6 +785,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             className="input" type="number" min="0.01" step="0.01"
             value={form.monto} onChange={e => setF('monto', e.target.value)} placeholder="0.00"
           />
+          {ordenCompraSeleccionada && (
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+              Saldo pendiente de esta OC: <strong>{fmtCaja(saldoPendienteOrdenCompra(ordenCompraSeleccionada), ordenCompraSeleccionada.moneda || form.moneda || 'PEN')}</strong>
+            </div>
+          )}
         </div>
         <div className="input-group">
           <label>Moneda</label>
