@@ -6406,6 +6406,16 @@ function estadoOcBadge(estado) {
     : 'badge-gray';
 }
 
+function saldoCxPIndicador(cxp) {
+  if (!cxp) return 0;
+  if (cxp.saldo != null && cxp.saldo !== '') return Number(cxp.saldo || 0);
+  return Number(cxp.monto_total || 0) - Number(cxp.monto_pagado || 0);
+}
+
+function cxpIndicadorPagada(cxp) {
+  return String(cxp?.estado || '').toLowerCase() === 'pagada' || saldoCxPIndicador(cxp) <= 0;
+}
+
 function proveedorById(proveedores, id) {
   return proveedores.find(p => p.id === id) || { razon_social:'Proveedor no encontrado', nombre_comercial:'', calificacion_promedio:null, condicion_pago:'', estado:'inactivo' };
 }
@@ -7063,7 +7073,7 @@ function BandejaSourcing() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones, cxp = [] } = useApp();
   const modoVistaSociedadOC = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7082,6 +7092,13 @@ function OrdenesCompra() {
   const handledOcParamRef = useRef('');
   const editRequestRef = useRef(0);
   const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
+  const cxpPorOrdenCompra = useMemo(() => {
+    const mapa = new Map();
+    (cxp || []).forEach(cuenta => {
+      if (cuenta?.orden_compra_id) mapa.set(cuenta.orden_compra_id, cuenta);
+    });
+    return mapa;
+  }, [cxp]);
   const homologados = proveedores.filter(p => p.estado === 'homologado' || p.estado === 'observado');
   const proveedoresOC = homologados.length ? homologados : proveedores;
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
@@ -7175,20 +7192,20 @@ function OrdenesCompra() {
       setConfirmando(false);
     }
   };
-  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} onBack={()=>setSel(null)} onEdit={abrirEdicionOC} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
+  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} cxpVinculada={cxpPorOrdenCompra.get(sel.id)} onBack={()=>setSel(null)} onEdit={abrirEdicionOC} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setEditandoOC(null); setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
-      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
+      {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
       {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
 
-function OrdenesTable({ list, proveedores, onSel, onEdit, onRecepcion }) {
+function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onRecepcion }) {
   return (
     <div className="card">
       <div className="table-wrap">
@@ -7211,6 +7228,8 @@ function OrdenesTable({ list, proveedores, onSel, onEdit, onRecepcion }) {
             {list.map(o => {
               const p = proveedorById(proveedores, o.proveedor_id);
               const esBorrador = o.estado === 'borrador';
+              const cxpVinculada = cxpPorOrdenCompra?.get(o.id);
+              const cxpPagada = cxpIndicadorPagada(cxpVinculada);
               return (
                 <tr
                   key={o.id}
@@ -7225,7 +7244,10 @@ function OrdenesTable({ list, proveedores, onSel, onEdit, onRecepcion }) {
                   <td>{o.descripcion}</td>
                   <td>{moneyD(o.total || 0)}</td>
                   <td className="mono">{o.ot_id || '-'}</td>
-                  <td><span className={'badge ' + estadoOcBadge(o.estado)}>{o.estado.replace('_', ' ')}</span></td>
+                  <td>
+                    <span className={'badge ' + estadoOcBadge(o.estado)}>{o.estado.replace('_', ' ')}</span>
+                    {cxpVinculada && <div style={{ marginTop: 4 }}><span className={'badge ' + (cxpPagada ? 'badge-green' : 'badge-orange')}>CxP: {cxpPagada ? 'pagada' : 'pendiente'}</span></div>}
+                  </td>
                   <td>{o.fecha_emision}</td>
                   <td>{o.fecha_entrega_esperada}</td>
                   <td>
@@ -7442,8 +7464,8 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
     <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {moneyD(subtotal)}</p><p><strong>IGV 18%:</strong> {moneyD(subtotal*0.18)}</p><p><strong>Total:</strong> {moneyD(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
-function DetalleOrden({ orden, proveedor, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast } = useApp();
+function DetalleOrden({ orden, proveedor, cxpVinculada, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
+  const { ordenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
@@ -7496,6 +7518,25 @@ function DetalleOrden({ orden, proveedor, onBack, onEdit, onConfirmar, confirman
           <span style={{fontSize:13}}>Anticipado: <strong style={{color:'var(--orange)'}}>{money(totalAnticipado)}</strong> ({pctAnticipado}%)</span>
           <span style={{fontSize:13}}>·</span>
           <span style={{fontSize:13}}>Saldo pendiente: <strong style={{color: saldoPendiente > 0 ? 'var(--fg)' : 'var(--green)'}}>{money(saldoPendiente)}</strong></span>
+        </div>
+      )}
+
+      {cxpVinculada && (
+        <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
+          <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <strong>CxP vinculada</strong>
+            <span className={'badge ' + (cxpIndicadorPagada(cxpVinculada) ? 'badge-green' : 'badge-orange')}>
+              CxP: {cxpIndicadorPagada(cxpVinculada) ? 'pagada' : 'pendiente'}
+            </span>
+          </div>
+          <div className="row" style={{ gap: 18, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+            <span>Concepto: <strong>{cxpVinculada.concepto || '-'}</strong></span>
+            <span>Total: <strong>{moneyD(Number(cxpVinculada.monto_total || 0))}</strong></span>
+            <span>Saldo: <strong>{moneyD(saldoCxPIndicador(cxpVinculada))}</strong></span>
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={() => navigate('cxp', { cxpId: cxpVinculada.id })}>
+            Ver CxP en Cuentas por Pagar
+          </button>
         </div>
       )}
 
