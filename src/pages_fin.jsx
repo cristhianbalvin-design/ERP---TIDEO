@@ -45,7 +45,7 @@ import {
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
-import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
@@ -7696,6 +7696,13 @@ function CxP() {
   const [tabCxP, setTabCxP] = useState('general');
   const [completarRecepcion, setCompletarRecepcion] = useState(null);
 
+  const abrirNuevoEgreso = () => {
+    // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
+    // conserva mientras el usuario permanece dentro de esta captura.
+    limpiarBorradorNuevoEgreso();
+    setPanelNuevoEgreso(true);
+  };
+
   // Form: pago
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
   const [archivoPago, setArchivoPago] = useState(null);
@@ -8570,7 +8577,7 @@ function CxP() {
           <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'rhe')} style={{fontSize:13}}>
             {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Registrar RHE'}
           </button>
-          <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>
+          <button className="btn btn-primary" onClick={abrirNuevoEgreso}>
             {I.plus} Nuevo egreso
           </button>
         </div>
