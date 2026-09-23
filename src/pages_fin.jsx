@@ -8023,13 +8023,22 @@ function CxP() {
   const ordenCompraSeleccionadaCxP = esCompraConOcForm
     ? (ordenesCompra || []).find(oc => oc.id === formCrear.orden_compra_id && (!empresa?.id || oc.empresa_id === empresa.id) && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase()))
     : null;
+  const saldoPendienteOrdenCompraCxP = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
   const mostrarVinculoOcCxP = !esTributoForm && !esDividendoForm && !esRheForm && !esViaticosForm && formCrear.tipo_beneficiario === 'proveedor';
   const seleccionarOrdenCompraCxP = ordenCompraId => {
     const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
+    const saldoPendiente = saldoPendienteOrdenCompraCxP(orden);
     setFormCrear(prev => ({
       ...prev,
       orden_compra_id: ordenCompraId || '',
       proveedor_id: ordenCompraId ? (orden?.proveedor_id || '') : '',
+      monto_total: ordenCompraId ? saldoPendiente.toFixed(2) : prev.monto_total,
     }));
   };
   const otOrigenCxPId = esViaticosForm ? viaticosOtId : esRheForm ? rheOtId : '';
@@ -9485,6 +9494,11 @@ function CxP() {
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
                       <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
+                      {ordenCompraSeleccionadaCxP && (
+                        <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                          Saldo pendiente de esta OC: <strong>{moneyCurrency(saldoPendienteOrdenCompraCxP(ordenCompraSeleccionadaCxP), ordenCompraSeleccionadaCxP.moneda || formCrear.moneda || 'PEN')}</strong>
+                        </div>
+                      )}
                     </div>
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Concepto (opcional)</label>
