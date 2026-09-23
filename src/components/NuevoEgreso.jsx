@@ -799,6 +799,49 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         </div>
       )}
 
+      {!esPagoCajaChica && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            padding: '10px 14px', borderRadius: 8,
+            background: form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))' : 'var(--bg-subtle)',
+            border: `1px solid ${form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
+          }}>
+            <input
+              type="checkbox"
+              checked={Boolean(form.es_compra_con_oc)}
+              onChange={e => {
+                const checked = e.target.checked;
+                setF('es_compra_con_oc', checked);
+                if (!checked) seleccionarOrdenCompra('');
+              }}
+              style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+            />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Esta factura corresponde a una Orden de Compra</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
+                Vincula la CxP con la OC para evitar generar una obligación duplicada al recepcionar.
+              </div>
+            </div>
+          </label>
+          {esCompraConOc && (
+            <div className="input-group">
+              <label>Orden de Compra de origen <span style={{ color: 'var(--danger)' }}>*</span></label>
+              <SearchSelect
+                value={form.orden_compra_id}
+                placeholder={ordenesCompraOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs recepcionables disponibles'}
+                options={ordenesCompraOptions}
+                onChange={seleccionarOrdenCompra}
+              />
+              {errOrdenCompra && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{errOrdenCompra}</div>}
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
+                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {ocSeleccionadaEnFormulario && empresa?.multisociedad_habilitado ? (
         <div className="input-group">
           <label>Sociedad <span style={{ color: 'var(--danger)' }}>*</span></label>
@@ -1062,49 +1105,6 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             )}
           </div>
         </>
-      )}
-
-      {!esPagoCajaChica && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-            padding: '10px 14px', borderRadius: 8,
-            background: form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))' : 'var(--bg-subtle)',
-            border: `1px solid ${form.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
-          }}>
-            <input
-              type="checkbox"
-              checked={Boolean(form.es_compra_con_oc)}
-              onChange={e => {
-                const checked = e.target.checked;
-                setF('es_compra_con_oc', checked);
-                if (!checked) seleccionarOrdenCompra('');
-              }}
-              style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
-            />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Esta factura corresponde a una Orden de Compra</div>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
-                Vincula la CxP con la OC para evitar generar una obligación duplicada al recepcionar.
-              </div>
-            </div>
-          </label>
-          {esCompraConOc && (
-            <div className="input-group">
-              <label>Orden de Compra de origen <span style={{ color: 'var(--danger)' }}>*</span></label>
-              <SearchSelect
-                value={form.orden_compra_id}
-                placeholder={ordenesCompraOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs recepcionables disponibles'}
-                options={ordenesCompraOptions}
-                onChange={seleccionarOrdenCompra}
-              />
-              {errOrdenCompra && <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{errOrdenCompra}</div>}
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4 }}>
-                Solo se muestran OCs emitidas, confirmadas, en tránsito o con recepción parcial.
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* Comprobante */}
