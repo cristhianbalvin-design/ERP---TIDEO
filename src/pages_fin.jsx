@@ -28,6 +28,7 @@ import {
 import { cajaChicaService } from './services/cajaChicaService.js';
 import { rrhhService } from './services/rrhhService.js';
 import { maestrosService } from './services/maestrosService.js';
+import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
 import { servicioPreciosClienteService } from './services/servicioPreciosClienteService.js';
 import {
   cargarCatalogosCxpMasivo,
@@ -4040,7 +4041,7 @@ function Facturacion() {
   const [cuentaSel, setCuentaSel] = useState('');
   const [osSel, setOsSel] = useState('');
   const [form, setForm] = useState({ tipo_documento:'factura', numero:'', fecha_emision:today, condicion_pago:condicionPagoInicial, fecha_vencimiento: fechaVencimientoInicial, glosa:'', notas:'', moneda:'USD', centro_beneficio_id:'', sociedad_id:'' });
-  const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'' }]);
+  const [partidas, setPartidas] = useState([{ id:1, descripcion:'', cantidad:1, precio_unitario:'', spot_catalogo_id:'' }]);
   const [igvPct, setIgvPct] = useState(18);
   const [saving, setSaving] = useState(false);
   const emitiendoRef = useRef(false);
@@ -4050,6 +4051,10 @@ function Facturacion() {
   const [ventaContextId, setVentaContextId] = useState(null);
   const [ventaCtxLabel, setVentaCtxLabel] = useState('');
   const [serviciosCatalogo, setServiciosCatalogo] = useState([]);
+  const [spotCatalogo, setSpotCatalogo] = useState([]);
+  const [familiasSpot, setFamiliasSpot] = useState([]);
+  const [tipoCambioDetraccion, setTipoCambioDetraccion] = useState('');
+  const [tipoCambioFuente, setTipoCambioFuente] = useState('referencial');
   const [cargandoServiciosCatalogo, setCargandoServiciosCatalogo] = useState(false);
   const [errorServiciosCatalogo, setErrorServiciosCatalogo] = useState('');
   const contextoPrecioCatalogoRef = useRef(null);
@@ -4087,6 +4092,17 @@ function Facturacion() {
 
     return () => { cancelado = true; };
   }, [empresa?.id, mode]);
+
+  useEffect(() => {
+    if (!empresa?.id || !isSupabaseConfigured()) return;
+    Promise.all([
+      listarSpotCatalogoVigente(),
+      getSupabaseClient().then(sb => sb.from('familia_servicio').select('id,spot_catalogo_id').eq('empresa_id', empresa.id)),
+    ]).then(([catalogo, familias]) => {
+      setSpotCatalogo(catalogo || []);
+      setFamiliasSpot(familias?.data || []);
+    }).catch(error => console.warn('[spot] No se pudo cargar el catálogo:', error?.message));
+  }, [empresa?.id]);
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
@@ -4234,9 +4250,35 @@ function Facturacion() {
   const osParaValidar = mode === 'val' ? getOs(getVal(valSel)?.os_cliente_id) : getOs(osSel);
   const excedeOsSaldo = mode === 'val' && osParaValidar != null && totalCalc > Number(osParaValidar.saldo_por_facturar || 0);
 
+  const resolverSpotPartida = partida => {
+    const servicio = serviciosCatalogo.find(item => item.id === partida?.servicio_id);
+    const familia = familiasSpot.find(item => item.id === servicio?.familia_id);
+    const id = servicio?.spot_catalogo_id || familia?.spot_catalogo_id || partida?.spot_catalogo_id || null;
+    const spot = spotCatalogo.find(item => item.id === id) || null;
+    return { spot, origen: servicio?.spot_catalogo_id ? 'servicio' : familia?.spot_catalogo_id ? 'familia' : partida?.spot_catalogo_id ? 'línea' : 'ninguno' };
+  };
+  const spotsResueltos = partidas.map(resolverSpotPartida);
+  const codigosSpot = [...new Set(spotsResueltos.map(item => item.spot?.codigo).filter(Boolean))];
+  const spotMultiTasa = codigosSpot.length > 1;
+  const spotPrincipal = spotsResueltos.find(item => item.spot)?.spot || null;
+  const baseSpotSolesEstimada = form.moneda === 'USD' && Number(tipoCambioDetraccion) > 0
+    ? totalCalc * Number(tipoCambioDetraccion)
+    : totalCalc;
+  const depositoSpotEstimado = spotPrincipal
+    ? Math.round(baseSpotSolesEstimada * Number(spotPrincipal.porcentaje || 0) / 100)
+    : 0;
+
+  useEffect(() => {
+    if (form.moneda !== 'USD' || !spotPrincipal || !form.fecha_emision || tipoCambioDetraccion) return;
+    getSupabaseClient().then(sb => getTipoCambioPorFecha(form.fecha_emision, sb)).then(tc => {
+      const inverso = Number(tc?.usd) > 0 ? 1 / Number(tc.usd) : '';
+      if (inverso) { setTipoCambioDetraccion(String(inverso.toFixed(6))); setTipoCambioFuente('referencial'); }
+    }).catch(() => {});
+  }, [form.moneda, form.fecha_emision, spotPrincipal?.id]);
+
   const etiquetaServicioCatalogo = servicio => `${servicio?.codigo || servicio?.id || 'Servicio'} — ${servicio?.descripcion || 'Sin descripción'}`;
   const nuevaPartidaManual = () => ({
-    id: Date.now(), descripcion: '', cantidad: 1, precio_unitario: '',
+    id: Date.now(), descripcion: '', cantidad: 1, precio_unitario: '', spot_catalogo_id: '',
     servicio_id: null, origen: 'manual', precio_origen: null,
     catalogo_busqueda: '', catalogo_moneda: null, catalogo_advertencia: null,
   });
@@ -4565,6 +4607,11 @@ function Facturacion() {
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { alert('Debe seleccionar una sociedad para emitir la factura.'); return; }
     const centroBeneficio = (centrosBeneficio || []).find(c => c.id === form.centro_beneficio_id && (!empresa?.id || c.empresa_id === empresa.id));
     if (!form.centro_beneficio_id) { alert('Debe seleccionar un CEBE para emitir la factura.'); return; }
+    if (spotMultiTasa) { alert('La emisión admite un solo código SPOT por comprobante. Se detectaron varios códigos; separa el comprobante.'); return; }
+    if (spotPrincipal && form.tipo_documento === 'factura' && form.moneda === 'USD' && (!(Number(tipoCambioDetraccion) > 0) || !['manual', 'referencial'].includes(tipoCambioFuente))) {
+      alert('Para una factura USD con detracción debes informar un tipo_cambio_detraccion mayor que cero y tipo_cambio_fuente manual o referencial.'); return;
+    }
+    if (spotPrincipal && clienteRetencion.aplica) { alert('No se puede emitir una factura con retención y detracción simultáneamente.'); return; }
     if (!centroBeneficio) { alert('El CEBE seleccionado no existe en el tenant actual.'); return; }
     if (centroBeneficio.estado !== 'activo') { alert('El CEBE seleccionado está inactivo.'); return; }
     if (!cebeVigenteParaFecha(centroBeneficio, form.fecha_emision)) {
@@ -4631,6 +4678,7 @@ function Facturacion() {
           cantidad: Number(p.cantidad || 0),
           precio_unitario: Number(p.precio_unitario || 0),
           servicio_id: p.servicio_id || null,
+          spot_catalogo_id: resolverSpotPartida(p).spot?.id || null,
           origen: p.origen === 'catalogo' ? 'catalogo' : 'manual',
           precio_origen: p.precio_origen || null,
         })),
@@ -4648,6 +4696,8 @@ function Facturacion() {
         monto_retencion: retencionCalc,
         monto_neto_cobrable: netoCobrableCalc,
         confirmar_numero_duplicado: confirmarNumeroDuplicado,
+        tipo_cambio_detraccion: spotPrincipal && form.moneda === 'USD' ? Number(tipoCambioDetraccion) : null,
+        tipo_cambio_fuente: spotPrincipal && form.moneda === 'USD' ? tipoCambioFuente : null,
       });
       if (ventaContextId && facturaEmitidaId) {
         try {
@@ -5457,6 +5507,7 @@ function Facturacion() {
                     <tr>
                       {mode === 'directa' && <th style={{minWidth:260}}>Servicio de catálogo</th>}
                       <th>Descripción</th>
+                      <th style={{minWidth:220}}>SPOT efectivo</th>
                       <th style={{width:90}}>Cant.</th>
                       <th style={{width:140}}>P. Unitario</th>
                       <th style={{width:130}} className="num">Subtotal</th>
@@ -5494,6 +5545,15 @@ function Facturacion() {
                           </td>
                         )}
                         <td><input type="text" className="input" value={p.descripcion} onChange={e => updatePartida(p.id, 'descripcion', e.target.value)} /></td>
+                        <td>
+                          {(() => { const resuelto = resolverSpotPartida(p); return <>
+                            <select className="select" value={p.spot_catalogo_id || ''} onChange={e => updatePartida(p.id, 'spot_catalogo_id', e.target.value)} disabled={Boolean(p.servicio_id)}>
+                              <option value="">{resuelto.spot ? `${resuelto.spot.codigo} · ${resuelto.origen}` : 'Sin detracción'}</option>
+                              {!p.servicio_id && spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
+                            </select>
+                            <div className="text-muted" style={{fontSize:10,marginTop:3}}>Origen: {resuelto.origen}</div>
+                          </>; })()}
+                        </td>
                         <td><input type="number" className="input num" min="1" value={p.cantidad} onChange={e => updatePartida(p.id, 'cantidad', e.target.value)} /></td>
                         <td><input type="number" className="input num" min="0" step="0.01" value={p.precio_unitario} onChange={e => updatePartida(p.id, 'precio_unitario', e.target.value)} /></td>
                         <td className="num" style={{fontWeight:600}}>{moneyCurrency(Number(p.cantidad||0) * Number(p.precio_unitario||0), form.moneda)}</td>
@@ -5531,6 +5591,15 @@ function Facturacion() {
                   )}
                 </div>
               </div>
+            </div>
+
+            <div className="card" style={{padding:16,borderColor: spotMultiTasa ? 'var(--danger)' : 'var(--border)'}}>
+              <div style={{fontWeight:700,marginBottom:8}}>Detracción SPOT <span className="badge badge-orange" style={{marginLeft:6}}>ESTIMADO</span></div>
+              {spotMultiTasa ? <div className="alert alert-danger">La emisión admite un solo código SPOT por comprobante. Se detectaron: {codigosSpot.join(', ')}. Separa el comprobante.</div> : <>
+                <div style={{fontSize:13}}>{spotPrincipal && form.tipo_documento === 'factura' ? <>Aplica · código <strong>{spotPrincipal.codigo}</strong> · tasa <strong>{Number(spotPrincipal.porcentaje || 0).toFixed(2)}%</strong></> : <>No aplica: {form.tipo_documento === 'boleta' ? 'boleta' : spotPrincipal ? 'condición del comprobante' : 'sin código'}</>}</div>
+                {spotPrincipal && form.tipo_documento === 'factura' && <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:6}}>Base en soles: {money(baseSpotSolesEstimada)} · Depósito: {money(depositoSpotEstimado)} · Neto a cobrar: {moneyCurrency(netoCobrableCalc - depositoSpotEstimado, form.moneda)}</div>}
+                {spotPrincipal && form.moneda === 'USD' && form.tipo_documento === 'factura' && <div className="grid-2" style={{gap:10,marginTop:10}}><div className="input-group"><label>Tipo de cambio (S/ por USD)</label><input className="input" type="number" min="0.000001" step="0.000001" value={tipoCambioDetraccion} onChange={e => { setTipoCambioDetraccion(e.target.value); setTipoCambioFuente('manual'); }} /></div><div className="input-group"><label>Fuente</label><select className="select" value={tipoCambioFuente} onChange={e => setTipoCambioFuente(e.target.value)}><option value="referencial">Referencial</option><option value="manual">Manual</option></select></div></div>}
+              </>}
             </div>
 
             {/* Glosa y notas */}
