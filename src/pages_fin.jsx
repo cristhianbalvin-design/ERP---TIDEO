@@ -4106,6 +4106,7 @@ function Facturacion() {
 
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
+  const [detraccionesFactura, setDetraccionesFactura] = useState([]);
   const [fichaTab, setFichaTab] = useState('detalle');
   const [modalAnularFac, setModalAnularFac] = useState(false);
   const [motivoAnularFac, setMotivoAnularFac] = useState('');
@@ -4118,6 +4119,13 @@ function Facturacion() {
   const [panelEditFac, setPanelEditFac] = useState(null);   // { id, items, igvPct, form }
   const [savingEditFac, setSavingEditFac] = useState(false);
   const [generandoCxC, setGenerandoCxC] = useState(false);
+
+  useEffect(() => {
+    if (!selFac || !isSupabaseConfigured()) { setDetraccionesFactura([]); return; }
+    getSupabaseClient().then(sb => sb.from('detracciones').select('*').eq('factura_id', selFac).order('created_at', { ascending: true }))
+      .then(({ data, error }) => { if (error) throw error; setDetraccionesFactura(data || []); })
+      .catch(error => console.warn('[spot] No se pudo cargar detracciones de la factura:', error?.message));
+  }, [selFac]);
 
   const generarCxCDesdeFac = async (f) => {
     if (!f?.id || !f?.cuenta_id) return;
@@ -5153,6 +5161,11 @@ function Facturacion() {
             <div style={{fontWeight:700,fontSize:18,fontFamily:'Sora',color:'var(--cyan)'}}>{moneyCurrency(f.total||0, f.moneda)}</div>
             <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:2}}>IGV: {moneyCurrency(f.igv||0, f.moneda)}</div>
           </div>
+        </div>
+
+        <div className="card" style={{padding:16,marginBottom:16}}>
+          <div style={{fontWeight:700,marginBottom:10}}>Detracción</div>
+          {!detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{money(row.monto_deposito_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
         </div>
 
         {f.estado === 'anulada' && f.motivo_anulacion && (
