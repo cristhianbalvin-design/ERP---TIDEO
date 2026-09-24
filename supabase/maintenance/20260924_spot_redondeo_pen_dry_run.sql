@@ -172,8 +172,8 @@ declare r jsonb; f record; d record; n integer; v_cat uuid;
 begin
   update public.familia_servicio set spot_catalogo_id=(select id from public.spot_catalogo where codigo='012' order by vigencia_desde desc limit 1) where id='fam_d781ee8c60ae024eea';
   r:=pg_temp.spot_emit_round('fac_round_8','F-ROUND-8','factura',1000,180,1180,'PEN',jsonb_build_array(jsonb_build_object('servicio_id','srv_c529a00515fe4defb6')));
-  perform public.registrar_cobro_cxc_atomico('emp_2000000000','cxc_round_8',jsonb_build_object('id','cob_round_8n','monto_capital',1038,'medio_pago','Transferencia','cuenta_bancaria','cb_299412'),jsonb_build_object('id','tes_round_8n','monto',1038,'moneda','PEN','cuenta_bancaria_id','cb_299412'),jsonb_build_object('id','com_round_8n','monto_cobrado',1038,'porcentaje_comision',10,'monto_comision',103.8,'monto_total',103.8));
-  r:=public.registrar_cobro_cxc_atomico('emp_2000000000','cxc_round_8',jsonb_build_object('id','cob_round_8d','tipo_cobro','detraccion','detraccion_id',(select id::text from public.detracciones where factura_id='fac_round_8' and estado='pendiente'),'monto_capital',142,'medio_pago','Detraccion'),jsonb_build_object('id','tes_round_8d','monto',142,'moneda','PEN','cuenta_bancaria_id','cb_round_bn','tc_aplicado',1,'monto_en_moneda_cuenta',142),jsonb_build_object('id','com_round_8d','monto_cobrado',142,'porcentaje_comision',10,'monto_comision',14.2,'monto_total',14.2));
+  perform public.registrar_cobro_cxc_atomico('emp_2000000000','cxc_round_8',jsonb_build_object('id','cob_round_8n','monto_capital',1038,'medio_pago','Transferencia','cuenta_bancaria','cb_299412'),jsonb_build_object('id','tes_round_8n','monto',1038,'moneda','PEN','cuenta_bancaria_id','cb_299412'),jsonb_build_object('id','com_round_8n','monto_cobrado',1038,'porcentaje_comision',10,'monto_comision',103.8,'bonificacion',0,'monto_total',103.8,'modalidad_pago','Planilla','periodo','2026-09','estado','pendiente_aprobacion'));
+  r:=public.registrar_cobro_cxc_atomico('emp_2000000000','cxc_round_8',jsonb_build_object('id','cob_round_8d','tipo_cobro','detraccion','detraccion_id',(select id::text from public.detracciones where factura_id='fac_round_8' and estado='pendiente'),'monto_capital',142,'medio_pago','Detraccion'),jsonb_build_object('id','tes_round_8d','monto',142,'moneda','PEN','cuenta_bancaria_id','cb_round_bn','tc_aplicado',1,'monto_en_moneda_cuenta',142),jsonb_build_object('id','com_round_8d','monto_cobrado',142,'porcentaje_comision',10,'monto_comision',14.2,'bonificacion',0,'monto_total',14.2,'modalidad_pago','Planilla','periodo','2026-09','estado','pendiente_aprobacion'));
   select * into f from public.cxc where id='cxc_round_8'; select * into d from public.detracciones where factura_id='fac_round_8'; select count(*) into n from public.comisiones where cxc_id='cxc_round_8';
   if f.saldo<>0 or f.estado not in ('cobrada','pagada') or d.estado<>'depositada' or n<>2 then raise exception 'CASO_8|flujo_incompleto'; end if;
   raise notice 'CASO_8|normal=1038+detraccion=142|cxc_saldo=0|obligacion=depositada|comisiones=2';
@@ -181,14 +181,14 @@ end;$test$;
 
 \echo '--- caso 10: camino real de pantalla, PEN 1180 y deposito 142 ---'
 do $test$
-declare r jsonb; f record; d record; m record;
+declare r jsonb; f record; d record; m record; n integer;
 begin
   r:=pg_temp.spot_emit_round('fac_round_10','F-ROUND-10','factura',1000,180,1180,'PEN',jsonb_build_array(jsonb_build_object('servicio_id','srv_c529a00515fe4defb6')));
   perform public.registrar_cobro_cxc_atomico(
     'emp_2000000000','cxc_round_10',
     jsonb_build_object('id','cob_round_10n','monto_capital',1038,'medio_pago','Transferencia'),
     jsonb_build_object('id','tes_round_10n','monto',1038,'moneda','PEN','cuenta_bancaria_id','cb_299412'),
-    null
+    jsonb_build_object('id','com_round_10n','monto_cobrado',1038,'porcentaje_comision',10,'monto_comision',103.8,'bonificacion',0,'monto_total',103.8,'modalidad_pago','Planilla','periodo','2026-09','estado','pendiente_aprobacion')
   );
   r:=public.registrar_cobro_cxc_atomico(
     'emp_2000000000','cxc_round_10',
@@ -201,12 +201,13 @@ begin
       'id','tes_round_10d','monto',142,'moneda','PEN','cuenta_bancaria_id','cb_round_bn',
       'tc_aplicado',1,'monto_en_moneda_cuenta',142
     ),
-    null
+    jsonb_build_object('id','com_round_10d','monto_cobrado',142,'porcentaje_comision',10,'monto_comision',14.2,'bonificacion',0,'monto_total',14.2,'modalidad_pago','Planilla','periodo','2026-09','estado','pendiente_aprobacion')
   );
   select * into f from public.cxc where id='cxc_round_10';
   select * into d from public.detracciones where factura_id='fac_round_10';
   select * into m from public.movimientos_tesoreria where id='tes_round_10d';
-  if f.saldo<>0 or d.estado<>'depositada' or m.monto<>142 or m.moneda<>'PEN' or m.cuenta_bancaria_id<>'cb_round_bn' then
+  select count(*) into n from public.comisiones where cxc_id='cxc_round_10';
+  if f.saldo<>0 or d.estado<>'depositada' or m.monto<>142 or m.moneda<>'PEN' or m.cuenta_bancaria_id<>'cb_round_bn' or n<>2 then
     raise exception 'CASO_10|resultado_incorrecto';
   end if;
   raise notice 'CASO_10|factura=1180|normal=1038|monto_cobro=142|monto_deposito_soles=142|cxc=0|obligacion=depositada|movimiento=142_PEN|cuenta=cb_round_bn';
