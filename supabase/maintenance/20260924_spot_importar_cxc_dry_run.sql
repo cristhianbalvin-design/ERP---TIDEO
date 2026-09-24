@@ -10,7 +10,7 @@ create or replace function pg_temp.importar(p_tag text,p_ruc text,p_numero text,
   select public.importar_cxc_masiva_fila(jsonb_build_object(
     'empresa_id','emp_2000000000','ruc_cliente',p_ruc,'razon_social','Cliente SPOT 8 '||p_tag,'tipo_documento','factura','numero',p_numero,
     'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','moneda','PEN','subtotal',847.46,'igv',152.54,'monto_total',1000,
-    'monto_pagado',p_monto_pagado,'monto_detraccion',p_monto_detraccion,'fecha_cobro','2026-09-24','medio_pago','Transferencia',
+    'monto_pagado',p_monto_pagado,'monto_detraccion',p_monto_detraccion,'codigo_spot',p_codigo,'fecha_cobro','2026-09-24','medio_pago','Transferencia',
     'cuenta_bancaria','INTERBANK SOLES','cuenta_bancaria_id',p_cuenta_neta,'cuenta_detraccion_id',p_cuenta_det,
     'numero_operacion','OP-SPOT8-'||p_tag,'centro_beneficio_codigo',p_cebe,'glosa','Prueba Paso 8'
   ));
@@ -64,7 +64,6 @@ declare r jsonb; d record; m record; n integer;
 begin
   r:=pg_temp.importar('con_codigo','20222222223','F-SPOT8-03',100,120,'012','cb_spot8_bn','cb_299412');
   select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select * into m from public.movimientos_tesoreria where detraccion_id=d.id; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
-  raise notice 'CASO_3_DEBUG|codigo=%|spot_id=%|estado=%|mov_monto=%|mov_cuenta=%|movimientos=%',d.codigo_spot,d.spot_catalogo_id,d.estado,m.monto,m.cuenta_bancaria_id,n;
   if d.codigo_spot<>'012' or d.spot_catalogo_id is null or d.estado<>'depositada' or m.monto<>120 or m.cuenta_bancaria_id<>'cb_spot8_bn' or n<>2 then raise exception 'CASO_3|resultado_incorrecto'; end if;
   raise notice 'CASO_3|codigo=012|vigente=1|obligacion=depositada|movimiento_neto=100|movimiento_detraccion=120|cuenta=BN|detraccion_id=1';
 end;$test$;
