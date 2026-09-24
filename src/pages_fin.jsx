@@ -524,6 +524,7 @@ function CxC() {
   const pendienteSpotDe = c => obligacionesPendientesSpotDe(c)[0] || null;
   const montoReservadoSpotDe = c => obligacionesPendientesSpotDe(c).reduce((sum, row) => sum + Number(row.monto_detraccion_origen || 0), 0);
   const maxNormalCobrableDe = c => Math.max(0, saldoDe(c) - montoReservadoSpotDe(c));
+  const normalBloqueadoPorDetraccionDe = c => montoReservadoSpotDe(c) > 0 && maxNormalCobrableDe(c) <= 0;
 
   const [panelGestion, setPanelGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
@@ -689,7 +690,8 @@ function CxC() {
     if (e) e.stopPropagation();
     setCobroSel(c);
     const pendiente = pendienteSpotDe(c);
-    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
+    const tipoInicial = normalBloqueadoPorDetraccionDe(c) ? 'detraccion' : 'normal';
+    setFormCobro({ tipo_cobro:tipoInicial, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
@@ -713,6 +715,10 @@ function CxC() {
     const pendiente = pendienteSpotDe(cobroSel);
     const esDetraccion = formCobro.tipo_cobro === 'detraccion';
     const maxNormal = maxNormalCobrableDe(cobroSel);
+    if (!esDetraccion && normalBloqueadoPorDetraccionDe(cobroSel)) {
+      setMontoError('No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.');
+      return;
+    }
     if (monto <= 0) return;
     if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_detraccion_soles))) {
       setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
@@ -1539,6 +1545,7 @@ function CxC() {
                 </select>
               </div>
               {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
+              {formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && <div className="alert alert-warning">No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.</div>}
               {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneySpotCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {moneySpot(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
               {(() => {
                  const montoForm        = Number(formCobro.monto || 0);
@@ -1727,7 +1734,7 @@ function CxC() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setPanelCobro(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingCobro}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
+                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel))}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
               </div>
             </form>
           </div>
