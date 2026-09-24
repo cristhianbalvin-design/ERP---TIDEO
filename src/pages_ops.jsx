@@ -7523,12 +7523,15 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
   const [formAnticipo, setFormAnticipo] = useState({ fecha: today, monto: '', referencia: '', notas: '' });
   const [savingAnticipo, setSavingAnticipo] = useState(false);
+  const [lineaLiberacion, setLineaLiberacion] = useState(null);
+  const [formLiberacion, setFormLiberacion] = useState({ cantidad: '', motivo: '' });
+  const [savingLiberacion, setSavingLiberacion] = useState(false);
 
   const ordenActual = ordenesCompra.find(o => o.id === orden.id) || orden;
   const transitosOC = (ocTransitos || []).filter(t => t.orden_compra_id === ordenActual.id)
@@ -7539,6 +7542,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
   const totalOC = Number(ordenActual.total || 0);
   const saldoPendiente = Math.max(0, totalOC - totalAnticipado);
   const pctAnticipado = totalOC > 0 ? Math.round(totalAnticipado / totalOC * 100) : 0;
+  const estadoLiberable = ['emitida', 'confirmada', 'en_transito', 'recibida_parcial'].includes(String(ordenActual.estado || '').toLowerCase());
 
   const guardarAnticipo = async e => {
     e.preventDefault();
@@ -7551,6 +7555,54 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
       setFormAnticipo({ fecha: today, monto: '', referencia: '', notas: '' });
     } finally {
       setSavingAnticipo(false);
+    }
+  };
+
+  const abrirLiberacion = item => {
+    setLineaLiberacion(item);
+    setFormLiberacion({ cantidad: '', motivo: '' });
+  };
+
+  const cerrarLiberacion = () => {
+    setLineaLiberacion(null);
+    setFormLiberacion({ cantidad: '', motivo: '' });
+  };
+
+  const guardarLiberacion = async e => {
+    e.preventDefault();
+    if (!lineaLiberacion || savingLiberacion) return;
+    const cantidad = Number(formLiberacion.cantidad || 0);
+    const cantidadActual = Number(lineaLiberacion.cantidad || 0);
+    const motivo = String(formLiberacion.motivo || '').trim();
+    if (!lineaLiberacion.solpe_id || !lineaLiberacion.solpe_item_id) {
+      addToast?.('No se puede liberar esta línea porque no tiene SOLPE de origen identificable.');
+      return;
+    }
+    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > cantidadActual) {
+      addToast?.(`Indica una cantidad mayor que cero y no mayor a ${cantidadActual}.`);
+      return;
+    }
+    if (!motivo) {
+      addToast?.('Indica el motivo de la liberación.');
+      return;
+    }
+    setSavingLiberacion(true);
+    try {
+      const resultado = await comprasService.liberarCantidadPendienteOc({
+        ordenCompraId: ordenActual.id,
+        solpeItemId: lineaLiberacion.solpe_item_id,
+        cantidadALiberar: cantidad,
+        motivo,
+      });
+      if (resultado?.orden_compra) {
+        setOrdenesCompra(prev => prev.map(item => item.id === ordenActual.id ? resultado.orden_compra : item));
+      }
+      cerrarLiberacion();
+      addToast?.(`Se liberaron ${cantidad} unidades y volvieron a la bandeja de sourcing.`);
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo liberar la cantidad pendiente.');
+    } finally {
+      setSavingLiberacion(false);
     }
   };
 
@@ -7650,13 +7702,27 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th></tr></thead>
-              <tbody>{ordenActual.items?.map((i, idx) => (
-                <tr key={idx}>
-                  <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
-                  <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
-                </tr>
-              ))}</tbody>
+              <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
+              <tbody>{ordenActual.items?.map((i, idx) => {
+                const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
+                return (
+                  <tr key={idx}>
+                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
+                    <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
+                    <td>
+                      {estadoLiberable && tieneOrigen ? (
+                        <button type="button" className="btn btn-secondary btn-sm" data-local-form="true" onClick={() => abrirLiberacion(i)}>
+                          Liberar pendiente
+                        </button>
+                      ) : estadoLiberable ? (
+                        <span className="text-muted" style={{fontSize:11}}>Sin SOLPE de origen</span>
+                      ) : (
+                        <span className="text-muted" style={{fontSize:11}}>No disponible en este estado</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
             </table>
           </div>
         </div>
@@ -7799,6 +7865,60 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
               <div className="row mt-6" style={{justifyContent:'flex-end', gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={() => setPanelAnticipo(false)}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={savingAnticipo}>{savingAnticipo ? 'Registrando...' : `${I.check} Registrar anticipo`}</button>
+              </div>
+            </form>
+          </div>
+        </>
+      )}
+
+      {lineaLiberacion && (
+        <>
+          <div className="side-panel-backdrop" onClick={cerrarLiberacion}/>
+          <div className="side-panel" style={{width:'min(480px, 96vw)'}}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">{ordenActual.codigo}</div>
+                <div style={{fontWeight:700, fontSize:20}}>Liberar cantidad pendiente</div>
+                <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
+                  {lineaLiberacion.descripcion || lineaLiberacion.codigo || 'Línea de OC'} · Cantidad actual: {lineaLiberacion.cantidad}
+                </div>
+              </div>
+              <button className="icon-btn" type="button" onClick={cerrarLiberacion}>{I.x}</button>
+            </div>
+            <form className="side-panel-body" onSubmit={guardarLiberacion} data-local-form="true">
+              <div className="input-group">
+                <label>Cantidad a liberar <span style={{color:'var(--danger)'}}>*</span></label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0.01"
+                  max={Number(lineaLiberacion.cantidad || 0)}
+                  step="0.01"
+                  required
+                  value={formLiberacion.cantidad}
+                  onChange={e => setFormLiberacion(v => ({...v, cantidad: e.target.value}))}
+                  placeholder={`Máx. ${Number(lineaLiberacion.cantidad || 0)}`}
+                />
+                <div className="text-muted" style={{fontSize:12, marginTop:4}}>
+                  La OC quedará con {Math.max(0, Number(lineaLiberacion.cantidad || 0) - Number(formLiberacion.cantidad || 0))} unidades esperadas en esta línea.
+                </div>
+              </div>
+              <div className="input-group">
+                <label>Motivo <span style={{color:'var(--danger)'}}>*</span></label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  required
+                  value={formLiberacion.motivo}
+                  onChange={e => setFormLiberacion(v => ({...v, motivo: e.target.value}))}
+                  placeholder="Ej. El proveedor confirmó que no entregará el saldo."
+                />
+              </div>
+              <div className="row mt-6" style={{justifyContent:'flex-end', gap:10}}>
+                <button type="button" className="btn btn-secondary" onClick={cerrarLiberacion} disabled={savingLiberacion}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingLiberacion}>
+                  {savingLiberacion ? 'Liberando...' : 'Liberar cantidad'}
+                </button>
               </div>
             </form>
           </div>
@@ -8423,6 +8543,7 @@ function Recepciones() {
   const [facturaProvFecha, setFacturaProvFecha] = useState('');
   const [facturaProvMonto, setFacturaProvMonto] = useState('');
   const [preciosFactura, setPreciosFactura] = useState({});
+  const [cantidadesRecibidas, setCantidadesRecibidas] = useState({});
   const [uploadingFile, setUploadingFile] = useState(false);
   const [validacionErrors, setValidacionErrors] = useState([]);
   const [validacionWarnings, setValidacionWarnings] = useState([]);
@@ -8444,7 +8565,7 @@ function Recepciones() {
     setFacturaNum(''); setFacturaEmision(new Date().toISOString().split('T')[0]);
     setFacturaVencimiento(''); setFacturaArchivoUrl('');
     setFacturaProvNumero(''); setFacturaProvFecha(''); setFacturaProvMonto('');
-    setPreciosFactura({});
+    setPreciosFactura({}); setCantidadesRecibidas({});
     setCxpNumManual(false); setCxpFechaManual(false); setCxpVencManual(false); setCxpOpen(false);
     setValidacionErrors([]); setValidacionWarnings([]);
     setScannerOCOpen(false); setHighlightedItemIdx(null); setScanMsg('');
@@ -8506,24 +8627,31 @@ function Recepciones() {
     if (!tipo || !id) return;
     setValidacionErrors([]);
     setValidacionWarnings([]);
-    const resultado = await registrarRecepcionConCxP({
-      origenTipo: tipo, origenId: id, observaciones: obs.trim(),
-      facturaNumero: facturaNum.trim(), fechaEmision: facturaEmision,
-      fechaVencimiento: facturaVencimiento, archivoFacturaUrl: facturaArchivoUrl,
-      facturaProvNumero: facturaProvNumero.trim(),
-      facturaProvFecha: facturaProvFecha || null,
-      facturaProvMonto: facturaProvMonto ? Number(facturaProvMonto) : null,
-      forzarConfirmacion: forzar,
-      itemsFactura: ocSeleccionada ? (ocSeleccionada.items || []).map((item, idx) => ({
-        index: idx,
-        material_id: item.material_id || null,
-        codigo: item.codigo || null,
-        descripcion: item.descripcion,
-        cantidad_recibida: cantidadRecepcionNumero(item, idx),
-        precio_unitario_oc: Number(item.precio_unitario || 0),
-        precio_unitario_factura: precioFacturaNumero(item, idx),
-      })) : [],
-    });
+    let resultado;
+    try {
+      resultado = await registrarRecepcionConCxP({
+        origenTipo: tipo, origenId: id, observaciones: obs.trim(),
+        facturaNumero: facturaNum.trim(), fechaEmision: facturaEmision,
+        fechaVencimiento: facturaVencimiento, archivoFacturaUrl: facturaArchivoUrl,
+        facturaProvNumero: facturaProvNumero.trim(),
+        facturaProvFecha: facturaProvFecha || null,
+        facturaProvMonto: facturaProvMonto ? Number(facturaProvMonto) : null,
+        forzarConfirmacion: forzar,
+        itemsFactura: ocSeleccionada ? (ocSeleccionada.items || []).map((item, idx) => ({
+          index: idx,
+          material_id: item.material_id || null,
+          codigo: item.codigo || null,
+          descripcion: item.descripcion,
+          cantidad_recibida: cantidadRecepcionNumero(item, idx),
+          precio_unitario_oc: Number(item.precio_unitario || 0),
+          precio_unitario_factura: precioFacturaNumero(item, idx),
+        })) : [],
+      });
+    } catch (error) {
+      setValidacionErrors([error?.message || 'La recepción NO se guardó. Revisa el error y vuelve a intentarlo.']);
+      setValidacionWarnings([]);
+      return;
+    }
     if (!resultado) return;
     if (resultado.errors) { setValidacionErrors(resultado.errors); return; }
     if (resultado.warnings) { setValidacionWarnings(resultado.warnings); return; }
@@ -8539,6 +8667,7 @@ function Recepciones() {
   useEffect(() => {
     if (!ocSeleccionada) {
       setPreciosFactura({});
+      setCantidadesRecibidas({});
       return;
     }
     setPreciosFactura(prev => {
@@ -8546,6 +8675,14 @@ function Recepciones() {
       (ocSeleccionada.items || []).forEach((item, idx) => {
         const key = ocItemKey(item, idx);
         next[key] = prev[key] ?? String(Number(item.precio_unitario || 0));
+      });
+      return next;
+    });
+    setCantidadesRecibidas(prev => {
+      const next = {};
+      (ocSeleccionada.items || []).forEach((item, idx) => {
+        const key = ocItemKey(item, idx);
+        next[key] = prev[key] ?? String(Number(item.cantidad || 0));
       });
       return next;
     });
@@ -8564,16 +8701,37 @@ function Recepciones() {
     return Number.isFinite(num) ? num : 0;
   };
 
+  const cantidadRecepcionInput = (item, idx) => {
+    const key = ocItemKey(item, idx);
+    return Object.prototype.hasOwnProperty.call(cantidadesRecibidas, key)
+      ? cantidadesRecibidas[key]
+      : String(Number(item.cantidad || 0));
+  };
+
   const entradasFisicasOC = useMemo(() => {
     if (!ocSeleccionada) return [];
     return entradasOcPendientesVistaRecepciones.filter(e => String(e.orden_compra_id || e.referencia_id || '') === String(ocSeleccionada.id));
   }, [entradasOcPendientesVistaRecepciones, ocSeleccionada]);
 
   const cantidadRecepcionNumero = (item, idx) => {
-    const porIdx = entradasFisicasOC.filter(e => e.orden_compra_item_idx !== null && e.orden_compra_item_idx !== undefined && Number(e.orden_compra_item_idx) === Number(idx));
-    const matches = porIdx.length ? porIdx : entradasFisicasOC.filter(e => item.material_id && e.material_id === item.material_id);
-    if (!matches.length) return Number(item.cantidad || 0);
-    return matches.reduce((sum, e) => sum + Number(e.cantidad || 0), 0);
+    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidad = Number(cantidadRecepcionInput(item, idx));
+    if (!Number.isFinite(cantidad)) return 0;
+    return Math.min(Math.max(cantidad, 0), cantidadPedida);
+  };
+
+  const setCantidadRecepcionLinea = (item, idx, value) => {
+    const key = ocItemKey(item, idx);
+    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidad = Number(value);
+    const nextValue = value === ''
+      ? ''
+      : Number.isFinite(cantidad)
+        ? String(Math.min(Math.max(cantidad, 0), cantidadPedida))
+        : '0';
+    setCantidadesRecibidas(prev => ({ ...prev, [key]: nextValue }));
+    setValidacionErrors([]);
+    setValidacionWarnings([]);
   };
 
   const setPrecioFacturaLinea = (item, idx, value) => {
@@ -8586,7 +8744,7 @@ function Recepciones() {
     if (!ocSeleccionada) return 0;
     return (ocSeleccionada.items || []).reduce((sum, item, idx) =>
       sum + cantidadRecepcionNumero(item, idx) * precioFacturaNumero(item, idx), 0);
-  }, [ocSeleccionada, preciosFactura, entradasFisicasOC]);
+  }, [ocSeleccionada, preciosFactura, cantidadesRecibidas]);
 
   const factorTotalFactura = useMemo(() => {
     if (!ocSeleccionada) return 1.18;
@@ -8699,7 +8857,7 @@ function Recepciones() {
             <form className="side-panel-body" onSubmit={guardar}>
               <div className="input-group">
                 <label>OC/OS origen</label>
-                <select className="select" value={origen} onChange={e => { setOrigen(e.target.value); setPreciosFactura({}); setValidacionErrors([]); setValidacionWarnings([]); }}>
+                <select className="select" value={origen} onChange={e => { setOrigen(e.target.value); setPreciosFactura({}); setCantidadesRecibidas({}); setValidacionErrors([]); setValidacionWarnings([]); }}>
                   <option value="">Seleccionar...</option>
                   {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {moneyD(o.total || 0)}</option>)}
                 </select>
@@ -8725,7 +8883,9 @@ function Recepciones() {
                     <thead><tr><th>Descripcion</th><th style={{textAlign:'right'}}>Cant.</th><th style={{textAlign:'right'}}>P. Unit. OC</th><th style={{textAlign:'right'}}>P. Unit. Factura</th></tr></thead>
                     <tbody>{(ocSeleccionada.items || []).map((item, idx) => {
                       const warningLinea = advertenciasLineasFactura[idx];
+                      const cantidadPedida = Number(item.cantidad || 0);
                       const cantidadRecibida = cantidadRecepcionNumero(item, idx);
+                      const cantidadCompleta = cantidadRecibida >= cantidadPedida;
                       const tieneConteoFisico = entradasFisicasOC.length > 0;
                       return (
                         <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}>
@@ -8733,8 +8893,23 @@ function Recepciones() {
                             {item.descripcion}
                             {warningLinea && <div style={{fontSize:11,color:'#b45309',marginTop:4}}>{warningLinea}</div>}
                           </td>
-                          <td style={{textAlign:'right'}}>
-                            {cantidadRecibida} {item.unidad || ''}
+                          <td style={{textAlign:'right',minWidth:150}}>
+                            <input
+                              className="input"
+                              type="number"
+                              min="0"
+                              max={cantidadPedida}
+                              step="0.01"
+                              value={cantidadRecepcionInput(item, idx)}
+                              onChange={e => setCantidadRecepcionLinea(item, idx, e.target.value)}
+                              style={{textAlign:'right',height:30}}
+                            />
+                            <div className="text-muted" style={{fontSize:11,marginTop:4}}>
+                              {cantidadRecibida} de {cantidadPedida} recibidos ·{' '}
+                              <span style={{color:cantidadCompleta ? 'var(--green)' : 'var(--orange)'}}>
+                                {cantidadCompleta ? 'Completa' : 'Parcial'}
+                              </span>
+                            </div>
                             {tieneConteoFisico && <div className="text-muted" style={{fontSize:11}}>OC: {item.cantidad}</div>}
                           </td>
                           <td style={{textAlign:'right'}}>{moneyD(item.precio_unitario || 0)}</td>
