@@ -518,7 +518,10 @@ function CxC() {
     return () => { cancelled = true; };
   }, [cxcVista.map(row => row.id).join('|')]);
   const obligacionesCxcDe = c => detraccionesCxc.filter(row => row.cxc_id === c?.id);
-  const pendienteSpotDe = c => obligacionesCxcDe(c).find(row => row.direccion === 'venta' && row.estado === 'pendiente') || null;
+  const obligacionesPendientesSpotDe = c => obligacionesCxcDe(c).filter(row => row.direccion === 'venta' && row.estado === 'pendiente');
+  const pendienteSpotDe = c => obligacionesPendientesSpotDe(c)[0] || null;
+  const montoReservadoSpotDe = c => obligacionesPendientesSpotDe(c).reduce((sum, row) => sum + Number(row.monto_detraccion_origen || 0), 0);
+  const maxNormalCobrableDe = c => Math.max(0, saldoDe(c) - montoReservadoSpotDe(c));
 
   const [panelGestion, setPanelGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
@@ -684,11 +687,17 @@ function CxC() {
     if (e) e.stopPropagation();
     setCobroSel(c);
     const pendiente = pendienteSpotDe(c);
-    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(saldoDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
+    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
   };
+
+  useEffect(() => {
+    if (!panelCobro || !cobroSel || !detraccionesCxcCargadas || formCobro.tipo_cobro !== 'normal') return;
+    const pendiente = pendienteSpotDe(cobroSel);
+    setFormCobro(prev => ({ ...prev, detraccion_id: pendiente?.id || '', monto: String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '' }));
+  }, [panelCobro, cobroSel?.id, detraccionesCxcCargadas, detraccionesCxc.length]);
 
   const guardarCobro = async e => {
     e.preventDefault();
@@ -701,7 +710,7 @@ function CxC() {
     const saldo = saldoDe(cobroSel);
     const pendiente = pendienteSpotDe(cobroSel);
     const esDetraccion = formCobro.tipo_cobro === 'detraccion';
-    const maxNormal = Math.max(0, saldo - Number(pendiente?.monto_detraccion_origen || 0));
+    const maxNormal = maxNormalCobrableDe(cobroSel);
     if (monto <= 0) return;
     if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_detraccion_soles))) {
       setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
@@ -1522,7 +1531,7 @@ function CxC() {
             <form className="side-panel-body" onSubmit={guardarCobro}>
               <div className="input-group">
                 <label>Tipo de cobro</label>
-                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(saldoDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : ''})); setMontoError(''); }}>
+                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : ''})); setMontoError(''); }}>
                   <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
                   <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Detracción</option>
                 </select>
@@ -1530,10 +1539,14 @@ function CxC() {
               {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
               {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneyCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {money(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
               {(() => {
-                const montoForm        = Number(formCobro.monto || 0);
-                const pagadoPrev       = pagadoDe(cobroSel);
-                const saldoActual      = saldoDe(cobroSel);
-                const saldoTras        = Math.max(0, saldoActual - montoForm);
+                 const montoForm        = Number(formCobro.monto || 0);
+                 const pagadoPrev       = pagadoDe(cobroSel);
+                 const saldoActual      = saldoDe(cobroSel);
+                 const montoReservado   = montoReservadoSpotDe(cobroSel);
+                 const maxNormal        = maxNormalCobrableDe(cobroSel);
+                 const esDetraccion     = formCobro.tipo_cobro === 'detraccion';
+                 const montoAplicado    = esDetraccion ? montoForm : Math.min(montoForm, maxNormal);
+                 const saldoTras        = Math.max(0, saldoActual - montoAplicado);
                 const hayMonto         = montoForm > 0;
                 const retencionCxC     = Number(cobroSel.monto_retencion || 0);
                 const hayRetencion     = retencionCxC > 0;
@@ -1562,11 +1575,23 @@ function CxC() {
                         </div>
                       </>
                     )}
-                    {montoExcedeNeto && (
+                     {montoExcedeNeto && (
                       <div style={{fontSize:12,padding:'8px 10px',borderRadius:6,background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.35)',color:'var(--warning)'}}>
                         ⚠ El monto ingresado supera el neto esperado. El cliente retiene {moneyCurrency(retencionCxC, cobroSel.moneda)} como Agente de Retención SUNAT — no transfiere el total facturado.
                       </div>
-                    )}
+                     )}
+                     {!esDetraccion && montoReservado > 0 && (
+                       <>
+                         <div style={{display:'flex',justifyContent:'space-between'}}>
+                           <span style={{fontSize:13,color:'var(--warning)'}}>Reservado para detracción</span>
+                           <span style={{fontSize:13,fontWeight:600,color:'var(--warning)'}}>{moneyCurrency(montoReservado, cobroSel.moneda)}</span>
+                         </div>
+                         <div style={{display:'flex',justifyContent:'space-between'}}>
+                           <span style={{fontSize:13,color:'var(--cyan)',fontWeight:600}}>Máximo cobrable ahora</span>
+                           <span style={{fontSize:13,fontWeight:700,color:'var(--cyan)'}}>{moneyCurrency(maxNormal, cobroSel.moneda)}</span>
+                         </div>
+                       </>
+                     )}
                     {pagadoPrev > 0 && (
                       <div style={{display:'flex',justifyContent:'space-between'}}>
                         <span style={{fontSize:13,color:'var(--fg-muted)'}}>Ya pagado</span>
@@ -1596,7 +1621,7 @@ function CxC() {
               <div className="grid-2 mt-6" style={{gap:12}}>
                 <div className="input-group">
                   <label>Monto cobrado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input num" type="number" min="0.01" step="0.01" required readOnly={formCobro.tipo_cobro === 'detraccion'}
+                  <input className="input num" type="number" min="0.01" step="0.01" max={formCobro.tipo_cobro === 'normal' && montoReservadoSpotDe(cobroSel) > 0 ? maxNormalCobrableDe(cobroSel) : undefined} required readOnly={formCobro.tipo_cobro === 'detraccion'}
                     value={formCobro.monto} onChange={e=>{setFormCobro(v=>({...v,monto:e.target.value}));setMontoError('');}} autoFocus/>
                   {montoError && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{montoError}</div>}
                 </div>
