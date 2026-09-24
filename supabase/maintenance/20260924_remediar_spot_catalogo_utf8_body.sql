@@ -1,11 +1,5 @@
--- Incidente Paso 1: remediacion UTF-8 de spot_catalogo.
--- Dry run operativo: nunca confirma datos; termina siempre en ROLLBACK.
-
-\encoding UTF8
-show client_encoding;
-
-begin;
-set local role postgres;
+-- Incidente Paso 1: cuerpo comun de remediacion UTF-8 de spot_catalogo.
+-- La envoltura controla la transaccion.
 
 drop table public.spot_catalogo;
 \ir ../migrations/20260924000000_spot_catalogo_rls_seed.sql
@@ -154,6 +148,3 @@ begin
   end if;
 end;
 $$;
-
-rollback;
-\echo DRY_RUN_ROLLBACK_COMPLETED
