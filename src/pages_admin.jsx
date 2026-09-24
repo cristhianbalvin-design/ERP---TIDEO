@@ -8126,7 +8126,7 @@ function CuentasBancariasSection() {
     empresa,
     sociedadesDisponibles = [],
   } = useApp();
-  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
+  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'', es_cuenta_detracciones:false };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -8177,7 +8177,7 @@ function CuentasBancariasSection() {
     if (!form.nombre.trim() || !form.banco.trim()) return;
     setSaving(true);
     try {
-      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null };
+      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null, es_cuenta_detracciones: Boolean(form.es_cuenta_detracciones) };
       if (editId) {
         await actualizarCuentaBancaria(editId, payload);
         addNotificacion('Cuenta bancaria actualizada.');
@@ -8189,7 +8189,7 @@ function CuentasBancariasSection() {
     } finally { setSaving(false); }
   };
 
-  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'' }); setEditId(c.id); };
+  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'', es_cuenta_detracciones:Boolean(c.es_cuenta_detracciones) }); setEditId(c.id); };
   const cancelar = () => { setForm(empty); setEditId(null); };
 
   const getSociedadName = (id) => {
@@ -8218,6 +8218,12 @@ function CuentasBancariasSection() {
           </select>
         </div>
         <div className="input-group"><label>Estado</label><ParamChipGroup value={form.estado} onChange={value => setForm(p => ({ ...p, estado: value }))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
+        <div className="input-group" style={{gridColumn:'1/-1'}}>
+          <label style={{display:'flex',alignItems:'center',gap:10,cursor: form.moneda === 'PEN' && form.estado === 'activo' && Boolean(form.sociedad_id) ? 'pointer' : 'not-allowed'}}>
+            <input type="checkbox" checked={Boolean(form.es_cuenta_detracciones)} disabled={!(form.moneda === 'PEN' && form.estado === 'activo' && Boolean(form.sociedad_id))} onChange={e => setForm(p => ({...p, es_cuenta_detracciones:e.target.checked}))} />
+            <span><strong>Cuenta de detracciones (Banco de la Nación)</strong><br /><small className="text-muted">Solo se usará para registrar depósitos SPOT de la misma sociedad. La regla real la aplica la base de datos.</small></span>
+          </label>
+        </div>
         
         <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end', gap:8}}>
           {editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}
