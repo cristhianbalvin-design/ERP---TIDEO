@@ -923,6 +923,16 @@ export const finanzasService = {
     return data;
   },
 
+  async actualizarPrioridadPagoCxP(cxpId, prioridadPago = null) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('actualizar_prioridad_pago_cxp', {
+      p_cxp_id: cxpId,
+      p_prioridad_pago: prioridadPago || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async anularCxP(cxpId, motivo, usuarioId = null) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.rpc('anular_cxp_finanzas', {

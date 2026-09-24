@@ -6757,6 +6757,37 @@ export function AppProvider({ children }) {
     return cuentaPagar.id;
   };
 
+  const actualizarPrioridadPagoCxP = async (cxpId, prioridadPago = null) => {
+    const prioridadNormalizada = String(prioridadPago || '').trim().toLowerCase() || null;
+    if (prioridadNormalizada && !['alta', 'media', 'baja'].includes(prioridadNormalizada)) {
+      throw new Error('Prioridad de pago inválida.');
+    }
+    const cuentaPagar = (cxp || []).find(c => c.id === cxpId);
+    if (!cuentaPagar) throw new Error('No se encontró la cuenta por pagar.');
+
+    let actualizada;
+    if (isSupabaseConfigured()) {
+      actualizada = await finanzasService.actualizarPrioridadPagoCxP(cxpId, prioridadNormalizada);
+    } else {
+      actualizada = {
+        ...cuentaPagar,
+        prioridad_pago: prioridadNormalizada,
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    setCxp(prev => prev.map(c => c.id === cxpId ? { ...c, ...actualizada } : c));
+    auditSync({
+      modulo: 'finanzas',
+      entidad: 'cxp',
+      entidad_id: cxpId,
+      accion: 'actualizar_prioridad_pago',
+      valor_anterior: { prioridad_pago: cuentaPagar.prioridad_pago || null },
+      valor_nuevo: { prioridad_pago: prioridadNormalizada },
+    });
+    return actualizada;
+  };
+
   const cxpTienePagos = cxpId => (cxpPagos || []).some(p => p.cxp_id === cxpId);
 
   const anularCxP = async (cxpId, motivo) => {
@@ -11358,7 +11389,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, actualizarPrioridadPagoCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,

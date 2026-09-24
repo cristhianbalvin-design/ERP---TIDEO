@@ -1587,6 +1587,19 @@ body {
   flex: 0 0 32px;
 }
 .cxp-action-icon svg { width: 16px; height: 16px; stroke-width: 2; }
+.priority-payment-select {
+  min-width: 112px;
+  padding: 4px 24px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--purple) 34%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--purple) 8%, var(--surface));
+  color: var(--purple);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.priority-payment-select:disabled { opacity: .65; cursor: wait; }
 
 /* Table */
 .table-wrap { overflow-x: auto; }
