@@ -177,7 +177,7 @@ begin
   values ('TST-2040','ANEXO_3','Prueba version futura',10,700,'>',date '2040-01-01','https://orientacion.sunat.gob.pe/apendices-del-sistema-de-detracciones','Prueba temporal');
   begin
     r:=pg_temp.spot_emit('fac_spot_t12','F-SPOT-T12','factura',847.46,152.54,1000,'PEN',
-      jsonb_build_array(jsonb_build_object('spot_catalogo_id',(select id from public.spot_catalogo where codigo='TST-2040')));
+      jsonb_build_array(jsonb_build_object('spot_catalogo_id',(select id from public.spot_catalogo where codigo='TST-2040'))));
     raise exception 'CASO_12|no_rechazo';
   exception when others then e:=sqlerrm; end;
   if e not like 'El codigo SPOT TST-2040 no tiene%' then raise exception 'CASO_12|mensaje=%',e; end if;
