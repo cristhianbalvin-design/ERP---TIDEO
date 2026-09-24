@@ -102,47 +102,13 @@ for each row execute function public.derivar_contexto_detraccion();
 alter table public.detracciones enable row level security;
 
 revoke all on public.detracciones from public;
-grant select, insert, update on public.detracciones to authenticated;
+revoke all on public.detracciones from anon, authenticated;
+grant select on public.detracciones to authenticated;
 
 create policy detracciones_select
 on public.detracciones
 for select
 using (
-  public.usuario_tiene_empresa(empresa_id)
-  and exists (
-    select 1
-    from (select public.usuario_alcance_sociedades(empresa_id) as alcance) alcance_usuario
-    where alcance_usuario.alcance is null
-       or sociedad_id = any (alcance_usuario.alcance)
-  )
-);
-
-create policy detracciones_insert
-on public.detracciones
-for insert
-with check (
-  public.usuario_tiene_empresa(empresa_id)
-  and exists (
-    select 1
-    from (select public.usuario_alcance_sociedades(empresa_id) as alcance) alcance_usuario
-    where alcance_usuario.alcance is null
-       or sociedad_id = any (alcance_usuario.alcance)
-  )
-);
-
-create policy detracciones_update
-on public.detracciones
-for update
-using (
-  public.usuario_tiene_empresa(empresa_id)
-  and exists (
-    select 1
-    from (select public.usuario_alcance_sociedades(empresa_id) as alcance) alcance_usuario
-    where alcance_usuario.alcance is null
-       or sociedad_id = any (alcance_usuario.alcance)
-  )
-)
-with check (
   public.usuario_tiene_empresa(empresa_id)
   and exists (
     select 1
