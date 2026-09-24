@@ -45,12 +45,13 @@ import {
 } from './services/cxcMassiveImportService.js';
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
-import { NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
 import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
+import { SearchSelect } from './components/SearchSelect.jsx';
 import * as XLSX from 'xlsx';
 
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
@@ -7634,7 +7635,7 @@ function ModalCompletarFacturaCxP({ recepcion, onClose, onCompletar }) {
 }
 
 function CxP() {
-  const { cxp, recepciones = [], cxpPagos, proveedores, personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, crearCxP, completarRecepcionConCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7647,6 +7648,10 @@ function CxP() {
   const cxpVista = useMemo(
     () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadCxP),
     [cxp, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
+  );
+  const ordenesCompraPorId = useMemo(
+    () => new Map((ordenesCompra || []).map(orden => [orden.id, orden])),
+    [ordenesCompra],
   );
   const recepcionesVistaCxP = useMemo(
     () => filtrarPorVistaSociedad(recepciones || [], modoVistaSociedadCxP),
@@ -7694,6 +7699,19 @@ function CxP() {
   const [guardando, setGuardando] = useState(false);
   const [tabCxP, setTabCxP] = useState('general');
   const [completarRecepcion, setCompletarRecepcion] = useState(null);
+  const [preconfigNuevoEgreso, setPreconfigNuevoEgreso] = useState(null);
+
+  const abrirNuevoEgreso = (preconfig = null) => {
+    // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
+    // conserva mientras el usuario permanece dentro de esta captura.
+    limpiarBorradorNuevoEgreso();
+    setPreconfigNuevoEgreso(preconfig);
+    setPanelNuevoEgreso(true);
+  };
+  const cerrarNuevoEgreso = () => {
+    setPanelNuevoEgreso(false);
+    setPreconfigNuevoEgreso(null);
+  };
 
   // Form: pago
   const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
@@ -7702,9 +7720,36 @@ function CxP() {
   const archivoPagoRef = useRef(null);
 
   // Form: nueva CxP
-  const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '' };
+  const FORM_VACIO = { proveedor_id: '', tipo_beneficiario: 'proveedor', tipo_comprobante: 'Factura', factura_numero: '', fecha_emision: today, fecha_vencimiento: '', monto_total: '', moneda: 'PEN', concepto: '', es_compra_con_oc: false, orden_compra_id: '' };
   const [formCrear, setFormCrear] = useState(FORM_VACIO);
   const [archivoCrearUrl, setArchivoCrearUrl] = useState('');
+  const saldoPendienteOrdenCompraCxP = oc => {
+    if (!oc) return 0;
+    const facturado = (cxp || [])
+      .filter(c => c.orden_compra_id === oc.id && String(c.estado || '').toLowerCase() !== 'anulada')
+      .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
+    return Math.max(0, Number(oc.total || 0) - facturado);
+  };
+  const ESTADOS_OC_CXP_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']), []);
+  const ordenesCompraCxpOptions = useMemo(() => (ordenesCompra || [])
+    .filter(oc => (
+      (!empresa?.id || oc.empresa_id === empresa.id)
+      && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase())
+      && saldoPendienteOrdenCompraCxP(oc) > 0
+    ))
+    .map(oc => {
+      const proveedor = (proveedores || []).find(p => p.id === oc.proveedor_id);
+      const proveedorNombre = proveedor?.razon_social || proveedor?.nombre_comercial || oc.proveedor_id || 'Proveedor sin nombre';
+      const codigo = oc.codigo || oc.id;
+      const saldoPendiente = saldoPendienteOrdenCompraCxP(oc);
+      return {
+        id: oc.id,
+        label: `${codigo} — ${proveedorNombre} · Saldo: ${moneyCurrency(saldoPendiente, oc.moneda || 'PEN')}`,
+        searchText: [codigo, oc.id, proveedorNombre, proveedor?.ruc, oc.estado].filter(Boolean).join(' '),
+      };
+    }),
+    [ordenesCompra, cxp, proveedores, empresa?.id, ESTADOS_OC_CXP_SELECCIONABLES],
+  );
   // Campos viáticos reembolso
   const [motivoCxP, setMotivoCxP] = useState('');
   const [viaticosPersonalId, setViaticosPersonalId] = useState('');
@@ -7978,6 +8023,47 @@ function CxP() {
       : { nombre: 'Gasto directo', badge: 'Gasto directo', badgeCls: 'badge-gray', tipo: 'gasto', tone: 'var(--fg-subtle)' };
   };
 
+  const normalizarBusquedaCxP = valor => String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const textoBusquedaCxP = c => {
+    const beneficiario = beneficiarioDetalle(c);
+    const orden = c?.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
+    const semaforo = semaforoDe(c);
+    return [
+      beneficiario?.nombre,
+      beneficiario?.badge,
+      c?.proveedor_id,
+      c?.personal_id,
+      c?.socio_nombre,
+      c?.factura_numero,
+      c?.concepto,
+      c?.motivo_cxp,
+      c?.tipo_comprobante,
+      c?.tipo_beneficiario,
+      c?.origen,
+      c?.estado,
+      semaforo?.label,
+      c?.fecha_emision,
+      c?.fecha_vencimiento,
+      c?.moneda,
+      c?.sociedad_id,
+      c?.centro_costo_id,
+      c?.tributo_formulario,
+      c?.categoria_er,
+      c?.orden_compra_id,
+      orden?.codigo,
+      orden?.descripcion,
+      totalDe(c),
+      pagadoDe(c),
+      saldoDe(c),
+      moneyCurrency(totalDe(c), symOf(c.moneda)),
+      moneyCurrency(pagadoDe(c), symOf(c.moneda)),
+      moneyCurrency(saldoDe(c), symOf(c.moneda)),
+    ].filter(Boolean).map(normalizarBusquedaCxP).join(' ');
+  };
+
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
   const puedeAnularCxP = Boolean(role?.permisos?.todo || role?.permisos?.anular === true || role?.permisos?.anular?.includes?.('cxp'));
   const puedeEliminarCxP = Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.es_superadmin);
@@ -7996,6 +8082,51 @@ function CxP() {
   const esDividendoForm = formCrear.tipo_beneficiario === DIVIDENDO_TIPO;
   const esRheForm = formCrear.tipo_comprobante === 'RHE';
   const esViaticosForm = motivoCxP === 'viaticos_reembolso';
+  const esCompraConOcForm = Boolean(
+    formCrear.es_compra_con_oc
+    && formCrear.tipo_beneficiario === 'proveedor'
+    && !esTributoForm
+    && !esDividendoForm
+    && !esRheForm
+    && !esViaticosForm
+  );
+  const ordenCompraSeleccionadaCxP = esCompraConOcForm
+    ? (ordenesCompra || []).find(oc => oc.id === formCrear.orden_compra_id && (!empresa?.id || oc.empresa_id === empresa.id) && ESTADOS_OC_CXP_SELECCIONABLES.has(String(oc.estado || '').toLowerCase()))
+    : null;
+  const mostrarVinculoOcCxP = !esTributoForm && !esDividendoForm && !esRheForm && !esViaticosForm && formCrear.tipo_beneficiario === 'proveedor';
+  const seleccionarOrdenCompraCxP = ordenCompraId => {
+    const orden = (ordenesCompra || []).find(oc => oc.id === ordenCompraId);
+    const saldoPendiente = saldoPendienteOrdenCompraCxP(orden);
+    setFormCrear(prev => ({
+      ...prev,
+      orden_compra_id: ordenCompraId || '',
+      proveedor_id: ordenCompraId ? (orden?.proveedor_id || '') : '',
+      monto_total: ordenCompraId ? saldoPendiente.toFixed(2) : prev.monto_total,
+    }));
+  };
+
+  useEffect(() => {
+    if (activeParams?.action !== 'nuevo_egreso_oc' || !activeParams?.ocId) return;
+    const orden = (ordenesCompra || []).find(oc => (
+      oc.id === activeParams.ocId
+      && (!empresa?.id || oc.empresa_id === empresa.id)
+    ));
+    if (!orden) return;
+    const saldoPendiente = saldoPendienteOrdenCompraCxP(orden);
+    abrirNuevoEgreso({
+      paso: 2,
+      form: {
+        es_compra_con_oc: true,
+        orden_compra_id: orden.id,
+        proveedor_id: orden.proveedor_id || '',
+        sociedad_id: orden.sociedad_id || '',
+        centro_costo_id: orden.centro_costo_id || '',
+        monto: saldoPendiente.toFixed(2),
+        concepto: orden.descripcion || '',
+      },
+    });
+    navigate('cxp', {});
+  }, [activeParams?.action, activeParams?.ocId, ordenesCompra, cxp, empresa?.id]);
   const otOrigenCxPId = esViaticosForm ? viaticosOtId : esRheForm ? rheOtId : '';
   const otOrigenCxP = (ots || []).find(ot => ot.id === otOrigenCxPId);
   const cecoOrigenCxP = (centrosCosto || []).find(ceco => ceco.id === cxpCentroCostoId);
@@ -8069,9 +8200,7 @@ function CxP() {
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
     if (filtBusqueda) {
-      const ben = beneficiarioDetalle(c);
-      const nombre = (ben?.nombre || '').toLowerCase();
-      if (!nombre.includes(filtBusqueda.toLowerCase())) return false;
+      if (!textoBusquedaCxP(c).includes(normalizarBusquedaCxP(filtBusqueda))) return false;
     }
     return true;
   });
@@ -8120,6 +8249,15 @@ function CxP() {
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
   };
+
+  useEffect(() => {
+    const cxpId = activeParams?.cxpId;
+    if (!cxpId) return;
+    const cuenta = (cxpVista || []).find(c => c.id === cxpId);
+    if (!cuenta) return;
+    abrirFicha(cuenta);
+    navigate('cxp', {});
+  }, [activeParams?.cxpId, cxpVista]);
 
   const abrirAccionCxP = (c, tipo, event) => {
     event?.stopPropagation?.();
@@ -8184,6 +8322,14 @@ function CxP() {
     const esTributo = esTributoForm;
     const esDividendo = esDividendoForm;
     const esRheInterno = esRhe && rheTipoEmisor === 'interno';
+    if (esCompraConOcForm && !formCrear.orden_compra_id) {
+      addNotificacion('Selecciona la Orden de Compra de origen para esta factura.');
+      return;
+    }
+    if (esCompraConOcForm && !ordenCompraSeleccionadaCxP) {
+      addNotificacion('La Orden de Compra seleccionada ya no está disponible para vincular esta factura.');
+      return;
+    }
     if (empresa?.multisociedad_habilitado && !modoVistaSociedadCxP.permiteEscritura && !otOrigenCxPId && !cxpCentroCostoId) { addNotificacion(mensajeOrigenCxP); return; }
     if (destinoCxP.conflictMessage) { addNotificacion(destinoCxP.conflictMessage); return; }
     if (empresa?.multisociedad_habilitado && (otOrigenCxPId || cxpCentroCostoId) && !destinoCxP.sociedadId) {
@@ -8243,6 +8389,7 @@ function CxP() {
         monto_pagado:      0,
         saldo:             montoTotal,
         sociedad_id:       destinoCxP.sociedadId || modoVistaSociedadCxP.sociedadIdEscritura || null,
+        orden_compra_id:   esCompraConOcForm ? formCrear.orden_compra_id : null,
         moneda:            formCrear.moneda || 'PEN',
         estado:            'por_pagar',
         origen:            esTributo ? 'tributos' : esDividendo ? 'dividendos' : esRhe ? 'rhe_externo' : esViaticos ? 'viaticos' : 'manual',
@@ -8525,7 +8672,7 @@ function CxP() {
           <button className="btn btn-secondary" onClick={() => abrirCrearCxP(tabCxP === 'tributos' ? 'tributos' : 'rhe')} style={{fontSize:13}}>
             {I.plus} {tabCxP === 'tributos' ? 'Registrar tributo' : 'Registrar RHE'}
           </button>
-          <button className="btn btn-primary" onClick={() => setPanelNuevoEgreso(true)}>
+          <button className="btn btn-primary" onClick={abrirNuevoEgreso}>
             {I.plus} Nuevo egreso
           </button>
         </div>
@@ -8575,7 +8722,7 @@ function CxP() {
 
       <div className="card" style={{display:tabCxP === 'pendientes_factura' ? 'none' : undefined}}>
         <div className="card-head row" style={{gap:12, flexWrap:'wrap'}}>
-          <input className="input" placeholder="Buscar beneficiario..." value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
+          <input className="input" placeholder="Buscar en todos los campos..." title="Busca en beneficiario, documento, OC, fechas, montos, estado y demás campos visibles" value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
           <select className="input" style={{flex:'1 1 140px'}} value={filtTipo} onChange={e => setFiltTipo(e.target.value)}>
             {[{v:'todos',l:'Todos los beneficiarios'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'},{v:DIVIDENDO_TIPO,l:'Socio / accionista'}].map(f => (
               <option key={f.v} value={f.v}>{f.l}</option>
@@ -8606,6 +8753,7 @@ function CxP() {
                 {mostrarBadgeSociedadCxP && <th>Sociedad</th>}
                 <th>{tabCxP === 'tributos' ? 'Periodo tributario' : 'Beneficiario'}</th>
                 <th>{tabCxP === 'tributos' ? 'Tipo de tributo' : 'Documento / Concepto'}</th>
+                <th>OC relacionada</th>
                 <th>Emisión</th>
                 <th>{tabCxP === 'tributos' ? 'Vencimiento SUNAT' : 'Vencimiento'}</th>
                 <th>Total</th>
@@ -8618,6 +8766,7 @@ function CxP() {
               {cxpFiltrada.length ? cxpFiltrada.map(c => {
                 const sem = semaforoDe(c);
                 const ben = beneficiarioDetalle(c);
+                const ocRelacionada = c.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
                 return (
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
@@ -8646,6 +8795,17 @@ function CxP() {
                         </span>
                       )}
                     </td>
+                    <td className="mono">
+                      {c.orden_compra_id ? (
+                        ocRelacionada ? <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{padding:0,fontSize:12,color:'var(--cyan)'}}
+                          onClick={event => { event.stopPropagation(); navigate('ordenes_compra', { action: 'view', ocId: c.orden_compra_id }); }}
+                          title={`Abrir detalle de ${ocRelacionada.codigo || c.orden_compra_id}`}
+                        >{ocRelacionada.codigo || c.orden_compra_id}</button> : c.orden_compra_id
+                      ) : '-'}
+                    </td>
                     <td className="text-muted">{c.fecha_emision}</td>
                     <td style={{color: sem.badgeCls === 'badge-red' || sem.badgeCls === 'badge-orange' ? sem.bg : undefined, fontWeight: sem.badgeCls === 'badge-red' ? 600 : undefined}}>
                       <span style={{display:'flex',alignItems:'center',gap:5}}>
@@ -8663,20 +8823,22 @@ function CxP() {
                       {tabCxP === 'tributos' ? (c.tributo_formulario || c.factura_numero || '-') : <strong>{money(saldoDe(c), symOf(c.moneda))}</strong>}
                     </td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver comprobante adjunto">{I.file}</a>}
-                      {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
-                      {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
-                      {puedeAnularCxP && !['pagada','pago_parcial','anulada'].includes(String(c.estado || '').toLowerCase()) && pagosDe(c.id).length === 0 && (
-                        <button className="icon-btn" title="Anular CxP" style={{color:'var(--danger)',marginLeft:6}} onClick={e => abrirAccionCxP(c, 'anular', e)}>{I.trash}</button>
-                      )}
-                      {puedeEliminarCxP && cxpEsPreliminar(c) && (
-                        <button className="icon-btn" title="Eliminar CxP preliminar" style={{color:'var(--danger)',marginLeft:4}} onClick={e => abrirAccionCxP(c, 'eliminar', e)}>{I.trash}</button>
-                      )}
+                      <div className="cxp-row-actions" aria-label={`Acciones de CxP ${c.id}`}>
+                        {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver comprobante adjunto" title="Ver comprobante adjunto">{I.file}</a>}
+                        {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver constancia de suspensión" title="Ver constancia de suspensión">{I.doc}</a>}
+                        {saldoDe(c) > 0 && <button type="button" className="icon-btn cxp-action-icon" aria-label={`Pagar CxP ${c.id}`} title="Pagar CxP" style={{color:'var(--green)'}} onClick={() => abrirFicha(c)}>{I.dollar}</button>}
+                        {puedeAnularCxP && !['pagada','pago_parcial','anulada'].includes(String(c.estado || '').toLowerCase()) && pagosDe(c.id).length === 0 && (
+                          <button type="button" className="icon-btn cxp-action-icon" aria-label={`Anular CxP ${c.id}: conserva el historial`} title="Anular: conservar el registro en el historial" style={{color:'var(--orange)'}} onClick={e => abrirAccionCxP(c, 'anular', e)}>{I.alertCircle}</button>
+                        )}
+                        {puedeEliminarCxP && cxpEsPreliminar(c) && (
+                          <button type="button" className="icon-btn cxp-action-icon" aria-label={`Eliminar CxP preliminar ${c.id}: borra el registro`} title="Eliminar: borrar el registro preliminar" style={{color:'var(--danger)'}} onClick={e => abrirAccionCxP(c, 'eliminar', e)}>{I.trash}</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={9 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
+                <tr><td colSpan={10 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
               )}
             </tbody>
           </table>
@@ -9018,8 +9180,9 @@ function CxP() {
       {panelNuevoEgreso && (
         <NuevoEgreso
           origen="cxp"
-          onClose={() => setPanelNuevoEgreso(false)}
-          onSaved={() => setPanelNuevoEgreso(false)}
+          preconfig={preconfigNuevoEgreso}
+          onClose={cerrarNuevoEgreso}
+          onSaved={cerrarNuevoEgreso}
         />
       )}
 
@@ -9044,9 +9207,9 @@ function CxP() {
                     setMotivoCxP(value);
                     if (value === 'tributo') {
                       setCxpCategoriaEr('Tributos');
-                      setFormCrear(v => ({...v, tipo_beneficiario:'colectivo', tipo_comprobante:'Tributo', proveedor_id:'', concepto: tributoConcepto}));
+                      setFormCrear(v => ({...v, tipo_beneficiario:'colectivo', tipo_comprobante:'Tributo', proveedor_id:'', es_compra_con_oc:false, orden_compra_id:'', concepto: tributoConcepto}));
                     } else if (value === 'viaticos_reembolso') {
-                      setFormCrear(v => ({...v, tipo_beneficiario:'personal'}));
+                      setFormCrear(v => ({...v, tipo_beneficiario:'personal', es_compra_con_oc:false, orden_compra_id:''}));
                     }
                   }}>
                     <option value="">Factura / gasto de proveedor (estándar)</option>
@@ -9063,6 +9226,8 @@ function CxP() {
                       ...v,
                       tipo_beneficiario: value,
                       proveedor_id: value === 'proveedor' ? v.proveedor_id : '',
+                      es_compra_con_oc: false,
+                      orden_compra_id: '',
                       tipo_comprobante: value === DIVIDENDO_TIPO ? 'distribucion_utilidades' : (v.tipo_comprobante === 'distribucion_utilidades' ? 'Factura' : v.tipo_comprobante),
                       concepto: value === DIVIDENDO_TIPO ? dividendoConcepto : v.concepto,
                     }));
@@ -9415,33 +9580,92 @@ function CxP() {
                 <>
                   <div className="input-group" style={esTributoForm || esDividendoForm ? {display:'none'} : undefined}>
                     <label>Proveedor</label>
-                    <select className="select" value={formCrear.proveedor_id} onChange={e => onProveedorChange(e.target.value)}>
+                    <select className="select" value={formCrear.proveedor_id} onChange={e => onProveedorChange(e.target.value)} disabled={esCompraConOcForm && Boolean(formCrear.orden_compra_id)}>
                       <option value="">— Seleccionar proveedor —</option>
                       {(proveedores || []).filter(p => p.estado !== 'inactivo').map(p => (
                         <option key={p.id} value={p.id}>{p.razon_social}</option>
                       ))}
                     </select>
+                    {esCompraConOcForm && formCrear.orden_compra_id && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>El proveedor se toma de la Orden de Compra seleccionada.</div>}
                   </div>
                   <div className="grid-2" style={{gap:12}}>
                     <div className="input-group">
                       <label>N° factura / documento</label>
                       <input className="input" value={formCrear.factura_numero} onChange={e => setFormCrear(v => ({...v,factura_numero:e.target.value}))} placeholder="E001-001234"/>
                     </div>
-                    <div className="input-group">
-                      <label>Moneda</label>
-                      <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
-                        <option value="PEN">PEN — Soles</option>
-                        <option value="USD">USD — Dólares</option>
-                      </select>
-                    </div>
-                    <div className="input-group" style={{gridColumn:'1/-1'}}>
-                      <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
-                      <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
-                    </div>
                     <div className="input-group" style={{gridColumn:'1/-1'}}>
                       <label>Concepto (opcional)</label>
                       <input className="input" value={formCrear.concepto} onChange={e => setFormCrear(v => ({...v,concepto:e.target.value}))} placeholder="Descripción del gasto o servicio"/>
                     </div>
+                  </div>
+                  <div className="grid-2" style={{gap:12}}>
+                    <div className="input-group">
+                      <label>Fecha de emisión</label>
+                      <input className="input" type="date" value={formCrear.fecha_emision} onChange={e => onEmisionChange(e.target.value)}/>
+                    </div>
+                    <div className="input-group">
+                      <label>Fecha de vencimiento</label>
+                      <input className="input" type="date" value={formCrear.fecha_vencimiento} onChange={e => setFormCrear(v => ({...v,fecha_vencimiento:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label>Moneda</label>
+                    <select className="select" value={formCrear.moneda} onChange={e => setFormCrear(v => ({...v,moneda:e.target.value}))}>
+                      <option value="PEN">PEN — Soles</option>
+                      <option value="USD">USD — Dólares</option>
+                    </select>
+                  </div>
+                  {mostrarVinculoOcCxP && (
+                    <>
+                      <label style={{
+                        display:'flex', alignItems:'center', gap:10, cursor:'pointer',
+                        padding:'10px 14px', borderRadius:8,
+                        background: formCrear.es_compra_con_oc
+                          ? 'color-mix(in srgb, var(--primary) 8%, var(--surface))'
+                          : 'var(--bg-subtle)',
+                        border: `1px solid ${formCrear.es_compra_con_oc ? 'color-mix(in srgb, var(--primary) 30%, var(--border))' : 'var(--border)'}`,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(formCrear.es_compra_con_oc)}
+                          onChange={e => setFormCrear(v => ({
+                            ...v,
+                            es_compra_con_oc: e.target.checked,
+                            orden_compra_id: e.target.checked ? v.orden_compra_id : '',
+                          }))}
+                          style={{width:16, height:16, cursor:'pointer', flexShrink:0}}
+                        />
+                        <div>
+                          <div style={{fontSize:13, fontWeight:600}}>Esta factura corresponde a una Orden de Compra</div>
+                          <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>
+                            Vincula la obligación de pago con la OC para evitar una CxP duplicada al recepcionar.
+                          </div>
+                        </div>
+                      </label>
+                      {esCompraConOcForm && (
+                        <div className="input-group">
+                          <label>Orden de Compra de origen <span style={{color:'var(--danger)'}}>*</span></label>
+                          <SearchSelect
+                            value={formCrear.orden_compra_id}
+                            placeholder={ordenesCompraCxpOptions.length ? 'Buscar OC por código o proveedor...' : 'No hay OCs con saldo pendiente disponibles'}
+                            options={ordenesCompraCxpOptions}
+                            onChange={seleccionarOrdenCompraCxP}
+                          />
+                          <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                            Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de facturar.
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="input-group" style={{gridColumn:'1/-1'}}>
+                    <label>Monto total <span style={{color:'var(--danger)'}}>*</span></label>
+                    <input className="input" type="number" min="0" step="0.01" value={formCrear.monto_total} onChange={e => setFormCrear(v => ({...v,monto_total:e.target.value}))} placeholder="0.00" required/>
+                    {ordenCompraSeleccionadaCxP && (
+                      <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
+                        Saldo pendiente de esta OC: <strong>{moneyCurrency(saldoPendienteOrdenCompraCxP(ordenCompraSeleccionadaCxP), ordenCompraSeleccionadaCxP.moneda || formCrear.moneda || 'PEN')}</strong>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -9491,7 +9715,7 @@ function CxP() {
                   </div>
                 </label>
               )}
-              <div className="grid-2" style={{gap:12, marginTop:4}}>
+              {(esTributoForm || esDividendoForm || esRheForm || esViaticosForm) && <div className="grid-2" style={{gap:12, marginTop:4}}>
                 <div className="input-group">
                   <label>Fecha de emisión</label>
                   <input className="input" type="date" value={formCrear.fecha_emision} onChange={e => onEmisionChange(e.target.value)}/>
@@ -9500,7 +9724,7 @@ function CxP() {
                   <label>Fecha de vencimiento</label>
                   <input className="input" type="date" value={formCrear.fecha_vencimiento} onChange={e => setFormCrear(v => ({...v,fecha_vencimiento:e.target.value}))}/>
                 </div>
-              </div>
+              </div>}
               <div className="input-group">
                 <label>Adjuntar comprobante (foto o PDF)</label>
                 <input className="input" type="file" accept="image/*,.pdf" onChange={e => {
