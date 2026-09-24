@@ -184,3 +184,38 @@ $$;
 
 revoke execute on function public.generar_cxp_centralizado(jsonb, text, text) from public, anon;
 grant execute on function public.generar_cxp_centralizado(jsonb, text, text) to authenticated;
+
+-- El índice debe reflejar la misma regla que el RPC: una CxP activa por recepción.
+drop index if exists public.uq_cxp_una_por_recepcion;
+create unique index uq_cxp_una_por_recepcion
+  on public.cxp(recepcion_id)
+  where recepcion_id is not null
+    and lower(coalesce(estado, '')) <> 'anulada';
+
+-- Una factura anulada deja de ocupar el comprobante para poder corregirla.
+create or replace function public.bloquear_cxp_factura_duplicada()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.proveedor_id is null or public.normalizar_numero_comprobante(new.factura_numero) = '' then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(
+    new.empresa_id || '|CXP|' || coalesce(new.sociedad_id::text, 'sin-sociedad') || '|' || new.proveedor_id || '|' || public.normalizar_numero_comprobante(new.factura_numero)
+  ));
+  if exists (
+    select 1 from public.cxp c
+    where c.empresa_id = new.empresa_id
+      and c.id is distinct from new.id
+      and c.sociedad_id is not distinct from new.sociedad_id
+      and c.proveedor_id = new.proveedor_id
+      and public.normalizar_numero_comprobante(c.factura_numero) = public.normalizar_numero_comprobante(new.factura_numero)
+      and lower(coalesce(c.estado, '')) <> 'anulada'
+  ) then
+    raise exception 'Ya existe una CxP con la factura % para este proveedor y sociedad.', new.factura_numero;
+  end if;
+  return new;
+end;
+$$;
