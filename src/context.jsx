@@ -15,7 +15,7 @@ import {
 } from './services/finanzasService.js';
 import { clasificarCoincidenciasCargo, maestrosService, normalizarNombreCargo } from './services/maestrosService.js';
 import { CargoCreationDialog } from './components/CargoCreationDialog.jsx';
-import { comprasService, devolucionesService } from './services/comprasService.js';
+import { cantidadRecibidaPorItemOc, comprasService, devolucionesService } from './services/comprasService.js';
 import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
 import { registrarTransferenciaIntercompania } from './services/transferenciasIntercompaniaService.js';
 import { rrhhService } from './services/rrhhService.js';
@@ -8848,13 +8848,7 @@ export function AppProvider({ children }) {
 
       for (const item of (base.items || [])) {
         const cantidadPedida = Number(item.cantidad || 0);
-        const cantidadYaRecibida = recepcionesAnteriores.reduce((sum, r) => {
-          const itemRec = (r.items_recibidos || []).find(i =>
-            (item.material_id && i.material_id === item.material_id) ||
-            i.descripcion === item.descripcion
-          );
-          return sum + Number(itemRec?.recibido || 0);
-        }, 0);
+        const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepcionesAnteriores, base.id, item);
         const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
         const idx = (base.items || []).indexOf(item);
         const cantidadARecibir = cantidadFisicaPorLinea(item, idx);
@@ -8918,6 +8912,7 @@ export function AppProvider({ children }) {
     })();
     const itemsRecibidos = isOC
       ? (base.items || []).map((item, idx) => ({
+        item_id: item.item_id || null,
         codigo: item.codigo || null,
         material_id: item.material_id || null,
         descripcion: item.descripcion,

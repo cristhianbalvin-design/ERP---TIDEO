@@ -48,7 +48,7 @@ import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
 import { GeoMiniMapa } from './components/GeoMiniMapa.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
-import { comprasService, getSpendAnalysis } from './services/comprasService.js';
+import { cantidadRecibidaPorItemOc, comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
@@ -6429,8 +6429,18 @@ const ocEsRecepcionable = orden => ESTADOS_OC_RECEPCIONABLES.has(String(orden?.e
 const ESTADOS_OC_CXP_VINCULABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']);
 const ocEsVinculableCxP = orden => ESTADOS_OC_CXP_VINCULABLES.has(String(orden?.estado || '').toLowerCase());
 
-const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:1000 }] };
-const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '' });
+const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+const nuevaLineaOC = (overrides = {}) => ({
+  item_id: generarItemOcId(),
+  material_id: '',
+  descripcion: 'Item de compra',
+  cantidad: 1,
+  unidad: 'Glb',
+  precio_unitario: 1000,
+  ...overrides,
+});
+const OC_FORM_INIT = { proveedor_id:'', origen_compra:'directa', proceso_compra_id:'', solpe_id:'', solpe_codigo:'', ot_id:'', centro_costo_id:'', sociedad_id:'', descripcion:'', fecha_entrega_esperada:'2025-04-30', items:[] };
+const nuevaOCForm = (proveedorId = '') => ({ ...OC_FORM_INIT, proveedor_id: proveedorId || '', items: [nuevaLineaOC()] });
 const formOCDesdeOrden = (oc = {}) => ({
   ...OC_FORM_INIT,
   proveedor_id: oc.proveedor_id || '',
@@ -6452,7 +6462,7 @@ const formOCDesdeOrden = (oc = {}) => ({
       unidad: item.unidad || 'Und',
       precio_unitario: item.precio_unitario ?? 0,
     }))
-    : OC_FORM_INIT.items,
+    : nuevaOCForm().items,
 });
 const OC_COLUMNAS_OPCIONALES_INSERT = new Set(['condicion_pago', 'solpe_id', 'solpe_codigo', 'origen_tipo', 'notas_proveedor', 'notas_internas', 'creado_por']);
 const OC_TRANSITO_TIPO_LABEL = { recojo_propio: 'Recojo propio', despacho_proveedor: 'Despacho proveedor' };
@@ -6879,6 +6889,7 @@ function BandejaSourcing() {
       centro_costo_id: primeraSolpe?.centro_costo_id || null,
       descripcion: 'Sourcing consolidado - ' + sourceSolpes.length + ' SOLPE(s)',
       items: columna.lineas.map(linea => ({
+        item_id: generarItemOcId(),
         solpe_id: linea.solpe_id || null,
         solpe_item_id: linea.solpe_item_id || null,
         material_id: linea.material_id || null,
@@ -7093,7 +7104,7 @@ function OrdenesCompra() {
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
-  const [form, setForm] = useState(OC_FORM_INIT);
+  const [form, setForm] = useState(() => nuevaOCForm());
   const [editandoOC, setEditandoOC] = useState(null);
   const handledOcParamRef = useRef('');
   const editRequestRef = useRef(0);
@@ -7177,6 +7188,7 @@ function OrdenesCompra() {
       const cantidad = Number(item.cantidad || 0);
       const precio = Number(item.precio_unitario || 0);
       return {
+        item_id: item.item_id || null,
         solpe_id: item.solpe_id || null,
         solpe_item_id: item.solpe_item_id || null,
         material_id: item.material_id || null,
@@ -7358,13 +7370,10 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
     (!filtroPrv || o.proveedor_id === filtroPrv)
   );
   const calcLineas = (oc) => {
-    const recs = (recepciones || []).filter(r => r.orden_compra_id === oc.id);
+    const recs = (recepciones || []).filter(r => String(r.orden_compra_id || r.oc_id || '') === String(oc.id));
     return (oc.items || []).map(item => {
       const pedido = Number(item.cantidad || 0);
-      const recibido = recs.reduce((sum, r) => {
-        const ir = (r.items_recibidos || []).find(ir => ir.descripcion === item.descripcion);
-        return sum + Number(ir?.recibido || 0);
-      }, 0);
+      const recibido = cantidadRecibidaPorItemOc(recs, oc.id, item);
       return { descripcion: item.descripcion, unidad: item.unidad, pedido, recibido, pendiente: pedido - recibido };
     });
   };
@@ -7439,7 +7448,7 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
 
 function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, modoEdicion = false, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
-  const lineas = form.items?.length ? form.items : [{ material_id:'', descripcion:'Item de compra', cantidad:1, unidad:'Glb', precio_unitario:0 }];
+  const lineas = form.items?.length ? form.items : [nuevaLineaOC({ precio_unitario: 0 })];
   const materialKey = lineas.map(i => i.material_id || '').join('|');
   const [precioHistorico, setPrecioHistorico] = useState({});
   const subtotal = lineas.reduce((sum, item) => sum + (Number(item.cantidad || 0) * Number(item.precio_unitario || 0)), 0);
@@ -7456,7 +7465,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
   }));
   const addLinea = () => setForm(v => ({
     ...v,
-    items: [...lineas, { material_id:'', descripcion:'', cantidad:1, unidad:'Und', precio_unitario:'' }]
+    items: [...lineas, nuevaLineaOC({ descripcion:'', cantidad:1, unidad:'Und', precio_unitario:'' })]
   }));
   const removeLinea = idx => setForm(v => ({
     ...v,
@@ -7523,7 +7532,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, setOrdenesCompra, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
@@ -7704,16 +7713,23 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
             <table className="tbl">
               <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
               <tbody>{ordenActual.items?.map((i, idx) => {
+                const pedido = Number(i.cantidad || 0);
+                const recibido = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, i);
+                const tieneSaldo = recibido < pedido - 0.0001;
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
                     <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
                     <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                     <td>
-                      {estadoLiberable && tieneOrigen ? (
+                      {estadoLiberable && tieneOrigen && tieneSaldo ? (
                         <button type="button" className="btn btn-secondary btn-sm" data-local-form="true" onClick={() => abrirLiberacion(i)}>
                           Liberar pendiente
                         </button>
+                      ) : estadoLiberable && tieneSaldo && !tieneOrigen ? (
+                        <span className="text-muted" style={{fontSize:11}}>Saldo pendiente; no proviene de sourcing</span>
+                      ) : estadoLiberable && !tieneSaldo ? (
+                        <span className="text-muted" style={{fontSize:11}}>Completo</span>
                       ) : estadoLiberable ? (
                         <span className="text-muted" style={{fontSize:11}}>Sin SOLPE de origen</span>
                       ) : (
@@ -11836,14 +11852,16 @@ function SOLPE() {
         const itemsSeg = (s.items||[]).map(item => {
           const nom = item.descripcion || item.nombre || '';
           const oc = ocsSolpe.find(o => (o.items||[]).some(oi =>
+            (item.id && oi.solpe_item_id === item.id) ||
             (oi.descripcion||'').toLowerCase() === nom.toLowerCase() ||
             (item.material_id && oi.material_id === item.material_id)
           ));
-          let recibido = 0;
-          if (oc) (recepciones||[]).filter(r => r.oc_id === oc.id).forEach(r => {
-            const ir = (r.items_recibidos||[]).find(ir => (ir.descripcion||'').toLowerCase() === nom.toLowerCase());
-            if (ir) recibido += Number(ir.recibido || 0);
-          });
+          const ocItem = oc?.items?.find(oi =>
+            (item.id && oi.solpe_item_id === item.id) ||
+            ((item.material_id && oi.material_id === item.material_id) && (oi.descripcion || '').toLowerCase() === nom.toLowerCase()) ||
+            ((oi.descripcion || '').toLowerCase() === nom.toLowerCase())
+          );
+          const recibido = oc ? cantidadRecibidaPorItemOc(recepciones, oc.id, ocItem || item) : 0;
           return { nom, oc, recibido, cant: Number(item.cantidad || 0) };
         });
         return <>

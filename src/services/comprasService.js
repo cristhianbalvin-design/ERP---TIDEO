@@ -8,6 +8,36 @@ const ORDENES_COMPRA_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas_provee
 const ORDENES_SERVICIO_OPTIONAL_COLUMNS = new Set(['condicion_pago', 'notas']);
 const TABLA_NO_EXISTE_RE = /(does not exist|schema cache|Could not find the table|relation .* does not exist)/i;
 
+const textoItemOc = item => String(item?.descripcion || '').trim().toLowerCase();
+const valorItemId = item => String(item?.item_id || '').trim();
+
+export const itemRecepcionCoincideConOc = (recepcionItem, ocItem, recepcionItems = []) => {
+  const ocItemId = valorItemId(ocItem);
+  const recepcionItemId = valorItemId(recepcionItem);
+  if (ocItemId && recepcionItemId) return ocItemId === recepcionItemId;
+
+  // Si la recepción ya usa item_id, no se debe mezclar otra línea por
+  // material cuando no existe coincidencia exacta. El fallback aplica a
+  // recepciones históricas que todavía no guardan item_id.
+  if (ocItemId && recepcionItems.some(item => valorItemId(item))) return false;
+
+  const materialCoincide = Boolean(ocItem?.material_id && recepcionItem?.material_id)
+    && ocItem.material_id === recepcionItem.material_id;
+  const descripcionCoincide = textoItemOc(ocItem) && textoItemOc(ocItem) === textoItemOc(recepcionItem);
+  return materialCoincide || descripcionCoincide;
+};
+
+export const cantidadRecibidaPorItemOc = (recepciones = [], ordenCompraId, ocItem) => (
+  (recepciones || [])
+    .filter(recepcion => String(recepcion?.orden_compra_id || recepcion?.oc_id || '') === String(ordenCompraId))
+    .reduce((total, recepcion) => {
+      const items = recepcion?.items_recibidos || recepcion?.items || [];
+      return total + items
+        .filter(item => itemRecepcionCoincideConOc(item, ocItem, items))
+        .reduce((suma, item) => suma + (Number(item?.recibido) || 0), 0);
+    }, 0)
+);
+
 function getSchemaCacheMissingColumn(error, tableName) {
   const message = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
   const match = message.match(SCHEMA_CACHE_MISSING_COLUMN_RE);
