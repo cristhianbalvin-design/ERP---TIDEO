@@ -8725,11 +8725,21 @@ function Recepciones() {
       const next = {};
       (ocSeleccionada.items || []).forEach((item, idx) => {
         const key = ocItemKey(item, idx);
-        next[key] = prev[key] ?? String(Number(item.cantidad || 0));
+        const cantidadPedida = Number(item.cantidad || 0);
+        const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+        const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
+        next[key] = String(cantidadPendiente);
       });
       return next;
     });
-  }, [ocSeleccionada?.id]);
+  }, [ocSeleccionada?.id, recepciones]);
+
+  const cantidadPendienteRecepcion = item => {
+    if (!ocSeleccionada) return Math.max(0, Number(item.cantidad || 0));
+    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+    return Math.max(0, cantidadPedida - cantidadYaRecibida);
+  };
 
   const precioFacturaInput = (item, idx) => {
     const key = ocItemKey(item, idx);
@@ -8748,7 +8758,7 @@ function Recepciones() {
     const key = ocItemKey(item, idx);
     return Object.prototype.hasOwnProperty.call(cantidadesRecibidas, key)
       ? cantidadesRecibidas[key]
-      : String(Number(item.cantidad || 0));
+      : String(cantidadPendienteRecepcion(item));
   };
 
   const entradasFisicasOC = useMemo(() => {
@@ -8757,20 +8767,20 @@ function Recepciones() {
   }, [entradasOcPendientesVistaRecepciones, ocSeleccionada]);
 
   const cantidadRecepcionNumero = (item, idx) => {
-    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadPendiente = cantidadPendienteRecepcion(item);
     const cantidad = Number(cantidadRecepcionInput(item, idx));
     if (!Number.isFinite(cantidad)) return 0;
-    return Math.min(Math.max(cantidad, 0), cantidadPedida);
+    return Math.min(Math.max(cantidad, 0), cantidadPendiente);
   };
 
   const setCantidadRecepcionLinea = (item, idx, value) => {
     const key = ocItemKey(item, idx);
-    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadPendiente = cantidadPendienteRecepcion(item);
     const cantidad = Number(value);
     const nextValue = value === ''
       ? ''
       : Number.isFinite(cantidad)
-        ? String(Math.min(Math.max(cantidad, 0), cantidadPedida))
+        ? String(Math.min(Math.max(cantidad, 0), cantidadPendiente))
         : '0';
     setCantidadesRecibidas(prev => ({ ...prev, [key]: nextValue }));
     setValidacionErrors([]);
@@ -8927,8 +8937,9 @@ function Recepciones() {
                     <tbody>{(ocSeleccionada.items || []).map((item, idx) => {
                       const warningLinea = advertenciasLineasFactura[idx];
                       const cantidadPedida = Number(item.cantidad || 0);
-                      const cantidadRecibida = cantidadRecepcionNumero(item, idx);
-                      const cantidadCompleta = cantidadRecibida >= cantidadPedida;
+                      const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+                      const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
+                      const cantidadCompleta = cantidadPendiente <= 0.0001;
                       const tieneConteoFisico = entradasFisicasOC.length > 0;
                       return (
                         <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}>
@@ -8941,14 +8952,15 @@ function Recepciones() {
                               className="input"
                               type="number"
                               min="0"
-                              max={cantidadPedida}
+                              max={cantidadPendiente}
                               step="0.01"
+                              disabled={cantidadCompleta}
                               value={cantidadRecepcionInput(item, idx)}
                               onChange={e => setCantidadRecepcionLinea(item, idx, e.target.value)}
                               style={{textAlign:'right',height:30}}
                             />
                             <div className="text-muted" style={{fontSize:11,marginTop:4}}>
-                              {cantidadRecibida} de {cantidadPedida} recibidos ·{' '}
+                              {cantidadYaRecibida} de {cantidadPedida} recibidos ·{' '}
                               <span style={{color:cantidadCompleta ? 'var(--green)' : 'var(--orange)'}}>
                                 {cantidadCompleta ? 'Completa' : 'Parcial'}
                               </span>
