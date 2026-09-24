@@ -5161,6 +5161,8 @@ export function AppProvider({ children }) {
         notas: datos.notas || null,
         aplica_retencion: datos.aplica_retencion || false,
         monto_retencion: datos.monto_retencion || 0,
+        tipo_cambio_detraccion: datos.tipo_cambio_detraccion ?? null,
+        tipo_cambio_fuente: datos.tipo_cambio_fuente ?? null,
         confirmar_numero_duplicado: datos.confirmar_numero_duplicado || false,
       });
       const facturaCreada = resultado?.factura;
@@ -5695,6 +5697,8 @@ export function AppProvider({ children }) {
         id: generateId('cob'), empresa_id: empresa.id, cxc_id: cxcId,
         factura_id: cuentaCobrar?.factura_id || null, cuenta_id: cuentaCobrar?.cuenta_id || null,
         monto_capital: montoCobrado, monto_mora: montoMora, medio_pago: datos.medio_pago || 'Efectivo',
+        tipo_cobro: datos.tipo_cobro || 'normal', detraccion_id: datos.detraccion_id || null,
+        monto_deposito_soles: datos.monto_deposito_soles ?? null, numero_constancia: datos.numero_constancia || null,
         cuenta_bancaria: datos.cuenta_bancaria || null, numero_operacion: datos.numero_operacion || datos.referencia || null,
         fecha_cobro: fecha, notas: datos.notas || null, registrado_por: authUser?.email || 'Sistema', creado_en: new Date().toISOString(),
       };
