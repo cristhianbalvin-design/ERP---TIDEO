@@ -484,7 +484,7 @@ function CxC() {
 
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
-  const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', detraccion_id:'', monto:'', monto_deposito_soles:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
+  const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', detraccion_id:'', monto:'', monto_deposito_soles:'', tipo_cambio_detraccion:null, incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
   const [detraccionesCxc, setDetraccionesCxc] = useState([]);
   const [detraccionesCxcCargadas, setDetraccionesCxcCargadas] = useState(false);
   const [detraccionesCxcError, setDetraccionesCxcError] = useState('');
@@ -696,7 +696,7 @@ function CxC() {
     setCobroSel(c);
     const pendiente = pendienteSpotDe(c);
     const tipoInicial = normalBloqueadoPorDetraccionDe(c) ? 'detraccion' : 'normal';
-    setFormCobro({ tipo_cobro:tipoInicial, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: tipoInicial === 'detraccion' ? 'Detraccion' : '', cuenta_bancaria: tipoInicial === 'detraccion' ? cuentaDetraccionUnicaDe(c) : '', numero_operacion: '', numero_constancia:'', notas: '' });
+    setFormCobro({ tipo_cobro:tipoInicial, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null, incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: tipoInicial === 'detraccion' ? 'Detraccion' : '', cuenta_bancaria: tipoInicial === 'detraccion' ? cuentaDetraccionUnicaDe(c) : '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
@@ -705,8 +705,21 @@ function CxC() {
   useEffect(() => {
     if (!panelCobro || !cobroSel || !detraccionesCxcCargadas || formCobro.tipo_cobro !== 'normal') return;
     const pendiente = pendienteSpotDe(cobroSel);
-    setFormCobro(prev => ({ ...prev, detraccion_id: pendiente?.id || '', monto: String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '' }));
+    setFormCobro(prev => ({ ...prev, detraccion_id: pendiente?.id || '', monto: String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null }));
   }, [panelCobro, cobroSel?.id, detraccionesCxcCargadas, detraccionesCxc.length]);
+
+  useEffect(() => {
+    if (!panelCobro || !cobroSel || !detraccionesCxcCargadas || formCobro.tipo_cobro !== 'detraccion') return;
+    const pendiente = pendienteSpotDe(cobroSel);
+    if (!pendiente) return;
+    setFormCobro(prev => ({
+      ...prev,
+      detraccion_id: pendiente.id || '',
+      monto: String(pendiente.monto_detraccion_origen ?? ''),
+      monto_deposito_soles: String(pendiente.monto_detraccion_soles ?? ''),
+      tipo_cambio_detraccion: pendiente.tipo_cambio ?? null,
+    }));
+  }, [panelCobro, cobroSel?.id, detraccionesCxcCargadas, detraccionesCxc.length, formCobro.tipo_cobro]);
 
   useEffect(() => {
     if (!panelCobro || !cobroSel || formCobro.tipo_cobro !== 'detraccion') return;
@@ -1554,7 +1567,7 @@ function CxC() {
             <form className="side-panel-body" onSubmit={guardarCobro}>
               <div className="input-group">
                 <label>Tipo de cobro</label>
-                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : '', cuenta_bancaria:tipo === 'detraccion' ? cuentaDetraccionUnicaDe(cobroSel) : '', medio_pago:tipo === 'detraccion' ? 'Detraccion' : v.medio_pago === 'Detraccion' ? '' : v.medio_pago})); setMontoError(''); }}>
+                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : '', tipo_cambio_detraccion:tipo === 'detraccion' ? pendiente?.tipo_cambio ?? null : null, cuenta_bancaria:tipo === 'detraccion' ? cuentaDetraccionUnicaDe(cobroSel) : '', medio_pago:tipo === 'detraccion' ? 'Detraccion' : v.medio_pago === 'Detraccion' ? '' : v.medio_pago})); setMontoError(''); }}>
                   <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
                   <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Depósito de detracción recibido</option>
                 </select>
@@ -1644,12 +1657,21 @@ function CxC() {
               })()}
 
               <div className="grid-2 mt-6" style={{gap:12}}>
-                <div className="input-group">
+                {formCobro.tipo_cobro === 'detraccion' ? <>
+                  <div className="input-group">
+                    <label>Se aplica a la CxC</label>
+                    <input className="input num" type="text" readOnly tabIndex={-1} value={moneySpotCurrency(formCobro.monto, cobroSel.moneda)} />
+                  </div>
+                  <div className="input-group">
+                    <label>Depósito en tu cuenta de detracciones</label>
+                    <input className="input num" type="text" readOnly tabIndex={-1} value={moneySpot(formCobro.monto_deposito_soles)} />
+                  </div>
+                  {montoError && <div style={{gridColumn:'1/-1',color:'var(--danger)',fontSize:12,marginTop:-4}}>{montoError}</div>}
+                </> : <div className="input-group">
                   <label>Monto cobrado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input num" type="number" min="0.01" step="0.01" max={formCobro.tipo_cobro === 'normal' && montoReservadoSpotDe(cobroSel) > 0 ? maxNormalCobrableDe(cobroSel) : undefined} required readOnly={formCobro.tipo_cobro === 'detraccion'}
-                    value={formCobro.monto} onChange={e=>{setFormCobro(v=>({...v,monto:e.target.value}));setMontoError('');}} autoFocus/>
+                  <input className="input num" type="number" min="0.01" step="0.01" max={montoReservadoSpotDe(cobroSel) > 0 ? maxNormalCobrableDe(cobroSel) : undefined} required value={formCobro.monto} onChange={e=>{setFormCobro(v=>({...v,monto:e.target.value}));setMontoError('');}} autoFocus/>
                   {montoError && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{montoError}</div>}
-                </div>
+                </div>}
                 <div className="input-group">
                   <label>Fecha de cobro <span style={{color:'var(--danger)'}}>*</span></label>
                   <input className="input" type="date" required max={today} value={formCobro.fecha_cobro} onChange={e=>setFormCobro(v=>({...v,fecha_cobro:e.target.value}))}/>
