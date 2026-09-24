@@ -29,7 +29,7 @@ insert into public.cuentas(id,empresa_id,nombre_comercial,razon_social,ruc,tipo,
 values('cta_spot8_ret','emp_2000000000','Cliente retencion SPOT 8','Cliente retencion SPOT 8','20999999991','cliente','PEN','activo',true,3,'RUC')
 on conflict (id) do update set agente_retencion_sunat=true,tasa_retencion_sunat=3;
 insert into public.centros_beneficio(id,empresa_id,codigo,nombre,tipo,estado,es_facturable,sociedad_id)
-values('cebe_spot8_other','emp_2000000000','CEBE-SPOT8-B','CEBE Paso 8 sociedad B','operativo','activo',true,'b03f3bda-d4be-4acb-891c-07f36b731fd5')
+values('cebe_spot8_other','emp_2000000000','CEBE-SPOT8-B','CEBE Paso 8 sociedad B','cliente','activo',true,'b03f3bda-d4be-4acb-891c-07f36b731fd5')
 on conflict (id) do update set sociedad_id=excluded.sociedad_id,estado='activo';
 insert into public.spot_catalogo(codigo,anexo,descripcion,porcentaje,monto_minimo,umbral_operador,vigencia_desde,fuente_url,fuente_referencia)
 values('TST-IMP-2040','ANEXO_3','Prueba importacion futura',12,700,'>',date '2040-01-01','https://orientacion.sunat.gob.pe/apendices-del-sistema-de-detracciones','Prueba temporal');
