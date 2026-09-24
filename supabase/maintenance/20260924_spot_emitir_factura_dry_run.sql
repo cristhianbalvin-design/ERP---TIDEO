@@ -148,6 +148,34 @@ begin
   raise notice 'CASO_9|usd_inverso=1/%=%|origen=120.00|soles=%',v_usd,to_char(v_tc,'FM999990.000000'),d.monto_detraccion_soles;
 end $$;
 
+\echo '--- caso 9b: USD manual independiente del historico ---'
+do $$
+declare r jsonb; d record;
+begin
+  r:=pg_temp.spot_emit('fac_spot_t09b','F-SPOT-T09B','factura',847.46,152.54,1000,'USD',
+    jsonb_build_array(jsonb_build_object('servicio_id','srv_c529a00515fe4defb6')),
+    jsonb_build_object('tipo_cambio_detraccion',3.395,'tipo_cambio_fuente','manual'));
+  select * into d from public.detracciones where factura_id='fac_spot_t09b';
+  if d.tipo_cambio <> 3.395 or d.tipo_cambio_fuente <> 'manual' or d.monto_detraccion_origen <> 120 or d.monto_detraccion_soles <> 407 then raise exception 'CASO_9B|calculo_incorrecto'; end if;
+  raise notice 'CASO_9B|tc_manual=3.395|1000*3.395*12pct=407.40|deposito_redondeado=407|aceptado';
+end $$;
+
+\echo '--- caso 9c: USD con tipo de cambio cero o negativo ---'
+do $$
+declare v_tc numeric; e text; r jsonb;
+begin
+  foreach v_tc in array ARRAY[0::numeric, -1::numeric] loop
+    e:=null;
+    begin
+      r:=pg_temp.spot_emit('fac_spot_t09c_' || replace(v_tc::text,'-','n'),'F-SPOT-T09C','factura',847.46,152.54,1000,'USD',
+        jsonb_build_array(jsonb_build_object('servicio_id','srv_c529a00515fe4defb6')),
+        jsonb_build_object('tipo_cambio_detraccion',v_tc,'tipo_cambio_fuente','manual'));
+    exception when others then e:=sqlerrm; end;
+    if e is null or e not like 'Para una factura USD%' then raise exception 'CASO_9C|tc=%|mensaje=%',v_tc,e; end if;
+    raise notice 'CASO_9C|tc=%|rechazado|mensaje=%',v_tc,e;
+  end loop;
+end $$;
+
 \echo '--- caso 10: boleta sobre umbral ---'
 do $$
 declare r jsonb;

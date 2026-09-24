@@ -52,7 +52,6 @@ declare
   v_monto_detraccion_soles numeric(18,2);
   v_tipo_cambio_detraccion numeric(18,6) := nullif(p_payload ->> 'tipo_cambio_detraccion', '')::numeric;
   v_tipo_cambio_fuente text := nullif(lower(btrim(p_payload ->> 'tipo_cambio_fuente')), '');
-  v_tipo_cambio_historico numeric;
 begin
   -- Controles vigentes preservados literalmente: tenant y numero por contraparte.
   if v_empresa_id is null or not public.usuario_tiene_empresa(v_empresa_id) then
@@ -164,18 +163,6 @@ begin
         end if;
         if v_tipo_cambio_fuente not in ('manual', 'referencial') then
           raise exception 'Para una factura USD con detraccion debes informar tipo_cambio_fuente como manual o referencial.';
-        end if;
-        if v_tipo_cambio_fuente = 'referencial' then
-          select nullif(usd, 0) into v_tipo_cambio_historico
-          from public.tipo_cambio_historico
-          where moneda_base = 'PEN' and fecha <= v_fecha_emision
-          order by fecha desc limit 1;
-          if v_tipo_cambio_historico is null then
-            raise exception 'No existe tipo de cambio historico USD/PEN para la fecha de emision.';
-          end if;
-          if abs(v_tipo_cambio_detraccion - round(1 / v_tipo_cambio_historico, 6)) > 0.000001 then
-            raise exception 'El tipo de cambio referencial debe ser la inversion de tipo_cambio_historico.usd (soles por dolar).';
-          end if;
         end if;
         v_total_soles := round(v_total * v_tipo_cambio_detraccion, 2);
       else
