@@ -6406,15 +6406,17 @@ function estadoOcBadge(estado) {
     : 'badge-gray';
 }
 
-function estadoFisicoOC(estado) {
-  if (estado === 'cerrada') return 'Recibido completo';
-  if (estado === 'recibida_parcial') return 'Recibido parcial';
+function estadoFisicoOC(porcentajeRecibido) {
+  const porcentaje = Number(porcentajeRecibido ?? 0);
+  if (porcentaje >= 100) return 'Recibido completo';
+  if (porcentaje > 0) return 'Recibido parcial';
   return 'No recibido';
 }
 
-function estadoFisicoOCBadge(estado) {
-  if (estado === 'cerrada') return 'badge-green';
-  if (estado === 'recibida_parcial') return 'badge-orange';
+function estadoFisicoOCBadge(porcentajeRecibido) {
+  const porcentaje = Number(porcentajeRecibido ?? 0);
+  if (porcentaje >= 100) return 'badge-green';
+  if (porcentaje > 0) return 'badge-orange';
   return 'badge-gray';
 }
 
@@ -7155,6 +7157,15 @@ function OrdenesCompra() {
     handledOcParamRef.current = editRequestId;
   }, [activeParams?.action, activeParams?.ocId, activeParams?.editRequestId, ordenesCompra]);
 
+  useEffect(() => {
+    const ocId = activeParams?.ocId;
+    if (activeParams?.action !== 'view' || !ocId) return;
+    const oc = (ordenesCompra || []).find(item => item.id === ocId);
+    if (!oc) return;
+    setSel(oc);
+    navigate('ordenes_compra', {});
+  }, [activeParams?.action, activeParams?.ocId, ordenesCompra]);
+
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
     if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
@@ -7247,7 +7258,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
               const p = proveedorById(proveedores, o.proveedor_id);
               const esBorrador = o.estado === 'borrador';
               const cxpResumen = cxpPorOrdenCompra?.get(o.id);
-              const estadoFisico = estadoFisicoOC(o.estado);
+              const estadoFisico = estadoFisicoOC(o.porcentaje_recibido);
               return (
                 <tr
                   key={o.id}
@@ -7265,7 +7276,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                   <td>
                     <span className={'badge ' + estadoOcBadge(o.estado)}>{o.estado.replace('_', ' ')}</span>
                     <div style={{ marginTop: 4 }}>
-                      <span className={'badge ' + estadoFisicoOCBadge(o.estado)}>Físico: {estadoFisico}</span>
+                      <span className={'badge ' + estadoFisicoOCBadge(o.porcentaje_recibido)}>Físico: {estadoFisico}</span>
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
@@ -7552,7 +7563,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <div className="page-sub">{proveedor.razon_social} — {moneyD(totalOC)}</div>
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span className={'badge ' + estadoOcBadge(ordenActual.estado)}>Estado: {ordenActual.estado.replace('_', ' ')}</span>
-            <span className={'badge ' + estadoFisicoOCBadge(ordenActual.estado)}>Físico: {estadoFisicoOC(ordenActual.estado)}</span>
+            <span className={'badge ' + estadoFisicoOCBadge(ordenActual.porcentaje_recibido)}>Físico: {estadoFisicoOC(ordenActual.porcentaje_recibido)}</span>
             {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
               {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
             </span> : <>

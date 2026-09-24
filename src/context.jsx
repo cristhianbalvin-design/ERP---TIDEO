@@ -7071,6 +7071,10 @@ export function AppProvider({ children }) {
           movimiento,
         });
         await adjuntarComprobantePago(resultado?.pago || registroPago);
+        if (cuentaPagar?.orden_compra_id && empresa?.id) {
+          const ordenesCompraActualizadas = await comprasService.getOrdenesCompra(empresa.id);
+          setOrdenesCompra(ordenesCompraActualizadas || []);
+        }
       });
     } else {
       await adjuntarComprobantePago(registroPago);
