@@ -192,6 +192,18 @@ begin
 end;
 $test$;
 
+\echo '--- caso 8b: CxC USD, detraccion con comision ---'
+do $test$
+declare f jsonb; r jsonb; co public.comisiones%rowtype;
+begin
+  f:=pg_temp.fixture_cxc('det_usd_8b','USD',1000,true,3.380891);
+  r:=public.registrar_cobro_cxc_atomico('emp_2000000000',f->>'cxc_id',jsonb_build_object('id','cob_spot6_det8b','tipo_cobro','detraccion','detraccion_id',f->>'detraccion_id','monto_capital',120),jsonb_build_object('id','tes_spot6_det8b','monto',406,'moneda','PEN','cuenta_bancaria_id','cb_spot6_bn','tc_aplicado',3.380891,'monto_en_moneda_cuenta',406),jsonb_build_object('id','com_spot6_det8b','monto_cobrado',999,'porcentaje_comision',10,'monto_comision',999,'bonificacion',0,'monto_total',999,'modalidad_pago','Planilla','periodo','2026-09','estado','pendiente_aprobacion'));
+  select * into co from public.comisiones where cobro_cxc_id='cob_spot6_det8b';
+  if r->'cxc'->>'saldo' <> '880.00' or r->'cobro'->>'monto_capital' <> '120.00' or co.monto_cobrado <> 120 or co.monto_comision <> 12 then raise exception 'CASO_8B|resultado_incorrecto'; end if;
+  raise notice 'CASO_8B|USD|saldo=880|base_comision=120_USD|comision=12|comisiones=1';
+end;
+$test$;
+
 \echo '--- caso 9: segundo cobro sobre obligacion depositada ---'
 do $test$
 declare f jsonb; e text; r jsonb;
@@ -219,6 +231,34 @@ begin
   select count(*) into cm from public.comisiones where cxc_id=f->>'cxc_id';
   if r->'cxc'->>'saldo' <> '0.00' or r->'cxc'->>'estado' <> 'cobrada' or d.estado <> 'depositada' or co<>2 or mo<>2 or cm<>2 then raise exception 'CASO_10|flujo_incompleto'; end if;
   raise notice 'CASO_10|neto=880+detraccion=120|cxc=0|estado=cobrada|obligacion=depositada|comisiones=2|cobros=2|movimientos=2';
+end;
+$test$;
+
+\echo '--- casos 11 a 14: alcance del trigger defensivo ---'
+do $test$
+declare e text;
+begin
+  insert into public.movimientos_tesoreria(id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria_id,vinculo_tipo,vinculo_id,estado,created_at,detraccion_id)
+  values('tes_spot6_11','emp_2000000000','egreso','Pago tributos temporal',10,'PEN',date '2026-09-24','cb_spot6_bn','tributo','tributo_spot6_11','registrado',now(),null);
+  raise notice 'CASO_11|egreso_cuenta_BN_sin_detraccion=aceptado';
+
+  insert into public.movimientos_tesoreria(id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria_id,vinculo_tipo,vinculo_id,estado,created_at,detraccion_id)
+  values('tes_spot6_12','emp_2000000000','ingreso','Transferencia fondos temporal',10,'PEN',date '2026-09-24','cb_spot6_bn','transferencia','transferencia_spot6_12','registrado',now(),null);
+  raise notice 'CASO_12|ingreso_no_cxc_cuenta_BN_sin_detraccion=aceptado';
+
+  begin
+    insert into public.movimientos_tesoreria(id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria_id,vinculo_tipo,vinculo_id,estado,created_at,detraccion_id)
+    values('tes_spot6_13','emp_2000000000','ingreso','Cobro CxC temporal',10,'PEN',date '2026-09-24','cb_spot6_bn','cxc','cxc_spot6_trigger_13','registrado',now(),null);
+  exception when others then e:=sqlerrm; end;
+  if e not like 'Un cobro normal%' then raise exception 'CASO_13|mensaje=%',e; end if;
+  raise notice 'CASO_13|ingreso_cxc_cuenta_BN_sin_detraccion=rechazado|mensaje=%',e;
+
+  begin
+    insert into public.movimientos_tesoreria(id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria_id,vinculo_tipo,vinculo_id,estado,created_at,detraccion_id)
+    values('tes_spot6_14','emp_2000000000','ingreso','Detraccion temporal',10,'PEN',date '2026-09-24','cb_299412','cxc','cxc_spot6_trigger_14','registrado',now(),gen_random_uuid());
+  exception when others then e:=sqlerrm; end;
+  if e not like 'La cuenta bancaria del movimiento no es%' then raise exception 'CASO_14|mensaje=%',e; end if;
+  raise notice 'CASO_14|detraccion_cuenta_no_marcada=rechazado|mensaje=%',e;
 end;
 $test$;
 

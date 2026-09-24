@@ -26,7 +26,9 @@ begin
        or coalesce(v_cuenta.es_cuenta_detracciones, false) is not true then
       raise exception 'La cuenta bancaria del movimiento no es una cuenta de detracciones de la misma empresa.';
     end if;
-  elsif coalesce(v_cuenta.es_cuenta_detracciones, false) is true then
+  elsif coalesce(v_cuenta.es_cuenta_detracciones, false) is true
+        and new.tipo = 'ingreso'
+        and new.vinculo_tipo = 'cxc' then
     raise exception 'Un cobro normal no puede registrarse en una cuenta de detracciones.';
   end if;
 
@@ -353,4 +355,3 @@ revoke all on function public.registrar_cobro_cxc_atomico(text, text, jsonb, jso
 grant execute on function public.registrar_cobro_cxc_atomico(text, text, jsonb, jsonb, jsonb) to authenticated;
 
 select pg_notify('pgrst', 'reload schema');
-
