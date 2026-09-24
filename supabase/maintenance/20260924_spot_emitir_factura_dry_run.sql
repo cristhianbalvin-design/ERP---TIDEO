@@ -145,7 +145,7 @@ begin
     jsonb_build_object('tipo_cambio_detraccion',v_tc,'tipo_cambio_fuente','referencial'));
   select * into d from public.detracciones where factura_id='fac_spot_t09';
   if d.tipo_cambio <> v_tc or d.monto_detraccion_origen <> 120 or d.monto_detraccion_soles <> round(1000*v_tc*12/100,0) then raise exception 'CASO_9|conversion_incorrecta'; end if;
-  raise notice 'CASO_9|usd_inverso=1/%=%.6f|origen=120.00|soles=%',v_usd,v_tc,d.monto_detraccion_soles;
+  raise notice 'CASO_9|usd_inverso=1/%=%|origen=120.00|soles=%',v_usd,to_char(v_tc,'FM999990.000000'),d.monto_detraccion_soles;
 end $$;
 
 \echo '--- caso 10: boleta sobre umbral ---'
