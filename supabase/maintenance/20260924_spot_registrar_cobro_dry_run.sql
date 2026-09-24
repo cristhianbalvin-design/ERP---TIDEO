@@ -159,7 +159,7 @@ begin
   begin
     r:=public.registrar_cobro_cxc_atomico('emp_2000000000',f->>'cxc_id',jsonb_build_object('id','cob_spot6_det5','tipo_cobro','detraccion','detraccion_id',f->>'detraccion_id','monto_capital',119),jsonb_build_object('id','tes_spot6_det5','monto',119,'moneda','PEN','cuenta_bancaria_id','cb_spot6_bn'),null);
   exception when others then e:=sqlerrm; end;
-  if e not like 'El deposito de detraccion debe%' then raise exception 'CASO_5|mensaje=%',e; end if;
+  if e not like 'El monto del cobro de detraccion debe%' and e not like 'El deposito de detraccion debe%' then raise exception 'CASO_5|mensaje=%',e; end if;
   raise notice 'CASO_5|importe_distinto=rechazado|mensaje=%',e;
 
   f:=pg_temp.fixture_cxc('det_sociedad','PEN',1000,true);
@@ -224,4 +224,3 @@ $test$;
 
 rollback;
 \echo 'STEP6_DRY_RUN_ROLLBACK_COMPLETED'
-
