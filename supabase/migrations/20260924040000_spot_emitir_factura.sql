@@ -36,6 +36,7 @@ declare
   v_cxc public.cxc%rowtype;
   v_os public.os_clientes%rowtype;
   v_items jsonb := case when jsonb_typeof(p_payload -> 'items') = 'array' then p_payload -> 'items' else '[]'::jsonb end;
+  v_aplica_detraccion boolean := false;
   v_item jsonb;
   v_servicio_id text;
   v_material_id text;
