@@ -7552,6 +7552,17 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
   const saldoPendiente = Math.max(0, totalOC - totalAnticipado);
   const pctAnticipado = totalOC > 0 ? Math.round(totalAnticipado / totalOC * 100) : 0;
   const estadoLiberable = ['emitida', 'confirmada', 'en_transito', 'recibida_parcial'].includes(String(ordenActual.estado || '').toLowerCase());
+  const cantidadActualLiberacion = Number(lineaLiberacion?.cantidad || 0);
+  const cantidadRecibidaLiberacion = lineaLiberacion
+    ? cantidadRecibidaPorItemOc(recepciones, ordenActual.id, lineaLiberacion)
+    : 0;
+  const maxCantidadLiberar = Math.max(0, cantidadActualLiberacion - cantidadRecibidaLiberacion);
+  const cantidadIngresadaLiberacion = Number(formLiberacion.cantidad || 0);
+  const cantidadEsperadaRestante = Math.max(
+    cantidadRecibidaLiberacion,
+    cantidadActualLiberacion - cantidadIngresadaLiberacion
+  );
+  const excedeSaldoLiberacion = cantidadIngresadaLiberacion > maxCantidadLiberar;
 
   const guardarAnticipo = async e => {
     e.preventDefault();
@@ -7587,8 +7598,10 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
       addToast?.('No se puede liberar esta línea porque no tiene SOLPE de origen identificable.');
       return;
     }
-    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > cantidadActual) {
-      addToast?.(`Indica una cantidad mayor que cero y no mayor a ${cantidadActual}.`);
+    const cantidadRecibida = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, lineaLiberacion);
+    const maxLiberable = Math.max(0, cantidadActual - cantidadRecibida);
+    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > maxLiberable) {
+      addToast?.(`Indica una cantidad mayor que cero y no mayor al saldo pendiente de ${maxLiberable}.`);
       return;
     }
     if (!motivo) {
@@ -7896,7 +7909,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                 <div className="eyebrow">{ordenActual.codigo}</div>
                 <div style={{fontWeight:700, fontSize:20}}>Liberar cantidad pendiente</div>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
-                  {lineaLiberacion.descripcion || lineaLiberacion.codigo || 'Línea de OC'} · Cantidad actual: {lineaLiberacion.cantidad}
+                  {lineaLiberacion.descripcion || lineaLiberacion.codigo || 'Línea de OC'} · Pedido: {cantidadActualLiberacion} · Recibido: {cantidadRecibidaLiberacion} · Saldo: {maxCantidadLiberar}
                 </div>
               </div>
               <button className="icon-btn" type="button" onClick={cerrarLiberacion}>{I.x}</button>
@@ -7908,16 +7921,19 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                   className="input"
                   type="number"
                   min="0.01"
-                  max={Number(lineaLiberacion.cantidad || 0)}
+                  max={maxCantidadLiberar}
                   step="0.01"
                   required
                   value={formLiberacion.cantidad}
                   onChange={e => setFormLiberacion(v => ({...v, cantidad: e.target.value}))}
-                  placeholder={`Máx. ${Number(lineaLiberacion.cantidad || 0)}`}
+                  placeholder={`Máx. ${maxCantidadLiberar}`}
                 />
                 <div className="text-muted" style={{fontSize:12, marginTop:4}}>
-                  La OC quedará con {Math.max(0, Number(lineaLiberacion.cantidad || 0) - Number(formLiberacion.cantidad || 0))} unidades esperadas en esta línea.
+                  La OC quedará con {cantidadEsperadaRestante} unidades esperadas en esta línea (no menos de {cantidadRecibidaLiberacion} ya recibidas).
                 </div>
+                {excedeSaldoLiberacion && <div style={{color:'var(--danger)', fontSize:12, marginTop:4}}>
+                  No puedes liberar más de {maxCantidadLiberar}: es el saldo pendiente real de esta línea.
+                </div>}
               </div>
               <div className="input-group">
                 <label>Motivo <span style={{color:'var(--danger)'}}>*</span></label>
@@ -7932,7 +7948,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end', gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarLiberacion} disabled={savingLiberacion}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingLiberacion}>
+                <button type="submit" className="btn btn-primary" disabled={savingLiberacion || excedeSaldoLiberacion}>
                   {savingLiberacion ? 'Liberando...' : 'Liberar cantidad'}
                 </button>
               </div>
