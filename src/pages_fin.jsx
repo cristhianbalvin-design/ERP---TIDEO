@@ -1620,17 +1620,17 @@ function CxC() {
                     {pagadoPrev > 0 && (
                       <div style={{display:'flex',justifyContent:'space-between'}}>
                         <span style={{fontSize:13,color:'var(--fg-muted)'}}>Ya pagado</span>
-                        <span style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>{moneyCurrency(pagadoPrev, cobroSel.moneda)}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:'var(--green)'}}>{montoReservado > 0 ? moneySpotCurrency(pagadoPrev, cobroSel.moneda) : moneyCurrency(pagadoPrev, cobroSel.moneda)}</span>
                       </div>
                     )}
                     <div style={{display:'flex',justifyContent:'space-between'}}>
                       <span style={{fontSize:13,color:'var(--fg-muted)'}}>Este cobro</span>
-                      <span style={{fontSize:13,fontWeight:600,color:hayMonto?'var(--cyan)':'var(--fg-muted)'}}>{hayMonto ? moneyCurrency(montoForm, cobroSel.moneda) : '—'}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:hayMonto?'var(--cyan)':'var(--fg-muted)'}}>{hayMonto ? (montoReservado > 0 ? moneySpotCurrency(montoForm, cobroSel.moneda) : moneyCurrency(montoForm, cobroSel.moneda)) : '—'}</span>
                     </div>
                     <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--border-subtle)',paddingTop:7,marginTop:2}}>
                       <span style={{fontSize:13,fontWeight:600}}>Saldo pendiente tras cobro</span>
                       <span style={{fontSize:14,fontWeight:700,color:saldoTras>0?'var(--orange)':'var(--green)'}}>
-                         {hayMonto ? (montoReservado > 0 ? moneySpotCurrency(saldoTras, cobroSel.moneda) : moneyCurrency(saldoTras, cobroSel.moneda)) : moneyCurrency(saldoActual, cobroSel.moneda)}
+                         {hayMonto ? (montoReservado > 0 ? moneySpotCurrency(saldoTras, cobroSel.moneda) : moneyCurrency(saldoTras, cobroSel.moneda)) : (montoReservado > 0 ? moneySpotCurrency(saldoActual, cobroSel.moneda) : moneyCurrency(saldoActual, cobroSel.moneda))}
                       </span>
                     </div>
                     {diasMoraDe(cobroSel) > 0 && (
