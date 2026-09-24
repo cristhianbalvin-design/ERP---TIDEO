@@ -8767,15 +8767,17 @@ function CxP() {
                       {tabCxP === 'tributos' ? (c.tributo_formulario || c.factura_numero || '-') : <strong>{money(saldoDe(c), symOf(c.moneda))}</strong>}
                     </td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
-                      {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:4}} title="Ver comprobante adjunto">{I.file}</a>}
-                      {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="btn btn-sm btn-secondary" style={{marginRight:6}} title="Ver constancia de suspensión">{I.doc}</a>}
-                      {saldoDe(c) > 0 && <button className="btn btn-sm btn-primary" onClick={() => abrirFicha(c)}>Pagar</button>}
-                      {puedeAnularCxP && !['pagada','pago_parcial','anulada'].includes(String(c.estado || '').toLowerCase()) && pagosDe(c.id).length === 0 && (
-                        <button className="icon-btn" title="Anular: conservar el registro en el historial" style={{color:'var(--orange)',marginLeft:6}} onClick={e => abrirAccionCxP(c, 'anular', e)}>{I.alertCircle}</button>
-                      )}
-                      {puedeEliminarCxP && cxpEsPreliminar(c) && (
-                        <button className="icon-btn" title="Eliminar: borrar el registro preliminar" style={{color:'var(--danger)',marginLeft:4}} onClick={e => abrirAccionCxP(c, 'eliminar', e)}>{I.trash}</button>
-                      )}
+                      <div className="cxp-row-actions" aria-label={`Acciones de CxP ${c.id}`}>
+                        {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver comprobante adjunto" title="Ver comprobante adjunto">{I.file}</a>}
+                        {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver constancia de suspensión" title="Ver constancia de suspensión">{I.doc}</a>}
+                        {saldoDe(c) > 0 && <button type="button" className="icon-btn cxp-action-icon" aria-label={`Pagar CxP ${c.id}`} title="Pagar CxP" style={{color:'var(--green)'}} onClick={() => abrirFicha(c)}>{I.dollar}</button>}
+                        {puedeAnularCxP && !['pagada','pago_parcial','anulada'].includes(String(c.estado || '').toLowerCase()) && pagosDe(c.id).length === 0 && (
+                          <button type="button" className="icon-btn cxp-action-icon" aria-label={`Anular CxP ${c.id}: conserva el historial`} title="Anular: conservar el registro en el historial" style={{color:'var(--orange)'}} onClick={e => abrirAccionCxP(c, 'anular', e)}>{I.alertCircle}</button>
+                        )}
+                        {puedeEliminarCxP && cxpEsPreliminar(c) && (
+                          <button type="button" className="icon-btn cxp-action-icon" aria-label={`Eliminar CxP preliminar ${c.id}: borra el registro`} title="Eliminar: borrar el registro preliminar" style={{color:'var(--danger)'}} onClick={e => abrirAccionCxP(c, 'eliminar', e)}>{I.trash}</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

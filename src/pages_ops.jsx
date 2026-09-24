@@ -7271,9 +7271,6 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                       {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
                         {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
                       </span> : <span className="badge badge-gray">CxP: no registrada</span>}
-                      {!cxpResumen && ocEsVinculableCxP(o) && <button className="btn btn-sm btn-secondary" onClick={event => { event.stopPropagation(); onRegistrarCxP(o); }}>
-                        Registrar CxP
-                      </button>}
                     </div>
                   </td>
                   <td>{o.fecha_emision}</td>
@@ -7285,30 +7282,52 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                     <span className="text-muted" style={{ fontSize: 11 }}>{o.porcentaje_recibido || 0}%</span>
                   </td>
                   <td>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={event => {
-                        event.stopPropagation();
-                        esBorrador ? onEdit(o) : onSel(o);
-                      }}
-                    >
-                      {esBorrador ? 'Editar' : 'Ver detalle'}
-                    </button>
-                    {ocEsRecepcionable(o) ? (
+                    <div className="oc-actions" aria-label={`Acciones de ${o.codigo}`}>
                       <button
-                        className="btn btn-sm btn-ghost"
+                        type="button"
+                        className="oc-action-icon btn btn-secondary"
+                        aria-label={esBorrador ? `Editar ${o.codigo}` : `Ver detalle de ${o.codigo}`}
+                        title={esBorrador ? 'Editar OC' : 'Ver detalle'}
                         onClick={event => {
                           event.stopPropagation();
-                          onRecepcion(o);
+                          esBorrador ? onEdit(o) : onSel(o);
                         }}
                       >
-                        Registrar recepcion
+                        {esBorrador ? I.edit : I.eye}
                       </button>
-                    ) : (
-                      <span className="text-muted" style={{ fontSize: 11, marginLeft: 8 }} title="La OC debe estar emitida y no cerrada o anulada">
-                        Recepcion no disponible
-                      </span>
-                    )}
+                      {ocEsRecepcionable(o) ? (
+                        <button
+                          type="button"
+                          className="oc-action-icon btn btn-ghost"
+                          aria-label={`Registrar recepción de ${o.codigo}`}
+                          title="Registrar recepción"
+                          onClick={event => {
+                            event.stopPropagation();
+                            onRecepcion(o);
+                          }}
+                        >
+                          {I.package}
+                        </button>
+                      ) : (
+                        <span className="oc-action-icon oc-action-disabled" role="img" aria-label="Recepción no disponible" title="La OC debe estar emitida y no cerrada o anulada">
+                          {I.package}
+                        </span>
+                      )}
+                      {!cxpResumen && ocEsVinculableCxP(o) ? (
+                        <button
+                          type="button"
+                          className="oc-action-icon btn btn-secondary"
+                          aria-label={`Registrar CxP para ${o.codigo}`}
+                          title="Registrar CxP"
+                          onClick={event => {
+                            event.stopPropagation();
+                            onRegistrarCxP(o);
+                          }}
+                        >
+                          {I.receipt}
+                        </button>
+                      ) : <span className="oc-action-placeholder" aria-hidden="true" />}
+                    </div>
                   </td>
                 </tr>
               );
@@ -7538,18 +7557,24 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
               {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
             </span> : <>
               <span className="badge badge-gray">CxP: no registrada</span>
-              {ocEsVinculableCxP(ordenActual) && <button className="btn btn-sm btn-secondary" onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}>
-                Registrar CxP
+              {ocEsVinculableCxP(ordenActual) && <button
+                type="button"
+                className="oc-action-icon btn btn-secondary"
+                aria-label={`Registrar CxP para ${ordenActual.codigo}`}
+                title="Registrar CxP"
+                onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
+              >
+                {I.receipt}
               </button>}
             </>}
           </div>
         </div>
-        <div className="row">
-          {ordenActual.estado === 'borrador' && <button className="btn btn-secondary" onClick={() => onEdit(ordenActual)}>Editar</button>}
-          {ordenActual.estado === 'emitida' && <button className="btn btn-secondary" onClick={onConfirmar} disabled={confirmando}>{confirmando ? 'Confirmando...' : 'Marcar confirmada'}</button>}
+        <div className="oc-detail-actions" aria-label={`Acciones de ${ordenActual.codigo}`}>
+          {ordenActual.estado === 'borrador' && <button type="button" className="oc-action-icon btn btn-secondary" aria-label={`Editar ${ordenActual.codigo}`} title="Editar OC" onClick={() => onEdit(ordenActual)}>{I.edit}</button>}
+          {ordenActual.estado === 'emitida' && <button type="button" className="oc-action-icon btn btn-secondary" aria-label="Marcar OC como confirmada" title={confirmando ? 'Confirmando...' : 'Marcar confirmada'} onClick={onConfirmar} disabled={confirmando}>{I.check}</button>}
           {ordenActual.estado === 'confirmada' && <span className="badge badge-green" style={{padding:'6px 12px'}}>OC Confirmada</span>}
-          <button className="btn btn-secondary" data-local-form="true" onClick={() => setPanelAnticipo(true)}>{I.plus} Registrar anticipo</button>
-          {ocEsRecepcionable(ordenActual) ? <button className="btn btn-primary" data-local-form="true" onClick={onRecepcion}>Registrar recepcion</button> : <span className="text-muted" style={{fontSize:12}}>{ordenActual.estado === 'borrador' ? 'Emite la OC antes de recepcionar' : 'Recepcion no disponible para este estado'}</span>}
+          <button type="button" className="oc-action-icon btn btn-secondary" data-local-form="true" aria-label="Registrar anticipo" title="Registrar anticipo" onClick={() => setPanelAnticipo(true)}>{I.dollar}</button>
+          {ocEsRecepcionable(ordenActual) ? <button type="button" className="oc-action-icon btn btn-primary" data-local-form="true" aria-label="Registrar recepción" title="Registrar recepción" onClick={onRecepcion}>{I.package}</button> : <span className="oc-action-icon oc-action-disabled" role="img" aria-label="Recepción no disponible" title={ordenActual.estado === 'borrador' ? 'Emite la OC antes de recepcionar' : 'Recepción no disponible para este estado'}>{I.package}</span>}
         </div>
       </div>
 
