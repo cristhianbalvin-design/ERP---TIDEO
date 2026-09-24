@@ -496,7 +496,7 @@ function CxC() {
   useEffect(() => {
     const ids = cxcVista.map(row => row.id).filter(Boolean);
     if (!ids.length || !isSupabaseConfigured()) { setDetraccionesCxc([]); return; }
-    getSupabaseClient().then(sb => sb.from('detracciones').select('*').in('cxc_id', ids).order('created_at', { ascending: true }))
+    getSupabaseClient().then(sb => sb.from('detracciones').select('*').in('cxc_id', ids).order('creado_en', { ascending: true }))
       .then(({ data, error }) => { if (error) throw error; setDetraccionesCxc(data || []); })
       .catch(error => console.warn('[spot] No se pudo cargar detracciones de CxC:', error?.message));
   }, [cxcVista.map(row => row.id).join('|')]);
@@ -667,7 +667,7 @@ function CxC() {
     if (e) e.stopPropagation();
     setCobroSel(c);
     const pendiente = pendienteSpotDe(c);
-    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(saldoDe(c)), monto_deposito_soles: pendiente?.monto_deposito_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
+    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(saldoDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
@@ -682,7 +682,7 @@ function CxC() {
     const esDetraccion = formCobro.tipo_cobro === 'detraccion';
     const maxNormal = Math.max(0, saldo - Number(pendiente?.monto_detraccion_origen || 0));
     if (monto <= 0) return;
-    if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_deposito_soles))) {
+    if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_detraccion_soles))) {
       setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
       return;
     }
@@ -1015,7 +1015,7 @@ function CxC() {
 
         {fichaTab === 'detracciones' && (
           <div className="card card-body">
-            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{money(row.monto_deposito_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td></tr>)}</tbody></table></div>}
+            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{money(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td></tr>)}</tbody></table></div>}
           </div>
         )}
 
@@ -1499,12 +1499,12 @@ function CxC() {
             <form className="side-panel-body" onSubmit={guardarCobro}>
               <div className="input-group">
                 <label>Tipo de cobro</label>
-                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(saldoDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_deposito_soles || '') : ''})); setMontoError(''); }}>
+                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(saldoDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : ''})); setMontoError(''); }}>
                   <option value="normal">Normal</option>
                   <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Detracción</option>
                 </select>
               </div>
-              {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneyCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {money(pendienteSpotDe(cobroSel).monto_deposito_soles)}.</div>}
+              {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneyCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {money(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
               {(() => {
                 const montoForm        = Number(formCobro.monto || 0);
                 const pagadoPrev       = pagadoDe(cobroSel);
@@ -4161,7 +4161,7 @@ function Facturacion() {
 
   useEffect(() => {
     if (!selFac || !isSupabaseConfigured()) { setDetraccionesFactura([]); return; }
-    getSupabaseClient().then(sb => sb.from('detracciones').select('*').eq('factura_id', selFac).order('created_at', { ascending: true }))
+    getSupabaseClient().then(sb => sb.from('detracciones').select('*').eq('factura_id', selFac).order('creado_en', { ascending: true }))
       .then(({ data, error }) => { if (error) throw error; setDetraccionesFactura(data || []); })
       .catch(error => console.warn('[spot] No se pudo cargar detracciones de la factura:', error?.message));
   }, [selFac]);
@@ -5204,7 +5204,7 @@ function Facturacion() {
 
         <div className="card" style={{padding:16,marginBottom:16}}>
           <div style={{fontWeight:700,marginBottom:10}}>Detracción</div>
-          {!detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{money(row.monto_deposito_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
+          {!detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{money(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
         </div>
 
         {f.estado === 'anulada' && f.motivo_anulacion && (
