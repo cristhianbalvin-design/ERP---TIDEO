@@ -519,6 +519,22 @@ function CxC() {
       });
     return () => { cancelled = true; };
   }, [cxcVista.map(row => row.id).join('|')]);
+  const refrescarDetraccionesCxc = async () => {
+    const ids = cxcVista.map(row => row.id).filter(Boolean);
+    if (!ids.length || !isSupabaseConfigured()) return;
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.from('detracciones').select('*').in('cxc_id', ids).order('creado_en', { ascending: true });
+      if (error) throw error;
+      setDetraccionesCxc(data || []);
+      setDetraccionesCxcCargadas(true);
+      setDetraccionesCxcError('');
+    } catch (error) {
+      setDetraccionesCxcCargadas(false);
+      setDetraccionesCxcError('No se pudieron cargar las detracciones.');
+      console.warn('[spot] No se pudo refrescar detracciones de CxC:', error?.message);
+    }
+  };
   const obligacionesCxcDe = c => detraccionesCxc.filter(row => row.cxc_id === c?.id);
   const obligacionesPendientesSpotDe = c => obligacionesCxcDe(c).filter(row => row.direccion === 'venta' && row.estado === 'pendiente');
   const pendienteSpotDe = c => obligacionesPendientesSpotDe(c)[0] || null;
@@ -779,6 +795,7 @@ function CxC() {
     setSavingCobro(true);
     try {
       await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, detraccion_id: pendiente?.id || null, archivo_adjunto: archivoCobro, p_comision: true });
+      await refrescarDetraccionesCxc();
       setPanelCobro(false);
       setCobroSel(null);
       setArchivoCobro(null);
