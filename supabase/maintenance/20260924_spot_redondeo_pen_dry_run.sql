@@ -179,5 +179,38 @@ begin
   raise notice 'CASO_8|normal=1038+detraccion=142|cxc_saldo=0|obligacion=depositada|comisiones=2';
 end;$test$;
 
+\echo '--- caso 10: camino real de pantalla, PEN 1180 y deposito 142 ---'
+do $test$
+declare r jsonb; f record; d record; m record;
+begin
+  r:=pg_temp.spot_emit_round('fac_round_10','F-ROUND-10','factura',1000,180,1180,'PEN',jsonb_build_array(jsonb_build_object('servicio_id','srv_c529a00515fe4defb6')));
+  perform public.registrar_cobro_cxc_atomico(
+    'emp_2000000000','cxc_round_10',
+    jsonb_build_object('id','cob_round_10n','monto_capital',1038,'medio_pago','Transferencia'),
+    jsonb_build_object('id','tes_round_10n','monto',1038,'moneda','PEN','cuenta_bancaria_id','cb_299412'),
+    null
+  );
+  r:=public.registrar_cobro_cxc_atomico(
+    'emp_2000000000','cxc_round_10',
+    jsonb_build_object(
+      'id','cob_round_10d','tipo_cobro','detraccion',
+      'detraccion_id',(select id::text from public.detracciones where factura_id='fac_round_10' and estado='pendiente'),
+      'monto_capital',142,'monto_deposito_soles',142,'medio_pago','Detraccion'
+    ),
+    jsonb_build_object(
+      'id','tes_round_10d','monto',142,'moneda','PEN','cuenta_bancaria_id','cb_round_bn',
+      'tc_aplicado',1,'monto_en_moneda_cuenta',142
+    ),
+    null
+  );
+  select * into f from public.cxc where id='cxc_round_10';
+  select * into d from public.detracciones where factura_id='fac_round_10';
+  select * into m from public.movimientos_tesoreria where id='tes_round_10d';
+  if f.saldo<>0 or d.estado<>'depositada' or m.monto<>142 or m.moneda<>'PEN' or m.cuenta_bancaria_id<>'cb_round_bn' then
+    raise exception 'CASO_10|resultado_incorrecto';
+  end if;
+  raise notice 'CASO_10|factura=1180|normal=1038|monto_cobro=142|monto_deposito_soles=142|cxc=0|obligacion=depositada|movimiento=142_PEN|cuenta=cb_round_bn';
+end;$test$;
+
 rollback;
 \echo '--- ROLLBACK completado: sin cambios persistentes ---'
