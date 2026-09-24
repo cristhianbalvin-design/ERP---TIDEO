@@ -1,6 +1,6 @@
 -- Paso 8: importacion masiva de CxC con SPOT.
 -- Se conserva el contrato existente; los campos nuevos son opcionales:
--- codigo_spot, cuenta_bancaria_id y cuenta_detraccion_id.
+-- codigo_spot y cuenta_detraccion_id.
 
 alter function public.importar_cxc_masiva_fila_base(jsonb)
   rename to importar_cxc_masiva_fila_base_impl;
@@ -76,7 +76,6 @@ declare
   v_moneda text := upper(coalesce(nullif(btrim(p_payload ->> 'moneda'), ''), 'PEN'));
   v_numero_operacion text := nullif(btrim(p_payload ->> 'numero_operacion'), '');
   v_codigo_spot text := nullif(btrim(p_payload ->> 'codigo_spot'), '');
-  v_cuenta_neta_id text := nullif(btrim(p_payload ->> 'cuenta_bancaria_id'), '');
   v_cuenta_det_id text := nullif(btrim(p_payload ->> 'cuenta_detraccion_id'), '');
   v_payload_base jsonb;
   v_resultado jsonb;
@@ -86,12 +85,8 @@ declare
   v_cobro_detraccion public.cobros_cxc%rowtype;
   v_detraccion public.detracciones%rowtype;
   v_spot public.spot_catalogo%rowtype;
-  v_cuenta_neta public.cuentas_bancarias%rowtype;
   v_cuenta_det public.cuentas_bancarias%rowtype;
-  v_movimiento_neto public.movimientos_tesoreria%rowtype;
-  v_movimiento_det public.movimientos_tesoreria%rowtype;
   v_base_soles numeric(18,2);
-  v_monto_soles numeric(18,2);
 begin
   if v_monto_detraccion < 0 then
     raise exception 'Monto de detraccion invalido.';
@@ -134,23 +129,6 @@ begin
     raise exception 'La importacion no puede tener retencion y detraccion al mismo tiempo.';
   end if;
 
-  if v_cuenta_neta_id is null then
-    select cb.id into v_cuenta_neta_id
-    from public.cuentas_bancarias cb
-    where cb.empresa_id = v_factura.empresa_id
-      and cb.sociedad_id is not distinct from v_factura.sociedad_id
-      and cb.nombre = nullif(btrim(p_payload ->> 'cuenta_bancaria'), '')
-    limit 1;
-  end if;
-  if v_cuenta_neta_id is not null then
-    select * into v_cuenta_neta from public.cuentas_bancarias where id=v_cuenta_neta_id;
-    if not found or v_cuenta_neta.empresa_id is distinct from v_factura.empresa_id
-       or v_cuenta_neta.sociedad_id is distinct from v_factura.sociedad_id
-       or coalesce(v_cuenta_neta.es_cuenta_detracciones, false) then
-      raise exception 'La cuenta del cobro neto no es una cuenta normal de la misma empresa y sociedad.';
-    end if;
-  end if;
-
   if v_cuenta_det_id is not null then
     select * into v_cuenta_det from public.cuentas_bancarias where id=v_cuenta_det_id;
     if not found or v_cuenta_det.empresa_id is distinct from v_factura.empresa_id
@@ -168,7 +146,6 @@ begin
   returning * into v_cobro_neto;
 
   v_base_soles := round(coalesce(v_factura.total, 0), 2);
-  v_monto_soles := case when v_moneda='PEN' then v_monto_detraccion else v_monto_detraccion end;
   insert into public.detracciones(
     direccion,factura_id,cxc_id,empresa_id,sociedad_id,spot_catalogo_id,codigo_spot,porcentaje,
     base_soles,monto_detraccion_soles,monto_detraccion_origen,moneda_origen,origen,estado,cuenta_destino_id
@@ -194,37 +171,12 @@ begin
   where id=v_factura.id
   returning * into v_factura;
 
-  -- El movimiento neto se separa del cobro de detraccion y conserva el monto
-  -- neto del payload. Sin cuenta normal identificable no se inventa una cuenta.
-  if v_cuenta_neta_id is not null then
-    insert into public.movimientos_tesoreria(
-      id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria,cuenta_bancaria_id,
-      tc_aplicado,monto_en_moneda_cuenta,referencia,vinculo_tipo,vinculo_id,estado,created_at
-    ) values (
-      'tes_imp_' || substr(replace(gen_random_uuid()::text,'-',''),1,20),v_factura.empresa_id,'ingreso',
-      coalesce(nullif(btrim(p_payload ->> 'descripcion'), ''),'Cobro neto importado CxC'),v_monto_pagado,v_moneda,
-      coalesce(v_fecha_cobro,v_factura.fecha_emision),nullif(btrim(p_payload ->> 'cuenta_bancaria'),''),v_cuenta_neta_id,
-      1,v_monto_pagado,v_numero_operacion,'cxc',v_cxc.id,'registrado',now()
-    ) returning * into v_movimiento_neto;
-  end if;
-
-  if v_cuenta_det_id is not null then
-    insert into public.movimientos_tesoreria(
-      id,empresa_id,tipo,descripcion,monto,moneda,fecha,cuenta_bancaria,cuenta_bancaria_id,
-      tc_aplicado,monto_en_moneda_cuenta,referencia,vinculo_tipo,vinculo_id,estado,created_at,detraccion_id
-    ) values (
-      'tes_imp_det_' || substr(replace(gen_random_uuid()::text,'-',''),1,20),v_factura.empresa_id,'ingreso',
-      'Deposito detraccion importado',v_monto_soles,'PEN',coalesce(v_fecha_cobro,v_factura.fecha_emision),
-      v_cuenta_det.nombre,v_cuenta_det.id,1,v_monto_soles,v_numero_operacion,'cxc',v_cxc.id,'registrado',now(),v_detraccion.id
-    ) returning * into v_movimiento_det;
-  end if;
-
   return v_resultado || jsonb_build_object(
     'factura',to_jsonb(v_factura),
     'cobro',to_jsonb(v_cobro_neto),
     'cobros',jsonb_build_array(to_jsonb(v_cobro_neto),to_jsonb(v_cobro_detraccion)),
     'detraccion',to_jsonb(v_detraccion),
-    'movimientos',jsonb_build_array(case when v_movimiento_neto.id is null then null else to_jsonb(v_movimiento_neto) end,case when v_movimiento_det.id is null then null else to_jsonb(v_movimiento_det) end)
+    'movimientos','[]'::jsonb
   );
 end;
 $$;

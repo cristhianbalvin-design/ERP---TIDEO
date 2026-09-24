@@ -6,12 +6,23 @@
 begin;
 \ir 20260924_spot_importar_cxc_body.sql
 
-create or replace function pg_temp.importar(p_tag text,p_ruc text,p_numero text,p_monto_pagado numeric,p_monto_detraccion numeric,p_codigo text default null,p_cuenta_det text default null,p_cuenta_neta text default 'cb_299412',p_cebe text default 'CEBE-000') returns jsonb language sql as $$
+select p.oid::regprocedure as funcion, p.proacl,
+       has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated_execute,
+       has_function_privilege('anon',p.oid,'EXECUTE') as anon_execute,
+       has_function_privilege('postgres',p.oid,'EXECUTE') as postgres_execute,
+       has_function_privilege('service_role',p.oid,'EXECUTE') as service_role_execute
+from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+where n.nspname='public'
+  and p.proname in ('importar_cxc_masiva_fila','importar_cxc_masiva_fila_base','importar_cxc_masiva_fila_base_impl')
+  and pg_get_function_identity_arguments(p.oid)='p_payload jsonb'
+order by p.proname;
+
+create or replace function pg_temp.importar(p_tag text,p_ruc text,p_numero text,p_monto_pagado numeric,p_monto_detraccion numeric,p_codigo text default null,p_cuenta_det text default null,p_cebe text default 'CEBE-000') returns jsonb language sql as $$
   select public.importar_cxc_masiva_fila(jsonb_build_object(
     'empresa_id','emp_2000000000','ruc_cliente',p_ruc,'razon_social','Cliente SPOT 8 '||p_tag,'tipo_documento','factura','numero',p_numero,
     'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','moneda','PEN','subtotal',847.46,'igv',152.54,'monto_total',1000,
     'monto_pagado',p_monto_pagado,'monto_detraccion',p_monto_detraccion,'codigo_spot',p_codigo,'fecha_cobro','2026-09-24','medio_pago','Transferencia',
-    'cuenta_bancaria','INTERBANK SOLES','cuenta_bancaria_id',p_cuenta_neta,'cuenta_detraccion_id',p_cuenta_det,
+    'cuenta_bancaria','INTERBANK SOLES','cuenta_detraccion_id',p_cuenta_det,
     'numero_operacion','OP-SPOT8-'||p_tag,'centro_beneficio_codigo',p_cebe,'glosa','Prueba Paso 8'
   ));
 $$;
@@ -50,29 +61,29 @@ end;$test$;
 
 \echo '--- caso 2: detraccion sin codigo ni cuenta BN ---'
 do $test$
-declare r jsonb; d record; c record; m record; n integer;
+declare r jsonb; d record; c record; n integer;
 begin
-  r:=pg_temp.importar('sin_codigo','20222222222','F-SPOT8-02',100,120,null,null,'cb_299412');
-  select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select * into c from public.cobros_cxc where cxc_id=r->'cxc'->>'id' and detraccion_id is not null; select * into m from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id'; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
-  if d.estado<>'depositada' or d.origen<>'importacion' or d.spot_catalogo_id is not null or c.detraccion_id is null or m.monto<>100 or n<>1 then raise exception 'CASO_2|resultado_incorrecto'; end if;
-  raise notice 'CASO_2|codigo=NULL|obligacion=depositada|cobro_vinculado=1|movimiento_neto=100|movimientos=1';
+  r:=pg_temp.importar('sin_codigo','20222222222','F-SPOT8-02',100,120,null,null);
+  select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select * into c from public.cobros_cxc where cxc_id=r->'cxc'->>'id' and detraccion_id is not null; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
+  if d.estado<>'depositada' or d.origen<>'importacion' or d.spot_catalogo_id is not null or c.detraccion_id is null or n<>0 then raise exception 'CASO_2|resultado_incorrecto'; end if;
+  raise notice 'CASO_2|codigo=NULL|obligacion=depositada|cobro_vinculado=1|movimientos=0';
 end;$test$;
 
 \echo '--- caso 3: codigo vigente y cuenta BN ---'
 do $test$
-declare r jsonb; d record; m record; n integer;
+declare r jsonb; d record; n integer;
 begin
-  r:=pg_temp.importar('con_codigo','20222222223','F-SPOT8-03',100,120,'012','cb_spot8_bn','cb_299412');
-  select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select * into m from public.movimientos_tesoreria where detraccion_id=d.id; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
-  if d.codigo_spot<>'012' or d.spot_catalogo_id is null or d.estado<>'depositada' or m.monto<>120 or m.cuenta_bancaria_id<>'cb_spot8_bn' or n<>2 then raise exception 'CASO_3|resultado_incorrecto'; end if;
-  raise notice 'CASO_3|codigo=012|vigente=1|obligacion=depositada|movimiento_neto=100|movimiento_detraccion=120|cuenta=BN|detraccion_id=1';
+  r:=pg_temp.importar('con_codigo','20222222223','F-SPOT8-03',100,120,'012','cb_spot8_bn');
+  select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
+  if d.codigo_spot<>'012' or d.spot_catalogo_id is null or d.estado<>'depositada' or d.cuenta_destino_id<>'cb_spot8_bn' or n<>0 then raise exception 'CASO_3|resultado_incorrecto'; end if;
+  raise notice 'CASO_3|codigo=012|vigente=1|obligacion=depositada|cuenta_destino_id=cb_spot8_bn|movimientos=0';
 end;$test$;
 
 \echo '--- caso 4: codigo sin vigencia ---'
 do $test$
 declare e text;
 begin
-  begin perform pg_temp.importar('codigo_futuro','20222222224','F-SPOT8-04',100,120,'TST-IMP-2040',null,'cb_299412'); exception when others then e:=sqlerrm; end;
+  begin perform pg_temp.importar('codigo_futuro','20222222224','F-SPOT8-04',100,120,'TST-IMP-2040',null); exception when others then e:=sqlerrm; end;
   if e is null or e not like 'El codigo SPOT TST-IMP-2040 no tiene%' then raise exception 'CASO_4|mensaje=%',e; end if;
   raise notice 'CASO_4|codigo_sin_version_vigente=rechazado|mensaje=%',e;
 end;$test$;
@@ -81,7 +92,7 @@ end;$test$;
 do $test$
 declare e text;
 begin
-  begin perform pg_temp.importar('sociedad_bn','20222222225','F-SPOT8-05',100,120,'012','cb_spot8_bn_other','cb_299412'); exception when others then e:=sqlerrm; end;
+  begin perform pg_temp.importar('sociedad_bn','20222222225','F-SPOT8-05',100,120,'012','cb_spot8_bn_other'); exception when others then e:=sqlerrm; end;
   if e is null or e not like 'La cuenta de detracciones no es%' then raise exception 'CASO_5|mensaje=%',e; end if;
   raise notice 'CASO_5|cuenta_BN_otra_sociedad=rechazado|mensaje=%',e;
 end;$test$;
@@ -92,7 +103,7 @@ declare e text;
 begin
   insert into public.usuarios_asignaciones(empresa_id,user_id,rol_id,categoria,nivel_jerarquico,alcance_tipo,principal,activo,sociedades_ids)
   values('emp_2000000000','94c60fcb-8818-42e4-b395-31a8ff8635b1','rol_emp_2000000000_admin','admin','direccion','sociedad',false,true,array['609a2f33-d057-411f-a001-4e3e83f700d0']::uuid[]);
-  begin perform pg_temp.importar('fuera_alcance','20222222226','F-SPOT8-06',100,0,null,null,'cb_299412','CEBE-SPOT8-B'); exception when others then e:=sqlerrm; end;
+  begin perform pg_temp.importar('fuera_alcance','20222222226','F-SPOT8-06',100,0,null,null,'CEBE-SPOT8-B'); exception when others then e:=sqlerrm; end;
   if e is null or e not like 'La sociedad derivada de la importacion esta fuera%' then raise exception 'CASO_6|mensaje=%',e; end if;
   raise notice 'CASO_6|sociedad_derivada=fuera_de_alcance|rechazado|mensaje=%',e;
 end;$test$;
@@ -101,7 +112,7 @@ end;$test$;
 do $test$
 declare e text;
 begin
-  begin perform pg_temp.importar('retencion','20999999991','F-SPOT8-07',100,120,null,null,'cb_299412'); exception when others then e:=sqlerrm; end;
+  begin perform pg_temp.importar('retencion','20999999991','F-SPOT8-07',100,120,null,null); exception when others then e:=sqlerrm; end;
   if e is null or e not like 'La importacion no puede tener retencion%' then raise exception 'CASO_7|mensaje=%',e; end if;
   raise notice 'CASO_7|retencion_mas_detraccion=rechazado|mensaje=%',e;
 end;$test$;
@@ -110,10 +121,21 @@ end;$test$;
 do $test$
 declare e text;
 begin
-  begin perform pg_temp.importar('negativo','20222222227','F-SPOT8-08',100,-1,null,null,'cb_299412'); exception when others then e:=sqlerrm; end;
+  begin perform pg_temp.importar('negativo','20222222227','F-SPOT8-08',100,-1,null,null); exception when others then e:=sqlerrm; end;
   if e is null or e not like 'Monto de detraccion invalido%' then raise exception 'CASO_8|mensaje=%',e; end if;
   raise notice 'CASO_8|monto_detraccion=-1|rechazado|comportamiento_previo=conservado|mensaje=%',e;
 end;$test$;
+
+\echo '--- caso 9: funcion interna sin EXECUTE ---'
+set local role authenticated;
+do $test$
+declare e text;
+begin
+  begin perform public.importar_cxc_masiva_fila_base_impl('{}'::jsonb); exception when others then e:=sqlerrm; end;
+  if e is null or e not like '%permission denied%' then raise exception 'CASO_9|resultado_incorrecto|mensaje=%',e; end if;
+  raise notice 'CASO_9|base_impl_directa=permiso_denegado|mensaje=%',e;
+end;$test$;
+reset role;
 
 rollback;
 \echo 'STEP8_DRY_RUN_ROLLBACK_COMPLETED'
