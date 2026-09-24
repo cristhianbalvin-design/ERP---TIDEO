@@ -484,6 +484,8 @@ function CxC() {
   const [cobroSel, setCobroSel] = useState(null);
   const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', detraccion_id:'', monto:'', monto_deposito_soles:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
   const [detraccionesCxc, setDetraccionesCxc] = useState([]);
+  const [detraccionesCxcCargadas, setDetraccionesCxcCargadas] = useState(false);
+  const [detraccionesCxcError, setDetraccionesCxcError] = useState('');
   const [archivoCobro, setArchivoCobro] = useState(null);
   const [archivoCobroError, setArchivoCobroError] = useState('');
   const [montoError, setMontoError] = useState('');
@@ -495,10 +497,25 @@ function CxC() {
   );
   useEffect(() => {
     const ids = cxcVista.map(row => row.id).filter(Boolean);
-    if (!ids.length || !isSupabaseConfigured()) { setDetraccionesCxc([]); return; }
+    if (!ids.length || !isSupabaseConfigured()) { setDetraccionesCxc([]); setDetraccionesCxcCargadas(true); setDetraccionesCxcError(''); return; }
+    let cancelled = false;
+    setDetraccionesCxcCargadas(false);
+    setDetraccionesCxcError('');
     getSupabaseClient().then(sb => sb.from('detracciones').select('*').in('cxc_id', ids).order('creado_en', { ascending: true }))
-      .then(({ data, error }) => { if (error) throw error; setDetraccionesCxc(data || []); })
-      .catch(error => console.warn('[spot] No se pudo cargar detracciones de CxC:', error?.message));
+      .then(({ data, error }) => {
+        if (error) throw error;
+        if (cancelled) return;
+        setDetraccionesCxc(data || []);
+        setDetraccionesCxcCargadas(true);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        setDetraccionesCxc([]);
+        setDetraccionesCxcCargadas(false);
+        setDetraccionesCxcError('No se pudieron cargar las detracciones.');
+        console.warn('[spot] No se pudo cargar detracciones de CxC:', error?.message);
+      });
+    return () => { cancelled = true; };
   }, [cxcVista.map(row => row.id).join('|')]);
   const obligacionesCxcDe = c => detraccionesCxc.filter(row => row.cxc_id === c?.id);
   const pendienteSpotDe = c => obligacionesCxcDe(c).find(row => row.direccion === 'venta' && row.estado === 'pendiente') || null;
@@ -676,6 +693,10 @@ function CxC() {
   const guardarCobro = async e => {
     e.preventDefault();
     if (savingCobro) return;
+    if (!detraccionesCxcCargadas) {
+      setMontoError(detraccionesCxcError || 'No se pudieron cargar las detracciones. No se puede registrar el cobro normal hasta completar la carga.');
+      return;
+    }
     const monto = Number(formCobro.monto || 0);
     const saldo = saldoDe(cobroSel);
     const pendiente = pendienteSpotDe(cobroSel);
@@ -1232,6 +1253,8 @@ function CxC() {
         </div>
       </div>
 
+      {detraccionesCxcError && <div className="alert alert-danger" style={{marginBottom:16}}>No se pudieron cargar las detracciones. Actualiza la pantalla antes de registrar cobros.</div>}
+
       {/* Aging — clickable */}
       {/* Filtros movidos al interior de las tablas */}
 
@@ -1500,10 +1523,11 @@ function CxC() {
               <div className="input-group">
                 <label>Tipo de cobro</label>
                 <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(saldoDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : ''})); setMontoError(''); }}>
-                  <option value="normal">Normal</option>
+                  <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
                   <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Detracción</option>
                 </select>
               </div>
+              {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
               {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneyCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {money(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
               {(() => {
                 const montoForm        = Number(formCobro.monto || 0);
@@ -4146,6 +4170,7 @@ function Facturacion() {
   // ── Ficha state ───────────────────────────────────────────────────────
   const [selFac, setSelFac] = useState(null);
   const [detraccionesFactura, setDetraccionesFactura] = useState([]);
+  const [detraccionesFacturaError, setDetraccionesFacturaError] = useState('');
   const [fichaTab, setFichaTab] = useState('detalle');
   const [modalAnularFac, setModalAnularFac] = useState(false);
   const [motivoAnularFac, setMotivoAnularFac] = useState('');
@@ -4160,10 +4185,11 @@ function Facturacion() {
   const [generandoCxC, setGenerandoCxC] = useState(false);
 
   useEffect(() => {
-    if (!selFac || !isSupabaseConfigured()) { setDetraccionesFactura([]); return; }
+    if (!selFac || !isSupabaseConfigured()) { setDetraccionesFactura([]); setDetraccionesFacturaError(''); return; }
+    setDetraccionesFacturaError('');
     getSupabaseClient().then(sb => sb.from('detracciones').select('*').eq('factura_id', selFac).order('creado_en', { ascending: true }))
       .then(({ data, error }) => { if (error) throw error; setDetraccionesFactura(data || []); })
-      .catch(error => console.warn('[spot] No se pudo cargar detracciones de la factura:', error?.message));
+      .catch(error => { setDetraccionesFactura([]); setDetraccionesFacturaError('No se pudieron cargar las detracciones.'); console.warn('[spot] No se pudo cargar detracciones de la factura:', error?.message); });
   }, [selFac]);
 
   const generarCxCDesdeFac = async (f) => {
@@ -5204,7 +5230,7 @@ function Facturacion() {
 
         <div className="card" style={{padding:16,marginBottom:16}}>
           <div style={{fontWeight:700,marginBottom:10}}>Detracción</div>
-          {!detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{money(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
+          {detraccionesFacturaError ? <div className="alert alert-danger">No se pudieron cargar las detracciones.</div> : !detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{money(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
         </div>
 
         {f.estado === 'anulada' && f.motivo_anulacion && (
