@@ -369,6 +369,17 @@ export const comprasService = {
     if (error) throw error;
     return data;
   },
+  liberarCantidadPendienteOc: async ({ ordenCompraId, solpeItemId, cantidadALiberar, motivo }) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('liberar_cantidad_pendiente_oc', {
+      p_orden_compra_id: ordenCompraId,
+      p_solpe_item_id: solpeItemId,
+      p_cantidad_a_liberar: cantidadALiberar,
+      p_motivo: motivo,
+    });
+    if (error) throw error;
+    return data;
+  },
   actualizarOrdenCompra: async (id, cambios) => {
     const supabase = await getSupabaseClient();
     return updateWithOptionalColumnFallback(

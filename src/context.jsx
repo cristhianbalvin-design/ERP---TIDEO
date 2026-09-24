@@ -8857,7 +8857,7 @@ export function AppProvider({ children }) {
         }, 0);
         const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
         const idx = (base.items || []).indexOf(item);
-        const cantidadARecibir = tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : cantidadPedida;
+        const cantidadARecibir = cantidadFisicaPorLinea(item, idx);
         if (!tieneEntradaFisicaPendiente && cantidadARecibir > cantidadPendiente + 0.0001) {
           cantidadDiferente = true;
           validacionErrores.push(
@@ -8890,7 +8890,7 @@ export function AppProvider({ children }) {
 
       if (facturaProvMonto != null && Number(facturaProvMonto) > 0) {
         const subtotalLineasFactura = itemsOC.reduce((s, item, idx) =>
-          s + Number(tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : item.cantidad || 0) * precioFacturaPorLinea(item, idx), 0);
+          s + cantidadFisicaPorLinea(item, idx) * precioFacturaPorLinea(item, idx), 0);
         const totalLineasFactura = subtotalLineasFactura * factorTotalFactura();
         const montoFactura = Number(facturaProvMonto);
         if (totalLineasFactura > 0) {
@@ -8922,7 +8922,7 @@ export function AppProvider({ children }) {
         material_id: item.material_id || null,
         descripcion: item.descripcion,
         pedido: item.cantidad,
-        recibido: tieneEntradaFisicaPendiente ? cantidadFisicaPorLinea(item, idx) : item.cantidad,
+        recibido: cantidadFisicaPorLinea(item, idx),
         unidad: item.unidad,
         conforme: !observaciones,
         precio_unitario: precioFacturaPorLinea(item, idx),
@@ -8975,7 +8975,10 @@ export function AppProvider({ children }) {
           cantidad_diferente: recepcion.cantidad_diferente,
         });
       } catch (error) {
-        addNotificacion(`Compras no persistio en Supabase: ${error.message}`);
+        const detalle = error?.message || 'Error desconocido al guardar la recepción.';
+        const mensaje = `La recepción NO se guardó en Supabase. No se ejecutaron los pasos posteriores. Revisa la conexión o tus permisos y vuelve a intentarlo. Detalle: ${detalle}`;
+        addNotificacion(mensaje);
+        throw new Error(mensaje);
       }
     }
 
