@@ -7649,6 +7649,10 @@ function CxP() {
     () => filtrarPorVistaSociedad(cxp || [], modoVistaSociedadCxP),
     [cxp, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
   );
+  const ordenesCompraPorId = useMemo(
+    () => new Map((ordenesCompra || []).map(orden => [orden.id, orden])),
+    [ordenesCompra],
+  );
   const recepcionesVistaCxP = useMemo(
     () => filtrarPorVistaSociedad(recepciones || [], modoVistaSociedadCxP),
     [recepciones, modoVistaSociedadCxP.sinFiltro, sociedadesIdsVistaCxPKey],
@@ -8019,6 +8023,47 @@ function CxP() {
       : { nombre: 'Gasto directo', badge: 'Gasto directo', badgeCls: 'badge-gray', tipo: 'gasto', tone: 'var(--fg-subtle)' };
   };
 
+  const normalizarBusquedaCxP = valor => String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const textoBusquedaCxP = c => {
+    const beneficiario = beneficiarioDetalle(c);
+    const orden = c?.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
+    const semaforo = semaforoDe(c);
+    return [
+      beneficiario?.nombre,
+      beneficiario?.badge,
+      c?.proveedor_id,
+      c?.personal_id,
+      c?.socio_nombre,
+      c?.factura_numero,
+      c?.concepto,
+      c?.motivo_cxp,
+      c?.tipo_comprobante,
+      c?.tipo_beneficiario,
+      c?.origen,
+      c?.estado,
+      semaforo?.label,
+      c?.fecha_emision,
+      c?.fecha_vencimiento,
+      c?.moneda,
+      c?.sociedad_id,
+      c?.centro_costo_id,
+      c?.tributo_formulario,
+      c?.categoria_er,
+      c?.orden_compra_id,
+      orden?.codigo,
+      orden?.descripcion,
+      totalDe(c),
+      pagadoDe(c),
+      saldoDe(c),
+      moneyCurrency(totalDe(c), symOf(c.moneda)),
+      moneyCurrency(pagadoDe(c), symOf(c.moneda)),
+      moneyCurrency(saldoDe(c), symOf(c.moneda)),
+    ].filter(Boolean).map(normalizarBusquedaCxP).join(' ');
+  };
+
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
   const puedeAnularCxP = Boolean(role?.permisos?.todo || role?.permisos?.anular === true || role?.permisos?.anular?.includes?.('cxp'));
   const puedeEliminarCxP = Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.es_superadmin);
@@ -8155,9 +8200,7 @@ function CxP() {
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
     if (filtBusqueda) {
-      const ben = beneficiarioDetalle(c);
-      const nombre = (ben?.nombre || '').toLowerCase();
-      if (!nombre.includes(filtBusqueda.toLowerCase())) return false;
+      if (!textoBusquedaCxP(c).includes(normalizarBusquedaCxP(filtBusqueda))) return false;
     }
     return true;
   });
@@ -8679,7 +8722,7 @@ function CxP() {
 
       <div className="card" style={{display:tabCxP === 'pendientes_factura' ? 'none' : undefined}}>
         <div className="card-head row" style={{gap:12, flexWrap:'wrap'}}>
-          <input className="input" placeholder="Buscar beneficiario..." value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
+          <input className="input" placeholder="Buscar en todos los campos..." title="Busca en beneficiario, documento, OC, fechas, montos, estado y demás campos visibles" value={filtBusqueda} onChange={e => setFiltBusqueda(e.target.value)} style={{flex:'1 1 200px'}} />
           <select className="input" style={{flex:'1 1 140px'}} value={filtTipo} onChange={e => setFiltTipo(e.target.value)}>
             {[{v:'todos',l:'Todos los beneficiarios'},{v:'proveedor',l:'Proveedores'},{v:'personal',l:'Colaboradores'},{v:DIVIDENDO_TIPO,l:'Socio / accionista'}].map(f => (
               <option key={f.v} value={f.v}>{f.l}</option>
@@ -8710,6 +8753,7 @@ function CxP() {
                 {mostrarBadgeSociedadCxP && <th>Sociedad</th>}
                 <th>{tabCxP === 'tributos' ? 'Periodo tributario' : 'Beneficiario'}</th>
                 <th>{tabCxP === 'tributos' ? 'Tipo de tributo' : 'Documento / Concepto'}</th>
+                <th>OC relacionada</th>
                 <th>Emisión</th>
                 <th>{tabCxP === 'tributos' ? 'Vencimiento SUNAT' : 'Vencimiento'}</th>
                 <th>Total</th>
@@ -8722,6 +8766,7 @@ function CxP() {
               {cxpFiltrada.length ? cxpFiltrada.map(c => {
                 const sem = semaforoDe(c);
                 const ben = beneficiarioDetalle(c);
+                const ocRelacionada = c.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
                 return (
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
@@ -8749,6 +8794,17 @@ function CxP() {
                           {c.origen === 'nc_devolucion' && <span className="badge badge-cyan" style={{fontSize:9,padding:'1px 5px'}}>NC Prov.</span>}
                         </span>
                       )}
+                    </td>
+                    <td className="mono">
+                      {c.orden_compra_id ? (
+                        ocRelacionada ? <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{padding:0,fontSize:12,color:'var(--cyan)'}}
+                          onClick={event => { event.stopPropagation(); navigate('ordenes_compra', { action: 'view', ocId: c.orden_compra_id }); }}
+                          title={`Abrir detalle de ${ocRelacionada.codigo || c.orden_compra_id}`}
+                        >{ocRelacionada.codigo || c.orden_compra_id}</button> : c.orden_compra_id
+                      ) : '-'}
                     </td>
                     <td className="text-muted">{c.fecha_emision}</td>
                     <td style={{color: sem.badgeCls === 'badge-red' || sem.badgeCls === 'badge-orange' ? sem.bg : undefined, fontWeight: sem.badgeCls === 'badge-red' ? 600 : undefined}}>
@@ -8782,7 +8838,7 @@ function CxP() {
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={9 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
+                <tr><td colSpan={10 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
               )}
             </tbody>
           </table>
