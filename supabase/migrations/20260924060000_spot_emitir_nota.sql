@@ -40,6 +40,7 @@ declare
   v_corr public.correlativos_documentos%rowtype;
   v_os public.os_clientes%rowtype;
   v_obligacion public.detracciones%rowtype;
+  v_pendiente_ajuste public.detracciones%rowtype;
   v_catalogo public.spot_catalogo%rowtype;
   v_codigo_spot text;
   v_spot_catalogo_id uuid;
@@ -52,6 +53,7 @@ declare
   v_aplica_nuevo boolean := false;
   v_tiene_principal boolean := false;
   v_depositada boolean := false;
+  v_tiene_pendiente_ajuste boolean := false;
   v_ajuste_soles numeric(18,2);
   v_ajuste_origen numeric(18,2);
   v_payload_catalogo uuid;
@@ -137,6 +139,17 @@ begin
   for update;
   v_tiene_principal := found;
   v_depositada := v_tiene_principal and v_obligacion.estado = 'depositada';
+  if v_depositada then
+    select * into v_pendiente_ajuste
+    from public.detracciones d
+    where d.direccion = 'venta'
+      and d.cxc_id = v_cxc.id
+      and d.estado = 'pendiente'
+    order by d.creado_en
+    limit 1
+    for update;
+    v_tiene_pendiente_ajuste := found;
+  end if;
 
   if v_tiene_principal then
     v_codigo_spot := v_obligacion.codigo_spot;
@@ -269,8 +282,22 @@ begin
     v_ajuste_soles := greatest(0, v_monto_soles - v_obligacion.monto_detraccion_soles);
     v_ajuste_origen := greatest(0, v_monto_origen - v_obligacion.monto_detraccion_origen);
     if v_ajuste_soles > 0 then
-      insert into public.detracciones(direccion,factura_id,cxc_id,documento_ajuste_id,empresa_id,sociedad_id,spot_catalogo_id,codigo_spot,porcentaje,base_soles,monto_detraccion_soles,monto_detraccion_origen,moneda_origen,tipo_cambio,tipo_cambio_fuente,origen,estado)
-      values('venta',v_origen_id,v_cxc.id,v_factura_nota.id,v_empresa_id,v_sociedad_id,v_obligacion.spot_catalogo_id,v_obligacion.codigo_spot,v_obligacion.porcentaje,v_ajuste_soles,v_ajuste_soles,v_ajuste_origen,v_obligacion.moneda_origen,v_obligacion.tipo_cambio,v_obligacion.tipo_cambio_fuente,'emision','pendiente');
+      if v_tiene_pendiente_ajuste then
+        update public.detracciones
+        set documento_ajuste_id=v_factura_nota.id,
+            base_soles=v_ajuste_soles,
+            monto_detraccion_soles=v_ajuste_soles,
+            monto_detraccion_origen=v_ajuste_origen,
+            actualizado_en=now()
+        where id=v_pendiente_ajuste.id;
+      else
+        insert into public.detracciones(direccion,factura_id,cxc_id,documento_ajuste_id,empresa_id,sociedad_id,spot_catalogo_id,codigo_spot,porcentaje,base_soles,monto_detraccion_soles,monto_detraccion_origen,moneda_origen,tipo_cambio,tipo_cambio_fuente,origen,estado)
+        values('venta',v_origen_id,v_cxc.id,v_factura_nota.id,v_empresa_id,v_sociedad_id,v_obligacion.spot_catalogo_id,v_obligacion.codigo_spot,v_obligacion.porcentaje,v_ajuste_soles,v_ajuste_soles,v_ajuste_origen,v_obligacion.moneda_origen,v_obligacion.tipo_cambio,v_obligacion.tipo_cambio_fuente,'emision','pendiente');
+      end if;
+    elsif v_tiene_pendiente_ajuste then
+      update public.detracciones
+      set base_soles=0,monto_detraccion_soles=0,monto_detraccion_origen=0,estado='anulada',actualizado_en=now()
+      where id=v_pendiente_ajuste.id;
     end if;
   elsif not v_tiene_principal and v_tipo='nota_debito' and v_aplica_nuevo then
     insert into public.detracciones(direccion,factura_id,cxc_id,documento_ajuste_id,empresa_id,sociedad_id,spot_catalogo_id,codigo_spot,porcentaje,base_soles,monto_detraccion_soles,monto_detraccion_origen,moneda_origen,tipo_cambio,tipo_cambio_fuente,origen,estado)
@@ -294,3 +321,22 @@ $$;
 revoke all on function public.emitir_nota_cxc_atomica(jsonb) from public;
 grant execute on function public.emitir_nota_cxc_atomica(jsonb) to authenticated;
 select pg_notify('pgrst','reload schema');
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.detracciones
+    where direccion='venta' and estado='pendiente'
+    group by cxc_id
+    having count(*) > 1
+  ) then
+    raise exception 'VALIDACION_PREVIA|detracciones_venta_pendiente_duplicadas';
+  end if;
+  raise notice 'VALIDACION_PREVIA|detracciones_venta_pendiente_duplicadas=0';
+end;
+$$;
+
+create unique index if not exists detracciones_venta_cxc_pendiente_unq
+  on public.detracciones(cxc_id)
+  where direccion='venta' and estado='pendiente';

@@ -70,6 +70,10 @@ $$;
 
 select set_config('request.jwt.claims','{"sub":"94c60fcb-8818-42e4-b395-31a8ff8635b1","role":"authenticated"}',true);
 
+insert into public.cuentas_bancarias(id,empresa_id,nombre,banco,moneda,tipo,estado,sociedad_id,es_cuenta_detracciones)
+values('cb_spot7_bn','emp_2000000000','Cuenta BN temporal Paso 7','Banco de la Nacion','PEN','corriente','activo','609a2f33-d057-411f-a001-4e3e83f700d0',true)
+on conflict (id) do update set es_cuenta_detracciones=excluded.es_cuenta_detracciones,estado=excluded.estado;
+
 \echo '--- caso 1: no-regresion NC y ND sin detraccion ---'
 do $test$
 declare a jsonb; b jsonb; old_r jsonb; new_r jsonb;
@@ -142,6 +146,77 @@ do $test$ declare a jsonb; r jsonb; d record; begin
 \echo '--- caso 10: indice unico excluye ajustes ---'
 do $test$ declare a jsonb; r jsonb; n integer; begin
   a:=pg_temp.fixture_nota('indice',1000,'depositada'); r:=pg_temp.nota('indice',a->>'factura_id','nota_credito',100); r:=pg_temp.nota('indice_nd',a->>'factura_id','nota_debito',300); select count(*) into n from public.detracciones where factura_id=a->>'factura_id'; if n<>3 then raise exception 'CASO_10|indice_choco'; end if; raise notice 'CASO_10|principal=1|ajustes=2|indice_unico=sin_conflicto'; end;$test$;
+
+\echo '--- caso 11: cobro de ajuste pendiente y limite normal ---'
+do $test$
+declare a jsonb; r jsonb; d record; original record; e text; ajuste_id uuid;
+begin
+  a:=pg_temp.fixture_nota('cobro_ajuste',1000,'depositada'); r:=pg_temp.nota('cobro_ajuste',a->>'factura_id','nota_debito',100);
+  select * into d from public.detracciones where factura_id=a->>'factura_id' and estado='pendiente';
+  ajuste_id:=d.id;
+  begin
+    perform public.registrar_cobro_cxc_atomico('emp_2000000000',a->>'cxc_id',jsonb_build_object('id','cob_spot7_11n','monto_capital',1089),jsonb_build_object('id','tes_spot7_11n','monto',1089,'moneda','PEN','cuenta_bancaria_id','cb_299412'),null);
+  exception when others then e:=sqlerrm; end;
+  if e is null or e not like '%maximo cobrable ahora: 1088%' then raise exception 'CASO_11|limite_normal|mensaje=%',e; end if;
+  r:=public.registrar_cobro_cxc_atomico('emp_2000000000',a->>'cxc_id',jsonb_build_object('id','cob_spot7_11d','tipo_cobro','detraccion','detraccion_id',ajuste_id::text,'monto_capital',12),jsonb_build_object('id','tes_spot7_11d','monto',12,'moneda','PEN','cuenta_bancaria_id','cb_spot7_bn','tc_aplicado',1,'monto_en_moneda_cuenta',12),null);
+  select * into original from public.detracciones where id=(a->>'detraccion_id')::uuid;
+  select * into d from public.detracciones where id=ajuste_id;
+  if d.estado<>'depositada' or original.estado<>'depositada' then raise exception 'CASO_11|estados_incorrectos'; end if;
+  raise notice 'CASO_11|pendiente_ajuste=12|normal_max=1088|invasion=rechazada|cobro_detraccion=12|ajuste=depositada|original=depositada';
+end;$test$;
+
+\echo '--- caso 12: cobro exige el monto recalculado ---'
+do $test$
+declare a jsonb; r jsonb; d record; e text; obligacion_id uuid;
+begin
+  a:=pg_temp.fixture_nota('cobro_recalc',1000,'pendiente'); r:=pg_temp.nota('cobro_recalc',a->>'factura_id','nota_debito',100);
+  select * into d from public.detracciones where factura_id=a->>'factura_id' and documento_ajuste_id is null;
+  obligacion_id:=d.id;
+  begin
+    perform public.registrar_cobro_cxc_atomico('emp_2000000000',a->>'cxc_id',jsonb_build_object('id','cob_spot7_12x','tipo_cobro','detraccion','detraccion_id',obligacion_id::text,'monto_capital',120),jsonb_build_object('id','tes_spot7_12x','monto',120,'moneda','PEN','cuenta_bancaria_id','cb_spot7_bn'),null);
+  exception when others then e:=sqlerrm; end;
+  if e is null or e not like '%debe ser 132.00%' then raise exception 'CASO_12|monto_anterior_no_rechazado|mensaje=%',e; end if;
+  r:=public.registrar_cobro_cxc_atomico('emp_2000000000',a->>'cxc_id',jsonb_build_object('id','cob_spot7_12','tipo_cobro','detraccion','detraccion_id',obligacion_id::text,'monto_capital',132),jsonb_build_object('id','tes_spot7_12','monto',132,'moneda','PEN','cuenta_bancaria_id','cb_spot7_bn','tc_aplicado',1,'monto_en_moneda_cuenta',132),null);
+  select * into d from public.detracciones where id=obligacion_id;
+  if d.estado<>'depositada' then raise exception 'CASO_12|monto_recalculado_no_aceptado'; end if;
+  raise notice 'CASO_12|pendiente_recalculada=132|cobro=120|rechazado|cobro=132|depositada';
+end;$test$;
+
+\echo '--- caso 13: ND actualiza la pendiente existente ---'
+do $test$
+declare a jsonb; r jsonb; d record; n integer;
+begin
+  a:=pg_temp.fixture_nota('recalc_pendiente',1000,'depositada'); r:=pg_temp.nota('recalc_pendiente_a',a->>'factura_id','nota_debito',100); r:=pg_temp.nota('recalc_pendiente_b',a->>'factura_id','nota_debito',100);
+  select count(*) into n from public.detracciones where cxc_id=a->>'cxc_id' and direccion='venta' and estado='pendiente';
+  select * into d from public.detracciones where cxc_id=a->>'cxc_id' and estado='pendiente';
+  if n<>1 or d.monto_detraccion_origen<>24 then raise exception 'CASO_13|pendientes=%|origen=%',n,d.monto_detraccion_origen; end if;
+  raise notice 'CASO_13|segunda_ND=recalcula_la_existente|pendientes=1|incremental=24';
+end;$test$;
+
+\echo '--- caso 14: indice rechaza segunda pendiente directa ---'
+do $test$
+declare a jsonb; cat uuid; e text;
+begin
+  a:=pg_temp.fixture_nota('indice_directo',1000,'pendiente'); select id into cat from public.spot_catalogo where codigo='012' order by vigencia_desde desc limit 1;
+  begin
+    insert into public.detracciones(direccion,factura_id,cxc_id,documento_ajuste_id,empresa_id,sociedad_id,spot_catalogo_id,codigo_spot,porcentaje,base_soles,monto_detraccion_soles,monto_detraccion_origen,moneda_origen,origen,estado)
+    values('venta',a->>'factura_id',a->>'cxc_id','doc_spot7_direct','emp_2000000000','609a2f33-d057-411f-a001-4e3e83f700d0',cat,'012',12,1000,120,120,'PEN','emision','pendiente');
+  exception when others then e:=sqlerrm; end;
+  if e is null or e not like '%detracciones_venta_cxc_pendiente_unq%' then raise exception 'CASO_14|indice_no_rechazo|mensaje=%',e; end if;
+  raise notice 'CASO_14|actor=postgres|segunda_pendiente=rechazada|indice=detracciones_venta_cxc_pendiente_unq';
+end;$test$;
+
+\echo '--- caso 15: NC anulada libera el tramo ---'
+do $test$
+declare a jsonb; r jsonb; d record; c record;
+begin
+  a:=pg_temp.fixture_nota('libera_tramo',800,'pendiente'); r:=pg_temp.nota('libera_tramo',a->>'factura_id','nota_credito',100);
+  select * into d from public.detracciones where factura_id=a->>'factura_id' and documento_ajuste_id is null;
+  r:=public.registrar_cobro_cxc_atomico('emp_2000000000',a->>'cxc_id',jsonb_build_object('id','cob_spot7_15','monto_capital',700),jsonb_build_object('id','tes_spot7_15','monto',700,'moneda','PEN','cuenta_bancaria_id','cb_299412'),null);
+  select * into c from public.cxc where id=a->>'cxc_id';
+  if d.estado<>'anulada' or c.saldo<>0 or c.estado<>'cobrada' then raise exception 'CASO_15|tramo_no_liberado'; end if;
+  raise notice 'CASO_15|obligacion=anulada|tramo_reservado=0|cobro_normal=700|aceptado|saldo=0|estado=cobrada';
+end;$test$;
 
 rollback;
 \echo 'STEP7_DRY_RUN_ROLLBACK_COMPLETED'
