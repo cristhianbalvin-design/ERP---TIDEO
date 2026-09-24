@@ -120,7 +120,7 @@ begin
   r:=public.importar_cxc_masiva_fila(jsonb_build_object(
     'empresa_id','emp_2000000000','ruc_cliente','20244444444','razon_social','Cliente E2E C','tipo_documento','factura','numero','F-E2E8-C',
     'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','moneda','PEN','subtotal',847.46,'igv',152.54,'monto_total',1000,
-    'monto_pagado',880,'monto_detraccion',120,'codigo_spot','012','fecha_cobro','2026-09-24','medio_pago','Transferencia',
+    'monto_pagado',800,'monto_detraccion',120,'codigo_spot','012','fecha_cobro','2026-09-24','medio_pago','Transferencia',
     'numero_operacion','E2E-C-IMPORT','centro_beneficio_codigo','CEBE-000','glosa','E2E importacion'));
   select * into d from public.detracciones where factura_id=r->'factura'->>'id';
   if d.estado<>'depositada' or d.cuenta_destino_id is not null or not exists(select 1 from public.cobros_cxc where detraccion_id=d.id) then raise exception 'E2E_C_a|importacion_incorrecta'; end if;
