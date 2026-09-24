@@ -7552,6 +7552,17 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
   const saldoPendiente = Math.max(0, totalOC - totalAnticipado);
   const pctAnticipado = totalOC > 0 ? Math.round(totalAnticipado / totalOC * 100) : 0;
   const estadoLiberable = ['emitida', 'confirmada', 'en_transito', 'recibida_parcial'].includes(String(ordenActual.estado || '').toLowerCase());
+  const cantidadActualLiberacion = Number(lineaLiberacion?.cantidad || 0);
+  const cantidadRecibidaLiberacion = lineaLiberacion
+    ? cantidadRecibidaPorItemOc(recepciones, ordenActual.id, lineaLiberacion)
+    : 0;
+  const maxCantidadLiberar = Math.max(0, cantidadActualLiberacion - cantidadRecibidaLiberacion);
+  const cantidadIngresadaLiberacion = Number(formLiberacion.cantidad || 0);
+  const cantidadEsperadaRestante = Math.max(
+    cantidadRecibidaLiberacion,
+    cantidadActualLiberacion - cantidadIngresadaLiberacion
+  );
+  const excedeSaldoLiberacion = cantidadIngresadaLiberacion > maxCantidadLiberar;
 
   const guardarAnticipo = async e => {
     e.preventDefault();
@@ -7587,8 +7598,10 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
       addToast?.('No se puede liberar esta línea porque no tiene SOLPE de origen identificable.');
       return;
     }
-    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > cantidadActual) {
-      addToast?.(`Indica una cantidad mayor que cero y no mayor a ${cantidadActual}.`);
+    const cantidadRecibida = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, lineaLiberacion);
+    const maxLiberable = Math.max(0, cantidadActual - cantidadRecibida);
+    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > maxLiberable) {
+      addToast?.(`Indica una cantidad mayor que cero y no mayor al saldo pendiente de ${maxLiberable}.`);
       return;
     }
     if (!motivo) {
@@ -7711,7 +7724,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Item</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
               <tbody>{ordenActual.items?.map((i, idx) => {
                 const pedido = Number(i.cantidad || 0);
                 const recibido = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, i);
@@ -7719,7 +7732,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
+                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
                     <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
@@ -7896,7 +7909,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                 <div className="eyebrow">{ordenActual.codigo}</div>
                 <div style={{fontWeight:700, fontSize:20}}>Liberar cantidad pendiente</div>
                 <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:4}}>
-                  {lineaLiberacion.descripcion || lineaLiberacion.codigo || 'Línea de OC'} · Cantidad actual: {lineaLiberacion.cantidad}
+                  {lineaLiberacion.descripcion || lineaLiberacion.codigo || 'Línea de OC'} · Pedido: {cantidadActualLiberacion} · Recibido: {cantidadRecibidaLiberacion} · Saldo: {maxCantidadLiberar}
                 </div>
               </div>
               <button className="icon-btn" type="button" onClick={cerrarLiberacion}>{I.x}</button>
@@ -7908,16 +7921,19 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                   className="input"
                   type="number"
                   min="0.01"
-                  max={Number(lineaLiberacion.cantidad || 0)}
+                  max={maxCantidadLiberar}
                   step="0.01"
                   required
                   value={formLiberacion.cantidad}
                   onChange={e => setFormLiberacion(v => ({...v, cantidad: e.target.value}))}
-                  placeholder={`Máx. ${Number(lineaLiberacion.cantidad || 0)}`}
+                  placeholder={`Máx. ${maxCantidadLiberar}`}
                 />
                 <div className="text-muted" style={{fontSize:12, marginTop:4}}>
-                  La OC quedará con {Math.max(0, Number(lineaLiberacion.cantidad || 0) - Number(formLiberacion.cantidad || 0))} unidades esperadas en esta línea.
+                  La OC quedará con {cantidadEsperadaRestante} unidades esperadas en esta línea (no menos de {cantidadRecibidaLiberacion} ya recibidas).
                 </div>
+                {excedeSaldoLiberacion && <div style={{color:'var(--danger)', fontSize:12, marginTop:4}}>
+                  No puedes liberar más de {maxCantidadLiberar}: es el saldo pendiente real de esta línea.
+                </div>}
               </div>
               <div className="input-group">
                 <label>Motivo <span style={{color:'var(--danger)'}}>*</span></label>
@@ -7932,7 +7948,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
               </div>
               <div className="row mt-6" style={{justifyContent:'flex-end', gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarLiberacion} disabled={savingLiberacion}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingLiberacion}>
+                <button type="submit" className="btn btn-primary" disabled={savingLiberacion || excedeSaldoLiberacion}>
                   {savingLiberacion ? 'Liberando...' : 'Liberar cantidad'}
                 </button>
               </div>
@@ -8391,10 +8407,21 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
               <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Cant.</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
-                <tbody>{items.map((it, i) => (
-                  <tr key={i}><td>{it.descripcion || it.nombre || '-'}</td><td style={{ textAlign: 'right' }}>{it.cantidad || it.recibido || 0} {it.unidad || ''}</td><td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td></tr>
-                ))}</tbody>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <tbody>{items.map((it, i) => {
+                  const pedido = it.pedido ?? it.cantidad ?? it.recibido ?? 0;
+                  const recibido = it.recibido ?? it.cantidad ?? 0;
+                  const completo = Number(recibido) >= Number(pedido);
+                  return (
+                    <tr key={i}>
+                      <td>{it.descripcion || it.nombre || '-'}</td>
+                      <td style={{ textAlign: 'right' }}>{pedido}</td>
+                      <td style={{ textAlign: 'right', color: completo ? 'var(--green)' : 'var(--orange)' }}>{recibido}</td>
+                      <td>{it.unidad || ''}</td>
+                      <td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}
@@ -8698,11 +8725,21 @@ function Recepciones() {
       const next = {};
       (ocSeleccionada.items || []).forEach((item, idx) => {
         const key = ocItemKey(item, idx);
-        next[key] = prev[key] ?? String(Number(item.cantidad || 0));
+        const cantidadPedida = Number(item.cantidad || 0);
+        const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+        const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
+        next[key] = String(cantidadPendiente);
       });
       return next;
     });
-  }, [ocSeleccionada?.id]);
+  }, [ocSeleccionada?.id, recepciones]);
+
+  const cantidadPendienteRecepcion = item => {
+    if (!ocSeleccionada) return Math.max(0, Number(item.cantidad || 0));
+    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+    return Math.max(0, cantidadPedida - cantidadYaRecibida);
+  };
 
   const precioFacturaInput = (item, idx) => {
     const key = ocItemKey(item, idx);
@@ -8721,7 +8758,7 @@ function Recepciones() {
     const key = ocItemKey(item, idx);
     return Object.prototype.hasOwnProperty.call(cantidadesRecibidas, key)
       ? cantidadesRecibidas[key]
-      : String(Number(item.cantidad || 0));
+      : String(cantidadPendienteRecepcion(item));
   };
 
   const entradasFisicasOC = useMemo(() => {
@@ -8730,20 +8767,20 @@ function Recepciones() {
   }, [entradasOcPendientesVistaRecepciones, ocSeleccionada]);
 
   const cantidadRecepcionNumero = (item, idx) => {
-    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadPendiente = cantidadPendienteRecepcion(item);
     const cantidad = Number(cantidadRecepcionInput(item, idx));
     if (!Number.isFinite(cantidad)) return 0;
-    return Math.min(Math.max(cantidad, 0), cantidadPedida);
+    return Math.min(Math.max(cantidad, 0), cantidadPendiente);
   };
 
   const setCantidadRecepcionLinea = (item, idx, value) => {
     const key = ocItemKey(item, idx);
-    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadPendiente = cantidadPendienteRecepcion(item);
     const cantidad = Number(value);
     const nextValue = value === ''
       ? ''
       : Number.isFinite(cantidad)
-        ? String(Math.min(Math.max(cantidad, 0), cantidadPedida))
+        ? String(Math.min(Math.max(cantidad, 0), cantidadPendiente))
         : '0';
     setCantidadesRecibidas(prev => ({ ...prev, [key]: nextValue }));
     setValidacionErrors([]);
@@ -8786,14 +8823,19 @@ function Recepciones() {
     });
   }, [ocSeleccionada, preciosFactura, toleranciaRecepcion]);
 
-  const advertenciaTotalFactura = useMemo(() => {
+  const comparacionMontoFactura = useMemo(() => {
     const montoCabecera = Number(facturaProvMonto || 0);
-    if (!ocSeleccionada || !montoCabecera || totalFacturaLineas <= 0) return '';
+    if (!ocSeleccionada || !montoCabecera || totalFacturaLineas <= 0) return { mensaje: '', excede: false };
     const diffAbs = Math.abs(montoCabecera - totalFacturaLineas);
     const diffPct = diffAbs / totalFacturaLineas;
-    if (diffPct <= toleranciaRecepcion) return '';
-    return `Monto cabecera ${moneyD(montoCabecera)} vs lineas c/IGV ${moneyD(totalFacturaLineas)}. Diferencia ${moneyD(diffAbs)} (${(diffPct * 100).toFixed(1)}%).`;
+    if (diffAbs <= 0.000001) return { mensaje: '', excede: false };
+    return {
+      mensaje: `Monto cabecera ${moneyD(montoCabecera)} vs lineas c/IGV ${moneyD(totalFacturaLineas)}. Diferencia ${moneyD(diffAbs)} (${(diffPct * 100).toFixed(1)}%).`,
+      excede: diffPct > toleranciaRecepcion,
+    };
   }, [facturaProvMonto, ocSeleccionada, totalFacturaLineas, toleranciaRecepcion]);
+  const advertenciaTotalFactura = comparacionMontoFactura.mensaje;
+  const bloqueoMontoFactura = comparacionMontoFactura.excede;
 
   const handleScanOC = (codigo) => {
     setScannerOCOpen(false);
@@ -8900,8 +8942,9 @@ function Recepciones() {
                     <tbody>{(ocSeleccionada.items || []).map((item, idx) => {
                       const warningLinea = advertenciasLineasFactura[idx];
                       const cantidadPedida = Number(item.cantidad || 0);
-                      const cantidadRecibida = cantidadRecepcionNumero(item, idx);
-                      const cantidadCompleta = cantidadRecibida >= cantidadPedida;
+                      const cantidadYaRecibida = cantidadRecibidaPorItemOc(recepciones, ocSeleccionada.id, item);
+                      const cantidadPendiente = Math.max(0, cantidadPedida - cantidadYaRecibida);
+                      const cantidadCompleta = cantidadPendiente <= 0.0001;
                       const tieneConteoFisico = entradasFisicasOC.length > 0;
                       return (
                         <tr key={idx} style={highlightedItemIdx === idx ? {background:'rgba(0,229,255,0.1)',outline:'2px solid var(--cyan)'} : {}}>
@@ -8914,14 +8957,15 @@ function Recepciones() {
                               className="input"
                               type="number"
                               min="0"
-                              max={cantidadPedida}
+                              max={cantidadPendiente}
                               step="0.01"
+                              disabled={cantidadCompleta}
                               value={cantidadRecepcionInput(item, idx)}
                               onChange={e => setCantidadRecepcionLinea(item, idx, e.target.value)}
                               style={{textAlign:'right',height:30}}
                             />
                             <div className="text-muted" style={{fontSize:11,marginTop:4}}>
-                              {cantidadRecibida} de {cantidadPedida} recibidos ·{' '}
+                              {cantidadYaRecibida} de {cantidadPedida} recibidos ·{' '}
                               <span style={{color:cantidadCompleta ? 'var(--green)' : 'var(--orange)'}}>
                                 {cantidadCompleta ? 'Completa' : 'Parcial'}
                               </span>
@@ -8953,7 +8997,10 @@ function Recepciones() {
                       <span className="text-muted">Total lineas c/IGV para comparar cabecera</span>
                       <strong>{moneyD(totalFacturaLineas)}</strong>
                     </div>
-                    {advertenciaTotalFactura && <div style={{color:'#b45309',marginTop:4}}>{advertenciaTotalFactura}</div>}
+                    {advertenciaTotalFactura && <div style={{color:bloqueoMontoFactura ? 'var(--danger)' : '#b45309',marginTop:4}}>
+                      <div>{advertenciaTotalFactura}</div>
+                      {bloqueoMontoFactura && <div style={{marginTop:4}}>Corrige el monto de esta recepción para continuar. Si necesitas facturar el total de la OC, usa Nuevo Egreso/CxP manual con el toggle de OC.</div>}
+                    </div>}
                   </div>
                 </div>
               )}
@@ -8977,7 +9024,7 @@ function Recepciones() {
                   </div>
                   <div className="input-group">
                     <label>Monto total</label>
-                    <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionWarnings([]); }} placeholder="0.00"/>
+                    <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionErrors([]); setValidacionWarnings([]); }} placeholder="0.00"/>
                   </div>
                 </div>
                 <div className="input-group mt-4">
@@ -9020,7 +9067,7 @@ function Recepciones() {
                 </div>
               )}
 
-              {validacionWarnings.length > 0 && (
+              {validacionWarnings.length > 0 && !bloqueoMontoFactura && (
                 <div style={{marginTop:16,background:'rgba(245,158,11,0.08)',border:'1px solid #f59e0b',borderRadius:6,padding:12}}>
                   <div style={{fontWeight:700,fontSize:13,color:'#b45309',marginBottom:6}}>Advertencia de precio — diferencia detectada</div>
                   {validacionWarnings.map((w, i) => <div key={i} style={{fontSize:12,color:'#b45309',marginTop:2}}>• {w}</div>)}
@@ -9030,10 +9077,13 @@ function Recepciones() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
-                {validacionWarnings.length > 0 && (
+                {!bloqueoMontoFactura && validacionWarnings.length > 0 && (
                   <button type="button" className="btn btn-primary" style={{background:'#f59e0b',border:'none'}} onClick={e => guardar(e, true)}>Confirmar igualmente</button>
                 )}
-                {validacionWarnings.length === 0 && (
+                {bloqueoMontoFactura && (
+                  <button type="button" className="btn btn-primary" disabled>Corrige el monto para confirmar</button>
+                )}
+                {!bloqueoMontoFactura && validacionWarnings.length === 0 && (
                   <button className="btn btn-primary" type="submit" disabled={!origen || uploadingFile}>
                     Confirmar recepcion
                   </button>
