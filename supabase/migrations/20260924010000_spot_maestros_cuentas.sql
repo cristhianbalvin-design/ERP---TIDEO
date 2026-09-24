@@ -40,13 +40,13 @@ alter table public.cuentas_bancarias
   );
 
 comment on column public.familia_servicio.spot_catalogo_id is
-  'Código SPOT por defecto de la familia de servicios.';
+  'Identifica el código SPOT; la tasa se resuelve por vigencia a la fecha del documento.';
 
 comment on column public.servicios.spot_catalogo_id is
-  'Override opcional del código SPOT de la familia del servicio.';
+  'Identifica el código SPOT; la tasa se resuelve por vigencia a la fecha del documento.';
 
 comment on column public.materiales.spot_catalogo_id is
-  'Código SPOT opcional elegido explícitamente para el material; no se hereda.';
+  'Identifica el código SPOT; la tasa se resuelve por vigencia a la fecha del documento.';
 
 comment on column public.cuentas_bancarias.es_cuenta_detracciones is
   'Cuenta propia destinada a detracciones; si es true debe ser PEN, activa y tener sociedad.';
