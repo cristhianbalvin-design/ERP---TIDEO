@@ -154,7 +154,7 @@ begin
     case when v_spot.id is null then null else v_spot.id end,
     case when v_spot.id is null then null else v_spot.codigo end,
     case when v_spot.id is null then null else v_spot.porcentaje end,
-    v_base_soles,v_monto_soles,v_monto_detraccion,v_moneda,'importacion','depositada',v_cuenta_det_id
+    v_base_soles,v_monto_detraccion,v_monto_detraccion,v_moneda,'importacion','depositada',v_cuenta_det_id
   ) returning * into v_detraccion;
 
   insert into public.cobros_cxc(
