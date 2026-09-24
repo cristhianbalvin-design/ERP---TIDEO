@@ -482,7 +482,8 @@ function CxC() {
 
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
-  const [formCobro, setFormCobro] = useState({ monto:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', notas:'' });
+  const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', detraccion_id:'', monto:'', monto_deposito_soles:'', incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
+  const [detraccionesCxc, setDetraccionesCxc] = useState([]);
   const [archivoCobro, setArchivoCobro] = useState(null);
   const [archivoCobroError, setArchivoCobroError] = useState('');
   const [montoError, setMontoError] = useState('');
@@ -492,6 +493,15 @@ function CxC() {
     (cuentasBancarias||[]).filter(cb=>cb.estado!=='inactivo'&&cb.estado!=='eliminado'),
     modoVistaSociedadCxC.sociedadIdEscritura,
   );
+  useEffect(() => {
+    const ids = cxcVista.map(row => row.id).filter(Boolean);
+    if (!ids.length || !isSupabaseConfigured()) { setDetraccionesCxc([]); return; }
+    getSupabaseClient().then(sb => sb.from('detracciones').select('*').in('cxc_id', ids).order('created_at', { ascending: true }))
+      .then(({ data, error }) => { if (error) throw error; setDetraccionesCxc(data || []); })
+      .catch(error => console.warn('[spot] No se pudo cargar detracciones de CxC:', error?.message));
+  }, [cxcVista.map(row => row.id).join('|')]);
+  const obligacionesCxcDe = c => detraccionesCxc.filter(row => row.cxc_id === c?.id);
+  const pendienteSpotDe = c => obligacionesCxcDe(c).find(row => row.direccion === 'venta' && row.estado === 'pendiente') || null;
 
   const [panelGestion, setPanelGestion] = useState(false);
   const [gestionSel, setGestionSel] = useState(null);
@@ -656,7 +666,8 @@ function CxC() {
   const abrirCobro = (c, e) => {
     if (e) e.stopPropagation();
     setCobroSel(c);
-    setFormCobro({ monto: String(saldoDe(c)), incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', notas: '' });
+    const pendiente = pendienteSpotDe(c);
+    setFormCobro({ tipo_cobro:'normal', detraccion_id:pendiente?.id || '', monto: String(saldoDe(c)), monto_deposito_soles: pendiente?.monto_deposito_soles || '', incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: '', cuenta_bancaria: '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
@@ -667,8 +678,19 @@ function CxC() {
     if (savingCobro) return;
     const monto = Number(formCobro.monto || 0);
     const saldo = saldoDe(cobroSel);
+    const pendiente = pendienteSpotDe(cobroSel);
+    const esDetraccion = formCobro.tipo_cobro === 'detraccion';
+    const maxNormal = Math.max(0, saldo - Number(pendiente?.monto_detraccion_origen || 0));
     if (monto <= 0) return;
-    if (monto > saldo) {
+    if (esDetraccion && (!pendiente || monto !== Number(pendiente.monto_detraccion_origen) || Number(formCobro.monto_deposito_soles) !== Number(pendiente.monto_deposito_soles))) {
+      setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
+      return;
+    }
+    if (!esDetraccion && monto > maxNormal) {
+      setMontoError(pendiente ? `Máximo cobrable ahora: ${moneyCurrency(maxNormal, cobroSel.moneda)}. El tramo reservado corresponde a la detracción pendiente.` : `El monto no puede superar el saldo pendiente de ${money(saldo)}.`);
+      return;
+    }
+    if (esDetraccion && monto > saldo) {
       setMontoError(`El monto no puede superar el saldo pendiente de ${money(saldo)}.`);
       return;
     }
@@ -690,7 +712,7 @@ function CxC() {
     }
     setSavingCobro(true);
     try {
-      await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, archivo_adjunto: archivoCobro });
+      await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, detraccion_id: pendiente?.id || null, archivo_adjunto: archivoCobro, p_comision: true });
       setPanelCobro(false);
       setCobroSel(null);
       setArchivoCobro(null);
@@ -878,6 +900,7 @@ function CxC() {
     const tituloEditarVencimiento = puedeEditarCxC ? 'Editar vencimiento' : 'Requiere permiso cxc:editar';
     const TABS_FICHA = [
       { id:'notas',    label:`Notas relacionadas (${notasRelacionadas.length})` },
+      { id:'detracciones', label:`Detracciones (${obligacionesCxcDe(c).length})` },
       { id:'resumen',  label:'Resumen'                       },
       { id:'pagos',    label:`Historial pagos (${cobros.length})` },
       { id:'gestion',  label:`Gestión (${gestiones.length})` },
@@ -987,6 +1010,12 @@ function CxC() {
                   </div>
                 )}
               </div>
+          </div>
+        )}
+
+        {fichaTab === 'detracciones' && (
+          <div className="card card-body">
+            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneyCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{money(row.monto_deposito_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td></tr>)}</tbody></table></div>}
           </div>
         )}
 
@@ -1310,6 +1339,7 @@ function CxC() {
                         <td>
                           <strong>{clienteDe(c)}</strong>
                           {retencionDe(c)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retencion SUNAT</span>}
+                          {pendienteSpotDe(c) && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Detracción pendiente</span>}
                         </td>
                         {mostrarBadgeSociedadCxC && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                         <td className="mono">{facturaNumeroDe(c)}</td>
@@ -1467,6 +1497,14 @@ function CxC() {
               <button className="icon-btn" onClick={()=>setPanelCobro(false)}>{I.x}</button>
             </div>
             <form className="side-panel-body" onSubmit={guardarCobro}>
+              <div className="input-group">
+                <label>Tipo de cobro</label>
+                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(saldoDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_deposito_soles || '') : ''})); setMontoError(''); }}>
+                  <option value="normal">Normal</option>
+                  <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Detracción</option>
+                </select>
+              </div>
+              {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneyCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {money(pendienteSpotDe(cobroSel).monto_deposito_soles)}.</div>}
               {(() => {
                 const montoForm        = Number(formCobro.monto || 0);
                 const pagadoPrev       = pagadoDe(cobroSel);
@@ -1534,7 +1572,7 @@ function CxC() {
               <div className="grid-2 mt-6" style={{gap:12}}>
                 <div className="input-group">
                   <label>Monto cobrado <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input num" type="number" min="0.01" step="0.01" required
+                  <input className="input num" type="number" min="0.01" step="0.01" required readOnly={formCobro.tipo_cobro === 'detraccion'}
                     value={formCobro.monto} onChange={e=>{setFormCobro(v=>({...v,monto:e.target.value}));setMontoError('');}} autoFocus/>
                   {montoError && <div style={{color:'var(--danger)',fontSize:12,marginTop:4}}>{montoError}</div>}
                 </div>
@@ -1577,7 +1615,7 @@ function CxC() {
                   {cuentasBancariasActivas.length > 0 ? (
                     <select className="select" value={formCobro.cuenta_bancaria} onChange={e=>setFormCobro(v=>({...v,cuenta_bancaria:e.target.value}))}>
                       <option value="">Seleccionar cuenta...</option>
-                      {cuentasBancariasActivas.map(cb=>(
+                      {cuentasBancariasActivas.filter(cb => formCobro.tipo_cobro === 'detraccion' ? cb.es_cuenta_detracciones && cb.moneda === 'PEN' && cb.sociedad_id === cobroSel.sociedad_id : !cb.es_cuenta_detracciones).map(cb=>(
                         <option key={cb.id} value={cb.id}>
                           {cb.nombre} — {cb.banco} — {cb.moneda==='PEN'?'Soles':cb.moneda==='USD'?'Dólares':cb.moneda}
                         </option>
@@ -1598,6 +1636,7 @@ function CxC() {
                   <label>Notas <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <textarea className="input" rows={2} value={formCobro.notas} onChange={e=>setFormCobro(v=>({...v,notas:e.target.value}))}/>
                 </div>
+                {formCobro.tipo_cobro === 'detraccion' && <div className="input-group" style={{gridColumn:'1/-1'}}><label>Número de constancia <span className="text-muted">(opcional)</span></label><input className="input" value={formCobro.numero_constancia} onChange={e=>setFormCobro(v=>({...v,numero_constancia:e.target.value}))} /></div>}
                 <div className="input-group" style={{gridColumn:'1/-1'}}>
                   <label>Comprobante de pago <span style={{color:'var(--fg-muted)',fontWeight:400}}>(opcional)</span></label>
                   <input
