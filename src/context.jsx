@@ -8812,6 +8812,11 @@ export function AppProvider({ children }) {
     const tolerancia = toleranciaPct / 100;
     const validacionErrores = [];
     const validacionAdvertencias = [];
+    const tieneFacturaProveedor = Boolean(String(facturaProvNumero || facturaNumero || '').trim());
+    const montoFacturaProveedor = Number(facturaProvMonto);
+    if (tieneFacturaProveedor && (!Number.isFinite(montoFacturaProveedor) || montoFacturaProveedor <= 0)) {
+      validacionErrores.push('El monto de la factura es obligatorio para generar la CxP. Ingresa el monto real de esta recepción.');
+    }
     let precioDiferente = false;
     let cantidadDiferente = false;
     const itemsFacturaList = Array.isArray(itemsFactura) ? itemsFactura : [];
@@ -8924,7 +8929,6 @@ export function AppProvider({ children }) {
         precio_unitario_oc: Number(item.precio_unitario || 0)
       }))
       : [];
-    const tieneFacturaProveedor = Boolean(String(facturaProvNumero || facturaNumero || '').trim());
     const recepcion = {
       id: generateId('rec'),
       empresa_id: empresa.id,
@@ -9094,8 +9098,7 @@ export function AppProvider({ children }) {
     if (!observaciones && tieneFacturaProveedor) {
       const anticiposOC = isOC ? ocAnticipos.filter(a => a.orden_compra_id === base.id) : [];
       const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
-      const totalOC = Number(base.total || 0);
-      const saldoCxP = Math.max(0, Math.round((totalOC - totalAnticipado) * 100) / 100);
+      const saldoCxP = Math.max(0, Math.round((montoFacturaProveedor - totalAnticipado) * 100) / 100);
       await crearCxP({
         tipo_beneficiario: 'proveedor',
         proveedor_id: base.proveedor_id,
@@ -9139,7 +9142,11 @@ export function AppProvider({ children }) {
     })();
     const anticipos = ocId ? ocAnticipos.filter(a => a.orden_compra_id === ocId) : [];
     const totalAnticipado = anticipos.reduce((s, a) => s + Number(a.monto || 0), 0);
-    const monto = Number(facturaProvMonto ?? recepcion.factura_proveedor_monto ?? base.total ?? 0);
+    const montoFuente = facturaProvMonto ?? recepcion.factura_proveedor_monto;
+    const monto = Number(montoFuente);
+    if (!Number.isFinite(monto) || monto <= 0) {
+      throw new Error('El monto de la factura es obligatorio para generar la CxP. Ingresa el monto real de esta recepción.');
+    }
     const saldo = Math.max(0, Math.round((monto - totalAnticipado) * 100) / 100);
     const payload = {
       id: generateId('cxp'),
