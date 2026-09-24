@@ -634,7 +634,7 @@ export const maestrosService = {
     const payload = {
       id: familia.id || makeId('fam_srv'),
       empresa_id: empresaId,
-      ...pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden']),
+      ...pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden', 'spot_catalogo_id']),
     };
     const { data, error } = await supabase.from('familia_servicio').insert([payload]).select().single();
     if (error) throw error;
@@ -644,7 +644,7 @@ export const maestrosService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('familia_servicio')
-      .update(pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden']))
+      .update(pick(familia, ['codigo', 'nombre', 'descripcion', 'activo', 'orden', 'spot_catalogo_id']))
       .eq('id', familiaId)
       .select()
       .single();
@@ -668,7 +668,7 @@ export const maestrosService = {
     const payload = {
       id: servicio.id || makeId('srv'),
       empresa_id: empresaId,
-      ...pick(servicio, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas']),
+      ...pick(servicio, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id']),
     };
     const { data, error } = await supabase.from('servicios').insert([payload]).select().single();
     if (error) throw error;
@@ -676,7 +676,7 @@ export const maestrosService = {
   },
   actualizarServicio: async (servicioId, payload) => {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas'])).eq('id', servicioId).select().single();
+    const { data, error } = await supabase.from('servicios').update(pick(payload, ['codigo', 'familia_id', 'familia', 'descripcion', 'unidad', 'moneda', 'costo', 'precio', 'margen', 'estado', 'facturable', 'precio_incluido', 'detalle', 'entregables', 'notas_internas', 'spot_catalogo_id'])).eq('id', servicioId).select().single();
     if (error) throw error;
     return data;
   },
