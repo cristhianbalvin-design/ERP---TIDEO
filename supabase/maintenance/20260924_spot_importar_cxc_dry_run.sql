@@ -64,6 +64,7 @@ declare r jsonb; d record; m record; n integer;
 begin
   r:=pg_temp.importar('con_codigo','20222222223','F-SPOT8-03',100,120,'012','cb_spot8_bn','cb_299412');
   select * into d from public.detracciones where cxc_id=r->'cxc'->>'id'; select * into m from public.movimientos_tesoreria where detraccion_id=d.id; select count(*) into n from public.movimientos_tesoreria where vinculo_id=r->'cxc'->>'id';
+  raise notice 'CASO_3_DEBUG|codigo=%|spot_id=%|estado=%|mov_monto=%|mov_cuenta=%|movimientos=%',d.codigo_spot,d.spot_catalogo_id,d.estado,m.monto,m.cuenta_bancaria_id,n;
   if d.codigo_spot<>'012' or d.spot_catalogo_id is null or d.estado<>'depositada' or m.monto<>120 or m.cuenta_bancaria_id<>'cb_spot8_bn' or n<>2 then raise exception 'CASO_3|resultado_incorrecto'; end if;
   raise notice 'CASO_3|codigo=012|vigente=1|obligacion=depositada|movimiento_neto=100|movimiento_detraccion=120|cuenta=BN|detraccion_id=1';
 end;$test$;
