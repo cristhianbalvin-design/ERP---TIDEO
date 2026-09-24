@@ -1541,9 +1541,10 @@ function CxC() {
                 <label>Tipo de cobro</label>
                 <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : ''})); setMontoError(''); }}>
                   <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
-                  <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Detracción</option>
+                  <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Depósito de detracción recibido</option>
                 </select>
               </div>
+              {formCobro.tipo_cobro === 'detraccion' && <div className="text-muted" style={{fontSize:12,marginTop:-6}}>Registra el depósito que el cliente hizo en tu cuenta de detracciones (Banco de la Nación). Usa la fecha del depósito.</div>}
               {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
               {formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && <div className="alert alert-warning">No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.</div>}
               {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneySpotCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {moneySpot(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
