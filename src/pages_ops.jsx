@@ -7719,7 +7719,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{recibido}</td><td>{i.unidad}</td>
+                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
                     <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
@@ -8391,7 +8391,7 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
               <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido / Recibido</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
                 <tbody>{items.map((it, i) => {
                   const pedido = it.pedido ?? it.cantidad ?? it.recibido ?? 0;
                   const recibido = it.recibido ?? it.cantidad ?? 0;
@@ -8399,10 +8399,9 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
                   return (
                     <tr key={i}>
                       <td>{it.descripcion || it.nombre || '-'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        Pedido: {pedido} · Recibido: {recibido} {it.unidad || ''}
-                        {completo && <div className="text-muted" style={{ fontSize: 11 }}>Completo</div>}
-                      </td>
+                      <td style={{ textAlign: 'right' }}>{pedido}</td>
+                      <td style={{ textAlign: 'right', color: completo ? 'var(--green)' : 'var(--orange)' }}>{recibido}</td>
+                      <td>{it.unidad || ''}</td>
                       <td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td>
                     </tr>
                   );
