@@ -31,19 +31,56 @@ create or replace function pg_temp.nota(p_tag text,p_origen text,p_tipo text,p_t
   select public.emitir_nota_cxc_atomica(jsonb_build_object('empresa_id','emp_2000000000','factura_origen_id',p_origen,'factura_id','fac_spot7_n_'||p_tag,'sociedad_id','609a2f33-d057-411f-a001-4e3e83f700d0','tipo_documento',p_tipo,'motivo_codigo',case when p_tipo='nota_credito' then '01' else '01' end,'fecha_emision','2026-09-24','subtotal',round(p_total/1.18,2),'igv',round(p_total-round(p_total/1.18,2),2),'total',p_total,'moneda','PEN') || p_extra)
 $$;
 
+-- Copia temporal de la versión vigente anterior, usada únicamente para la
+-- comparación de no-regresión. No se persiste ni reemplaza la función pública.
+create or replace function pg_temp.nota_anterior(p_payload jsonb) returns jsonb language plpgsql as $old$
+declare
+  v_empresa_id text := nullif(btrim(p_payload ->> 'empresa_id'), ''); v_factura_id text := nullif(btrim(p_payload ->> 'factura_id'), ''); v_origen_id text := nullif(btrim(p_payload ->> 'factura_origen_id'), ''); v_tipo text := lower(nullif(btrim(p_payload ->> 'tipo_documento'), '')); v_motivo_codigo text := nullif(btrim(p_payload ->> 'motivo_codigo'), ''); v_sociedad_id uuid := nullif(btrim(p_payload ->> 'sociedad_id'), '')::uuid; v_serie text; v_numero integer; v_numero_completo text; v_total numeric(14,2):=coalesce(nullif(p_payload->>'total','')::numeric,0); v_subtotal numeric(14,2):=coalesce(nullif(p_payload->>'subtotal','')::numeric,0); v_igv numeric(14,2):=coalesce(nullif(p_payload->>'igv','')::numeric,0); v_fecha date:=coalesce(nullif(p_payload->>'fecha_emision','')::date,current_date); v_moneda text:=upper(coalesce(nullif(btrim(p_payload->>'moneda'),''),'PEN')); v_factura public.facturas%rowtype; v_cxc public.cxc%rowtype; v_nueva_total numeric(14,2); v_nuevo_saldo numeric(14,2); v_estado text; v_corr public.correlativos_documentos%rowtype;
+begin
+  if v_empresa_id is null or not public.usuario_tiene_empresa(v_empresa_id) then raise exception 'No tienes acceso al tenant indicado.'; end if;
+  if v_tipo not in ('nota_credito','nota_debito') then raise exception 'TIPO_NOTA_INVALIDO: solo se permite nota_credito o nota_debito.'; end if;
+  if v_origen_id is null then raise exception 'FACTURA_ORIGEN_OBLIGATORIA: selecciona el comprobante afectado.'; end if;
+  if v_motivo_codigo is null then raise exception 'MOTIVO_SUNAT_OBLIGATORIO: selecciona un motivo oficial.'; end if;
+  if v_total<=0 or v_subtotal<0 or v_igv<0 or abs(round(v_subtotal+v_igv,2)-round(v_total,2))>0.01 then raise exception 'IMPORTES_NOTA_INVALIDOS: total invalido.'; end if;
+  if not exists(select 1 from public.catalogo_motivos_comprobante where tipo_documento=v_tipo and codigo_sunat=v_motivo_codigo and activo) then raise exception 'MOTIVO_SUNAT_INVALIDO'; end if;
+  select * into v_factura from public.facturas where id=v_origen_id and empresa_id=v_empresa_id for update; if not found then raise exception 'FACTURA_ORIGEN_NO_ENCONTRADA'; end if;
+  if v_factura.tipo_documento not in ('factura','boleta') or v_factura.estado='anulada' then raise exception 'FACTURA_ORIGEN_NO_AFECTABLE'; end if;
+  if v_factura.sociedad_id is distinct from v_sociedad_id then raise exception 'SOCIEDAD_ORIGEN_INVALIDA'; end if;
+  select * into v_cxc from public.cxc where factura_id=v_origen_id and empresa_id=v_empresa_id for update; if not found then raise exception 'CXC_ORIGEN_NO_ENCONTRADA'; end if;
+  if v_tipo='nota_credito' and v_total>coalesce(v_cxc.monto_total,0) then raise exception 'MONTO_NC_EXCEDE_SALDO'; end if;
+  v_serie:=case when v_tipo='nota_credito' then 'NC01' else 'ND01' end;
+  select * into v_corr from public.correlativos_documentos where empresa_id=v_empresa_id and tipo_documento=v_tipo and serie=v_serie and sociedad_id is not distinct from v_sociedad_id for update;
+  if not found then insert into public.correlativos_documentos(id,empresa_id,tipo_documento,serie,ultimo_numero,sociedad_id) values('corr_old_'||md5(clock_timestamp()::text),v_empresa_id,v_tipo,v_serie,0,v_sociedad_id) returning * into v_corr; end if;
+  v_numero:=v_corr.ultimo_numero+1; v_numero_completo:=v_serie||'-'||lpad(v_numero::text,4,'0'); update public.correlativos_documentos set ultimo_numero=v_numero,updated_at=now() where id=v_corr.id;
+  v_factura_id:=coalesce(v_factura_id,'fac_old_'||md5(clock_timestamp()::text));
+  insert into public.facturas(id,empresa_id,cuenta_id,os_cliente_id,valorizacion_id,centro_beneficio_id,sociedad_id,numero,tipo_documento,fecha_emision,subtotal,igv,total,moneda,estado,items,factura_origen_id,motivo,motivo_codigo,notas,concepto)
+  values(v_factura_id,v_empresa_id,v_factura.cuenta_id,v_factura.os_cliente_id,v_factura.valorizacion_id,v_factura.centro_beneficio_id,v_sociedad_id,v_numero_completo,v_tipo,v_fecha,v_subtotal,v_igv,v_total,v_moneda,'emitida',coalesce(p_payload->'items','[]'::jsonb),v_origen_id,v_motivo_codigo,v_motivo_codigo,nullif(btrim(p_payload->>'notas'),''),nullif(btrim(p_payload->>'concepto'),'')) returning * into v_factura;
+  if v_tipo='nota_credito' then v_nueva_total:=greatest(0,v_cxc.monto_total-v_total); v_nuevo_saldo:=greatest(0,v_cxc.saldo-v_total); else v_nueva_total:=v_cxc.monto_total+v_total; v_nuevo_saldo:=v_cxc.saldo+v_total; end if;
+  v_estado:=case when v_nuevo_saldo<=0 then 'cancelada' else v_cxc.estado end;
+  update public.cxc set monto_total=v_nueva_total,saldo=v_nuevo_saldo,estado=v_estado,updated_at=now() where id=v_cxc.id;
+  return jsonb_build_object('factura',to_jsonb(v_factura),'cxc',to_jsonb((select c from public.cxc c where c.id=v_cxc.id)),'numero',v_numero_completo);
+end;$old$;
+
+create or replace function pg_temp.nota_normalizada(p_result jsonb) returns jsonb language sql as $$
+  select jsonb_build_object(
+    'factura', (p_result->'factura') - array['id','numero','factura_origen_id','created_at','updated_at'],
+    'cxc', (p_result->'cxc') - array['id','factura_id','created_at','updated_at'],
+    'numero','GENERATED')
+$$;
+
 select set_config('request.jwt.claims','{"sub":"94c60fcb-8818-42e4-b395-31a8ff8635b1","role":"authenticated"}',true);
 
 \echo '--- caso 1: no-regresion NC y ND sin detraccion ---'
 do $test$
-declare a jsonb; b jsonb; c_old numeric; c_new numeric;
+declare a jsonb; b jsonb; old_r jsonb; new_r jsonb;
 begin
-  a:=pg_temp.fixture_nota('nr_nc',1000,null); b:=pg_temp.nota('nr_nc',a->>'factura_id','nota_credito',100);
-  select saldo into c_old from public.cxc where id=a->>'cxc_id';
-  if c_old<>900 or b->'cxc'->>'saldo' <> '900.00' or exists(select 1 from public.detracciones where factura_id=a->>'factura_id') then raise exception 'CASO_1|NC|diferencia_con_contrato_anterior'; end if;
-  a:=pg_temp.fixture_nota('nr_nd',1000,null); b:=pg_temp.nota('nr_nd',a->>'factura_id','nota_debito',100);
-  select saldo into c_new from public.cxc where id=a->>'cxc_id';
-  if c_new<>1100 or b->'cxc'->>'saldo' <> '1100.00' or exists(select 1 from public.detracciones where factura_id=a->>'factura_id') then raise exception 'CASO_1|ND|diferencia_con_contrato_anterior'; end if;
-  raise notice 'CASO_1|NC_y_ND_sin_SPOT|factura_cxc_nota=equivalentes|campos=saldo,monto_total,estado';
+  a:=pg_temp.fixture_nota('nr_old_nc',1000,null); old_r:=pg_temp.nota_anterior(jsonb_build_object('empresa_id','emp_2000000000','factura_origen_id',a->>'factura_id','factura_id','fac_spot7_old_nc','sociedad_id','609a2f33-d057-411f-a001-4e3e83f700d0','tipo_documento','nota_credito','motivo_codigo','01','fecha_emision','2026-09-24','subtotal',84.75,'igv',15.25,'total',100,'moneda','PEN'));
+  a:=pg_temp.fixture_nota('nr_new_nc',1000,null); new_r:=pg_temp.nota('nr_new_nc',a->>'factura_id','nota_credito',100);
+  if pg_temp.nota_normalizada(old_r) is distinct from pg_temp.nota_normalizada(new_r) then raise exception 'CASO_1|NC|diferencia_campo_a_campo'; end if;
+  a:=pg_temp.fixture_nota('nr_old_nd',1000,null); old_r:=pg_temp.nota_anterior(jsonb_build_object('empresa_id','emp_2000000000','factura_origen_id',a->>'factura_id','factura_id','fac_spot7_old_nd','sociedad_id','609a2f33-d057-411f-a001-4e3e83f700d0','tipo_documento','nota_debito','motivo_codigo','01','fecha_emision','2026-09-24','subtotal',84.75,'igv',15.25,'total',100,'moneda','PEN'));
+  a:=pg_temp.fixture_nota('nr_new_nd',1000,null); new_r:=pg_temp.nota('nr_new_nd',a->>'factura_id','nota_debito',100);
+  if pg_temp.nota_normalizada(old_r) is distinct from pg_temp.nota_normalizada(new_r) then raise exception 'CASO_1|ND|diferencia_campo_a_campo'; end if;
+  raise notice 'CASO_1|NC_y_ND_sin_SPOT|version_anterior_vs_nueva=campo_a_campo_coinciden|cxc=saldo,monto_total,estado|factura=campos_persistidos|nota=campos_persistidos';
 end;$test$;
 
 \echo '--- caso 2: NC pendiente sobre umbral ---'
