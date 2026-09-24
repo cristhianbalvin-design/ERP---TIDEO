@@ -7711,7 +7711,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Item</th><th>Cantidad</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Item</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
               <tbody>{ordenActual.items?.map((i, idx) => {
                 const pedido = Number(i.cantidad || 0);
                 const recibido = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, i);
@@ -7719,7 +7719,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{i.unidad}</td>
+                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td>{recibido}</td><td>{i.unidad}</td>
                     <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
@@ -8391,10 +8391,22 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
               <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Cant.</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
-                <tbody>{items.map((it, i) => (
-                  <tr key={i}><td>{it.descripcion || it.nombre || '-'}</td><td style={{ textAlign: 'right' }}>{it.cantidad || it.recibido || 0} {it.unidad || ''}</td><td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td></tr>
-                ))}</tbody>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido / Recibido</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <tbody>{items.map((it, i) => {
+                  const pedido = it.pedido ?? it.cantidad ?? it.recibido ?? 0;
+                  const recibido = it.recibido ?? it.cantidad ?? 0;
+                  const completo = Number(recibido) >= Number(pedido);
+                  return (
+                    <tr key={i}>
+                      <td>{it.descripcion || it.nombre || '-'}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        Pedido: {pedido} · Recibido: {recibido} {it.unidad || ''}
+                        {completo && <div className="text-muted" style={{ fontSize: 11 }}>Completo</div>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             </div>
           )}
