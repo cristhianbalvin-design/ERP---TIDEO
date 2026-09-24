@@ -8823,14 +8823,19 @@ function Recepciones() {
     });
   }, [ocSeleccionada, preciosFactura, toleranciaRecepcion]);
 
-  const advertenciaTotalFactura = useMemo(() => {
+  const comparacionMontoFactura = useMemo(() => {
     const montoCabecera = Number(facturaProvMonto || 0);
-    if (!ocSeleccionada || !montoCabecera || totalFacturaLineas <= 0) return '';
+    if (!ocSeleccionada || !montoCabecera || totalFacturaLineas <= 0) return { mensaje: '', excede: false };
     const diffAbs = Math.abs(montoCabecera - totalFacturaLineas);
     const diffPct = diffAbs / totalFacturaLineas;
-    if (diffPct <= toleranciaRecepcion) return '';
-    return `Monto cabecera ${moneyD(montoCabecera)} vs lineas c/IGV ${moneyD(totalFacturaLineas)}. Diferencia ${moneyD(diffAbs)} (${(diffPct * 100).toFixed(1)}%).`;
+    if (diffAbs <= 0.000001) return { mensaje: '', excede: false };
+    return {
+      mensaje: `Monto cabecera ${moneyD(montoCabecera)} vs lineas c/IGV ${moneyD(totalFacturaLineas)}. Diferencia ${moneyD(diffAbs)} (${(diffPct * 100).toFixed(1)}%).`,
+      excede: diffPct > toleranciaRecepcion,
+    };
   }, [facturaProvMonto, ocSeleccionada, totalFacturaLineas, toleranciaRecepcion]);
+  const advertenciaTotalFactura = comparacionMontoFactura.mensaje;
+  const bloqueoMontoFactura = comparacionMontoFactura.excede;
 
   const handleScanOC = (codigo) => {
     setScannerOCOpen(false);
@@ -8992,7 +8997,10 @@ function Recepciones() {
                       <span className="text-muted">Total lineas c/IGV para comparar cabecera</span>
                       <strong>{moneyD(totalFacturaLineas)}</strong>
                     </div>
-                    {advertenciaTotalFactura && <div style={{color:'#b45309',marginTop:4}}>{advertenciaTotalFactura}</div>}
+                    {advertenciaTotalFactura && <div style={{color:bloqueoMontoFactura ? 'var(--danger)' : '#b45309',marginTop:4}}>
+                      <div>{advertenciaTotalFactura}</div>
+                      {bloqueoMontoFactura && <div style={{marginTop:4}}>Corrige el monto de esta recepción para continuar. Si necesitas facturar el total de la OC, usa Nuevo Egreso/CxP manual con el toggle de OC.</div>}
+                    </div>}
                   </div>
                 </div>
               )}
@@ -9016,7 +9024,7 @@ function Recepciones() {
                   </div>
                   <div className="input-group">
                     <label>Monto total</label>
-                    <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionWarnings([]); }} placeholder="0.00"/>
+                    <input className="input" type="number" step="0.01" min="0" value={facturaProvMonto} onChange={e => { setFacturaProvMonto(e.target.value); setValidacionErrors([]); setValidacionWarnings([]); }} placeholder="0.00"/>
                   </div>
                 </div>
                 <div className="input-group mt-4">
@@ -9059,7 +9067,7 @@ function Recepciones() {
                 </div>
               )}
 
-              {validacionWarnings.length > 0 && (
+              {validacionWarnings.length > 0 && !bloqueoMontoFactura && (
                 <div style={{marginTop:16,background:'rgba(245,158,11,0.08)',border:'1px solid #f59e0b',borderRadius:6,padding:12}}>
                   <div style={{fontWeight:700,fontSize:13,color:'#b45309',marginBottom:6}}>Advertencia de precio — diferencia detectada</div>
                   {validacionWarnings.map((w, i) => <div key={i} style={{fontSize:12,color:'#b45309',marginTop:2}}>• {w}</div>)}
@@ -9069,10 +9077,13 @@ function Recepciones() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:8}}>
                 <button type="button" className="btn btn-secondary" onClick={cerrarPanel}>Cancelar</button>
-                {validacionWarnings.length > 0 && (
+                {!bloqueoMontoFactura && validacionWarnings.length > 0 && (
                   <button type="button" className="btn btn-primary" style={{background:'#f59e0b',border:'none'}} onClick={e => guardar(e, true)}>Confirmar igualmente</button>
                 )}
-                {validacionWarnings.length === 0 && (
+                {bloqueoMontoFactura && (
+                  <button type="button" className="btn btn-primary" disabled>Corrige el monto para confirmar</button>
+                )}
+                {!bloqueoMontoFactura && validacionWarnings.length === 0 && (
                   <button className="btn btn-primary" type="submit" disabled={!origen || uploadingFile}>
                     Confirmar recepcion
                   </button>

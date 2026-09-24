@@ -8892,8 +8892,8 @@ export function AppProvider({ children }) {
           const diffPct = diffAbs / totalLineasFactura;
           if (diffPct > tolerancia) {
             precioDiferente = true;
-            validacionAdvertencias.push(
-              `Monto factura cabecera S/ ${montoFactura.toFixed(2)} vs total lineas c/IGV S/ ${totalLineasFactura.toFixed(2)} (diferencia S/ ${diffAbs.toFixed(2)}, ${(diffPct * 100).toFixed(1)}%)`
+            validacionErrores.push(
+              `Monto factura cabecera S/ ${montoFactura.toFixed(2)} vs total lineas c/IGV S/ ${totalLineasFactura.toFixed(2)} (diferencia S/ ${diffAbs.toFixed(2)}, ${(diffPct * 100).toFixed(1)}%). Corrige el monto de esta recepción; para facturar el total de la OC usa Nuevo Egreso/CxP manual con el toggle de OC.`
             );
           }
         }
