@@ -183,7 +183,7 @@ function calcularEstadoOcPorRecepcionLocal({ ordenCompra, recepciones, recepcion
   const recibido = recepcionesOc.reduce((sum, r) => sum + (r.items_recibidos || []).reduce((lineSum, item) => lineSum + (Number(item.recibido) || 0), 0), 0);
   const porcentaje = pedido > 0 ? Number(Math.min(100, Math.max(0, (recibido / pedido) * 100)).toFixed(2)) : 0;
   const tipo = (recepcion.items_recibidos || []).some(item => (Number(item.recibido) || 0) < (Number(item.pedido) || 0)) ? 'parcial' : 'total';
-  const estado = porcentaje >= 100 ? 'cerrada' : 'recibida_parcial';
+  const estado = porcentaje >= 100 ? 'recibida_total' : 'recibida_parcial';
 
   return {
     ordenCompra: {
