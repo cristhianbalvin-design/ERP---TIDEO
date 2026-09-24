@@ -1,14 +1,16 @@
 -- Paso 9: marcado explícito de las dos cuentas BN autorizadas.
 -- No usa heurísticas por nombre, banco, empresa ni sociedad.
 
-update public.cuentas_bancarias
-set es_cuenta_detracciones = true
-where id in ('cb_451769','cb_802101');
-
 do $$
 declare v_afectadas integer; v_marcadas integer;
 begin
-  get diagnostics v_afectadas = row_count;
+  with actualizadas as (
+    update public.cuentas_bancarias
+    set es_cuenta_detracciones = true
+    where id in ('cb_451769','cb_802101')
+    returning id
+  )
+  select count(*) into v_afectadas from actualizadas;
   if v_afectadas <> 2 then
     raise exception 'VALIDACION_PASO9|filas_afectadas=%|esperadas=2', v_afectadas;
   end if;
