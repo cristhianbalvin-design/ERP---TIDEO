@@ -66,6 +66,7 @@ import * as XLSX from 'xlsx';
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { listNavModules, listNavSections, useTenantNavLabels } from './services/navLabelsService.js';
+import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -3355,12 +3356,13 @@ function MaterialesMaestro({ onClose }) {
   const [tab, setTab] = useState('catalogo');
   const [filtros, setFiltros] = useState({ grupoId: '', familiaId: '', subfamiliaId: '', estado: '', texto: '' });
   const [editandoId, setEditandoId] = useState(null);
-  const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, stock_minimo: 0, punto_reorden: 0, stock_maximo: 0, stock_seguridad: 0, estado: 'activo' };
+  const matBase = { descripcion: '', unidad: '', grupo_id: '', familia_id: '', subfamilia_id: '', nro_parte: '', unidades_contenidas: 1, almacen_id: '', ubicacion: '', observacion: '', precio_unitario: 0, stock_minimo: 0, punto_reorden: 0, stock_maximo: 0, stock_seguridad: 0, estado: 'activo', spot_catalogo_id: '' };
   const [formMat, setFormMat] = useState(matBase);
   const [parteOriginal, setParteOriginal] = useState({ id: '', fabricante_id: '', fabricante_nombre: '', precio_referencial: '', moneda: 'PEN' });
   const [partesAlternativos, setPartesAlternativos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formErr, setFormErr] = useState('');
+  const [spotCatalogo, setSpotCatalogo] = useState([]);
   const [importando, setImportando] = useState(false);
   const [resultImport, setResultImport] = useState(null);
   const [pagina, setPagina] = useState(1);
@@ -3379,6 +3381,7 @@ function MaterialesMaestro({ onClose }) {
   const [editFId, setEditFId] = useState(null);
   const [editSId, setEditSId] = useState(null);
   const [jerarErr, setJerarErr] = useState('');
+  useEffect(() => { listarSpotCatalogoVigente().then(setSpotCatalogo).catch(() => setSpotCatalogo([])); }, []);
 
   // Filtros de familia/subfamilia en catálogo
   const familiasFiltradas = filtros.grupoId
@@ -3421,7 +3424,7 @@ function MaterialesMaestro({ onClose }) {
   const almNombre = (id) => almacenes.find(a => a.id === id)?.nombre || '—';
 
   const editarMaterial = (m) => {
-    setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, stock_minimo: m.stock_minimo ?? 0, punto_reorden: m.punto_reorden ?? 0, stock_maximo: m.stock_maximo ?? 0, stock_seguridad: m.stock_seguridad ?? 0, estado: m.estado || 'activo' });
+    setFormMat({ descripcion: m.descripcion || '', unidad: m.unidad || '', grupo_id: m.grupo_id || '', familia_id: m.familia_id || '', subfamilia_id: m.subfamilia_id || '', nro_parte: m.nro_parte || '', unidades_contenidas: m.unidades_contenidas ?? 1, almacen_id: m.almacen_id || '', ubicacion: m.ubicacion || '', observacion: m.observacion || '', precio_unitario: m.precio_unitario ?? 0, stock_minimo: m.stock_minimo ?? 0, punto_reorden: m.punto_reorden ?? 0, stock_maximo: m.stock_maximo ?? 0, stock_seguridad: m.stock_seguridad ?? 0, estado: m.estado || 'activo', spot_catalogo_id: m.spot_catalogo_id || '' });
     setEditandoId(m.id);
     const original = (m.material_numeros_parte || []).find(p => p.tipo === 'original');
     setParteOriginal({ id: original?.id || '', fabricante_id: original?.fabricante_id || '', fabricante_nombre: original?.fabricantes?.nombre || '', precio_referencial: original?.precio_referencial ?? '', moneda: original?.moneda || 'PEN' });
@@ -3796,6 +3799,14 @@ function MaterialesMaestro({ onClose }) {
                   <div className="input-group">
                     <label>Nro Parte</label>
                     <input className="input" value={formMat.nro_parte} onChange={e => setFormMat(p => ({ ...p, nro_parte: e.target.value }))} placeholder="Código del fabricante" />
+                  </div>
+                  <div className="input-group" style={{gridColumn:'1 / -1'}}>
+                    <label>Código SPOT (opcional)</label>
+                    <select className="select" value={formMat.spot_catalogo_id || ''} onChange={e => setFormMat(p => ({...p, spot_catalogo_id:e.target.value}))}>
+                      <option value="">Sin detracción</option>
+                      {spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
+                    </select>
+                    <div className="text-muted" style={{fontSize:11,marginTop:4}}>Los materiales no heredan el código de una familia.</div>
                   </div>
                   <div style={{ gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 2 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -5267,13 +5278,14 @@ function GestionPosicionesTab({
 // ============ CONFIGURACIÓN Y MAESTROS ============
 function FamiliasServicioPanel({ onClose }) {
   const { empresa, addNotificacion } = useApp();
-  const empty = { codigo: '', nombre: '', descripcion: '', orden: 0 };
+  const empty = { codigo: '', nombre: '', descripcion: '', orden: 0, spot_catalogo_id: '' };
   const [familias, setFamilias] = useState([]);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [spotCatalogo, setSpotCatalogo] = useState([]);
 
   const cargar = async () => {
     if (!empresa?.id) return;
@@ -5283,13 +5295,19 @@ function FamiliasServicioPanel({ onClose }) {
     finally { setLoading(false); }
   };
   useEffect(() => { cargar(); }, [empresa?.id]);
+  useEffect(() => { listarSpotCatalogoVigente().then(setSpotCatalogo).catch(() => setSpotCatalogo([])); }, []);
+  useEffect(() => {
+    if (!editId) return;
+    const familia = familias.find(item => item.id === editId);
+    setForm(prev => ({ ...prev, spot_catalogo_id: familia?.spot_catalogo_id || '' }));
+  }, [editId, familias]);
   const cancelar = () => { setForm(empty); setEditId(null); setError(''); };
   const guardar = async event => {
     event.preventDefault();
     const codigo = form.codigo.trim(); const nombre = form.nombre.trim();
     if (!codigo || !nombre) { setError('Código y nombre son obligatorios.'); return; }
     setSaving(true); setError('');
-    const payload = { codigo, nombre, descripcion: form.descripcion.trim() || null, orden: Number(form.orden) || 0 };
+    const payload = { codigo, nombre, descripcion: form.descripcion.trim() || null, orden: Number(form.orden) || 0, spot_catalogo_id: form.spot_catalogo_id || null };
     try {
       const guardada = editId ? await maestrosService.actualizarFamiliaServicio(editId, payload) : await maestrosService.crearFamiliaServicio(empresa.id, { ...payload, activo: true });
       setFamilias(prev => (editId ? prev.map(f => f.id === editId ? guardada : f) : [...prev, guardada]).sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0) || a.nombre.localeCompare(b.nombre, 'es')));
@@ -5318,6 +5336,7 @@ function FamiliasServicioPanel({ onClose }) {
         <form className="card" data-local-form="true" style={{padding:16, marginBottom:18}} onSubmit={guardar}>
           <div style={{fontWeight:600, marginBottom:12}}>{editId ? 'Editar familia' : 'Nueva familia'}</div>
           <div className="grid-2" style={{gap:12}}><div className="input-group"><label>Código *</label><input className="input" required value={form.codigo} onChange={e => setForm(p => ({...p, codigo:e.target.value}))} placeholder="FAM-001" /></div><div className="input-group"><label>Nombre *</label><input className="input" required value={form.nombre} onChange={e => setForm(p => ({...p, nombre:e.target.value}))} placeholder="Ej: Mantenimiento preventivo" /></div><div className="input-group"><label>Orden</label><input className="input" type="number" value={form.orden} onChange={e => setForm(p => ({...p, orden:e.target.value}))} /></div><div className="input-group"><label>Descripción</label><input className="input" value={form.descripcion} onChange={e => setForm(p => ({...p, descripcion:e.target.value}))} placeholder="Opcional" /></div></div>
+          <div className="input-group" style={{marginTop:12}}><label>Código SPOT por defecto</label><select className="select" value={form.spot_catalogo_id || ''} onChange={e => setForm(p => ({...p, spot_catalogo_id:e.target.value}))}><option value="">Sin detracción</option>{spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}</select><div className="text-muted" style={{fontSize:11,marginTop:4}}>La familia define el valor principal; el servicio puede reemplazarlo.</div></div>
           <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>{editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}<button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear familia'}</button></div>
         </form>
         <div className="card"><div className="card-head"><h3>Familias registradas</h3><span className="badge badge-cyan">{familias.length}</span></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Orden</th><th>Código</th><th>Nombre</th><th>Descripción</th><th>Estado</th><th></th></tr></thead><tbody>{loading ? <tr><td colSpan="6" className="text-muted" style={{padding:18}}>Cargando familias...</td></tr> : familias.length ? familias.map(f => <tr key={f.id}><td className="mono">{f.orden ?? 0}</td><td className="mono">{f.codigo}</td><td><strong>{f.nombre}</strong></td><td className="text-muted">{f.descripcion || '—'}</td><td><span className={`badge ${f.activo ? 'badge-green' : 'badge-gray'}`}>{f.activo ? 'Activo' : 'Inactivo'}</span></td><td style={{whiteSpace:'nowrap', textAlign:'right'}}><button className="btn btn-ghost btn-sm" onClick={() => { setForm({ codigo:f.codigo || '', nombre:f.nombre || '', descripcion:f.descripcion || '', orden:f.orden ?? 0 }); setEditId(f.id); setError(''); }}>{I.edit} Editar</button><button className="btn btn-ghost btn-sm" style={{marginLeft:6}} onClick={() => cambiarActivo(f)}>{f.activo ? 'Desactivar' : 'Activar'}</button></td></tr>) : <tr><td colSpan="6" className="text-muted" style={{padding:18}}>No hay familias registradas.</td></tr>}</tbody></table></div></div>
@@ -7396,6 +7415,7 @@ function Servicios({ embedded = false }) {
   const [serviciosCargados, setServiciosCargados] = useState(false);
   const [editando, setEditando] = useState(null);
   const [formError, setFormError] = useState('');
+  const [spotCatalogo, setSpotCatalogo] = useState([]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -7411,6 +7431,8 @@ function Servicios({ embedded = false }) {
       setLoading(false);
     });
   }, [empresa?.id]);
+
+  useEffect(() => { listarSpotCatalogoVigente().then(setSpotCatalogo).catch(() => setSpotCatalogo([])); }, []);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -7432,7 +7454,7 @@ function Servicios({ embedded = false }) {
   const formBase = { 
     codigo: '', familia_id: '', familia: '', descripcion: '', unidad: 'Servicio',
     moneda: 'PEN', costo: '', precio: '', estado: 'activo', facturable: true, 
-    precio_incluido: false, detalle: '', entregables: [], notas_internas: '' 
+    precio_incluido: false, detalle: '', entregables: [], notas_internas: '', spot_catalogo_id: ''
   };
   const [form, setForm] = useState(formBase);
   const formularioServicioRef = useRef(null);
@@ -7477,7 +7499,7 @@ function Servicios({ embedded = false }) {
       precio_incluido: s.precio_incluido ?? false, 
       detalle: s.detalle || '', 
       notas_internas: s.notas_internas || '',
-      entregables: s.entregables ? [...s.entregables] : [] 
+      entregables: s.entregables ? [...s.entregables] : [], spot_catalogo_id: s.spot_catalogo_id || ''
     });
     setNuevoEntregable('');
     setEditando(s);
@@ -7579,11 +7601,11 @@ function Servicios({ embedded = false }) {
     
     try {
       if (editando) {
-        const payload = { ...form, familia_id: form.familia_id || null, costo, precio, margen };
+        const payload = { ...form, familia_id: form.familia_id || null, spot_catalogo_id: form.spot_catalogo_id || null, costo, precio, margen };
         const saved = await maestrosService.actualizarServicio(editando.id, payload);
         setServicios(prev => prev.map(s => s.id === editando.id ? saved : s));
       } else {
-        const payload = { ...form, familia_id: form.familia_id || null, costo, precio, margen };
+        const payload = { ...form, familia_id: form.familia_id || null, spot_catalogo_id: form.spot_catalogo_id || null, costo, precio, margen };
         delete payload.id;
         const saved = await maestrosService.crearServicio(empresa.id, payload);
         setServicios(prev => [...prev, saved]);
@@ -7838,6 +7860,14 @@ function Servicios({ embedded = false }) {
                   <option value="__nueva__">+ Nueva familia...</option>
                 </select>
                 {!form.familia_id && form.familia && !creandoFamiliaRapida && <div className="text-muted" style={{fontSize:11, marginTop:5}}>Familia histórica: {form.familia}. Selecciona una familia normalizada.</div>}
+              </div>
+              <div className="input-group">
+                <label>Código SPOT (override opcional)</label>
+                <select className="select" value={form.spot_catalogo_id || ''} onChange={e => upd('spot_catalogo_id', e.target.value)}>
+                  <option value="">{familiasActivas.find(f => f.id === form.familia_id)?.spot_catalogo_id ? 'Heredado de la familia' : 'Sin detracción'}</option>
+                  {spotCatalogo.map(spot => <option key={spot.id} value={spot.id}>{spotLabel(spot)}</option>)}
+                </select>
+                {!form.spot_catalogo_id && form.familia_id && <div className="text-muted" style={{fontSize:11,marginTop:4}}>Heredado de la familia: {spotLabel(spotCatalogo.find(s => s.id === familiasActivas.find(f => f.id === form.familia_id)?.spot_catalogo_id))}</div>}
               </div>
               {creandoFamiliaRapida && <div className="card" style={{gridColumn:'1/-1', padding:14, background:'var(--bg-subtle)'}}>
                 <div style={{fontWeight:600, fontSize:13, marginBottom:10}}>Nueva familia</div>
@@ -8096,7 +8126,7 @@ function CuentasBancariasSection() {
     empresa,
     sociedadesDisponibles = [],
   } = useApp();
-  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'' };
+  const empty = { nombre:'', banco:'', numero_cuenta:'', cci:'', moneda:'PEN', tipo:'corriente', estado:'activo', saldo_inicial:'', sociedad_id:'', es_cuenta_detracciones:false };
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -8147,7 +8177,7 @@ function CuentasBancariasSection() {
     if (!form.nombre.trim() || !form.banco.trim()) return;
     setSaving(true);
     try {
-      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null };
+      const payload = { ...form, saldo_inicial: Number(form.saldo_inicial || 0), sociedad_id: form.sociedad_id || null, es_cuenta_detracciones: Boolean(form.es_cuenta_detracciones) };
       if (editId) {
         await actualizarCuentaBancaria(editId, payload);
         addNotificacion('Cuenta bancaria actualizada.');
@@ -8159,7 +8189,7 @@ function CuentasBancariasSection() {
     } finally { setSaving(false); }
   };
 
-  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'' }); setEditId(c.id); };
+  const editar = c => { setForm({ nombre:c.nombre, banco:c.banco, numero_cuenta:c.numero_cuenta||'', cci:c.cci||'', moneda:c.moneda||'PEN', tipo:c.tipo||'corriente', estado:c.estado||'activo', saldo_inicial:String(c.saldo_inicial||0), sociedad_id:c.sociedad_id||'', es_cuenta_detracciones:Boolean(c.es_cuenta_detracciones) }); setEditId(c.id); };
   const cancelar = () => { setForm(empty); setEditId(null); };
 
   const getSociedadName = (id) => {
@@ -8188,6 +8218,12 @@ function CuentasBancariasSection() {
           </select>
         </div>
         <div className="input-group"><label>Estado</label><ParamChipGroup value={form.estado} onChange={value => setForm(p => ({ ...p, estado: value }))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
+        <div className="input-group" style={{gridColumn:'1/-1'}}>
+          <label style={{display:'flex',alignItems:'center',gap:10,cursor: form.moneda === 'PEN' && form.estado === 'activo' && Boolean(form.sociedad_id) ? 'pointer' : 'not-allowed'}}>
+            <input type="checkbox" checked={Boolean(form.es_cuenta_detracciones)} disabled={!(form.moneda === 'PEN' && form.estado === 'activo' && Boolean(form.sociedad_id))} onChange={e => setForm(p => ({...p, es_cuenta_detracciones:e.target.checked}))} />
+            <span><strong>Cuenta de detracciones (Banco de la Nación)</strong><br /><small className="text-muted">Solo se usará para registrar depósitos SPOT de la misma sociedad. La regla real la aplica la base de datos.</small></span>
+          </label>
+        </div>
         
         <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end', gap:8}}>
           {editId && <button type="button" className="btn btn-secondary" onClick={cancelar}>Cancelar</button>}

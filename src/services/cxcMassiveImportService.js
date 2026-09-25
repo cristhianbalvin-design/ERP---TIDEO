@@ -9,7 +9,7 @@ export const CXC_MASSIVE_SHEET = 'CxC';
 export const CXC_MASSIVE_HEADERS = [
   'ruc_cliente', 'razon_social', 'tipo_documento', 'numero',
   'fecha_emision', 'fecha_vencimiento', 'moneda', 'subtotal', 'igv', 'monto_total',
-  'monto_pagado', 'monto_detraccion', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
+  'monto_pagado', 'monto_detraccion', 'codigo_spot', 'cuenta_detraccion_id', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
   'os_cliente_codigo', 'centro_beneficio_codigo', 'confirmar_exceso', 'glosa', 'notas',
 ];
 export const TIPOS_CXC_MASIVA = ['Factura', 'Boleta'];
@@ -96,7 +96,7 @@ export async function descargarPlantillaCxcMasiva(supabase, empresaId, empresaNo
   const data = XLSX.utils.aoa_to_sheet([CXC_MASSIVE_HEADERS, [
     '20123456789', 'Cliente Ejemplo S.A.C.', 'Factura', 'F001-000123',
     new Date().toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), 'PEN', '1000.00', '180.00', '1180.00',
-    '0.00', '0.00', '', '', '', '', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
+    '0.00', '0.00', '', '', '', '', '', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
   ]]);
   data['!cols'] = CXC_MASSIVE_HEADERS.map(header => ({ wch: Math.max(16, header.length + 2) }));
 
@@ -273,7 +273,7 @@ export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase,
           empresa_id: empresaId, ruc_cliente: row.ruc_cliente, razon_social: row.razon_social,
           tipo_documento: row.tipo_documento, numero: row.numero, fecha_emision: row.fecha_emision,
           fecha_vencimiento: row.fecha_vencimiento, moneda: row.moneda, subtotal: row.subtotal, igv: row.igv,
-          monto_total: row.monto_total, monto_pagado: row.monto_pagado, monto_detraccion: row.monto_detraccion, fecha_cobro: row.fecha_cobro || null,
+          monto_total: row.monto_total, monto_pagado: row.monto_pagado, monto_detraccion: row.monto_detraccion, codigo_spot: row.codigo_spot || null, cuenta_detraccion_id: row.cuenta_detraccion_id || null, fecha_cobro: row.fecha_cobro || null,
           medio_pago: row.medio_pago || null, cuenta_bancaria: row.cuenta_bancaria || null, numero_operacion: row.numero_operacion || null,
           os_cliente_codigo: row.os_cliente_codigo || null, centro_beneficio_codigo: row.centro_beneficio_codigo || null,
           confirmar_exceso: row.confirmar_exceso || null, glosa: row.glosa || null, notas: row.notas || null,

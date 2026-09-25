@@ -5161,6 +5161,8 @@ export function AppProvider({ children }) {
         notas: datos.notas || null,
         aplica_retencion: datos.aplica_retencion || false,
         monto_retencion: datos.monto_retencion || 0,
+        tipo_cambio_detraccion: datos.tipo_cambio_detraccion ?? null,
+        tipo_cambio_fuente: datos.tipo_cambio_fuente ?? null,
         confirmar_numero_duplicado: datos.confirmar_numero_duplicado || false,
       });
       const facturaCreada = resultado?.factura;
@@ -5620,9 +5622,12 @@ export function AppProvider({ children }) {
     const montoPago = Number(montoCobrado || 0);
     const cxcBase = cxcTotal || montoPago;
     const fraccionPagada = cxcBase > 0 ? Math.min(1, montoPago / cxcBase) : 1;
-    const baseComision = facturaTotal > 0
-      ? Math.round(facturaTotal * fraccionPagada * 100) / 100
-      : montoPago;
+    const esDetraccion = String(cobro?.tipo_cobro || '').toLowerCase() === 'detraccion';
+    const baseComision = esDetraccion
+      ? montoPago
+      : facturaTotal > 0
+        ? Math.round(facturaTotal * fraccionPagada * 100) / 100
+        : montoPago;
     const montoComision = Math.round(baseComision * pct / 100 * 100) / 100;
     const periodoComision = String(fecha || new Date().toISOString()).slice(0, 7);
     const monedaComision = normalizarMonedaComision(
@@ -5674,6 +5679,8 @@ export function AppProvider({ children }) {
 
       const montoCobrado = Number(monto || 0);
       const montoMora = Number(datos.monto_mora || 0);
+      const esDetraccion = String(datos.tipo_cobro || '').toLowerCase() === 'detraccion';
+      const montoDepositoSoles = Number(datos.monto_deposito_soles || 0);
       const archivoAdjunto = datos.archivo_adjunto || null;
       const totalCuenta = Number(cuentaCobrar?.monto_total || cuentaCobrar?.total || 0);
       const retencionCuenta = Number(cuentaCobrar?.monto_retencion || 0);
@@ -5695,14 +5702,19 @@ export function AppProvider({ children }) {
         id: generateId('cob'), empresa_id: empresa.id, cxc_id: cxcId,
         factura_id: cuentaCobrar?.factura_id || null, cuenta_id: cuentaCobrar?.cuenta_id || null,
         monto_capital: montoCobrado, monto_mora: montoMora, medio_pago: datos.medio_pago || 'Efectivo',
+        tipo_cobro: datos.tipo_cobro || 'normal', detraccion_id: datos.detraccion_id || null,
+        monto_deposito_soles: datos.monto_deposito_soles ?? null, numero_constancia: datos.numero_constancia || null,
         cuenta_bancaria: datos.cuenta_bancaria || null, numero_operacion: datos.numero_operacion || datos.referencia || null,
         fecha_cobro: fecha, notas: datos.notas || null, registrado_por: authUser?.email || 'Sistema', creado_en: new Date().toISOString(),
       };
       const movimiento = {
         id: generateId('tes'), empresa_id: empresa.id, tipo: 'ingreso', descripcion: `Cobro ${facturaNumero}`,
-        monto: montoCobrado + montoMora, moneda: monedaCobro, fecha,
-        cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal', cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
-        tc_aplicado: datos.tc_aplicado ?? null, monto_en_moneda_cuenta: datos.monto_en_moneda_cuenta ?? null,
+        monto: esDetraccion ? montoDepositoSoles : montoCobrado + montoMora,
+        moneda: esDetraccion ? 'PEN' : monedaCobro, fecha,
+        cuenta_bancaria: datos.cuenta_bancaria || 'Cuenta principal',
+        cuenta_bancaria_id: esDetraccion ? (datos.cuenta_bancaria_id || datos.cuenta_bancaria || null) : (datos.cuenta_bancaria_id || null),
+        tc_aplicado: esDetraccion ? (datos.tipo_cambio_detraccion ?? datos.tc_aplicado ?? 1) : (datos.tc_aplicado ?? null),
+        monto_en_moneda_cuenta: esDetraccion ? montoDepositoSoles : (datos.monto_en_moneda_cuenta ?? null),
         referencia: datos.numero_operacion || datos.referencia || '', vinculo_tipo: 'cxc', vinculo_id: cxcId, estado: 'registrado',
       };
       const comision = await construirComisionDesdeCobro({ cuentaCobrar, cobro, montoCobrado, fecha });
