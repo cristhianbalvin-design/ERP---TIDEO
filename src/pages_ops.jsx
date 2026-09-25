@@ -1779,7 +1779,7 @@ function OT({ role }) {
           },
         });
       } else {
-        crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id, costoEst: estimadoPropioNuevaOT, costo_estimado_ot: estimadoPropioNuevaOT });
+        await crearOT({ ...datos, centro_beneficio_id: formNuevaOT.centro_beneficio_id, costoEst: estimadoPropioNuevaOT, costo_estimado_ot: estimadoPropioNuevaOT });
       }
       cerrarPanelNuevaOT();
     } catch (err) {
@@ -9844,11 +9844,15 @@ function Backlog() {
   );
   const getCuenta = (id) => cuentas.find(c => c.id === id)?.razon_social || id;
 
-  const confirmarConvertir = () => {
+  const confirmarConvertir = async () => {
     if (!cecoSeleccionado) return;
-    convertirBacklogAOT(modalConvertir.id, { centro_costo_id: cecoSeleccionado });
-    setModalConvertir(null);
-    setCecoSeleccionado('');
+    try {
+      await convertirBacklogAOT(modalConvertir.id, { centro_costo_id: cecoSeleccionado });
+      setModalConvertir(null);
+      setCecoSeleccionado('');
+    } catch (error) {
+      addNotificacion(error?.message || 'No se pudo convertir el requerimiento a OT.');
+    }
   };
 
   const query = searchQuery.toLowerCase();

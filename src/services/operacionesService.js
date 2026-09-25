@@ -68,12 +68,19 @@ export async function persistirOT(supabase, empresaId, ot) {
   return insert(payload);
 }
 
+export async function siguienteNumeroOrdenTrabajo(supabase, empresaId) {
+  const { data, error } = await supabase.rpc('siguiente_numero_orden_trabajo', { p_empresa_id: empresaId });
+  if (error) throw error;
+  return data;
+}
+
 export async function crearOTDesdeOSRpc(supabase, empresaId, osClienteId, ot) {
+  const numero = ot.numero || await siguienteNumeroOrdenTrabajo(supabase, empresaId);
   return supabase.rpc('crear_ot_desde_os_cliente', {
     p_empresa_id: empresaId,
     p_os_cliente_id: osClienteId,
     p_ot_id: ot.id,
-    p_numero: ot.numero,
+    p_numero: numero,
     p_servicio: ot.tipo || ot.servicio || 'Servicio cliente',
     p_descripcion: ot.descripcion || null,
     p_direccion_ejecucion: ot.direccion_ejecucion || ot.sede || null,

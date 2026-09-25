@@ -448,6 +448,12 @@ export async function subirArchivoSustento(supabase, empresaId, cotId, file) {
   return { nombre: file.name, path, url: urlData.publicUrl, tipo: file.type, tamanio: file.size };
 }
 
+export async function siguienteNumeroOSCliente(supabase, empresaId) {
+  const { data, error } = await supabase.rpc('siguiente_numero_os_cliente', { p_empresa_id: empresaId });
+  if (error) throw error;
+  return data;
+}
+
 export async function persistirOSCliente(supabase, empresaId, osc) {
   const row = {
     id: osc.id,
