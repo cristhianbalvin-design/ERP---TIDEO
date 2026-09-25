@@ -10,6 +10,7 @@ import {
   DisponibilidadMecanica,
 } from '../pages/pages2_v2.jsx';
 import { CierreConformidadPage } from '../pages/CierreConformidadPage.jsx';
+import { RecepcionActivosClientePage } from '../pages/RecepcionActivosClientePage.jsx';
 import { ReporteMinaPage, ParteTallerPage } from '../pages/pages3.jsx';
 import { SchedulerDespacho } from '../pages/TransportePages.jsx';
 import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
@@ -25,7 +26,7 @@ import {
 } from '../pages/HSEPage.jsx';
 
 export const workshopOperationsRouteIds = new Set([
-  'ots', 'crear-ot', 'ot-detalle', 'taller', 'partes-taller', 'crear-parte-taller',
+  'ots', 'crear-ot', 'ot-detalle', 'recepcion-activos', 'taller', 'partes-taller', 'crear-parte-taller',
   'partes-mina', 'mina', 'nuevo-reporte', 'mis-reportes', 'cierre-conformidad', 'scheduler-despacho',
   'hse-dashboard', 'permisos-trabajo', 'registro-incidentes', 'epp-certificaciones',
   'analisis-riesgo-ats', 'protocolo-loto',
@@ -39,6 +40,7 @@ export function renderWorkshopOperationsRoute(route, context) {
   switch (route) {
     case 'ots': return <OTsListadoPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
     case 'crear-ot': return <CrearOTPage onNav={onNavigate} />;
+    case 'recepcion-activos': return <RecepcionActivosClientePage />;
     case 'ot-detalle': return <OTDetallePage onNav={onNavigate} code={currentOT} />;
     case 'taller':
     case 'crear-parte-taller': return <ParteTallerPage onNav={onNavigate} routeParams={routeParams} />;

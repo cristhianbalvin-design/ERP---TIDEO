@@ -189,7 +189,7 @@ export const SIDEBAR_ZONES = [
   // ── TALLER & OPERACIONES ────────────────────────────────────────────────────
   {
     id: 'taller-ops', label: 'TALLER & OPERACIONES', type: 'business-lines',
-    roles: ['gerente', 'supervisor', 'tecnico', 'hse'],
+    roles: ['gerente', 'supervisor', 'tecnico', 'hse', 'almacenero'],
     groups: [
       {
         id: 'ordenes-trabajo', label: 'Órdenes de Trabajo', emoji: '🔧',
@@ -197,6 +197,7 @@ export const SIDEBAR_ZONES = [
         items: [
           { id: 'ots',                label: 'Bandeja Maestra',      icon: 'orders',   roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'crear-ot',           label: 'Nueva OT · DBS',       icon: 'plus',     roles: ['gerente', 'supervisor', 'tecnico'] },
+          { id: 'recepcion-activos',  label: 'Recepción de Activos',  icon: 'box',      roles: ['gerente', 'supervisor', 'tecnico', 'almacenero'] },
           { id: 'taller',             label: 'Partes Taller',         icon: 'workshop', roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'partes-mina',        label: 'Reportes Mina',         icon: 'mine',     roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'cierre-conformidad', label: 'Cierre & Conformidad',  icon: 'check',    roles: ['gerente', 'supervisor'] },
