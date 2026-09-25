@@ -7966,7 +7966,7 @@ function CxP() {
       .reduce((sum, c) => sum + Number(c.monto_total || 0), 0);
     return Math.max(0, Number(oc.total || 0) - facturado);
   };
-  const ESTADOS_OC_CXP_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']), []);
+  const ESTADOS_OC_CXP_SELECCIONABLES = useMemo(() => new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'recibida_total', 'cerrada']), []);
   const ordenesCompraCxpOptions = useMemo(() => (ordenesCompra || [])
     .filter(oc => (
       (!empresa?.id || oc.empresa_id === empresa.id)
