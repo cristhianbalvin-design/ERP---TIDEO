@@ -15,7 +15,7 @@ import { construirAutoservicioLocal } from './services/autoservicioEmpleadoServi
 import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
-import { METODOS_PAGO } from './lib/metodosPago.js';
+const METODOS_PAGO_CAMPO = ['Efectivo', 'Tarjeta empresa', 'Yape / Plin', 'Transferencia bancaria'];
 
 // Mobile field views - all field profiles
 
@@ -2979,7 +2979,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
 function ComprasView({ screen, setScreen }) {
   const {
-    authUser, usuarios, crearGasto, persistirCompraGasto, eliminarCompraGasto, crearCxP, ots, centrosCosto, empresa,
+    authUser, usuarios, proveedores, crearGasto, persistirCompraGasto, eliminarCompraGasto, crearCxP, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -2995,7 +2995,7 @@ function ComprasView({ screen, setScreen }) {
   const [paso, setPaso] = useState('inicio');
   const [fotoUrl, setFotoUrl] = useState('');
   const [fotoArchivo, setFotoArchivo] = useState(null);
-  const [campos, setCampos] = useState({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+  const [campos, setCampos] = useState({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
   const [extractError, setExtractError] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [otId, setOtId] = useState('');
@@ -3017,7 +3017,7 @@ function ComprasView({ screen, setScreen }) {
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
     setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setMetodoPago(''); setGuardando(false);
-    setCampos({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+    setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
 
@@ -3042,6 +3042,7 @@ function ComprasView({ screen, setScreen }) {
       setCampos({
         ruc: d.ruc || '',
         proveedor: d.proveedor || '',
+        concepto: d.descripcion_compra?.trim() || (d.num_factura ? `Compra en campo · ${d.num_factura}` : 'Compra en campo'),
         num_factura: d.num_factura || '',
         fecha_emision: d.fecha_emision || new Date().toISOString().split('T')[0],
         monto_sin_igv: d.monto_sin_igv != null ? String(d.monto_sin_igv) : '',
@@ -3050,13 +3051,16 @@ function ComprasView({ screen, setScreen }) {
       });
     } catch {
       setExtractError(true);
-      setCampos({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
+      setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     }
     setPaso('revision');
   };
 
   const guardar = async () => {
-    if (!cecoId || (genCxP && !cxpVence) || !fotoArchivo) return;
+    if (!cecoId || (genCxP && !cxpVence) || !fotoArchivo || !metodoPago) {
+      if (!metodoPago) setSaveError('Selecciona un método de pago para continuar.');
+      return;
+    }
     setGuardando(true);
     setSaveError('');
     let adjunto = null;
@@ -3076,9 +3080,15 @@ function ComprasView({ screen, setScreen }) {
       });
       const archivoUrl = adjunto?.url || '';
       if (!archivoUrl) throw new Error('La foto se subió, pero no se obtuvo una URL accesible.');
+      const rucNormalizado = String(campos.ruc || '').replace(/\D/g, '');
+      const proveedorCatalogo = rucNormalizado
+        ? (proveedores || []).find(p => String(p.ruc || '').replace(/\D/g, '') === rucNormalizado)
+        : null;
+      const proveedorNombre = proveedorCatalogo?.razon_social || proveedorCatalogo?.nombre_comercial || campos.proveedor || null;
+      const concepto = campos.concepto?.trim() || (campos.num_factura ? `Compra en campo · ${campos.num_factura}` : 'Compra en campo');
       const gastoBase = {
         id: gastoId,
-        descripcion: campos.proveedor || 'Gasto en campo',
+        descripcion: concepto,
         categoria: 'Materiales',
         monto, moneda: 'PEN',
         fecha: campos.fecha_emision || new Date().toISOString().split('T')[0],
@@ -3086,6 +3096,7 @@ function ComprasView({ screen, setScreen }) {
         tipo_comprobante: 'Factura',
         centro_costo_id: cecoId,
         tipo: 'gasto', campo: true,
+        proveedor_referencia: proveedorNombre,
         ruc_proveedor: campos.ruc || '',
         archivo_url: archivoUrl,
         metodo_pago: metodoPago || null,
@@ -3099,15 +3110,15 @@ function ComprasView({ screen, setScreen }) {
       gastoPersistido = true;
       if (genCxP) {
         await crearCxP({
-          id: cxpId, proveedor_id: null, tipo_beneficiario: 'proveedor',
+          id: cxpId, proveedor_id: proveedorCatalogo?.id || null, tipo_beneficiario: 'proveedor',
           factura_numero: campos.num_factura || null,
-          concepto: campos.proveedor || 'Gasto en campo',
+          concepto,
           fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
           monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto_movil',
           mecanismo_origen: 'gasto_movil',
           gasto_id: gastoId, no_devengar_er: true,
           archivo_factura_url: archivoUrl,
-          ruc_emisor: campos.ruc || null, nombre_emisor: campos.proveedor || null,
+          ruc_emisor: campos.ruc || null, nombre_emisor: proveedorCatalogo ? null : proveedorNombre,
           categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
           ot_vinc_id: otId || null,
         });
@@ -3148,7 +3159,7 @@ function ComprasView({ screen, setScreen }) {
           <div style={{fontSize:12,color:'var(--fg-muted)'}}>La IA extraerá los datos automáticamente</div>
         </div>
         <button className="btn btn-secondary" style={{width:'100%',marginTop:12}}
-          onClick={() => { setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0]})); setPaso('revision'); }}>
+          onClick={() => { setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0], concepto: c.concepto || (c.num_factura ? `Compra en campo · ${c.num_factura}` : 'Compra en campo')})); setPaso('revision'); }}>
           Ingresar datos manualmente
         </button>
       </div>
@@ -3192,6 +3203,10 @@ function ComprasView({ screen, setScreen }) {
             <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>Fecha emisión</div>
             <input className="input" type="date" value={campos.fecha_emision} onChange={e=>setC('fecha_emision',e.target.value)}/>
           </div>
+          <div>
+            <div className="eyebrow" style={{marginBottom:3}}>Concepto</div>
+            <input className="input" value={campos.concepto} onChange={e=>setC('concepto',e.target.value)} placeholder="Compra en campo" />
+          </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
             {[['monto_sin_igv','Sin IGV'],['igv','IGV'],['monto_total','Total *']].map(([k,l]) => (
               <div key={k}>
@@ -3210,8 +3225,8 @@ function ComprasView({ screen, setScreen }) {
           <div>
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Método de pago</div>
             <select className="select" value={metodoPago} onChange={e=>setMetodoPago(e.target.value)}>
-              <option value="">— No informado —</option>
-              {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+              <option value="" disabled>Seleccionar metodo</option>
+              {METODOS_PAGO_CAMPO.map(m => <option key={m} value={m}>{m === 'Tarjeta empresa' ? 'Tarjeta' : m === 'Yape / Plin' ? 'Yape/Plin' : m === 'Transferencia bancaria' ? 'Transferencia' : m}</option>)}
             </select>
           </div>
           <div>
@@ -3237,7 +3252,7 @@ function ComprasView({ screen, setScreen }) {
 
         <div className="row mt-6" style={{gap:8}}>
           <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
-          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || (genCxP && !cxpVence)}>
+          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || !metodoPago || (genCxP && !cxpVence)}>
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
@@ -3251,7 +3266,7 @@ function ComprasView({ screen, setScreen }) {
         </div>
         <div style={{fontWeight:700,fontSize:16}}>Gasto guardado</div>
         <div style={{fontSize:13,color:'var(--fg-muted)'}}>
-          {campos.proveedor || 'Gasto en campo'} — {campos.monto_total ? `S/ ${campos.monto_total}` : ''}
+          {campos.concepto || 'Gasto en campo'} — {campos.monto_total ? `S/ ${campos.monto_total}` : ''}
           {genCxP && <div style={{marginTop:4,fontSize:12}}>CxP generada</div>}
         </div>
         <button className="btn btn-primary" style={{marginTop:8}} onClick={reiniciar}>
