@@ -48,7 +48,7 @@ import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
 import { GeoMiniMapa } from './components/GeoMiniMapa.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
-import { cantidadRecibidaPorItemOc, comprasService, getSpendAnalysis } from './services/comprasService.js';
+import { cantidadRecibidaPorItemOc, itemRecepcionCoincideConOc, comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
@@ -6426,8 +6426,32 @@ function proveedorById(proveedores, id) {
 
 const ESTADOS_OC_RECEPCIONABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial']);
 const ocEsRecepcionable = orden => ESTADOS_OC_RECEPCIONABLES.has(String(orden?.estado || '').toLowerCase());
-const ESTADOS_OC_CXP_VINCULABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'cerrada']);
+const ESTADOS_OC_CXP_VINCULABLES = new Set(['emitida', 'confirmada', 'en_transito', 'recibida_parcial', 'recibida_total', 'cerrada']);
 const ocEsVinculableCxP = orden => ESTADOS_OC_CXP_VINCULABLES.has(String(orden?.estado || '').toLowerCase());
+const ocTieneSaldoCxP = cxpResumen => !cxpResumen || Number(cxpResumen.saldoPendiente || 0) > 0;
+const ocPuedeRegistrarCxP = (orden, cxpResumen) => ocEsVinculableCxP(orden) && ocTieneSaldoCxP(cxpResumen);
+
+function CxPResumenBadges({ cxpResumen, totalOc }) {
+  const totalPagado = Number(cxpResumen?.totalPagado || 0);
+  const tieneCxP = Boolean(cxpResumen);
+  const totalOrden = Number(totalOc || 0);
+  const pagadoCompleto = tieneCxP && totalOrden > 0 && totalPagado + 0.01 >= totalOrden;
+  if (pagadoCompleto) {
+    return <span className="badge badge-green" style={{ fontWeight: 700 }}>Pagado completo</span>;
+  }
+  return <>
+    <span className={'badge ' + (totalPagado > 0 ? 'badge-green' : 'badge-gray')}>
+      Pagado: {moneyD(totalPagado)}
+    </span>
+    {tieneCxP ? (
+      <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
+        {cxpResumen.saldoPendiente > 0 ? `Pendiente de registrar: ${moneyD(cxpResumen.saldoPendiente)}` : 'CxP: completa'}
+      </span>
+    ) : (
+      <span className="badge badge-gray">CxP: no registrada</span>
+    )}
+  </>;
+}
 
 const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const nuevaLineaOC = (overrides = {}) => ({
@@ -7291,9 +7315,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                       <span className={'badge ' + estadoFisicoOCBadge(o.porcentaje_recibido)}>Físico: {estadoFisico}</span>
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-                        {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-                      </span> : <span className="badge badge-gray">CxP: no registrada</span>}
+                      <CxPResumenBadges cxpResumen={cxpResumen} totalOc={o.total} />
                     </div>
                   </td>
                   <td>{o.fecha_emision}</td>
@@ -7336,7 +7358,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                           {I.package}
                         </span>
                       )}
-                      {!cxpResumen && ocEsVinculableCxP(o) ? (
+                      {ocPuedeRegistrarCxP(o, cxpResumen) ? (
                         <button
                           type="button"
                           className="oc-action-icon btn btn-secondary"
@@ -7638,20 +7660,16 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span className={'badge ' + estadoOcBadge(ordenActual.estado)}>Estado: {ordenActual.estado.replace('_', ' ')}</span>
             <span className={'badge ' + estadoFisicoOCBadge(ordenActual.porcentaje_recibido)}>Físico: {estadoFisicoOC(ordenActual.porcentaje_recibido)}</span>
-            {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-              {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-            </span> : <>
-              <span className="badge badge-gray">CxP: no registrada</span>
-              {ocEsVinculableCxP(ordenActual) && <button
-                type="button"
-                className="oc-action-icon btn btn-secondary"
-                aria-label={`Registrar CxP para ${ordenActual.codigo}`}
-                title="Registrar CxP"
-                onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
-              >
-                {I.receipt}
-              </button>}
-            </>}
+            <CxPResumenBadges cxpResumen={cxpResumen} totalOc={ordenActual.total} />
+            {ocPuedeRegistrarCxP(ordenActual, cxpResumen) && <button
+              type="button"
+              className="oc-action-icon btn btn-secondary"
+              aria-label={`Registrar CxP para ${ordenActual.codigo}`}
+              title="Registrar CxP"
+              onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
+            >
+              {I.receipt}
+            </button>}
           </div>
         </div>
         <div className="oc-detail-actions" aria-label={`Acciones de ${ordenActual.codigo}`}>
@@ -7675,9 +7693,9 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
         <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <strong>CxP vinculadas ({cxpResumen.cxps.length})</strong>
-            <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-              {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-            </span>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <CxPResumenBadges cxpResumen={cxpResumen} totalOc={ordenActual.total} />
+            </div>
           </div>
           <div className="row" style={{ gap: 18, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
             <span>Total facturado: <strong>{moneyD(cxpResumen.totalFacturado)}</strong></span>
@@ -8361,7 +8379,7 @@ function ModalNotaCredito({ devolucion, recepcionId, onClose, onRegistrar }) {
   );
 }
 
-function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, proveedores, devolucionesProveedor, canDev, canCompleteInvoice, hasCxp, onCompletarFactura, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
+function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, ordenCompra: ordenCompraProp, recepcionesOc = [], proveedores, devolucionesProveedor, canDev, canCompleteInvoice, hasCxp, onCompletarFactura, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
   const [anulando, setAnulando] = useState(null);
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const [modalNC, setModalNC] = useState(null);
@@ -8370,7 +8388,7 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
 
   const ocId = recepcion.orden_compra_id || recepcion.oc_id;
   const osId = recepcion.orden_servicio_id || recepcion.os_id;
-  const oc = ordenesCompra.find(o => o.id === ocId);
+  const oc = ordenCompraProp || ordenesCompra.find(o => o.id === ocId);
   const os = ordenesServicio.find(o => o.id === osId);
   const proveedor = proveedores.find(p => p.id === recepcion.proveedor_id || p.id === oc?.proveedor_id || p.id === os?.proveedor_id);
   const devoluciones = devolucionesProveedor.filter(d => d.recepcion_id === recepcion.id);
@@ -8407,16 +8425,31 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
               <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido esta entrega</th><th style={{ textAlign: 'right' }}>Acumulado OC</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
                 <tbody>{items.map((it, i) => {
                   const pedido = it.pedido ?? it.cantidad ?? it.recibido ?? 0;
                   const recibido = it.recibido ?? it.cantidad ?? 0;
-                  const completo = Number(recibido) >= Number(pedido);
+                  const ocItem = (oc?.items || []).find(item => itemRecepcionCoincideConOc(it, item, items));
+                  const pedidoOc = Number(ocItem?.cantidad ?? pedido) || 0;
+                  const acumuladoOc = ocItem && oc?.id
+                    ? cantidadRecibidaPorItemOc(recepcionesOc, oc.id, ocItem)
+                    : Number(recibido) || 0;
+                  const acumuladoCompleto = acumuladoOc >= pedidoOc - 0.0001;
+                  const estadoAcumulado = acumuladoCompleto
+                    ? 'Completo'
+                    : acumuladoOc > 0
+                      ? 'Parcial'
+                      : 'No recibido';
+                  const colorAcumulado = acumuladoCompleto ? 'var(--green)' : 'var(--orange)';
                   return (
                     <tr key={i}>
                       <td>{it.descripcion || it.nombre || '-'}</td>
                       <td style={{ textAlign: 'right' }}>{pedido}</td>
-                      <td style={{ textAlign: 'right', color: completo ? 'var(--green)' : 'var(--orange)' }}>{recibido}</td>
+                      <td style={{ textAlign: 'right' }}>{recibido}</td>
+                      <td style={{ textAlign: 'right', color: colorAcumulado }}>
+                        <strong>{acumuladoOc} de {pedidoOc}</strong>
+                        <div style={{ fontSize: 11 }}>{estadoAcumulado}</div>
+                      </td>
                       <td>{it.unidad || ''}</td>
                       <td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td>
                     </tr>
@@ -8631,6 +8664,13 @@ function Recepciones() {
     () => recepcionesVista.filter(r => !cxpPorRecepcion.has(r.id)),
     [recepcionesVista, cxpPorRecepcion],
   );
+  const detalleRecOcId = detalleRec?.orden_compra_id || detalleRec?.oc_id || null;
+  const detalleRecOrdenCompra = detalleRecOcId
+    ? ordenesCompraVistaRecepciones.find(o => String(o.id) === String(detalleRecOcId)) || null
+    : null;
+  const detalleRecRecepcionesOc = detalleRecOcId
+    ? recepcionesVista.filter(r => String(r.orden_compra_id || r.oc_id || '') === String(detalleRecOcId))
+    : [];
   const rows = tab === 'pendientes_factura'
     ? recepcionesPendientesFactura
     : recepcionesVista.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
@@ -9098,6 +9138,8 @@ function Recepciones() {
           recepcion={detalleRec}
           ordenesCompra={ordenesCompraVistaRecepciones}
           ordenesServicio={ordenesServicioVistaRecepciones}
+          ordenCompra={detalleRecOrdenCompra}
+          recepcionesOc={detalleRecRecepcionesOc}
           proveedores={proveedores}
           devolucionesProveedor={devolucionesProveedor}
           canDev={canDev}

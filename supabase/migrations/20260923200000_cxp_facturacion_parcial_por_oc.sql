@@ -113,7 +113,7 @@ begin
     v_saldo_facturar := greatest(0, coalesce(v_total_oc, 0) - coalesce(v_suma_cxp, 0));
 
     if coalesce(v_suma_cxp, 0) + v_monto_nuevo > coalesce(v_total_oc, 0) then
-      raise exception 'Esta OC tiene S/ % pendiente de facturar; el monto ingresado de S/ % excede el saldo disponible.',
+      raise exception 'Esta OC tiene S/ % pendiente de registrar; el monto ingresado de S/ % excede el saldo disponible.',
         to_char(v_saldo_facturar, 'FM999999999990.00'),
         to_char(v_monto_nuevo, 'FM999999999990.00');
     end if;
