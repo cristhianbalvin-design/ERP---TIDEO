@@ -4891,7 +4891,7 @@ function CambiarEstadoOSModal({ os, tipo, onClose, onConfirm, saving }) {
         <div className="modal-body col" style={{gap:14}}>
           {tipo === 'cerrada' && (
             <div style={{padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8, fontSize:13}}>
-              El sistema verificará que no haya OTs abiertas ni saldo pendiente de facturar antes de cerrar.
+              El sistema verificará que no haya OTs abiertas ni saldo pendiente de registrar antes de cerrar.
             </div>
           )}
           {necesitaMotivo && (

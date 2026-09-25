@@ -9888,7 +9888,7 @@ function CxP() {
                             onChange={seleccionarOrdenCompraCxP}
                           />
                           <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>
-                            Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de facturar.
+                            Solo se muestran OCs emitidas, confirmadas, en tránsito, con recepción parcial o cerradas, siempre que tengan saldo pendiente de registrar.
                           </div>
                         </div>
                       )}

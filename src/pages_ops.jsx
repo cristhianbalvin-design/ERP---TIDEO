@@ -6431,6 +6431,23 @@ const ocEsVinculableCxP = orden => ESTADOS_OC_CXP_VINCULABLES.has(String(orden?.
 const ocTieneSaldoCxP = cxpResumen => !cxpResumen || Number(cxpResumen.saldoPendiente || 0) > 0;
 const ocPuedeRegistrarCxP = (orden, cxpResumen) => ocEsVinculableCxP(orden) && ocTieneSaldoCxP(cxpResumen);
 
+function CxPResumenBadges({ cxpResumen }) {
+  const totalPagado = Number(cxpResumen?.totalPagado || 0);
+  const tieneCxP = Boolean(cxpResumen);
+  return <>
+    <span className={'badge ' + (totalPagado > 0 ? 'badge-green' : 'badge-gray')}>
+      Pagado: {moneyD(totalPagado)}
+    </span>
+    {tieneCxP ? (
+      <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
+        {cxpResumen.saldoPendiente > 0 ? `Pendiente de registrar: ${moneyD(cxpResumen.saldoPendiente)}` : 'CxP: completa'}
+      </span>
+    ) : (
+      <span className="badge badge-gray">CxP: no registrada</span>
+    )}
+  </>;
+}
+
 const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const nuevaLineaOC = (overrides = {}) => ({
   item_id: generarItemOcId(),
@@ -7293,9 +7310,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                       <span className={'badge ' + estadoFisicoOCBadge(o.porcentaje_recibido)}>Físico: {estadoFisico}</span>
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      {cxpResumen ? <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-                        {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-                      </span> : <span className="badge badge-gray">CxP: no registrada</span>}
+                      <CxPResumenBadges cxpResumen={cxpResumen} />
                     </div>
                   </td>
                   <td>{o.fecha_emision}</td>
@@ -7640,31 +7655,16 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span className={'badge ' + estadoOcBadge(ordenActual.estado)}>Estado: {ordenActual.estado.replace('_', ' ')}</span>
             <span className={'badge ' + estadoFisicoOCBadge(ordenActual.porcentaje_recibido)}>Físico: {estadoFisicoOC(ordenActual.porcentaje_recibido)}</span>
-            {cxpResumen ? <>
-              <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-                {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-              </span>
-              {ocPuedeRegistrarCxP(ordenActual, cxpResumen) && <button
-                type="button"
-                className="oc-action-icon btn btn-secondary"
-                aria-label={`Registrar CxP para ${ordenActual.codigo}`}
-                title="Registrar CxP"
-                onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
-              >
-                {I.receipt}
-              </button>}
-            </> : <>
-              <span className="badge badge-gray">CxP: no registrada</span>
-              {ocPuedeRegistrarCxP(ordenActual, cxpResumen) && <button
-                type="button"
-                className="oc-action-icon btn btn-secondary"
-                aria-label={`Registrar CxP para ${ordenActual.codigo}`}
-                title="Registrar CxP"
-                onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
-              >
-                {I.receipt}
-              </button>}
-            </>}
+            <CxPResumenBadges cxpResumen={cxpResumen} />
+            {ocPuedeRegistrarCxP(ordenActual, cxpResumen) && <button
+              type="button"
+              className="oc-action-icon btn btn-secondary"
+              aria-label={`Registrar CxP para ${ordenActual.codigo}`}
+              title="Registrar CxP"
+              onClick={() => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: ordenActual.id })}
+            >
+              {I.receipt}
+            </button>}
           </div>
         </div>
         <div className="oc-detail-actions" aria-label={`Acciones de ${ordenActual.codigo}`}>
@@ -7688,9 +7688,9 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
         <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <strong>CxP vinculadas ({cxpResumen.cxps.length})</strong>
-            <span className={'badge ' + (cxpResumen.saldoPendiente > 0 ? 'badge-orange' : 'badge-green')}>
-              {cxpResumen.saldoPendiente > 0 ? `CxP: ${moneyD(cxpResumen.saldoPendiente)} pendiente de facturar` : 'CxP: completa'}
-            </span>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <CxPResumenBadges cxpResumen={cxpResumen} />
+            </div>
           </div>
           <div className="row" style={{ gap: 18, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
             <span>Total facturado: <strong>{moneyD(cxpResumen.totalFacturado)}</strong></span>
