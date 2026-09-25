@@ -3005,6 +3005,16 @@ function ComprasView({ screen, setScreen }) {
   const [metodoPago, setMetodoPago] = useState('');
   const [guardando, setGuardando] = useState(false);
 
+  const mensajeValidacion = !metodoPago
+    ? 'Selecciona el método de pago'
+    : !cecoId
+      ? 'Selecciona el centro de costo'
+      : (genCxP && !cxpVence)
+        ? 'Selecciona la fecha de vencimiento'
+        : !fotoArchivo
+          ? 'Adjunta la foto del comprobante'
+          : '';
+
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
   const ESTADOS_CERRADOS = ['cerrada','cerrada_tecnica','anulada','valorizada','facturada','cerrado_conforme'];
   const otsActivas = (ots || [])
@@ -3256,6 +3266,11 @@ function ComprasView({ screen, setScreen }) {
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
+        {mensajeValidacion && (
+          <div style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:8,textAlign:'right'}}>
+            {mensajeValidacion}
+          </div>
+        )}
       </div>
     )}
 
