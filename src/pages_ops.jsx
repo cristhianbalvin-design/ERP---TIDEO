@@ -6431,9 +6431,14 @@ const ocEsVinculableCxP = orden => ESTADOS_OC_CXP_VINCULABLES.has(String(orden?.
 const ocTieneSaldoCxP = cxpResumen => !cxpResumen || Number(cxpResumen.saldoPendiente || 0) > 0;
 const ocPuedeRegistrarCxP = (orden, cxpResumen) => ocEsVinculableCxP(orden) && ocTieneSaldoCxP(cxpResumen);
 
-function CxPResumenBadges({ cxpResumen }) {
+function CxPResumenBadges({ cxpResumen, totalOc }) {
   const totalPagado = Number(cxpResumen?.totalPagado || 0);
   const tieneCxP = Boolean(cxpResumen);
+  const totalOrden = Number(totalOc || 0);
+  const pagadoCompleto = tieneCxP && totalOrden > 0 && totalPagado + 0.01 >= totalOrden;
+  if (pagadoCompleto) {
+    return <span className="badge badge-green" style={{ fontWeight: 700 }}>Pagado completo</span>;
+  }
   return <>
     <span className={'badge ' + (totalPagado > 0 ? 'badge-green' : 'badge-gray')}>
       Pagado: {moneyD(totalPagado)}
@@ -7310,7 +7315,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                       <span className={'badge ' + estadoFisicoOCBadge(o.porcentaje_recibido)}>Físico: {estadoFisico}</span>
                     </div>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <CxPResumenBadges cxpResumen={cxpResumen} />
+                      <CxPResumenBadges cxpResumen={cxpResumen} totalOc={o.total} />
                     </div>
                   </td>
                   <td>{o.fecha_emision}</td>
@@ -7655,7 +7660,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
             <span className={'badge ' + estadoOcBadge(ordenActual.estado)}>Estado: {ordenActual.estado.replace('_', ' ')}</span>
             <span className={'badge ' + estadoFisicoOCBadge(ordenActual.porcentaje_recibido)}>Físico: {estadoFisicoOC(ordenActual.porcentaje_recibido)}</span>
-            <CxPResumenBadges cxpResumen={cxpResumen} />
+            <CxPResumenBadges cxpResumen={cxpResumen} totalOc={ordenActual.total} />
             {ocPuedeRegistrarCxP(ordenActual, cxpResumen) && <button
               type="button"
               className="oc-action-icon btn btn-secondary"
@@ -7689,7 +7694,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
           <div className="row" style={{ justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <strong>CxP vinculadas ({cxpResumen.cxps.length})</strong>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              <CxPResumenBadges cxpResumen={cxpResumen} />
+              <CxPResumenBadges cxpResumen={cxpResumen} totalOc={ordenActual.total} />
             </div>
           </div>
           <div className="row" style={{ gap: 18, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
