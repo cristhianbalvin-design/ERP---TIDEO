@@ -8201,6 +8201,7 @@ function CxP() {
   };
 
   const beneficiarioNombre = c => {
+    if (c?.origen === 'gasto_movil') return c?.nombre_emisor || c?.concepto || 'Gasto móvil';
     if (c?.tipo_beneficiario === DIVIDENDO_TIPO) return c?.socio_nombre || c?.concepto || 'Socio / accionista';
     if (c?.tipo_beneficiario === 'colectivo') return c?.concepto || 'Obligación institucional';
     if (c?.tipo_beneficiario === 'personal') {
@@ -8216,6 +8217,15 @@ function CxP() {
   };
 
   const beneficiarioDetalle = c => {
+    if (c?.origen === 'gasto_movil') {
+      return {
+        nombre: c?.nombre_emisor || c?.concepto || 'Gasto móvil',
+        badge: 'Gasto móvil',
+        badgeCls: 'badge-cyan',
+        tipo: 'gasto_movil',
+        icon: I.receipt,
+      };
+    }
     if (c?.tipo_beneficiario === DIVIDENDO_TIPO) {
       return { nombre: c?.socio_nombre || c?.concepto || 'Socio / accionista', badge: 'Socio', badgeCls: 'badge-purple', tipo: 'socio' };
     }
@@ -8968,6 +8978,7 @@ function CxP() {
             {[{v:'todos',l:'Todos los orígenes'},{v:'recepcion',l:'OC'},{v:'auto_gasto',l:'Gasto directo'},{v:'rhe_externo',l:'RHE'},{v:'honorarios',l:'Honorarios'},{v:'viaticos',l:'Viáticos'},{v:'nomina',l:'Nómina'},{v:'manual',l:'Manual'}].map(f => (
               <option key={f.v} value={f.v}>{f.l}</option>
             ))}
+            <option value="gasto_movil">Gasto móvil</option>
           </select>
           <select className="input" style={{flex:'1 1 120px'}} value={filtMoneda} onChange={e => setFiltMoneda(e.target.value)}>
             {[{v:'todos',l:'Todas las monedas'},{v:'PEN',l:'S/ PEN'},{v:'USD',l:'US$ USD'}].map(f => (
@@ -9185,7 +9196,7 @@ function CxP() {
                       </React.Fragment>
                     ))}
                   </div>
-                  {sel.origen === 'auto_gasto' && selGastoOrigen && (
+                  {['auto_gasto', 'gasto_movil'].includes(sel.origen) && selGastoOrigen && (
                     <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border-subtle)'}}>
                       <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>Gasto de origen</div>
                       <div style={{display:'flex',alignItems:'flex-start',gap:8}}>

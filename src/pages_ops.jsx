@@ -25784,7 +25784,7 @@ export function ComprasGastos() {
     comprasGastos, setComprasGastos,
     centrosCosto, proveedores, ots, cxp, cajaChica, personalOperativo, personalAdmin, periodosNomina,
     crearGasto, crearCxP,
-    empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, addToast,
   } = useApp();
   const modoVistaSociedadComprasGastos = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -25857,16 +25857,22 @@ export function ComprasGastos() {
 
   const confirmarGastoCampo = async (gasto) => {
     setConfirmando(true);
-    const actualizado = { ...gasto, estado: 'revisado' };
-    setComprasGastos(prev => prev.map(g => g.id === gasto.id ? actualizado : g));
-    if (isSupabaseConfigured()) {
-      try {
+    try {
+      if (isSupabaseConfigured()) {
         const sb = await getSupabaseClient();
-        await sb.from('compras_gastos').update({ estado: 'revisado' }).eq('id', gasto.id);
-      } catch {}
+        const { error } = await sb.from('compras_gastos').update({ estado: 'revisado' }).eq('id', gasto.id);
+        if (error) throw error;
+      }
+      const actualizado = { ...gasto, estado: 'revisado' };
+      setComprasGastos(prev => prev.map(g => g.id === gasto.id ? actualizado : g));
+      setSelCampo(null);
+    } catch (error) {
+      const mensaje = error?.message || 'No se pudo actualizar el gasto.';
+      addNotificacion?.(`No se pudo revisar el gasto: ${mensaje}`, 'error');
+      addToast?.(`No se pudo revisar el gasto: ${mensaje}`);
+    } finally {
+      setConfirmando(false);
     }
-    setConfirmando(false);
-    setSelCampo(null);
   };
 
   const mesMostrar = (fecha) => (fecha || '').slice(0, 7);

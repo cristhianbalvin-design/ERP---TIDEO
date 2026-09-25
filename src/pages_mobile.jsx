@@ -14,6 +14,8 @@ import { porcentajeBaseComision, resolverVendedorComision } from './lib/comision
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
 import * as ticketsService from './services/ticketsService.js';
+import * as storageService from './services/storageService.js';
+import { METODOS_PAGO } from './lib/metodosPago.js';
 
 // Mobile field views - all field profiles
 
@@ -2977,7 +2979,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
 function ComprasView({ screen, setScreen }) {
   const {
-    authUser, usuarios, crearGasto, crearCxP, ots, centrosCosto, empresa,
+    authUser, usuarios, crearGasto, persistirCompraGasto, eliminarCompraGasto, crearCxP, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -2992,12 +2994,15 @@ function ComprasView({ screen, setScreen }) {
 
   const [paso, setPaso] = useState('inicio');
   const [fotoUrl, setFotoUrl] = useState('');
+  const [fotoArchivo, setFotoArchivo] = useState(null);
   const [campos, setCampos] = useState({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
   const [extractError, setExtractError] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [otId, setOtId] = useState('');
   const [cecoId, setCecoId] = useState('');
   const [genCxP, setGenCxP] = useState(false);
   const [cxpVence, setCxpVence] = useState('');
+  const [metodoPago, setMetodoPago] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
@@ -3011,13 +3016,14 @@ function ComprasView({ screen, setScreen }) {
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
-    setFotoUrl(''); setExtractError(false); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setGuardando(false);
+    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setMetodoPago(''); setGuardando(false);
     setCampos({ ruc:'', proveedor:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
 
   const analizarFoto = async (file) => {
     if (!file) return;
+    setFotoArchivo(file);
     const url = URL.createObjectURL(file);
     setFotoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
     setExtractError(false);
@@ -3050,11 +3056,28 @@ function ComprasView({ screen, setScreen }) {
   };
 
   const guardar = async () => {
-    if (!cecoId || (genCxP && !cxpVence)) return;
+    if (!cecoId || (genCxP && !cxpVence) || !fotoArchivo) return;
     setGuardando(true);
+    setSaveError('');
+    let adjunto = null;
+    let gastoPersistido = false;
+    let gastoId = null;
     try {
       const monto = parseFloat(campos.monto_total) || parseFloat(campos.monto_sin_igv) || 0;
+      gastoId = `gasto_${Math.random().toString(36).slice(2, 14)}`;
+      const cxpId = genCxP ? `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}` : null;
+      adjunto = await storageService.subirAdjunto({
+        empresaId: empresa?.id,
+        entidadTipo: 'compras_gastos',
+        entidadId: gastoId,
+        file: fotoArchivo,
+        categoria: 'comprobante',
+        subidoPor: authUser?.id || null,
+      });
+      const archivoUrl = adjunto?.url || '';
+      if (!archivoUrl) throw new Error('La foto se subió, pero no se obtuvo una URL accesible.');
       const gastoBase = {
+        id: gastoId,
         descripcion: campos.proveedor || 'Gasto en campo',
         categoria: 'Materiales',
         monto, moneda: 'PEN',
@@ -3064,24 +3087,43 @@ function ComprasView({ screen, setScreen }) {
         centro_costo_id: cecoId,
         tipo: 'gasto', campo: true,
         ruc_proveedor: campos.ruc || '',
+        archivo_url: archivoUrl,
+        metodo_pago: metodoPago || null,
+        origen_registro: 'campo',
+        estado: 'pendiente_revision',
+        ...(cxpId ? { cxp_id: cxpId } : {}),
         ot_id: otId || null,
       };
+      const gastoCreado = crearGasto(gastoBase, { persistir: false });
+      await persistirCompraGasto(gastoCreado);
+      gastoPersistido = true;
       if (genCxP) {
-        const cxpId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
         await crearCxP({
           id: cxpId, proveedor_id: null, tipo_beneficiario: 'proveedor',
           factura_numero: campos.num_factura || null,
           concepto: campos.proveedor || 'Gasto en campo',
           fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
-          monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto',
+          monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto_movil',
           mecanismo_origen: 'gasto_movil',
+          gasto_id: gastoId, no_devengar_er: true,
+          archivo_factura_url: archivoUrl,
+          ruc_emisor: campos.ruc || null, nombre_emisor: campos.proveedor || null,
           categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
           ot_vinc_id: otId || null,
         });
-      } else {
-        crearGasto(gastoBase);
       }
       setPaso('guardado');
+    } catch (error) {
+      if (gastoPersistido) {
+        await eliminarCompraGasto(gastoId).catch(compensacionError => {
+          error.compensacion = compensacionError;
+        });
+      }
+      if (adjunto) await storageService.eliminarAdjunto(adjunto).catch(() => {});
+      if (error.compensacion) {
+        error.message = `${error.message || 'No se pudo guardar el gasto.'} No se pudo eliminar el gasto creado: ${error.compensacion.message || 'error desconocido'}.`;
+      }
+      setSaveError(error?.message || 'No se pudo guardar el gasto. No se registró la foto.');
     } finally {
       setGuardando(false);
     }
@@ -3131,6 +3173,12 @@ function ComprasView({ screen, setScreen }) {
           </div>
         )}
 
+        {saveError && (
+          <div style={{background:'var(--danger-lt,#fef2f2)',color:'var(--danger-dk,#991b1b)',border:'1px solid var(--danger)',borderRadius:8,padding:'10px 14px',fontSize:13,marginBottom:12}}>
+            {saveError}
+          </div>
+        )}
+
         {fotoUrl && <img src={fotoUrl} alt="Factura" style={{width:'100%',borderRadius:8,marginBottom:12,maxHeight:140,objectFit:'cover'}}/>}
 
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -3160,6 +3208,13 @@ function ComprasView({ screen, setScreen }) {
             </select>
           </div>
           <div>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Método de pago</div>
+            <select className="select" value={metodoPago} onChange={e=>setMetodoPago(e.target.value)}>
+              <option value="">— No informado —</option>
+              {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>Centro de Costo <span style={{color:'var(--danger)'}}>*</span></div>
             <select className="select" value={cecoId} onChange={e=>setCecoId(e.target.value)}>
               <option value="">— Seleccionar CECO —</option>
@@ -3182,7 +3237,7 @@ function ComprasView({ screen, setScreen }) {
 
         <div className="row mt-6" style={{gap:8}}>
           <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
-          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !cecoId || (genCxP && !cxpVence)}>
+          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || (genCxP && !cxpVence)}>
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
