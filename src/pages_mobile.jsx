@@ -2979,7 +2979,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
 function ComprasView({ screen, setScreen }) {
   const {
-    authUser, usuarios, crearGasto, crearCxP, ots, centrosCosto, empresa,
+    authUser, usuarios, crearGasto, persistirCompraGasto, eliminarCompraGasto, crearCxP, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -3060,9 +3060,11 @@ function ComprasView({ screen, setScreen }) {
     setGuardando(true);
     setSaveError('');
     let adjunto = null;
+    let gastoPersistido = false;
+    let gastoId = null;
     try {
       const monto = parseFloat(campos.monto_total) || parseFloat(campos.monto_sin_igv) || 0;
-      const gastoId = `gasto_${Math.random().toString(36).slice(2, 14)}`;
+      gastoId = `gasto_${Math.random().toString(36).slice(2, 14)}`;
       const cxpId = genCxP ? `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}` : null;
       adjunto = await storageService.subirAdjunto({
         empresaId: empresa?.id,
@@ -3092,7 +3094,9 @@ function ComprasView({ screen, setScreen }) {
         ...(cxpId ? { cxp_id: cxpId } : {}),
         ot_id: otId || null,
       };
-      crearGasto(gastoBase);
+      const gastoCreado = crearGasto(gastoBase, { persistir: false });
+      await persistirCompraGasto(gastoCreado);
+      gastoPersistido = true;
       if (genCxP) {
         await crearCxP({
           id: cxpId, proveedor_id: null, tipo_beneficiario: 'proveedor',
@@ -3110,7 +3114,15 @@ function ComprasView({ screen, setScreen }) {
       }
       setPaso('guardado');
     } catch (error) {
+      if (gastoPersistido) {
+        await eliminarCompraGasto(gastoId).catch(compensacionError => {
+          error.compensacion = compensacionError;
+        });
+      }
       if (adjunto) await storageService.eliminarAdjunto(adjunto).catch(() => {});
+      if (error.compensacion) {
+        error.message = `${error.message || 'No se pudo guardar el gasto.'} No se pudo eliminar el gasto creado: ${error.compensacion.message || 'error desconocido'}.`;
+      }
       setSaveError(error?.message || 'No se pudo guardar el gasto. No se registró la foto.');
     } finally {
       setGuardando(false);

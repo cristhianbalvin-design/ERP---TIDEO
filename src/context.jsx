@@ -4258,6 +4258,27 @@ export function AppProvider({ children }) {
     finanzasService.insertarCompraGasto(compraGastoPayload(gasto))
   );
 
+  const persistirCompraGasto = async gasto => {
+    if (!isSupabaseConfigured() || !empresa?.id) return gasto;
+    const sb = await getSupabaseClient();
+    return insertarCompraGastoSeguro(sb, gasto);
+  };
+
+  const eliminarCompraGasto = async gastoId => {
+    if (!gastoId) throw new Error('No se encontró el gasto para compensar.');
+    if (isSupabaseConfigured() && empresa?.id) {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb
+        .from('compras_gastos')
+        .delete()
+        .eq('id', gastoId)
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) throw new Error('No se pudo eliminar el gasto creado.');
+    }
+    setComprasGastos(prev => prev.filter(gasto => gasto.id !== gastoId));
+  };
+
   const crearGasto = (datos, options = {}) => {
     const { notificar = true, persistir = true } = options;
     const gasto = {
@@ -11411,7 +11432,7 @@ export function AppProvider({ children }) {
     registrarActividad,
     actualizarActividad,
     // Fase 2 Actions
-    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
+    convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, persistirCompraGasto, eliminarCompraGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
     emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
