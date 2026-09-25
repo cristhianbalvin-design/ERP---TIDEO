@@ -48,7 +48,7 @@ import { GeoPoligonoMapa } from './components/GeoPoligonoMapa.jsx';
 import { GeoMiniMapa } from './components/GeoMiniMapa.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
-import { cantidadRecibidaPorItemOc, comprasService, getSpendAnalysis } from './services/comprasService.js';
+import { cantidadRecibidaPorItemOc, itemRecepcionCoincideConOc, comprasService, getSpendAnalysis } from './services/comprasService.js';
 import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
@@ -8374,7 +8374,7 @@ function ModalNotaCredito({ devolucion, recepcionId, onClose, onRegistrar }) {
   );
 }
 
-function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, proveedores, devolucionesProveedor, canDev, canCompleteInvoice, hasCxp, onCompletarFactura, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
+function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, ordenCompra: ordenCompraProp, recepcionesOc = [], proveedores, devolucionesProveedor, canDev, canCompleteInvoice, hasCxp, onCompletarFactura, onClose, onIniciarDev, onEnviar, onAceptar, onNC, onAnular }) {
   const [anulando, setAnulando] = useState(null);
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const [modalNC, setModalNC] = useState(null);
@@ -8383,7 +8383,7 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
 
   const ocId = recepcion.orden_compra_id || recepcion.oc_id;
   const osId = recepcion.orden_servicio_id || recepcion.os_id;
-  const oc = ordenesCompra.find(o => o.id === ocId);
+  const oc = ordenCompraProp || ordenesCompra.find(o => o.id === ocId);
   const os = ordenesServicio.find(o => o.id === osId);
   const proveedor = proveedores.find(p => p.id === recepcion.proveedor_id || p.id === oc?.proveedor_id || p.id === os?.proveedor_id);
   const devoluciones = devolucionesProveedor.filter(d => d.recepcion_id === recepcion.id);
@@ -8420,16 +8420,31 @@ function PanelDetalleRecepcion({ recepcion, ordenesCompra, ordenesServicio, prov
             <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ background: 'var(--bg-2)', padding: '8px 12px', fontWeight: 600, fontSize: 12 }}>Ítems recibidos</div>
               <table className="tbl" style={{ fontSize: 12 }}>
-                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
+                <thead><tr><th>Descripción</th><th style={{ textAlign: 'right' }}>Pedido</th><th style={{ textAlign: 'right' }}>Recibido esta entrega</th><th style={{ textAlign: 'right' }}>Acumulado OC</th><th>Unidad</th><th style={{ textAlign: 'right' }}>P. Unit.</th></tr></thead>
                 <tbody>{items.map((it, i) => {
                   const pedido = it.pedido ?? it.cantidad ?? it.recibido ?? 0;
                   const recibido = it.recibido ?? it.cantidad ?? 0;
-                  const completo = Number(recibido) >= Number(pedido);
+                  const ocItem = (oc?.items || []).find(item => itemRecepcionCoincideConOc(it, item, items));
+                  const pedidoOc = Number(ocItem?.cantidad ?? pedido) || 0;
+                  const acumuladoOc = ocItem && oc?.id
+                    ? cantidadRecibidaPorItemOc(recepcionesOc, oc.id, ocItem)
+                    : Number(recibido) || 0;
+                  const acumuladoCompleto = acumuladoOc >= pedidoOc - 0.0001;
+                  const estadoAcumulado = acumuladoCompleto
+                    ? 'Completo'
+                    : acumuladoOc > 0
+                      ? 'Parcial'
+                      : 'No recibido';
+                  const colorAcumulado = acumuladoCompleto ? 'var(--green)' : 'var(--orange)';
                   return (
                     <tr key={i}>
                       <td>{it.descripcion || it.nombre || '-'}</td>
                       <td style={{ textAlign: 'right' }}>{pedido}</td>
-                      <td style={{ textAlign: 'right', color: completo ? 'var(--green)' : 'var(--orange)' }}>{recibido}</td>
+                      <td style={{ textAlign: 'right' }}>{recibido}</td>
+                      <td style={{ textAlign: 'right', color: colorAcumulado }}>
+                        <strong>{acumuladoOc} de {pedidoOc}</strong>
+                        <div style={{ fontSize: 11 }}>{estadoAcumulado}</div>
+                      </td>
                       <td>{it.unidad || ''}</td>
                       <td style={{ textAlign: 'right' }}>{moneyD(it.precio_unitario || it.costo_unitario || 0)}</td>
                     </tr>
@@ -8644,6 +8659,13 @@ function Recepciones() {
     () => recepcionesVista.filter(r => !cxpPorRecepcion.has(r.id)),
     [recepcionesVista, cxpPorRecepcion],
   );
+  const detalleRecOcId = detalleRec?.orden_compra_id || detalleRec?.oc_id || null;
+  const detalleRecOrdenCompra = detalleRecOcId
+    ? ordenesCompraVistaRecepciones.find(o => String(o.id) === String(detalleRecOcId)) || null
+    : null;
+  const detalleRecRecepcionesOc = detalleRecOcId
+    ? recepcionesVista.filter(r => String(r.orden_compra_id || r.oc_id || '') === String(detalleRecOcId))
+    : [];
   const rows = tab === 'pendientes_factura'
     ? recepcionesPendientesFactura
     : recepcionesVista.filter(r => tab === 'todos' || (tab === 'conforme' ? ['confirmada','conforme','total'].includes(r.estado) : r.estado === 'observada'));
@@ -9111,6 +9133,8 @@ function Recepciones() {
           recepcion={detalleRec}
           ordenesCompra={ordenesCompraVistaRecepciones}
           ordenesServicio={ordenesServicioVistaRecepciones}
+          ordenCompra={detalleRecOrdenCompra}
+          recepcionesOc={detalleRecRecepcionesOc}
           proveedores={proveedores}
           devolucionesProveedor={devolucionesProveedor}
           canDev={canDev}
