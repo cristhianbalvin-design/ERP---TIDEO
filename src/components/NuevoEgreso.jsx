@@ -141,6 +141,7 @@ const FORM_VACIO = {
   fecha_vencimiento:'',
   proveedor_id:     '',
   proveedor_texto:  '',
+  ruc_proveedor:    '',
   num_comprobante:  '',
   tipo_comprobante: 'Factura',
   es_compra_con_oc: false,
@@ -181,7 +182,7 @@ function formDesdeRegistro(registro, today) {
     sociedad_id: registro.sociedad_id || '',
     ot_vinc_id: registro.ot_vinc_id || '',
     ya_pagado: registro.estado_pago === 'pagado',
-    metodo_pago: registro.metodo_pago || METODO_TRANSFERENCIA,
+    metodo_pago: registro.metodo_pago || '',
     referencia_pago: registro.referencia_pago || '',
     fecha_pago: fechaParaInput(registro.fecha_pago, registro.estado_pago === 'pagado' ? fechaParaInput(registro.fecha, today) : ''),
     cuenta_bancaria_id: registro.cuenta_bancaria_id || '',
@@ -189,6 +190,7 @@ function formDesdeRegistro(registro, today) {
     fecha_vencimiento: fechaParaInput(registro.fecha_vencimiento),
     proveedor_id: registro.proveedor_id || '',
     proveedor_texto: registro.proveedor_referencia || registro.proveedor || '',
+    ruc_proveedor: registro.ruc_proveedor || '',
     num_comprobante: registro.num_comprobante || registro.factura_numero || '',
     tipo_comprobante: registro.tipo_comprobante || 'Factura',
     es_compra_con_oc: Boolean(registro.orden_compra_id),
@@ -961,6 +963,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
             <div className="input-group">
               <label>Método de pago</label>
               <select className="select" value={form.metodo_pago} disabled={fondoCajaChicaFijado || edicionPagoBloqueada} onChange={e => setF('metodo_pago', e.target.value)}>
+                {!form.metodo_pago && <option value="">No informado</option>}
                 {(fondoCajaChicaFijado ? ['Caja chica'] : METODOS_PAGO).map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
@@ -1086,6 +1089,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
         )}
       </div>}
 
+      {form.ya_pagado && <div className="input-group">
+        <label>RUC proveedor</label>
+        <input className="input" value={form.ruc_proveedor} onChange={e => setF('ruc_proveedor', e.target.value)} placeholder="20123456789" />
+      </div>}
+
       {/* Campos condicionales: pendiente */}
       {!form.ya_pagado && (
         <>
@@ -1119,6 +1127,10 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
                 onChange={e => setF('proveedor_texto', e.target.value)}
               />
             )}
+          </div>
+          <div className="input-group">
+            <label>RUC proveedor</label>
+            <input className="input" value={form.ruc_proveedor} onChange={e => setF('ruc_proveedor', e.target.value)} placeholder="20123456789" />
           </div>
         </>
       )}
@@ -1353,10 +1365,11 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           fecha: form.fecha,
           centro_costo_id: form.centro_costo_id,
           proveedor_referencia: proveedorNombreEdicion,
+          ruc_proveedor: form.ruc_proveedor || null,
           referencia_pago: form.referencia_pago || null,
           ...(!pagoGobernadoPorCxP ? {
             estado_pago: form.ya_pagado ? 'pagado' : 'pendiente',
-            metodo_pago: form.ya_pagado ? form.metodo_pago : null,
+            metodo_pago: form.ya_pagado ? (form.metodo_pago || null) : null,
           } : {}),
           archivo_url: archivoUrl || null,
           ot_vinc_id: registroEditar.ot_vinc_id || form.ot_vinc_id || null,

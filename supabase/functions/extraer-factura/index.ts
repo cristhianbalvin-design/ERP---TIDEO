@@ -5,7 +5,7 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const EMPTY = { ruc: "", proveedor: "", num_factura: "", fecha_emision: "", monto_sin_igv: null, igv: null, monto_total: null };
+const EMPTY = { ruc: "", proveedor: "", descripcion_compra: "", num_factura: "", fecha_emision: "", monto_sin_igv: null, igv: null, monto_total: null };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -34,6 +34,7 @@ serve(async (req) => {
 {
   "ruc": "",
   "proveedor": "",
+  "descripcion_compra": "",
   "num_factura": "",
   "fecha_emision": "",
   "monto_sin_igv": null,
@@ -41,6 +42,10 @@ serve(async (req) => {
   "monto_total": null
 }
 Reglas: fecha en formato YYYY-MM-DD, montos como números decimales, campos no legibles como null o cadena vacía.`,
+          },
+          {
+            type: "text",
+            text: "descripcion_compra debe resumir brevemente lo comprado o sus items; si no es legible, devuelve una cadena vacia.",
           },
         ],
       }],
