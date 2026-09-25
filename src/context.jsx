@@ -4,8 +4,8 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
-import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
-import { loadOpsFromSupabase, actualizarBacklog, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
+import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, siguienteNumeroOSCliente as siguienteNumeroOSClienteRpc, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
+import { loadOpsFromSupabase, actualizarBacklog, siguienteNumeroOrdenTrabajo as siguienteNumeroOrdenTrabajoRpc, persistirOT, crearOTDesdeOSRpc, actualizarOT as svcActualizarOT, eliminarOT as svcEliminarOT, persistirParteDiario, actualizarParteDiario as svcActualizarParteDiario, persistirCierreTecnico, subirConformidadOT as svcSubirConformidadOT, upsertCostoOT as svcUpsertCostoOT, calcularCostoRealOT as svcCalcularCostoRealOT, calcularCostosComprometidosOT as svcCalcularCostosComprometidosOT, calcularCostosOS as svcCalcularCostosOS, crearTarea as svcCrearTarea, actualizarAvanceTarea as svcActualizarAvanceTarea, completarTarea as svcCompletarTarea, reabrirTarea as svcReabrirTarea, actualizarAvanceSupervisor as svcActualizarAvanceSupervisor, procesarCierreOTConTareas as svcProcesarCierreOTConTareas } from './services/operacionesService.js';
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
@@ -1649,6 +1649,36 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const siguienteNumeroOSClienteLocal = () => {
+    const year = new Date().getFullYear().toString();
+    const max = osClientes
+      .filter(item => item.empresa_id === empresa.id)
+      .map(item => String(item.numero || '').match(new RegExp(`^OSC-${year}-(\\d{4})$`)))
+      .filter(Boolean)
+      .reduce((highest, match) => Math.max(highest, Number(match[1])), 0);
+    return `OSC-${year}-${String(max + 1).padStart(4, '0')}`;
+  };
+
+  const siguienteNumeroOTLocal = () => {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const max = ots
+      .filter(item => item.empresa_id === empresa.id)
+      .map(item => String(item.numero || '').match(new RegExp(`^OT-${year}-(\\d{4})$`)))
+      .filter(Boolean)
+      .reduce((highest, match) => Math.max(highest, Number(match[1])), 0);
+    return `OT-${year}-${String(max + 1).padStart(4, '0')}`;
+  };
+
+  const siguienteNumeroOSCliente = async () => {
+    if (!isSupabaseConfigured()) return siguienteNumeroOSClienteLocal();
+    return crmPersist(sb => siguienteNumeroOSClienteRpc(sb, empresa.id));
+  };
+
+  const siguienteNumeroOrdenTrabajo = async () => {
+    if (!isSupabaseConfigured()) return siguienteNumeroOTLocal();
+    return opsPersist(sb => siguienteNumeroOrdenTrabajoRpc(sb, empresa.id));
+  };
+
   const finSync = (fn) => {
     if (!isSupabaseConfigured() || !empresa?.id) return;
     fn().catch((error) => {
@@ -3151,10 +3181,11 @@ export function AppProvider({ children }) {
     const responsableUser = datos.responsable_comercial_id
       ? usuarios.find(u => u.id === datos.responsable_comercial_id)
       : null;
+    const numero = await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
-      numero: `OSC-${new Date().getFullYear()}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
+      numero,
       numero_doc_cliente: datos.numero_doc_cliente || null,
       nombre: datos.nombre || null,
       cuenta_id: cot.cuenta_id,
@@ -3226,10 +3257,11 @@ export function AppProvider({ children }) {
 
   const crearOSClienteManual = async (datos, { navegarAlDetalle = true } = {}) => {
     const monto = Number(datos.monto_aprobado || 0);
+    const numero = await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
-      numero: datos.numero || `OSC-${new Date().getFullYear()}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
+      numero,
       cuenta_id: datos.cuenta_id || null,
       activo_id: datos.activo_id || null,
       cotizacion_id: datos.cotizacion_id || null,
@@ -3472,13 +3504,13 @@ export function AppProvider({ children }) {
   };
 
   // Fase 2 Mutators
-  const convertirBacklogAOT = (backlogId, datos = {}) => {
+  const convertirBacklogAOT = async (backlogId, datos = {}) => {
     const req = backlog.find(b => b.id === backlogId);
     if (!req) return;
     if (!datos.centro_costo_id) { addNotificacion('Selecciona un CECO antes de convertir a OT.'); return; }
     setBacklog(prev => prev.map(b => b.id === backlogId ? { ...b, estado: 'convertido' } : b));
     opsSync(sb => actualizarBacklog(sb, backlogId, { estado: 'convertido' }));
-    crearOT({
+    await crearOT({
       cliente: req.cuenta_id,
       cuenta_id: req.cuenta_id,
       os_cliente_id: req.os_cliente_id || null,
@@ -3506,18 +3538,20 @@ export function AppProvider({ children }) {
     return os?.sociedad_id || null;
   };
 
-  const crearOT = (datos) => {
+  const crearOT = async (datos) => {
     const sociedadId = resolverSociedadOTLocal(datos);
+    const numero = await siguienteNumeroOrdenTrabajo();
+    const { numero: _numeroSolicitado, ...datosSinNumero } = datos || {};
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
-      numero: `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
+      numero,
       estado: 'borrador',
       sla: 'ok',
       costoEst: 0, costoReal: 0, avance: 0,
       tareas: [],
       materiales_estimados: [],
-      ...datos,
+      ...datosSinNumero,
       // La sociedad no se envía como valor autoritativo: el trigger de BD la
       // deriva y valida. Solo mantenemos el reflejo local consistente de forma
       // inmediata para filtros y badges.
@@ -3559,11 +3593,12 @@ export function AppProvider({ children }) {
       }
     }
 
+    const numero = await siguienteNumeroOrdenTrabajo();
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
       sociedad_id: sociedadId,
-      numero: `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random()*1000).toString().padStart(4,'0')}`,
+      numero,
       sla: 'ok',
       tareas: [],
       materiales_estimados: [],
