@@ -51,9 +51,8 @@ export async function listarActivosCliente(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
     .from('activos')
-    .select('id,empresa_id,sociedad_id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id')
+    .select('id,empresa_id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id')
     .eq('empresa_id', empresaId)
-    .eq('sociedad_id', sociedadId)
     .eq('propietario_tipo', 'cliente')
     .neq('estado', 'dado_baja')
     .order('codigo');
@@ -77,9 +76,8 @@ export async function listarAlmacenes(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
     .from('almacenes')
-    .select('id,empresa_id,sociedad_id,codigo,nombre,estado')
+    .select('id,empresa_id,codigo,nombre,estado')
     .eq('empresa_id', empresaId)
-    .eq('sociedad_id', sociedadId)
     .order('nombre');
   if (error) throw error;
   return data || [];
@@ -112,7 +110,6 @@ export async function crearRecepcion(empresaId, datos) {
     .from('activos')
     .select('id,cliente_propietario_id')
     .eq('empresa_id', empresaId)
-    .eq('sociedad_id', datos.sociedad_id)
     .eq('id', datos.activo_id)
     .eq('propietario_tipo', 'cliente')
     .maybeSingle();
