@@ -1725,7 +1725,11 @@ function CxC() {
                 </div>
                 <div className="input-group">
                   <label>Cuenta bancaria destino</label>
-                  {cuentasBancariasActivas.length > 0 ? (
+                  {formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0 ? (
+                    <div style={{fontSize:12,color:'var(--fg-muted)',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--bg-subtle)'}}>
+                      No hay una cuenta de detracciones configurada para esta sociedad. Márcala en Parámetros Generales → Cuentas (edita la cuenta del Banco de la Nación y activa 'Cuenta de detracciones')
+                    </div>
+                  ) : cuentasBancariasActivas.length > 0 ? (
                     <select className="select" required={formCobro.tipo_cobro === 'detraccion'} value={formCobro.cuenta_bancaria} onChange={e=>setFormCobro(v=>({...v,cuenta_bancaria:e.target.value}))}>
                       <option value="">Seleccionar cuenta...</option>
                       {cuentasBancariasActivas.filter(cb => formCobro.tipo_cobro === 'detraccion' ? cb.es_cuenta_detracciones && cb.moneda === 'PEN' && cb.sociedad_id === cobroSel.sociedad_id : !cb.es_cuenta_detracciones).map(cb=>(
@@ -1789,7 +1793,7 @@ function CxC() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setPanelCobro(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel))}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
+                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel)) || (formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0)}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
               </div>
             </form>
           </div>
