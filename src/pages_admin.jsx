@@ -8255,7 +8255,7 @@ function CuentasBancariasSection() {
           <thead><tr><th>Alias</th><th>Banco</th><th>N° Cuenta</th><th>Moneda</th><th>Tipo</th><th>Sociedad</th><th>Saldo inicial</th><th>Estado</th><th></th></tr></thead>
           <tbody>{cuentasFiltradas.length > 0 ? cuentasFiltradas.map(c => (
             <tr key={c.id}>
-              <td><strong>{c.nombre}</strong></td>
+              <td><strong>{c.nombre}</strong>{c.es_cuenta_detracciones && <span className="badge badge-cyan" style={{marginLeft:6}}>Detracciones</span>}</td>
               <td>{c.banco}</td>
               <td>{c.numero_cuenta || '—'}</td>
               <td><span className="badge badge-cyan">{c.moneda}</span></td>
