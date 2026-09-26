@@ -20,11 +20,11 @@ begin
     raise exception 'R2|cuentas_bancarias no existe';
   end if;
 
-  select pg_get_expr(polwithcheck, polrelid)
+  select pg_get_expr(pp.polwithcheck, pp.polrelid)
     into v_check
-  from pg_policy
-  where polrelid = v_relid
-    and polname = 'cb_insert';
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_insert';
   if v_check is null then
     raise exception 'R2|cb_insert no tiene WITH CHECK remoto';
   end if;
@@ -32,11 +32,11 @@ begin
   raise notice 'R2_DIFF|cb_insert|remote_with_check=%|generated_with_check=%', v_check, v_generated;
   execute format('alter policy cb_insert on public.cuentas_bancarias with check (%s)', v_generated);
 
-  select pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)
+  select pg_get_expr(pp.polqual, pp.polrelid), pg_get_expr(pp.polwithcheck, pp.polrelid)
     into v_using, v_check
-  from pg_policy
-  where polrelid = v_relid
-    and polname = 'cb_update';
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_update';
   if v_using is null or v_check is null then
     raise exception 'R2|cb_update no tiene USING y WITH CHECK remotos';
   end if;
@@ -47,11 +47,11 @@ begin
     format('(%s) AND (public.usuario_puede(empresa_id, ''parametros'', ''editar'') OR public.usuario_puede(empresa_id, ''tesoreria'', ''editar''))', v_check);
   execute format('alter policy cb_update on public.cuentas_bancarias using ((%s) AND (public.usuario_puede(empresa_id, ''parametros'', ''editar'') OR public.usuario_puede(empresa_id, ''tesoreria'', ''editar''))) with check ((%s) AND (public.usuario_puede(empresa_id, ''parametros'', ''editar'') OR public.usuario_puede(empresa_id, ''tesoreria'', ''editar'')))', v_using, v_check);
 
-  select pg_get_expr(polqual, polrelid)
+  select pg_get_expr(pp.polqual, pp.polrelid)
     into v_using
-  from pg_policy
-  where polrelid = v_relid
-    and polname = 'cb_delete';
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_delete';
   if v_using is null then
     raise exception 'R2|cb_delete no tiene USING remoto';
   end if;
@@ -123,16 +123,16 @@ begin
   where n.nspname = 'public' and c.relname = 'cuentas_bancarias';
 
   if not exists (
-    select 1 from pg_policy
-    where polrelid = v_relid and polname = 'cb_insert'
-      and pg_get_expr(polwithcheck, polrelid) like '%usuario_puede%parametros%crear%'
-      and pg_get_expr(polwithcheck, polrelid) like '%usuario_puede%tesoreria%crear%'
+    select 1 from pg_policy pp
+    where pp.polrelid = v_relid and pp.polname = 'cb_insert'
+      and pg_get_expr(pp.polwithcheck, pp.polrelid) like '%usuario_puede%parametros%crear%'
+      and pg_get_expr(pp.polwithcheck, pp.polrelid) like '%usuario_puede%tesoreria%crear%'
   ) then raise exception 'R2_VALIDACION|cb_insert permiso ausente'; end if;
 
-  select pg_get_expr(polqual, polrelid), pg_get_expr(polwithcheck, polrelid)
+  select pg_get_expr(pp.polqual, pp.polrelid), pg_get_expr(pp.polwithcheck, pp.polrelid)
     into v_using, v_check
-  from pg_policy
-  where polrelid = v_relid and polname = 'cb_update';
+  from pg_policy pp
+  where pp.polrelid = v_relid and pp.polname = 'cb_update';
   if v_using is null or v_check is null
      or v_using not like '%usuario_puede%parametros%editar%'
      or v_using not like '%usuario_puede%tesoreria%editar%'
@@ -142,32 +142,32 @@ begin
   end if;
 
   if not exists (
-    select 1 from pg_policy
-    where polrelid = v_relid and polname = 'cb_delete'
-      and pg_get_expr(polqual, polrelid) like '%usuario_puede%parametros%anular%'
-      and pg_get_expr(polqual, polrelid) like '%usuario_puede%tesoreria%anular%'
+    select 1 from pg_policy pp
+    where pp.polrelid = v_relid and pp.polname = 'cb_delete'
+      and pg_get_expr(pp.polqual, pp.polrelid) like '%usuario_puede%parametros%anular%'
+      and pg_get_expr(pp.polqual, pp.polrelid) like '%usuario_puede%tesoreria%anular%'
   ) then raise exception 'R2_VALIDACION|cb_delete permiso ausente'; end if;
 
-  select oid into v_fn
+  select p.oid into v_fn
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
     and p.proname = 'validar_cuenta_detracciones_permiso'
     and pg_get_function_identity_arguments(p.oid) = '';
-  if v_fn is null or not (select prosecdef from pg_proc where oid = v_fn)
+  if v_fn is null or not (select p2.prosecdef from pg_proc p2 where p2.oid = v_fn)
      or pg_get_functiondef(v_fn) not like '%auth.uid()%'
      or pg_get_functiondef(v_fn) not like '%usuario_puede%parametros%editar%'
      or pg_get_functiondef(v_fn) not like '%Solo un usuario con permiso de edición en Parámetros puede cambiar Cuenta de detracciones.%' then
     raise exception 'R2_VALIDACION|trigger function incorrecta';
   end if;
 
-  select pg_get_triggerdef(oid) into v_trigger_def
-  from pg_trigger
-  where tgrelid = v_relid and tgname = 'cb_detracciones_permiso_trg' and not tgisinternal;
+  select pg_get_triggerdef(pt.oid) into v_trigger_def
+  from pg_trigger pt
+  where pt.tgrelid = v_relid and pt.tgname = 'cb_detracciones_permiso_trg' and not pt.tgisinternal;
   if v_trigger_def is null or v_trigger_def not like '%BEFORE INSERT OR UPDATE%' then
     raise exception 'R2_VALIDACION|trigger ausente o eventos incorrectos';
   end if;
 
-  if (select count(*) from pg_policy where polrelid = v_relid) <> 4 then
+  if (select count(*) from pg_policy pp where pp.polrelid = v_relid) <> 4 then
     raise exception 'R2_VALIDACION|se crearon politicas adicionales';
   end if;
 
