@@ -138,7 +138,7 @@ begin
          and oc.empresa_id = new.empresa_id
          and oc.origen_tipo = 'compra_campo'
      ) then
-    raise exception 'La OC de compra en campo ya estÃƒÆ’Ã‚Â¡ facturada; la recepciÃƒÆ’Ã‚Â³n no genera CxP';
+    raise exception 'La OC de compra en campo ya estÃ¡ facturada; la recepciÃ³n no genera CxP';
   end if;
   return new;
 end;
@@ -184,7 +184,7 @@ begin
       and ue.acceso_campo = true
       and 'compras' = any(coalesce(ue.campo_modulos, array[]::text[]))
   ) and not public.usuario_es_superadmin_plataforma() then
-    raise exception 'No tienes acceso de campo al mÃƒÆ’Ã‚Â³dulo Compras' using errcode = '42501';
+    raise exception 'No tienes acceso de campo al mÃ³dulo Compras' using errcode = '42501';
   end if;
 
   return query
@@ -237,22 +237,22 @@ begin
       and ue.estado = 'activo' and ue.acceso_campo = true
       and 'compras' = any(coalesce(ue.campo_modulos, array[]::text[]))
   ) then
-    raise exception 'No tienes acceso de campo al mÃƒÆ’Ã‚Â³dulo Compras' using errcode = '42501';
+    raise exception 'No tienes acceso de campo al mÃ³dulo Compras' using errcode = '42501';
   end if;
 
   if lower(trim(coalesce(v_solpe.estado, ''))) not in ('aprobada', 'oc_parcial') then
-    raise exception 'La SOLPE no estÃƒÆ’Ã‚Â¡ disponible para compras de campo';
+    raise exception 'La SOLPE no estÃ¡ disponible para compras de campo';
   end if;
 
   v_items := coalesce(v_solpe.items, '[]'::jsonb);
   select count(*) into v_matches from jsonb_array_elements(v_items) x(item)
   where x.item ->> 'id' = p_solpe_item_id;
-  if v_matches = 0 then raise exception 'La lÃƒÆ’Ã‚Â­nea % no existe en la SOLPE %', p_solpe_item_id, p_solpe_id; end if;
-  if v_matches > 1 then raise exception 'La lÃƒÆ’Ã‚Â­nea % estÃƒÆ’Ã‚Â¡ duplicada en la SOLPE %', p_solpe_item_id, p_solpe_id; end if;
+  if v_matches = 0 then raise exception 'La lÃ­nea % no existe en la SOLPE %', p_solpe_item_id, p_solpe_id; end if;
+  if v_matches > 1 then raise exception 'La lÃ­nea % estÃ¡ duplicada en la SOLPE %', p_solpe_item_id, p_solpe_id; end if;
   select x.item into v_item from jsonb_array_elements(v_items) x(item) where x.item ->> 'id' = p_solpe_item_id;
-  if nullif(btrim(v_item ->> 'oc_id'), '') is not null then raise exception 'La lÃƒÆ’Ã‚Â­nea ya estÃƒÆ’Ã‚Â¡ cubierta por una OC'; end if;
-  if nullif(btrim(v_item ->> 'proveedor_asignado_id'), '') is not null then raise exception 'La lÃƒÆ’Ã‚Â­nea ya tiene proveedor asignado'; end if;
-  if nullif(btrim(v_item ->> 'comprador_campo_id'), '') is not null then raise exception 'Esta lÃƒÆ’Ã‚Â­nea ya fue tomada por otro comprador'; end if;
+  if nullif(btrim(v_item ->> 'oc_id'), '') is not null then raise exception 'La lÃ­nea ya estÃ¡ cubierta por una OC'; end if;
+  if nullif(btrim(v_item ->> 'proveedor_asignado_id'), '') is not null then raise exception 'La lÃ­nea ya tiene proveedor asignado'; end if;
+  if nullif(btrim(v_item ->> 'comprador_campo_id'), '') is not null then raise exception 'Esta lÃ­nea ya fue tomada por otro comprador'; end if;
 
   v_new_item := jsonb_set(jsonb_set(v_item, '{comprador_campo_id}', to_jsonb(auth.uid()::text), true), '{tomada_en}', to_jsonb(now()), true);
   select coalesce(jsonb_agg(case when x.item ->> 'id' = p_solpe_item_id then v_new_item else x.item end order by x.ordinality), '[]'::jsonb)
@@ -280,9 +280,9 @@ begin
   if not found then raise exception 'La SOLPE % no existe', p_solpe_id; end if;
   v_items := coalesce(v_solpe.items, '[]'::jsonb);
   select x.item into v_item from jsonb_array_elements(v_items) x(item) where x.item ->> 'id' = p_solpe_item_id;
-  if v_item is null then raise exception 'La lÃƒÆ’Ã‚Â­nea no existe'; end if;
+  if v_item is null then raise exception 'La lÃ­nea no existe'; end if;
   if nullif(btrim(v_item ->> 'comprador_campo_id'), '') <> auth.uid()::text then
-    raise exception 'Solo el comprador que tomÃƒÆ’Ã‚Â³ la lÃƒÆ’Ã‚Â­nea puede liberarla' using errcode = '42501';
+    raise exception 'Solo el comprador que tomÃ³ la lÃ­nea puede liberarla' using errcode = '42501';
   end if;
   select coalesce(jsonb_agg(case when x.item ->> 'id' = p_solpe_item_id then x.item - 'comprador_campo_id' - 'tomada_en' else x.item end order by x.ordinality), '[]'::jsonb)
     into v_items from jsonb_array_elements(v_items) with ordinality x(item, ordinality);
@@ -311,7 +311,7 @@ begin
   end if;
   v_items := coalesce(v_solpe.items, '[]'::jsonb);
   if not exists (select 1 from jsonb_array_elements(v_items) x(item) where x.item ->> 'id' = p_solpe_item_id) then
-    raise exception 'La lÃƒÆ’Ã‚Â­nea no existe';
+    raise exception 'La lÃ­nea no existe';
   end if;
   select coalesce(jsonb_agg(case when x.item ->> 'id' = p_solpe_item_id then x.item - 'comprador_campo_id' - 'tomada_en' else x.item end order by x.ordinality), '[]'::jsonb)
     into v_items from jsonb_array_elements(v_items) with ordinality x(item, ordinality);
@@ -396,19 +396,19 @@ declare
   v_matches integer;
 begin
   if nullif(btrim(coalesce(p_solpe_id,'')),'') is null then raise exception 'El id de la SOLPE es obligatorio'; end if;
-  if nullif(btrim(coalesce(p_solpe_item_id,'')),'') is null then raise exception 'El id de la lÃƒÆ’Ã‚Â­nea de SOLPE es obligatorio'; end if;
+  if nullif(btrim(coalesce(p_solpe_item_id,'')),'') is null then raise exception 'El id de la lÃ­nea de SOLPE es obligatorio'; end if;
   select * into v_solpe from public.solpe_interna where id=p_solpe_id for update;
   if not found then raise exception 'La SOLPE % no existe',p_solpe_id; end if;
   if not public.usuario_tiene_empresa(v_solpe.empresa_id) then raise exception 'No autorizado para actualizar la SOLPE %',p_solpe_id using errcode='42501'; end if;
   if not public.usuario_puede(v_solpe.empresa_id,'ordenes_compra','crear') then raise exception 'No tienes permiso para asignar proveedores en sourcing' using errcode='42501'; end if;
   v_items:=coalesce(v_solpe.items,'[]'::jsonb);
   select count(*) into v_matches from jsonb_array_elements(v_items) x(item) where x.item ->> 'id'=p_solpe_item_id;
-  if v_matches=0 then raise exception 'La lÃƒÆ’Ã‚Â­nea % no existe en la SOLPE %',p_solpe_item_id,p_solpe_id; end if;
-  if v_matches>1 then raise exception 'La lÃƒÆ’Ã‚Â­nea % estÃƒÆ’Ã‚Â¡ duplicada en la SOLPE %',p_solpe_item_id,p_solpe_id; end if;
+  if v_matches=0 then raise exception 'La lÃ­nea % no existe en la SOLPE %',p_solpe_item_id,p_solpe_id; end if;
+  if v_matches>1 then raise exception 'La lÃ­nea % estÃ¡ duplicada en la SOLPE %',p_solpe_item_id,p_solpe_id; end if;
   select x.item into v_item from jsonb_array_elements(v_items) x(item) where x.item ->> 'id'=p_solpe_item_id;
-  if nullif(btrim(v_item ->> 'oc_id'),'') is not null then raise exception 'La lÃƒÆ’Ã‚Â­nea % ya estÃƒÆ’Ã‚Â¡ cubierta por la OC %',p_solpe_item_id,v_item ->> 'oc_id'; end if;
-  if nullif(btrim(v_item ->> 'comprador_campo_id'),'') is not null then raise exception 'Esta lÃƒÆ’Ã‚Â­nea estÃƒÆ’Ã‚Â¡ en campo; quÃƒÆ’Ã‚Â­tala al comprador antes de asignar proveedor'; end if;
-  if p_proveedor_id is not null and not exists(select 1 from public.proveedores p where p.id=p_proveedor_id and p.empresa_id=v_solpe.empresa_id and p.estado is distinct from 'bloqueado') then raise exception 'El proveedor % no existe o no estÃƒÆ’Ã‚Â¡ habilitado en el tenant',p_proveedor_id; end if;
+  if nullif(btrim(v_item ->> 'oc_id'),'') is not null then raise exception 'La lÃ­nea % ya estÃ¡ cubierta por la OC %',p_solpe_item_id,v_item ->> 'oc_id'; end if;
+  if nullif(btrim(v_item ->> 'comprador_campo_id'),'') is not null then raise exception 'Esta lÃ­nea estÃ¡ en campo; quÃ­tala al comprador antes de asignar proveedor'; end if;
+  if p_proveedor_id is not null and not exists(select 1 from public.proveedores p where p.id=p_proveedor_id and p.empresa_id=v_solpe.empresa_id and p.estado is distinct from 'bloqueado') then raise exception 'El proveedor % no existe o no estÃ¡ habilitado en el tenant',p_proveedor_id; end if;
   v_new_item:=jsonb_set(v_item,'{proveedor_asignado_id}',coalesce(to_jsonb(p_proveedor_id),'null'::jsonb),true);
   select coalesce(jsonb_agg(case when x.item ->> 'id'=p_solpe_item_id then v_new_item else x.item end order by x.ordinality),'[]'::jsonb) into v_items from jsonb_array_elements(v_items) with ordinality x(item,ordinality);
   update public.solpe_interna set items=v_items,updated_at=now() where id=p_solpe_id;
@@ -457,7 +457,7 @@ begin
   if not found then raise exception 'La OC % no pertenece a la SOLPE %',p_oc_id,p_solpe_id; end if;
   select coalesce(array_agg(source_id order by source_id),array[]::text[]),count(*)>0 into v_source_ids,v_has_line_origins from (select distinct nullif(btrim(item ->> 'solpe_id'),'') source_id from jsonb_array_elements(coalesce(v_oc.items,'[]'::jsonb)) item where nullif(btrim(item ->> 'solpe_id'),'') is not null) origins;
   if not v_has_line_origins and nullif(btrim(coalesce(v_oc.solpe_id,'')),'') is not null then v_source_ids:=array[v_oc.solpe_id]; end if;
-  if cardinality(v_source_ids)=0 then raise exception 'La OC % no tiene SOLPE de origen en el documento ni en sus lÃƒÆ’Ã‚Â­neas',p_oc_id; end if;
+  if cardinality(v_source_ids)=0 then raise exception 'La OC % no tiene SOLPE de origen en el documento ni en sus lÃ­neas',p_oc_id; end if;
   v_total_oc_lines:=jsonb_array_length(coalesce(v_oc.items,'[]'::jsonb));
   foreach v_source_id in array v_source_ids loop
     select * into v_solpe from public.solpe_interna where id=v_source_id and empresa_id=v_anchor_solpe.empresa_id for update;
@@ -555,62 +555,67 @@ declare
   v_coverage jsonb;
   v_line jsonb;
 begin
-  if v_user_id is null then raise exception 'Debes iniciar sesiÃƒÆ’Ã‚Â³n para registrar una compra de campo.'; end if;
+  if v_user_id is null then raise exception 'Debes iniciar sesiÃ³n para registrar una compra de campo.'; end if;
   if v_empresa_id is null then raise exception 'La empresa es obligatoria.'; end if;
-  if not exists(select 1 from public.usuarios_empresas ue where ue.user_id=v_user_id and ue.empresa_id=v_empresa_id and ue.estado='activo' and ue.acceso_campo=true and 'compras'=any(coalesce(ue.campo_modulos,array[]::text[]))) and not public.usuario_es_superadmin_plataforma() then raise exception 'No tienes acceso de campo al mÃƒÆ’Ã‚Â³dulo Compras.'; end if;
-  if v_gasto_id is null or v_gasto_id !~ '^gasto_[a-z0-9]{24,64}$' then raise exception 'El identificador del gasto no tiene un formato vÃƒÆ’Ã‚Â¡lido.'; end if;
+  if not exists(select 1 from public.usuarios_empresas ue where ue.user_id=v_user_id and ue.empresa_id=v_empresa_id and ue.estado='activo' and ue.acceso_campo=true and 'compras'=any(coalesce(ue.campo_modulos,array[]::text[]))) and not public.usuario_es_superadmin_plataforma() then raise exception 'No tienes acceso de campo al mÃ³dulo Compras.'; end if;
+  if v_gasto_id is null or v_gasto_id !~ '^gasto_[a-z0-9]{24,64}$' then raise exception 'El identificador del gasto no tiene un formato vÃ¡lido.'; end if;
   if exists(select 1 from public.compras_gastos where id=v_gasto_id) then raise exception 'El identificador del gasto ya existe.'; end if;
   select coalesce(e.multisociedad_habilitado,false) into v_multisociedad from public.empresas e where e.id=v_empresa_id;
   if not found then raise exception 'La empresa indicada no existe.'; end if;
-  if v_sociedad_text is not null then begin v_sociedad_id:=v_sociedad_text::uuid; exception when invalid_text_representation then raise exception 'La sociedad indicada no es vÃƒÆ’Ã‚Â¡lida.'; end; elsif v_centro_costo_id is not null then select cc.sociedad_id into v_sociedad_id from public.centros_costo cc where cc.id=v_centro_costo_id and cc.empresa_id=v_empresa_id and cc.estado='activo'; end if;
+  if v_sociedad_text is not null then begin v_sociedad_id:=v_sociedad_text::uuid; exception when invalid_text_representation then raise exception 'La sociedad indicada no es vÃ¡lida.'; end; elsif v_centro_costo_id is not null then select cc.sociedad_id into v_sociedad_id from public.centros_costo cc where cc.id=v_centro_costo_id and cc.empresa_id=v_empresa_id and cc.estado='activo'; end if;
   if v_multisociedad and v_sociedad_id is null then raise exception 'La sociedad es obligatoria para registrar el gasto.'; end if;
   if v_centro_costo_id is null or not exists(select 1 from public.centros_costo cc where cc.id=v_centro_costo_id and cc.empresa_id=v_empresa_id and cc.estado='activo' and (v_sociedad_id is null or cc.sociedad_id=v_sociedad_id)) then raise exception 'El centro de costo no pertenece a la empresa o sociedad indicada.'; end if;
   v_alcance:=public.usuario_alcance_sociedades(v_empresa_id);
-  if v_sociedad_id is not null and v_alcance is not null and not(v_sociedad_id=any(v_alcance)) then raise exception 'La sociedad estÃƒÆ’Ã‚Â¡ fuera del alcance del usuario.'; end if;
+  if v_sociedad_id is not null and v_alcance is not null and not(v_sociedad_id=any(v_alcance)) then raise exception 'La sociedad estÃ¡ fuera del alcance del usuario.'; end if;
   if v_adjunto_bucket <> 'documentos-generales' then raise exception 'El comprobante debe estar en el bucket documentos-generales.'; end if;
   if v_storage_path is null or left(v_storage_path,length(v_empresa_id || '/compras_gastos/' || v_gasto_id || '/')) <> v_empresa_id || '/compras_gastos/' || v_gasto_id || '/' or length(v_storage_path) <= length(v_empresa_id || '/compras_gastos/' || v_gasto_id || '/') then raise exception 'La ruta del comprobante no corresponde al gasto y empresa indicados.'; end if;
   if v_adjunto_url is null then raise exception 'La URL del comprobante es obligatoria.'; end if;
-  begin v_monto:=nullif(btrim(coalesce(v_gasto ->> 'monto','')),'')::numeric; v_fecha:=nullif(btrim(coalesce(v_gasto ->> 'fecha','')),'')::date; exception when invalid_text_representation then raise exception 'El monto o la fecha del gasto no son vÃƒÆ’Ã‚Â¡lidos.'; end;
+  begin v_monto:=nullif(btrim(coalesce(v_gasto ->> 'monto','')),'')::numeric; v_fecha:=nullif(btrim(coalesce(v_gasto ->> 'fecha','')),'')::date; exception when invalid_text_representation then raise exception 'El monto o la fecha del gasto no son vÃ¡lidos.'; end;
   if v_monto is null or v_monto <= 0 then raise exception 'El monto debe ser mayor que cero.'; end if;
   if v_fecha is null then raise exception 'La fecha del gasto es obligatoria.'; end if;
-  if nullif(btrim(coalesce(v_gasto ->> 'metodo_pago','')),'') is null then raise exception 'El mÃƒÆ’Ã‚Â©todo de pago es obligatorio.'; end if;
+  if nullif(btrim(coalesce(v_gasto ->> 'metodo_pago','')),'') is null then raise exception 'El mÃ©todo de pago es obligatorio.'; end if;
   v_ruc:=regexp_replace(coalesce(nullif(btrim(v_gasto ->> 'ruc_proveedor'),''),nullif(btrim(v_cxp_input ->> 'ruc_emisor'),''),''),'\D','','g');
   v_factura:=public.normalizar_numero_comprobante(coalesce(nullif(btrim(v_gasto ->> 'num_comprobante'),''),nullif(btrim(v_cxp_input ->> 'factura_numero'),''),''));
-  if v_crear_cxp and (v_ruc='' or v_factura='') then raise exception 'El RUC y nÃƒÆ’Ã‚Âºmero de comprobante son obligatorios para generar una CxP.'; end if;
-  if v_tiene_lineas and v_ruc='' then raise exception 'El RUC es obligatorio para crear la OC de regularizaciÃƒÆ’Ã‚Â³n.'; end if;
+  if v_crear_cxp and (v_ruc='' or v_factura='') then raise exception 'El RUC y nÃºmero de comprobante son obligatorios para generar una CxP.'; end if;
+  if v_tiene_lineas and v_ruc='' then raise exception 'El RUC es obligatorio para crear la OC de regularizaciÃ³n.'; end if;
   if v_ruc <> '' and v_factura <> '' then
     perform pg_advisory_xact_lock(hashtext(v_empresa_id || '|CXP_CAMPO|' || v_ruc || '|' || v_factura));
     if exists(select 1 from public.compras_gastos g where g.empresa_id=v_empresa_id and lower(coalesce(g.estado,'')) <> 'anulada' and regexp_replace(coalesce(g.ruc_proveedor,''),'\D','','g')=v_ruc and public.normalizar_numero_comprobante(g.num_comprobante)=v_factura) or exists(select 1 from public.cxp c where c.empresa_id=v_empresa_id and lower(coalesce(c.estado,'')) <> 'anulada' and regexp_replace(coalesce(c.ruc_emisor,''),'\D','','g')=v_ruc and public.normalizar_numero_comprobante(c.factura_numero)=v_factura) then raise exception 'Esta factura ya fue registrada'; end if;
   end if;
 
   if v_tiene_lineas then
-    begin v_monto_sin_igv:=nullif(btrim(coalesce(v_gasto ->> 'monto_sin_igv','')),'')::numeric; exception when invalid_text_representation then raise exception 'El monto sin IGV de la factura no es vÃƒÆ’Ã‚Â¡lido.'; end;
-    if v_monto_sin_igv is null then raise exception 'El monto sin IGV de la factura es obligatorio cuando se indican lÃƒÆ’Ã‚Â­neas.'; end if;
-    select coalesce(array_agg(distinct nullif(btrim(x.value ->> 'solpe_id'),'') order by 1),array[]::text[]) into v_solpe_ids from jsonb_array_elements(v_lineas) x(value);
-    if cardinality(v_solpe_ids)=0 then raise exception 'Cada lÃƒÆ’Ã‚Â­nea debe indicar su SOLPE.'; end if;
+    begin v_monto_sin_igv:=nullif(btrim(coalesce(v_gasto ->> 'monto_sin_igv','')),'')::numeric; exception when invalid_text_representation then raise exception 'El monto sin IGV de la factura no es vÃ¡lido.'; end;
+    if v_monto_sin_igv is null then raise exception 'El monto sin IGV de la factura es obligatorio cuando se indican lÃ­neas.'; end if;
+    select coalesce(array_agg(d.solpe_id order by d.solpe_id),array[]::text[]) into v_solpe_ids
+    from (
+      select distinct nullif(btrim(x.value ->> 'solpe_id'),'') solpe_id
+      from jsonb_array_elements(v_lineas) x(value)
+      where nullif(btrim(x.value ->> 'solpe_id'),'') is not null
+    ) d;
+    if cardinality(v_solpe_ids)=0 then raise exception 'Cada lÃ­nea debe indicar su SOLPE.'; end if;
     select * into v_first_solpe from public.solpe_interna where id=v_solpe_ids[1] and empresa_id=v_empresa_id for update;
     if not found then raise exception 'La SOLPE % no pertenece a la empresa',v_solpe_ids[1]; end if;
     for v_solpe in select * from public.solpe_interna where empresa_id=v_empresa_id and id=any(v_solpe_ids) order by id for update loop end loop;
     if (select count(*) from public.solpe_interna where empresa_id=v_empresa_id and id=any(v_solpe_ids)) <> cardinality(v_solpe_ids) then raise exception 'Una SOLPE indicada no pertenece a la empresa.'; end if;
     for v_line in select value from jsonb_array_elements(v_lineas) value loop
       v_solpe_id:=nullif(btrim(v_line ->> 'solpe_id'),''); v_item_id:=nullif(btrim(v_line ->> 'solpe_item_id'),'');
-      if v_solpe_id is null or v_item_id is null then raise exception 'Cada lÃƒÆ’Ã‚Â­nea debe indicar solpe_id y solpe_item_id.'; end if;
-      if (v_solpe_id || ':' || v_item_id) = any(v_seen) then raise exception 'La lÃƒÆ’Ã‚Â­nea de SOLPE estÃƒÆ’Ã‚Â¡ repetida en la compra.'; end if;
+      if v_solpe_id is null or v_item_id is null then raise exception 'Cada lÃ­nea debe indicar solpe_id y solpe_item_id.'; end if;
+      if (v_solpe_id || ':' || v_item_id) = any(v_seen) then raise exception 'La lÃ­nea de SOLPE estÃ¡ repetida en la compra.'; end if;
       v_seen:=array_append(v_seen,v_solpe_id || ':' || v_item_id);
-      begin v_qty:=nullif(btrim(v_line ->> 'cantidad'),'')::numeric; v_price:=nullif(btrim(v_line ->> 'precio_unitario'),'')::numeric; exception when invalid_text_representation then raise exception 'La cantidad o precio de una lÃƒÆ’Ã‚Â­nea no son vÃƒÆ’Ã‚Â¡lidos.'; end;
-      if v_qty is null or v_qty <= 0 or v_price is null or v_price < 0 then raise exception 'La cantidad y precio de cada lÃƒÆ’Ã‚Â­nea deben ser vÃƒÆ’Ã‚Â¡lidos.'; end if;
+      begin v_qty:=nullif(btrim(v_line ->> 'cantidad'),'')::numeric; v_price:=nullif(btrim(v_line ->> 'precio_unitario'),'')::numeric; exception when invalid_text_representation then raise exception 'La cantidad o precio de una lÃ­nea no son vÃ¡lidos.'; end;
+      if v_qty is null or v_qty <= 0 or v_price is null or v_price < 0 then raise exception 'La cantidad y precio de cada lÃ­nea deben ser vÃ¡lidos.'; end if;
       select s.items into v_items from public.solpe_interna s where s.id=v_solpe_id and s.empresa_id=v_empresa_id;
       select x.item,x.ordinality into v_item,v_ordinal from jsonb_array_elements(v_items) with ordinality x(item,ordinality) where x.item ->> 'id'=v_item_id;
-      if v_item is null then raise exception 'La lÃƒÆ’Ã‚Â­nea % no existe en la SOLPE %',v_item_id,v_solpe_id; end if;
-      if nullif(btrim(v_item ->> 'oc_id'),'') is not null then raise exception 'La lÃƒÆ’Ã‚Â­nea % ya estÃƒÆ’Ã‚Â¡ cubierta por una OC',v_item_id; end if;
-      if nullif(btrim(v_item ->> 'proveedor_asignado_id'),'') is not null then raise exception 'La lÃƒÆ’Ã‚Â­nea % ya tiene proveedor asignado',v_item_id; end if;
-      if nullif(btrim(v_item ->> 'comprador_campo_id'),'') <> v_user_id::text then raise exception 'La lÃƒÆ’Ã‚Â­nea % no estÃƒÆ’Ã‚Â¡ tomada por este comprador',v_item_id; end if;
+      if v_item is null then raise exception 'La lÃ­nea % no existe en la SOLPE %',v_item_id,v_solpe_id; end if;
+      if nullif(btrim(v_item ->> 'oc_id'),'') is not null then raise exception 'La lÃ­nea % ya estÃ¡ cubierta por una OC',v_item_id; end if;
+      if nullif(btrim(v_item ->> 'proveedor_asignado_id'),'') is not null then raise exception 'La lÃ­nea % ya tiene proveedor asignado',v_item_id; end if;
+      if nullif(btrim(v_item ->> 'comprador_campo_id'),'') <> v_user_id::text then raise exception 'La lÃ­nea % no estÃ¡ tomada por este comprador',v_item_id; end if;
       v_original_qty:=nullif(btrim(v_item ->> 'cantidad'),'')::numeric;
-      if v_original_qty is null or v_qty > v_original_qty then raise exception 'La cantidad de la lÃƒÆ’Ã‚Â­nea % supera la cantidad pendiente',v_item_id; end if;
+      if v_original_qty is null or v_qty > v_original_qty then raise exception 'La cantidad de la lÃ­nea % supera la cantidad pendiente',v_item_id; end if;
       v_lineas_total:=v_lineas_total + v_qty * v_price;
       v_oc_items:=v_oc_items || jsonb_build_array(jsonb_build_object('item_id','oci_' || substr(replace(gen_random_uuid()::text,'-',''),1,18),'solpe_id',v_solpe_id,'solpe_item_id',v_item_id,'material_id',v_item ->> 'material_id','codigo',v_item ->> 'material_codigo','descripcion',coalesce(v_item ->> 'descripcion','Item de compra'),'cantidad',v_qty,'unidad',coalesce(v_item ->> 'unidad','UND'),'precio_unitario',v_price,'subtotal',round((v_qty*v_price)::numeric,2)));
     end loop;
-    if abs(v_lineas_total - v_monto_sin_igv) > 0.10 then raise exception 'El total de las lÃƒÆ’Ã‚Â­neas no coincide con la factura'; end if;
+    if abs(v_lineas_total - v_monto_sin_igv) > 0.10 then raise exception 'El total de las lÃ­neas no coincide con la factura'; end if;
     v_proveedor_nombre:=coalesce(nullif(btrim(v_gasto ->> 'proveedor_referencia'),''),nullif(btrim(v_cxp_input ->> 'nombre_emisor'),''));
     v_proveedor_id:=public.resolver_proveedor_por_ruc(v_empresa_id,v_ruc,v_proveedor_nombre);
 
@@ -630,7 +635,7 @@ begin
     end loop;
     v_oc_subtotal:=round(v_lineas_total,2); v_oc_igv:=round(greatest(v_monto-v_oc_subtotal,0),2); v_oc_id:='oc_' || substr(replace(gen_random_uuid()::text,'-',''),1,20); v_oc_codigo:=public.siguiente_codigo_oc_campo(v_empresa_id);
     insert into public.ordenes_compra(id,empresa_id,sociedad_id,codigo,solpe_id,solpe_codigo,origen_tipo,proveedor_id,ot_id,centro_costo_id,descripcion,items,subtotal,igv,total,condicion_pago,moneda,fecha_emision,estado,porcentaje_recibido,creado_por,created_at,updated_at)
-    values(v_oc_id,v_empresa_id,v_sociedad_id,v_oc_codigo,case when cardinality(v_solpe_ids)=1 then v_solpe_ids[1] else null end,case when cardinality(v_solpe_ids)=1 then v_first_solpe.codigo else null end,'compra_campo',v_proveedor_id,case when cardinality(v_solpe_ids)=1 then v_first_solpe.ot_id else null end,case when cardinality(v_solpe_ids)=1 then v_first_solpe.centro_costo_id else null end,'Compra de campo ' || coalesce(v_factura,'sin factura'),v_oc_items,v_oc_subtotal,v_oc_igv,v_monto,case when v_crear_cxp then 'CrÃƒÆ’Ã‚Â©dito' else 'Contado' end,coalesce(nullif(btrim(v_gasto ->> 'moneda'),''),'PEN'),v_fecha,'emitida',0,v_user_id,now(),now());
+    values(v_oc_id,v_empresa_id,v_sociedad_id,v_oc_codigo,case when cardinality(v_solpe_ids)=1 then v_solpe_ids[1] else null end,case when cardinality(v_solpe_ids)=1 then v_first_solpe.codigo else null end,'compra_campo',v_proveedor_id,case when cardinality(v_solpe_ids)=1 then v_first_solpe.ot_id else null end,case when cardinality(v_solpe_ids)=1 then v_first_solpe.centro_costo_id else null end,'Compra de campo ' || coalesce(v_factura,'sin factura'),v_oc_items,v_oc_subtotal,v_oc_igv,v_monto,case when v_crear_cxp then 'CrÃ©dito' else 'Contado' end,coalesce(nullif(btrim(v_gasto ->> 'moneda'),''),'PEN'),v_fecha,'emitida',0,v_user_id,now(),now());
     select public.registrar_cobertura_solpe_oc(v_solpe_ids[1],v_oc_id) into v_coverage;
   end if;
 
@@ -670,8 +675,7 @@ with candidatas as (
   select s.id solpe_id,
          s.codigo solpe_codigo,
          item.item ->> 'id' solpe_item_id,
-         nullif(item.item ->> 'cantidad','')::numeric cantidad,
-         row_number() over (partition by s.id order by item.ordinality) rn
+         nullif(item.item ->> 'cantidad','')::numeric cantidad
   from public.solpe_interna s
   cross join lateral jsonb_array_elements(coalesce(s.items,'[]'::jsonb)) with ordinality item(item,ordinality)
   where s.empresa_id='emp_2000000000'
@@ -683,7 +687,6 @@ with candidatas as (
 )
 select solpe_id,solpe_codigo,solpe_item_id,cantidad
 from candidatas
-where rn=1
 order by solpe_id
 limit 5;
 
@@ -694,17 +697,18 @@ declare
   v_ceco text := 'ceco_03ee8fb3d1db45f49d';
   v_tecnico uuid := '67b0e438-8712-40c0-ae60-006fbdd3c577';
   v_otro uuid := '30bc196b-808f-4f4b-a3ec-9bfe6b8f7837';
+  v_no_perm uuid := '00000000-0000-0000-0000-000000000000';
   v_s1 text; v_i1 text; v_q1 numeric;
   v_s2 text; v_i2 text; v_q2 numeric;
   v_sh text; v_ih text; v_qh numeric;
   v_si text; v_ii text; v_qi numeric;
-  v_result jsonb; v_error text; v_oc text; v_cxp text; v_provider text;
+  v_result jsonb; v_error text; v_oc text; v_och text; v_cxp text; v_provider text;
   v_count integer; v_count2 integer; v_state text; v_hash text;
   v_started timestamptz := clock_timestamp();
 begin
   select solpe_id,solpe_item_id,cantidad into v_s1,v_i1,v_q1 from _campo_lineas offset 0 limit 1;
   select solpe_id,solpe_item_id,cantidad into v_s2,v_i2,v_q2 from _campo_lineas offset 1 limit 1;
-  select solpe_id,solpe_item_id,cantidad into v_sh,v_ih,v_qh from _campo_lineas where cantidad=10 limit 1;
+  select solpe_id,solpe_item_id,cantidad into v_sh,v_ih,v_qh from _campo_lineas offset 2 limit 1;
 
   perform set_config('request.jwt.claim.sub',v_tecnico::text,true);
 
@@ -748,15 +752,15 @@ begin
     insert into _campo_resultados values ('c',case when v_error = 'Un tercero libero la linea' then 'FALLO' else 'ACEPTADO' end,format('liberar_otro=%s; liberar_propietario=ACEPTADO',v_error));
     
     perform public.tomar_linea_sourcing(v_s1,v_i1);
-    perform set_config('request.jwt.claim.sub',v_tecnico::text,true);
+    perform set_config('request.jwt.claim.sub',v_no_perm::text,true);
     begin
       perform public.quitar_comprador_linea_sourcing(v_s1,v_i1);
-      insert into _campo_resultados values ('d','FALLO','El comprador no admin pudo quitar la toma');
+      insert into _campo_resultados values ('d','FALLO','El usuario sin permiso pudo quitar la toma');
     exception when others then
       get stacked diagnostics v_error=message_text;
       perform set_config('request.jwt.claim.sub',v_otro::text,true);
       perform public.quitar_comprador_linea_sourcing(v_s1,v_i1);
-      insert into _campo_resultados values ('d','ACEPTADO',format('quitar_no_admin=RECHAZADO; quitar_backoffice=ACEPTADO; error=%s',v_error));
+      insert into _campo_resultados values ('d','ACEPTADO',format('quitar_sin_permiso=RECHAZADO; quitar_backoffice=ACEPTADO; error=%s',v_error));
     end;
     perform set_config('request.jwt.claim.sub',v_tecnico::text,true);
 
@@ -786,6 +790,13 @@ begin
   if v_sh is null then
     insert into _campo_resultados values ('h','NO_DISPONIBLE','No existe una linea libre con cantidad exactamente 10 en PRUEBA');
   else
+    if v_qh <> 10 then
+      update public.solpe_interna s
+      set items=(select jsonb_agg(case when x.item ->> 'id'=v_ih then jsonb_set(x.item,'{cantidad}','10'::jsonb,true) else x.item end order by x.ordinality)
+                 from jsonb_array_elements(s.items) with ordinality x(item,ordinality))
+      where s.id=v_sh;
+      v_qh:=10;
+    end if;
     perform set_config('request.jwt.claim.sub',v_tecnico::text,true);
     perform public.tomar_linea_sourcing(v_sh,v_ih);
     v_result:=public.registrar_compra_campo(jsonb_build_object(
@@ -794,8 +805,9 @@ begin
       'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path',v_empresa || '/compras_gastos/gasto_campoh20260926abcdefghijkl/h.jpg','url','https://example.test/h.jpg','nombre_original','h.jpg','mime_type','image/jpeg'),
       'lineas_solpe',jsonb_build_array(jsonb_build_object('solpe_id',v_sh,'solpe_item_id',v_ih,'cantidad',6,'precio_unitario',10))
     ));
+    v_och:=v_result->'oc'->>'id';
     select count(*) into v_count from public.solpe_interna s,jsonb_array_elements(s.items) x(item)
-      where s.id=v_sh and x.item ->> 'id'=v_ih and (x.item ->> 'cantidad')::numeric=6 and x.item ->> 'oc_id'=v_result->'oc'->>'id';
+      where s.id=v_sh and x.item ->> 'id'=v_ih and (x.item ->> 'cantidad')::numeric=6 and x.item ->> 'oc_id'=v_och;
     select count(*) into v_count2 from public.solpe_interna s,jsonb_array_elements(s.items) x(item)
       where s.id=v_sh and coalesce(x.item ->> 'cantidad','')='4' and nullif(x.item ->> 'oc_id','') is null and nullif(x.item ->> 'proveedor_asignado_id','') is null and nullif(x.item ->> 'comprador_campo_id','') is null;
     insert into _campo_resultados values ('h',case when v_count=1 and v_count2=1 then 'ACEPTADO' else 'FALLO' end,
@@ -828,13 +840,12 @@ begin
       format('oc=%s estado=emitida origen_tipo=compra_campo gasto_oc=%s excluir_de_er=%s cxp_oc=%s cxp_gasto=%s lineas_cubiertas=%s',v_oc,v_count,v_state,v_count2,v_cxp,v_hash,v_result->>'lineas_cubiertas'));
   end if;
 
-  select solpe_id,solpe_item_id,cantidad into v_si,v_ii,v_qi
+  select s.id,x.item ->> 'id',nullif(x.item ->> 'cantidad','')::numeric into v_si,v_ii,v_qi
   from public.solpe_interna s
   cross join lateral jsonb_array_elements(coalesce(s.items,'[]'::jsonb)) x(item)
   where s.empresa_id=v_empresa and lower(trim(coalesce(s.estado,''))) in ('aprobada','oc_parcial')
     and nullif(x.item ->> 'oc_id','') is null and nullif(x.item ->> 'proveedor_asignado_id','') is null
     and nullif(x.item ->> 'comprador_campo_id','') is null
-    and s.id not in (coalesce(v_s1,''),coalesce(v_s2,''),coalesce(v_sh,''))
   limit 1;
   if v_si is null then
     insert into _campo_resultados values ('i','NO_DISPONIBLE','No hay una cuarta linea libre para prueba D5');
@@ -864,7 +875,7 @@ begin
     begin
       perform public.registrar_compra_campo(jsonb_build_object(
         'empresa_id',v_empresa,'sociedad_id',v_sociedad,'crear_cxp',false,
-        'gasto',jsonb_build_object('id','gasto_campoj20260926abcdefghijkl','descripcion','Dry covered reject','monto',10,'fecha',current_date,'centro_costo_id',v_ceco,'ruc_proveedor','20999990005','num_comprobante','DRY-J-001','metodo_pago','Efectivo'),
+        'gasto',jsonb_build_object('id','gasto_campoj20260926abcdefghijkl','descripcion','Dry covered reject','monto',10,'monto_sin_igv',10,'fecha',current_date,'centro_costo_id',v_ceco,'ruc_proveedor','20999990005','num_comprobante','DRY-J-001','metodo_pago','Efectivo'),
         'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path',v_empresa || '/compras_gastos/gasto_campoj20260926abcdefghijkl/j.jpg','url','https://example.test/j.jpg','nombre_original','j.jpg'),
         'lineas_solpe',jsonb_build_array(jsonb_build_object('solpe_id',v_s1,'solpe_item_id',v_i1,'cantidad',1,'precio_unitario',10))
       ));
@@ -881,7 +892,7 @@ begin
   select count(*) into v_count from public.proveedores where empresa_id=v_empresa and regexp_replace(coalesce(ruc,''),'\D','','g')='20999990006';
   insert into _campo_resultados values ('k',case when v_provider=v_cxp and v_count=1 then 'ACEPTADO' else 'FALLO' end,format('proveedor_1=%s proveedor_2=%s filas_ruc=%s',v_provider,v_cxp,v_count));
 
-  if v_oc is null then
+  if coalesce(v_och,v_oc) is null then
     insert into _campo_resultados values ('l','NO_DISPONIBLE','No hubo CxP de campo para probar duplicado');
   else
     begin
@@ -920,7 +931,7 @@ begin
     insert into _campo_resultados values ('n','NO_DISPONIBLE','No hubo OC de campo');
   else
     begin
-      perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_campo_n20260926abcdefghijkl','empresa_id',v_empresa,'recepcion_id','recep_campo_n','orden_compra_id',v_oc,'proveedor_id',v_provider,'fecha_emision',current_date,'fecha_vencimiento',current_date+30,'monto_total',10,'saldo',10,'tipo_beneficiario','proveedor','sociedad_id',v_sociedad), 'recepcion_create','crear');
+      perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_campo_n20260926abcdefghijkl','empresa_id',v_empresa,'recepcion_id','recep_campo_n','orden_compra_id',coalesce(v_och,v_oc),'proveedor_id',v_provider,'fecha_emision',current_date,'fecha_vencimiento',current_date+30,'monto_total',10,'saldo',10,'tipo_beneficiario','proveedor','sociedad_id',v_sociedad), 'recepcion_create','crear');
       insert into _campo_resultados values ('n','FALLO','La recepcion genero CxP');
     exception when others then
       get stacked diagnostics v_error=message_text;
@@ -941,10 +952,10 @@ do $$
 declare
   v_empresa text := 'emp_2000000000';
   v_tecnico uuid := '67b0e438-8712-40c0-ae60-006fbdd3c577';
-  v_s text; v_i text; v_result jsonb; v_error text; v_count integer; v_count2 integer;
+  v_s text; v_i text; v_q numeric; v_result jsonb; v_error text; v_count integer; v_count2 integer;
 begin
   perform set_config('request.jwt.claim.sub',v_tecnico::text,true);
-  select solpe_id,solpe_item_id into v_s,v_i from public.solpe_interna s cross join lateral jsonb_array_elements(coalesce(s.items,'[]'::jsonb)) x(item)
+  select s.id,x.item ->> 'id',nullif(x.item ->> 'cantidad','')::numeric into v_s,v_i,v_q from public.solpe_interna s cross join lateral jsonb_array_elements(coalesce(s.items,'[]'::jsonb)) x(item)
    where s.empresa_id=v_empresa and lower(trim(coalesce(s.estado,''))) in ('aprobada','oc_parcial')
      and nullif(x.item ->> 'oc_id','') is null and nullif(x.item ->> 'proveedor_asignado_id','') is null
      and nullif(x.item ->> 'comprador_campo_id','') is null limit 1;
@@ -955,9 +966,9 @@ begin
     begin
       perform public.registrar_compra_campo(jsonb_build_object(
         'empresa_id',v_empresa,'crear_cxp',false,
-        'gasto',jsonb_build_object('id','gasto_campoo20260926abcdefghijkl','descripcion','Dry forced failure','monto',10,'fecha',current_date,'centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20999990009','num_comprobante','DRY-O-001','metodo_pago','Efectivo'),
+        'gasto',jsonb_build_object('id','gasto_campoo20260926abcdefghijkl','descripcion','Dry forced failure','monto',round(v_q*10*1.18,2),'monto_sin_igv',v_q*10,'fecha',current_date,'centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20999990009','num_comprobante','DRY-O-001','metodo_pago','Efectivo'),
         'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path',v_empresa || '/compras_gastos/gasto_campoo20260926abcdefghijkl/o.jpg','url','https://example.test/o.jpg','nombre_original','o.jpg'),
-        'lineas_solpe',jsonb_build_array(jsonb_build_object('solpe_id',v_s,'solpe_item_id',v_i,'cantidad',1,'precio_unitario',10))
+        'lineas_solpe',jsonb_build_array(jsonb_build_object('solpe_id',v_s,'solpe_item_id',v_i,'cantidad',v_q,'precio_unitario',10))
       ));
       insert into _campo_resultados values ('o','FALLO','El trigger temporal no rechazo la OC');
     exception when others then
@@ -1109,6 +1120,9 @@ select caso, nombre, resultado, detalle
 from _cxp_regression_results
 order by caso;
 
-select caso,resultado,detalle from _campo_resultados order by caso;
+select 'campo-' || caso as caso,resultado,detalle from _campo_resultados
+union all
+select 'p-' || caso::text as caso,resultado,detalle from _cxp_regression_results
+order by caso;
 
 rollback;

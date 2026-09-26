@@ -578,7 +578,12 @@ begin
   if v_tiene_lineas then
     begin v_monto_sin_igv:=nullif(btrim(coalesce(v_gasto ->> 'monto_sin_igv','')),'')::numeric; exception when invalid_text_representation then raise exception 'El monto sin IGV de la factura no es válido.'; end;
     if v_monto_sin_igv is null then raise exception 'El monto sin IGV de la factura es obligatorio cuando se indican líneas.'; end if;
-    select coalesce(array_agg(distinct nullif(btrim(x.value ->> 'solpe_id'),'') order by 1),array[]::text[]) into v_solpe_ids from jsonb_array_elements(v_lineas) x(value);
+    select coalesce(array_agg(d.solpe_id order by d.solpe_id),array[]::text[]) into v_solpe_ids
+    from (
+      select distinct nullif(btrim(x.value ->> 'solpe_id'),'') solpe_id
+      from jsonb_array_elements(v_lineas) x(value)
+      where nullif(btrim(x.value ->> 'solpe_id'),'') is not null
+    ) d;
     if cardinality(v_solpe_ids)=0 then raise exception 'Cada línea debe indicar su SOLPE.'; end if;
     select * into v_first_solpe from public.solpe_interna where id=v_solpe_ids[1] and empresa_id=v_empresa_id for update;
     if not found then raise exception 'La SOLPE % no pertenece a la empresa',v_solpe_ids[1]; end if;
