@@ -2,6 +2,61 @@
 -- Las expresiones de las politicas se leen de pg_policy en el momento de aplicar
 -- la migracion para conservar tenant y alcance societario de la version remota.
 
+do $idempotency$
+declare
+  v_relid oid;
+  v_insert_check text;
+  v_update_using text;
+  v_update_check text;
+  v_delete_using text;
+  v_trigger_exists boolean;
+begin
+  select c.oid
+    into v_relid
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'cuentas_bancarias';
+
+  select pg_get_expr(pp.polwithcheck, pp.polrelid)
+    into v_insert_check
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_insert';
+
+  select pg_get_expr(pp.polqual, pp.polrelid), pg_get_expr(pp.polwithcheck, pp.polrelid)
+    into v_update_using, v_update_check
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_update';
+
+  select pg_get_expr(pp.polqual, pp.polrelid)
+    into v_delete_using
+  from pg_policy pp
+  where pp.polrelid = v_relid
+    and pp.polname = 'cb_delete';
+
+  select exists (
+    select 1
+    from pg_trigger pt
+    join pg_class tc on tc.oid = pt.tgrelid
+    join pg_namespace tn on tn.oid = tc.relnamespace
+    where tn.nspname = 'public'
+      and tc.relname = 'cuentas_bancarias'
+      and pt.tgname = 'cb_detracciones_permiso_trg'
+      and not pt.tgisinternal
+  ) into v_trigger_exists;
+
+  if v_insert_check like '%usuario_puede%parametros%crear%'
+     and v_update_using like '%usuario_puede%parametros%editar%'
+     and v_update_check like '%usuario_puede%parametros%editar%'
+     and v_delete_using like '%usuario_puede%parametros%anular%'
+     and v_trigger_exists then
+    raise exception 'R2|ya aplicada';
+  end if;
+end;
+$idempotency$;
+
 do $body$
 declare
   v_relid oid;
