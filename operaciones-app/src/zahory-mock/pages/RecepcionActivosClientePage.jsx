@@ -280,7 +280,7 @@ export function RecepcionActivosClientePage() {
               <input className="input" value={assetSearch} disabled={sociedadBloqueada || saving} onChange={event => { setAssetSearch(event.target.value); setForm(actual => ({ ...actual, activo_id: '' })); }} placeholder="Código, nombre, marca, modelo o serie" />
               {assetSearch && !form.activo_id && <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 180, overflow: 'auto' }}>
                 {activosVisibles.map(activo => <button key={activo.id} type="button" onClick={() => seleccionarActivo(activo)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: 'transparent', padding: '9px 10px', textAlign: 'left', cursor: 'pointer' }}><strong className="mono">{activo.codigo}</strong> · {activo.nombre}{activo.modelo ? ` · ${activo.modelo}` : ''}</button>)}
-                {!activosVisibles.length && <div className="hint" style={{ padding: 10 }}>No hay activos de cliente para la sociedad activa.</div>}
+                {!activosVisibles.length && <div className="hint" style={{ padding: 10 }}>{!form.cliente_id ? 'Selecciona un cliente para ver sus activos.' : 'Este cliente no tiene activos registrados que coincidan con la búsqueda.'}</div>}
               </div>}
               {form.activo_id && <div className="hint" style={{ marginTop: 6 }}>Seleccionado: {nombreActivo(activosPorId.get(form.activo_id))}</div>}
             </div>
