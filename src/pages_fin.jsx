@@ -484,7 +484,7 @@ function CxC() {
 
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
-  const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', detraccion_id:'', monto:'', monto_deposito_soles:'', tipo_cambio_detraccion:null, incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
+  const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', cliente_pago_total_sin_detraer:false, detraccion_id:'', monto:'', monto_deposito_soles:'', tipo_cambio_detraccion:null, incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
   const [detraccionesCxc, setDetraccionesCxc] = useState([]);
   const [detraccionesCxcCargadas, setDetraccionesCxcCargadas] = useState(false);
   const [detraccionesCxcError, setDetraccionesCxcError] = useState('');
@@ -712,7 +712,7 @@ function CxC() {
     setCobroSel(c);
     const pendiente = pendienteSpotDe(c);
     const tipoInicial = normalBloqueadoPorDetraccionDe(c) ? 'detraccion' : 'normal';
-    setFormCobro({ tipo_cobro:tipoInicial, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null, incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: tipoInicial === 'detraccion' ? 'Detraccion' : '', cuenta_bancaria: tipoInicial === 'detraccion' ? cuentaDetraccionUnicaDe(c) : '', numero_operacion: '', numero_constancia:'', notas: '' });
+    setFormCobro({ tipo_cobro:tipoInicial, cliente_pago_total_sin_detraer:false, detraccion_id:pendiente?.id || '', monto: String(tipoInicial === 'detraccion' ? pendiente?.monto_detraccion_origen || 0 : maxNormalCobrableDe(c)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null, incluye_mora: false, monto_mora: '', fecha_cobro: today, medio_pago: tipoInicial === 'detraccion' ? 'Detraccion' : '', cuenta_bancaria: tipoInicial === 'detraccion' ? cuentaDetraccionUnicaDe(c) : '', numero_operacion: '', numero_constancia:'', notas: '' });
     setArchivoCobro(null);
     setArchivoCobroError('');
     setPanelCobro(true);
@@ -721,7 +721,7 @@ function CxC() {
   useEffect(() => {
     if (!panelCobro || !cobroSel || !detraccionesCxcCargadas || formCobro.tipo_cobro !== 'normal') return;
     const pendiente = pendienteSpotDe(cobroSel);
-    setFormCobro(prev => ({ ...prev, detraccion_id: pendiente?.id || '', monto: String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null }));
+    setFormCobro(prev => ({ ...prev, detraccion_id: pendiente?.id || '', monto: prev.cliente_pago_total_sin_detraer ? String(saldoDe(cobroSel)) : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles: pendiente?.monto_detraccion_soles || '', tipo_cambio_detraccion: pendiente?.tipo_cambio ?? null }));
   }, [panelCobro, cobroSel?.id, detraccionesCxcCargadas, detraccionesCxc.length]);
 
   useEffect(() => {
@@ -755,7 +755,8 @@ function CxC() {
     const pendiente = pendienteSpotDe(cobroSel);
     const esDetraccion = formCobro.tipo_cobro === 'detraccion';
     const maxNormal = maxNormalCobrableDe(cobroSel);
-    if (!esDetraccion && normalBloqueadoPorDetraccionDe(cobroSel)) {
+    const esPagoTotalSinDetraer = !esDetraccion && formCobro.cliente_pago_total_sin_detraer === true;
+    if (!esDetraccion && normalBloqueadoPorDetraccionDe(cobroSel) && !esPagoTotalSinDetraer) {
       setMontoError('No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.');
       return;
     }
@@ -768,7 +769,11 @@ function CxC() {
       setMontoError('El cobro de detracción debe usar exactamente el monto de origen y depósito de la obligación pendiente.');
       return;
     }
-    if (!esDetraccion && monto > maxNormal) {
+    if (esPagoTotalSinDetraer && (!pendiente || Math.abs(monto - saldo) > 0.005)) {
+      setMontoError('El pago total sin detraer debe cubrir exactamente el saldo completo de la CxC.');
+      return;
+    }
+    if (!esDetraccion && !esPagoTotalSinDetraer && monto > maxNormal) {
       setMontoError(pendiente ? `Máximo cobrable ahora: ${moneySpotCurrency(maxNormal, cobroSel.moneda)}. El tramo reservado corresponde a la detracción pendiente.` : `El monto no puede superar el saldo pendiente de ${money(saldo)}.`);
       return;
     }
@@ -794,7 +799,7 @@ function CxC() {
     }
     setSavingCobro(true);
     try {
-      await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, detraccion_id: pendiente?.id || null, archivo_adjunto: archivoCobro, p_comision: true });
+      await registrarCobroCxC(cobroSel.id, monto, { ...formCobro, detraccion_id: esDetraccion ? (pendiente?.id || null) : null, archivo_adjunto: archivoCobro, p_comision: true });
       await refrescarDetraccionesCxc();
       setPanelCobro(false);
       setCobroSel(null);
@@ -1584,14 +1589,23 @@ function CxC() {
             <form className="side-panel-body" onSubmit={guardarCobro}>
               <div className="input-group">
                 <label>Tipo de cobro</label>
-                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : '', tipo_cambio_detraccion:tipo === 'detraccion' ? pendiente?.tipo_cambio ?? null : null, cuenta_bancaria:tipo === 'detraccion' ? cuentaDetraccionUnicaDe(cobroSel) : '', medio_pago:tipo === 'detraccion' ? 'Detraccion' : v.medio_pago === 'Detraccion' ? '' : v.medio_pago})); setMontoError(''); }}>
+                <select className="select" value={formCobro.tipo_cobro} onChange={e => { const tipo = e.target.value; const pendiente = pendienteSpotDe(cobroSel); setFormCobro(v => ({...v, tipo_cobro:tipo, cliente_pago_total_sin_detraer:false, monto:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_origen || '') : String(maxNormalCobrableDe(cobroSel)), monto_deposito_soles:tipo === 'detraccion' ? String(pendiente?.monto_detraccion_soles || '') : '', tipo_cambio_detraccion:tipo === 'detraccion' ? pendiente?.tipo_cambio ?? null : null, cuenta_bancaria:tipo === 'detraccion' ? cuentaDetraccionUnicaDe(cobroSel) : '', medio_pago:tipo === 'detraccion' ? 'Detraccion' : v.medio_pago === 'Detraccion' ? '' : v.medio_pago})); setMontoError(''); }}>
                   <option value="normal" disabled={!detraccionesCxcCargadas}>Normal</option>
                   <option value="detraccion" disabled={!pendienteSpotDe(cobroSel)}>Depósito de detracción recibido</option>
                 </select>
               </div>
               {formCobro.tipo_cobro === 'detraccion' && <div className="text-muted" style={{fontSize:12,marginTop:-6}}>Registra el depósito que el cliente hizo en tu cuenta de detracciones (Banco de la Nación). Usa la fecha del depósito.</div>}
               {detraccionesCxcError && <div className="alert alert-danger">No se pudieron cargar las detracciones. El cobro normal está bloqueado hasta completar la carga.</div>}
-              {formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && <div className="alert alert-warning">No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.</div>}
+              {formCobro.tipo_cobro === 'normal' && pendienteSpotDe(cobroSel) && (
+                <div style={{marginTop:8,padding:'10px 12px',borderRadius:6,border:'1px solid var(--border-subtle)',background:'var(--bg-subtle)'}}>
+                  <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:13}}>
+                    <input type="checkbox" checked={formCobro.cliente_pago_total_sin_detraer} onChange={e => setFormCobro(v => ({ ...v, cliente_pago_total_sin_detraer:e.target.checked, monto:e.target.checked ? String(saldoDe(cobroSel)) : String(maxNormalCobrableDe(cobroSel)) }))} />
+                    El cliente pagó el total sin detraer
+                  </label>
+                  <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:6}}>La empresa deberá depositar la detracción en su cuenta del Banco de la Nación dentro de 5 días hábiles.</div>
+                </div>
+              )}
+              {formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && !formCobro.cliente_pago_total_sin_detraer && <div className="alert alert-warning">No hay saldo cobrable como normal; lo pendiente corresponde a la detracción.</div>}
               {formCobro.tipo_cobro === 'detraccion' && pendienteSpotDe(cobroSel) && <div className="alert alert-info" style={{fontSize:12}}>Monto fijo de la obligación: {moneySpotCurrency(pendienteSpotDe(cobroSel).monto_detraccion_origen, cobroSel.moneda)} · depósito: {moneySpot(pendienteSpotDe(cobroSel).monto_detraccion_soles)}.</div>}
               {(() => {
                  const montoForm        = Number(formCobro.monto || 0);
@@ -1793,7 +1807,7 @@ function CxC() {
 
               <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
                 <button type="button" className="btn btn-secondary" onClick={()=>setPanelCobro(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel)) || (formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0)}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
+                <button type="submit" className="btn btn-primary" disabled={savingCobro || (formCobro.tipo_cobro === 'normal' && normalBloqueadoPorDetraccionDe(cobroSel) && !formCobro.cliente_pago_total_sin_detraer) || (formCobro.tipo_cobro === 'detraccion' && cuentasDetraccionDe(cobroSel).length === 0)}>{savingCobro ? 'Registrando...' : <>{I.check} Registrar cobro</>}</button>
               </div>
             </form>
           </div>
