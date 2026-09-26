@@ -37,6 +37,9 @@ const emptyForm = sociedadId => ({
   fecha_ingreso: today(),
   hora_ingreso: nowTime(),
   guia_ingreso: '',
+  lectura_valor: '',
+  lectura_unidad: 'horas',
+  tipo_activo: '',
   almacen_id: '',
   observaciones: '',
   checklist: Object.fromEntries(CHECKLIST_ITEMS.map(([key]) => [key, false])),
@@ -284,6 +287,8 @@ export function RecepcionActivosClientePage() {
             <div className="field"><label>Fecha de ingreso *</label><input className="input" type="date" value={form.fecha_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('fecha_ingreso', event.target.value)} required /></div>
             <div className="field"><label>Hora de ingreso</label><input className="input" type="time" value={form.hora_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('hora_ingreso', event.target.value)} /></div>
             <div className="field"><label>Guía de ingreso</label><input className="input" value={form.guia_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('guia_ingreso', event.target.value)} placeholder="N.° de guía o documento" /></div>
+            <div className="field"><label>Horómetro / kilometraje de ingreso <span className="hint">(opcional)</span></label><div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 8 }}><input className="input" type="number" min="0" step="0.01" inputMode="decimal" value={form.lectura_valor} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_valor', event.target.value)} placeholder="Sin dato" /><select className="select" value={form.lectura_unidad} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_unidad', event.target.value)}><option value="horas">Horas</option><option value="km">Km</option></select></div><div className="hint" style={{ marginTop: 4 }}>Si se informa, se conserva en el historial del activo.</div></div>
+            <div className="field"><label>Tipo de activo <span className="hint">(opcional)</span></label><select className="select" value={form.tipo_activo} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('tipo_activo', event.target.value)}><option value="">Sin especificar</option><option value="componente">Componente</option><option value="maquinaria_completa">Maquinaria completa</option></select><div className="hint" style={{ marginTop: 4 }}>Se guarda en la ficha persistente del activo.</div></div>
             <div className="field"><label>Sociedad</label><input className="input" value={sesion.sociedadActiva?.nombre || sesion.sociedadActiva?.codigo || sociedadId || 'Sin sociedad'} readOnly /></div>
             <div className="field" style={{ gridColumn: '1 / -1' }}><label>Observaciones</label><textarea className="input" rows="3" value={form.observaciones} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('observaciones', event.target.value)} /></div>
           </div>
@@ -327,8 +332,6 @@ export function RecepcionActivosClientePage() {
           </tbody></table>
         </div>
       </div>
-
-      <div className="card" style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: 12 }}><strong>Tipo de activo pendiente:</strong> no existe la columna <code>activos.tipo_activo</code> en el esquema disponible; esta versión no muestra ese selector.</div>
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1A2B4A', color: '#f8fafc', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 500, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>{toast}</div>}
       <FooterBrand />

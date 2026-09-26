@@ -30,6 +30,23 @@ const exigirEmpresaYSociedad = (empresaId, sociedadId) => {
   if (!sociedadId) throw new Error('Selecciona una sociedad operativa antes de continuar.');
 };
 
+const obtenerLecturaOpcional = datos => {
+  if (datos?.lectura_valor === undefined || datos?.lectura_valor === null || String(datos.lectura_valor).trim() === '') return null;
+  const valor = Number(datos.lectura_valor);
+  if (!Number.isFinite(valor) || valor < 0) throw new Error('La lectura de ingreso debe ser un número no negativo.');
+  const unidad = datos.lectura_unidad || 'horas';
+  if (!['horas', 'km'].includes(unidad)) throw new Error('La unidad de lectura de ingreso no es válida.');
+  return { valor, unidad };
+};
+
+const obtenerTipoActivoOpcional = datos => {
+  const tipoActivo = datos?.tipo_activo || null;
+  if (tipoActivo && !['componente', 'maquinaria_completa'].includes(tipoActivo)) {
+    throw new Error('El tipo de activo no es válido.');
+  }
+  return tipoActivo;
+};
+
 export async function listarActivosCliente(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
@@ -87,6 +104,8 @@ export async function crearRecepcion(empresaId, datos) {
   if (!datos?.activo_id) throw new Error('Selecciona el activo del cliente.');
   if (!datos?.fecha_ingreso) throw new Error('La fecha de ingreso es obligatoria.');
   if (!datos?.almacen_id) throw new Error('Selecciona el almacén de custodia.');
+  const lectura = obtenerLecturaOpcional(datos);
+  const tipoActivo = obtenerTipoActivoOpcional(datos);
 
   const supabase = getSupabaseClient();
   const { data: activo, error: activoError } = await supabase
@@ -99,6 +118,15 @@ export async function crearRecepcion(empresaId, datos) {
     .maybeSingle();
   if (activoError) throw activoError;
   if (!activo) throw new Error('El activo no existe, no pertenece a la sociedad activa o no es de un cliente.');
+
+  if (tipoActivo) {
+    const { error: tipoActivoError } = await supabase
+      .from('activos')
+      .update({ tipo_activo: tipoActivo })
+      .eq('id', datos.activo_id)
+      .eq('empresa_id', empresaId);
+    if (tipoActivoError) throw tipoActivoError;
+  }
 
   // No existe un trigger de recepción que abra el caso: se replica la llamada
   // que ya usa el servicio administrativo, antes del INSERT.
@@ -131,7 +159,20 @@ export async function crearRecepcion(empresaId, datos) {
       })
       .select()
       .single();
-    if (!error) return data;
+    if (!error) {
+      if (lectura) {
+        const { error: lecturaError } = await supabase.rpc('registrar_lectura_activo', {
+          p_empresa_id: empresaId,
+          p_activo_id: datos.activo_id,
+          p_valor: lectura.valor,
+          p_unidad: lectura.unidad,
+          p_origen: 'ingreso_recepcion',
+          p_origen_id: data.id,
+        });
+        if (lecturaError) throw lecturaError;
+      }
+      return data;
+    }
     ultimoError = error;
     if (error.code !== '23505') break;
   }
