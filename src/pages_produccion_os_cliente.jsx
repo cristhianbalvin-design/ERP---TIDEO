@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { I, money } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getActivosParaOS } from './services/activosService.js';
-import { RecepcionesActivosCliente } from './components/RecepcionesActivosCliente.jsx';
+import { BandejaRecepcionesActivosCliente } from './components/RecepcionesActivosCliente.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 
 const moneyValue = (value, moneda = 'PEN') => money(Number(value || 0), moneda === 'USD' ? '$' : 'S/');
@@ -209,7 +209,7 @@ function PanelProduccionOSCliente() {
       <div className="kpi-card"><div className="kpi-label">Monto facturado</div><div className="kpi-value" style={{ fontSize: 20 }}>{moneyValue(kpis.facturado, empresa?.moneda)}</div><div className="kpi-icon green">{I.receipt}</div></div>
       <div className="kpi-card"><div className="kpi-label">Pendiente de cobro</div><div className="kpi-value" style={{ fontSize: 20 }}>{moneyValue(kpis.pendienteCobro, empresa?.moneda)}</div><div className="kpi-icon orange">{I.dollar}</div></div>
     </div>
-    <RecepcionesActivosCliente />
+    <BandejaRecepcionesActivosCliente />
     <div className="card" style={{ marginBottom: 16 }}><div className="card-body row" style={{ gap: 12 }}><input className="input" style={{ maxWidth: 420 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS, cliente, cotización o activo" /><span className="text-muted" style={{ alignSelf: 'center', fontSize: 12 }}>{loadingActivos ? 'Cargando activos…' : `${activos.length} activos disponibles`}</span></div></div>
     {error && !modal && <div className="alert alert-danger" style={{ marginBottom: 16 }}>{error}</div>}
     <div className="card"><div className="table-wrap"><table className="tbl" style={{ minWidth: 2380 }}><thead><tr><th>OS</th><th>N° cotización</th><th>Cliente</th><th>Código de activo</th><th>Equipo</th><th>Modelo</th><th>Fabricante</th><th>Descripción</th><th>Observaciones</th><th>Estado</th><th>Estado producción</th><th>Emisión</th><th>Inicio</th><th>Fecha Estimada de Cierre</th><th>Fecha Real de Cierre</th><th>Vendedor</th><th>Precio</th><th>Factura</th><th>Pagos</th><th /></tr></thead><tbody>
