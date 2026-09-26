@@ -93,6 +93,44 @@ begin
 end;
 $$;
 
+create or replace function pg_temp.spot2_occurrences(
+  p_text text,
+  p_needle text
+)
+returns integer
+language plpgsql
+as $$
+begin
+  if p_needle is null or p_needle = '' then
+    raise exception 'SPOT2|ancla vacia';
+  end if;
+  return (length(p_text) - length(replace(p_text, p_needle, ''))) / length(p_needle);
+end;
+$$;
+
+create or replace function pg_temp.spot2_assert_exact_rewrite(
+  p_etiqueta text,
+  p_remota text,
+  p_generada text,
+  p_vieja text,
+  p_nueva text
+)
+returns void
+language plpgsql
+as $$
+begin
+  if pg_temp.spot2_occurrences(p_remota, p_vieja) <> 1 then
+    raise exception 'SPOT2|ancla remota no coincide una sola vez|%', p_etiqueta;
+  end if;
+  if pg_temp.spot2_occurrences(p_generada, p_nueva) <> 1 then
+    raise exception 'SPOT2|cambio generado no coincide una sola vez|%', p_etiqueta;
+  end if;
+  if replace(p_generada, p_nueva, p_vieja) <> p_remota then
+    raise exception 'SPOT2|diff fuera de lo previsto|%', p_etiqueta;
+  end if;
+end;
+$$;
+
 create or replace function public.spot_quinto_dia_habil(
   p_empresa_id text,
   p_fecha date
@@ -137,6 +175,7 @@ declare
   v_oid oid;
   v_before text;
   v_after text;
+  v_stage text;
   v_old text;
   v_new text;
   v_anchor text;
@@ -160,6 +199,7 @@ begin
     raise exception 'SPOT2|ancla declaracion cobro no coincide una sola vez';
   end if;
   v_after := replace(v_before, v_old, v_new);
+  perform pg_temp.spot2_assert_exact_rewrite('registrar_cobro_cxc_atomico.declaracion', v_before, v_after, v_old, v_new);
 
   v_old := $old$
   if not v_es_detraccion then
@@ -178,6 +218,7 @@ begin
       raise exception 'El cobro normal no puede invadir el tramo pendiente de detraccion; maximo cobrable ahora: %.', v_saldo_normal_max;
     end if;
   end if;$old$;
+  v_stage := v_after;
   v_new := $new$
   if not v_es_detraccion then
     if v_cliente_pago_total_sin_detraer then
@@ -213,20 +254,14 @@ begin
       end if;
     end if;
   end if;$new$;
-  if length(v_after) - length(replace(v_after, v_old, '')) <> 0 then
-    raise exception 'SPOT2|bloque limite generado contiene el bloque anterior';
-  end if;
-  if length(v_before) - length(replace(v_before, v_old, '')) <> length(v_old) then
-    raise exception 'SPOT2|bloque limite remoto no coincide una sola vez';
-  end if;
-  v_after := replace(v_after, v_old, v_new);
+  v_after := replace(v_stage, v_old, v_new);
+  perform pg_temp.spot2_assert_exact_rewrite('registrar_cobro_cxc_atomico.limite', v_stage, v_after, v_old, v_new);
 
+  v_stage := v_after;
   v_anchor := E'\n  v_cobro_id := coalesce(nullif(btrim(p_cobro ->> ''id''), ''''), ''cob_'' || replace(gen_random_uuid()::text, ''-'', ''''));';
   v_new := E'\n  if v_cliente_pago_total_sin_detraer then\n    update public.detracciones\n    set estado = ''por_autodetraer'',\n        fecha_limite_deposito = public.spot_quinto_dia_habil(v_cxc.empresa_id, coalesce(nullif(p_cobro ->> ''fecha_cobro'', '''')::date, current_date)),\n        actualizado_en = now()\n    where id = v_detraccion.id\n      and estado = ''pendiente'';\n    if not found then\n      raise exception ''La obligacion SPOT ya no esta pendiente para autodetraccion.'';\n    end if;\n  end if;' || v_anchor;
-  if length(v_after) - length(replace(v_after, v_anchor, '')) <> length(v_anchor) then
-    raise exception 'SPOT2|ancla transicion autodetraccion no coincide una sola vez';
-  end if;
-  v_after := replace(v_after, v_anchor, v_new);
+  v_after := replace(v_stage, v_anchor, v_new);
+  perform pg_temp.spot2_assert_exact_rewrite('registrar_cobro_cxc_atomico.transicion', v_stage, v_after, v_anchor, v_new);
 
   perform pg_temp.spot2_notice_diff('registrar_cobro_cxc_atomico', v_before, v_after);
   execute v_after;
@@ -279,10 +314,8 @@ begin
         and new.vinculo_tipo = 'cxc' then
     raise exception 'Un cobro normal no puede registrarse en una cuenta de detracciones.';
   end if;$new$;
-  if length(v_before) - length(replace(v_before, v_old, '')) <> length(v_old) then
-    raise exception 'SPOT2|bloque trigger remoto no coincide una sola vez';
-  end if;
   v_after := replace(v_before, v_old, v_new);
+  perform pg_temp.spot2_assert_exact_rewrite('validar_cobro_cxc_cuenta_detraccion', v_before, v_after, v_old, v_new);
   perform pg_temp.spot2_notice_diff('validar_cobro_cxc_cuenta_detraccion', v_before, v_after);
   execute v_after;
 end;
@@ -307,10 +340,8 @@ begin
   if v_oid is null or v_before is null then
     raise exception 'SPOT2|emitir_nota_cxc_atomica ausente';
   end if;
-  if length(v_before) - length(replace(v_before, v_anchor, '')) <> length(v_anchor) then
-    raise exception 'SPOT2|ancla nota no coincide una sola vez';
-  end if;
   v_after := replace(v_before, v_anchor, v_anchor || v_insert);
+  perform pg_temp.spot2_assert_exact_rewrite('emitir_nota_cxc_atomica', v_before, v_after, v_anchor, v_anchor || v_insert);
   perform pg_temp.spot2_notice_diff('emitir_nota_cxc_atomica', v_before, v_after);
   execute v_after;
 end;
