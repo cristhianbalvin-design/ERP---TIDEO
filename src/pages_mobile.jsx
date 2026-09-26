@@ -17,6 +17,16 @@ import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 const METODOS_PAGO_CAMPO = ['Efectivo', 'Tarjeta empresa', 'Yape / Plin', 'Transferencia bancaria'];
 
+function rucValidoSunat(valor) {
+  const ruc = String(valor || '').replace(/\D/g, '');
+  if (ruc.length !== 11) return false;
+  const pesos = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  const suma = pesos.reduce((total, peso, indice) => total + Number(ruc[indice]) * peso, 0);
+  const calculado = 11 - (suma % 11);
+  const digito = calculado === 10 ? 0 : calculado === 11 ? 1 : calculado;
+  return digito === Number(ruc[10]);
+}
+
 // Mobile field views - all field profiles
 
 const GEOFENCE_BLOQUEO_ERRCODE = 'PGE01';
@@ -2998,12 +3008,29 @@ function ComprasView({ screen, setScreen }) {
   const [campos, setCampos] = useState({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
   const [extractError, setExtractError] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const saveErrorRef = useRef(null);
   const [otId, setOtId] = useState('');
   const [cecoId, setCecoId] = useState('');
   const [genCxP, setGenCxP] = useState(false);
   const [cxpVence, setCxpVence] = useState('');
   const [metodoPago, setMetodoPago] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const rucNormalizado = String(campos.ruc || '').replace(/\D/g, '');
+  const rucInvalido = rucNormalizado.length > 0 && !rucValidoSunat(campos.ruc);
+
+  useEffect(() => {
+    if (saveError) saveErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [saveError]);
+
+  const mensajeValidacion = !metodoPago
+    ? 'Selecciona el método de pago'
+    : !cecoId
+      ? 'Selecciona el centro de costo'
+      : (genCxP && !cxpVence)
+        ? 'Selecciona la fecha de vencimiento'
+        : !fotoArchivo
+          ? 'Adjunta la foto del comprobante'
+          : '';
 
   const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
   const ESTADOS_CERRADOS = ['cerrada','cerrada_tecnica','anulada','valorizada','facturada','cerrado_conforme'];
@@ -3102,14 +3129,13 @@ function ComprasView({ screen, setScreen }) {
         metodo_pago: metodoPago || null,
         origen_registro: 'campo',
         estado: 'pendiente_revision',
-        ...(cxpId ? { cxp_id: cxpId } : {}),
         ot_id: otId || null,
       };
       const gastoCreado = crearGasto(gastoBase, { persistir: false });
       await persistirCompraGasto(gastoCreado);
       gastoPersistido = true;
       if (genCxP) {
-        await crearCxP({
+        const cxpCreadaId = await crearCxP({
           id: cxpId, proveedor_id: proveedorCatalogo?.id || null, tipo_beneficiario: 'proveedor',
           factura_numero: campos.num_factura || null,
           concepto,
@@ -3122,6 +3148,22 @@ function ComprasView({ screen, setScreen }) {
           categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
           ot_vinc_id: otId || null,
         });
+        try {
+          const sb = await getSupabaseClient();
+          const { error: vinculoError } = await sb
+            .from('compras_gastos')
+            .update({ cxp_id: cxpCreadaId || cxpId })
+            .eq('id', gastoId)
+            .eq('empresa_id', empresa.id)
+            .select('id,cxp_id')
+            .single();
+          if (vinculoError) throw vinculoError;
+        } catch (vinculoError) {
+          console.error('CxP creada, pero no se pudo completar el vínculo con el gasto:', vinculoError);
+          setSaveError('Gasto y CxP creados; el vínculo se completará en revisión');
+          setPaso('revision');
+          return;
+        }
       }
       setPaso('guardado');
     } catch (error) {
@@ -3185,7 +3227,7 @@ function ComprasView({ screen, setScreen }) {
         )}
 
         {saveError && (
-          <div style={{background:'var(--danger-lt,#fef2f2)',color:'var(--danger-dk,#991b1b)',border:'1px solid var(--danger)',borderRadius:8,padding:'10px 14px',fontSize:13,marginBottom:12}}>
+          <div ref={saveErrorRef} role="alert" style={{background:'var(--danger-lt,#fef2f2)',color:'var(--danger-dk,#991b1b)',border:'1px solid var(--danger)',borderRadius:8,padding:'10px 14px',fontSize:13,marginBottom:12}}>
             {saveError}
           </div>
         )}
@@ -3196,7 +3238,8 @@ function ComprasView({ screen, setScreen }) {
           {[['ruc','RUC proveedor','20512345678','text'],['proveedor','Proveedor','Ferretería Industrial SAC','text'],['num_factura','N° Factura','F001-0001','text']].map(([k,l,ph,t]) => (
             <div key={k}>
               <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>{l}</div>
-              <input className="input" type={t} value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder={ph}/>
+              <input className="input" type={t} value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder={ph} style={k === 'ruc' && rucInvalido ? { borderColor: 'var(--danger)' } : undefined}/>
+              {k === 'ruc' && rucInvalido && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:4}}>Revisa el RUC: no es válido</div>}
             </div>
           ))}
           <div>
@@ -3256,6 +3299,11 @@ function ComprasView({ screen, setScreen }) {
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
+        {mensajeValidacion && (
+          <div style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:8,textAlign:'right'}}>
+            {mensajeValidacion}
+          </div>
+        )}
       </div>
     )}
 

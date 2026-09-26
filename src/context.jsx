@@ -4235,6 +4235,7 @@ export function AppProvider({ children }) {
     monto: gasto.monto,
     moneda: gasto.moneda || 'PEN',
     fecha: gasto.fecha,
+    proveedor_referencia: gasto.proveedor_referencia || null,
     ruc_proveedor: gasto.ruc_proveedor || null,
     num_comprobante: gasto.num_comprobante || null,
     archivo_url: gasto.archivo_url || null,
