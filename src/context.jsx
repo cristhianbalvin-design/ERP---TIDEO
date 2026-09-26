@@ -8879,13 +8879,14 @@ export function AppProvider({ children }) {
       addNotificacion('Selecciona una orden valida para recepcionar.');
       return null;
     }
-
     // === Validaciones 3 vías (solo para OC) ===
     const toleranciaPct = Number(empresaConfig?.tolerancia_precio_compras ?? 5);
     const tolerancia = toleranciaPct / 100;
     const validacionErrores = [];
     const validacionAdvertencias = [];
     const tieneFacturaProveedor = Boolean(String(facturaProvNumero || facturaNumero || '').trim());
+    const esOcCompraCampo = isOC && base.origen_tipo === 'compra_campo';
+    const generaCxPRecepcion = !observaciones && tieneFacturaProveedor && !esOcCompraCampo;
     const montoFacturaProveedor = Number(facturaProvMonto);
     if (tieneFacturaProveedor && (!Number.isFinite(montoFacturaProveedor) || montoFacturaProveedor <= 0)) {
       validacionErrores.push('El monto de la factura es obligatorio para generar la CxP. Ingresa el monto real de esta recepción.');
@@ -9016,7 +9017,7 @@ export function AppProvider({ children }) {
       estado: observaciones ? 'observada' : 'confirmada',
       recibido_por: authUser?.id || null,
       proveedor_id: base.proveedor_id,
-      cxp_generada: !observaciones && tieneFacturaProveedor,
+      cxp_generada: generaCxPRecepcion,
       factura_proveedor_numero: facturaProvNumero || facturaNumero || null,
       factura_proveedor_fecha: facturaProvFecha || fechaEmisionParam || null,
       factura_proveedor_monto: facturaProvMonto != null ? Number(facturaProvMonto) : null,
@@ -9054,7 +9055,7 @@ export function AppProvider({ children }) {
       }
     }
 
-    let recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: !observaciones && tieneFacturaProveedor };
+    let recepcionLocal = { ...recepcion, ...recepcionGuardada, proveedor_id: base.proveedor_id, cxp_generada: generaCxPRecepcion };
     let recalculoEstadoOC = null;
     if (isOC) {
       try {
@@ -9168,7 +9169,7 @@ export function AppProvider({ children }) {
       }
     });
 
-    if (!observaciones && tieneFacturaProveedor) {
+    if (generaCxPRecepcion) {
       const anticiposOC = isOC ? ocAnticipos.filter(a => a.orden_compra_id === base.id) : [];
       const totalAnticipado = anticiposOC.reduce((s, a) => s + Number(a.monto || 0), 0);
       const saldoCxP = Math.max(0, Math.round((montoFacturaProveedor - totalAnticipado) * 100) / 100);
@@ -9193,7 +9194,7 @@ export function AppProvider({ children }) {
       });
     }
 
-    addNotificacion(`Recepcion registrada. ${observaciones ? 'Quedo observada.' : tieneFacturaProveedor ? 'CxP generada.' : 'Quedo pendiente de factura.'}`);
+    addNotificacion(`Recepcion registrada. ${observaciones ? 'Quedo observada.' : esOcCompraCampo ? 'OC de compra en campo: no se genera CxP.' : tieneFacturaProveedor ? 'CxP generada.' : 'Quedo pendiente de factura.'}`);
     return recepcionLocal;
   };
 
@@ -9207,6 +9208,9 @@ export function AppProvider({ children }) {
     const ocId = recepcion.orden_compra_id || recepcion.oc_id;
     const osId = recepcion.orden_servicio_id || recepcion.os_id;
     const base = (ordenesCompra || []).find(o => o.id === ocId) || (ordenesServicio || []).find(o => o.id === osId) || {};
+    if (ocId && base.origen_tipo === 'compra_campo') {
+      throw new Error('La OC de compra en campo ya está facturada; la recepción no genera CxP.');
+    }
     const fecha = fechaEmision || facturaProvFecha || recepcion.factura_proveedor_fecha || recepcion.fecha || new Date().toISOString().split('T')[0];
     const vencimiento = fechaVencimiento || (() => {
       const d = new Date(`${fecha}T00:00:00`);
