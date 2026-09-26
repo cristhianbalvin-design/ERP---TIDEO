@@ -16,6 +16,15 @@ const nextNumero = async (supabase, empresaId) => {
   return `${prefix}${String(maximo + 1).padStart(4, '0')}`;
 };
 
+const obtenerLecturaOpcional = datos => {
+  if (datos?.lectura_valor === undefined || datos?.lectura_valor === null || String(datos.lectura_valor).trim() === '') return null;
+  const valor = Number(datos.lectura_valor);
+  if (!Number.isFinite(valor) || valor < 0) throw new Error('La lectura de ingreso debe ser un número no negativo.');
+  const unidad = datos.lectura_unidad || 'horas';
+  if (!['horas', 'km'].includes(unidad)) throw new Error('La unidad de lectura de ingreso no es válida.');
+  return { valor, unidad };
+};
+
 export const listarRecepcionesActivosCliente = async (empresaId, { pendientes = false } = {}) => {
   if (!empresaId) return [];
   const supabase = await getSupabaseClient();
@@ -54,6 +63,7 @@ export const obtenerRecepcionActivoCliente = async (empresaId, recepcionId) => {
 
 export const crearRecepcionActivoCliente = async (empresaId, datos) => {
   const supabase = await getSupabaseClient();
+  const lectura = obtenerLecturaOpcional(datos);
   let ultimoError = null;
   for (let intento = 0; intento < 3; intento += 1) {
     const numero = await nextNumero(supabase, empresaId);
@@ -72,7 +82,20 @@ export const crearRecepcionActivoCliente = async (empresaId, datos) => {
       })
       .select()
       .single();
-    if (!error) return data;
+    if (!error) {
+      if (lectura) {
+        const { error: lecturaError } = await supabase.rpc('registrar_lectura_activo', {
+          p_empresa_id: empresaId,
+          p_activo_id: datos.activo_id,
+          p_valor: lectura.valor,
+          p_unidad: lectura.unidad,
+          p_origen: 'ingreso_recepcion',
+          p_origen_id: data.id,
+        });
+        if (lecturaError) throw lecturaError;
+      }
+      return data;
+    }
     ultimoError = error;
     if (error.code !== '23505') break;
   }
