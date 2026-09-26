@@ -2989,7 +2989,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
 
 function ComprasView({ screen, setScreen }) {
   const {
-    authUser, usuarios, proveedores, crearGasto, persistirCompraGasto, eliminarCompraGasto, crearCxP, ots, centrosCosto, empresa,
+    authUser, usuarios, proveedores, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
@@ -3090,22 +3090,18 @@ function ComprasView({ screen, setScreen }) {
     }
     setGuardando(true);
     setSaveError('');
-    let adjunto = null;
-    let gastoPersistido = false;
-    let gastoId = null;
+    let objetoSubido = null;
     try {
       const monto = parseFloat(campos.monto_total) || parseFloat(campos.monto_sin_igv) || 0;
-      gastoId = `gasto_${Math.random().toString(36).slice(2, 14)}`;
-      const cxpId = genCxP ? `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}` : null;
-      adjunto = await storageService.subirAdjunto({
+      const gastoId = `gasto_${(globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}`).replace(/[^a-z0-9]/gi, '').toLowerCase()}`;
+      objetoSubido = await storageService.subirObjetoSinAdjunto({
         empresaId: empresa?.id,
         entidadTipo: 'compras_gastos',
         entidadId: gastoId,
         file: fotoArchivo,
-        categoria: 'comprobante',
-        subidoPor: authUser?.id || null,
+        onProgress: value => console.debug('[ComprasCampo] subida', value),
       });
-      const archivoUrl = adjunto?.url || '';
+      const archivoUrl = objetoSubido?.url || '';
       if (!archivoUrl) throw new Error('La foto se subió, pero no se obtuvo una URL accesible.');
       const rucNormalizado = String(campos.ruc || '').replace(/\D/g, '');
       const proveedorCatalogo = rucNormalizado
@@ -3113,69 +3109,61 @@ function ComprasView({ screen, setScreen }) {
         : null;
       const proveedorNombre = proveedorCatalogo?.razon_social || proveedorCatalogo?.nombre_comercial || campos.proveedor || null;
       const concepto = campos.concepto?.trim() || (campos.num_factura ? `Compra en campo · ${campos.num_factura}` : 'Compra en campo');
-      const gastoBase = {
-        id: gastoId,
-        descripcion: concepto,
-        categoria: 'Materiales',
-        monto, moneda: 'PEN',
-        fecha: campos.fecha_emision || new Date().toISOString().split('T')[0],
-        num_comprobante: campos.num_factura || '',
-        tipo_comprobante: 'Factura',
-        centro_costo_id: cecoId,
-        tipo: 'gasto', campo: true,
-        proveedor_referencia: proveedorNombre,
-        ruc_proveedor: campos.ruc || '',
-        archivo_url: archivoUrl,
-        metodo_pago: metodoPago || null,
-        origen_registro: 'campo',
-        estado: 'pendiente_revision',
-        ot_id: otId || null,
-      };
-      const gastoCreado = crearGasto(gastoBase, { persistir: false });
-      await persistirCompraGasto(gastoCreado);
-      gastoPersistido = true;
-      if (genCxP) {
-        const cxpCreadaId = await crearCxP({
-          id: cxpId, proveedor_id: proveedorCatalogo?.id || null, tipo_beneficiario: 'proveedor',
+      const sb = await getSupabaseClient();
+      const payload = {
+        empresa_id: empresa?.id,
+        sociedad_id: modoVistaSociedadCompras.sociedadIdEscritura || null,
+        crear_cxp: genCxP,
+        lineas_solpe: [],
+        gasto: {
+          id: gastoId,
+          descripcion: concepto,
+          categoria: 'Materiales',
+          monto,
+          moneda: 'PEN',
+          fecha: campos.fecha_emision || new Date().toISOString().split('T')[0],
+          num_comprobante: campos.num_factura || '',
+          tipo_comprobante: 'Factura',
+          centro_costo_id: cecoId,
+          proveedor_referencia: proveedorNombre,
+          ruc_proveedor: campos.ruc || '',
+          metodo_pago: metodoPago,
+          ot_vinc_id: otId || null,
+        },
+        adjunto: {
+          bucket: objetoSubido.bucket,
+          storage_path: objetoSubido.storage_path,
+          url: archivoUrl,
+          categoria: 'comprobante',
+          nombre_original: objetoSubido.nombre_original || fotoArchivo.name,
+          mime_type: objetoSubido.mime_type || fotoArchivo.type || null,
+          tamano_bytes: objetoSubido.tamano_bytes || fotoArchivo.size || 0,
+        },
+        cxp: genCxP ? {
+          proveedor_id: proveedorCatalogo?.id || null,
+          tipo_beneficiario: 'proveedor',
           factura_numero: campos.num_factura || null,
           concepto,
-          fecha_emision: campos.fecha_emision, fecha_vencimiento: cxpVence,
-          monto_total: monto, moneda: 'PEN', estado: 'por_pagar', origen: 'gasto_movil',
-          mecanismo_origen: 'gasto_movil',
-          gasto_id: gastoId, no_devengar_er: true,
-          archivo_factura_url: archivoUrl,
-          ruc_emisor: campos.ruc || null, nombre_emisor: proveedorCatalogo ? null : proveedorNombre,
-          categoria_er: gastoBase.categoria, centro_costo_id: gastoBase.centro_costo_id,
+          fecha_emision: campos.fecha_emision,
+          fecha_vencimiento: cxpVence,
+          monto_total: monto,
+          moneda: 'PEN',
+          ruc_emisor: campos.ruc || null,
+          nombre_emisor: proveedorCatalogo ? null : proveedorNombre,
+          categoria_er: 'Materiales',
+          centro_costo_id: cecoId,
           ot_vinc_id: otId || null,
-        });
-        try {
-          const sb = await getSupabaseClient();
-          const { error: vinculoError } = await sb
-            .from('compras_gastos')
-            .update({ cxp_id: cxpCreadaId || cxpId })
-            .eq('id', gastoId)
-            .eq('empresa_id', empresa.id)
-            .select('id,cxp_id')
-            .single();
-          if (vinculoError) throw vinculoError;
-        } catch (vinculoError) {
-          console.error('CxP creada, pero no se pudo completar el vínculo con el gasto:', vinculoError);
-          setSaveError('Gasto y CxP creados; el vínculo se completará en revisión');
-          setPaso('revision');
-          return;
-        }
-      }
+          estado: 'pagada',
+          origen: 'otro',
+          no_devengar_er: false,
+        } : {},
+      };
+      const { data: resultado, error: rpcError } = await sb.rpc('registrar_compra_campo', { p_payload: payload });
+      if (rpcError) throw rpcError;
+      if (!resultado?.ok || !resultado?.gasto_id) throw new Error('La RPC no devolvió el gasto registrado.');
       setPaso('guardado');
     } catch (error) {
-      if (gastoPersistido) {
-        await eliminarCompraGasto(gastoId).catch(compensacionError => {
-          error.compensacion = compensacionError;
-        });
-      }
-      if (adjunto) await storageService.eliminarAdjunto(adjunto).catch(() => {});
-      if (error.compensacion) {
-        error.message = `${error.message || 'No se pudo guardar el gasto.'} No se pudo eliminar el gasto creado: ${error.compensacion.message || 'error desconocido'}.`;
-      }
+      if (objetoSubido) await storageService.eliminarObjetoStorage(objetoSubido).catch(() => {});
       setSaveError(error?.message || 'No se pudo guardar el gasto. No se registró la foto.');
     } finally {
       setGuardando(false);

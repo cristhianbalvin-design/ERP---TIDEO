@@ -257,6 +257,69 @@ export async function subirAdjunto({
   return data;
 }
 
+// Variante para flujos transaccionales: sube el objeto, pero deja que la RPC
+// registre la fila de adjuntos junto con sus datos de negocio.
+export async function subirObjetoSinAdjunto({
+  empresaId,
+  entidadTipo,
+  entidadId,
+  file,
+  bucket: forcedBucket,
+  onProgress,
+}) {
+  const validation = validarArchivo(file);
+  if (!validation.ok) throw new Error(validation.error);
+
+  const bucket = forcedBucket || bucketParaEntidad(entidadTipo);
+  const path = construirRutaAdjunto({ empresaId, entidadTipo, entidadId });
+  const contentType = file.type || 'application/octet-stream';
+
+  if (!isSupabaseMode()) {
+    return {
+      bucket,
+      storage_path: path,
+      url: storageUri(bucket, path),
+      nombre_original: file.name,
+      mime_type: file.type || null,
+      tamano_bytes: Number(file.size || 0),
+    };
+  }
+
+  const supabase = await getSupabaseClient();
+  onProgress?.(20);
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, { contentType, upsert: false });
+  if (error) {
+    await supabase.storage.from(bucket).remove([path]).catch(() => {});
+    throw error;
+  }
+
+  onProgress?.(65);
+  const publicUrl = esBucketPublico(bucket)
+    ? supabase.storage.from(bucket).getPublicUrl(path)?.data?.publicUrl
+    : null;
+  onProgress?.(100);
+  return {
+    bucket,
+    storage_path: path,
+    url: publicUrl || storageUri(bucket, path),
+    nombre_original: file.name,
+    mime_type: file.type || null,
+    tamano_bytes: Number(file.size || 0),
+  };
+}
+
+export async function eliminarObjetoStorage(objeto) {
+  if (!objeto?.bucket || !objeto?.storage_path || !isSupabaseMode()) return true;
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.storage
+    .from(objeto.bucket)
+    .remove([objeto.storage_path]);
+  if (error) throw error;
+  return true;
+}
+
 export async function cargarAdjuntos({ empresaId, entidadTipo, entidadId }) {
   if (!isSupabaseMode()) return [];
   if (!empresaId || !entidadTipo || !entidadId) return [];
