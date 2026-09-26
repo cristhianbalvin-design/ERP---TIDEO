@@ -268,7 +268,7 @@ begin
   if new.detraccion_id is not null then
     if new.tipo = 'egreso' and new.vinculo_tipo = 'autodetraccion' then
       if v_cuenta.empresa_id is distinct from new.empresa_id then
-        raise exception 'La cuenta bancaria del movimiento no pertenece a la misma empresa.';
+        raise exception 'La cuenta bancaria del movimiento no es una cuenta de detracciones de la misma empresa.';
       end if;
     elsif v_cuenta.empresa_id is distinct from new.empresa_id
           or coalesce(v_cuenta.es_cuenta_detracciones, false) is not true then
