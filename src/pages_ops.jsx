@@ -6967,19 +6967,20 @@ function BandejaSourcing() {
 
   const renderTarjeta = (linea, asignada = false) => {
     const key = sourcingLineaKey(linea);
+    const puedeArrastrar = !guardando.has(key) && otroProveedorAbierto !== key;
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
     return <article
       className="card sourcing-card"
       key={key}
       data-testid={'sourcing-card-' + key}
-      draggable={asignada && !guardando.has(key)}
-      onDragStart={asignada ? event => {
+      draggable={puedeArrastrar}
+      onDragStart={puedeArrastrar ? event => {
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', key);
         setDraggedKey(key);
       } : undefined}
-      onDragEnd={asignada ? () => setDraggedKey('') : undefined}
-      style={{padding:14, margin:0, cursor:asignada ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1}}
+      onDragEnd={puedeArrastrar ? () => setDraggedKey('') : undefined}
+      style={{padding:14, margin:0, cursor:puedeArrastrar ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1}}
     >
       <div className="row sourcing-card-head" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
         <div>
