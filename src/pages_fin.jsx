@@ -364,11 +364,134 @@ function CxCLegacy() {
   );
 }
 
+function AutodetraccionModal({ open, obligation, empresaId, sociedadId, cuentasBancarias = [], registrarAutodetraccion, onClose, onDone }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [cuentaOrigenId, setCuentaOrigenId] = useState('');
+  const [cuentaDestinoId, setCuentaDestinoId] = useState('');
+  const [fechaConstancia, setFechaConstancia] = useState(today);
+  const [numeroConstancia, setNumeroConstancia] = useState('');
+  const [referencia, setReferencia] = useState('');
+  const [archivo, setArchivo] = useState(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const archivoRef = useRef(null);
+  const cuentasSociedad = cuentasBancarias.filter(cb => cb.empresa_id === empresaId && cb.sociedad_id === sociedadId && cb.estado === 'activo');
+  const cuentasOrigen = cuentasSociedad.filter(cb => cb.moneda === 'PEN' && !cb.es_cuenta_detracciones);
+  const cuentasDestino = cuentasSociedad.filter(cb => cb.moneda === 'PEN' && cb.es_cuenta_detracciones);
+
+  useEffect(() => {
+    if (!open) return;
+    setCuentaOrigenId(cuentasOrigen.length === 1 ? cuentasOrigen[0].id : '');
+    setCuentaDestinoId(cuentasDestino.length === 1 ? cuentasDestino[0].id : '');
+    setFechaConstancia(today);
+    setNumeroConstancia('');
+    setReferencia('');
+    setArchivo(null);
+    setError('');
+  }, [open, obligation?.id, cuentasBancarias.length]);
+
+  if (!open || !obligation) return null;
+
+  const guardar = async event => {
+    event.preventDefault();
+    if (!cuentaOrigenId || !cuentaDestinoId || !fechaConstancia || !numeroConstancia.trim()) {
+      setError('Selecciona las cuentas e ingresa número y fecha de constancia.');
+      return;
+    }
+    if (archivo) {
+      const validacion = storageService.validarArchivo(archivo);
+      if (!validacion.ok) { setError(validacion.error); return; }
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const resultado = await registrarAutodetraccion({
+        detraccionId: obligation.id,
+        cuentaOrigenId,
+        cuentaDestinoId,
+        fechaConstancia,
+        numeroConstancia: numeroConstancia.trim(),
+        referencia: referencia.trim() || null,
+        archivoAdjunto: archivo,
+      });
+      onDone?.(resultado);
+      onClose();
+    } catch (err) {
+      setError(err?.message || 'No se pudo registrar la autodetracción.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="side-panel-backdrop" onClick={saving ? undefined : onClose} />
+      <div className="side-panel" style={{width:'min(520px,96vw)'}}>
+        <div className="side-panel-head">
+          <div>
+            <div className="eyebrow">Registrar autodetracción</div>
+            <div className="font-display" style={{fontSize:18,fontWeight:700}}>Obligación SPOT</div>
+          </div>
+          <button className="icon-btn" onClick={onClose} disabled={saving}>{I.x}</button>
+        </div>
+        <form className="side-panel-body" onSubmit={guardar}>
+          <div className="alert alert-info" style={{fontSize:12}}>Se transferirá exactamente {moneySpot(obligation.monto_detraccion_soles)} desde una cuenta propia PEN a la cuenta de detracciones de la misma sociedad. Esta operación no registra un cobro de CxC.</div>
+          <div className="grid-2" style={{gap:12}}>
+            <div className="input-group">
+              <label>Cuenta origen <span style={{color:'var(--danger)'}}>*</span></label>
+              <select className="select" required value={cuentaOrigenId} onChange={e=>setCuentaOrigenId(e.target.value)}>
+                <option value="">Seleccionar cuenta PEN normal...</option>
+                {cuentasOrigen.map(cb => <option key={cb.id} value={cb.id}>{cb.nombre} — {cb.banco}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label>Cuenta destino <span style={{color:'var(--danger)'}}>*</span></label>
+              <select className="select" required value={cuentaDestinoId} onChange={e=>setCuentaDestinoId(e.target.value)}>
+                <option value="">Seleccionar cuenta de detracciones...</option>
+                {cuentasDestino.map(cb => <option key={cb.id} value={cb.id}>{cb.nombre} — {cb.banco}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label>Monto de detracción</label>
+              <input className="input num" readOnly value={moneySpot(obligation.monto_detraccion_soles)} />
+            </div>
+            <div className="input-group">
+              <label>Fecha de constancia <span style={{color:'var(--danger)'}}>*</span></label>
+              <input className="input" type="date" required max={today} value={fechaConstancia} onChange={e=>setFechaConstancia(e.target.value)} />
+            </div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Número de constancia <span style={{color:'var(--danger)'}}>*</span></label>
+              <input className="input" required value={numeroConstancia} onChange={e=>setNumeroConstancia(e.target.value)} />
+            </div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Referencia <span className="text-muted">(opcional)</span></label>
+              <input className="input" value={referencia} onChange={e=>setReferencia(e.target.value)} />
+            </div>
+            <div className="input-group" style={{gridColumn:'1/-1'}}>
+              <label>Constancia adjunta <span className="text-muted">(opcional)</span></label>
+              <input ref={archivoRef} type="file" style={{display:'none'}} onChange={e=>{const file=e.target.files?.[0]||null;e.target.value='';if(!file)return;const validacion=storageService.validarArchivo(file);if(!validacion.ok){setError(validacion.error);return;}setArchivo(file);setError('');}} />
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={()=>archivoRef.current?.click()} disabled={saving}>{I.file} Adjuntar archivo</button>
+                {archivo && <span style={{fontSize:12}}>{archivo.name} <button type="button" className="icon-btn" title="Quitar archivo" onClick={()=>setArchivo(null)} disabled={saving}>{I.x}</button></span>}
+              </div>
+            </div>
+          </div>
+          {error && <div style={{color:'var(--danger)',fontSize:12,marginTop:10}}>{error}</div>}
+          <div className="row mt-6" style={{justifyContent:'flex-end',gap:10}}>
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving || !cuentaOrigenId || !cuentaDestinoId || !numeroConstancia.trim()}>{saving ? 'Registrando...' : <>{I.check} Registrar autodetracción</>}</button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
 function CxC() {
   const {
     cxc, cuentas, osClientes, facturas, usuarios,
     cobrosHistorial, gestionesCobranza, cuentasBancarias,
-    registrarCobroCxC, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, anularFactura, comisiones,
+    registrarCobroCxC, registrarAutodetraccion, registrarGestionCobranza, actualizarVencimientoCxC, revertirCobroCxC, anularFactura, comisiones,
     condonarMoraCxC, restaurarMoraCxC,
     navigate, role, empresa, addNotificacion, perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles = [],
@@ -484,6 +607,8 @@ function CxC() {
 
   const [panelCobro, setPanelCobro] = useState(false);
   const [cobroSel, setCobroSel] = useState(null);
+  const [panelAutodetraccion, setPanelAutodetraccion] = useState(false);
+  const [autodetraccionSel, setAutodetraccionSel] = useState(null);
   const [formCobro, setFormCobro] = useState({ tipo_cobro:'normal', cliente_pago_total_sin_detraer:false, detraccion_id:'', monto:'', monto_deposito_soles:'', tipo_cambio_detraccion:null, incluye_mora:false, monto_mora:'', fecha_cobro:today, medio_pago:'', cuenta_bancaria:'', numero_operacion:'', numero_constancia:'', notas:'' });
   const [detraccionesCxc, setDetraccionesCxc] = useState([]);
   const [detraccionesCxcCargadas, setDetraccionesCxcCargadas] = useState(false);
@@ -537,6 +662,8 @@ function CxC() {
   };
   const obligacionesCxcDe = c => detraccionesCxc.filter(row => row.cxc_id === c?.id);
   const obligacionesPendientesSpotDe = c => obligacionesCxcDe(c).filter(row => row.direccion === 'venta' && row.estado === 'pendiente');
+  const obligacionesAutodetraccionDe = c => obligacionesCxcDe(c).filter(row => row.direccion === 'venta' && row.estado === 'por_autodetraer');
+  const autodetraccionPendienteDe = c => obligacionesAutodetraccionDe(c)[0] || null;
   const pendienteSpotDe = c => obligacionesPendientesSpotDe(c)[0] || null;
   const montoReservadoSpotDe = c => obligacionesPendientesSpotDe(c).reduce((sum, row) => sum + Number(row.monto_detraccion_origen || 0), 0);
   const maxNormalCobrableDe = c => Math.max(0, saldoDe(c) - montoReservadoSpotDe(c));
@@ -966,6 +1093,7 @@ function CxC() {
   if (selCxC) {
     const c = cxcVista.find(x => x.id === selCxC);
     if (!c) { setSelCxC(null); return null; }
+    const autodetraccionCxc = autodetraccionPendienteDe(c);
     const dias     = diasMoraDe(c);
     const interes  = interesMoraDe(c);
     const saldo    = saldoDe(c);
@@ -1011,6 +1139,7 @@ function CxC() {
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               {saldo > 0 && <button className="btn btn-secondary btn-sm" data-local-form="true" onClick={e=>abrirGestion(c,e)} title="Registrar gestión">{I.send}</button>}
+              {autodetraccionCxc && <button className="btn btn-primary btn-sm" data-local-form="true" onClick={e=>{e.stopPropagation();setAutodetraccionSel(autodetraccionCxc);setPanelAutodetraccion(true);}}>Registrar autodetracción</button>}
               {saldo > 0 && <button className="btn btn-primary btn-sm" data-local-form="true" onClick={e=>abrirCobro(c,e)}>Cobrar</button>}
               <button className="icon-btn" onClick={()=>setSelCxC(null)}>{I.x}</button>
             </div>
@@ -1103,7 +1232,7 @@ function CxC() {
 
         {fichaTab === 'detracciones' && (
           <div className="card card-body">
-            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneySpotCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{moneySpot(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td></tr>)}</tbody></table></div>}
+            {obligacionesCxcDe(c).length === 0 ? <div className="text-muted">No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Origen moneda CxC</th><th>Depósito PEN</th><th>Cuenta destino</th><th>Constancia</th><th></th></tr></thead><tbody>{obligacionesCxcDe(c).map(row => { const vencida = row.estado === 'por_autodetraer' && row.fecha_limite_deposito && row.fecha_limite_deposito < today; return <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className={'badge '+(row.estado === 'por_autodetraer' ? 'badge-orange' : 'badge-cyan')}>{row.estado === 'por_autodetraer' ? 'Por autodetraer' : row.estado}</span>{row.fecha_limite_deposito && row.estado === 'por_autodetraer' && <div style={{fontSize:11,color:vencida?'var(--danger)':'var(--fg-muted)',marginTop:3}}>Límite: {row.fecha_limite_deposito}{vencida ? ' · Vencida' : ''}</div>}</td><td>{row.origen}</td><td className="num">{moneySpotCurrency(row.monto_detraccion_origen, row.moneda_origen || c.moneda)}</td><td className="num">{moneySpot(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia || '—'}</td><td>{row.estado === 'por_autodetraer' && <button className="btn btn-primary btn-sm" onClick={()=>{setAutodetraccionSel(row);setPanelAutodetraccion(true);}}>Registrar</button>}</td></tr>; })}</tbody></table></div>}
           </div>
         )}
 
@@ -1430,6 +1559,7 @@ function CxC() {
                           <strong>{clienteDe(c)}</strong>
                           {retencionDe(c)>0 && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Retencion SUNAT</span>}
                           {pendienteSpotDe(c) && <span className="badge badge-orange" style={{marginLeft:6,fontSize:10}}>Detracción pendiente</span>}
+                          {autodetraccionPendienteDe(c) && <span className="badge badge-red" style={{marginLeft:6,fontSize:10}}>Autodetracción pendiente</span>}
                         </td>
                         {mostrarBadgeSociedadCxC && <td><SociedadBadge sociedadId={c.sociedad_id} /></td>}
                         <td className="mono">{facturaNumeroDe(c)}</td>
@@ -1813,6 +1943,17 @@ function CxC() {
           </div>
         </>
       )}
+
+      <AutodetraccionModal
+        open={panelAutodetraccion}
+        obligation={autodetraccionSel}
+        empresaId={empresa?.id}
+        sociedadId={autodetraccionSel?.sociedad_id}
+        cuentasBancarias={cuentasBancariasActivas}
+        registrarAutodetraccion={registrarAutodetraccion}
+        onClose={()=>{setPanelAutodetraccion(false);setAutodetraccionSel(null);}}
+        onDone={async ()=>{await refrescarDetraccionesCxc();addNotificacion('Autodetracción registrada correctamente.');}}
+      />
 
       {/* Panel: Registrar gestión */}
       {panelGestion && (
@@ -4173,9 +4314,9 @@ const impactoIngresoDocumento = factura => {
 
 function Facturacion() {
   const {
-    facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, seriesDocumentarias, centrosBeneficio, empresa,
+    facturas, valorizaciones, osClientes, cuentas, cxc, movimientosTesoreria, cuentasBancarias, seriesDocumentarias, centrosBeneficio, empresa,
     emitirFacturaConCxC, actualizarFechaEmisionFactura, actualizarDatosFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, emitirNotaCredito, emitirNotaDebito,
-    registrarCobroCxC, generarCxC, crearCxP, addNotificacion, navigate, activeParams, searchQuery,
+    registrarCobroCxC, registrarAutodetraccion, generarCxC, crearCxP, addNotificacion, navigate, activeParams, searchQuery,
     empresaConfig, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
   } = useApp();
 
@@ -4278,6 +4419,8 @@ function Facturacion() {
   const [selFac, setSelFac] = useState(null);
   const [detraccionesFactura, setDetraccionesFactura] = useState([]);
   const [detraccionesFacturaError, setDetraccionesFacturaError] = useState('');
+  const [panelAutodetraccionFactura, setPanelAutodetraccionFactura] = useState(false);
+  const [autodetraccionFacturaSel, setAutodetraccionFacturaSel] = useState(null);
   const [fichaTab, setFichaTab] = useState('detalle');
   const [modalAnularFac, setModalAnularFac] = useState(false);
   const [motivoAnularFac, setMotivoAnularFac] = useState('');
@@ -4298,6 +4441,14 @@ function Facturacion() {
       .then(({ data, error }) => { if (error) throw error; setDetraccionesFactura(data || []); })
       .catch(error => { setDetraccionesFactura([]); setDetraccionesFacturaError('No se pudieron cargar las detracciones.'); console.warn('[spot] No se pudo cargar detracciones de la factura:', error?.message); });
   }, [selFac]);
+
+  const refrescarDetraccionesFactura = async () => {
+    if (!selFac || !isSupabaseConfigured()) return;
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from('detracciones').select('*').eq('factura_id', selFac).order('creado_en', { ascending: true });
+    if (error) throw error;
+    setDetraccionesFactura(data || []);
+  };
 
   const generarCxCDesdeFac = async (f) => {
     if (!f?.id || !f?.cuenta_id) return;
@@ -5122,6 +5273,7 @@ function Facturacion() {
     const osVinc = getOs(f.os_cliente_id);
     const valVinc = getVal(f.valorizacion_id);
     const cxcVinc = (cxc||[]).find(c => c.factura_id === f.id);
+    const autodetraccionFactura = detraccionesFactura.find(row => row.direccion === 'venta' && row.estado === 'por_autodetraer');
     const facOrigen = f.factura_origen_id ? (facturas||[]).find(x => x.id === f.factura_origen_id) : null;
     const notasRelacionadas = (facturas||[])
       .filter(nota => ['nota_credito', 'nota_debito'].includes(nota.tipo_documento) && nota.factura_origen_id === f.id)
@@ -5210,6 +5362,17 @@ function Facturacion() {
 
     fichaFac = (
       <>
+        <AutodetraccionModal
+          open={panelAutodetraccionFactura}
+          obligation={autodetraccionFacturaSel}
+          empresaId={empresa?.id}
+          sociedadId={autodetraccionFacturaSel?.sociedad_id}
+          cuentasBancarias={cuentasBancarias}
+          registrarAutodetraccion={registrarAutodetraccion}
+          onClose={()=>{setPanelAutodetraccionFactura(false);setAutodetraccionFacturaSel(null);}}
+          onDone={async ()=>{await refrescarDetraccionesFactura();addNotificacion('Autodetracción registrada correctamente.');}}
+        />
+
         {/* Modal anular */}
         {modalAnularFac && (
           <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -5339,6 +5502,18 @@ function Facturacion() {
           <div style={{fontWeight:700,marginBottom:10}}>Detracción</div>
           {detraccionesFacturaError ? <div className="alert alert-danger">No se pudieron cargar las detracciones.</div> : !detraccionesFactura.length ? <div className="text-muted" style={{fontSize:13}}>No hay obligaciones SPOT registradas.</div> : <div className="table-wrap"><table className="tbl"><thead><tr><th>Tipo</th><th>Estado</th><th>Origen</th><th>Monto origen</th><th>Depósito soles</th><th>Cuenta destino</th><th>Constancia</th></tr></thead><tbody>{detraccionesFactura.map(row => <tr key={row.id}><td>{row.documento_ajuste_id ? 'Ajuste' : 'Principal'}</td><td><span className="badge badge-cyan">{row.estado}</span></td><td>{row.origen}</td><td className="num">{moneySpotCurrency(row.monto_detraccion_origen, row.moneda_origen || f.moneda)}</td><td className="num">{moneySpot(row.monto_detraccion_soles)}</td><td className="mono">{row.cuenta_destino_id || '—'}</td><td>{row.numero_constancia ? `${row.numero_constancia}${row.fecha_constancia ? ` · ${row.fecha_constancia}` : ''}` : '—'}</td></tr>)}</tbody></table></div>}
         </div>
+
+        {autodetraccionFactura && (
+          <div className="card" style={{padding:16,marginBottom:16,border:'1px solid var(--orange)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+              <div>
+                <div style={{fontWeight:700,color:'var(--orange)'}}>Por autodetraer</div>
+                <div style={{fontSize:12,color:'var(--fg-muted)',marginTop:4}}>Fecha límite de depósito: {autodetraccionFactura.fecha_limite_deposito || '—'}</div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={()=>{setAutodetraccionFacturaSel(autodetraccionFactura);setPanelAutodetraccionFactura(true);}}>Registrar autodetracción</button>
+            </div>
+          </div>
+        )}
 
         {f.estado === 'anulada' && f.motivo_anulacion && (
           <div style={{marginBottom:16,padding:'12px 16px',borderRadius:8,border:'1px solid var(--danger)',background:'color-mix(in srgb, var(--danger) 6%, transparent)'}}>

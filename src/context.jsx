@@ -5852,6 +5852,37 @@ export function AppProvider({ children }) {
     }
   };
 
+  const registrarAutodetraccion = async ({ detraccionId, cuentaOrigenId, cuentaDestinoId, fechaConstancia, numeroConstancia, referencia = null, archivoAdjunto = null }) => {
+    if (!empresa?.id) throw new Error('No hay un tenant activo para registrar la autodetracción.');
+    const resultado = await finanzasService.registrarAutodetraccion({
+      empresaId: empresa.id,
+      detraccionId,
+      cuentaOrigenId,
+      cuentaDestinoId,
+      fechaConstancia,
+      numeroConstancia,
+      referencia,
+    });
+    if (archivoAdjunto && resultado?.detraccion?.id) {
+      try {
+        const adjunto = await storageService.subirAdjunto({
+          empresaId: empresa.id,
+          entidadTipo: 'detracciones',
+          entidadId: resultado.detraccion.id,
+          file: archivoAdjunto,
+          categoria: 'constancia_autodetraccion',
+          descripcion: `Constancia de autodetracción ${numeroConstancia}`,
+          subidoPor: authUser?.id || null,
+        });
+        resultado.detraccion = { ...resultado.detraccion, comprobante_adjunto: adjunto };
+      } catch (error) {
+        addNotificacion(`La autodetracción fue registrada, pero no se pudo adjuntar la constancia: ${error?.message || 'inténtalo nuevamente.'}`);
+      }
+    }
+    if (resultado?.movimiento_egreso) setMovimientosTesoreria(prev => [resultado.movimiento_egreso, resultado.movimiento_ingreso, ...prev]);
+    return resultado;
+  };
+
   const reconciliarComisionesPendientes = async ({ silencioso = false } = {}) => {
     const existentes = new Set((comisiones || []).map(c => c.cobro_cxc_id).filter(Boolean));
     const creadas = [];
@@ -11437,7 +11468,7 @@ export function AppProvider({ children }) {
     convertirBacklogAOT, crearOT, crearOTDesdeOS, actualizarOT, eliminarOT, registrarParteDiario, actualizarBorradorParteDiario, aprobarParteDiario, observarParteDiario, rechazarParteDiario, reabrirParteDiario, enviarParteARevision, recalcularCostoRealOT, calcularCostoRealOT: svcCalcularCostoRealOT, calcularCostosComprometidosOT: svcCalcularCostosComprometidosOT, calcularCostosOS: svcCalcularCostosOS, cerrarTecnicamenteOT, actualizarCierreTecnico, crearSOLPE, enviarSOLPE, atenderSOLPE, crearGasto, persistirCompraGasto, eliminarCompraGasto, generarValorizacion, aprobarValorizacion, anularValorizacion, actualizarDatosValorizacion,
     crearTareaOT, completarTareaOT, reabrirTareaOT, actualizarAvanceSupervisorOT,
     // Finanzas Actions
-    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
+    emitirFactura, emitirFacturaConCxC, emitirFacturaDesdeValorizacion, actualizarFechaEmisionFactura, actualizarDatosFactura, subirArchivoFactura, eliminarArchivoFactura, anularFactura, restaurarFacturaPorError, revertirCobroCxC, emitirNotaCredito, emitirNotaDebito, generarCxC, actualizarVencimientoCxC, registrarCobroCxC, registrarAutodetraccion, condonarMoraCxC, restaurarMoraCxC, reconciliarComisionesPendientes, registrarGestionCobranza, crearCxP, anularCxP, eliminarCxP, registrarPagoCxP, conciliarMovimientoBanco, conciliarMovimientoBancoConDocumento, deshacerConciliacionBanco, asignarCuentaMovimientoTesoreria, registrarMovimientoManual, importarMovimientosBanco, eliminarLoteImportacionBanco,
     cuentasBancarias, setCuentasBancarias, crearCuentaBancaria, actualizarCuentaBancaria, eliminarCuentaBancaria,
     recibosHonorarios, setRecibosHonorarios,
     aprobarComision, rechazarComision, corregirMontoComision, corregirBonificacionComision, generarReciboHonorarios, confirmarReciboHonorarios,
