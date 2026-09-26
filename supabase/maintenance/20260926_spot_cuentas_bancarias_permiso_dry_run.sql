@@ -10,6 +10,8 @@ do $fixture$
 declare
   v_sociedad_id uuid := '609a2f33-d057-411f-a001-4e3e83f700d0';
   v_tenant text := 'emp_2000000000';
+  v_catalogo_id uuid;
+  v_result jsonb;
 begin
   insert into public.roles (id, empresa_id, nombre, descripcion, categoria, nivel_jerarquico, es_superadmin, es_admin_empresa, activo)
   values
@@ -45,12 +47,44 @@ begin
     ('cb_spot_r2_bn', v_tenant, 'R2 cuenta BN detracciones', 'Banco de la Nacion', 'PEN', 'corriente', 'activo', 0, v_sociedad_id, true),
     ('cb_spot_r2_d', v_tenant, 'R2 cuenta tesoreria crear', 'Banco de la Nacion', 'PEN', 'corriente', 'activo', 0, v_sociedad_id, false);
 
-  insert into public.facturas (id, empresa_id, cuenta_id, centro_beneficio_id, sociedad_id, numero, tipo_documento, fecha_emision, fecha_vencimiento, subtotal, igv, total, moneda, estado, items, aplica_retencion, monto_retencion, monto_neto_cobrable, aplica_detraccion, porcentaje_detraccion, monto_detraccion)
-  values ('fac_spot_r2_cobro', v_tenant, 'cta_108241', 'cebe_1fd8d3b7f35a445c92', v_sociedad_id, 'F-SPOT-R2-COBRO', 'factura', date '2026-09-26', date '2026-10-26', 847.46, 152.54, 1000, 'PEN', 'emitida', '[]'::jsonb, false, 0, null, true, 12, 120);
-  insert into public.cxc (id, empresa_id, cuenta_id, factura_id, sociedad_id, fecha_emision, fecha_vencimiento, monto_total, monto_pagado, saldo, moneda, estado, monto_retencion)
-  values ('cxc_spot_r2_cobro', v_tenant, 'cta_108241', 'fac_spot_r2_cobro', v_sociedad_id, date '2026-09-26', date '2026-10-26', 1000, 0, 1000, 'PEN', 'por_cobrar', 0);
-  insert into public.detracciones (direccion, factura_id, cxc_id, empresa_id, sociedad_id, codigo_spot, porcentaje, base_soles, monto_detraccion_soles, monto_detraccion_origen, moneda_origen, origen, estado)
-  values ('venta', 'fac_spot_r2_cobro', 'cxc_spot_r2_cobro', null, null, '012', 12, 1000, 120, 120, 'PEN', 'emision', 'pendiente');
+  select sc.id into v_catalogo_id
+  from public.spot_catalogo sc
+  where sc.codigo = '012'
+    and sc.vigencia_desde <= current_date
+    and (sc.vigencia_hasta is null or sc.vigencia_hasta >= current_date)
+    and sc.estado = 'activo'
+  order by sc.vigencia_desde desc
+  limit 1;
+  if v_catalogo_id is null then raise exception 'R2_FIXTURE|codigo SPOT 012 vigente no encontrado'; end if;
+  if not exists (select 1 from public.servicios s where s.id = 'srv_c529a00515fe4defb6' and s.codigo = 'SRV-001') then
+    raise exception 'R2_FIXTURE|servicio SRV-001 no encontrado';
+  end if;
+  -- La obligacion se crea por el RPC real; el update queda dentro del
+  -- rollback y hace explicita la resolucion del codigo SPOT 012 vigente.
+  update public.servicios
+  set spot_catalogo_id = v_catalogo_id
+  where id = 'srv_c529a00515fe4defb6';
+  perform set_config('request.jwt.claims', '{"sub":"94c60fcb-8818-42e4-b395-31a8ff8635b1","role":"authenticated"}', true);
+  v_result := public.emitir_factura_cxc_atomico(jsonb_build_object(
+    'empresa_id', v_tenant,
+    'factura_id', 'fac_spot_r2_cobro',
+    'cxc_id', 'cxc_spot_r2_cobro',
+    'cuenta_id', 'cta_108241',
+    'centro_beneficio_id', 'cebe_1fd8d3b7f35a445c92',
+    'sociedad_id', v_sociedad_id,
+    'numero', 'F-SPOT-R2-COBRO',
+    'tipo_documento', 'factura',
+    'fecha_emision', date '2026-09-26',
+    'fecha_vencimiento', date '2026-10-26',
+    'subtotal', 847.46,
+    'igv', 152.54,
+    'total', 1000,
+    'moneda', 'PEN',
+    'items', jsonb_build_array(jsonb_build_object('servicio_id', 'srv_c529a00515fe4defb6', 'cantidad', 1, 'precio_unitario', 1000))
+  ));
+  if not exists (select 1 from public.detracciones d where d.factura_id = 'fac_spot_r2_cobro' and d.codigo_spot = '012' and d.spot_catalogo_id = v_catalogo_id) then
+    raise exception 'R2_FIXTURE|emitir_factura no creo obligacion SPOT 012';
+  end if;
 end;
 $fixture$;
 
