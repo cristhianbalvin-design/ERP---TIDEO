@@ -6,6 +6,7 @@ import { subirAdjunto } from '../../../../src/services/storageService.js';
 import {
   ESTADOS_CUSTODIA,
   actualizarEstadoCustodia,
+  crearActivoCliente,
   crearRecepcion,
   listarActivosCliente,
   listarAlmacenes,
@@ -81,6 +82,8 @@ export function RecepcionActivosClientePage() {
   const [puedeCrear, setPuedeCrear] = useState(false);
   const [puedeEditar, setPuedeEditar] = useState(false);
   const [fotos, setFotos] = useState([]);
+  const [altaActivoForm, setAltaActivoForm] = useState(null);
+  const [altaActivoSaving, setAltaActivoSaving] = useState(false);
 
   const showToast = message => {
     setToast(message);
@@ -164,9 +167,63 @@ export function RecepcionActivosClientePage() {
     setAssetSearch(nombreActivo(activo));
   };
 
+  const abrirAltaActivo = () => {
+    if (!form.cliente_id) {
+      setError('Selecciona un cliente antes de registrar un activo nuevo.');
+      return;
+    }
+    if (!puedeCrear || !sesion.permiteEscritura) {
+      setError('Tu rol o la sociedad activa no permiten registrar activos.');
+      return;
+    }
+    setAltaActivoForm({
+      codigo: assetSearch.trim(),
+      nombre: '',
+      marca: '',
+      modelo: '',
+      placa_serie: '',
+    });
+    setError('');
+  };
+
+  const actualizarAltaActivo = (campo, valor) => {
+    setAltaActivoForm(actual => actual ? { ...actual, [campo]: valor } : actual);
+  };
+
+  const guardarAltaActivo = async () => {
+    if (!altaActivoForm) return;
+    if (!puedeCrear || !sesion.permiteEscritura) {
+      setError('Tu rol o la sociedad activa no permiten registrar activos.');
+      return;
+    }
+    setAltaActivoSaving(true);
+    setError('');
+    try {
+      const activo = await crearActivoCliente(empresaId, {
+        ...altaActivoForm,
+        tipo_categoria: 'equipo',
+        estado: 'operativo',
+        propietario_tipo: 'cliente',
+        cliente_propietario_id: form.cliente_id,
+        tipo_activo: form.tipo_activo || null,
+      }, sesion.usuario?.id || null);
+      setActivos(actuales => [...actuales, activo].sort((a, b) => (
+        String(a.codigo || '').localeCompare(String(b.codigo || ''))
+      )));
+      seleccionarActivo(activo);
+      setAltaActivoForm(null);
+      showToast(`Activo ${activo.codigo} registrado y seleccionado.`);
+    } catch (saveError) {
+      setError(saveError?.message || 'No se pudo registrar el activo.');
+    } finally {
+      setAltaActivoSaving(false);
+    }
+  };
+
   const abrirNuevaRecepcion = () => {
     setForm(emptyForm(sociedadId));
     setAssetSearch('');
+    setAltaActivoForm(null);
     setFotos([]);
     setError('');
   };
@@ -263,7 +320,7 @@ export function RecepcionActivosClientePage() {
           <div className="grid-2">
             <div className="field">
               <label>Cliente propietario *</label>
-              <select className="select" value={form.cliente_id} disabled={sociedadBloqueada || saving} onChange={event => setForm(actual => ({ ...actual, cliente_id: event.target.value, activo_id: '' }))}>
+              <select className="select" value={form.cliente_id} disabled={sociedadBloqueada || saving || altaActivoSaving} onChange={event => { setAltaActivoForm(null); setForm(actual => ({ ...actual, cliente_id: event.target.value, activo_id: '' })); }}>
                 <option value="">Seleccionar cliente</option>
                 {clientes.map(cliente => <option key={cliente.id} value={cliente.id}>{nombreCliente(cliente)}</option>)}
               </select>
@@ -277,10 +334,27 @@ export function RecepcionActivosClientePage() {
             </div>
             <div className="field" style={{ gridColumn: '1 / -1' }}>
               <label>Buscar activo del cliente *</label>
-              <input className="input" value={assetSearch} disabled={sociedadBloqueada || saving} onChange={event => { setAssetSearch(event.target.value); setForm(actual => ({ ...actual, activo_id: '' })); }} placeholder="Código, nombre, marca, modelo o serie" />
+              <input className="input" value={assetSearch} disabled={sociedadBloqueada || saving || altaActivoSaving} onChange={event => { setAltaActivoForm(null); setAssetSearch(event.target.value); setForm(actual => ({ ...actual, activo_id: '' })); }} placeholder="Código, nombre, marca, modelo o serie" />
               {assetSearch && !form.activo_id && <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 180, overflow: 'auto' }}>
                 {activosVisibles.map(activo => <button key={activo.id} type="button" onClick={() => seleccionarActivo(activo)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: 'transparent', padding: '9px 10px', textAlign: 'left', cursor: 'pointer' }}><strong className="mono">{activo.codigo}</strong> · {activo.nombre}{activo.modelo ? ` · ${activo.modelo}` : ''}</button>)}
                 {!activosVisibles.length && <div className="hint" style={{ padding: 10 }}>{!form.cliente_id ? 'Selecciona un cliente para ver sus activos.' : 'Este cliente no tiene activos registrados que coincidan con la búsqueda.'}</div>}
+                {!activosVisibles.length && form.cliente_id && puedeCrear && sesion.permiteEscritura && !altaActivoForm && <button type="button" className="btn btn-secondary" style={{ margin: '0 10px 10px' }} onClick={abrirAltaActivo}>Registrar &quot;{assetSearch.trim()}&quot; como activo nuevo</button>}
+                {!activosVisibles.length && form.cliente_id && altaActivoForm && <div className="card" style={{ margin: '0 10px 10px', border: '1px solid var(--card-border)' }}>
+                  <div className="card-header"><h3>Registrar activo nuevo</h3><span className="hint">Se asociará al cliente seleccionado.</span></div>
+                  <div className="card-body">
+                    <div className="grid-2">
+                      <div className="field"><label>Código *</label><input className="input" value={altaActivoForm.codigo} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('codigo', event.target.value)} /></div>
+                      <div className="field"><label>Nombre *</label><input className="input" value={altaActivoForm.nombre} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('nombre', event.target.value)} autoFocus /></div>
+                      <div className="field"><label>Marca</label><input className="input" value={altaActivoForm.marca} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('marca', event.target.value)} /></div>
+                      <div className="field"><label>Modelo</label><input className="input" value={altaActivoForm.modelo} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('modelo', event.target.value)} /></div>
+                      {form.tipo_activo !== 'componente' && <div className="field"><label>Placa / serie / chasis</label><input className="input" value={altaActivoForm.placa_serie} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('placa_serie', event.target.value)} /></div>}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                      <button type="button" className="btn btn-secondary" disabled={altaActivoSaving} onClick={() => setAltaActivoForm(null)}>Cancelar</button>
+                      <button type="button" className="btn btn-primary" disabled={altaActivoSaving || !puedeCrear || !sesion.permiteEscritura} onClick={guardarAltaActivo}>{altaActivoSaving ? 'Registrando...' : 'Registrar activo'}</button>
+                    </div>
+                  </div>
+                </div>}
               </div>}
               {form.activo_id && <div className="hint" style={{ marginTop: 6 }}>Seleccionado: {nombreActivo(activosPorId.get(form.activo_id))}</div>}
             </div>

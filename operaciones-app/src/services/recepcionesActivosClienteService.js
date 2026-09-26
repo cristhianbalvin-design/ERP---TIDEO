@@ -8,6 +8,12 @@ export const ESTADOS_CUSTODIA = Object.freeze([
   'entregado',
 ]);
 
+const makeId = prefix => {
+  const randomId = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}_${String(randomId).replace(/-/g, '').slice(0, 18)}`;
+};
+
 const nextNumero = async (supabase, empresaId) => {
   const year = new Date().getFullYear();
   const prefix = `RAC-${year}-`;
@@ -70,6 +76,70 @@ export async function listarClientes(empresaId) {
     .order('nombre_comercial');
   if (error) throw error;
   return data || [];
+}
+
+export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
+  if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
+
+  const codigo = String(datos?.codigo || '').trim();
+  const nombre = String(datos?.nombre || '').trim();
+  const clientePropietarioId = datos?.cliente_propietario_id;
+  if (!codigo || !nombre) throw new Error('Código y nombre son obligatorios para registrar el activo.');
+  if (!clientePropietarioId) throw new Error('Selecciona el cliente propietario antes de registrar el activo.');
+
+  const tipoActivo = datos?.tipo_activo || null;
+  if (tipoActivo && !['componente', 'maquinaria_completa'].includes(tipoActivo)) {
+    throw new Error('El tipo de activo no es válido.');
+  }
+
+  const supabase = getSupabaseClient();
+  const { data: existentes, error: duplicadoError } = await supabase
+    .from('activos')
+    .select('id,codigo')
+    .eq('empresa_id', empresaId);
+  if (duplicadoError) throw duplicadoError;
+
+  const codigoNormalizado = codigo.toLowerCase();
+  const codigoDuplicado = (existentes || []).some(item => (
+    String(item.codigo || '').trim().toLowerCase() === codigoNormalizado
+  ));
+  if (codigoDuplicado) {
+    const error = new Error(`El código "${codigo}" ya existe; selecciónalo en el buscador.`);
+    error.code = 'DUPLICATE_ASSET_CODE';
+    throw error;
+  }
+
+  const payload = {
+    id: makeId('act'),
+    empresa_id: empresaId,
+    created_by: usuarioId || null,
+    codigo,
+    nombre,
+    tipo_categoria: datos?.tipo_categoria || 'equipo',
+    marca: String(datos?.marca || '').trim() || null,
+    modelo: String(datos?.modelo || '').trim() || null,
+    placa_serie: String(datos?.placa_serie || '').trim() || null,
+    estado: datos?.estado || 'operativo',
+    observacion: String(datos?.observacion || '').trim() || null,
+    propietario_tipo: 'cliente',
+    cliente_propietario_id: clientePropietarioId,
+    tipo_activo: tipoActivo,
+  };
+
+  const { data, error } = await supabase
+    .from('activos')
+    .insert([payload])
+    .select()
+    .single();
+  if (error) {
+    if (error.code === '23505') {
+      const duplicateError = new Error(`El código "${codigo}" ya existe; selecciónalo en el buscador.`);
+      duplicateError.code = '23505';
+      throw duplicateError;
+    }
+    throw error;
+  }
+  return data;
 }
 
 export async function listarAlmacenes(empresaId, sociedadId) {
