@@ -31,7 +31,7 @@ begin
   end if;
 
   v_after := replace(v_before, v_anchor, v_anchor || E'\n' || v_insert);
-  if replace(v_after, v_insert, '') is distinct from v_before then
+  if replace(v_after, E'\n' || v_insert, '') is distinct from v_before then
     raise exception 'R1|el diff generado no se limita al control facturacion.crear.';
   end if;
 
