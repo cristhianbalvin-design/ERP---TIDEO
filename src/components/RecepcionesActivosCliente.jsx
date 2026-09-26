@@ -182,7 +182,7 @@ export function BandejaRecepcionesActivosCliente() {
           </div>
         </div>
         <div className="alert alert-info" style={{ marginBottom: 14 }}>
-          Las recepciones de activos ahora se registran desde Operaciones. Ve a App de Operaciones → Taller &amp; Operaciones → Recepción de Activos para registrar el ingreso de un activo de cliente.
+          Las recepciones de activos ahora se registran desde Operaciones. Ve a {'App de Operaciones → Taller & Operaciones → Recepción de Activos'} para registrar el ingreso de un activo de cliente.
         </div>
         {error && !errorRecepcionId && !selectorCotizacion && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{error}</div>}
         <div className="table-wrap">
