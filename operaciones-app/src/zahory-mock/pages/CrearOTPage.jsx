@@ -1442,8 +1442,6 @@ export const CrearOTPage = ({ onNav }) => {
   const changeObjetoCostoTipo = (tipo) => {
     setObjetoCostoTipo(tipo);
     setPropietarioEquipoOS('cliente');
-    setAltaEquipoClienteAbierta(false);
-    setErrorAltaEquipoCliente(null);
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
       clienteId: '', contratoId: '', equipo: '',
@@ -1454,8 +1452,6 @@ export const CrearOTPage = ({ onNav }) => {
   };
 
   const setCliente = (clienteId) => {
-    setAltaEquipoClienteAbierta(false);
-    setErrorAltaEquipoCliente(null);
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
       unidadMinera: '', centro_costo: null, centro_beneficio_id: null, objeto_costo_id: null, horometroApertura: '',
@@ -1466,8 +1462,6 @@ export const CrearOTPage = ({ onNav }) => {
 
   const setContrato = (contratoId) => {
     const next = objetosCostoFiltrados.find(c => c.id === contratoId);
-    setAltaEquipoClienteAbierta(false);
-    setErrorAltaEquipoCliente(null);
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
@@ -1481,8 +1475,6 @@ export const CrearOTPage = ({ onNav }) => {
 
   const cambiarPropietarioEquipoOS = (propietario) => {
     setPropietarioEquipoOS(propietario);
-    setAltaEquipoClienteAbierta(false);
-    setErrorAltaEquipoCliente(null);
     setForm(f => ({ ...f, equipo: '', horometroApertura: '' }));
     setHorometroSugerido(null);
     setBacklogs([]);
