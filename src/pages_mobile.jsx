@@ -3120,8 +3120,6 @@ function ComprasView({ screen, setScreen }) {
           descripcion: concepto,
           categoria: 'Materiales',
           monto,
-          monto_sin_igv: parseFloat(campos.monto_sin_igv) || 0,
-          igv: parseFloat(campos.igv) || 0,
           moneda: 'PEN',
           fecha: campos.fecha_emision || new Date().toISOString().split('T')[0],
           num_comprobante: campos.num_factura || '',
