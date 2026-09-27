@@ -8129,6 +8129,12 @@ function CxP() {
   const [tabCxP, setTabCxP] = useState('general');
   const [completarRecepcion, setCompletarRecepcion] = useState(null);
   const [preconfigNuevoEgreso, setPreconfigNuevoEgreso] = useState(null);
+  const [detraccionesCompra, setDetraccionesCompra] = useState([]);
+  const [spotCatalogoCompra, setSpotCatalogoCompra] = useState([]);
+  const [spotCompraAbierto, setSpotCompraAbierto] = useState(false);
+  const [spotCompraForm, setSpotCompraForm] = useState({ codigo_spot: '', tipo_cambio_detraccion: '', tipo_cambio_fuente: 'manual' });
+  const [guardandoSpotCompra, setGuardandoSpotCompra] = useState(false);
+  const [errorSpotCompra, setErrorSpotCompra] = useState('');
 
   const abrirNuevoEgreso = (preconfig = null) => {
     // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
@@ -8687,7 +8693,127 @@ function CxP() {
     setArchivoPagoError('');
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
+    setSpotCompraAbierto(false);
+    setErrorSpotCompra('');
   };
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!sel?.id || !isSupabaseConfigured()) {
+      setDetraccionesCompra([]);
+      setSpotCatalogoCompra([]);
+      return undefined;
+    }
+    Promise.all([
+      finanzasService.listarDetraccionesCompra(sel.id),
+      listarSpotCatalogoVigente(sel.fecha_emision || today),
+    ]).then(([obligaciones, catalogo]) => {
+      if (cancelado) return;
+      setDetraccionesCompra(obligaciones || []);
+      setSpotCatalogoCompra(catalogo || []);
+    }).catch(error => {
+      if (cancelado) return;
+      setDetraccionesCompra([]);
+      setSpotCatalogoCompra([]);
+      setErrorSpotCompra(error?.message || 'No se pudo cargar la información SPOT.');
+    });
+    return () => { cancelado = true; };
+  }, [sel?.id, sel?.fecha_emision, today]);
+
+  const detraccionCompraActiva = detraccionesCompra.find(d => d.estado !== 'anulada') || null;
+  const detraccionCompraAnulada = !detraccionCompraActiva && detraccionesCompra.find(d => d.estado === 'anulada');
+  const puedeEditarSpotCompra = Boolean(
+    role?.permisos?.todo
+      || role?.permisos?.editar === true
+      || role?.permisos?.editar?.includes?.('cxp')
+      || role?.permisos?.ver_finanzas,
+  );
+  const puedeAnularSpotCompra = Boolean(
+    role?.permisos?.todo
+      || role?.permisos?.anular === true
+      || role?.permisos?.anular?.includes?.('cxp'),
+  );
+  const puedeAplicarSpotCompra = Boolean(
+    sel
+      && sel.proveedor_id
+      && !['pagada', 'anulada'].includes(String(sel.estado || '').toLowerCase())
+      && saldoDe(sel) > 0
+      && Number(sel.monto_pagado || 0) <= 0
+      && pagosDe(sel.id).length === 0
+      && !detraccionCompraActiva
+      && puedeEditarSpotCompra,
+  );
+  const abrirSpotCompra = () => {
+    const existente = detraccionCompraActiva?.estado === 'pendiente' ? detraccionCompraActiva : null;
+    setSpotCompraForm({
+      codigo_spot: existente?.codigo_spot || spotCatalogoCompra[0]?.codigo || '',
+      tipo_cambio_detraccion: existente?.tipo_cambio != null ? String(existente.tipo_cambio) : '',
+      tipo_cambio_fuente: existente?.tipo_cambio_fuente || 'manual',
+    });
+    setErrorSpotCompra('');
+    setSpotCompraAbierto(true);
+  };
+  const guardarSpotCompra = async event => {
+    event.preventDefault();
+    if (!sel || guardandoSpotCompra) return;
+    const codigo = String(spotCompraForm.codigo_spot || '').trim();
+    const spot = spotCatalogoCompra.find(item => item.codigo === codigo);
+    if (!spot) { setErrorSpotCompra('Selecciona un código SPOT vigente para la fecha de la CxP.'); return; }
+    const payload = {
+      codigo_spot: codigo,
+      porcentaje: Number(spot.porcentaje),
+      ...(sel.moneda === 'USD' ? {
+        tipo_cambio_detraccion: Number(spotCompraForm.tipo_cambio_detraccion),
+        tipo_cambio_fuente: spotCompraForm.tipo_cambio_fuente,
+      } : {}),
+    };
+    if (sel.moneda === 'USD' && (!(payload.tipo_cambio_detraccion > 0) || !['manual', 'referencial'].includes(payload.tipo_cambio_fuente))) {
+      setErrorSpotCompra('Para USD debes informar un tipo de cambio positivo y una fuente válida.');
+      return;
+    }
+    setGuardandoSpotCompra(true);
+    setErrorSpotCompra('');
+    try {
+      const resultado = detraccionCompraActiva?.estado === 'pendiente'
+        ? await finanzasService.corregirDetraccionCompra(detraccionCompraActiva.id, payload)
+        : await finanzasService.registrarDetraccionCompra(sel.id, payload);
+      const nueva = resultado?.detraccion;
+      if (nueva) setDetraccionesCompra(prev => {
+        const sinActual = prev.filter(item => item.id !== nueva.id);
+        return [...sinActual, nueva].sort((a, b) => String(a.creado_en || '').localeCompare(String(b.creado_en || '')));
+      });
+      setSpotCompraAbierto(false);
+      addNotificacion(detraccionCompraActiva?.estado === 'pendiente' ? 'Obligación SPOT corregida.' : 'Obligación SPOT registrada.');
+    } catch (error) {
+      setErrorSpotCompra(error?.message || 'No se pudo guardar la obligación SPOT.');
+    } finally {
+      setGuardandoSpotCompra(false);
+    }
+  };
+  const anularSpotCompra = async () => {
+    if (!detraccionCompraActiva || detraccionCompraActiva.estado !== 'pendiente' || !puedeAnularSpotCompra) return;
+    if (!window.confirm('¿Anular la obligación SPOT pendiente? Luego podrás registrar una nueva obligación.')) return;
+    setGuardandoSpotCompra(true);
+    setErrorSpotCompra('');
+    try {
+      const resultado = await finanzasService.anularDetraccionCompra(detraccionCompraActiva.id);
+      const anulada = resultado?.detraccion;
+      if (anulada) setDetraccionesCompra(prev => prev.map(item => item.id === anulada.id ? anulada : item));
+      addNotificacion('Obligación SPOT anulada.');
+    } catch (error) {
+      setErrorSpotCompra(error?.message || 'No se pudo anular la obligación SPOT.');
+    } finally {
+      setGuardandoSpotCompra(false);
+    }
+  };
+  const spotCompraSeleccionado = spotCatalogoCompra.find(item => item.codigo === spotCompraForm.codigo_spot) || null;
+  const spotCompraTipoCambio = Number(spotCompraForm.tipo_cambio_detraccion || 0);
+  const spotCompraBaseSoles = sel?.moneda === 'USD'
+    ? Math.round(Number(sel?.monto_total || 0) * spotCompraTipoCambio * 100) / 100
+    : Math.round(Number(sel?.monto_total || 0) * 100) / 100;
+  const spotCompraDepositoSoles = spotCompraSeleccionado
+    ? Math.round(spotCompraBaseSoles * Number(spotCompraSeleccionado.porcentaje || 0) / 100)
+    : 0;
 
   useEffect(() => {
     const cxpId = activeParams?.cxpId;
@@ -9433,6 +9559,83 @@ function CxP() {
                       {guardandoClasif ? 'Guardando...' : 'Guardar clasificación'}
                     </button>
                   </div>
+                </div>
+                <div className="card" style={{padding:14,marginBottom:16,border:'1px solid var(--border)'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>SPOT</div>
+                      <div style={{fontWeight:700,fontSize:15}}>Obligación de detracción de compra</div>
+                    </div>
+                    <span className={'badge '+(detraccionCompraActiva?.estado === 'depositada' ? 'badge-green' : detraccionCompraActiva?.estado === 'pendiente' ? 'badge-orange' : detraccionCompraAnulada ? 'badge-gray' : 'badge-cyan')}>
+                      {detraccionCompraActiva?.estado || (detraccionCompraAnulada ? 'anulada' : 'sin obligación')}
+                    </span>
+                  </div>
+                  {detraccionCompraActiva ? (
+                    <div style={{fontSize:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                      <div><span className="text-muted">Código:</span> <strong>{detraccionCompraActiva.codigo_spot || '—'}</strong></div>
+                      <div><span className="text-muted">Tasa:</span> <strong>{Number(detraccionCompraActiva.porcentaje || 0).toFixed(2)}%</strong></div>
+                      <div><span className="text-muted">Depósito PEN:</span> <strong>{money(detraccionCompraActiva.monto_detraccion_soles, 'S/')}</strong></div>
+                      <div><span className="text-muted">Constancia:</span> <strong>{detraccionCompraActiva.numero_constancia || 'Pendiente'}</strong></div>
+                    </div>
+                  ) : detraccionCompraAnulada ? (
+                    <div className="text-muted" style={{fontSize:12}}>La obligación anterior fue anulada. Puedes registrar una nueva mientras la CxP siga pendiente.</div>
+                  ) : (
+                    <div className="text-muted" style={{fontSize:12}}>Aún no existe una obligación SPOT para esta CxP.</div>
+                  )}
+                  {(puedeAplicarSpotCompra || detraccionCompraActiva?.estado === 'pendiente') && (
+                    <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:12}}>
+                      {detraccionCompraActiva?.estado === 'pendiente' && puedeAnularSpotCompra && (
+                        <button type="button" className="btn btn-sm btn-secondary" onClick={anularSpotCompra} disabled={guardandoSpotCompra}>Anular</button>
+                      )}
+                      {puedeEditarSpotCompra && (
+                        <button type="button" className="btn btn-sm btn-primary" onClick={abrirSpotCompra} disabled={guardandoSpotCompra}>
+                          {detraccionCompraActiva?.estado === 'pendiente' ? 'Corregir obligación' : 'Aplicar detracción'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {spotCompraAbierto && (
+                    <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border-subtle)'}}>
+                      <div className="grid-2" style={{gap:10}}>
+                        <div className="input-group">
+                          <label>Código SPOT</label>
+                          <select className="select" value={spotCompraForm.codigo_spot} onChange={e => setSpotCompraForm(v => ({...v,codigo_spot:e.target.value}))}>
+                            <option value="">Seleccionar código vigente...</option>
+                            {spotCatalogoCompra.map(item => <option key={item.id} value={item.codigo}>{item.codigo} · {item.descripcion} · {Number(item.porcentaje || 0).toFixed(2)}%</option>)}
+                          </select>
+                        </div>
+                        <div className="input-group">
+                          <label>Porcentaje vigente</label>
+                          <input className="input" value={spotCompraSeleccionado ? `${Number(spotCompraSeleccionado.porcentaje || 0).toFixed(2)}%` : '—'} readOnly />
+                        </div>
+                        {sel.moneda === 'USD' && (
+                          <>
+                            <div className="input-group">
+                              <label>Tipo de cambio SPOT</label>
+                              <input className="input" type="number" min="0.000001" step="0.000001" value={spotCompraForm.tipo_cambio_detraccion} onChange={e => setSpotCompraForm(v => ({...v,tipo_cambio_detraccion:e.target.value}))} placeholder="PEN por USD" />
+                            </div>
+                            <div className="input-group">
+                              <label>Fuente</label>
+                              <select className="select" value={spotCompraForm.tipo_cambio_fuente} onChange={e => setSpotCompraForm(v => ({...v,tipo_cambio_fuente:e.target.value}))}>
+                                <option value="manual">Manual</option>
+                                <option value="referencial">Referencial</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div style={{marginTop:10,padding:10,borderRadius:6,background:'var(--bg-subtle)',fontSize:12}}>
+                        Base SPOT en soles: <strong>{money(spotCompraBaseSoles, 'S/')}</strong> · Depósito estimado: <strong>{money(spotCompraDepositoSoles, 'S/')}</strong>
+                      </div>
+                      {errorSpotCompra && <div style={{fontSize:12,color:'var(--danger)',marginTop:8}}>{errorSpotCompra}</div>}
+                      <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:10}}>
+                        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setSpotCompraAbierto(false)} disabled={guardandoSpotCompra}>Cancelar</button>
+                        <button type="button" className="btn btn-sm btn-primary" onClick={guardarSpotCompra} disabled={guardandoSpotCompra || !spotCompraSeleccionado}>
+                          {guardandoSpotCompra ? 'Guardando...' : 'Confirmar obligación'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {saldoDe(sel) > 0 ? (
                   <>

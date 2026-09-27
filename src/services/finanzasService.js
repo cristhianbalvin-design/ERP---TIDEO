@@ -893,6 +893,47 @@ export const finanzasService = {
     return data;
   },
 
+  async listarDetraccionesCompra(cxpId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('detracciones')
+      .select('*')
+      .eq('cxp_id', cxpId)
+      .eq('direccion', 'compra')
+      .order('creado_en', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  async registrarDetraccionCompra(cxpId, payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_detraccion_compra', {
+      p_cxp_id: cxpId,
+      p_payload: payload || {},
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async corregirDetraccionCompra(detraccionId, payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('corregir_detraccion_compra', {
+      p_detraccion_id: detraccionId,
+      p_payload: payload || {},
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async anularDetraccionCompra(detraccionId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('anular_detraccion_compra', {
+      p_detraccion_id: detraccionId,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async insertarCxpPago(payload) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
