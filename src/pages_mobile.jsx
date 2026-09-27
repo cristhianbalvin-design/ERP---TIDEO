@@ -2991,6 +2991,7 @@ function ComprasView({ screen, setScreen }) {
   const {
     authUser, usuarios, proveedores, ots, centrosCosto, empresa,
     perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [],
+    todasMembresias = [], seleccionarEmpresa,
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const fileInputRef = useRef(null);
@@ -3015,8 +3016,94 @@ function ComprasView({ screen, setScreen }) {
   const [cxpVence, setCxpVence] = useState('');
   const [metodoPago, setMetodoPago] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [lineasCampo, setLineasCampo] = useState([]);
+  const [lineasCargando, setLineasCargando] = useState(false);
+  const [lineasError, setLineasError] = useState('');
+  const [busquedaLineas, setBusquedaLineas] = useState('');
+  const [usarLineasSolpe, setUsarLineasSolpe] = useState(false);
+  const [lineasSeleccionadas, setLineasSeleccionadas] = useState([]);
+  const [misCompras, setMisCompras] = useState([]);
+  const [misComprasCargando, setMisComprasCargando] = useState(false);
+  const [misComprasError, setMisComprasError] = useState('');
+  const [resultadoGuardado, setResultadoGuardado] = useState(null);
   const rucNormalizado = String(campos.ruc || '').replace(/\D/g, '');
   const rucInvalido = rucNormalizado.length > 0 && !rucValidoSunat(campos.ruc);
+  const activeTab = screen === 'por_comprar' || screen === 'mis_compras' ? screen : 'capturar';
+  const membershipsCompras = (todasMembresias || []).filter(m => m.acceso_campo !== false && (m.campo_modulos || []).includes('compras'));
+
+  const recargarLineas = async () => {
+    if (!empresa?.id || activeTab !== 'por_comprar') return;
+    setLineasCargando(true); setLineasError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('obtener_lineas_campo', { p_empresa_id: empresa.id });
+      if (error) throw error;
+      setLineasCampo(data || []);
+    } catch (error) {
+      setLineasError(error?.message || 'No se pudieron cargar las líneas por comprar.');
+    } finally { setLineasCargando(false); }
+  };
+
+  const recargarMisCompras = async () => {
+    if (!empresa?.id || activeTab !== 'mis_compras') return;
+    setMisComprasCargando(true); setMisComprasError('');
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb.rpc('obtener_mis_compras_campo', { p_empresa_id: empresa.id });
+      if (error) throw error;
+      setMisCompras(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setMisComprasError(error?.message || 'No se pudieron cargar tus compras.');
+    } finally { setMisComprasCargando(false); }
+  };
+
+  useEffect(() => { recargarLineas(); }, [empresa?.id, activeTab]);
+  useEffect(() => { recargarMisCompras(); }, [empresa?.id, activeTab]);
+
+  const lineasMias = lineasCampo.filter(linea => linea.comprador_campo_id === authUser?.id);
+  const lineasVisibles = lineasCampo.filter(linea => {
+    const q = busquedaLineas.trim().toLowerCase();
+    return !q || [linea.solpe_codigo, linea.material_codigo, linea.descripcion].some(value => String(value || '').toLowerCase().includes(q));
+  });
+  const lineasTotal = lineasSeleccionadas.reduce((total, linea) => total + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0);
+  const facturaSinIgv = Number(campos.monto_sin_igv || 0);
+  const lineasCuadran = !usarLineasSolpe || Math.abs(lineasTotal - facturaSinIgv) <= 0.10;
+  const lineaKey = linea => `${linea.solpe_id}:${linea.solpe_item_id}`;
+  const edadLineaDias = linea => linea.tomada_en ? Math.max(0, Math.floor((Date.now() - new Date(linea.tomada_en).getTime()) / 86400000)) : 0;
+  const estadoLinea = linea => {
+    if (!linea.comprador_campo_id) return { texto: 'Libre', color: 'var(--green)' };
+    const dias = edadLineaDias(linea);
+    const color = dias >= 4 ? 'var(--danger)' : dias >= 2 ? 'var(--orange)' : 'var(--cyan)';
+    if (linea.comprador_campo_id === authUser?.id) return { texto: 'Tomada por mí', color };
+    return { texto: `En campo: ${linea.comprador_nombre || 'otro comprador'} · hace ${dias} día${dias === 1 ? '' : 's'}`, color };
+  };
+  const actualizarSeleccionLinea = (linea, cambios = {}) => {
+    const key = lineaKey(linea);
+    setLineasSeleccionadas(prev => prev.map(item => lineaKey(item) === key ? { ...item, ...cambios } : item));
+  };
+  const alternarLineaSeleccionada = linea => {
+    const key = lineaKey(linea);
+    setLineasSeleccionadas(prev => prev.some(item => lineaKey(item) === key)
+      ? prev.filter(item => lineaKey(item) !== key)
+      : [...prev, { ...linea, cantidad: Number(linea.cantidad || 0), precio_unitario: 0 }]);
+  };
+  const tomarLinea = async linea => {
+    try {
+      const sb = await getSupabaseClient();
+      const { error } = await sb.rpc('tomar_linea_sourcing', { p_solpe_id: linea.solpe_id, p_solpe_item_id: linea.solpe_item_id });
+      if (error) throw error;
+      await recargarLineas();
+    } catch (error) { setLineasError(error?.message || 'No se pudo tomar la línea.'); }
+  };
+  const liberarLinea = async linea => {
+    try {
+      const sb = await getSupabaseClient();
+      const { error } = await sb.rpc('liberar_linea_sourcing', { p_solpe_id: linea.solpe_id, p_solpe_item_id: linea.solpe_item_id });
+      if (error) throw error;
+      setLineasSeleccionadas(prev => prev.filter(item => lineaKey(item) !== lineaKey(linea)));
+      await recargarLineas();
+    } catch (error) { setLineasError(error?.message || 'No se pudo liberar la línea.'); }
+  };
 
   useEffect(() => {
     if (saveError) saveErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -3028,6 +3115,8 @@ function ComprasView({ screen, setScreen }) {
       ? 'Selecciona el centro de costo'
       : (genCxP && !cxpVence)
         ? 'Selecciona la fecha de vencimiento'
+        : (usarLineasSolpe && (!lineasSeleccionadas.length || !lineasCuadran))
+          ? 'El total de las líneas no coincide con la factura'
         : !fotoArchivo
           ? 'Adjunta la foto del comprobante'
           : '';
@@ -3043,7 +3132,7 @@ function ComprasView({ screen, setScreen }) {
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
-    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setMetodoPago(''); setGuardando(false);
+    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null);
     setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
@@ -3158,9 +3247,18 @@ function ComprasView({ screen, setScreen }) {
           no_devengar_er: false,
         } : {},
       };
+      const lineasPayload = usarLineasSolpe ? lineasSeleccionadas.map(linea => ({
+        solpe_id: linea.solpe_id,
+        solpe_item_id: linea.solpe_item_id,
+        cantidad: Number(linea.cantidad),
+        precio_unitario: Number(linea.precio_unitario),
+      })) : [];
+      if (usarLineasSolpe && (!lineasPayload.length || !lineasCuadran)) throw new Error('El total de las líneas no coincide con la factura');
+      payload.lineas_solpe = lineasPayload;
       const { data: resultado, error: rpcError } = await sb.rpc('registrar_compra_campo', { p_payload: payload });
       if (rpcError) throw rpcError;
       if (!resultado?.ok || !resultado?.gasto_id) throw new Error('La RPC no devolvió el gasto registrado.');
+      setResultadoGuardado(resultado);
       setPaso('guardado');
     } catch (error) {
       if (objetoSubido) await storageService.eliminarObjetoStorage(objetoSubido).catch(() => {});
@@ -3172,14 +3270,16 @@ function ComprasView({ screen, setScreen }) {
 
   return <>
     <div className="mobile-header">
-      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Compras</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Compras · {empresa?.nombre_comercial || empresa?.razon_social || empresa?.id || 'Empresa'}</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
+      {membershipsCompras.length > 1 && <select aria-label="Empresa activa" className="select" style={{maxWidth:125,fontSize:11}} value={empresa?.id || ''} onChange={e => seleccionarEmpresa?.(e.target.value)}>{membershipsCompras.map(m => <option key={m.empresa_id} value={m.empresa_id}>{m.empresa?.nombre_comercial || m.empresa?.razon_social || m.empresa_id}</option>)}</select>}
       <div className="avatar" style={{width:34,height:34}}>{usuarioMovil.iniciales}</div>
     </div>
 
-    <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+    {activeTab === 'capturar' && <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
       onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) analizarFoto(f); }}/>
+    }
 
-    {paso === 'inicio' && (
+    {activeTab === 'capturar' && paso === 'inicio' && (
       <div className="mobile-content">
         <div className="eyebrow" style={{marginBottom:10}}>Capturar factura · Paso 1 de 2</div>
         <div className="bar" style={{marginBottom:16}}><div style={{width:'33%',background:'var(--cyan)'}}/></div>
@@ -3195,7 +3295,7 @@ function ComprasView({ screen, setScreen }) {
       </div>
     )}
 
-    {paso === 'analizando' && (
+    {activeTab === 'capturar' && paso === 'analizando' && (
       <div className="mobile-content" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:300,gap:14}}>
         <div style={{fontSize:36,color:'var(--cyan)'}}>{I.sparkles}</div>
         <div style={{fontWeight:700,fontSize:15}}>Analizando factura...</div>
@@ -3203,7 +3303,7 @@ function ComprasView({ screen, setScreen }) {
       </div>
     )}
 
-    {paso === 'revision' && (
+    {activeTab === 'capturar' && paso === 'revision' && (
       <div className="mobile-content">
         <div className="eyebrow" style={{marginBottom:10}}>Verificar y guardar · Paso 2 de 2</div>
         <div className="bar" style={{marginBottom:12}}><div style={{width:'100%',background:'var(--cyan)'}}/></div>
@@ -3237,6 +3337,36 @@ function ComprasView({ screen, setScreen }) {
           <div>
             <div className="eyebrow" style={{marginBottom:3}}>Concepto</div>
             <input className="input" value={campos.concepto} onChange={e=>setC('concepto',e.target.value)} placeholder="Compra en campo" />
+          </div>
+          <div style={{background:'var(--bg-subtle)',borderRadius:8,padding:'10px 12px'}}>
+            <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',margin:0}}>
+              <input type="checkbox" checked={usarLineasSolpe} onChange={e => { setUsarLineasSolpe(e.target.checked); if (!e.target.checked) setLineasSeleccionadas([]); }}/>
+              <span style={{fontWeight:600,fontSize:13}}>¿Qué materiales cubre esta factura?</span>
+            </label>
+            {!usarLineasSolpe && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:5}}>Esta compra no corresponde a materiales de SOLPE.</div>}
+            {usarLineasSolpe && (
+              <div style={{marginTop:10}}>
+                {!lineasMias.length && <div style={{fontSize:12,color:'var(--fg-muted)'}}>No tienes líneas tomadas. Puedes continuar sin líneas.</div>}
+                {lineasMias.map(linea => {
+                  const seleccionada = lineasSeleccionadas.some(item => lineaKey(item) === lineaKey(linea));
+                  const seleccion = lineasSeleccionadas.find(item => lineaKey(item) === lineaKey(linea));
+                  return <div key={lineaKey(linea)} style={{borderTop:'1px solid var(--border)',padding:'8px 0'}}>
+                    <label style={{display:'flex',gap:8,alignItems:'flex-start',fontSize:12}}>
+                      <input type="checkbox" checked={seleccionada} onChange={() => alternarLineaSeleccionada(linea)}/>
+                      <span style={{flex:1}}><strong>{linea.descripcion}</strong><br/><span style={{color:'var(--fg-muted)'}}>{linea.solpe_codigo || linea.solpe_id} · pendiente {linea.cantidad} {linea.unidad}</span></span>
+                    </label>
+                    {seleccionada && <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:7,marginLeft:24}}>
+                      <label style={{fontSize:10}}>Cantidad<input className="input" type="number" min="0.01" max={linea.cantidad} step="0.01" value={seleccion?.cantidad ?? ''} onChange={e => actualizarSeleccionLinea(linea, { cantidad: Math.min(Number(linea.cantidad), Number(e.target.value) || 0) })}/></label>
+                      <label style={{fontSize:10}}>Precio unit. sin IGV<input className="input" type="number" min="0" step="0.01" value={seleccion?.precio_unitario ?? ''} onChange={e => actualizarSeleccionLinea(linea, { precio_unitario: Number(e.target.value) || 0 })}/></label>
+                    </div>}
+                  </div>;
+                })}
+                <div style={{fontSize:12,fontWeight:700,color:lineasCuadran?'var(--green)':'var(--danger)',marginTop:7}}>
+                  Líneas: S/ {lineasTotal.toFixed(2)} · Factura sin IGV: S/ {facturaSinIgv.toFixed(2)} {lineasCuadran ? '✓' : '— El total de las líneas no coincide con la factura'}
+                </div>
+                {lineasSeleccionadas.length > 0 && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Se generará una OC de regularización para {lineasSeleccionadas.length} material(es).</div>}
+              </div>
+            )}
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
             {[['monto_sin_igv','Sin IGV'],['igv','IGV'],['monto_total','Total *']].map(([k,l]) => (
@@ -3283,7 +3413,7 @@ function ComprasView({ screen, setScreen }) {
 
         <div className="row mt-6" style={{gap:8}}>
           <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
-          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || !metodoPago || (genCxP && !cxpVence)}>
+          <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || !metodoPago || (genCxP && !cxpVence) || (usarLineasSolpe && (!lineasSeleccionadas.length || !lineasCuadran))}>
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>
         </div>
@@ -3295,7 +3425,7 @@ function ComprasView({ screen, setScreen }) {
       </div>
     )}
 
-    {paso === 'guardado' && (
+    {activeTab === 'capturar' && paso === 'guardado' && (
       <div className="mobile-content" style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:300,gap:16,textAlign:'center'}}>
         <div style={{width:56,height:56,borderRadius:'50%',background:'var(--green-lt,#f0fdf4)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--green)'}}>
           {I.check}
@@ -3304,6 +3434,8 @@ function ComprasView({ screen, setScreen }) {
         <div style={{fontSize:13,color:'var(--fg-muted)'}}>
           {campos.concepto || 'Gasto en campo'} — {campos.monto_total ? `S/ ${campos.monto_total}` : ''}
           {genCxP && <div style={{marginTop:4,fontSize:12}}>CxP generada</div>}
+          {resultadoGuardado?.oc?.codigo && <div style={{marginTop:4,fontSize:12,fontWeight:700}}>OC generada: {resultadoGuardado.oc.codigo}</div>}
+          {resultadoGuardado?.lineas_divididas > 0 && <div style={{marginTop:4,fontSize:12,color:'var(--orange)'}}>El saldo no comprado volvió a quedar libre.</div>}
         </div>
         <button className="btn btn-primary" style={{marginTop:8}} onClick={reiniciar}>
           {I.camera} Nueva captura
@@ -3311,10 +3443,43 @@ function ComprasView({ screen, setScreen }) {
       </div>
     )}
 
+    {activeTab === 'por_comprar' && (
+      <div className="mobile-content">
+        <div className="eyebrow" style={{marginBottom:4}}>Materiales por comprar</div>
+        <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:12}}>Líneas de SOLPE aprobadas sin OC ni proveedor.</div>
+        <div className="row" style={{gap:8,marginBottom:10}}>
+          <input className="input flex-1" value={busquedaLineas} onChange={e => setBusquedaLineas(e.target.value)} placeholder="Buscar material o SOLPE"/>
+          <button className="btn btn-secondary" onClick={recargarLineas} disabled={lineasCargando}>{lineasCargando ? '...' : 'Recargar'}</button>
+        </div>
+        {lineasError && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',background:'var(--danger-lt,#fef2f2)',padding:10,borderRadius:8,fontSize:12,marginBottom:10}}>{lineasError}</div>}
+        {!lineasCargando && !lineasVisibles.length && <div className="card" style={{padding:18,textAlign:'center',color:'var(--fg-muted)',fontSize:13}}>No hay materiales disponibles.</div>}
+        {lineasVisibles.map(linea => { const estado = estadoLinea(linea); const dias = edadLineaDias(linea); return <div key={lineaKey(linea)} className="card" style={{padding:12,marginBottom:8}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700,fontSize:13}}>{linea.descripcion}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>{linea.solpe_codigo || linea.solpe_id} · {linea.cantidad} {linea.unidad}{linea.ot_id ? ` · OT ${linea.ot_id}` : ''}</div></div><span style={{color:estado.color,fontSize:11,fontWeight:700,textAlign:'right'}}>{estado.texto}</span></div>
+          <div className="row" style={{justifyContent:'flex-end',gap:7,marginTop:9}}>{!linea.comprador_campo_id && <button className="btn btn-primary btn-sm" onClick={() => tomarLinea(linea)}>Tomar</button>}{linea.comprador_campo_id === authUser?.id && <button className="btn btn-secondary btn-sm" onClick={() => liberarLinea(linea)}>Liberar</button>}</div>
+        </div>; })}
+      </div>
+    )}
+
+    {activeTab === 'mis_compras' && (
+      <div className="mobile-content">
+        <div className="row" style={{justifyContent:'space-between',marginBottom:12}}><div><div className="eyebrow">Mis compras</div><div style={{fontSize:12,color:'var(--fg-muted)'}}>Solo compras de campo registradas por ti.</div></div><button className="btn btn-secondary btn-sm" onClick={recargarMisCompras} disabled={misComprasCargando}>{misComprasCargando ? '...' : 'Recargar'}</button></div>
+        {misComprasError && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',background:'var(--danger-lt,#fef2f2)',padding:10,borderRadius:8,fontSize:12,marginBottom:10}}>{misComprasError}</div>}
+        {!misComprasCargando && !misCompras.length && <div className="card" style={{padding:18,textAlign:'center',color:'var(--fg-muted)',fontSize:13}}>Todavía no tienes compras de campo.</div>}
+        {misCompras.map(item => { const gasto = item.gasto || {}; const oc = item.orden_compra; const cxp = item.cxp; const recepciones = item.recepciones || []; const pct = Number(oc?.porcentaje_recibido || 0); const estadoRecepcion = !oc ? null : pct >= 100 ? 'Recibida' : pct > 0 ? `Parcial · ${pct}%` : 'Pendiente'; return <div key={gasto.id} className="card" style={{padding:13,marginBottom:9}}>
+          {gasto.archivo_url && <img src={gasto.archivo_url} alt="Comprobante" style={{width:'100%',height:110,objectFit:'cover',borderRadius:7,marginBottom:9}}/>}
+          <div style={{display:'flex',justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700,fontSize:13}}>{gasto.proveedor_referencia || 'Proveedor no informado'}</div><div style={{fontSize:11,color:'var(--fg-muted)'}}>{gasto.fecha || '—'} · {gasto.num_comprobante || 'Sin comprobante'}</div></div><div style={{fontWeight:700}}>S/ {Number(gasto.monto || 0).toFixed(2)}</div></div>
+          <div style={{fontSize:12,marginTop:6}}>{gasto.descripcion || 'Compra de campo'} · {gasto.metodo_pago || '—'}</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,marginTop:8}}><span className="badge badge-purple">{gasto.estado || 'pendiente_revision'}</span>{oc?.codigo && <span className="badge badge-blue">{oc.codigo}</span>}{estadoRecepcion && <span className="badge badge-green">Recepción: {estadoRecepcion}</span>}</div>
+          {oc?.items?.length > 0 && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:8}}>Materiales: {oc.items.map(i => i.descripcion || i.codigo).filter(Boolean).join(', ')}</div>}
+          {cxp && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:5}}>CxP: {cxp.estado || 'por_pagar'}{recepciones.length ? ` · ${recepciones.length} recepción(es)` : ''}</div>}
+        </div>; })}
+      </div>
+    )}
+
     <div className="mobile-nav">
-      <div className="mobile-nav-item active">{I.camera}Capturar</div>
-      <div className="mobile-nav-item">{I.list}Historial</div>
-      <div className="mobile-nav-item">{I.settings}Ajustes</div>
+      <div className={`mobile-nav-item ${activeTab === 'capturar' ? 'active' : ''}`} onClick={() => { setScreen('home'); if (paso === 'guardado') reiniciar(); }}>{I.camera}Capturar</div>
+      <div className={`mobile-nav-item ${activeTab === 'por_comprar' ? 'active' : ''}`} onClick={() => setScreen('por_comprar')}>{I.list}Por comprar</div>
+      <div className={`mobile-nav-item ${activeTab === 'mis_compras' ? 'active' : ''}`} onClick={() => setScreen('mis_compras')}>{I.list}Mis compras</div>
     </div>
   </>;
 }
