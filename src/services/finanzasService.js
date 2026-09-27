@@ -844,6 +844,21 @@ export const finanzasService = {
     };
   },
 
+  async registrarAutodetraccion({ empresaId, detraccionId, cuentaOrigenId, cuentaDestinoId, fechaConstancia, numeroConstancia, referencia = null }) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_autodetraccion', {
+      p_empresa_id: empresaId,
+      p_detraccion_id: detraccionId,
+      p_cuenta_origen_id: cuentaOrigenId,
+      p_cuenta_destino_id: cuentaDestinoId,
+      p_fecha_constancia: fechaConstancia,
+      p_numero_constancia: numeroConstancia,
+      p_referencia: referencia,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async registrarMovimientoTesoreria(payload) {
     const supabase = await getSupabaseClient();
     const movimiento = await normalizarMovimientoTesoreriaCobro(supabase, payload);
