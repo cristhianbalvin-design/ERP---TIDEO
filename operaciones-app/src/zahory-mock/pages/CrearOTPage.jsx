@@ -70,15 +70,6 @@ const CATEGORIAS_NO_FLOTA = new Set([
 const esActivoDeFlota = (activo) => !CATEGORIAS_NO_FLOTA.has(String(activo?.tipo_categoria || '').trim().toUpperCase());
 const generarNumeroOT = () => `OT-${new Date().getFullYear().toString().slice(-2)}-${Math.floor(Math.random() * 1000).toString().padStart(4, '0')}`;
 const generarIdOT = () => `ot_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
-const generarIdEquipoCliente = () => `act_cli_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
-const generarCodigoEquipoCliente = () => {
-  const uuid = globalThis.crypto?.randomUUID?.();
-  const sufijo = uuid
-    ? uuid.slice(0, 8).toUpperCase()
-    : Math.floor(Math.random() * 100000000).toString(36).toUpperCase();
-  return `CLI-${new Date().getFullYear().toString().slice(-2)}-${sufijo}`;
-};
-
 const esErrorNumeroDuplicado = (error) =>
   error?.code === '23505' || /duplicate key|empresa_id.*numero|numero.*empresa_id/i.test(error?.message || '');
 
@@ -835,13 +826,6 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorTiposServicio, setErrorTiposServicio] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState(null);
-  const [altaEquipoClienteAbierta, setAltaEquipoClienteAbierta] = useState(false);
-  const [guardandoEquipoCliente, setGuardandoEquipoCliente] = useState(false);
-  const [errorAltaEquipoCliente, setErrorAltaEquipoCliente] = useState(null);
-  const [formEquipoCliente, setFormEquipoCliente] = useState({
-    nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '',
-  });
-
   const [form, setForm] = useState({
     lineaNegocio: '',
     clienteId: '',
@@ -1568,65 +1552,6 @@ export const CrearOTPage = ({ onNav }) => {
     );
   };
 
-  const abrirAltaEquipoCliente = () => {
-    setErrorAltaEquipoCliente(null);
-    setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '' });
-    setAltaEquipoClienteAbierta(true);
-  };
-
-  const registrarEquipoCliente = async () => {
-    const nombre = formEquipoCliente.nombre.trim();
-    if (!nombre || !sesionOperativa.empresaId || !form.clienteId) {
-      setErrorAltaEquipoCliente('Indica el nombre del equipo y selecciona primero el cliente de la OS.');
-      return;
-    }
-
-    setGuardandoEquipoCliente(true);
-    setErrorAltaEquipoCliente(null);
-    try {
-      let creado = null;
-      let ultimoError = null;
-      for (let intento = 0; intento < 5; intento += 1) {
-        const { data, error } = await getSupabaseClient()
-          .from('activos')
-          .insert({
-            id: generarIdEquipoCliente(),
-            empresa_id: sesionOperativa.empresaId,
-            codigo: generarCodigoEquipoCliente(),
-            nombre,
-            marca: formEquipoCliente.marca.trim() || null,
-            modelo: formEquipoCliente.modelo.trim() || null,
-            placa_serie: formEquipoCliente.placa_serie.trim() || null,
-            tipo_categoria: 'equipo',
-            estado: 'operativo',
-            propietario_tipo: 'cliente',
-            cliente_propietario_id: form.clienteId,
-            activo_padre_id: formEquipoCliente.activo_padre_id || null,
-          })
-          .select('id,codigo,nombre,marca,modelo,placa_serie,estado,activo_padre_id')
-          .single();
-        if (!error) {
-          creado = data;
-          break;
-        }
-        ultimoError = error;
-        if (error.code !== '23505') throw error;
-      }
-      if (!creado) throw ultimoError || new Error('No se pudo registrar un código único para el equipo.');
-
-      setEquiposClienteReales(prev => [...prev, creado].sort((a, b) => a.codigo.localeCompare(b.codigo)));
-      setForm(prev => ({ ...prev, equipo: creado.id, horometroApertura: '' }));
-      setHorometroSugerido(null);
-      setBacklogs([]);
-      setAltaEquipoClienteAbierta(false);
-      setFormEquipoCliente({ nombre: '', marca: '', modelo: '', placa_serie: '', activo_padre_id: '' });
-    } catch (error) {
-      setErrorAltaEquipoCliente(error.message || 'No se pudo registrar el equipo de cliente.');
-    } finally {
-      setGuardandoEquipoCliente(false);
-    }
-  };
-
   const setLugarEjecucion = (lugarEjecucion) =>
     setForm(f => ({
       ...f, lugarEjecucion,
@@ -2131,58 +2056,12 @@ export const CrearOTPage = ({ onNav }) => {
                           <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                         )}
 
-                        {!altaEquipoClienteAbierta ? (
-                          <button type="button" className="btn btn-secondary btn-sm"
-                            disabled={!form.contratoId || !sesionOperativa.permiteEscritura}
-                            onClick={abrirAltaEquipoCliente}
-                            style={{ marginTop: 8 }}>
-                            <Icon name="plus" size={12} /> Registrar nuevo equipo de cliente
-                          </button>
-                        ) : (
-                          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--card-border)', borderRadius: 6, background: 'rgba(255,255,255,0.03)' }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8 }}>Nuevo equipo de cliente</div>
-                            <div className="ot-form-grid" style={{ gap: 8 }}>
-                              <input className="input" value={formEquipoCliente.nombre}
-                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, nombre: e.target.value }))}
-                                placeholder="Nombre del equipo *" />
-                              <input className="input" value={formEquipoCliente.marca}
-                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, marca: e.target.value }))}
-                                placeholder="Marca" />
-                              <input className="input" value={formEquipoCliente.modelo}
-                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, modelo: e.target.value }))}
-                                placeholder="Modelo" />
-                              <input className="input" value={formEquipoCliente.placa_serie}
-                                onChange={e => setFormEquipoCliente(prev => ({ ...prev, placa_serie: e.target.value }))}
-                                placeholder="N.° de serie / placa" />
-                              <div className="ot-form-field" style={{ gridColumn: '1 / -1' }}>
-                                <div className="label" style={{ fontSize: 11 }}>Equipo padre (si aplica)</div>
-                                <select className="input" value={formEquipoCliente.activo_padre_id}
-                                  onChange={e => setFormEquipoCliente(prev => ({ ...prev, activo_padre_id: e.target.value }))}
-                                  style={{ marginTop: 4 }}>
-                                  <option value="">Sin equipo padre</option>
-                                  {equiposClienteReales.map(equipoPadre => (
-                                    <option key={equipoPadre.id} value={equipoPadre.id}>
-                                      {[equipoPadre.codigo, equipoPadre.nombre, equipoPadre.placa_serie].filter(Boolean).join(' · ')}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
-                            {errorAltaEquipoCliente && (
-                              <div style={{ fontSize: 11, color: '#E53935', marginTop: 6 }}>{errorAltaEquipoCliente}</div>
-                            )}
-                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                              <button type="button" className="btn btn-primary btn-sm"
-                                disabled={guardandoEquipoCliente || !formEquipoCliente.nombre.trim()}
-                                onClick={registrarEquipoCliente}>
-                                {guardandoEquipoCliente ? 'Registrando...' : 'Registrar y seleccionar'}
-                              </button>
-                              <button type="button" className="btn btn-secondary btn-sm"
-                                disabled={guardandoEquipoCliente}
-                                onClick={() => setAltaEquipoClienteAbierta(false)}>
-                                Cancelar
-                              </button>
-                            </div>
+                        {form.clienteId && !cargandoEquiposCliente && !equiposClienteReales.length && !errorEquiposCliente && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                            <span>Este cliente no tiene activos registrados. Regístralo primero desde Recepción de Activos.</span>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => onNav('recepcion-activos')}>
+                              Ir a Recepción de Activos
+                            </button>
                           </div>
                         )}
                           </>
