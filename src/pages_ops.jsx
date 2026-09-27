@@ -5575,6 +5575,7 @@ function Proveedores() {
     proveedores, setProveedores, evaluacionesProveedor, ordenesCompra, recepciones, usuarios, empresa, role, addNotificacion,
     materialGrupos = [], materialFamilias = [],
     registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
+    listarCuentasBancariasProveedor, crearCuentaBancariaProveedorCtx, actualizarCuentaBancariaProveedorCtx, eliminarCuentaBancariaProveedorCtx,
     posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], cargos = [],
   } = useApp();
   const [tab, setTab] = useState('todos');
@@ -5582,6 +5583,15 @@ function Proveedores() {
   const [editId, setEditId] = useState(null);
   const [sel, setSel] = useState(null);
   const [detailTab, setDetailTab] = useState('resumen');
+  const [cuentasBancariasProveedor, setCuentasBancariasProveedor] = useState([]);
+  const [cuentaPanel, setCuentaPanel] = useState(false);
+  const [cuentaEditId, setCuentaEditId] = useState(null);
+  const [cuentaCargando, setCuentaCargando] = useState(false);
+  const [cuentaGuardando, setCuentaGuardando] = useState(false);
+  const [cuentaForm, setCuentaForm] = useState({
+    alias: '', banco: '', tipo_cuenta: 'corriente', numero_cuenta: '', cci: '', moneda: 'PEN',
+    es_cuenta_banco_nacion: false, estado: 'activo', observaciones: ''
+  });
   const [form, setForm] = useState({
     ruc:'', pais:'Peru', razon_social:'', nombre_comercial:'', categoria:'Materiales', estado:'potencial',
     servicios:'', contacto_nombre:'', contacto_cargo:'', telefono:'', email:'', web:'', direccion:'',
@@ -5601,6 +5611,19 @@ function Proveedores() {
     () => getPosicionesPorCategoriaUnidad(posiciones, unidadesOrganizacionales, 'compras'),
     [posiciones, unidadesOrganizacionales]
   );
+  useEffect(() => {
+    let cancelado = false;
+    if (!sel?.id) {
+      setCuentasBancariasProveedor([]);
+      return () => { cancelado = true; };
+    }
+    setCuentaCargando(true);
+    listarCuentasBancariasProveedor(sel.id)
+      .then(data => { if (!cancelado) setCuentasBancariasProveedor(data || []); })
+      .catch(error => { if (!cancelado) addNotificacion(`No se pudieron cargar las cuentas bancarias: ${error.message || error}`, 'error'); })
+      .finally(() => { if (!cancelado) setCuentaCargando(false); });
+    return () => { cancelado = true; };
+  }, [sel?.id, empresa?.id]);
   const labelPosicionCompras = (p) => {
     const ocupantes = ocupantesPorPosicion.get(p.id) || [];
     const ocupanteNombre = ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
@@ -5613,8 +5636,8 @@ function Proveedores() {
     return ocupantes.length ? ocupantes.map(o => o.nombre).join(' + ') : 'Vacante';
   };
   const visibleTabs = role.permisos?.ver_finanzas
-    ? ['resumen','finanzas','documentos','evaluaciones','historial','contactos','familias']
-    : ['resumen','documentos','evaluaciones','historial','contactos','familias'];
+    ? ['resumen','finanzas','cuentas_bancarias','documentos','evaluaciones','historial','contactos','familias']
+    : ['resumen','cuentas_bancarias','documentos','evaluaciones','historial','contactos','familias'];
   const list = proveedores.filter(p => {
     if (tab === 'homologados') return p.estado === 'homologado';
     if (tab === 'evaluacion') return p.estado === 'en_evaluacion' || p.estado === 'potencial';
@@ -5816,6 +5839,83 @@ function Proveedores() {
     setPanel(false);
   };
 
+  const nuevaCuentaBancaria = () => {
+    setCuentaForm({
+      alias: '', banco: '', tipo_cuenta: 'corriente', numero_cuenta: '', cci: '', moneda: 'PEN',
+      es_cuenta_banco_nacion: false, estado: 'activo', observaciones: ''
+    });
+    setCuentaEditId(null);
+    setCuentaPanel(true);
+  };
+  const editarCuentaBancaria = (cuenta) => {
+    setCuentaForm({
+      alias: cuenta.alias || '', banco: cuenta.banco || '', tipo_cuenta: cuenta.tipo_cuenta || 'corriente',
+      numero_cuenta: cuenta.numero_cuenta || '', cci: cuenta.cci || '', moneda: cuenta.moneda || 'PEN',
+      es_cuenta_banco_nacion: Boolean(cuenta.es_cuenta_banco_nacion), estado: cuenta.estado || 'activo',
+      observaciones: cuenta.observaciones || ''
+    });
+    setCuentaEditId(cuenta.id);
+    setCuentaPanel(true);
+  };
+  const guardarCuentaBancaria = async (e) => {
+    e.preventDefault();
+    const payload = {
+      ...cuentaForm,
+      alias: cuentaForm.alias.trim() || null,
+      banco: cuentaForm.banco.trim(),
+      numero_cuenta: cuentaForm.numero_cuenta.trim() || null,
+      cci: cuentaForm.cci.trim() || null,
+      observaciones: cuentaForm.observaciones.trim() || null,
+    };
+    if (!payload.banco || (!payload.numero_cuenta && !payload.cci)) {
+      addNotificacion('Indica el banco y el numero de cuenta o CCI.', 'error');
+      return;
+    }
+    if (payload.es_cuenta_banco_nacion && payload.moneda !== 'PEN') {
+      addNotificacion('La cuenta del Banco de la Nacion para SPOT debe estar en PEN.', 'error');
+      return;
+    }
+    const cuentaBnAnterior = payload.es_cuenta_banco_nacion && payload.estado === 'activo'
+      ? cuentasBancariasProveedor.find(c => c.es_cuenta_banco_nacion && c.estado === 'activo' && c.id !== cuentaEditId)
+      : null;
+    if (cuentaBnAnterior && !window.confirm(`La cuenta BN activa actual (${cuentaBnAnterior.alias || cuentaBnAnterior.numero_cuenta || cuentaBnAnterior.cci}) se inactivara. ¿Continuar?`)) return;
+
+    setCuentaGuardando(true);
+    try {
+      if (cuentaBnAnterior) {
+        const anteriorActualizada = await actualizarCuentaBancariaProveedorCtx(cuentaBnAnterior.id, { estado: 'inactivo' });
+        setCuentasBancariasProveedor(prev => prev.map(c => c.id === cuentaBnAnterior.id ? { ...c, ...anteriorActualizada, estado: 'inactivo' } : c));
+      }
+      let guardada;
+      if (cuentaEditId) {
+        guardada = await actualizarCuentaBancariaProveedorCtx(cuentaEditId, payload);
+        setCuentasBancariasProveedor(prev => prev.map(c => c.id === cuentaEditId ? { ...c, ...guardada } : c));
+      } else {
+        guardada = await crearCuentaBancariaProveedorCtx(sel.id, { ...payload, id: `pcb_${Date.now()}` });
+        setCuentasBancariasProveedor(prev => [guardada, ...prev]);
+      }
+      setCuentaPanel(false);
+      setCuentaEditId(null);
+      addNotificacion('Cuenta bancaria guardada.', 'success');
+    } catch (error) {
+      addNotificacion(`No se pudo guardar la cuenta bancaria: ${error.message || error}`, 'error');
+    } finally {
+      setCuentaGuardando(false);
+    }
+  };
+  const eliminarCuentaBancaria = async (cuenta) => {
+    // TODO(Bloque 3b): consultar la tabla de pagos SPOT antes de permitir
+    // eliminar una cuenta ya usada; ese flujo/tablas aún no existen.
+    if (!window.confirm(`¿Eliminar la cuenta ${cuenta.alias || cuenta.numero_cuenta || cuenta.cci}?`)) return;
+    try {
+      await eliminarCuentaBancariaProveedorCtx(cuenta.id);
+      setCuentasBancariasProveedor(prev => prev.filter(c => c.id !== cuenta.id));
+      addNotificacion('Cuenta bancaria eliminada.', 'success');
+    } catch (error) {
+      addNotificacion(`No se pudo eliminar la cuenta bancaria: ${error.message || error}`, 'error');
+    }
+  };
+
   if (sel) {
     const proveedorDocs = docs.filter(d => d.proveedor_id === sel.id);
     const proveedorEvals = evals.filter(ev => ev.proveedor_id === sel.id);
@@ -5846,7 +5946,7 @@ function Proveedores() {
       ? leadTimesProveedor.reduce((sum, n) => sum + n, 0) / leadTimesProveedor.length
       : null;
     const tabLabels = {
-      resumen:'Resumen', finanzas:'Condiciones financieras', documentos:'Documentos',
+      resumen:'Resumen', finanzas:'Condiciones financieras', cuentas_bancarias:'Cuentas bancarias', documentos:'Documentos',
       evaluaciones:'Evaluaciones', historial:'Historial OC', contactos:'Contactos', familias:'Familias que cubre'
     };
     return (
@@ -5912,6 +6012,55 @@ function Proveedores() {
               <div className="input-group"><label>Limite gasto mensual</label><input className="input" type="number" defaultValue={sel.limite_gasto_mensual || ''}/></div>
             </div>
             <button className="btn btn-primary mt-6">Guardar cambios</button>
+          </div>
+        )}
+        {detailTab === 'cuentas_bancarias' && (
+          <div className="card" style={{padding:20}}>
+            <div className="card-head">
+              <div>
+                <h3>Cuentas bancarias del proveedor</h3>
+                <div className="text-muted" style={{fontSize:12}}>La fuente para pagos SPOT sera la cuenta BN activa registrada aqui.</div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={nuevaCuentaBancaria}>{I.plus} Agregar cuenta</button>
+            </div>
+            {cuentaCargando ? <p className="text-muted">Cargando cuentas...</p> : cuentasBancariasProveedor.length === 0 ? (
+              <div className="text-muted" style={{padding:'18px 0'}}>No hay cuentas bancarias registradas.</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Alias</th><th>Banco</th><th>Cuenta / CCI</th><th>Moneda</th><th>Uso SPOT</th><th>Estado</th><th>Acciones</th></tr></thead>
+                  <tbody>{cuentasBancariasProveedor.map(cuenta => (
+                    <tr key={cuenta.id}>
+                      <td><strong>{cuenta.alias || 'Sin alias'}</strong>{cuenta.observaciones && <div className="text-muted" style={{fontSize:11}}>{cuenta.observaciones}</div>}</td>
+                      <td>{cuenta.banco}<div className="text-muted" style={{fontSize:11}}>{cuenta.tipo_cuenta || '-'}</div></td>
+                      <td className="mono">{cuenta.numero_cuenta || '-'}<div className="text-muted" style={{fontSize:11}}>CCI: {cuenta.cci || '-'}</div></td>
+                      <td>{cuenta.moneda}</td>
+                      <td>{cuenta.es_cuenta_banco_nacion ? <span className="badge badge-cyan">Banco de la Nacion</span> : <span className="text-muted">Cuenta normal</span>}</td>
+                      <td><span className={'badge '+(cuenta.estado === 'activo' ? 'badge-green' : 'badge-gray')}>{cuenta.estado}</span></td>
+                      <td><div className="row" style={{gap:6, flexWrap:'nowrap'}}><button className="btn btn-sm btn-ghost" onClick={() => editarCuentaBancaria(cuenta)}>{I.edit}</button><button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => eliminarCuentaBancaria(cuenta)}>{I.trash}</button></div></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {cuentaPanel && (
+              <form onSubmit={guardarCuentaBancaria} style={{marginTop:18, paddingTop:18, borderTop:'1px solid var(--border)'}}>
+                <div className="card-head"><h3>{cuentaEditId ? 'Editar cuenta bancaria' : 'Nueva cuenta bancaria'}</h3><button type="button" className="icon-btn" onClick={() => setCuentaPanel(false)}>{I.x}</button></div>
+                <div className="grid-2" style={{gap:14}}>
+                  <div className="input-group"><label>Alias</label><input className="input" value={cuentaForm.alias} onChange={e => setCuentaForm(prev => ({...prev, alias:e.target.value}))} placeholder="Cuenta principal" /></div>
+                  <div className="input-group"><label>Banco *</label><input className="input" required value={cuentaForm.banco} onChange={e => setCuentaForm(prev => ({...prev, banco:e.target.value}))} /></div>
+                  <div className="input-group"><label>Tipo de cuenta *</label><select className="select" value={cuentaForm.tipo_cuenta} onChange={e => setCuentaForm(prev => ({...prev, tipo_cuenta:e.target.value}))}><option value="corriente">Corriente</option><option value="ahorros">Ahorros</option><option value="maestra">Maestra</option><option value="otro">Otro</option></select></div>
+                  <div className="input-group"><label>Moneda *</label><select className="select" value={cuentaForm.moneda} onChange={e => setCuentaForm(prev => ({...prev, moneda:e.target.value}))}><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+                  <div className="input-group"><label>Numero de cuenta</label><input className="input" value={cuentaForm.numero_cuenta} onChange={e => setCuentaForm(prev => ({...prev, numero_cuenta:e.target.value}))} /></div>
+                  <div className="input-group"><label>CCI</label><input className="input" value={cuentaForm.cci} onChange={e => setCuentaForm(prev => ({...prev, cci:e.target.value}))} /></div>
+                  <div className="input-group"><label>Estado *</label><select className="select" value={cuentaForm.estado} onChange={e => setCuentaForm(prev => ({...prev, estado:e.target.value}))}><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></div>
+                  <label className="row" style={{gap:8, alignItems:'center', marginTop:24}}><input type="checkbox" checked={cuentaForm.es_cuenta_banco_nacion} onChange={e => setCuentaForm(prev => ({...prev, es_cuenta_banco_nacion:e.target.checked}))} /> Es cuenta del Banco de la Nacion para SPOT</label>
+                  <div className="input-group" style={{gridColumn:'1/-1'}}><label>Observaciones</label><textarea className="input" rows="2" value={cuentaForm.observaciones} onChange={e => setCuentaForm(prev => ({...prev, observaciones:e.target.value}))} /></div>
+                </div>
+                {cuentaForm.es_cuenta_banco_nacion && cuentaForm.estado === 'activo' && cuentasBancariasProveedor.some(c => c.es_cuenta_banco_nacion && c.estado === 'activo' && c.id !== cuentaEditId) && <div style={{marginTop:14, padding:'10px 12px', borderLeft:'3px solid var(--warning)', background:'rgba(245,158,11,.10)', borderRadius:5, fontSize:13}}>Al guardar, la cuenta BN activa anterior se inactivara. Se solicitara confirmacion.</div>}
+                <div className="row" style={{justifyContent:'flex-end', gap:10, marginTop:16}}><button type="button" className="btn btn-secondary" onClick={() => setCuentaPanel(false)}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={cuentaGuardando}>{cuentaGuardando ? 'Guardando...' : 'Guardar cuenta'}</button></div>
+              </form>
+            )}
           </div>
         )}
         {detailTab === 'documentos' && (

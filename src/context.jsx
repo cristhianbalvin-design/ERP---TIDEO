@@ -8649,6 +8649,34 @@ export function AppProvider({ children }) {
       return true;
     }
   };
+  const listarCuentasBancariasProveedor = async (proveedorId) => {
+    if (!empresa?.id || !proveedorId) return [];
+    if (isSupabaseConfigured()) return comprasService.getCuentasBancariasProveedor(empresa.id, proveedorId);
+    return [];
+  };
+  const crearCuentaBancariaProveedorCtx = async (proveedorId, cuenta) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      return comprasService.crearCuentaBancariaProveedor(empresa.id, proveedorId, cuenta);
+    }
+    return {
+      ...cuenta,
+      id: generateId('pcb'),
+      empresa_id: empresa?.id,
+      proveedor_id: proveedorId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+  const actualizarCuentaBancariaProveedorCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) return comprasService.actualizarCuentaBancariaProveedor(id, cambios);
+    return { ...cambios, id, updated_at: new Date().toISOString() };
+  };
+  const eliminarCuentaBancariaProveedorCtx = async (id) => {
+    // TODO(Bloque 3b): impedir la eliminacion si existe un pago SPOT que
+    // referencie esta cuenta; el flujo de pago de compras aun no tiene tabla.
+    if (isSupabaseConfigured()) return comprasService.eliminarCuentaBancariaProveedor(id);
+    return true;
+  };
   const crearProcesoCompraCtx = async (proceso) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProcesoCompra(empresa.id, proceso);
@@ -11480,6 +11508,7 @@ export function AppProvider({ children }) {
     crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
+    listarCuentasBancariasProveedor, crearCuentaBancariaProveedorCtx, actualizarCuentaBancariaProveedorCtx, eliminarCuentaBancariaProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
     crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, completarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
