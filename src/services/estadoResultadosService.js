@@ -447,7 +447,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds,
   const { start, next } = periodBounds(periodo);
   let query = supabase
     .from('compras_gastos')
-    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, periodo_nomina_id, origen_registro, sociedad_id')
+    .select('id, fecha, descripcion, categoria, subcategoria, monto, moneda, centro_costo_id, ot_vinc_id, es_activo_fijo, estado, cxp_id, orden_compra_id, excluir_de_er, periodo_nomina_id, origen_registro, sociedad_id')
     .eq('empresa_id', empresaId)
     .gte('fecha', start)
     .lt('fecha', next);
@@ -455,7 +455,7 @@ async function loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds,
   if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado');
+  return (data || []).filter(g => !g.es_activo_fijo && g.estado !== 'anulado' && !g.excluir_de_er);
 }
 
 async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null) {
