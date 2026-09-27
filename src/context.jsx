@@ -7101,6 +7101,7 @@ export function AppProvider({ children }) {
       monto: montoPagado,
       metodo_pago: datos.metodo_pago || null,
       cuenta_bancaria: datos.cuenta_bancaria || null,
+      cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
       referencia: datos.referencia || null,
       registrado_por: authUser?.id || null,
       creado_en: new Date().toISOString(),
@@ -7169,10 +7170,21 @@ export function AppProvider({ children }) {
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
+        const pagoRpc = {
+          ...registroPago,
+          ...(datos.con_deposito_spot ? {
+            con_deposito_spot: true,
+            cuenta_origen_spot_id: datos.cuenta_origen_spot_id || null,
+            proveedor_cuenta_id: datos.proveedor_cuenta_id || null,
+            numero_constancia: datos.numero_constancia || null,
+            fecha_constancia: datos.fecha_constancia || null,
+            movimiento_spot_id: datos.movimiento_spot_id || null,
+          } : {}),
+        };
         const resultado = await finanzasService.registrarPagoCxPAtomico({
           cxpId,
           monto: montoPagado,
-          pago: registroPago,
+          pago: pagoRpc,
           movimiento,
         });
         await adjuntarComprobantePago(resultado?.pago || registroPago);
