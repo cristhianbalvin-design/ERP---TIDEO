@@ -263,6 +263,50 @@ export const comprasService = {
     if (error) throw error;
     return true;
   },
+  getCuentasBancariasProveedor: async (empresaId, proveedorId) => {
+    if (!empresaId || !proveedorId) return [];
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('proveedor_cuentas_bancarias')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .eq('proveedor_id', proveedorId)
+      .order('es_cuenta_banco_nacion', { ascending: false })
+      .order('estado', { ascending: true })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  crearCuentaBancariaProveedor: async (empresaId, proveedorId, cuenta) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('proveedor_cuentas_bancarias')
+      .insert([{ ...cuenta, empresa_id: empresaId, proveedor_id: proveedorId }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  actualizarCuentaBancariaProveedor: async (id, cambios) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('proveedor_cuentas_bancarias')
+      .update({ ...cambios, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  eliminarCuentaBancariaProveedor: async (id) => {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('proveedor_cuentas_bancarias')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  },
   getEvaluacionesProveedor: async (empresaId) => {
     if (!empresaId) return [];
     const supabase = await getSupabaseClient();
