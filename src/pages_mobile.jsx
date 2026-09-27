@@ -3032,7 +3032,7 @@ function ComprasView({ screen, setScreen }) {
   const membershipsCompras = (todasMembresias || []).filter(m => m.acceso_campo !== false && (m.campo_modulos || []).includes('compras'));
 
   const recargarLineas = async () => {
-    if (!empresa?.id || activeTab !== 'por_comprar') return;
+    if (!empresa?.id) return;
     setLineasCargando(true); setLineasError('');
     try {
       const sb = await getSupabaseClient();
