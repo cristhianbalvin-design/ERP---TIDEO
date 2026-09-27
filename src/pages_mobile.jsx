@@ -3177,6 +3177,11 @@ function ComprasView({ screen, setScreen }) {
       if (!metodoPago) setSaveError('Selecciona un método de pago para continuar.');
       return;
     }
+    const fechaFactura = campos.fecha_emision ? new Date(`${campos.fecha_emision}T00:00:00`) : null;
+    const diasDesdeFactura = fechaFactura && !Number.isNaN(fechaFactura.getTime())
+      ? Math.floor((new Date() - fechaFactura) / 86400000)
+      : 0;
+    if (diasDesdeFactura > 30 && !window.confirm('\\u00bfLa factura tiene m\\u00e1s de 30 d\\u00edas. Deseas continuar?')) return;
     setGuardando(true);
     setSaveError('');
     let objetoSubido = null;
