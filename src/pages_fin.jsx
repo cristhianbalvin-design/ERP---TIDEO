@@ -8064,7 +8064,7 @@ function ModalCompletarFacturaCxP({ recepcion, onClose, onCompletar }) {
 }
 
 function CxP() {
-  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
+  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], listarCuentasBancariasProveedor, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -8135,6 +8135,7 @@ function CxP() {
   const [spotCompraForm, setSpotCompraForm] = useState({ codigo_spot: '', tipo_cambio_detraccion: '', tipo_cambio_fuente: 'manual' });
   const [guardandoSpotCompra, setGuardandoSpotCompra] = useState(false);
   const [errorSpotCompra, setErrorSpotCompra] = useState('');
+  const [cuentasProveedorPago, setCuentasProveedorPago] = useState([]);
 
   const abrirNuevoEgreso = (preconfig = null) => {
     // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
@@ -8149,7 +8150,7 @@ function CxP() {
   };
 
   // Form: pago
-  const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+  const [formPago, setFormPago] = useState({ monto: '', fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '', con_deposito_spot: false, cuenta_origen_spot_id: '', proveedor_cuenta_id: '', numero_constancia: '', fecha_constancia: today });
   const [archivoPago, setArchivoPago] = useState(null);
   const [archivoPagoError, setArchivoPagoError] = useState('');
   const archivoPagoRef = useRef(null);
@@ -8688,13 +8689,14 @@ function CxP() {
   const abrirFicha = c => {
     setSel(c);
     setFichaTab('pago');
-    setFormPago({ monto: String(saldoDe(c)), fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '' });
+    setFormPago({ monto: String(saldoDe(c)), fecha: today, metodo_pago: METODO_TRANSFERENCIA, cuenta_bancaria: '', cuenta_bancaria_id: '', referencia: '', con_deposito_spot: false, cuenta_origen_spot_id: '', proveedor_cuenta_id: '', numero_constancia: '', fecha_constancia: today });
     setArchivoPago(null);
     setArchivoPagoError('');
     setFichaClasifCategoria(c.categoria_er || '');
     setFichaClasifCeco(c.centro_costo_id || '');
     setSpotCompraAbierto(false);
     setErrorSpotCompra('');
+    setCuentasProveedorPago([]);
   };
 
   useEffect(() => {
@@ -8702,19 +8704,25 @@ function CxP() {
     if (!sel?.id || !isSupabaseConfigured()) {
       setDetraccionesCompra([]);
       setSpotCatalogoCompra([]);
+      setCuentasProveedorPago([]);
       return undefined;
     }
     Promise.all([
       finanzasService.listarDetraccionesCompra(sel.id),
       listarSpotCatalogoVigente(sel.fecha_emision || today),
-    ]).then(([obligaciones, catalogo]) => {
+      sel.proveedor_id && listarCuentasBancariasProveedor
+        ? listarCuentasBancariasProveedor(sel.proveedor_id)
+        : Promise.resolve([]),
+    ]).then(([obligaciones, catalogo, cuentasProveedor]) => {
       if (cancelado) return;
       setDetraccionesCompra(obligaciones || []);
       setSpotCatalogoCompra(catalogo || []);
+      setCuentasProveedorPago(cuentasProveedor || []);
     }).catch(error => {
       if (cancelado) return;
       setDetraccionesCompra([]);
       setSpotCatalogoCompra([]);
+      setCuentasProveedorPago([]);
       setErrorSpotCompra(error?.message || 'No se pudo cargar la información SPOT.');
     });
     return () => { cancelado = true; };
@@ -8722,6 +8730,15 @@ function CxP() {
 
   const detraccionCompraActiva = detraccionesCompra.find(d => d.estado !== 'anulada') || null;
   const detraccionCompraAnulada = !detraccionCompraActiva && detraccionesCompra.find(d => d.estado === 'anulada');
+  const detraccionCompraPendiente = detraccionCompraActiva?.estado === 'pendiente' ? detraccionCompraActiva : null;
+  const cuentasOrigenSpotCompra = useMemo(
+    () => cuentasBancariasActivasCxP.filter(cuenta => cuenta.moneda === 'PEN'),
+    [cuentasBancariasActivasCxP],
+  );
+  const cuentasProveedorBnActivas = useMemo(
+    () => cuentasProveedorPago.filter(cuenta => cuenta.estado === 'activo' && cuenta.moneda === 'PEN' && cuenta.es_cuenta_banco_nacion === true),
+    [cuentasProveedorPago],
+  );
   const puedeEditarSpotCompra = Boolean(
     role?.permisos?.todo
       || role?.permisos?.editar === true
@@ -8753,6 +8770,31 @@ function CxP() {
     setErrorSpotCompra('');
     setSpotCompraAbierto(true);
   };
+
+  useEffect(() => {
+    if (!sel?.id || !detraccionCompraPendiente) return;
+    const saldoActual = saldoDe(sel);
+    const montoDetraccion = sel.moneda === 'USD'
+      ? Number(detraccionCompraPendiente.monto_detraccion_origen || 0)
+      : Number(detraccionCompraPendiente.monto_detraccion_soles || 0);
+    const neto = Math.round((saldoActual - montoDetraccion) * 100) / 100;
+    const cuentaProveedorPreseleccionada = cuentasProveedorBnActivas.length === 1
+      ? cuentasProveedorBnActivas[0].id
+      : cuentasProveedorBnActivas.some(cuenta => cuenta.id === formPago.proveedor_cuenta_id)
+        ? formPago.proveedor_cuenta_id
+        : '';
+    const cuentaOrigenPreseleccionada = cuentasOrigenSpotCompra.some(cuenta => cuenta.id === formPago.cuenta_origen_spot_id)
+      ? formPago.cuenta_origen_spot_id
+      : cuentasOrigenSpotCompra[0]?.id || '';
+    setFormPago(prev => ({
+      ...prev,
+      monto: String(Math.max(0, neto)),
+      con_deposito_spot: true,
+      cuenta_origen_spot_id: cuentaOrigenPreseleccionada,
+      proveedor_cuenta_id: cuentaProveedorPreseleccionada,
+      fecha_constancia: prev.fecha_constancia || today,
+    }));
+  }, [sel?.id, detraccionCompraPendiente?.id, detraccionCompraPendiente?.monto_detraccion_origen, detraccionCompraPendiente?.monto_detraccion_soles, cuentasProveedorBnActivas, cuentasOrigenSpotCompra, today]);
   const guardarSpotCompra = async event => {
     event.preventDefault();
     if (!sel || guardandoSpotCompra) return;
@@ -8858,6 +8900,20 @@ function CxP() {
     e.preventDefault();
     const monto = Number(formPago.monto || 0);
     if (!sel || monto <= 0) return;
+    if (detraccionCompraPendiente) {
+      const montoDetraccion = sel.moneda === 'USD'
+        ? Number(detraccionCompraPendiente.monto_detraccion_origen || 0)
+        : Number(detraccionCompraPendiente.monto_detraccion_soles || 0);
+      const neto = Math.round((saldoDe(sel) - montoDetraccion) * 100) / 100;
+      if (Math.abs(monto - neto) > 0.005) {
+        addNotificacion(`Con SPOT debes pagar exactamente el neto de ${moneyCurrency(neto, sel.moneda)}.`);
+        return;
+      }
+      if (!formPago.cuenta_bancaria_id || !formPago.cuenta_origen_spot_id || !formPago.proveedor_cuenta_id || !String(formPago.numero_constancia || '').trim() || !formPago.fecha_constancia) {
+        addNotificacion('Completa las cuentas origen y la constancia del depósito SPOT.');
+        return;
+      }
+    }
     if (formPago.metodo_pago === METODO_TRANSFERENCIA && !formPago.cuenta_bancaria_id) {
       addNotificacion('Seleccione la cuenta bancaria desde la que se realizó el pago.');
       return;
@@ -8871,7 +8927,7 @@ function CxP() {
     }
     setGuardando(true);
     try {
-      await registrarPagoCxP(sel.id, monto, { ...formPago, archivo_adjunto: archivoPago });
+      await registrarPagoCxP(sel.id, monto, { ...formPago, con_deposito_spot: Boolean(detraccionCompraPendiente), archivo_adjunto: archivoPago });
       setSel(null);
       setArchivoPago(null);
       setArchivoPagoError('');
@@ -9641,8 +9697,8 @@ function CxP() {
                   <>
                     <div className="grid-2" style={{gap:12}}>
                       <div className="input-group">
-                        <label>Monto pagado</label>
-                        <input className="input" type="number" min="0" step="0.01" value={formPago.monto} onChange={e => setFormPago(v => ({...v,monto:e.target.value}))}/>
+                        <label>{detraccionCompraPendiente ? 'Monto neto a pagar al proveedor' : 'Monto pagado'}</label>
+                        <input className="input" type="number" min="0" step="0.01" value={formPago.monto} readOnly={Boolean(detraccionCompraPendiente)} onChange={e => setFormPago(v => ({...v,monto:e.target.value}))}/>
                       </div>
                       <div className="input-group">
                         <label>Fecha</label>
@@ -9667,9 +9723,9 @@ function CxP() {
                           {METODOS_PAGO.map(metodo => <option key={metodo} value={metodo}>{metodo}</option>)}
                         </select>
                       </div>
-                      {formPago.metodo_pago === METODO_TRANSFERENCIA && (
+                      {(formPago.metodo_pago === METODO_TRANSFERENCIA || detraccionCompraPendiente) && (
                         <div className="input-group">
-                          <label>Cuenta bancaria <span style={{color:'var(--danger)'}}>*</span></label>
+                          <label>{detraccionCompraPendiente ? 'Cuenta origen del pago neto' : 'Cuenta bancaria'} <span style={{color:'var(--danger)'}}>*</span></label>
                           <select
                             className="input"
                             value={formPago.cuenta_bancaria_id}
@@ -9694,6 +9750,33 @@ function CxP() {
                             <span className="text-muted" style={{fontSize:11}}>No hay cuentas bancarias activas para la sociedad seleccionada.</span>
                           )}
                         </div>
+                      )}
+                      {detraccionCompraPendiente && (
+                        <>
+                          <div className="input-group">
+                            <label>Cuenta origen del depósito SPOT <span style={{color: 'red'}}>*</span></label>
+                            <select className="input" value={formPago.cuenta_origen_spot_id} onChange={e => setFormPago(v => ({...v,cuenta_origen_spot_id:e.target.value}))} required>
+                              <option value="">Seleccionar cuenta PEN...</option>
+                              {cuentasOrigenSpotCompra.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.alias || cuenta.nombre} · {cuenta.banco} · PEN</option>)}
+                            </select>
+                          </div>
+                          <div className="input-group">
+                            <label>Cuenta BN del proveedor <span style={{color: 'red'}}>*</span></label>
+                            <select className="input" value={formPago.proveedor_cuenta_id} onChange={e => setFormPago(v => ({...v,proveedor_cuenta_id:e.target.value}))} required>
+                              <option value="">Seleccionar cuenta BN...</option>
+                              {cuentasProveedorBnActivas.map(cuenta => <option key={cuenta.id} value={cuenta.id}>{cuenta.alias || cuenta.banco} · {cuenta.numero_cuenta || cuenta.cci || 'Cuenta identificada'}</option>)}
+                            </select>
+                            {cuentasProveedorBnActivas.length === 0 && <span className="text-muted" style={{fontSize:11}}>El proveedor no tiene una cuenta BN activa registrada.</span>}
+                          </div>
+                          <div className="input-group">
+                            <label>Número de constancia SPOT <span style={{color: 'red'}}>*</span></label>
+                            <input className="input" value={formPago.numero_constancia} onChange={e => setFormPago(v => ({...v,numero_constancia:e.target.value}))} required placeholder="Constancia de depósito" />
+                          </div>
+                          <div className="input-group">
+                            <label>Fecha de constancia <span style={{color: 'red'}}>*</span></label>
+                            <input className="input" type="date" value={formPago.fecha_constancia} onChange={e => setFormPago(v => ({...v,fecha_constancia:e.target.value}))} required />
+                          </div>
+                        </>
                       )}
                       <div className="input-group">
                         <label>Referencia</label>
