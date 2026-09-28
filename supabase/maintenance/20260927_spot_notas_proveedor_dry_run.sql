@@ -93,75 +93,89 @@ begin
   v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-001','fecha_nota','2026-09-24','monto',20,'moneda','PEN','motivo','Devolucion parcial','archivo_url','https://example.invalid/b3c-nc-001.pdf'));
   select saldo into v_saldo from public.cxp where id = v_cxp;
   select count(*) into v_count from public.cxp_notas_proveedor where cxp_origen_id = v_cxp;
-  raise notice 'B3C_CASO_1|cxp=%|monto_total=%|saldo=%|monto_pagado=%|monto_nc=%|relaciones=%|estado=%', v_cxp, v_r->'cxp'->>'monto_total', v_saldo, v_r->'cxp'->>'monto_pagado', v_r->'relacion'->>'monto_aplicado', v_count, v_r->'cxp'->>'estado';
+  raise notice 'B3C_CASO_1|nc_parcial|total=%|saldo=%|pagado=%|nc=%|filas=%|estado=%', v_r->'cxp'->>'monto_total', v_saldo, v_r->'cxp'->>'monto_pagado', v_r->'relacion'->>'monto_aplicado', v_count, v_r->'cxp'->>'estado';
 
   -- 2. NC total: anulada con prefijo, usuario y fecha.
   v_cxp := pg_temp.b3c_cxp('nc_total', 80);
   v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-002','fecha_nota','2026-09-24','monto',80,'moneda','PEN','motivo','Devolucion total'));
   select estado, saldo into v_estado, v_saldo from public.cxp where id = v_cxp;
-  raise notice 'B3C_CASO_2|cxp=%|estado=%|saldo=%|motivo=%|anulado_por=%|anulado_en=%', v_cxp, v_estado, v_saldo, (select motivo_anulacion from public.cxp where id=v_cxp), (select anulado_por from public.cxp where id=v_cxp), (select anulado_en from public.cxp where id=v_cxp);
+  raise notice 'B3C_CASO_2|nc_total|estado=%|saldo=%|motivo=%|usuario=%|fecha=%', v_estado, v_saldo, left((select motivo_anulacion from public.cxp where id=v_cxp), 45), left((select anulado_por from public.cxp where id=v_cxp), 8), to_char((select anulado_en from public.cxp where id=v_cxp), 'YYYY-MM-DD');
 
   -- 3. Monto cero rechazado.
   v_cxp := pg_temp.b3c_cxp('monto_cero', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-003','monto',0,'motivo','Invalida')); exception when others then v_error := sqlerrm; end;
   if v_error is null then raise exception 'B3C_CASO_3|no_rechazada'; end if;
-  raise notice 'B3C_CASO_3|cxp=%|monto=0|saldo=%|filas_relacion=%|rechazado=%', v_cxp, (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), v_error;
+  raise notice 'B3C_CASO_3|monto_cero|saldo=%|filas=%|rechazado=%', (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 4. NC mayor al saldo rechazada sin saldo negativo.
   v_cxp := pg_temp.b3c_cxp('excede_saldo', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-004','monto',100.01,'motivo','Exceso')); exception when others then v_error := sqlerrm; end;
   select saldo into v_saldo from public.cxp where id=v_cxp;
   if v_error is null or v_saldo < 0 then raise exception 'B3C_CASO_4|estado_invalido'; end if;
-  raise notice 'B3C_CASO_4|monto_excede_saldo|saldo=%|rechazado=%', v_saldo, v_error;
+  raise notice 'B3C_CASO_4|excede_saldo|monto=100.01|saldo=%|filas=%|rechazado=%', v_saldo, (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 5. CxP pagada rechazada.
   v_cxp := pg_temp.b3c_cxp('pagada', 100, 'PEN', 'pagada'); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-005','monto',10,'motivo','Pagada')); exception when others then v_error := sqlerrm; end;
   if v_error is null then raise exception 'B3C_CASO_5|pagada_aceptada'; end if;
-  raise notice 'B3C_CASO_5|cxp=%|estado=%|monto=%|saldo=%|rechazada=%', v_cxp, (select estado from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), v_error;
+  raise notice 'B3C_CASO_5|pagada|estado=%|monto=%|saldo=%|filas=%|rechazada=%', (select estado from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 6. CxP con pago parcial rechazado.
   v_cxp := pg_temp.b3c_cxp('parcial', 100, 'PEN', 'pago_parcial'); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-006','monto',10,'motivo','Tiene pago')); exception when others then v_error := sqlerrm; end;
   if v_error is null then raise exception 'B3C_CASO_6|parcial_aceptada'; end if;
-  raise notice 'B3C_CASO_6|cxp=%|estado=%|monto_pagado=%|saldo=%|rechazada=%', v_cxp, (select estado from public.cxp where id=v_cxp), (select monto_pagado from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), v_error;
+  raise notice 'B3C_CASO_6|pago_parcial|estado=%|pagado=%|saldo=%|filas=%|rechazada=%', (select estado from public.cxp where id=v_cxp), (select monto_pagado from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 7. CxP con deposito SPOT rechazado.
   v_cxp := pg_temp.b3c_cxp('depositada', 1000); v_r := public.registrar_detraccion_compra(v_cxp, jsonb_build_object('codigo_spot',pg_temp.b3c_ctx('catalogo')));
   v_d := (v_r->'detraccion'->>'id')::uuid; perform pg_temp.b3c_marcar_depositada(v_d); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-007','monto',10,'motivo','Depositada')); exception when others then v_error := sqlerrm; end;
   if v_error is null then raise exception 'B3C_CASO_7|depositada_aceptada'; end if;
-  raise notice 'B3C_CASO_7|depositada=rechazada|detraccion_estado=%|error=%', (select estado from public.detracciones where id=v_d), v_error;
+  raise notice 'B3C_CASO_7|depositada|estado=%|filas=%|rechazada=%', (select estado from public.detracciones where id=v_d), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 8. Idempotencia por numero/tipo/origen.
   v_cxp := pg_temp.b3c_cxp('duplicada', 100); perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-008','monto',10,'motivo','Primera')); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-008','monto',10,'motivo','Reintento')); exception when others then v_error := sqlerrm; end;
-  raise notice 'B3C_CASO_8|duplicada=rechazada|relaciones=%|error=%', (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), v_error;
+  raise notice 'B3C_CASO_8|duplicada|filas=%|rechazada=%', (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 9. Tipo de nota invalido.
   v_cxp := pg_temp.b3c_cxp('tipo_invalido', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_otra','numero_nota','X','monto',10,'motivo','Invalida')); exception when others then v_error := sqlerrm; end;
-  raise notice 'B3C_CASO_9|cxp=%|tipo=nota_otra|monto=10|filas_relacion=%|rechazado=%', v_cxp, (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), v_error;
+  raise notice 'B3C_CASO_9|tipo_invalido|monto=10|filas=%|rechazado=%', (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
   -- 10. Datos obligatorios.
   v_cxp := pg_temp.b3c_cxp('datos', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','monto',10,'motivo','')); exception when others then v_error := sqlerrm; end;
-  raise notice 'B3C_CASO_10|cxp=%|monto=10|estado=%|filas_relacion=%|rechazado=%', v_cxp, (select estado from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), v_error;
+  raise notice 'B3C_CASO_10|obligatorios|monto=10|estado=%|filas=%|rechazado=%', (select estado from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), left(v_error, 60);
 
-  -- 11. ND positiva sin CxP negativa.
-  v_cxp := pg_temp.b3c_cxp('nd', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011','monto',25,'moneda','PEN','motivo','Aumento de valor'));
+  -- 11a. ND bajo el umbral: se registra sin obligacion SPOT.
+  select c.monto_minimo into v_min from public.spot_catalogo c
+   where c.codigo=pg_temp.b3c_ctx('catalogo') and c.estado='activo'
+     and c.vigencia_desde <= date '2026-09-24'
+     and (c.vigencia_hasta is null or c.vigencia_hasta >= date '2026-09-24')
+   order by c.vigencia_desde desc limit 1;
+  v_cxp := pg_temp.b3c_cxp('nd_bajo', 100);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011A','monto',25,'moneda','PEN','motivo','ND bajo umbral','codigo_spot',pg_temp.b3c_ctx('catalogo')));
   v_nd := v_r->'cxp_nota'->>'id';
-  raise notice 'B3C_CASO_11|cxp_original=%|cxp_nd=%|monto_nd=%|saldo_nd=%|estado_nd=%|relacion_tipo=%', v_cxp, v_nd, (select monto_total from public.cxp where id=v_nd), (select saldo from public.cxp where id=v_nd), (select estado from public.cxp where id=v_nd), (select tipo_nota from public.cxp_notas_proveedor where cxp_nota_id=v_nd);
+  if v_r->>'spot_creada' <> 'false' or (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra') <> 0 then raise exception 'B3C_CASO_11A|spot_bajo_umbral_invalido'; end if;
+  raise notice 'B3C_CASO_11A|nd_bajo|monto=%|base=%|spot=%|motivo=%|filas=%', (select monto_total from public.cxp where id=v_nd), 25, v_r->>'spot_creada', v_r->>'spot_motivo', (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra');
+
+  -- 11b. ND sobre el umbral: base SPOT igual al importe de la ND.
+  v_cxp := pg_temp.b3c_cxp('nd_alto', 100);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011B','monto',coalesce(v_min,700)+100,'moneda','PEN','motivo','ND sobre umbral','codigo_spot',pg_temp.b3c_ctx('catalogo')));
+  v_nd := v_r->'cxp_nota'->>'id';
+  if v_r->>'spot_creada' <> 'true' or (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra') <> (select monto_total from public.cxp where id=v_nd) then raise exception 'B3C_CASO_11B|base_nd_invalida'; end if;
+  raise notice 'B3C_CASO_11B|nd_alto|monto=%|base=%|spot=%|motivo=%|filas=%', (select monto_total from public.cxp where id=v_nd), (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra'), v_r->>'spot_creada', v_r->>'spot_motivo', (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra');
 
   -- 12. ND con obligacion SPOT propia.
-  v_cxp := pg_temp.b3c_cxp('nd_spot', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-012','monto',100,'moneda','PEN','motivo','ND con SPOT','codigo_spot',pg_temp.b3c_ctx('catalogo')));
+  v_cxp := pg_temp.b3c_cxp('nd_spot', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-012','monto',coalesce(v_min,700)+100,'moneda','PEN','motivo','ND con SPOT','codigo_spot',pg_temp.b3c_ctx('catalogo')));
   v_nd := v_r->'cxp_nota'->>'id';
-  raise notice 'B3C_CASO_12|cxp_nd=%|obligaciones=%|monto_nd=%|detraccion_estado=%', v_nd, (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra'), (select monto_total from public.cxp where id=v_nd), (select estado from public.detracciones where cxp_id=v_nd and direccion='compra');
+  raise notice 'B3C_CASO_12|nd_spot|monto=%|base=%|filas=%|estado=%', (select monto_total from public.cxp where id=v_nd), (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra'), (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra'), (select estado from public.detracciones where cxp_id=v_nd and direccion='compra');
 
   -- 13. USD: conserva tipo de cambio guardado y recalcula NC pendiente.
   v_cxp := pg_temp.b3c_cxp('usd', 1000, 'USD'); v_r := public.registrar_detraccion_compra(v_cxp, jsonb_build_object('codigo_spot',pg_temp.b3c_ctx('catalogo'),'tipo_cambio_detraccion',3.45,'tipo_cambio_fuente','manual')); v_d := (v_r->'detraccion'->>'id')::uuid;
   v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-013','monto',100,'moneda','USD','motivo','Ajuste USD'));
-  raise notice 'B3C_CASO_13|cxp=%|tc_guardado=%|base_soles=%|monto_origen=%|monto_soles=%|estado=%', v_cxp, (select tipo_cambio from public.detracciones where id=v_d), (select base_soles from public.detracciones where id=v_d), (select monto_detraccion_origen from public.detracciones where id=v_d), (select monto_detraccion_soles from public.detracciones where id=v_d), (select estado from public.detracciones where id=v_d);
+  raise notice 'B3C_CASO_13|usd_nc|tc=%|base=%|origen=%|soles=%|estado=%', (select tipo_cambio from public.detracciones where id=v_d), (select base_soles from public.detracciones where id=v_d), (select monto_detraccion_origen from public.detracciones where id=v_d), (select monto_detraccion_soles from public.detracciones where id=v_d), (select estado from public.detracciones where id=v_d);
 
   -- 14. NC bajo umbral anula obligacion sin saldo negativo.
   select c.monto_minimo into v_min from public.spot_catalogo c where c.codigo=pg_temp.b3c_ctx('catalogo') and c.estado='activo' order by c.vigencia_desde desc limit 1;
@@ -169,30 +183,31 @@ begin
   v_nc_umbral := v_total_umbral - greatest(0, coalesce(v_min, 0) - 1);
   v_cxp := pg_temp.b3c_cxp('umbral', v_total_umbral); v_r := public.registrar_detraccion_compra(v_cxp, jsonb_build_object('codigo_spot',pg_temp.b3c_ctx('catalogo'))); v_d := (v_r->'detraccion'->>'id')::uuid;
   v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-014','monto',v_nc_umbral,'motivo','Bajo umbral'));
-  raise notice 'B3C_CASO_14|cxp_saldo=%|detraccion_estado=%|base_soles=%|monto_soles=%', (select saldo from public.cxp where id=v_cxp), (select estado from public.detracciones where id=v_d), (select base_soles from public.detracciones where id=v_d), (select monto_detraccion_soles from public.detracciones where id=v_d);
+  raise notice 'B3C_CASO_14|bajo_umbral|saldo=%|estado=%|base=%|soles=%', (select saldo from public.cxp where id=v_cxp), (select estado from public.detracciones where id=v_d), (select base_soles from public.detracciones where id=v_d), (select monto_detraccion_soles from public.detracciones where id=v_d);
 
   -- 15. Fallo a mitad: ND SPOT invalida no deja CxP ni relacion huerfana; luego NC valida conserva archivo.
   v_cxp := pg_temp.b3c_cxp('atomicidad', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-015-FAIL','monto',10,'motivo','Fallo atomico','codigo_spot','B3C-NO-EXISTE')); exception when others then v_error := sqlerrm; end;
-  v_cxp2 := pg_temp.b3c_cxp('relacion', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp2,'tipo_nota','nota_credito','numero_nota','NC-B3C-015','monto',10,'motivo','Archivo','archivo_url','https://example.invalid/nc.pdf')); raise notice 'B3C_CASO_15|error_atomico=%|cxp_hija_huerfana=%|cxp_nota_id=%|numero=%|monto_aplicado=%|archivo=%|filas=%', v_error, (select count(*) from public.cxp where factura_numero='ND-B3C-015-FAIL' and proveedor_id=pg_temp.b3c_ctx('proveedor_id')), v_r->'relacion'->>'cxp_nota_id', v_r->'relacion'->>'numero_nota', v_r->'relacion'->>'monto_aplicado', v_r->'relacion'->>'archivo_url', (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp2);
+  v_cxp2 := pg_temp.b3c_cxp('relacion', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp2,'tipo_nota','nota_credito','numero_nota','NC-B3C-015','monto',10,'motivo','Archivo','archivo_url','https://example.invalid/nc.pdf')); raise notice 'B3C_CASO_15|atomicidad|error=%|huerfanas=%|archivo=%|filas=%', left(v_error, 60), (select count(*) from public.cxp where factura_numero='ND-B3C-015-FAIL' and proveedor_id=pg_temp.b3c_ctx('proveedor_id')), (v_r->'relacion'->>'archivo_url' is not null), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp2);
 
   -- 16. Ficha: consulta de relacion devuelve CxP original anulada.
   select r.cxp_origen_id into v_cxp from public.cxp_notas_proveedor r where r.numero_nota='NC-B3C-002';
-  raise notice 'B3C_CASO_16|consulta_relacion_cxp=%|estado=%|motivo=%|usuario=%|fecha=%', v_cxp, (select estado from public.cxp where id=v_cxp), (select motivo_anulacion from public.cxp where id=v_cxp), (select anulado_por from public.cxp where id=v_cxp), (select anulado_en from public.cxp where id=v_cxp);
+  raise notice 'B3C_CASO_16|ficha_anulada|estado=%|motivo=%|usuario=%|fecha=%', (select estado from public.cxp where id=v_cxp), left((select motivo_anulacion from public.cxp where id=v_cxp), 45), left((select anulado_por from public.cxp where id=v_cxp), 8), to_char((select anulado_en from public.cxp where id=v_cxp), 'YYYY-MM-DD');
 
   -- 17. OC: saldo neto despues de NC parcial y total.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_cxp := pg_temp.b3c_cxp('oc', 100, 'PEN', 'por_pagar', pg_temp.b3c_ctx('oc_id')); v_antes := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id'));
   perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-017A','monto',20,'motivo','NC parcial OC'));
   v_despues := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id'));
-  raise notice 'B3C_CASO_17A|oc=%|saldo_antes_cxp=%|saldo_despues_nc_parcial=%|cxp_saldo=%|cxp_total=%', pg_temp.b3c_ctx('oc_id'), v_antes, v_despues, (select saldo from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp);
+  raise notice 'B3C_CASO_17A|oc|antes_nc=%|despues_nc=%|cxp_saldo=%|cxp_total=%', v_antes, v_despues, (select saldo from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp);
+  v_antes := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id'));
   perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-017B','monto',80,'motivo','NC total OC'));
-  raise notice 'B3C_CASO_17B|oc=%|saldo_despues_nc_total=%|cxp_estado=%|cxp_saldo=%|cxp_total=%', pg_temp.b3c_ctx('oc_id'), pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')), (select estado from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp);
+  raise notice 'B3C_CASO_17B|oc|antes_nc=%|despues_nc=%|estado=%|saldo=%|total=%', v_antes, pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')), (select estado from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp);
 
   -- 18. Verificacion de no sobrefacturacion de OC.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_error := null;
   begin perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_b3c_exceso','empresa_id',pg_temp.b3c_ctx('empresa_id'),'sociedad_id',pg_temp.b3c_ctx('sociedad_id'),'proveedor_id',pg_temp.b3c_ctx('proveedor_id'),'orden_compra_id',pg_temp.b3c_ctx('oc_id'),'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','monto_total',v_oc_saldo+0.01,'saldo',v_oc_saldo+0.01,'monto_pagado',0,'tipo_beneficiario','proveedor','tipo_comprobante','Factura'), 'cxp_manual', 'crear'); exception when others then v_error := sqlerrm; end;
   if v_error is null then raise exception 'B3C_CASO_18|sobrefacturacion_aceptada'; end if;
-  raise notice 'B3C_CASO_18|oc_saldo_disponible=%|sobrefacturacion_rechazada=%', v_oc_saldo, v_error;
+  raise notice 'B3C_CASO_18|oc_sobrefactura|disponible=%|rechazada=%', v_oc_saldo, left(v_error, 60);
 end;
 $test$;
 

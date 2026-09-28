@@ -138,6 +138,13 @@ declare
   v_aplica boolean;
   v_cxp_nota_id text;
   v_tipo_cambio numeric;
+  v_spot_creada boolean := false;
+  v_spot_motivo text := 'sin_codigo';
+  v_nd_base_soles numeric;
+  v_nd_monto_soles numeric;
+  v_nd_monto_origen numeric;
+  v_nd_tipo_cambio numeric;
+  v_nd_tipo_cambio_fuente text;
 begin
   if v_origen_id is null or v_tipo not in ('nota_credito','nota_debito')
      or v_numero is null or v_motivo is null then
@@ -219,6 +226,53 @@ begin
     end if;
   end if;
 
+  if v_tipo = 'nota_debito' and (p_payload ? 'codigo_spot' or p_payload ? 'spot_catalogo_id') then
+    if v_spot_id is not null then
+      select c.* into v_spot
+      from public.spot_catalogo c
+      where c.id = v_spot_id and c.estado = 'activo'
+        and c.vigencia_desde <= v_fecha
+        and (c.vigencia_hasta is null or c.vigencia_hasta >= v_fecha);
+    else
+      select c.* into v_spot
+      from public.spot_catalogo c
+      where c.codigo = v_codigo and c.estado = 'activo'
+        and c.vigencia_desde <= v_fecha
+        and (c.vigencia_hasta is null or c.vigencia_hasta >= v_fecha)
+      order by c.vigencia_desde desc limit 1;
+    end if;
+    if not found then
+      raise exception 'El codigo SPOT % no tiene una version vigente para la fecha de la nota.', v_codigo;
+    end if;
+    if v_porcentaje_payload is not null
+       and abs(v_porcentaje_payload - v_spot.porcentaje) > 0.0001 then
+      raise exception 'El porcentaje informado no coincide con el porcentaje vigente del catalogo.';
+    end if;
+    if v_moneda = 'USD' then
+      v_nd_tipo_cambio := nullif(btrim(coalesce(p_payload ->> 'tipo_cambio_detraccion', '')), '')::numeric;
+      v_nd_tipo_cambio_fuente := nullif(lower(btrim(coalesce(p_payload ->> 'tipo_cambio_fuente', ''))), '');
+      if v_nd_tipo_cambio is null or v_nd_tipo_cambio <= 0
+         or v_nd_tipo_cambio_fuente not in ('manual', 'referencial') then
+        raise exception 'Para una ND USD con SPOT debes informar tipo de cambio y fuente validos.';
+      end if;
+      v_nd_base_soles := round(v_monto * v_nd_tipo_cambio, 2);
+      v_nd_monto_origen := round(v_monto * v_spot.porcentaje / 100, 2);
+    else
+      v_nd_base_soles := round(v_monto, 2);
+      v_nd_tipo_cambio := null;
+      v_nd_tipo_cambio_fuente := null;
+      v_nd_monto_origen := round(v_nd_base_soles * v_spot.porcentaje / 100, 0);
+    end if;
+    v_nd_monto_soles := round(v_nd_base_soles * v_spot.porcentaje / 100, 0);
+    if not ((v_spot.umbral_operador = '>' and v_nd_base_soles > v_spot.monto_minimo)
+       or (v_spot.umbral_operador = '>=' and v_nd_base_soles >= v_spot.monto_minimo)) then
+      v_spot_motivo := 'bajo_umbral';
+    else
+      v_spot_creada := true;
+      v_spot_motivo := 'creada';
+    end if;
+  end if;
+
   if v_tipo = 'nota_debito' then
     v_cxp_nota_id := 'cxp_nd_' || substr(md5(v_empresa_id || '|' || v_numero || '|' || clock_timestamp()::text), 1, 24);
     insert into public.cxp (
@@ -255,7 +309,7 @@ begin
     where id = v_cxp.id;
   end if;
 
-  if v_tipo = 'nota_debito' and (p_payload ? 'codigo_spot' or p_payload ? 'spot_catalogo_id') then
+  if v_tipo = 'nota_debito' and v_spot_creada then
     insert into public.detracciones (
       direccion, cxp_id, empresa_id, sociedad_id, spot_catalogo_id, codigo_spot, porcentaje,
       base_soles, monto_detraccion_soles, monto_detraccion_origen, moneda_origen,
@@ -266,7 +320,7 @@ begin
       (calculo ->> 'monto_detraccion_origen')::numeric, calculo ->> 'moneda_origen',
       nullif(calculo ->> 'tipo_cambio', '')::numeric, nullif(calculo ->> 'tipo_cambio_fuente', ''),
       'registro_compra', 'pendiente'
-    from (select public.calcular_detraccion_compra(v_cxp_nota.id, p_payload) calculo) x;
+    from (select public.calcular_detraccion_compra(v_cxp_nota_id, p_payload) calculo) x;
   end if;
 
   if v_tipo = 'nota_credito' and nullif(btrim(p_payload ->> 'devolucion_id'), '') is not null then
@@ -276,7 +330,13 @@ begin
   end if;
 
   select * into v_cxp from public.cxp where id = v_cxp.id;
-  return jsonb_build_object('cxp', to_jsonb(v_cxp), 'cxp_nota', case when v_cxp_nota_id is null then null else to_jsonb(v_cxp_nota) end, 'relacion', to_jsonb(v_rel));
+  return jsonb_build_object(
+    'cxp', to_jsonb(v_cxp),
+    'cxp_nota', case when v_cxp_nota_id is null then null else to_jsonb(v_cxp_nota) end,
+    'relacion', to_jsonb(v_rel),
+    'spot_creada', v_spot_creada,
+    'spot_motivo', v_spot_motivo
+  );
 end;
 $function$;
 
