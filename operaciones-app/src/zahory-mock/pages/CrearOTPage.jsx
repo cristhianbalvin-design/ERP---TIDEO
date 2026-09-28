@@ -98,6 +98,19 @@ const inferUnidadMinera = (contrato) => {
   return contrato.descripcion?.split('–').pop()?.trim() || contrato.cliente || '';
 };
 
+const textoMinimoGarantizado = (contrato) => {
+  if (contrato?.minimo_facturable == null) return '';
+  const valorYUnidad = [
+    Number(contrato.minimo_facturable).toLocaleString('es-PE'),
+    contrato.unidad_minimo_facturable,
+  ].filter(parte => parte !== null && parte !== undefined && String(parte).trim() !== '');
+  const periodicidad = contrato.periodicidad_minimo_facturable;
+  const sufijoPeriodicidad = periodicidad !== null && periodicidad !== undefined && String(periodicidad).trim() !== ''
+    ? ` / ${periodicidad}`
+    : '';
+  return `Mínimo garantizado: ${valorYUnidad.join(' ')}${sufijoPeriodicidad}`;
+};
+
 const hasValidSegment = (segs) =>
   segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.tipo_servicio_interno_id));
 
@@ -801,6 +814,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [unidadesMinerasReales, setUnidadesMinerasReales] = useState([]);
   const [equiposInternosReales, setEquiposInternosReales] = useState([]);
   const [equiposClienteReales, setEquiposClienteReales] = useState([]);
+  const [equiposContratoReales, setEquiposContratoReales] = useState([]);
   const [tecnicosReales, setTecnicosReales] = useState([]);
   const [cuadrillasReales, setCuadrillasReales] = useState([]);
   const [tiposServicioInterno, setTiposServicioInterno] = useState([]);
@@ -811,6 +825,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [cargandoUnidadesMineras, setCargandoUnidadesMineras] = useState(false);
   const [cargandoEquiposInternos, setCargandoEquiposInternos] = useState(false);
   const [cargandoEquiposCliente, setCargandoEquiposCliente] = useState(false);
+  const [cargandoEquiposContrato, setCargandoEquiposContrato] = useState(false);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
   const [cargandoCuadrillas, setCargandoCuadrillas] = useState(false);
   const [cargandoTiposServicio, setCargandoTiposServicio] = useState(false);
@@ -821,6 +836,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorUnidadesMineras, setErrorUnidadesMineras] = useState(null);
   const [errorEquiposInternos, setErrorEquiposInternos] = useState(null);
   const [errorEquiposCliente, setErrorEquiposCliente] = useState(null);
+  const [errorEquiposContrato, setErrorEquiposContrato] = useState(null);
   const [errorTecnicos, setErrorTecnicos] = useState(null);
   const [errorCuadrillas, setErrorCuadrillas] = useState(null);
   const [errorTiposServicio, setErrorTiposServicio] = useState(null);
@@ -1298,7 +1314,7 @@ export const CrearOTPage = ({ onNav }) => {
         .order('numero')
       : getSupabaseClient()
         .from('contratos_alquiler')
-        .select('id,numero,cuenta_id,sociedad_id,estado,fecha_inicio,fecha_fin,moneda,unidad_minera,objeto,centro_costo_id,centro_beneficio_id,meta_dmr')
+        .select('id,numero,cuenta_id,sociedad_id,estado,fecha_inicio,fecha_fin,moneda,unidad_minera,objeto,minimo_facturable,unidad_minimo_facturable,periodicidad_minimo_facturable,centro_costo_id,centro_beneficio_id,meta_dmr')
         .eq('empresa_id', sesionOperativa.empresaId)
         .eq('cuenta_id', form.clienteId)
         .eq('estado', 'vigente')
@@ -1352,6 +1368,74 @@ export const CrearOTPage = ({ onNav }) => {
     if (objetoCostoTipo === 'equipo_interno') return null;
     return objetosCostoFiltrados.find(c => c.id === form.contratoId);
   }, [form.contratoId, objetoCostoTipo, objetosCostoFiltrados]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (
+      objetoCostoTipo !== 'contrato'
+      || !contrato?.id
+      || !sesionOperativa.empresaId
+      || !sesionOperativa.permiteEscritura
+    ) {
+      setEquiposContratoReales([]);
+      setCargandoEquiposContrato(false);
+      setErrorEquiposContrato(null);
+      return () => { vigente = false; };
+    }
+
+    const cargarEquiposContrato = async () => {
+      setCargandoEquiposContrato(true);
+      setErrorEquiposContrato(null);
+      try {
+        const supabase = getSupabaseClient();
+        const { data: relaciones, error: relacionesError } = await supabase
+          .from('contratos_alquiler_equipos')
+          .select('equipo_id,tarifa_hora_override')
+          .eq('contrato_alquiler_id', contrato.id);
+        if (relacionesError) throw relacionesError;
+
+        const equipoIds = [...new Set((relaciones || []).map(relacion => relacion.equipo_id).filter(Boolean))];
+        if (!equipoIds.length) {
+          if (vigente) setEquiposContratoReales([]);
+          return;
+        }
+
+        const { data: activos, error: activosError } = await supabase
+          .from('activos')
+          .select('id,codigo,nombre,marca,modelo,estado,horometro_actual')
+          .eq('empresa_id', sesionOperativa.empresaId)
+          .in('id', equipoIds)
+          .neq('estado', 'dado_baja');
+        if (activosError) throw activosError;
+        if (!vigente) return;
+
+        const activosPorId = new Map((activos || []).map(activo => [activo.id, activo]));
+        setEquiposContratoReales((relaciones || [])
+          .map(relacion => {
+            const activo = activosPorId.get(relacion.equipo_id);
+            return activo
+              ? { ...activo, tarifa_hora_override: relacion.tarifa_hora_override }
+              : null;
+          })
+          .filter(Boolean));
+      } catch (error) {
+        if (vigente) {
+          setEquiposContratoReales([]);
+          setErrorEquiposContrato(error.message);
+        }
+      } finally {
+        if (vigente) setCargandoEquiposContrato(false);
+      }
+    };
+
+    cargarEquiposContrato();
+    return () => { vigente = false; };
+  }, [
+    contrato?.id,
+    objetoCostoTipo,
+    sesionOperativa.empresaId,
+    sesionOperativa.permiteEscritura,
+  ]);
   const etiquetaCentroBeneficioOs = useMemo(() => {
     const centroBeneficio = centrosBeneficioReales.find(
       item => item.id === form.centro_beneficio_id,
@@ -1369,13 +1453,14 @@ export const CrearOTPage = ({ onNav }) => {
     form.centro_beneficio_id,
   ]);
   const equiposFiltrados = useMemo(() => {
+    if (objetoCostoTipo === 'contrato') return equiposContratoReales;
     if (
       objetoCostoTipo === 'equipo_interno'
       || (objetoCostoTipo === 'os_cliente' && propietarioEquipoOS === 'propio')
     ) return equiposInternosReales;
     if (!contrato) return [];
     return D.equipos.filter(e => contrato.equiposScope?.includes(e.cod));
-  }, [contrato, equiposInternosReales, objetoCostoTipo, propietarioEquipoOS]);
+  }, [contrato, equiposContratoReales, equiposInternosReales, objetoCostoTipo, propietarioEquipoOS]);
   const equipo = useMemo(() => (
     objetoCostoTipo === 'equipo_interno'
       ? equiposInternosReales.find(e => e.id === form.equipo)
@@ -1383,8 +1468,8 @@ export const CrearOTPage = ({ onNav }) => {
         ? propietarioEquipoOS === 'propio'
           ? equiposInternosReales.find(e => e.id === form.equipo)
           : equiposClienteReales.find(e => e.id === form.equipo)
-        : D.equipos.find(e => e.cod === form.equipo)
-  ), [equiposClienteReales, equiposInternosReales, form.equipo, objetoCostoTipo, propietarioEquipoOS]);
+        : equiposContratoReales.find(e => e.id === form.equipo)
+  ), [equiposClienteReales, equiposContratoReales, equiposInternosReales, form.equipo, objetoCostoTipo, propietarioEquipoOS]);
   const requiereCentroCostoManual = objetoCostoTipo === 'os_cliente'
     || (objetoCostoTipo === 'equipo_interno' && Boolean(form.equipo) && !equipo?.centro_costo_id);
 
@@ -1465,7 +1550,7 @@ export const CrearOTPage = ({ onNav }) => {
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
-      unidadMinera: f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next),
+      unidadMinera: next?.unidad_minera || (f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next)),
       objeto_costo_id: contratoId,
       horometroApertura: '',
     }));
@@ -1487,7 +1572,7 @@ export const CrearOTPage = ({ onNav }) => {
         ? propietarioEquipoOS === 'propio'
           ? equiposInternosReales.find(e => e.id === cod)
           : equiposClienteReales.find(e => e.id === cod)
-        : D.equipos.find(e => e.cod === cod);
+        : equiposContratoReales.find(e => e.id === cod);
     const suggested = eq?.horometro_actual ?? null;
     setHorometroSugerido(suggested);
     const extra = objetoCostoTipo === 'equipo_interno' ? { objeto_costo_id: cod } : {};
@@ -1619,7 +1704,7 @@ export const CrearOTPage = ({ onNav }) => {
       sociedad_id: sesionOperativa.sociedadId || null,
       os_cliente_id: esOTDesdeOS ? form.contratoId : null,
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
-      equipo_id: ['equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
+      equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
       cuenta_id: form.clienteId || null,
       // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
       // separado: la descripción técnica es el servicio registrado en esta fase.
@@ -1974,21 +2059,53 @@ export const CrearOTPage = ({ onNav }) => {
                       {fieldErrors.contratoId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.contratoId[0]}</div>
                       )}
+                      {objetoCostoTipo === 'contrato' && contrato && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                          {textoMinimoGarantizado(contrato) && (
+                            <div>{textoMinimoGarantizado(contrato)}</div>
+                          )}
+                          {contrato.meta_dmr != null && (
+                            <div>Meta DMR: <strong>{Number(contrato.meta_dmr).toLocaleString('es-PE')}%</strong></div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {objetoCostoTipo === 'contrato' && (
                       <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>Activo / Equipo *</div>
                       <select className="input" value={form.equipo}
-                        disabled={!form.contratoId}
+                        disabled={!form.contratoId || cargandoEquiposContrato}
                         onChange={e => handleEquipoChange(e.target.value)}
-                        style={{ marginTop: 4, background: !form.contratoId ? '#ECEFF1' : undefined, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
+                        style={{ marginTop: 4, background: !form.contratoId || cargandoEquiposContrato ? '#ECEFF1' : undefined, borderColor: fieldErrors.equipo ? '#E53935' : undefined }}>
                         <option value="">
-                          {form.contratoId ? '-- Seleccionar equipo --' : 'Seleccione primero un contrato'}
+                          {!form.contratoId
+                            ? 'Seleccione primero un contrato'
+                            : cargandoEquiposContrato
+                              ? 'Cargando equipos del contrato...'
+                              : '-- Seleccionar equipo --'}
                         </option>
                         {equiposFiltrados.map(eq => (
-                          <option key={eq.cod} value={eq.cod}>{eq.cod} · {eq.marca} · {eq.proyecto}</option>
+                          <option key={eq.id} value={eq.id}>
+                            {[eq.codigo, eq.nombre, eq.marca, eq.modelo].filter(Boolean).join(' · ')}
+                          </option>
                         ))}
                       </select>
+                      {errorEquiposContrato && (
+                        <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>
+                          No se pudieron cargar los equipos del contrato: {errorEquiposContrato}
+                        </div>
+                      )}
+                      {!cargandoEquiposContrato && !errorEquiposContrato && form.contratoId && equiposFiltrados.length === 0 && (
+                        <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                          Este contrato no tiene equipos operativos asignados.
+                        </div>
+                      )}
+                      {objetoCostoTipo === 'contrato' && equipo?.tarifa_hora_override != null && contrato?.moneda && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                          Tarifa acordada para este equipo:{' '}
+                          <strong>{contrato.moneda} {Number(equipo.tarifa_hora_override).toFixed(2)} / hora</strong>
+                        </div>
+                      )}
                       {fieldErrors.equipo?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.equipo[0]}</div>
                       )}
