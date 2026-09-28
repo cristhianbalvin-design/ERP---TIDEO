@@ -53,6 +53,16 @@ const obtenerTipoActivoOpcional = datos => {
   return tipoActivo;
 };
 
+const obtenerAnioOpcional = (valor, etiqueta) => {
+  if (valor === undefined || valor === null || String(valor).trim() === '') return null;
+  const anio = Number(valor);
+  const anioMaximo = new Date().getFullYear() + 1;
+  if (!Number.isInteger(anio) || anio < 1800 || anio > anioMaximo) {
+    throw new Error(`${etiqueta} debe ser un año entero entre 1800 y ${anioMaximo}.`);
+  }
+  return anio;
+};
+
 export async function listarActivosCliente(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
@@ -90,6 +100,16 @@ export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
   if (tipoActivo && !['componente', 'maquinaria_completa'].includes(tipoActivo)) {
     throw new Error('El tipo de activo no es válido.');
   }
+  const marca = String(datos?.marca || '').trim();
+  const modelo = String(datos?.modelo || '').trim();
+  if (tipoActivo === 'maquinaria_completa' && !marca) {
+    throw new Error('La marca es obligatoria para una maquinaria completa.');
+  }
+  if (tipoActivo === 'maquinaria_completa' && !modelo) {
+    throw new Error('El modelo es obligatorio para una maquinaria completa.');
+  }
+  const anioFabricacion = obtenerAnioOpcional(datos?.['año_fabricacion'], 'El año de fabricación');
+  const anioOverhaul = obtenerAnioOpcional(datos?.['año_overhaul'], 'El año de overhaul');
 
   const supabase = getSupabaseClient();
   const codigoOrigen = String(datos?.codigo_origen || '').trim() || null;
@@ -108,9 +128,11 @@ export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
       codigo_origen: codigoOrigen,
       nombre,
       tipo_categoria: datos?.tipo_categoria || 'equipo',
-      marca: String(datos?.marca || '').trim() || null,
-      modelo: String(datos?.modelo || '').trim() || null,
+      marca: marca || null,
+      modelo: modelo || null,
       placa_serie: String(datos?.placa_serie || '').trim() || null,
+      año_fabricacion: anioFabricacion,
+      año_overhaul: anioOverhaul,
       estado: datos?.estado || 'operativo',
       observacion: String(datos?.observacion || '').trim() || null,
       propietario_tipo: 'cliente',
