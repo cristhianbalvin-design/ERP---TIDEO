@@ -7775,7 +7775,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, usuarios = [], personalOperativo = [], personalAdmin = [], addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
@@ -7809,6 +7809,12 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
   const gastoVinculado = comprasGastos.find(g => g.cxp_id && cxpResumen?.cxps?.some(c => c.id === g.cxp_id)) || null;
   const cxpCampo = cxpResumen?.cxps?.find(c => c.origen === 'gasto_movil') || cxpResumen?.cxps?.[0] || null;
   const solpesCubiertas = [...new Set((ordenActual.items || []).map(item => item.solpe_codigo || item.solpe_id).filter(Boolean))];
+  const compradorId = gastoVinculado?.creado_por || ordenActual.creado_por || null;
+  const personalTenant = [...(personalOperativo || []), ...(personalAdmin || [])].filter(persona => !persona?.empresa_id || persona.empresa_id === empresa?.id);
+  const usuariosTenant = (usuarios || []).filter(usuario => !usuario?.empresa_id || usuario.empresa_id === empresa?.id);
+  const comprador = personalTenant.find(persona => persona.id === compradorId || persona.auth_user_id === compradorId || persona.user_id === compradorId)
+    || usuariosTenant.find(usuario => usuario.id === compradorId || usuario.auth_user_id === compradorId);
+  const compradorNombre = comprador?.nombre || comprador?.nombre_completo || comprador?.full_name || comprador?.display_name || 'Comprador no identificado';
 
   const guardarAnticipo = async e => {
     e.preventDefault();
@@ -7956,7 +7962,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
         <div className="card" style={{padding:20}}>
           {ordenActual.origen_tipo === 'compra_campo' && <div className="card" style={{padding:14, marginBottom:16, borderColor:'var(--cyan)'}}>
             <div className="row" style={{justifyContent:'space-between', gap:10, flexWrap:'wrap'}}><strong>Compra en campo</strong><span className="badge badge-cyan">OC de regularización</span></div>
-            <p><strong>Comprador que la originó:</strong> {gastoVinculado?.creado_por || ordenActual.creado_por || 'No identificado'}</p>
+            <p><strong>Comprador que la originó:</strong> {compradorNombre}</p>
             <p><strong>Gasto vinculado:</strong> {gastoVinculado ? gastoVinculado.id : 'No identificado'}</p>
             {gastoVinculado?.archivo_url && <p><a href={gastoVinculado.archivo_url} target="_blank" rel="noreferrer">Ver foto del comprobante</a></p>}
             <p><strong>CxP:</strong> {cxpCampo ? `${cxpCampo.factura_numero || cxpCampo.id} · ${cxpCampo.estado || 'sin estado'}` : 'Pagada al contado'}</p>
