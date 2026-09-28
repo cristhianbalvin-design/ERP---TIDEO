@@ -138,6 +138,7 @@ declare
   v_oc text;
   v_oc_total numeric;
   v_catalogo text;
+  v_proveedor_cuenta text;
 begin
   select e.id into v_empresa from public.empresas e order by e.id limit 1;
   if v_empresa is null then raise exception 'B3C_FIXTURE|empresa_no_encontrada'; end if;
@@ -164,6 +165,10 @@ begin
   insert into b3c_context values
     ('empresa_id', v_empresa), ('sociedad_id', v_sociedad::text), ('proveedor_id', v_proveedor),
     ('user_id', v_user::text), ('catalogo', v_catalogo), ('oc_id', v_oc), ('oc_total', v_oc_total::text);
+  -- La cuenta BN se crea antes de fijar claims: el trigger de 3a exige
+  -- proveedores.editar solo cuando existe auth.uid().
+  v_proveedor_cuenta := pg_temp.b3c_proveedor_cuenta('reg_spot');
+  insert into b3c_context values ('reg_spot_proveedor_cuenta', v_proveedor_cuenta);
 end;
 $fixture$;
 
@@ -309,7 +314,7 @@ begin
   -- 18. Verificacion de no sobrefacturacion de OC.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_error := null;
   begin perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_b3c_exceso','empresa_id',pg_temp.b3c_ctx('empresa_id'),'sociedad_id',pg_temp.b3c_ctx('sociedad_id'),'proveedor_id',pg_temp.b3c_ctx('proveedor_id'),'orden_compra_id',pg_temp.b3c_ctx('oc_id'),'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','monto_total',v_oc_saldo+0.01,'saldo',v_oc_saldo+0.01,'monto_pagado',0,'tipo_beneficiario','proveedor','tipo_comprobante','Factura'), 'cxp_manual', 'crear'); exception when others then v_error := sqlerrm; end;
-  raise notice 'B3C_CASO_18|oc_exceso|rechazada=%|solicitado=%|saldo_liberado=%|total_oc=%|no_supera_oc=%|error=%', v_error is not null, v_oc_saldo + 0.01, v_oc_saldo, (select total from public.ordenes_compra where id=pg_temp.b3c_ctx('oc_id')), v_oc_saldo <= (select total from public.ordenes_compra where id=pg_temp.b3c_ctx('oc_id')), left(coalesce(v_error, 'sin_error'), 40);
+  raise notice 'B3C_CASO_18|oc_exceso|rechazada=%|solicitado=%|saldo_liberado=%|total_oc=%|no_supera_oc=%|error=%', v_error is not null, v_oc_saldo + 0.01, v_oc_saldo, (v_oc_postgres->>'total')::numeric, v_oc_saldo <= (v_oc_postgres->>'total')::numeric, left(coalesce(v_error, 'sin_error'), 40);
 
   -- Regresion A. Pago normal despues de una NC parcial, sin obligacion SPOT.
   v_cxp := pg_temp.b3c_cxp('reg_pago_normal', 1000);
@@ -328,11 +333,11 @@ begin
   perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-020','monto',100,'moneda','PEN','motivo','Regresion pago SPOT'));
   select saldo into v_saldo from public.cxp where id=v_cxp;
   select monto_detraccion_soles into v_det from public.detracciones where id=v_d;
-  v_cuenta_pago := pg_temp.b3c_cuenta('reg_spot_pago'); v_cuenta_spot := pg_temp.b3c_cuenta('reg_spot_deposito'); v_proveedor_cuenta := pg_temp.b3c_proveedor_cuenta('reg_spot');
+  v_cuenta_pago := pg_temp.b3c_cuenta('reg_spot_pago'); v_cuenta_spot := pg_temp.b3c_cuenta('reg_spot_deposito'); v_proveedor_cuenta := pg_temp.b3c_ctx('reg_spot_proveedor_cuenta');
   v_pago_result := public.registrar_pago_cxp_atomico(v_cxp, v_saldo - v_det,
     jsonb_build_object('fecha_pago','2026-09-24','cuenta_bancaria_id',v_cuenta_pago,'con_deposito_spot',true,'cuenta_origen_spot_id',v_cuenta_spot,'proveedor_cuenta_id',v_proveedor_cuenta,'numero_constancia','CONST-B3C-020','fecha_constancia','2026-09-24','referencia','PAGO-B3C-020','registrado_por',pg_temp.b3c_ctx('user_id'),'metodo_pago','transferencia'),
     jsonb_build_object('descripcion','Pago neto B3C','moneda','PEN','fecha','2026-09-24','referencia','PAGO-B3C-020','cuenta_bancaria_id',v_cuenta_pago,'monto_en_moneda_cuenta',v_saldo-v_det));
-  raise notice 'B3C_REGRESION_B|pago_spot|neto=%|saldo=%|pagos=%|egreso=%|egreso_spot=%|det=%', v_saldo-v_det, (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_pagos where cxp_id=v_cxp), (select count(*) from public.movimientos_tesoreria where vinculo_tipo='cxp' and vinculo_id=v_cxp and tipo='egreso'), (select count(*) from public.movimientos_tesoreria where vinculo_tipo='pago_spot_compra' and detraccion_id=v_d), (select estado from public.detracciones where id=v_d);
+  raise notice 'B3C_REGRESION_B|pago_spot|saldo_recalc=%|det_recalc=%|neto_pagado=%|pagos=%|egresos=%|det=%', v_saldo, v_det, v_saldo-v_det, (select count(*) from public.cxp_pagos where cxp_id=v_cxp), (select count(*) from public.movimientos_tesoreria where vinculo_id=v_cxp and tipo='egreso' and vinculo_tipo in ('cxp','pago_spot_compra')), (select estado from public.detracciones where id=v_d);
 
   -- Regresion C. La NC no elimina ni recalcula artificialmente la retencion IR.
   v_cxp := pg_temp.b3c_cxp_retencion('reg_retencion', 1000, 100);
