@@ -36,7 +36,7 @@ begin
   update public.detracciones set estado = 'depositada' where id = p_d;
 end;
 $$;
-grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_marcar_depositada(uuid) to public;
+grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_marcar_depositada(uuid) to authenticated;
 
 do $fixture$
 declare
@@ -76,6 +76,10 @@ begin
     ('user_id', v_user::text), ('catalogo', v_catalogo), ('oc_id', v_oc), ('oc_total', v_oc_total::text);
 end;
 $fixture$;
+
+-- El contexto es un objeto temporal del dry run: solo el rol que invoca las RPC
+-- necesita leerlo. No se otorgan privilegios a anon ni a tablas de produccion.
+grant select on b3c_context to authenticated;
 
 set local role authenticated;
 select set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.b3c_ctx('user_id'), 'role', 'authenticated')::text, true);
