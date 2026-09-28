@@ -355,7 +355,7 @@ function buildSidebarBadges(app) {
     ordenes_servicio: ordenesServicio.filter(os => isOpenStatus(os.estado) && dueIn(os.fecha_fin, 7)).length,
     recepciones: recepciones.filter(r => ['observada', 'pendiente', 'pendiente_conformidad'].includes(norm(r.estado)) || norm(r.tipo) === 'observada').length,
     cxc: cxc.filter(c => Number(c.saldo ?? c.saldo_pendiente ?? 0) > 0 && (norm(c.estado) === 'vencida' || Number(c.mora || 0) > 0 || overdue(c.vence || c.vencimiento))).length,
-    cxp: cxp.filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && (norm(c.estado) === 'vencido' || dueIn(c.vencimiento || c.vence, 7))).length,
+    cxp: cxp.filter(c => !['pagada', 'pagado', 'anulada'].includes(norm(c.estado)) && (norm(c.estado) === 'vencido' || dueIn(c.vencimiento || c.vence, 7))).length,
     facturacion: valorizaciones.filter(v => ['aprobada', 'por_facturar'].includes(norm(v.estado)) && !facturaValorizaciones.has(v.id)).length,
     tesoreria: movimientosBanco.filter(m => m.conciliado === false || m.vinculado === null).length,
     financiamiento: financiamientos.reduce((total, f) => total + (f.tabla_amortizacion || []).filter(c => !['pagada', 'pagado'].includes(norm(c.estado)) && dueIn(c.fecha, 7)).length, 0),

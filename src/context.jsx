@@ -8878,17 +8878,19 @@ export function AppProvider({ children }) {
     if (isSupabaseConfigured()) {
       const result = await devolucionesService.registrarNotaCredito(empresa.id, devolucionId, datosNC, authUser?.id);
       setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, ...result.devolucion } : d));
-      if (datosNC.cxp_origen_id) {
-        const montoAjuste = Math.abs(Number(datosNC.monto_nc));
-        setCxp(prev => prev.map(c => {
-          if (c.id !== datosNC.cxp_origen_id) return c;
-          const nuevoSaldo = Math.max(0, Number(c.saldo) - montoAjuste);
-          return { ...c, saldo: nuevoSaldo, monto_pagado: Number(c.monto_pagado || 0) + montoAjuste, estado: nuevoSaldo <= 0 ? 'pagada' : c.estado };
-        }));
-      }
+      if (result?.cxp) setCxp(prev => prev.map(c => c.id === result.cxp.id ? { ...c, ...result.cxp } : c));
       return result;
     }
     setDevolucionesProveedor(prev => prev.map(d => d.id === devolucionId ? { ...d, estado: 'nota_credito_recibida' } : d));
+  };
+
+  const registrarNotaProveedorCtx = async datos => {
+    if (!empresa?.id) throw new Error('Empresa no seleccionada');
+    if (!isSupabaseConfigured()) throw new Error('El registro de notas de proveedor requiere conexión con Supabase.');
+    const result = await finanzasService.registrarNotaProveedor({ ...datos, origen: datos.origen || 'cxp_finanzas' });
+    if (result?.cxp) setCxp(prev => prev.map(c => c.id === result.cxp.id ? { ...c, ...result.cxp } : c));
+    if (result?.cxp_nota) setCxp(prev => [result.cxp_nota, ...prev.filter(c => c.id !== result.cxp_nota.id)]);
+    return result;
   };
 
   const anularDevolucionCtx = async (devolucionId, motivo_anulacion) => {
@@ -11461,7 +11463,7 @@ export function AppProvider({ children }) {
     entradasOcPendientes, setEntradasOcPendientes,
     devolucionesProveedor, setDevolucionesProveedor,
     crearDevolucionCtx, enviarDevolucionCtx, aceptarDevolucionCtx,
-    registrarNCDevolucionCtx, anularDevolucionCtx,
+    registrarNCDevolucionCtx, registrarNotaProveedorCtx, anularDevolucionCtx,
     ocAnticipos, setOcAnticipos, registrarAnticipoOC,
 
     // Maestros Base Data

@@ -7993,11 +7993,11 @@ function CxPLegacy() {
                   <td className="text-muted" style={{color: c.estado==='por_vencer'?'var(--danger)':''}}>{c.fecha_vencimiento || c.vencimiento}</td>
                   <td className="num"><strong>{money(c.monto_total || c.monto)}</strong></td>
                   <td>
-                    <span className={'badge ' + (c.estado==='pagada'?'badge-green':c.estado==='por_pagar'?'badge-orange':'badge-red')}>
+                    <span className={'badge ' + (c.estado==='anulada' ? 'badge-gray' : c.estado==='pagada'?'badge-green':c.estado==='por_pagar'?'badge-orange':'badge-red')}>
                       {c.estado.replace('_',' ').toUpperCase()}
                     </span>
                   </td>
-                  <td>{c.estado !== 'pagada' && <button className="btn btn-sm btn-ghost" onClick={() => registrarPagoCxP(c.id, c.saldo)}>Pagar</button>}</td>
+                  <td>{!['pagada','anulada'].includes(String(c.estado || '').toLowerCase()) && <button className="btn btn-sm btn-ghost" onClick={() => registrarPagoCxP(c.id, c.saldo)}>Pagar</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -8064,7 +8064,7 @@ function ModalCompletarFacturaCxP({ recepcion, onClose, onCompletar }) {
 }
 
 function CxP() {
-  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], listarCuentasBancariasProveedor, setCxp, setCxpPagos, setComprasGastos, setProveedores, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
+  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], listarCuentasBancariasProveedor, setCxp, setCxpPagos, setComprasGastos, setProveedores, registrarNotaProveedorCtx, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -8136,6 +8136,11 @@ function CxP() {
   const [guardandoSpotCompra, setGuardandoSpotCompra] = useState(false);
   const [errorSpotCompra, setErrorSpotCompra] = useState('');
   const [cuentasProveedorPago, setCuentasProveedorPago] = useState([]);
+  const [notasProveedor, setNotasProveedor] = useState([]);
+  const [notaProveedorAbierta, setNotaProveedorAbierta] = useState(false);
+  const [guardandoNotaProveedor, setGuardandoNotaProveedor] = useState(false);
+  const [errorNotaProveedor, setErrorNotaProveedor] = useState('');
+  const [notaProveedorForm, setNotaProveedorForm] = useState({ tipo_nota: 'nota_credito', numero_nota: '', fecha_nota: today, monto: '', motivo: '', archivo_url: '', codigo_spot: '' });
 
   const abrirNuevoEgreso = (preconfig = null) => {
     // Cada alta nueva desde Finanzas comienza limpia; el borrador solo se
@@ -8697,6 +8702,9 @@ function CxP() {
     setSpotCompraAbierto(false);
     setErrorSpotCompra('');
     setCuentasProveedorPago([]);
+    setNotasProveedor([]);
+    setNotaProveedorAbierta(false);
+    setErrorNotaProveedor('');
   };
 
   useEffect(() => {
@@ -8713,16 +8721,19 @@ function CxP() {
       sel.proveedor_id && listarCuentasBancariasProveedor
         ? listarCuentasBancariasProveedor(sel.proveedor_id)
         : Promise.resolve([]),
-    ]).then(([obligaciones, catalogo, cuentasProveedor]) => {
+      finanzasService.listarNotasProveedor(sel.id),
+    ]).then(([obligaciones, catalogo, cuentasProveedor, notas]) => {
       if (cancelado) return;
       setDetraccionesCompra(obligaciones || []);
       setSpotCatalogoCompra(catalogo || []);
       setCuentasProveedorPago(cuentasProveedor || []);
+      setNotasProveedor(notas || []);
     }).catch(error => {
       if (cancelado) return;
       setDetraccionesCompra([]);
       setSpotCatalogoCompra([]);
       setCuentasProveedorPago([]);
+      setNotasProveedor([]);
       setErrorSpotCompra(error?.message || 'No se pudo cargar la información SPOT.');
     });
     return () => { cancelado = true; };
@@ -8857,13 +8868,79 @@ function CxP() {
     ? Math.round(spotCompraBaseSoles * Number(spotCompraSeleccionado.porcentaje || 0) / 100)
     : 0;
 
+  const puedeRegistrarNotaProveedor = Boolean(
+    sel?.proveedor_id
+      && !['pagada', 'anulada', 'pago_parcial'].includes(String(sel.estado || '').toLowerCase())
+      && saldoDe(sel) > 0
+      && Number(sel.monto_pagado || 0) === 0
+      && pagosDe(sel.id).length === 0
+      && !detraccionesCompra.some(d => d.estado === 'depositada')
+      && (puedeEditarSpotCompra || role?.permisos?.ver_finanzas),
+  );
+  const abrirNotaProveedor = (tipo = 'nota_credito') => {
+    setNotaProveedorForm({
+      tipo_nota: tipo,
+      numero_nota: '',
+      fecha_nota: today,
+      monto: tipo === 'nota_credito' ? String(saldoDe(sel) || '') : '',
+      motivo: '',
+      archivo_url: '',
+      codigo_spot: '',
+    });
+    setErrorNotaProveedor('');
+    setNotaProveedorAbierta(true);
+  };
+  const guardarNotaProveedor = async event => {
+    event.preventDefault();
+    if (!sel || guardandoNotaProveedor) return;
+    const monto = Number(notaProveedorForm.monto || 0);
+    if (!notaProveedorForm.numero_nota.trim() || !notaProveedorForm.motivo.trim()) {
+      setErrorNotaProveedor('Número y motivo son obligatorios.');
+      return;
+    }
+    if (!(monto > 0) || (notaProveedorForm.tipo_nota === 'nota_credito' && monto > saldoDe(sel))) {
+      setErrorNotaProveedor('El monto debe ser mayor que cero y no superar el saldo de la CxP original.');
+      return;
+    }
+    setGuardandoNotaProveedor(true);
+    setErrorNotaProveedor('');
+    try {
+      const resultado = await registrarNotaProveedorCtx({
+        cxp_origen_id: sel.id,
+        tipo_nota: notaProveedorForm.tipo_nota,
+        numero_nota: notaProveedorForm.numero_nota.trim(),
+        fecha_nota: notaProveedorForm.fecha_nota,
+        monto,
+        moneda: sel.moneda || 'PEN',
+        motivo: notaProveedorForm.motivo.trim(),
+        archivo_url: notaProveedorForm.archivo_url.trim() || null,
+        ...(notaProveedorForm.tipo_nota === 'nota_debito' && notaProveedorForm.codigo_spot ? { codigo_spot: notaProveedorForm.codigo_spot } : {}),
+      });
+      if (resultado?.relacion) setNotasProveedor(prev => [...prev, { ...resultado.relacion, cxp_origen: resultado.cxp, cxp_nota: resultado.cxp_nota }]);
+      if (resultado?.cxp) setSel(prev => prev?.id === resultado.cxp.id ? { ...prev, ...resultado.cxp } : prev);
+      setNotaProveedorAbierta(false);
+      addNotificacion(`${notaProveedorForm.tipo_nota === 'nota_credito' ? 'Nota de crédito' : 'Nota de débito'} registrada.`);
+    } catch (error) {
+      setErrorNotaProveedor(error?.message || 'No se pudo registrar la nota del proveedor.');
+    } finally {
+      setGuardandoNotaProveedor(false);
+    }
+  };
+
   useEffect(() => {
     const cxpId = activeParams?.cxpId;
     if (!cxpId) return;
-    const cuenta = (cxpVista || []).find(c => c.id === cxpId);
-    if (!cuenta) return;
-    abrirFicha(cuenta);
-    navigate('cxp', {});
+    let cancelado = false;
+    const abrir = async () => {
+      let cuenta = (cxpVista || []).find(c => c.id === cxpId);
+      if (!cuenta && isSupabaseConfigured()) cuenta = await finanzasService.getCxPById(cxpId);
+      if (cancelado || !cuenta) return;
+      setCxp(prev => [cuenta, ...prev.filter(c => c.id !== cuenta.id)]);
+      abrirFicha(cuenta);
+      navigate('cxp', {});
+    };
+    abrir().catch(error => addToast?.(error?.message || 'No se pudo cargar la CxP relacionada.'));
+    return () => { cancelado = true; };
   }, [activeParams?.cxpId, cxpVista]);
 
   const abrirAccionCxP = (c, tipo, event) => {
@@ -9529,8 +9606,8 @@ function CxP() {
                 <div style={{fontWeight:700,fontSize:20}}>{selBeneficiario?.nombre}</div>
                 <div style={{fontSize:12,color:'var(--fg-muted)'}}>{selDocumento}</div>
                 <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginTop:6}}>
-                  <span className={'badge '+(sel.estado === 'pagada' ? 'badge-green' : sel.estado === 'pago_parcial' ? 'badge-orange' : selSemaforo?.badgeCls || 'badge-orange')}>
-                    {sel.estado === 'pagada' ? 'Pagado' : sel.estado === 'pago_parcial' ? 'Parcial' : 'Pendiente'}
+                  <span className={'badge '+(sel.estado === 'anulada' ? 'badge-gray' : sel.estado === 'pagada' ? 'badge-green' : sel.estado === 'pago_parcial' ? 'badge-orange' : selSemaforo?.badgeCls || 'badge-orange')}>
+                    {sel.estado === 'anulada' ? 'Anulada' : sel.estado === 'pagada' ? 'Pagado' : sel.estado === 'pago_parcial' ? 'Parcial' : 'Pendiente'}
                   </span>
                   {selBeneficiario?.badge && <span className={'badge '+selBeneficiario.badgeCls}>{selBeneficiario.badge}</span>}
                 </div>
@@ -9615,6 +9692,60 @@ function CxP() {
                       {guardandoClasif ? 'Guardando...' : 'Guardar clasificación'}
                     </button>
                   </div>
+                </div>
+                <div className="card" style={{padding:14,marginBottom:16,border:'1px solid var(--border)'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1}}>Notas relacionadas</div>
+                      <div style={{fontWeight:700,fontSize:15}}>NC / ND de proveedor</div>
+                    </div>
+                    {puedeRegistrarNotaProveedor && !notaProveedorAbierta && (
+                      <div className="row" style={{gap:6}}>
+                        <button type="button" className="btn btn-sm btn-secondary" onClick={() => abrirNotaProveedor('nota_credito')}>Registrar NC</button>
+                        <button type="button" className="btn btn-sm btn-secondary" onClick={() => abrirNotaProveedor('nota_debito')}>Registrar ND</button>
+                      </div>
+                    )}
+                  </div>
+                  {notasProveedor.length === 0 && !notaProveedorAbierta && <div className="text-muted" style={{fontSize:12}}>No hay notas relacionadas.</div>}
+                  {notasProveedor.length > 0 && (
+                    <div style={{display:'grid',gap:8}}>
+                      {notasProveedor.map(nota => {
+                        const original = nota.cxp_origen;
+                        const hija = nota.cxp_nota;
+                        return (
+                          <div key={nota.id} style={{padding:10,borderRadius:6,background:'var(--bg-subtle)',fontSize:12}}>
+                            <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
+                              <strong>{nota.tipo_nota === 'nota_credito' ? 'Nota de crédito' : 'Nota de débito'} {nota.numero_nota}</strong>
+                              <span>{money(nota.monto_aplicado, symOf(nota.moneda))}</span>
+                            </div>
+                            <div className="text-muted">{nota.fecha_nota} · {nota.motivo}</div>
+                            {nota.archivo_url && <a href={nota.archivo_url} target="_blank" rel="noreferrer">Ver archivo</a>}
+                            {original?.estado === 'anulada' && (
+                              <div style={{marginTop:5,color:'var(--fg-muted)'}}>
+                                CxP original anulada: {original.motivo_anulacion || 'Cancelada por nota de crédito'} · usuario {original.anulado_por || '—'} · {original.anulado_en || '—'}
+                              </div>
+                            )}
+                            {hija && <div style={{marginTop:5}}>CxP ND: <strong>{hija.factura_numero || hija.id}</strong> · saldo {money(hija.saldo, symOf(hija.moneda))} · {hija.estado}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {notaProveedorAbierta && (
+                    <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border-subtle)'}}>
+                      <div className="grid-2" style={{gap:10}}>
+                        <div className="input-group"><label>Tipo</label><select className="input" value={notaProveedorForm.tipo_nota} onChange={e => setNotaProveedorForm(v => ({...v, tipo_nota:e.target.value, monto:e.target.value === 'nota_credito' ? String(saldoDe(sel) || '') : ''}))}><option value="nota_credito">Nota de crédito</option><option value="nota_debito">Nota de débito</option></select></div>
+                        <div className="input-group"><label>Número</label><input className="input" value={notaProveedorForm.numero_nota} onChange={e => setNotaProveedorForm(v => ({...v, numero_nota:e.target.value}))} placeholder="NC/ND-001" /></div>
+                        <div className="input-group"><label>Fecha</label><input className="input" type="date" value={notaProveedorForm.fecha_nota} onChange={e => setNotaProveedorForm(v => ({...v, fecha_nota:e.target.value}))} /></div>
+                        <div className="input-group"><label>Monto</label><input className="input" type="number" min="0.01" step="0.01" value={notaProveedorForm.monto} onChange={e => setNotaProveedorForm(v => ({...v, monto:e.target.value}))} /></div>
+                        {notaProveedorForm.tipo_nota === 'nota_debito' && <div className="input-group"><label>Código SPOT opcional</label><select className="input" value={notaProveedorForm.codigo_spot} onChange={e => setNotaProveedorForm(v => ({...v, codigo_spot:e.target.value}))}><option value="">Sin obligación todavía</option>{spotCatalogoCompra.map(item => <option key={item.id} value={item.codigo}>{item.codigo} · {Number(item.porcentaje || 0).toFixed(2)}%</option>)}</select></div>}
+                        <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Motivo</label><textarea className="input" rows={2} value={notaProveedorForm.motivo} onChange={e => setNotaProveedorForm(v => ({...v, motivo:e.target.value}))} /></div>
+                        <div className="input-group" style={{gridColumn:'1 / -1'}}><label>Archivo opcional (URL)</label><input className="input" value={notaProveedorForm.archivo_url} onChange={e => setNotaProveedorForm(v => ({...v, archivo_url:e.target.value}))} placeholder="https://..." /></div>
+                      </div>
+                      {errorNotaProveedor && <div style={{fontSize:12,color:'var(--danger)',marginTop:8}}>{errorNotaProveedor}</div>}
+                      <div className="row" style={{justifyContent:'flex-end',gap:8,marginTop:10}}><button type="button" className="btn btn-sm btn-secondary" onClick={() => setNotaProveedorAbierta(false)} disabled={guardandoNotaProveedor}>Cancelar</button><button type="button" className="btn btn-sm btn-primary" onClick={guardarNotaProveedor} disabled={guardandoNotaProveedor}>{guardandoNotaProveedor ? 'Guardando...' : 'Confirmar nota'}</button></div>
+                    </div>
+                  )}
                 </div>
                 <div className="card" style={{padding:14,marginBottom:16,border:'1px solid var(--border)'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,marginBottom:10}}>
@@ -9824,7 +9955,7 @@ function CxP() {
                     </div>
                   </>
                 ) : (
-                  <div className="text-center text-muted" style={{padding:24}}>Esta CxP está completamente pagada.</div>
+                  <div className="text-center text-muted" style={{padding:24}}>{sel.estado === 'anulada' ? `Esta CxP fue anulada: ${sel.motivo_anulacion || 'registro conservado como historial'}. Usuario: ${sel.anulado_por || '—'} · Fecha: ${sel.anulado_en || '—'}` : 'Esta CxP está completamente pagada.'}</div>
                 )}
               </form>
             )}

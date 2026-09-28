@@ -8488,6 +8488,7 @@ function ModalNotaCredito({ devolucion, recepcionId, onClose, onRegistrar }) {
 
   const handleRegistrar = async () => {
     if (!montoNC || Number(montoNC) <= 0) { setErr('Monto de NC requerido'); return; }
+    if (!numeroNC.trim()) { setErr('Número de NC requerido'); return; }
     setSaving(true);
     setErr('');
     try {
