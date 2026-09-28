@@ -81,10 +81,9 @@ export async function listarClientes(empresaId) {
 export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
   if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
 
-  const codigo = String(datos?.codigo || '').trim();
   const nombre = String(datos?.nombre || '').trim();
   const clientePropietarioId = datos?.cliente_propietario_id;
-  if (!codigo || !nombre) throw new Error('Código y nombre son obligatorios para registrar el activo.');
+  if (!nombre) throw new Error('El nombre es obligatorio para registrar el activo.');
   if (!clientePropietarioId) throw new Error('Selecciona el cliente propietario antes de registrar el activo.');
 
   const tipoActivo = datos?.tipo_activo || null;
@@ -93,53 +92,43 @@ export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
   }
 
   const supabase = getSupabaseClient();
-  const { data: existentes, error: duplicadoError } = await supabase
-    .from('activos')
-    .select('id,codigo')
-    .eq('empresa_id', empresaId);
-  if (duplicadoError) throw duplicadoError;
+  const codigoOrigen = String(datos?.codigo_origen || '').trim() || null;
+  let ultimoError = null;
+  for (let intento = 0; intento < 3; intento += 1) {
+    const { data: codigo, error: codigoError } = await supabase.rpc('siguiente_codigo_activo', {
+      p_empresa_id: empresaId,
+    });
+    if (codigoError) throw codigoError;
 
-  const codigoNormalizado = codigo.toLowerCase();
-  const codigoDuplicado = (existentes || []).some(item => (
-    String(item.codigo || '').trim().toLowerCase() === codigoNormalizado
-  ));
-  if (codigoDuplicado) {
-    const error = new Error(`El código "${codigo}" ya existe; selecciónalo en el buscador.`);
-    error.code = 'DUPLICATE_ASSET_CODE';
-    throw error;
+    const payload = {
+      id: makeId('act'),
+      empresa_id: empresaId,
+      created_by: usuarioId || null,
+      codigo,
+      codigo_origen: codigoOrigen,
+      nombre,
+      tipo_categoria: datos?.tipo_categoria || 'equipo',
+      marca: String(datos?.marca || '').trim() || null,
+      modelo: String(datos?.modelo || '').trim() || null,
+      placa_serie: String(datos?.placa_serie || '').trim() || null,
+      estado: datos?.estado || 'operativo',
+      observacion: String(datos?.observacion || '').trim() || null,
+      propietario_tipo: 'cliente',
+      cliente_propietario_id: clientePropietarioId,
+      tipo_activo: tipoActivo,
+    };
+
+    const { data, error } = await supabase
+      .from('activos')
+      .insert([payload])
+      .select()
+      .single();
+    if (!error) return data;
+    ultimoError = error;
+    if (error.code !== '23505') break;
   }
 
-  const payload = {
-    id: makeId('act'),
-    empresa_id: empresaId,
-    created_by: usuarioId || null,
-    codigo,
-    nombre,
-    tipo_categoria: datos?.tipo_categoria || 'equipo',
-    marca: String(datos?.marca || '').trim() || null,
-    modelo: String(datos?.modelo || '').trim() || null,
-    placa_serie: String(datos?.placa_serie || '').trim() || null,
-    estado: datos?.estado || 'operativo',
-    observacion: String(datos?.observacion || '').trim() || null,
-    propietario_tipo: 'cliente',
-    cliente_propietario_id: clientePropietarioId,
-    tipo_activo: tipoActivo,
-  };
-
-  const { data, error } = await supabase
-    .from('activos')
-    .insert([payload])
-    .select()
-    .single();
-  if (error) {
-    if (error.code === '23505') {
-      const duplicateError = new Error(`El código "${codigo}" ya existe; selecciónalo en el buscador.`);
-      duplicateError.code = '23505';
-      throw duplicateError;
-    }
-    throw error;
-  }
-  return data;
+  throw ultimoError || new Error('No se pudo registrar el activo.');
 }
 
 export async function listarAlmacenes(empresaId, sociedadId) {

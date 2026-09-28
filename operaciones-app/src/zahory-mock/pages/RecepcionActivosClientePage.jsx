@@ -177,7 +177,7 @@ export function RecepcionActivosClientePage() {
       return;
     }
     setAltaActivoForm({
-      codigo: assetSearch.trim(),
+      codigo_origen: '',
       nombre: '',
       marca: '',
       modelo: '',
@@ -343,10 +343,11 @@ export function RecepcionActivosClientePage() {
                   <div className="card-header"><h3>Registrar activo nuevo</h3><span className="hint">Se asociará al cliente seleccionado.</span></div>
                   <div className="card-body">
                     <div className="grid-2">
-                      <div className="field"><label>Código *</label><input className="input" value={altaActivoForm.codigo} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('codigo', event.target.value)} /></div>
+                      <div className="field"><label>Código</label><input className="input" value="Se asignará al guardar" readOnly /></div>
                       <div className="field"><label>Nombre *</label><input className="input" value={altaActivoForm.nombre} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('nombre', event.target.value)} autoFocus /></div>
                       <div className="field"><label>Marca</label><input className="input" value={altaActivoForm.marca} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('marca', event.target.value)} /></div>
                       <div className="field"><label>Modelo</label><input className="input" value={altaActivoForm.modelo} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('modelo', event.target.value)} /></div>
+                      <div className="field"><label>Código de origen <span className="hint">(opcional)</span></label><input className="input" value={altaActivoForm.codigo_origen} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('codigo_origen', event.target.value)} placeholder="Código de fábrica u origen" /></div>
                       {form.tipo_activo !== 'componente' && <div className="field"><label>Placa / serie / chasis</label><input className="input" value={altaActivoForm.placa_serie} disabled={altaActivoSaving} onChange={event => actualizarAltaActivo('placa_serie', event.target.value)} /></div>}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>

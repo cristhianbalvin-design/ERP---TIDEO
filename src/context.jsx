@@ -7101,6 +7101,7 @@ export function AppProvider({ children }) {
       monto: montoPagado,
       metodo_pago: datos.metodo_pago || null,
       cuenta_bancaria: datos.cuenta_bancaria || null,
+      cuenta_bancaria_id: datos.cuenta_bancaria_id || null,
       referencia: datos.referencia || null,
       registrado_por: authUser?.id || null,
       creado_en: new Date().toISOString(),
@@ -7169,10 +7170,21 @@ export function AppProvider({ children }) {
 
     if (isSupabaseConfigured()) {
       finSync(async () => {
+        const pagoRpc = {
+          ...registroPago,
+          ...(datos.con_deposito_spot ? {
+            con_deposito_spot: true,
+            cuenta_origen_spot_id: datos.cuenta_origen_spot_id || null,
+            proveedor_cuenta_id: datos.proveedor_cuenta_id || null,
+            numero_constancia: datos.numero_constancia || null,
+            fecha_constancia: datos.fecha_constancia || null,
+            movimiento_spot_id: datos.movimiento_spot_id || null,
+          } : {}),
+        };
         const resultado = await finanzasService.registrarPagoCxPAtomico({
           cxpId,
           monto: montoPagado,
-          pago: registroPago,
+          pago: pagoRpc,
           movimiento,
         });
         await adjuntarComprobantePago(resultado?.pago || registroPago);
@@ -8649,6 +8661,34 @@ export function AppProvider({ children }) {
       return true;
     }
   };
+  const listarCuentasBancariasProveedor = async (proveedorId) => {
+    if (!empresa?.id || !proveedorId) return [];
+    if (isSupabaseConfigured()) return comprasService.getCuentasBancariasProveedor(empresa.id, proveedorId);
+    return [];
+  };
+  const crearCuentaBancariaProveedorCtx = async (proveedorId, cuenta) => {
+    if (isSupabaseConfigured() && empresa?.id) {
+      return comprasService.crearCuentaBancariaProveedor(empresa.id, proveedorId, cuenta);
+    }
+    return {
+      ...cuenta,
+      id: generateId('pcb'),
+      empresa_id: empresa?.id,
+      proveedor_id: proveedorId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+  const actualizarCuentaBancariaProveedorCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) return comprasService.actualizarCuentaBancariaProveedor(id, cambios);
+    return { ...cambios, id, updated_at: new Date().toISOString() };
+  };
+  const eliminarCuentaBancariaProveedorCtx = async (id) => {
+    // TODO(Bloque 3b): impedir la eliminacion si existe un pago SPOT que
+    // referencie esta cuenta; el flujo de pago de compras aun no tiene tabla.
+    if (isSupabaseConfigured()) return comprasService.eliminarCuentaBancariaProveedor(id);
+    return true;
+  };
   const crearProcesoCompraCtx = async (proceso) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await comprasService.crearProcesoCompra(empresa.id, proceso);
@@ -9135,26 +9175,32 @@ export function AppProvider({ children }) {
           }).catch(error => addNotificacion(`Ajuste GRNI no persistio en Supabase: ${error.message}`));
         } else if (isSupabaseConfigured() && !observaciones) {
           // Motor WMS: registra entradas reales, busca materiales en catálogo, actualiza costo promedio
-          Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
-            codigo: item.codigo || null,
-            descripcion: item.descripcion,
-            unidad: item.unidad,
-            cantidad: item.recibido,
-            costo_unitario: item.precio_unitario || 0,
-            moneda: base.moneda || 'PEN',
-            almacen_codigo: 'ALM-001',
-            proveedor_id: base.proveedor_id || null,
-          }, {
-            tipo: 'recepcion',
-            id: recepcion.id,
-            orden_compra_id: base.id,
-            sociedad_id: base.sociedad_id || null,
-            proveedor_id: base.proveedor_id || null,
-            observacion: `Entrada por recepcion ${recepcion.codigo}`
-          }, authUser?.id))).then(async () => {
+          try {
+            await Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
+              codigo: item.codigo || null,
+              material_id: item.material_id || null,
+              descripcion: item.descripcion,
+              unidad: item.unidad,
+              cantidad: item.recibido,
+              costo_unitario: item.precio_unitario || 0,
+              moneda: base.moneda || 'PEN',
+              almacen_id: item.almacen_id || null,
+              almacen_codigo: item.almacen_codigo || 'ALM-001',
+              proveedor_id: base.proveedor_id || null,
+            }, {
+              tipo: 'recepcion',
+              id: recepcion.id,
+              recepcion_id: recepcion.id,
+              orden_compra_id: base.id,
+              sociedad_id: base.sociedad_id || null,
+              proveedor_id: base.proveedor_id || null,
+              observacion: `Entrada por recepcion ${recepcion.codigo}`
+            }, authUser?.id)));
             const invData = await getStockCompleto(empresa.id);
             if (invData?.length) setInventario(invData);
-          }).catch(error => addNotificacion(`Inventario no persistio en Supabase: ${error.message}`));
+          } catch (error) {
+            addNotificacion(`La recepción quedó registrada, pero el stock no ingresó. Detalle: ${error.message}`);
+          }
         } else if (!isSupabaseConfigured() && tieneEntradaFisicaPendiente) {
           setEntradasOcPendientes(prev => prev.filter(e => String(e.orden_compra_id || '') !== String(base.id)));
         } else if (!isSupabaseConfigured()) {
@@ -11480,6 +11526,7 @@ export function AppProvider({ children }) {
     crearCargo, crearEspecialidad, crearTipoServicio, crearAlmacen, crearSede, crearIndustria,
     // Compras Actions
     registrarProveedor, actualizarProveedorCtx, eliminarProveedorCtx,
+    listarCuentasBancariasProveedor, crearCuentaBancariaProveedorCtx, actualizarCuentaBancariaProveedorCtx, eliminarCuentaBancariaProveedorCtx,
     crearProcesoCompraCtx, actualizarProcesoCompraCtx,
     crearOrdenCompraCtx, actualizarOrdenCompraCtx, registrarTransitoOCCtx, crearOrdenServicioCtx, crearRecepcionCtx, registrarRecepcionConCxP, completarRecepcionConCxP, registrarEvaluacionProveedorCtx,
     // WMS Actions
