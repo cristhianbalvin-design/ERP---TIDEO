@@ -407,6 +407,15 @@ export const comprasService = {
     if (error) throw error;
     return data;
   },
+  quitarCompradorLineaSourcing: async ({ solpeId, solpeItemId } = {}) => {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('quitar_comprador_linea_sourcing', {
+      p_solpe_id: solpeId,
+      p_solpe_item_id: solpeItemId,
+    });
+    if (error) throw error;
+    return data;
+  },
   getPrecioHistoricoProveedor: async (empresaId, proveedorId, materialId) => {
     if (!empresaId || !proveedorId || !materialId) return null;
     const supabase = await getSupabaseClient();
