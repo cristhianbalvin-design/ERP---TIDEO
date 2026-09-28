@@ -9175,26 +9175,32 @@ export function AppProvider({ children }) {
           }).catch(error => addNotificacion(`Ajuste GRNI no persistio en Supabase: ${error.message}`));
         } else if (isSupabaseConfigured() && !observaciones) {
           // Motor WMS: registra entradas reales, busca materiales en catálogo, actualiza costo promedio
-          Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
-            codigo: item.codigo || null,
-            descripcion: item.descripcion,
-            unidad: item.unidad,
-            cantidad: item.recibido,
-            costo_unitario: item.precio_unitario || 0,
-            moneda: base.moneda || 'PEN',
-            almacen_codigo: 'ALM-001',
-            proveedor_id: base.proveedor_id || null,
-          }, {
-            tipo: 'recepcion',
-            id: recepcion.id,
-            orden_compra_id: base.id,
-            sociedad_id: base.sociedad_id || null,
-            proveedor_id: base.proveedor_id || null,
-            observacion: `Entrada por recepcion ${recepcion.codigo}`
-          }, authUser?.id))).then(async () => {
+          try {
+            await Promise.all(itemsRecibidos.map(item => comprasService.registrarEntradaInventario(empresa.id, {
+              codigo: item.codigo || null,
+              material_id: item.material_id || null,
+              descripcion: item.descripcion,
+              unidad: item.unidad,
+              cantidad: item.recibido,
+              costo_unitario: item.precio_unitario || 0,
+              moneda: base.moneda || 'PEN',
+              almacen_id: item.almacen_id || null,
+              almacen_codigo: item.almacen_codigo || 'ALM-001',
+              proveedor_id: base.proveedor_id || null,
+            }, {
+              tipo: 'recepcion',
+              id: recepcion.id,
+              recepcion_id: recepcion.id,
+              orden_compra_id: base.id,
+              sociedad_id: base.sociedad_id || null,
+              proveedor_id: base.proveedor_id || null,
+              observacion: `Entrada por recepcion ${recepcion.codigo}`
+            }, authUser?.id)));
             const invData = await getStockCompleto(empresa.id);
             if (invData?.length) setInventario(invData);
-          }).catch(error => addNotificacion(`Inventario no persistio en Supabase: ${error.message}`));
+          } catch (error) {
+            addNotificacion(`La recepción quedó registrada, pero el stock no ingresó. Detalle: ${error.message}`);
+          }
         } else if (!isSupabaseConfigured() && tieneEntradaFisicaPendiente) {
           setEntradasOcPendientes(prev => prev.filter(e => String(e.orden_compra_id || '') !== String(base.id)));
         } else if (!isSupabaseConfigured()) {
