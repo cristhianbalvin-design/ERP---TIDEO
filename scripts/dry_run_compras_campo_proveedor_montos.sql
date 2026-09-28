@@ -138,6 +138,57 @@ select 'G_CONTEO_DURANTE' as caso,
        (select count(*) from public.compras_gastos where id='gasto_dryprovidermontos000000000006') as gastos,
        (select count(*) from public.adjuntos where entidad_id='gasto_dryprovidermontos000000000006') as adjuntos;
 
+-- D. RUC inválido: el gasto se conserva y no se crea proveedor.
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','crear_cxp',false,'registrar_proveedor',true,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000007','descripcion','RUC inválido','monto',5,'fecha',current_date,'num_comprobante','FDRY-0007','centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20123456785','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000007/comprobante.jpg','url','https://example.invalid/dry-d-invalid.jpg')
+)) ->> 'gasto_id' as D_INVALIDO_GASTO;
+select 'D_INVALIDO' as caso,
+       (select count(*) from public.compras_gastos where id='gasto_dryprovidermontos000000000007') as gastos,
+       (select count(*) from public.proveedores where regexp_replace(coalesce(ruc,''),'\D','','g')='20123456785') as proveedores;
+
+-- E. Gasto directo: sin casilla no crea; con registrar_proveedor=true sí crea.
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','crear_cxp',false,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000008','descripcion','Directo sin casilla','monto',6,'fecha',current_date,'num_comprobante','FDRY-0008','centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20123456786','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000008/comprobante.jpg','url','https://example.invalid/dry-e-no.jpg')
+)) ->> 'gasto_id' as E_SIN_CASILLA_GASTO;
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','crear_cxp',false,'registrar_proveedor',true,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000009','descripcion','Directo con casilla','monto',7,'fecha',current_date,'num_comprobante','FDRY-0009','centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20123456794','proveedor_referencia','Proveedor Checkbox Dry','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000009/comprobante.jpg','url','https://example.invalid/dry-e-si.jpg')
+)) ->> 'gasto_id' as E_CON_CASILLA_GASTO;
+select 'E_DIRECTO' as caso,
+       (select count(*) from public.proveedores where regexp_replace(coalesce(ruc,''),'\D','','g')='20123456786') as ruc_existente_reutilizado,
+       (select count(*) from public.proveedores where regexp_replace(coalesce(ruc,''),'\D','','g')='20123456794' and estado='potencial') as proveedor_nuevo;
+
+-- F. Sin RUC: el gasto se guarda sin proveedor.
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','crear_cxp',false,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000010','descripcion','Sin RUC','monto',8,'fecha',current_date,'num_comprobante','FDRY-0010','centro_costo_id','ceco_03ee8fb3d1db45f49d','proveedor_referencia','Vendedor sin RUC','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000010/comprobante.jpg','url','https://example.invalid/dry-f.jpg')
+)) ->> 'gasto_id' as F_SIN_RUC_GASTO;
+select 'F_SIN_RUC' as caso, g.proveedor_referencia, g.ruc_proveedor, count(p.*) as proveedores
+  from public.compras_gastos g left join public.proveedores p on p.empresa_id=g.empresa_id and p.razon_social=g.proveedor_referencia
+ where g.id='gasto_dryprovidermontos000000000010' group by g.proveedor_referencia,g.ruc_proveedor;
+
+-- G. Sin líneas: comportamiento de gasto directo con y sin CxP.
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','crear_cxp',false,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000011','descripcion','Sin líneas sin CxP','monto',9,'fecha',current_date,'num_comprobante','FDRY-0011','centro_costo_id','ceco_03ee8fb3d1db45f49d','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000011/comprobante.jpg','url','https://example.invalid/dry-g-no.jpg')
+)) ->> 'gasto_id' as G_SIN_CXP_GASTO;
+select public.registrar_compra_campo(jsonb_build_object(
+  'empresa_id','emp_2000000000','sociedad_id','609a2f33-d057-411f-a001-4e3e83f700d0','crear_cxp',true,
+  'gasto',jsonb_build_object('id','gasto_dryprovidermontos000000000012','descripcion','Sin líneas con CxP','monto',10,'fecha',current_date,'num_comprobante','FDRY-0012','centro_costo_id','ceco_03ee8fb3d1db45f49d','ruc_proveedor','20100088991','metodo_pago','Efectivo'),
+  'adjunto',jsonb_build_object('bucket','documentos-generales','storage_path','emp_2000000000/compras_gastos/gasto_dryprovidermontos000000000012/comprobante.jpg','url','https://example.invalid/dry-g-si.jpg'),
+  'cxp',jsonb_build_object('factura_numero','FDRY-0012','concepto','Sin líneas con CxP','fecha_emision',current_date,'fecha_vencimiento',current_date+30,'monto_total',10,'ruc_emisor','20100088991','nombre_emisor','Repuestos Industriales del Sur S.A.C.')
+)) ->> 'cxp_id' as G_CON_CXP_ID;
+select 'G_SIN_LINEAS' as caso,
+       (select count(*) from public.compras_gastos where id in ('gasto_dryprovidermontos000000000011','gasto_dryprovidermontos000000000012')) as gastos,
+       (select count(*) from public.cxp where gasto_id in ('gasto_dryprovidermontos000000000011','gasto_dryprovidermontos000000000012')) as cxp;
+
 \echo 'H_REGRESION_CXP_11_CASOS'
 \ir regression_cxp_centralizado_20260924.sql
 
