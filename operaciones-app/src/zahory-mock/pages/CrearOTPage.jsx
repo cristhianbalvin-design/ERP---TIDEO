@@ -100,12 +100,15 @@ const inferUnidadMinera = (contrato) => {
 
 const textoMinimoGarantizado = (contrato) => {
   if (contrato?.minimo_facturable == null) return '';
-  const partes = [
+  const valorYUnidad = [
     Number(contrato.minimo_facturable).toLocaleString('es-PE'),
     contrato.unidad_minimo_facturable,
-    contrato.periodicidad_minimo_facturable,
   ].filter(parte => parte !== null && parte !== undefined && String(parte).trim() !== '');
-  return `Mínimo garantizado: ${partes.join(' / ')}`;
+  const periodicidad = contrato.periodicidad_minimo_facturable;
+  const sufijoPeriodicidad = periodicidad !== null && periodicidad !== undefined && String(periodicidad).trim() !== ''
+    ? ` / ${periodicidad}`
+    : '';
+  return `Mínimo garantizado: ${valorYUnidad.join(' ')}${sufijoPeriodicidad}`;
 };
 
 const hasValidSegment = (segs) =>
@@ -1399,7 +1402,7 @@ export const CrearOTPage = ({ onNav }) => {
 
         const { data: activos, error: activosError } = await supabase
           .from('activos')
-          .select('id,codigo,nombre,marca,modelo,estado')
+          .select('id,codigo,nombre,marca,modelo,estado,horometro_actual')
           .eq('empresa_id', sesionOperativa.empresaId)
           .in('id', equipoIds)
           .neq('estado', 'dado_baja');
@@ -1547,7 +1550,7 @@ export const CrearOTPage = ({ onNav }) => {
     heredarCC(objetoCostoTipo, contratoId);
     setForm(f => ({
       ...f, contratoId, equipo: '',
-      unidadMinera: f.unidadMinera || next?.unidad_minera || (f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next)),
+      unidadMinera: next?.unidad_minera || (f.lugarEjecucion === 'Campo_Mina' ? '' : inferUnidadMinera(next)),
       objeto_costo_id: contratoId,
       horometroApertura: '',
     }));
