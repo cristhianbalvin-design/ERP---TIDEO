@@ -3013,6 +3013,7 @@ function ComprasView({ screen, setScreen }) {
   const [otId, setOtId] = useState('');
   const [cecoId, setCecoId] = useState('');
   const [genCxP, setGenCxP] = useState(false);
+  const [registrarProveedor, setRegistrarProveedor] = useState(false);
   const [cxpVence, setCxpVence] = useState('');
   const [metodoPago, setMetodoPago] = useState('');
   const [guardando, setGuardando] = useState(false);
@@ -3026,6 +3027,10 @@ function ComprasView({ screen, setScreen }) {
   const [misComprasCargando, setMisComprasCargando] = useState(false);
   const [misComprasError, setMisComprasError] = useState('');
   const [resultadoGuardado, setResultadoGuardado] = useState(null);
+  const [proveedorLookup, setProveedorLookup] = useState(null);
+  const [proveedorLookupCargando, setProveedorLookupCargando] = useState(false);
+  const [montosManuales, setMontosManuales] = useState({ monto_sin_igv: false, igv: false, monto_total: false });
+  const [montosDesdeIA, setMontosDesdeIA] = useState(false);
   const rucNormalizado = String(campos.ruc || '').replace(/\D/g, '');
   const rucInvalido = rucNormalizado.length > 0 && !rucValidoSunat(campos.ruc);
   const activeTab = screen === 'por_comprar' || screen === 'mis_compras' ? screen : 'capturar';
@@ -3068,6 +3073,36 @@ function ComprasView({ screen, setScreen }) {
   const lineasTotal = lineasSeleccionadas.reduce((total, linea) => total + Number(linea.cantidad || 0) * Number(linea.precio_unitario || 0), 0);
   const facturaSinIgv = Number(campos.monto_sin_igv || 0);
   const lineasCuadran = !usarLineasSolpe || Math.abs(lineasTotal - facturaSinIgv) <= 0.10;
+  useEffect(() => {
+    let vigente = true;
+    if (!empresa?.id || rucNormalizado.length !== 11 || rucInvalido) {
+      setProveedorLookup(null);
+      setProveedorLookupCargando(false);
+      return () => { vigente = false; };
+    }
+    setProveedorLookupCargando(true);
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        const { data, error } = await sb.rpc('buscar_proveedor_por_ruc', { p_empresa_id: empresa.id, p_ruc: campos.ruc });
+        if (error) throw error;
+        if (vigente) setProveedorLookup(Array.isArray(data) ? (data[0] || null) : null);
+      } catch {
+        if (vigente) setProveedorLookup(null);
+      } finally {
+        if (vigente) setProveedorLookupCargando(false);
+      }
+    })();
+    return () => { vigente = false; };
+  }, [empresa?.id, rucNormalizado, rucInvalido]);
+
+  useEffect(() => {
+    if (!usarLineasSolpe || !lineasSeleccionadas.length || montosDesdeIA || Object.values(montosManuales).some(Boolean)) return;
+    const sin = Math.round((lineasTotal + Number.EPSILON) * 100) / 100;
+    const igv = Math.round((sin * 0.18 + Number.EPSILON) * 100) / 100;
+    const total = Math.round((sin + igv + Number.EPSILON) * 100) / 100;
+    setCampos(prev => ({ ...prev, monto_sin_igv: String(sin), igv: String(igv), monto_total: String(total) }));
+  }, [lineasTotal, lineasSeleccionadas.length, usarLineasSolpe, montosDesdeIA, montosManuales]);
   const lineaKey = linea => `${linea.solpe_id}:${linea.solpe_item_id}`;
   const edadLineaDias = linea => linea.tomada_en ? Math.max(0, Math.floor((Date.now() - new Date(linea.tomada_en).getTime()) / 86400000)) : 0;
   const estadoLinea = linea => {
@@ -3132,7 +3167,7 @@ function ComprasView({ screen, setScreen }) {
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
-    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null);
+    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setRegistrarProveedor(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null); setProveedorLookup(null); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); setMontosDesdeIA(false);
     setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
@@ -3155,6 +3190,8 @@ function ComprasView({ screen, setScreen }) {
       const { data: fnData, error: fnError } = await sb.functions.invoke('extraer-factura', { body: { imageBase64 } });
       if (fnError || !fnData?.success) throw new Error('failed');
       const d = fnData.data || {};
+      setMontosDesdeIA(Boolean(d.monto_sin_igv != null || d.igv != null || d.monto_total != null));
+      setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false });
       setCampos({
         ruc: d.ruc || '',
         proveedor: d.proveedor || '',
@@ -3170,6 +3207,29 @@ function ComprasView({ screen, setScreen }) {
       setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     }
     setPaso('revision');
+  };
+
+  const actualizarMonto = (campo, valor) => {
+    const n = Number(valor);
+    const redondear = x => Number.isFinite(x) ? Math.round((x + Number.EPSILON) * 100) / 100 : 0;
+    if (campo === 'monto_total') {
+      const total = Number.isFinite(n) ? n : 0;
+      const sin = redondear(total / 1.18);
+      setCampos(prev => ({ ...prev, monto_total: valor, monto_sin_igv: String(sin), igv: String(redondear(total - sin)) }));
+      setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: true });
+      return;
+    }
+    if (campo === 'monto_sin_igv') {
+      const sin = Number.isFinite(n) ? n : 0;
+      const igv = redondear(sin * 0.18);
+      setCampos(prev => ({ ...prev, monto_sin_igv: valor, igv: String(igv), monto_total: String(redondear(sin + igv)) }));
+      setMontosManuales({ monto_sin_igv: true, igv: false, monto_total: false });
+      return;
+    }
+    const igv = Number.isFinite(n) ? n : 0;
+    const sin = Number(campos.monto_sin_igv) || 0;
+    setCampos(prev => ({ ...prev, igv: valor, monto_total: String(redondear(sin + igv)) }));
+    setMontosManuales({ monto_sin_igv: false, igv: true, monto_total: false });
   };
 
   const guardar = async () => {
@@ -3208,6 +3268,7 @@ function ComprasView({ screen, setScreen }) {
         empresa_id: empresa?.id,
         sociedad_id: modoVistaSociedadCompras.sociedadIdEscritura || null,
         crear_cxp: genCxP,
+        registrar_proveedor: !usarLineasSolpe && !genCxP && registrarProveedor,
         lineas_solpe: [],
         gasto: {
           id: gastoId,
@@ -3334,7 +3395,10 @@ function ComprasView({ screen, setScreen }) {
             <div key={k}>
               <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>{l}</div>
               <input className="input" type={t} value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder={ph} style={k === 'ruc' && rucInvalido ? { borderColor: 'var(--danger)' } : undefined}/>
-              {k === 'ruc' && rucInvalido && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:4}}>Revisa el RUC: no es válido</div>}
+              {k === 'ruc' && rucInvalido && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:4}}>El RUC {campos.ruc} no es válido (dígito verificador). Compáralo con la factura.</div>}
+              {k === 'ruc' && !rucInvalido && rucNormalizado.length === 11 && proveedorLookup && <div style={{color:'var(--green-dk,#166534)',fontSize:12,marginTop:4}}>Proveedor registrado: {proveedorLookup.razon_social || proveedorLookup.nombre_comercial}</div>}
+              {k === 'ruc' && !rucInvalido && rucNormalizado.length === 11 && !proveedorLookupCargando && !proveedorLookup && <div style={{color:'var(--orange-dk,#92400e)',fontSize:12,marginTop:4}}>Proveedor nuevo: se registrará como potencial al guardar</div>}
+              {k === 'ruc' && !usarLineasSolpe && !genCxP && !rucInvalido && rucNormalizado.length === 11 && <label style={{display:'flex',alignItems:'center',gap:7,fontSize:12,marginTop:6}}><input type="checkbox" checked={registrarProveedor} onChange={e=>setRegistrarProveedor(e.target.checked)}/>Registrar como proveedor</label>}
             </div>
           ))}
           <div>
@@ -3379,10 +3443,12 @@ function ComprasView({ screen, setScreen }) {
             {[['monto_sin_igv','Sin IGV'],['igv','IGV'],['monto_total','Total *']].map(([k,l]) => (
               <div key={k}>
                 <div style={{fontSize:10,color:'var(--fg-muted)',marginBottom:3,display:'flex',gap:3,alignItems:'center'}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 3px'}}>IA</span>{l}</div>
-                <input className="input" type="number" step="0.01" value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder="0.00"/>
+                <input className="input" type="number" step="0.01" value={campos[k]} onChange={e=>actualizarMonto(k,e.target.value)} placeholder="0.00"/>
               </div>
             ))}
           </div>
+          {usarLineasSolpe && lineasSeleccionadas.length > 0 && !montosDesdeIA && !Object.values(montosManuales).some(Boolean) && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:-5}}>Calculado de las líneas. Compáralo con tu factura.</div>}
+          {usarLineasSolpe && Object.values(montosManuales).some(Boolean) && <button type="button" className="btn btn-secondary" style={{fontSize:11,alignSelf:'flex-start'}} onClick={() => { setMontosDesdeIA(false); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); }}>Recalcular</button>}
           <div>
             <div style={{fontSize:12,fontWeight:600,marginBottom:4}}>OT asignada</div>
             <select className="select" value={otId} onChange={e=>setOtId(e.target.value)}>
