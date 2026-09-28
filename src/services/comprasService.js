@@ -824,7 +824,7 @@ export const devolucionesService = {
     return data;
   },
 
-  // aceptada → nota_credito_recibida: crea CxP ajuste negativo y vincula
+  // aceptada → nota_credito_recibida: registra la NC en la relacion atomica.
   registrarNotaCredito: async (empresaId, devolucionId, { cxp_origen_id, monto_nc, moneda = 'PEN', numero_nc, fecha_nc }, usuarioId) => {
     const supabase = await getSupabaseClient();
     const { data: dev } = await supabase
@@ -836,68 +836,28 @@ export const devolucionesService = {
     if (!dev) throw new Error('Devolución no encontrada');
     if (dev.estado !== 'aceptada') throw new Error('Solo se puede registrar NC en una devolución aceptada');
 
-    const montoAjuste = Math.abs(Number(monto_nc));
-    const cxpAjusteId = mkId('cxp');
-
-    // Crear CxP de tipo ajuste (nota de crédito) con monto negativo
-    const cxpPayload = {
-      id: cxpAjusteId,
-      empresa_id: empresaId,
-      sociedad_id: dev.sociedad_id || null,
-      proveedor_id: dev.proveedor_id,
-      tipo_comprobante: 'nota_credito',
-      factura_numero: numero_nc || dev.numero_devolucion,
-      fecha_emision: fecha_nc || new Date().toISOString().split('T')[0],
-      fecha_vencimiento: fecha_nc || new Date().toISOString().split('T')[0],
-      monto_total: -montoAjuste,
-      monto_pagado: 0,
-      saldo: -montoAjuste,
-      moneda,
-      estado: 'pendiente_pago',
-      origen: 'nc_devolucion',
-      motivo_cxp: 'devolucion_proveedor',
-      concepto: `Nota de crédito por devolución ${dev.numero_devolucion}`,
-      recepcion_id: dev.recepcion_id,
-      referencia_id: devolucionId,
-      referencia_tipo: 'devolucion_proveedor',
-      descripcion: `Nota de crédito por devolución ${dev.numero_devolucion}`,
-      creado_por: usuarioId || null,
-    };
-    const { data: cxpCreada, error: cxpErr } = await supabase.rpc('generar_cxp_centralizado', {
-      p_payload: cxpPayload,
-      p_origen: 'devolucion_proveedor',
-      p_operacion: 'crear',
+    if (!cxp_origen_id) throw new Error('La NC debe indicar la CxP original.');
+    const { data: resultado, error: rpcError } = await supabase.rpc('registrar_nota_proveedor_spot', {
+      p_payload: {
+        cxp_origen_id,
+        tipo_nota: 'nota_credito',
+        numero_nota: numero_nc,
+        fecha_nota: fecha_nc,
+        monto: Math.abs(Number(monto_nc)),
+        moneda,
+        motivo: `Devolución de proveedor ${dev.numero_devolucion}`,
+        devolucion_id: devolucionId,
+        origen: 'devolucion_proveedor',
+      },
     });
-    if (cxpErr) throw cxpErr;
-
-    // Si hay CxP origen, reducir su saldo
-    if (cxp_origen_id) {
-      const { data: cxpOrigen } = await supabase.from('cxp').select('saldo, monto_pagado, monto_total').eq('id', cxp_origen_id).single();
-      if (cxpOrigen) {
-        const nuevoSaldo = Math.max(0, Number(cxpOrigen.saldo) - montoAjuste);
-        const nuevoEstado = nuevoSaldo <= 0 ? 'pagada' : 'pendiente_pago';
-        const { error: ajusteErr } = await supabase.rpc('generar_cxp_centralizado', {
-          p_payload: {
-            id: cxp_origen_id,
-            saldo: nuevoSaldo,
-            monto_pagado: Number(cxpOrigen.monto_pagado) + montoAjuste,
-            estado: nuevoEstado,
-          },
-          p_origen: 'devolucion_proveedor',
-          p_operacion: 'actualizar',
-        });
-        if (ajusteErr) throw ajusteErr;
-      }
-    }
-
+    if (rpcError) throw rpcError;
     const { data: updated, error: upErr } = await supabase
       .from('devoluciones_proveedor')
-      .update({ estado: 'nota_credito_recibida', cxp_ajuste_id: cxpAjusteId, actualizado_en: new Date().toISOString() })
+      .select('*')
       .eq('id', devolucionId)
-      .select()
       .single();
     if (upErr) throw upErr;
-    return { devolucion: updated, cxp_ajuste_id: cxpAjusteId, cxp: cxpCreada };
+    return { devolucion: updated, cxp_ajuste_id: updated.cxp_ajuste_id || null, cxp: resultado?.cxp, relacion: resultado?.relacion };
   },
 
   // Anular devolución: si es borrador → elimina lógicamente; si es enviada → revierte WMS

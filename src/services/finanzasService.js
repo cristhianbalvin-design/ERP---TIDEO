@@ -882,6 +882,17 @@ export const finanzasService = {
     return data;
   },
 
+  async getCxPById(cxpId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cxp')
+      .select('*, proveedores(id, razon_social)')
+      .eq('id', cxpId)
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
   async getCxpPagos(empresaId) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
@@ -903,6 +914,38 @@ export const finanzasService = {
       .order('creado_en', { ascending: true });
     if (error) throw error;
     return data || [];
+  },
+
+  async listarNotasProveedor(cxpId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('cxp_notas_proveedor')
+      .select('*')
+      .or(`cxp_origen_id.eq.${cxpId},cxp_nota_id.eq.${cxpId}`)
+      .order('fecha_nota', { ascending: true });
+    if (error) throw error;
+    const ids = [...new Set((data || []).flatMap(row => [row.cxp_origen_id, row.cxp_nota_id].filter(Boolean)))];
+    if (!ids.length) return [];
+    const { data: cxps, error: cxpError } = await supabase
+      .from('cxp')
+      .select('id, factura_numero, monto_total, saldo, moneda, estado, motivo_anulacion, anulado_por, anulado_en')
+      .in('id', ids);
+    if (cxpError) throw cxpError;
+    const byId = new Map((cxps || []).map(row => [row.id, row]));
+    return (data || []).map(row => ({
+      ...row,
+      cxp_origen: byId.get(row.cxp_origen_id) || null,
+      cxp_nota: row.cxp_nota_id ? byId.get(row.cxp_nota_id) || null : null,
+    }));
+  },
+
+  async registrarNotaProveedor(payload) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('registrar_nota_proveedor_spot', {
+      p_payload: payload || {},
+    });
+    if (error) throw error;
+    return data;
   },
 
   async registrarDetraccionCompra(cxpId, payload) {
