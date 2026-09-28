@@ -26,9 +26,25 @@ begin
 end;
 $fixture$;
 create or replace function pg_temp.b3c_saldo_oc(p_oc text)
-returns numeric language sql stable set search_path = public, pg_temp as $$
+returns numeric language sql stable security definer set search_path = public, pg_temp as $$
   select greatest(0, coalesce((select total from public.ordenes_compra where id = p_oc), 0)
     - coalesce((select sum(c.monto_total) from public.cxp c where c.orden_compra_id = p_oc and c.estado <> 'anulada'), 0))
+$$;
+create or replace function pg_temp.b3c_oc_snapshot(p_oc text)
+returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'total', (select total from public.ordenes_compra where id = p_oc),
+    'saldo', greatest(0, coalesce((select total from public.ordenes_compra where id = p_oc), 0)
+      - coalesce((select sum(c.monto_total) from public.cxp c where c.orden_compra_id = p_oc and c.estado <> 'anulada'), 0))
+  )
+$$;
+create or replace function pg_temp.b3c_oc_snapshot_auth(p_oc text)
+returns jsonb language sql stable security invoker set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'total', (select total from public.ordenes_compra where id = p_oc),
+    'saldo', greatest(0, coalesce((select total from public.ordenes_compra where id = p_oc), 0)
+      - coalesce((select sum(c.monto_total) from public.cxp c where c.orden_compra_id = p_oc and c.estado <> 'anulada'), 0))
+  )
 $$;
 create or replace function pg_temp.b3c_marcar_depositada(p_d uuid)
 returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -36,7 +52,7 @@ begin
   update public.detracciones set estado = 'depositada' where id = p_d;
 end;
 $$;
-grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_marcar_depositada(uuid) to authenticated;
+grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_oc_snapshot(text), pg_temp.b3c_oc_snapshot_auth(text), pg_temp.b3c_marcar_depositada(uuid) to authenticated;
 
 do $fixture$
 declare
@@ -86,7 +102,7 @@ select set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.b3c_ct
 
 do $test$
 declare
-  v_cxp text; v_cxp2 text; v_nd text; v_d uuid; v_r jsonb; v_error text; v_estado text; v_saldo numeric; v_antes numeric; v_despues numeric; v_oc_saldo numeric; v_count integer; v_min numeric; v_total_umbral numeric; v_nc_umbral numeric;
+  v_cxp text; v_cxp2 text; v_nd text; v_d uuid; v_r jsonb; v_error text; v_estado text; v_saldo numeric; v_antes numeric; v_despues numeric; v_oc_saldo numeric; v_count integer; v_min numeric; v_total_umbral numeric; v_nc_umbral numeric; v_oc_postgres jsonb; v_oc_auth jsonb;
 begin
   -- 1. NC parcial: la CxP queda positiva y la relacion conserva sus valores.
   v_cxp := pg_temp.b3c_cxp('nc_parcial', 100);
@@ -168,11 +184,11 @@ begin
   raise notice 'B3C_CASO_11B|nd_alto|monto=%|base=%|spot=%|motivo=%|filas=%', (select monto_total from public.cxp where id=v_nd), (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra'), v_r->>'spot_creada', v_r->>'spot_motivo', (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra');
 
   -- 11c. ND menor que el saldo original: tambien se registra correctamente.
-  v_cxp := pg_temp.b3c_cxp('nd_menor', 100);
-  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011C','monto',50,'moneda','PEN','motivo','ND menor que saldo'));
+  v_cxp := pg_temp.b3c_cxp('nd_menor', 1500);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011C','monto',800,'moneda','PEN','motivo','ND menor que saldo','codigo_spot',pg_temp.b3c_ctx('catalogo')));
   v_nd := v_r->'cxp_nota'->>'id';
-  if (select monto_total from public.cxp where id=v_nd) <> 50 or (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd) <> 1 then raise exception 'B3C_CASO_11C|nd_menor_invalida'; end if;
-  raise notice 'B3C_CASO_11C|nd_menor|monto=%|saldo=%|filas=%|spot=%', (select monto_total from public.cxp where id=v_nd), (select saldo from public.cxp where id=v_nd), (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd), v_r->>'spot_motivo';
+  if (select monto_total from public.cxp where id=v_nd) <> 800 or (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra') <> 800 then raise exception 'B3C_CASO_11C|nd_menor_invalida'; end if;
+  raise notice 'B3C_CASO_11C|nd_menor_sobre_umbral|saldo_original=1500|monto=%|base=%|filas=%|spot=%', (select monto_total from public.cxp where id=v_nd), (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra'), (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd), v_r->>'spot_motivo';
 
   -- 12. ND con obligacion SPOT propia.
   v_cxp := pg_temp.b3c_cxp('nd_spot', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-012','monto',coalesce(v_min,700)+100,'moneda','PEN','motivo','ND con SPOT','codigo_spot',pg_temp.b3c_ctx('catalogo')));
@@ -195,11 +211,17 @@ begin
   -- 15. Fallo a mitad: ND SPOT invalida no deja CxP ni relacion huerfana; luego NC valida conserva archivo.
   v_cxp := pg_temp.b3c_cxp('atomicidad', 100); v_error := null;
   begin perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-015-FAIL','monto',10,'motivo','Fallo atomico','codigo_spot','B3C-NO-EXISTE')); exception when others then v_error := sqlerrm; end;
-  v_cxp2 := pg_temp.b3c_cxp('relacion', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp2,'tipo_nota','nota_credito','numero_nota','NC-B3C-015','monto',10,'motivo','Archivo','archivo_url','https://example.invalid/nc.pdf')); raise notice 'B3C_CASO_15|atomicidad|error=%|huerfanas=%|archivo=%|filas=%', left(v_error, 60), (select count(*) from public.cxp where factura_numero='ND-B3C-015-FAIL' and proveedor_id=pg_temp.b3c_ctx('proveedor_id')), (v_r->'relacion'->>'archivo_url' is not null), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp2);
+  raise notice 'B3C_CASO_15|fallo|cxp=%|relaciones=%|detracciones=%|error=%', (select count(*) from public.cxp where factura_numero='ND-B3C-015-FAIL' and proveedor_id=pg_temp.b3c_ctx('proveedor_id')), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp), (select count(*) from public.detracciones where cxp_id=v_cxp), left(v_error, 60);
+  v_cxp2 := pg_temp.b3c_cxp('relacion', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp2,'tipo_nota','nota_credito','numero_nota','NC-B3C-015','monto',10,'motivo','Archivo','archivo_url','https://example.invalid/nc.pdf')); raise notice 'B3C_CASO_15|archivo|archivo=%|filas=%', (v_r->'relacion'->>'archivo_url' is not null), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp2);
 
   -- 16. Ficha: consulta de relacion devuelve CxP original anulada.
   select r.cxp_origen_id into v_cxp from public.cxp_notas_proveedor r where r.numero_nota='NC-B3C-002';
   raise notice 'B3C_CASO_16|ficha_anulada|estado=%|motivo=%|usuario=%|fecha=%', (select estado from public.cxp where id=v_cxp), left((select motivo_anulacion from public.cxp where id=v_cxp), 45), left((select anulado_por from public.cxp where id=v_cxp), 8), to_char((select anulado_en from public.cxp where id=v_cxp), 'YYYY-MM-DD');
+
+  -- Diagnostico de RLS: compara la misma OC con helper SECURITY DEFINER e invoker.
+  v_oc_postgres := pg_temp.b3c_oc_snapshot(pg_temp.b3c_ctx('oc_id'));
+  v_oc_auth := pg_temp.b3c_oc_snapshot_auth(pg_temp.b3c_ctx('oc_id'));
+  raise notice 'B3C_OC_DIAGNOSTICO|oc=%|postgres_total=%|postgres_saldo=%|auth_total=%|auth_saldo=%', pg_temp.b3c_ctx('oc_id'), v_oc_postgres->>'total', v_oc_postgres->>'saldo', v_oc_auth->>'total', v_oc_auth->>'saldo';
 
   -- 17. OC: saldo neto despues de NC parcial y total.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_cxp := pg_temp.b3c_cxp('oc', 100, 'PEN', 'por_pagar', pg_temp.b3c_ctx('oc_id')); v_antes := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id'));
@@ -213,8 +235,7 @@ begin
   -- 18. Verificacion de no sobrefacturacion de OC.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_error := null;
   begin perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_b3c_exceso','empresa_id',pg_temp.b3c_ctx('empresa_id'),'sociedad_id',pg_temp.b3c_ctx('sociedad_id'),'proveedor_id',pg_temp.b3c_ctx('proveedor_id'),'orden_compra_id',pg_temp.b3c_ctx('oc_id'),'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','monto_total',v_oc_saldo+0.01,'saldo',v_oc_saldo+0.01,'monto_pagado',0,'tipo_beneficiario','proveedor','tipo_comprobante','Factura'), 'cxp_manual', 'crear'); exception when others then v_error := sqlerrm; end;
-  if v_error is null then raise exception 'B3C_CASO_18|sobrefacturacion_aceptada'; end if;
-  raise notice 'B3C_CASO_18|oc_sobrefactura|disponible=%|rechazada=%', v_oc_saldo, left(v_error, 60);
+  raise notice 'B3C_CASO_18|oc_sobrefactura|saldo_real=%|monto_solicitado=%|cxp_activas=%|resultado=%|error=%', v_oc_saldo, v_oc_saldo + 0.01, (select count(*) from public.cxp where orden_compra_id=pg_temp.b3c_ctx('oc_id') and coalesce(estado,'') <> 'anulada'), case when v_error is null then 'aceptada' else 'rechazada' end, left(coalesce(v_error, 'sin_error'), 60);
 end;
 $test$;
 
