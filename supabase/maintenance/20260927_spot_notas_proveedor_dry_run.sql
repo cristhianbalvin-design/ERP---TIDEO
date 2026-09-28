@@ -25,6 +25,80 @@ begin
   return v_id;
 end;
 $fixture$;
+create or replace function pg_temp.b3c_cxp_retencion(p_tag text, p_monto numeric, p_retencion numeric)
+returns text language plpgsql security definer set search_path = public, pg_temp as $fixture$
+declare
+  v_id text := 'cxp_b3c_' || p_tag || '_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+begin
+  insert into public.cxp (id, empresa_id, proveedor_id, sociedad_id, factura_numero,
+    fecha_emision, fecha_vencimiento, monto_bruto, retencion_ir, monto_total,
+    monto_pagado, saldo, moneda, estado, tipo_beneficiario, tipo_comprobante,
+    origen, created_at, updated_at)
+  values (v_id, pg_temp.b3c_ctx('empresa_id'), pg_temp.b3c_ctx('proveedor_id'),
+    pg_temp.b3c_ctx('sociedad_id')::uuid, 'F-B3C-' || p_tag,
+    date '2026-09-24', date '2026-10-24', p_monto + p_retencion, p_retencion,
+    p_monto, 0, p_monto, 'PEN', 'por_pagar', 'proveedor', 'Factura',
+    'manual', now(), now());
+  return v_id;
+end;
+$fixture$;
+create or replace function pg_temp.b3c_cuenta(p_tag text, p_estado text default 'activo')
+returns text language plpgsql security definer set search_path = public, pg_temp as $fixture$
+declare
+  v_id text := 'cb_b3c_' || p_tag || '_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+begin
+  insert into public.cuentas_bancarias (
+    id, empresa_id, nombre, banco, numero_cuenta, cci, moneda, tipo, estado, sociedad_id
+  ) values (
+    v_id, pg_temp.b3c_ctx('empresa_id'), 'Cuenta B3C ' || p_tag, 'Banco B3C',
+    'B3C' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 16), null,
+    'PEN', 'corriente', p_estado, pg_temp.b3c_ctx('sociedad_id')::uuid
+  );
+  return v_id;
+end;
+$fixture$;
+create or replace function pg_temp.b3c_proveedor_cuenta(p_tag text)
+returns text language plpgsql security definer set search_path = public, pg_temp as $fixture$
+declare
+  v_id text := 'pcb_b3c_' || p_tag || '_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+begin
+  insert into public.proveedor_cuentas_bancarias (
+    id, empresa_id, proveedor_id, alias, banco, tipo_cuenta, numero_cuenta,
+    cci, moneda, es_cuenta_banco_nacion, estado, observaciones
+  ) values (
+    v_id, pg_temp.b3c_ctx('empresa_id'), pg_temp.b3c_ctx('proveedor_id'),
+    'Cuenta B3C ' || p_tag, 'Banco de la Nación', 'corriente',
+    'BN' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 16), null,
+    'PEN', true, 'activo', 'Fixture temporal B3C'
+  );
+  return v_id;
+end;
+$fixture$;
+create or replace function pg_temp.b3c_devolucion(p_tag text, p_cxp_id text)
+returns text language plpgsql security definer set search_path = public, pg_temp as $fixture$
+declare
+  v_id text := 'dev_b3c_' || p_tag || '_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 10);
+  v_recepcion text;
+begin
+  select r.id into v_recepcion
+  from public.recepciones r
+  where r.empresa_id = pg_temp.b3c_ctx('empresa_id')
+  order by r.id limit 1;
+  if v_recepcion is null then
+    raise exception 'B3C_FIXTURE|recepcion_no_encontrada';
+  end if;
+  insert into public.devoluciones_proveedor (
+    id, empresa_id, sociedad_id, recepcion_id, proveedor_id, numero_devolucion,
+    fecha, motivo, descripcion_motivo, estado, cxp_ajuste_id, creado_por
+  ) values (
+    v_id, pg_temp.b3c_ctx('empresa_id'), pg_temp.b3c_ctx('sociedad_id')::uuid,
+    v_recepcion, pg_temp.b3c_ctx('proveedor_id'), 'DEV-B3C-' || p_tag,
+    date '2026-09-24', 'otro', 'Fixture temporal B3C', 'aceptada', p_cxp_id,
+    pg_temp.b3c_ctx('user_id')
+  );
+  return v_id;
+end;
+$fixture$;
 create or replace function pg_temp.b3c_saldo_oc(p_oc text)
 returns numeric language sql stable security definer set search_path = public, pg_temp as $$
   select greatest(0, coalesce((select total from public.ordenes_compra where id = p_oc), 0)
@@ -52,7 +126,7 @@ begin
   update public.detracciones set estado = 'depositada' where id = p_d;
 end;
 $$;
-grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_oc_snapshot(text), pg_temp.b3c_oc_snapshot_auth(text), pg_temp.b3c_marcar_depositada(uuid) to authenticated;
+grant execute on function pg_temp.b3c_ctx(text), pg_temp.b3c_cxp(text,numeric,text,text,text), pg_temp.b3c_cxp_retencion(text,numeric,numeric), pg_temp.b3c_cuenta(text,text), pg_temp.b3c_proveedor_cuenta(text), pg_temp.b3c_devolucion(text,text), pg_temp.b3c_saldo_oc(text), pg_temp.b3c_oc_snapshot(text), pg_temp.b3c_oc_snapshot_auth(text), pg_temp.b3c_marcar_depositada(uuid) to authenticated;
 
 do $fixture$
 declare
@@ -102,7 +176,7 @@ select set_config('request.jwt.claims', jsonb_build_object('sub', pg_temp.b3c_ct
 
 do $test$
 declare
-  v_cxp text; v_cxp2 text; v_nd text; v_d uuid; v_r jsonb; v_error text; v_estado text; v_saldo numeric; v_antes numeric; v_despues numeric; v_oc_saldo numeric; v_count integer; v_min numeric; v_total_umbral numeric; v_nc_umbral numeric; v_oc_postgres jsonb; v_oc_auth jsonb;
+  v_cxp text; v_cxp2 text; v_nd text; v_d uuid; v_r jsonb; v_pago_result jsonb; v_error text; v_estado text; v_saldo numeric; v_antes numeric; v_despues numeric; v_oc_saldo numeric; v_count integer; v_min numeric; v_total_umbral numeric; v_nc_umbral numeric; v_oc_postgres jsonb; v_oc_auth jsonb; v_cuenta_pago text; v_cuenta_spot text; v_proveedor_cuenta text; v_dev text; v_det numeric; v_spot_total numeric;
 begin
   -- 1. NC parcial: la CxP queda positiva y la relacion conserva sus valores.
   v_cxp := pg_temp.b3c_cxp('nc_parcial', 100);
@@ -235,7 +309,47 @@ begin
   -- 18. Verificacion de no sobrefacturacion de OC.
   v_oc_saldo := pg_temp.b3c_saldo_oc(pg_temp.b3c_ctx('oc_id')); v_error := null;
   begin perform public.generar_cxp_centralizado(jsonb_build_object('id','cxp_b3c_exceso','empresa_id',pg_temp.b3c_ctx('empresa_id'),'sociedad_id',pg_temp.b3c_ctx('sociedad_id'),'proveedor_id',pg_temp.b3c_ctx('proveedor_id'),'orden_compra_id',pg_temp.b3c_ctx('oc_id'),'fecha_emision','2026-09-24','fecha_vencimiento','2026-10-24','monto_total',v_oc_saldo+0.01,'saldo',v_oc_saldo+0.01,'monto_pagado',0,'tipo_beneficiario','proveedor','tipo_comprobante','Factura'), 'cxp_manual', 'crear'); exception when others then v_error := sqlerrm; end;
-  raise notice 'B3C_CASO_18|oc_sobrefactura|saldo_real=%|monto_solicitado=%|cxp_activas=%|resultado=%|error=%', v_oc_saldo, v_oc_saldo + 0.01, (select count(*) from public.cxp where orden_compra_id=pg_temp.b3c_ctx('oc_id') and coalesce(estado,'') <> 'anulada'), case when v_error is null then 'aceptada' else 'rechazada' end, left(coalesce(v_error, 'sin_error'), 60);
+  raise notice 'B3C_CASO_18|oc_exceso|rechazada=%|solicitado=%|saldo_liberado=%|total_oc=%|no_supera_oc=%|error=%', v_error is not null, v_oc_saldo + 0.01, v_oc_saldo, (select total from public.ordenes_compra where id=pg_temp.b3c_ctx('oc_id')), v_oc_saldo <= (select total from public.ordenes_compra where id=pg_temp.b3c_ctx('oc_id')), left(coalesce(v_error, 'sin_error'), 40);
+
+  -- Regresion A. Pago normal despues de una NC parcial, sin obligacion SPOT.
+  v_cxp := pg_temp.b3c_cxp('reg_pago_normal', 1000);
+  perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-019','monto',100,'moneda','PEN','motivo','Regresion pago normal'));
+  v_cuenta_pago := pg_temp.b3c_cuenta('reg_pago_normal');
+  v_pago_result := public.registrar_pago_cxp_atomico(v_cxp, 900,
+    jsonb_build_object('fecha_pago','2026-09-24','cuenta_bancaria_id',v_cuenta_pago,'referencia','PAGO-B3C-019','registrado_por',pg_temp.b3c_ctx('user_id'),'metodo_pago','transferencia'),
+    jsonb_build_object('descripcion','Pago normal B3C','moneda','PEN','fecha','2026-09-24','referencia','PAGO-B3C-019','cuenta_bancaria_id',v_cuenta_pago,'monto_en_moneda_cuenta',900));
+  raise notice 'B3C_REGRESION_A|pago_normal|estado=%|saldo=%|pagos=%|egresos=%|spot=%', (select estado from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_pagos where cxp_id=v_cxp), (select count(*) from public.movimientos_tesoreria where vinculo_tipo='cxp' and vinculo_id=v_cxp and tipo='egreso'), (select count(*) from public.detracciones where cxp_id=v_cxp and direccion='compra');
+
+  -- Regresion B. NC parcial, obligacion recalculada y pago neto mas deposito SPOT atomicos.
+  v_spot_total := coalesce(v_min,700) + 1000;
+  v_cxp := pg_temp.b3c_cxp('reg_pago_spot', v_spot_total);
+  v_r := public.registrar_detraccion_compra(v_cxp, jsonb_build_object('codigo_spot',pg_temp.b3c_ctx('catalogo')));
+  v_d := (v_r->'detraccion'->>'id')::uuid;
+  perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-020','monto',100,'moneda','PEN','motivo','Regresion pago SPOT'));
+  select saldo into v_saldo from public.cxp where id=v_cxp;
+  select monto_detraccion_soles into v_det from public.detracciones where id=v_d;
+  v_cuenta_pago := pg_temp.b3c_cuenta('reg_spot_pago'); v_cuenta_spot := pg_temp.b3c_cuenta('reg_spot_deposito'); v_proveedor_cuenta := pg_temp.b3c_proveedor_cuenta('reg_spot');
+  v_pago_result := public.registrar_pago_cxp_atomico(v_cxp, v_saldo - v_det,
+    jsonb_build_object('fecha_pago','2026-09-24','cuenta_bancaria_id',v_cuenta_pago,'con_deposito_spot',true,'cuenta_origen_spot_id',v_cuenta_spot,'proveedor_cuenta_id',v_proveedor_cuenta,'numero_constancia','CONST-B3C-020','fecha_constancia','2026-09-24','referencia','PAGO-B3C-020','registrado_por',pg_temp.b3c_ctx('user_id'),'metodo_pago','transferencia'),
+    jsonb_build_object('descripcion','Pago neto B3C','moneda','PEN','fecha','2026-09-24','referencia','PAGO-B3C-020','cuenta_bancaria_id',v_cuenta_pago,'monto_en_moneda_cuenta',v_saldo-v_det));
+  raise notice 'B3C_REGRESION_B|pago_spot|neto=%|saldo=%|pagos=%|egreso=%|egreso_spot=%|det=%', v_saldo-v_det, (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_pagos where cxp_id=v_cxp), (select count(*) from public.movimientos_tesoreria where vinculo_tipo='cxp' and vinculo_id=v_cxp and tipo='egreso'), (select count(*) from public.movimientos_tesoreria where vinculo_tipo='pago_spot_compra' and detraccion_id=v_d), (select estado from public.detracciones where id=v_d);
+
+  -- Regresion C. La NC no elimina ni recalcula artificialmente la retencion IR.
+  v_cxp := pg_temp.b3c_cxp_retencion('reg_retencion', 1000, 100);
+  perform public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-021','monto',200,'moneda','PEN','motivo','Regresion retencion IR'));
+  raise notice 'B3C_REGRESION_C|retencion_nc|retencion=%|total=%|saldo=%|relaciones=%', (select retencion_ir from public.cxp where id=v_cxp), (select monto_total from public.cxp where id=v_cxp), (select saldo from public.cxp where id=v_cxp), (select count(*) from public.cxp_notas_proveedor where cxp_origen_id=v_cxp);
+
+  -- Regresion D. ND sin codigo SPOT conserva el flujo normal y no crea obligacion.
+  v_cxp := pg_temp.b3c_cxp('reg_nd_sin_spot', 100);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-022','monto',50,'moneda','PEN','motivo','Regresion ND sin SPOT'));
+  v_nd := v_r->'cxp_nota'->>'id';
+  raise notice 'B3C_REGRESION_D|nd_sin_spot|total=%|saldo=%|spot=%|relaciones=%', (select monto_total from public.cxp where id=v_nd), (select saldo from public.cxp where id=v_nd), (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra'), (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd);
+
+  -- Regresion E. La ruta de devolucion conserva cxp_ajuste_id y solo transiciona su estado.
+  v_cxp := pg_temp.b3c_cxp('reg_devolucion', 100);
+  v_dev := pg_temp.b3c_devolucion('regresion', v_cxp);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_credito','numero_nota','NC-B3C-023','monto',10,'moneda','PEN','motivo','Regresion devolucion','devolucion_id',v_dev,'origen','devolucion_proveedor'));
+  raise notice 'B3C_REGRESION_E|devolucion|estado=%|ajuste_preservado=%|relaciones=%', (select estado from public.devoluciones_proveedor where id=v_dev), (select cxp_ajuste_id=v_cxp from public.devoluciones_proveedor where id=v_dev), (select count(*) from public.cxp_notas_proveedor where devolucion_id=v_dev);
 end;
 $test$;
 
