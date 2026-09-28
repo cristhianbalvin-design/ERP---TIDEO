@@ -6825,12 +6825,14 @@ const sourcingLineaKey = linea => `${linea?.solpe_id || ''}:${linea?.solpe_item_
 const sourcingProveedorLabel = candidato => candidato?.nombre_comercial || candidato?.razon_social || candidato?.proveedor_codigo || candidato?.proveedor_id || 'Proveedor';
 
 function BandejaSourcing() {
-  const { empresa, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], ots = [], centrosCosto = [], sociedadesDisponibles = [], crearOrdenCompraCtx, navigate } = useApp();
+  const { empresa, role, addToast, addNotificacion, setSolpes, solpes: solpesContext = [], proveedores = [], ots = [], centrosCosto = [], sociedadesDisponibles = [], crearOrdenCompraCtx, navigate } = useApp();
   const [lineas, setLineas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [familiaFiltro, setFamiliaFiltro] = useState('');
   const [solpeFiltro, setSolpeFiltro] = useState('');
+  const [campoFiltro, setCampoFiltro] = useState('todas');
+  const [compradorCampoFiltro, setCompradorCampoFiltro] = useState('');
   const [guardando, setGuardando] = useState(() => new Set());
   const [draggedKey, setDraggedKey] = useState('');
   const [generandoProveedores, setGenerandoProveedores] = useState(() => new Set());
@@ -6863,11 +6865,30 @@ function BandejaSourcing() {
   const solpes = useMemo(() => Array.from(new Map(
     lineas.map(linea => [linea.solpe_id, linea.solpe_codigo || linea.solpe_id])
   ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
-  const lineasAsignadas = useMemo(() => lineas.filter(linea => linea.proveedor_asignado_id), [lineas]);
-  const lineasSinAsignar = useMemo(() => lineas.filter(linea => !linea.proveedor_asignado_id && (
+  const compradoresCampo = useMemo(() => Array.from(new Map(
+    lineas.filter(linea => linea.comprador_campo_id).map(linea => [linea.comprador_campo_id, linea.comprador_nombre || linea.comprador_campo_id])
+  ).entries()).sort((a, b) => a[1].localeCompare(b[1])), [lineas]);
+  const diasEnCampo = linea => {
+    if (!linea?.tomada_en) return null;
+    return Math.max(0, Math.floor((Date.now() - new Date(linea.tomada_en).getTime()) / 86400000));
+  };
+  const lineaTomada = linea => Boolean(linea?.comprador_campo_id);
+  const lineasFiltradas = useMemo(() => lineas
+    .filter(linea => (
+      (!familiaFiltro || (linea.familia_id || 'sin_familia') === familiaFiltro) &&
+      (!solpeFiltro || linea.solpe_id === solpeFiltro) &&
+      (campoFiltro === 'todas' || (campoFiltro === 'en_campo' ? lineaTomada(linea) : !lineaTomada(linea))) &&
+      (!compradorCampoFiltro || linea.comprador_campo_id === compradorCampoFiltro)
+    ))
+    .sort((a, b) => {
+      if (lineaTomada(a) !== lineaTomada(b)) return lineaTomada(a) ? -1 : 1;
+      return String(a.tomada_en || '').localeCompare(String(b.tomada_en || ''));
+    }), [campoFiltro, compradorCampoFiltro, familiaFiltro, lineas, solpeFiltro]);
+  const lineasAsignadas = useMemo(() => lineasFiltradas.filter(linea => linea.proveedor_asignado_id), [lineasFiltradas]);
+  const lineasSinAsignar = useMemo(() => lineasFiltradas.filter(linea => !linea.proveedor_asignado_id && (
     (!familiaFiltro || (linea.familia_id || 'sin_familia') === familiaFiltro) &&
     (!solpeFiltro || linea.solpe_id === solpeFiltro)
-  )), [familiaFiltro, lineas, solpeFiltro]);
+  )), [lineasFiltradas, familiaFiltro, solpeFiltro]);
   const columnasProveedor = useMemo(() => {
     const agrupados = new Map();
     lineasAsignadas.forEach(linea => {
@@ -6884,6 +6905,10 @@ function BandejaSourcing() {
   }, [lineasAsignadas]);
 
   const guardarAsignacion = async (linea, proveedorId) => {
+    if (lineaTomada(linea)) {
+      addToast?.('No se puede asignar proveedor: la línea está en campo. Quita al comprador antes de asignarla.');
+      return false;
+    }
     const key = sourcingLineaKey(linea);
     const anterior = linea.proveedor_asignado_id || null;
     setErroresSociedad(prev => {
@@ -6916,6 +6941,34 @@ function BandejaSourcing() {
       });
     }
     return true;
+  };
+
+  const puedeQuitarComprador = Boolean(
+    role?.permisos?.todo || role?.es_admin_empresa || role?.permisos?.tenant_admin ||
+    role?.permisos?.editar === true ||
+    (Array.isArray(role?.permisos?.editar) && role.permisos.editar.includes('ordenes_compra'))
+  );
+
+  const quitarComprador = async linea => {
+    if (!lineaTomada(linea) || !puedeQuitarComprador) return;
+    if (!window.confirm('El comprador podría estar comprando este material ahora. ¿Quitárselo?')) return;
+    const key = sourcingLineaKey(linea);
+    setGuardando(prev => new Set(prev).add(key));
+    try {
+      await comprasService.quitarCompradorLineaSourcing({ solpeId: linea.solpe_id, solpeItemId: linea.solpe_item_id });
+      setLineas(prev => prev.map(item => sourcingLineaKey(item) === key
+        ? { ...item, comprador_campo_id: null, comprador_nombre: null, tomada_en: null }
+        : item));
+      addNotificacion?.('La línea quedó libre para los compradores de campo.');
+    } catch (e) {
+      addToast?.('No se pudo quitar al comprador: ' + (e?.message || 'error desconocido'));
+    } finally {
+      setGuardando(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
   };
 
   const proveedoresParaAsignacion = useMemo(() => proveedores
@@ -7116,7 +7169,9 @@ function BandejaSourcing() {
 
   const renderTarjeta = (linea, asignada = false) => {
     const key = sourcingLineaKey(linea);
-    const puedeArrastrar = !guardando.has(key) && otroProveedorAbierto !== key;
+    const estaEnCampo = lineaTomada(linea);
+    const dias = diasEnCampo(linea);
+    const puedeArrastrar = !estaEnCampo && !guardando.has(key) && otroProveedorAbierto !== key;
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
     return <article
       className="card sourcing-card"
@@ -7129,7 +7184,7 @@ function BandejaSourcing() {
         setDraggedKey(key);
       } : undefined}
       onDragEnd={puedeArrastrar ? () => setDraggedKey('') : undefined}
-      style={{padding:14, margin:0, cursor:puedeArrastrar ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1}}
+      style={{padding:14, margin:0, cursor:puedeArrastrar ? 'grab' : 'default', opacity:draggedKey === key ? 0.55 : 1, borderColor: estaEnCampo && dias >= 4 ? 'var(--danger)' : estaEnCampo && dias >= 2 ? 'var(--orange)' : undefined}}
     >
       <div className="row sourcing-card-head" style={{justifyContent:'space-between', alignItems:'flex-start', gap:10}}>
         <div>
@@ -7138,14 +7193,20 @@ function BandejaSourcing() {
         </div>
         <div className="row sourcing-card-actions" style={{gap:6, alignItems:'flex-start'}}>
           <span className="badge sourcing-card-family">{linea.familia_nombre || linea.familia_codigo || 'Sin familia'}</span>
-          {asignada && <button type="button" className="btn btn-ghost btn-sm" onClick={() => guardarAsignacion(linea, null)} disabled={guardando.has(key)} aria-label="Quitar proveedor">×</button>}
+          {asignada && !estaEnCampo && <button type="button" className="btn btn-ghost btn-sm" onClick={() => guardarAsignacion(linea, null)} disabled={guardando.has(key)} aria-label="Quitar proveedor">×</button>}
         </div>
       </div>
+      {estaEnCampo && <div
+        className={'badge ' + (dias >= 4 ? 'badge-red' : dias >= 2 ? 'badge-orange' : 'badge-gray')}
+        style={{marginTop:8, display:'inline-flex', gap:4}}
+      >En campo: {linea.comprador_nombre || linea.comprador_campo_id} · hace {dias} {dias === 1 ? 'día' : 'días'}</div>}
       <div className="text-muted" style={{fontSize:12, marginTop:10}}>Cantidad: <strong>{linea.cantidad ?? '-'}</strong> {linea.unidad || ''}</div>
       <div className="text-muted" style={{fontSize:12, marginTop:4}}>SOLPE: <strong>{linea.solpe_codigo || linea.solpe_id}</strong></div>
       {!asignada && <div style={{marginTop:12}}>
         <div className="text-muted" style={{fontSize:12, marginBottom:7}}>Asignar proveedor</div>
-        {!candidatos.length
+        {estaEnCampo
+          ? <div className="alert alert-warning" style={{fontSize:12}}>No se puede asignar proveedor mientras la línea está en campo.</div>
+          : !candidatos.length
           ? <span className="text-muted" style={{fontSize:12}}>Sin candidatos disponibles</span>
           : <div className="row sourcing-provider-chips" style={{gap:6, flexWrap:'wrap'}}>
             {candidatos.map((candidato, index) => <button
@@ -7159,6 +7220,7 @@ function BandejaSourcing() {
           </div>}
         {guardando.has(key) && <div className="text-muted" style={{fontSize:11, marginTop:6}}>Guardando...</div>}
       </div>}
+      {estaEnCampo && puedeQuitarComprador && <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:10}} onClick={() => quitarComprador(linea)} disabled={guardando.has(key)}>Quitar al comprador</button>}
       <div style={{marginTop:8}}>
         {otroProveedorAbierto === key
           ? <div className="row" style={{gap:6, alignItems:'flex-start'}}>
@@ -7169,7 +7231,7 @@ function BandejaSourcing() {
               style={{minWidth:240, flex:1}}
             />
           </div>
-          : <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto(key)} disabled={guardando.has(key)}>+ Otro proveedor</button>}
+          : !estaEnCampo && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOtroProveedorAbierto(key)} disabled={guardando.has(key)}>+ Otro proveedor</button>}
       </div>
     </article>;
   };
@@ -7186,6 +7248,10 @@ function BandejaSourcing() {
       <div className="kpi-card"><div className="kpi-label">Familias</div><div className="kpi-value">{familias.length}</div></div>
     </div>
     <div className="card" style={{padding:14, marginBottom:16}}>
+      <div className="grid-2" style={{gap:12, marginBottom:12}}>
+        <div className="input-group"><label>Estado de campo</label><select className="select" value={campoFiltro} onChange={e => { setCampoFiltro(e.target.value); if (e.target.value !== 'en_campo') setCompradorCampoFiltro(''); }}><option value="todas">Todas</option><option value="en_campo">En campo</option><option value="libres">Libres</option></select></div>
+        <div className="input-group"><label>Comprador de campo</label><select className="select" value={compradorCampoFiltro} onChange={e => setCompradorCampoFiltro(e.target.value)} disabled={campoFiltro !== 'en_campo'}><option value="">Todos</option>{compradoresCampo.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div>
+      </div>
       <div className="grid-2" style={{gap:12}}>
         <div className="input-group"><label>Familia</label><select className="select" value={familiaFiltro} onChange={e => setFamiliaFiltro(e.target.value)}><option value="">Todas las familias</option>{familias.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div>
         <div className="input-group"><label>SOLPE de origen</label><select className="select" value={solpeFiltro} onChange={e => setSolpeFiltro(e.target.value)}><option value="">Todas las SOLPEs</option>{solpes.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div>
@@ -7264,7 +7330,7 @@ function BandejaSourcing() {
 }
 
 function OrdenesCompra() {
-  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones, cxp = [] } = useApp();
+  const { ordenesCompra, setOrdenesCompra, proveedores, procesosCompra, ots, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], authUser, addNotificacion, addToast, navigate, activeParams, centrosCosto, materiales, crearOrdenCompraCtx, actualizarOrdenCompraCtx, recepciones, cxp = [], comprasGastos = [] } = useApp();
   const modoVistaSociedadOC = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7275,6 +7341,7 @@ function OrdenesCompra() {
   const otsEscrituraOC = filtrarOpcionesPorSociedadEscritura(ots || [], modoVistaSociedadOC.sociedadIdEscritura);
   const centrosCostoEscrituraOC = filtrarOpcionesPorSociedadEscritura(centrosCosto || [], modoVistaSociedadOC.sociedadIdEscritura);
   const [tab, setTab] = useState('todas');
+  const [origenFiltro, setOrigenFiltro] = useState('todos');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -7282,7 +7349,10 @@ function OrdenesCompra() {
   const [editandoOC, setEditandoOC] = useState(null);
   const handledOcParamRef = useRef('');
   const editRequestRef = useRef(0);
-  const list = ordenesCompra.filter(o => tab === 'todas' || o.estado === tab);
+  const list = ordenesCompra.filter(o =>
+    (tab === 'todas' || o.estado === tab) &&
+    (origenFiltro === 'todos' || (origenFiltro === 'campo' ? o.origen_tipo === 'compra_campo' : o.origen_tipo !== 'compra_campo'))
+  );
   const cxpPorOrdenCompra = useMemo(() => {
     const mapa = new Map();
     (cxp || []).forEach(cuenta => {
@@ -7407,12 +7477,13 @@ function OrdenesCompra() {
       setConfirmando(false);
     }
   };
-  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} cxpResumen={cxpPorOrdenCompra.get(sel.id)} onBack={()=>setSel(null)} onEdit={abrirEdicionOC} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
+  if (sel) return <DetalleOrden orden={sel} proveedor={proveedorById(proveedores, sel.proveedor_id)} cxpResumen={cxpPorOrdenCompra.get(sel.id)} comprasGastos={comprasGastos} onBack={()=>setSel(null)} onEdit={abrirEdicionOC} onConfirmar={confirmarOC} confirmando={confirmando} onRecepcion={()=>navigate('recepciones', { ocId: sel.id })}/>;
   return (
     <>
       <div className="page-header"><div><h1 className="page-title">Ordenes de Compra</h1><div className="page-sub">Bienes, materiales e ingreso a inventario</div></div><button className="btn btn-primary" data-local-form="true" onClick={()=>{ setEditandoOC(null); setForm(nuevaOCForm(proveedoresOC[0]?.id)); setPanel(true); }}>{I.plus} Nueva OC</button></div>
       <div className="kpi-grid"><div className="kpi-card"><div className="kpi-label">Emitidas este mes</div><div className="kpi-value">{kpi.emitidas}</div></div><div className="kpi-card"><div className="kpi-label">Pendientes recepcion</div><div className="kpi-value">{kpi.pendientes}</div></div><div className="kpi-card"><div className="kpi-label">Recibidas parcial</div><div className="kpi-value">{kpi.parcial}</div></div><div className="kpi-card"><div className="kpi-label">Valor total mes</div><div className="kpi-value">{moneyD(kpi.total)}</div></div></div>
       <div className="tabs">{[['todas','Todas'],['emitida','Emitida'],['confirmada','Confirmada'],['en_transito','En tránsito'],['recibida_parcial','Recibida parcial'],['cerrada','Cerrada'],['anulada','Anulada'],['pendientes_recepcion','Pendientes de recepción']].map(([k,l])=><div key={k} className={'tab '+(tab===k?'active':'')} onClick={()=>setTab(k)}>{l}</div>)}</div>
+      <div className="card" style={{padding:12, marginBottom:12}}><label className="text-muted" style={{fontSize:12, display:'block', marginBottom:6}}>Origen de compra</label><select className="select" style={{maxWidth:260}} value={origenFiltro} onChange={e=>setOrigenFiltro(e.target.value)}><option value="todos">Todas las compras</option><option value="campo">Compra en campo</option><option value="otros">Compras normales</option></select></div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})} onRegistrarCxP={o => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: o.id })}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
       {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
@@ -7451,7 +7522,7 @@ function OrdenesTable({ list, proveedores, cxpPorOrdenCompra, onSel, onEdit, onR
                   onClick={() => esBorrador && onEdit(o)}
                   style={esBorrador ? { cursor: 'pointer' } : undefined}
                 >
-                  <td className="mono">{o.codigo}</td>
+                  <td className="mono">{o.codigo}{o.origen_tipo === 'compra_campo' && <div style={{marginTop:4}}><span className="badge badge-cyan">Compra en campo</span></div>}</td>
                   <td>
                     <strong>{p.razon_social}</strong>
                     <div className="text-muted" style={{ fontSize: 11 }}>{ratingText(p.calificacion_promedio)}</div>
@@ -7703,7 +7774,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
     <div className="card mt-6" style={{padding:14}}><p><strong>Subtotal:</strong> {moneyD(subtotal)}</p><p><strong>IGV 18%:</strong> {moneyD(subtotal*0.18)}</p><p><strong>Total:</strong> {moneyD(subtotal*1.18)}</p></div><div className="row mt-6" style={{justifyContent:'flex-end'}}><button className="btn btn-secondary" onClick={()=>onCrear(false)}>Guardar borrador</button><button className="btn btn-primary" data-local-form="true" onClick={()=>onCrear(true)}>Emitir OC</button></div></div></div></>;
 }
 
-function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
+function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
   const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
@@ -7735,6 +7806,9 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
     cantidadActualLiberacion - cantidadIngresadaLiberacion
   );
   const excedeSaldoLiberacion = cantidadIngresadaLiberacion > maxCantidadLiberar;
+  const gastoVinculado = comprasGastos.find(g => g.cxp_id && cxpResumen?.cxps?.some(c => c.id === g.cxp_id)) || null;
+  const cxpCampo = cxpResumen?.cxps?.find(c => c.origen === 'gasto_movil') || cxpResumen?.cxps?.[0] || null;
+  const solpesCubiertas = [...new Set((ordenActual.items || []).map(item => item.solpe_codigo || item.solpe_id).filter(Boolean))];
 
   const guardarAnticipo = async e => {
     e.preventDefault();
@@ -7880,6 +7954,15 @@ function DetalleOrden({ orden, proveedor, cxpResumen, onBack, onEdit, onConfirma
 
       {tab === 'detalle' && (
         <div className="card" style={{padding:20}}>
+          {ordenActual.origen_tipo === 'compra_campo' && <div className="card" style={{padding:14, marginBottom:16, borderColor:'var(--cyan)'}}>
+            <div className="row" style={{justifyContent:'space-between', gap:10, flexWrap:'wrap'}}><strong>Compra en campo</strong><span className="badge badge-cyan">OC de regularización</span></div>
+            <p><strong>Comprador que la originó:</strong> {gastoVinculado?.creado_por || ordenActual.creado_por || 'No identificado'}</p>
+            <p><strong>Gasto vinculado:</strong> {gastoVinculado ? gastoVinculado.id : 'No identificado'}</p>
+            {gastoVinculado?.archivo_url && <p><a href={gastoVinculado.archivo_url} target="_blank" rel="noreferrer">Ver foto del comprobante</a></p>}
+            <p><strong>CxP:</strong> {cxpCampo ? `${cxpCampo.factura_numero || cxpCampo.id} · ${cxpCampo.estado || 'sin estado'}` : 'Pagada al contado'}</p>
+            <p><strong>SOLPE cubiertas:</strong> {solpesCubiertas.length ? solpesCubiertas.join(', ') : 'Ninguna'}</p>
+            <p><strong>Recepción:</strong> {ordenActual.porcentaje_recibido >= 100 ? 'Recibida' : 'Pendiente de recepción'}</p>
+          </div>}
           <p><strong>SOLPE origen:</strong> {ordenActual.solpe_codigo || ordenActual.solpe_id || '-'}</p>
           <p><strong>Descripcion:</strong> {ordenActual.descripcion}</p>
           <p><strong>Condicion pago:</strong> {ordenActual.condicion_pago}</p>
@@ -8803,10 +8886,10 @@ function Recepciones() {
     const osId = r.orden_servicio_id || r.os_id;
     const oc = ordenesCompraVistaRecepciones.find(o => o.id === ocId);
     const os = ordenesServicioVistaRecepciones.find(o => o.id === osId);
-    return { codigo: oc?.codigo || os?.codigo || '-', proveedor_id: oc?.proveedor_id || os?.proveedor_id || r.proveedor_id, descripcion: oc?.descripcion || os?.descripcion || '-' };
+    return { codigo: oc?.codigo || os?.codigo || '-', proveedor_id: oc?.proveedor_id || os?.proveedor_id || r.proveedor_id, descripcion: oc?.descripcion || os?.descripcion || '-', origen_tipo: oc?.origen_tipo || null };
   };
   const origenes = [
-    ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada' && o.estado !== 'borrador').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total })),
+    ...ordenesCompraVistaRecepciones.filter(o => (o.porcentaje_recibido || 0) < 100 && o.estado !== 'cerrada' && o.estado !== 'borrador').map(o => ({ tipo:'oc', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total, origen_tipo:o.origen_tipo })),
     ...ordenesServicioVistaRecepciones.filter(o => o.estado !== 'cerrada').map(o => ({ tipo:'os', id:o.id, codigo:o.codigo || o.id, proveedor_id:o.proveedor_id, descripcion:o.descripcion, total:o.total }))
   ];
   const cxpPorRecepcion = useMemo(() => new Set((cxp || []).filter(c => c.recepcion_id).map(c => c.recepcion_id)), [cxp]);
@@ -9083,7 +9166,7 @@ function Recepciones() {
               return (
                 <tr key={r.id}>
                   <td className="mono">{r.codigo || r.id}</td>
-                  <td className="mono">{info.codigo}</td>
+                  <td className="mono">{info.codigo}{info.origen_tipo === 'compra_campo' && <div style={{marginTop:4}}><span className="badge badge-cyan">Compra en campo</span></div>}</td>
                   <td>{proveedorNombre(info.proveedor_id)}</td>
                   <td>{info.descripcion}</td>
                   <td>{r.fecha}</td>
@@ -9107,12 +9190,13 @@ function Recepciones() {
                 <label>OC/OS origen</label>
                 <select className="select" value={origen} onChange={e => { setOrigen(e.target.value); setPreciosFactura({}); setCantidadesRecibidas({}); setValidacionErrors([]); setValidacionWarnings([]); }}>
                   <option value="">Seleccionar...</option>
-                  {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo} - {proveedorNombre(o.proveedor_id)} - {moneyD(o.total || 0)}</option>)}
+                  {origenes.map(o => <option key={`${o.tipo}:${o.id}`} value={`${o.tipo}:${o.id}`}>{o.codigo}{o.origen_tipo === 'compra_campo' ? ' - Compra en campo' : ''} - {proveedorNombre(o.proveedor_id)} - {moneyD(o.total || 0)}</option>)}
                 </select>
               </div>
 
               {ocSeleccionada && (ocSeleccionada.items || []).length > 0 && (
                 <div style={{marginTop:16,border:'1px solid var(--border)',borderRadius:6,overflow:'hidden'}}>
+                  {ocSeleccionada.origen_tipo === 'compra_campo' && <div role="alert" style={{padding:'10px 12px',background:'rgba(0,229,255,0.08)',borderBottom:'1px solid var(--border)',fontSize:13,fontWeight:600}}>OC de compra en campo: ya está facturada. La recepción solo registra el ingreso al almacén.</div>}
                   <div style={{background:'var(--bg-2)',padding:'8px 12px',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <span>Items de la OC</span>
                     <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setScannerOCOpen(v => !v); setScanMsg(''); setHighlightedItemIdx(null); }}>{I.camera}</button>
@@ -25932,9 +26016,9 @@ const CG_FORM_INIT = {
 export function ComprasGastos() {
   const {
     comprasGastos, setComprasGastos,
-    centrosCosto, proveedores, ots, cxp, cajaChica, personalOperativo, personalAdmin, periodosNomina,
+    centrosCosto, proveedores, ots, ordenesCompra, cxp, cajaChica, personalOperativo, personalAdmin, periodosNomina,
     crearGasto, crearCxP,
-    empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, addToast,
+    empresa, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, addToast, navigate,
   } = useApp();
   const modoVistaSociedadComprasGastos = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -26053,6 +26137,8 @@ export function ComprasGastos() {
     }
     if (gasto.cxp_id) {
       const cuenta = cxpPorId.get(gasto.cxp_id);
+      const oc = cuenta?.orden_compra_id ? (ordenesCompra || []).find(item => item.id === cuenta.orden_compra_id) : null;
+      if (oc) return <button type="button" className="btn btn-link" style={{padding:0, fontSize:12}} onClick={() => navigate?.('ordenes_compra', { action:'view', ocId:oc.id })}>OC {oc.codigo || oc.id}</button>;
       return `CxP ${cuenta?.factura_numero || cuenta?.referencia || cuenta?.concepto || gasto.cxp_id}`;
     }
     if (gasto.personal_id || gasto.periodo_nomina_id) {
@@ -26097,7 +26183,7 @@ export function ComprasGastos() {
     if (tab === 'pendientes' && g.estado !== 'pendiente_revision') return false;
     if (filtroCeco && g.centro_costo_id !== filtroCeco) return false;
     if (filtroEstadoPago && g.estado_pago !== filtroEstadoPago) return false;
-    if (filtroMes && mesMostrar(g.fecha) !== filtroMes) return false;
+    if (filtroMes && tab !== 'pendientes' && mesMostrar(g.fecha) !== filtroMes) return false;
     return true;
   });
 
