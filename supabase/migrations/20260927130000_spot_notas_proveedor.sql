@@ -119,6 +119,9 @@ declare
   v_numero text := nullif(btrim(p_payload ->> 'numero_nota'), '');
   v_fecha date := coalesce(nullif(p_payload ->> 'fecha_nota', '')::date, current_date);
   v_monto numeric := round(coalesce(nullif(p_payload ->> 'monto', '')::numeric, 0), 2);
+  v_codigo text := nullif(btrim(coalesce(p_payload ->> 'codigo_spot', '')), '');
+  v_spot_id uuid := nullif(btrim(coalesce(p_payload ->> 'spot_catalogo_id', '')), '')::uuid;
+  v_porcentaje_payload numeric := nullif(btrim(coalesce(p_payload ->> 'porcentaje', '')), '')::numeric;
   v_moneda text;
   v_motivo text := nullif(btrim(p_payload ->> 'motivo'), '');
   v_archivo text := nullif(btrim(p_payload ->> 'archivo_url'), '');
@@ -342,6 +345,33 @@ $function$;
 
 revoke all on function public.registrar_nota_proveedor_spot(jsonb) from public, anon, authenticated;
 grant execute on function public.registrar_nota_proveedor_spot(jsonb) to authenticated;
+
+do $variables$
+declare
+  v_def text;
+  v_declare text;
+  v_name text;
+  v_required text[] := array[
+    'v_origen_id','v_tipo','v_numero','v_fecha','v_monto','v_codigo','v_spot_id',
+    'v_porcentaje_payload','v_moneda','v_motivo','v_archivo','v_origen','v_empresa_id',
+    'v_ver_finanzas','v_cxp','v_cxp_nota','v_rel','v_detraccion','v_spot',
+    'v_nuevo_total','v_nuevo_saldo','v_base_soles','v_monto_soles','v_monto_origen',
+    'v_aplica','v_cxp_nota_id','v_tipo_cambio','v_spot_creada','v_spot_motivo',
+    'v_nd_base_soles','v_nd_monto_soles','v_nd_monto_origen','v_nd_tipo_cambio',
+    'v_nd_tipo_cambio_fuente'
+  ];
+begin
+  select pg_get_functiondef('public.registrar_nota_proveedor_spot(jsonb)'::regprocedure)
+    into v_def;
+  v_declare := split_part(split_part(lower(v_def), 'declare', 2), 'begin', 1);
+  foreach v_name in array v_required loop
+    if position(lower(v_name) in v_declare) = 0 then
+      raise exception 'B3C_VALIDACION|variable_no_declarada=%', v_name;
+    end if;
+  end loop;
+  raise notice 'B3C_VALIDACION|variables_declaradas=ok|cantidad=%', cardinality(v_required);
+end;
+$variables$;
 
 do $validate$
 begin
