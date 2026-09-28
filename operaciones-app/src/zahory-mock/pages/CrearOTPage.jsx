@@ -98,6 +98,16 @@ const inferUnidadMinera = (contrato) => {
   return contrato.descripcion?.split('–').pop()?.trim() || contrato.cliente || '';
 };
 
+const textoMinimoGarantizado = (contrato) => {
+  if (contrato?.minimo_facturable == null) return '';
+  const partes = [
+    Number(contrato.minimo_facturable).toLocaleString('es-PE'),
+    contrato.unidad_minimo_facturable,
+    contrato.periodicidad_minimo_facturable,
+  ].filter(parte => parte !== null && parte !== undefined && String(parte).trim() !== '');
+  return `Mínimo garantizado: ${partes.join(' / ')}`;
+};
+
 const hasValidSegment = (segs) =>
   segs.length > 0 && segs.every(s => s.descripcion && s.ot_operaciones.some(op => op.tipo_servicio_interno_id));
 
@@ -2048,11 +2058,8 @@ export const CrearOTPage = ({ onNav }) => {
                       )}
                       {objetoCostoTipo === 'contrato' && contrato && (
                         <div style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
-                          {contrato.minimo_facturable != null && (
-                            <div>
-                              Mínimo garantizado: <strong>{Number(contrato.minimo_facturable).toLocaleString('es-PE')}</strong>{' '}
-                              {contrato.unidad_minimo_facturable} / {contrato.periodicidad_minimo_facturable}
-                            </div>
+                          {textoMinimoGarantizado(contrato) && (
+                            <div>{textoMinimoGarantizado(contrato)}</div>
                           )}
                           {contrato.meta_dmr != null && (
                             <div>Meta DMR: <strong>{Number(contrato.meta_dmr).toLocaleString('es-PE')}%</strong></div>
