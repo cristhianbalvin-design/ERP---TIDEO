@@ -167,6 +167,13 @@ begin
   if v_r->>'spot_creada' <> 'true' or (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra') <> (select monto_total from public.cxp where id=v_nd) then raise exception 'B3C_CASO_11B|base_nd_invalida'; end if;
   raise notice 'B3C_CASO_11B|nd_alto|monto=%|base=%|spot=%|motivo=%|filas=%', (select monto_total from public.cxp where id=v_nd), (select base_soles from public.detracciones where cxp_id=v_nd and direccion='compra'), v_r->>'spot_creada', v_r->>'spot_motivo', (select count(*) from public.detracciones where cxp_id=v_nd and direccion='compra');
 
+  -- 11c. ND menor que el saldo original: tambien se registra correctamente.
+  v_cxp := pg_temp.b3c_cxp('nd_menor', 100);
+  v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-011C','monto',50,'moneda','PEN','motivo','ND menor que saldo'));
+  v_nd := v_r->'cxp_nota'->>'id';
+  if (select monto_total from public.cxp where id=v_nd) <> 50 or (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd) <> 1 then raise exception 'B3C_CASO_11C|nd_menor_invalida'; end if;
+  raise notice 'B3C_CASO_11C|nd_menor|monto=%|saldo=%|filas=%|spot=%', (select monto_total from public.cxp where id=v_nd), (select saldo from public.cxp where id=v_nd), (select count(*) from public.cxp_notas_proveedor where cxp_nota_id=v_nd), v_r->>'spot_motivo';
+
   -- 12. ND con obligacion SPOT propia.
   v_cxp := pg_temp.b3c_cxp('nd_spot', 100); v_r := public.registrar_nota_proveedor_spot(jsonb_build_object('cxp_origen_id',v_cxp,'tipo_nota','nota_debito','numero_nota','ND-B3C-012','monto',coalesce(v_min,700)+100,'moneda','PEN','motivo','ND con SPOT','codigo_spot',pg_temp.b3c_ctx('catalogo')));
   v_nd := v_r->'cxp_nota'->>'id';

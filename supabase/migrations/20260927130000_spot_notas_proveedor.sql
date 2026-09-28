@@ -185,7 +185,8 @@ begin
      or exists (select 1 from public.detracciones d where d.cxp_id = v_cxp.id and d.direccion = 'compra' and d.estado = 'depositada') then
     raise exception 'Nota sobre CxP con pagos o depositada: fuera de alcance; regulariza con contabilidad.';
   end if;
-  if v_monto > round(coalesce(v_cxp.saldo, v_cxp.monto_total), 2) then
+  if v_tipo = 'nota_credito'
+     and v_monto > round(coalesce(v_cxp.saldo, v_cxp.monto_total), 2) then
     raise exception 'MONTO_NOTA_EXCEDE_SALDO: la nota (%) no puede superar el saldo actual de la CxP (%).', v_monto, round(coalesce(v_cxp.saldo, v_cxp.monto_total), 2);
   end if;
   v_moneda := upper(coalesce(v_cxp.moneda, 'PEN'));
