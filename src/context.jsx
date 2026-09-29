@@ -3266,7 +3266,9 @@ export function AppProvider({ children }) {
       cotizacionEspecialId: esCotizacionEspecial ? cotId : null,
       cuentaId: cot.cuenta_id || null,
     });
-    const numero = await siguienteNumeroOSCliente();
+    const numero = numeroCaso != null
+      ? `OSC-${new Date().getFullYear()}-${String(numeroCaso).padStart(5, '0')}`
+      : await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
@@ -3347,7 +3349,9 @@ export function AppProvider({ children }) {
       cotizacionId: datos.cotizacion_id || null,
       cuentaId: datos.cuenta_id || null,
     });
-    const numero = await siguienteNumeroOSCliente();
+    const numero = numeroCaso != null
+      ? `OSC-${new Date().getFullYear()}-${String(numeroCaso).padStart(5, '0')}`
+      : await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
