@@ -1334,8 +1334,41 @@ function TecnicoView({ screen, setScreen }) {
 }
 
 function LogisticaView({ screen, setScreen }) {
-  const { authUser, usuarios } = useApp();
+  const { authUser, usuarios, rutas = [], actualizarEstadoParadaRutaCtx, addToast } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
+  const [paradaSeleccionada, setParadaSeleccionada] = useState(null);
+  const [observaciones, setObservaciones] = useState('');
+  const [firmaConfirmada, setFirmaConfirmada] = useState(false);
+  const [fotoNombre, setFotoNombre] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const rutasHoy = (rutas || []).filter(ruta => (ruta.fecha || '').slice(0, 10) === hoy && ruta.estado !== 'cancelada');
+
+  const abrirParada = parada => {
+    setParadaSeleccionada(parada);
+    setObservaciones(parada.observaciones || '');
+    setFirmaConfirmada(false);
+    setFotoNombre('');
+    setScreen('entrega');
+  };
+
+  const cerrarParada = async estado => {
+    if (!paradaSeleccionada || guardando) return;
+    if (estado === 'completada' && !firmaConfirmada) {
+      addToast?.('Confirma la firma de recepción antes de finalizar la parada.');
+      return;
+    }
+    setGuardando(true);
+    try {
+      await actualizarEstadoParadaRutaCtx(paradaSeleccionada.id, estado, observaciones.trim() || null);
+      addToast?.(`Parada ${estado === 'completada' ? 'completada' : 'omitida'}. El documento fuente mantiene su estado.`);
+      setParadaSeleccionada(null);
+      setScreen('home');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo actualizar la parada.');
+    } finally { setGuardando(false); }
+  };
+
   return <>
     <div className="mobile-header">
       <div><div style={{fontSize:11,color:'var(--fg-muted)'}}>Perfil Logística</div><div className="font-display" style={{fontWeight:700,fontSize:16}}>{usuarioMovil.nombre}</div></div>
@@ -1343,33 +1376,28 @@ function LogisticaView({ screen, setScreen }) {
     </div>
     <div className="mobile-content">
       <div className="eyebrow" style={{marginBottom:10}}>Rutas de Entrega · Hoy</div>
-      <div className="card" style={{padding:14, marginBottom:10}}>
-        <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-          <div className="mono" style={{fontWeight:600}}>GR-002-4512</div>
-          <span className="badge badge-orange">En Tránsito</span>
-        </div>
-        <div style={{fontWeight:700, marginBottom:4}}>Proyecto Sur Módulo B</div>
-        <div className="text-muted" style={{fontSize:12, marginBottom:12}}>Entrega de repuestos y cable vulcanizado para OT-0045.</div>
-        <button className="btn btn-primary btn-sm" style={{width:'100%'}} onClick={()=>setScreen('entrega')}>{I.check} Confirmar Entrega</button>
-      </div>
-      
-      {screen === 'entrega' && (
-        <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10}}>
-          <div onClick={()=>setScreen('home')} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Rutas</div>
-          <h2 className="font-display" style={{marginBottom:16}}>Confirmación de Recepción</h2>
-          <div style={{background:'var(--bg-subtle)', height:120, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', border:'1px dashed var(--border)', marginBottom:16}}>
-            <span className="text-muted">[ Área para Firma Digital ]</span>
-          </div>
-          <button className="btn btn-secondary" style={{width:'100%', marginBottom:10}}>{I.camera} Adjuntar Foto Guía Firmada</button>
-          <button className="btn btn-primary btn-lg" style={{width:'100%'}} onClick={()=>setScreen('home')}>Finalizar Entrega</button>
-        </div>
-      )}
+      {!rutasHoy.length && <div className="card" style={{padding:14, marginBottom:10}}><div className="text-muted">No hay rutas planificadas para hoy.</div></div>}
+      {rutasHoy.map(ruta => <div className="card" style={{padding:14, marginBottom:10}} key={ruta.id}>
+        <div className="row" style={{justifyContent:'space-between', marginBottom:8}}><div className="mono" style={{fontWeight:600}}>{ruta.codigo}</div><span className="badge badge-orange">{String(ruta.estado || '').replace(/_/g, ' ')}</span></div>
+        <div className="text-muted" style={{fontSize:12, marginBottom:10}}>{(ruta.ruta_paradas || []).length} parada(s)</div>
+        {[...(ruta.ruta_paradas || [])].sort((a,b) => Number(a.secuencia || 0) - Number(b.secuencia || 0)).map(parada => <div key={parada.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
+          <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
+          {!['completada','omitida'].includes(parada.estado) && <button className="btn btn-primary btn-sm" style={{width:'100%',marginTop:10}} onClick={() => abrirParada(parada)}>{I.check} Gestionar parada</button>}
+        </div>)}
+      </div>)}
+
+      {screen === 'entrega' && paradaSeleccionada && <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10}}>
+        <div onClick={() => { setParadaSeleccionada(null); setScreen('home'); }} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Rutas</div>
+        <h2 className="font-display" style={{marginBottom:6}}>Confirmación de recepción</h2>
+        <div className="text-muted mono" style={{fontSize:11,marginBottom:16}}>{paradaSeleccionada.documento_id}</div>
+        <button type="button" onClick={() => setFirmaConfirmada(value => !value)} style={{background:'var(--bg-subtle)', height:120, width:'100%', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', border:`1px dashed ${firmaConfirmada ? 'var(--green)' : 'var(--border)'}`, marginBottom:16}}><span className="text-muted">{firmaConfirmada ? '✓ Firma digital confirmada' : '[ Área para Firma Digital ]'}</span></button>
+        <label className="btn btn-secondary" style={{width:'100%', marginBottom:10}}>{I.camera} {fotoNombre || 'Adjuntar Foto Guía Firmada'}<input type="file" accept="image/*" onChange={event => setFotoNombre(event.target.files?.[0]?.name || '')} style={{display:'none'}} /></label>
+        <textarea className="input" rows="3" value={observaciones} onChange={event => setObservaciones(event.target.value)} placeholder="Observaciones de la parada" style={{width:'100%',marginBottom:10}} />
+        <button className="btn btn-primary btn-lg" style={{width:'100%',marginBottom:8}} disabled={guardando} onClick={() => cerrarParada('completada')}>Finalizar parada</button>
+        <button className="btn btn-secondary" style={{width:'100%'}} disabled={guardando} onClick={() => cerrarParada('omitida')}>Omitir parada</button>
+      </div>}
     </div>
-    <div className="mobile-nav">
-      <div className="mobile-nav-item active">{I.truck}Rutas</div>
-      <div className="mobile-nav-item">{I.clipboard}Guías</div>
-      <div className="mobile-nav-item">{I.settings}Ajustes</div>
-    </div>
+    <div className="mobile-nav"><div className="mobile-nav-item active">{I.truck}Rutas</div><div className="mobile-nav-item">{I.clipboard}Guías</div><div className="mobile-nav-item">{I.settings}Ajustes</div></div>
   </>;
 }
 
