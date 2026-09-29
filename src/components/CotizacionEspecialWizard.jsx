@@ -311,6 +311,55 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
   const hojaCosteoReferencia = useMemo(() => hojasCosteo.find(hoja => hoja.id === form.hoja_costeo_id) || null, [hojasCosteo, form.hoja_costeo_id]);
   const activoVinculadoId = cotizacion?.activo_id || activoInicialId || null;
   const recepcionVinculadaId = cotizacion?.recepcion_id || recepcionInicialId || null;
+  const [origenEtiquetas, setOrigenEtiquetas] = useState(() => ({
+    recepcionNumero: recepcionNumeroInicial || '',
+    activoCodigo: activoCodigoInicial || '',
+    activoNombre: activoNombreInicial || '',
+  }));
+
+  useEffect(() => {
+    let activa = true;
+    setOrigenEtiquetas({
+      recepcionNumero: recepcionNumeroInicial || '',
+      activoCodigo: activoCodigoInicial || '',
+      activoNombre: activoNombreInicial || '',
+    });
+    if (!isSupabaseConfigured() || !empresa?.id || (!recepcionVinculadaId && !activoVinculadoId)) {
+      return () => { activa = false; };
+    }
+    const cargarEtiquetasOrigen = async () => {
+      try {
+        const sb = await getSupabaseClient();
+        const [recepcionResult, activoResult] = await Promise.all([
+          recepcionVinculadaId && !recepcionNumeroInicial
+            ? sb.from('recepciones_activos_cliente').select('numero,activo_id').eq('empresa_id', empresa.id).eq('id', recepcionVinculadaId).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          activoVinculadoId && (!activoCodigoInicial || !activoNombreInicial)
+            ? sb.from('activos').select('codigo,nombre').eq('empresa_id', empresa.id).eq('id', activoVinculadoId).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+        if (recepcionResult.error) throw recepcionResult.error;
+        if (activoResult.error) throw activoResult.error;
+        if (!activa) return;
+        setOrigenEtiquetas({
+          recepcionNumero: recepcionNumeroInicial || recepcionResult.data?.numero || '',
+          activoCodigo: activoCodigoInicial || activoResult.data?.codigo || '',
+          activoNombre: activoNombreInicial || activoResult.data?.nombre || '',
+        });
+      } catch (err) {
+        if (activa) {
+          setOrigenEtiquetas(actual => ({
+            ...actual,
+            recepcionNumero: actual.recepcionNumero || 'No disponible',
+            activoCodigo: actual.activoCodigo || 'No disponible',
+          }));
+          console.error('[CotizacionEspecialWizard] No se pudieron resolver las etiquetas del origen:', err);
+        }
+      }
+    };
+    cargarEtiquetasOrigen();
+    return () => { activa = false; };
+  }, [empresa?.id, recepcionVinculadaId, activoVinculadoId, recepcionNumeroInicial, activoCodigoInicial, activoNombreInicial]);
 
   useEffect(() => {
     let activa = true;
@@ -347,7 +396,7 @@ export function CotizacionEspecialWizard({ especialId = null, hojaCosteoInicialI
     return () => { activa = false; };
   }, [cotizacion?.id, cotizacion?.estado]);
   const origenBloqueado = recepcionVinculadaId ? <div className="alert alert-info mt-4">
-    Origen bloqueado: recepción <strong>{recepcionNumeroInicial || recepcionVinculadaId}</strong> · activo <strong>{activoCodigoInicial || activoVinculadoId || 'Cargando…'}</strong>{activoNombreInicial ? ` · ${activoNombreInicial}` : ''}. Estos vínculos se conservarán al guardar.
+    Origen bloqueado: recepción <strong>{origenEtiquetas.recepcionNumero || 'Cargando…'}</strong> · activo <strong>{origenEtiquetas.activoCodigo || 'Cargando…'}</strong>{origenEtiquetas.activoNombre ? ` · ${origenEtiquetas.activoNombre}` : ''}. Estos vínculos se conservarán al guardar.
   </div> : null;
   const contexto = useMemo(() => {
     if (readonly && cotizacion?.contexto_emitido_json) {
