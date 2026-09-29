@@ -87,7 +87,33 @@ drop policy if exists ruta_paradas_select on public.ruta_paradas;
 drop policy if exists ruta_paradas_insert on public.ruta_paradas;
 drop policy if exists ruta_paradas_update on public.ruta_paradas;
 drop policy if exists ruta_paradas_delete on public.ruta_paradas;
-create policy ruta_paradas_select on public.ruta_paradas for select to authenticated using(public.usuario_tiene_empresa(empresa_id) and public.usuario_puede(empresa_id,'ordenes_compra','ver') and exists(select 1 from public.rutas r where r.id=ruta_paradas.ruta_id and r.empresa_id=ruta_paradas.empresa_id) and (tipo_documento<>'guia_remision' or exists(select 1 from public.guias_remision g cross join lateral(select public.usuario_alcance_sociedades(ruta_paradas.empresa_id) as alcance) alcance_usuario where g.id=ruta_paradas.documento_id and g.empresa_id=ruta_paradas.empresa_id and (alcance_usuario.alcance is null or coalesce(g.sociedad_origen_id=any(alcance_usuario.alcance),false) or coalesce(g.sociedad_destino_id=any(alcance_usuario.alcance),false))));
+create policy ruta_paradas_select on public.ruta_paradas
+for select to authenticated
+using (
+  public.usuario_tiene_empresa(empresa_id)
+  and public.usuario_puede(empresa_id,'ordenes_compra','ver')
+  and exists (
+    select 1 from public.rutas r
+    where r.id=ruta_paradas.ruta_id and r.empresa_id=ruta_paradas.empresa_id
+  )
+  and (
+    tipo_documento <> 'guia_remision'
+    or exists (
+      select 1
+      from public.guias_remision g
+      cross join lateral (
+        select public.usuario_alcance_sociedades(ruta_paradas.empresa_id) as alcance
+      ) alcance_usuario
+      where g.id=ruta_paradas.documento_id
+        and g.empresa_id=ruta_paradas.empresa_id
+        and (
+          alcance_usuario.alcance is null
+          or coalesce(g.sociedad_origen_id=any(alcance_usuario.alcance),false)
+          or coalesce(g.sociedad_destino_id=any(alcance_usuario.alcance),false)
+        )
+    )
+  )
+);
 create policy ruta_paradas_insert on public.ruta_paradas for insert to authenticated with check(public.usuario_tiene_empresa(empresa_id) and public.usuario_puede(empresa_id,'ordenes_compra','crear') and exists(select 1 from public.rutas r where r.id=ruta_paradas.ruta_id and r.empresa_id=ruta_paradas.empresa_id) and ((tipo_documento='orden_compra_transito' and exists(select 1 from public.orden_compra_transitos t where t.id=ruta_paradas.documento_id and t.empresa_id=ruta_paradas.empresa_id)) or (tipo_documento='guia_remision' and exists(select 1 from public.guias_remision g where g.id=ruta_paradas.documento_id and g.empresa_id=ruta_paradas.empresa_id))));
 create policy ruta_paradas_update on public.ruta_paradas for update to authenticated using(public.usuario_tiene_empresa(empresa_id) and public.usuario_puede(empresa_id,'ordenes_compra','editar')) with check(public.usuario_tiene_empresa(empresa_id) and public.usuario_puede(empresa_id,'ordenes_compra','editar') and exists(select 1 from public.rutas r where r.id=ruta_paradas.ruta_id and r.empresa_id=ruta_paradas.empresa_id) and ((tipo_documento='orden_compra_transito' and exists(select 1 from public.orden_compra_transitos t where t.id=ruta_paradas.documento_id and t.empresa_id=ruta_paradas.empresa_id)) or (tipo_documento='guia_remision' and exists(select 1 from public.guias_remision g where g.id=ruta_paradas.documento_id and g.empresa_id=ruta_paradas.empresa_id))));
 create policy ruta_paradas_delete on public.ruta_paradas for delete to authenticated using(public.usuario_tiene_empresa(empresa_id) and public.usuario_puede(empresa_id,'ordenes_compra','anular'));
