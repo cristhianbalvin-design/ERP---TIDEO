@@ -1686,6 +1686,17 @@ export function AppProvider({ children }) {
     return data ?? null;
   };
 
+  const obtenerSecuenciaOTParaNumeroCaso = async (numeroCaso) => {
+    if (numeroCaso == null || !isSupabaseConfigured() || !empresa?.id) return null;
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.rpc('secuencia_ot_en_caso', {
+      p_empresa_id: empresa.id,
+      p_numero_caso: numeroCaso,
+    });
+    if (error) throw error;
+    return data ?? null;
+  };
+
   const siguienteNumeroOSClienteLocal = () => {
     const year = new Date().getFullYear().toString();
     const max = osClientes
@@ -3598,7 +3609,12 @@ export function AppProvider({ children }) {
       osClienteId: datos.os_cliente_id || null,
       cuentaId: datos.cuenta_id || datos.cliente || null,
     });
-    const numero = await siguienteNumeroOrdenTrabajo();
+    const secuenciaCaso = numeroCaso != null
+      ? await obtenerSecuenciaOTParaNumeroCaso(numeroCaso)
+      : null;
+    const numero = numeroCaso != null && secuenciaCaso != null
+      ? `OT-${numeroCaso}-${secuenciaCaso}`
+      : await siguienteNumeroOrdenTrabajo();
     const { numero: _numeroSolicitado, ...datosSinNumero } = datos || {};
     const ot = {
       id: generateId('ot'),
@@ -3652,12 +3668,13 @@ export function AppProvider({ children }) {
       }
     }
 
-    const numero = await siguienteNumeroOrdenTrabajo();
+    const numero = os.numero_caso != null ? null : await siguienteNumeroOrdenTrabajo();
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
       sociedad_id: sociedadId,
       numero,
+      numero_caso: os.numero_caso ?? null,
       sla: 'ok',
       tareas: [],
       materiales_estimados: [],
