@@ -20,3 +20,13 @@ test('normaliza una clave Unicode combinada antes de resolverla', () => {
 
   assert.equal(resultado, '2018');
 });
+
+test('resuelve nombre del activo y campos del tarifario de flota', () => {
+  const resultado = renderTextoDocumental(
+    '{{item.nombre_activo}} / {{item.horas_estimadas}} h / {{item.horas_minimas_garantizadas}} h min / {{item.duracion_meses}} meses',
+    'cotizacion',
+    { item: { nombre_activo: 'Excavadora', horas_estimadas: 10, horas_minimas_garantizadas: 8, duracion_meses: 6 } },
+  );
+
+  assert.equal(resultado, 'Excavadora / 10 h / 8 h min / 6 meses');
+});

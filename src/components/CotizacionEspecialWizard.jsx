@@ -27,6 +27,8 @@ const serializarItems = items => items.map((item, index) => ({
   unidad:String(item.unidad || '').trim(),
   precio_unitario:numero(item.precio_unitario),
   ...(Object.hasOwn(item, 'codigo') ? { codigo:item.codigo ?? '' } : {}),
+  ...(Object.hasOwn(item, 'nombre_activo') ? { nombre_activo:item.nombre_activo ?? '' } : {}),
+  ...(Object.hasOwn(item, 'horas_estimadas') ? { horas_estimadas:item.horas_estimadas ?? null } : {}),
   ...(Object.hasOwn(item, 'marca') ? { marca:item.marca ?? '' } : {}),
   ...(Object.hasOwn(item, 'modelo') ? { modelo:item.modelo ?? '' } : {}),
   ...(Object.hasOwn(item, 'año_fabricacion') ? { año_fabricacion:item.año_fabricacion ?? null } : {}),
