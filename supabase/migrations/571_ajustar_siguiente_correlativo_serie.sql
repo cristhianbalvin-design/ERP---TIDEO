@@ -30,7 +30,7 @@ create policy series_doc_ajustes_auditoria_select
     and public.usuario_puede(empresa_id, 'parametros', 'ver')
   );
 
--- Todos los roles que ya podían editar Parámetros reciben el permiso específico.
+-- Los roles Admin/Gerencia que ya podían editar Parámetros reciben el permiso específico.
 insert into public.permisos_roles (
   rol_id,
   pantalla,
@@ -58,8 +58,15 @@ select
   coalesce(pr.permisos_extra, '{}'::jsonb)
     || jsonb_build_object('ajustar_correlativo', true)
 from public.permisos_roles pr
+join public.roles r on r.id = pr.rol_id
 where pr.pantalla = 'parametros'
   and pr.puede_editar = true
+  and (
+    r.es_superadmin = true
+    or r.es_admin_empresa = true
+    or upper(coalesce(r.nombre, '')) like '%GERENCIA%'
+    or upper(coalesce(r.nombre, '')) like '%GERENTE%'
+  )
 on conflict (rol_id, pantalla) do update
 set permisos_extra = coalesce(public.permisos_roles.permisos_extra, '{}'::jsonb)
   || jsonb_build_object('ajustar_correlativo', true),
