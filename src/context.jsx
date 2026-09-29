@@ -1535,6 +1535,13 @@ export function AppProvider({ children }) {
         }
 
         const empresaIds = [...new Set(ues.map(u => u.empresa_id))];
+        const { data: modulosRows, error: modulosError } = await supabase
+          .from('usuarios_empresas')
+          .select('empresa_id,campo_modulos')
+          .eq('user_id', authUser.id)
+          .in('empresa_id', empresaIds);
+        if (modulosError) throw modulosError;
+
         const rolIds = [...new Set(ues.map(u => u.rol_id).filter(Boolean))];
 
         const [{ data: empresasRows, error: empErr }, { data: rolesRows, error: rolErr }] = await Promise.all([
@@ -1547,6 +1554,7 @@ export function AppProvider({ children }) {
 
         const memberships = ues.map(u => ({
           ...u,
+          campo_modulos: modulosRows?.find(m => m.empresa_id === u.empresa_id)?.campo_modulos || [],
           empresa: empresasRows?.find(e => e.id === u.empresa_id) || null,
           rol: rolesRows?.find(r => r.id === u.rol_id) || null,
         }));
