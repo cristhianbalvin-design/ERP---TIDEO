@@ -297,6 +297,9 @@ export function RecepcionActivosClientePage() {
           erroresFotos.push(`${foto.name}: ${fotoError?.message || 'error de carga'}`);
         }
       }
+      if (activo) {
+        setActivos(actuales => [activo, ...actuales.filter(item => item.id !== activo.id)]);
+      }
       setRecepciones(actuales => [recepcion, ...actuales]);
       abrirNuevaRecepcion();
       showToast(erroresFotos.length ? `Recepción ${recepcion.numero} creada; algunas fotos fallaron.` : `Recepción ${recepcion.numero} registrada.`);
