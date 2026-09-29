@@ -30,3 +30,14 @@ test('resuelve nombre del activo y campos del tarifario de flota', () => {
 
   assert.equal(resultado, 'Excavadora / 10 h / 8 h min / 6 meses');
 });
+
+test('costo mes y costo del período se derivan de costo hora, horas mínimas, unidades y meses', () => {
+  const item = { cantidad: 2, costo_hora: 40, horas_minimas_garantizadas: 200, duracion_meses: 2, costo_mes: 8000, costo_periodo: 16000 };
+  const resultado = renderTextoDocumental(
+    '{{item.costo_hora}} | {{item.costo_mes}} | {{item.costo_periodo}} | {{item.subtotal}}',
+    'cotizacion',
+    { cotizacion: { moneda: 'USD' }, item },
+  );
+
+  assert.equal(resultado, 'US$ 40.00 | US$ 16,000.00 | US$ 32,000.00 | US$ 32,000');
+});

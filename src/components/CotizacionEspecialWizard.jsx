@@ -4,6 +4,7 @@ import { DocumentPreviewSheet } from './DocumentPreviewSheet.jsx';
 import { NuevaCuentaModal } from './NuevaCuentaModal.jsx';
 import { marcarRecepcionActivoClienteCotizada } from '../services/recepcionesActivosClienteService.js';
 import { maestrosService } from '../services/maestrosService.js';
+import { calcularTerminosEquipo, subtotalItem } from '../lib/terminosEquipo.js';
 
 const nuevoItem = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `item-${Date.now()}-${Math.random()}`, descripcion:'', cantidad:1, unidad:'UND', precio_unitario:0 });
 const nuevoHito = () => ({ client_key:globalThis.crypto?.randomUUID?.() || `hito-${Date.now()}-${Math.random()}`, concepto:'', porcentaje:0, condicion:'' });
@@ -34,17 +35,20 @@ const serializarItems = items => items.map((item, index) => ({
   ...(Object.hasOwn(item, 'año_fabricacion') ? { año_fabricacion:item.año_fabricacion ?? null } : {}),
   ...(Object.hasOwn(item, 'año_overhaul') ? { año_overhaul:item.año_overhaul ?? null } : {}),
   ...(Object.hasOwn(item, 'horas_minimas_garantizadas') ? { horas_minimas_garantizadas:item.horas_minimas_garantizadas ?? null } : {}),
+  ...(Object.hasOwn(item, 'costo_hora') ? { costo_hora:item.costo_hora ?? null } : {}),
   ...(Object.hasOwn(item, 'costo_hora_adicional') ? { costo_hora_adicional:item.costo_hora_adicional ?? null } : {}),
   ...(Object.hasOwn(item, 'duracion_meses') ? { duracion_meses:item.duracion_meses ?? null } : {}),
   ...(Object.hasOwn(item, 'costo_mes') ? { costo_mes:item.costo_mes ?? null } : {}),
   ...(Object.hasOwn(item, 'costo_periodo') ? { costo_periodo:item.costo_periodo ?? null } : {}),
+  ...(calcularTerminosEquipo(item) || {}),
+  subtotal:subtotalItem(item),
   ...(item.activo_id ? { activo_id:item.activo_id } : {}),
   ...(item.contrato_alquiler_id ? { contrato_alquiler_id:item.contrato_alquiler_id } : {}),
 }));
 const mismaPartidaOrigen = (items = []) => items.map(({ client_key, ...item }) => item);
 const mismosItemsOrigen = (a = [], b = []) => JSON.stringify(mismaPartidaOrigen(a)) === JSON.stringify(mismaPartidaOrigen(b));
 const previewTotals = items => {
-  const subtotal = serializarItems(items).reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0);
+  const subtotal = serializarItems(items).reduce((sum, item) => sum + item.subtotal, 0);
   const igv = Math.round(subtotal * 0.18);
   return { subtotal:Math.round(subtotal * 100) / 100, igv, total:Math.round((subtotal + igv) * 100) / 100 };
 };
@@ -136,7 +140,12 @@ function ItemsEditor({ items, moneda, disabled, onChange, unidades = [] }) {
       .map(valor => ({ id:`legacy-${valor}`, codigo:valor, nombre:'Valor existente' })),
     ...unidades,
   ];
-  const patch = (key, field, value) => onChange(items.map(item => item.client_key === key ? { ...item, [field]:value } : item));
+  const patch = (key, field, value) => onChange(items.map(item => {
+    if (item.client_key !== key) return item;
+    // En ítems con términos de equipo, el precio unitario es el costo por hora.
+    const espejo = field === 'precio_unitario' && Object.hasOwn(item, 'costo_hora') ? { costo_hora:value } : {};
+    return { ...item, [field]:value, ...espejo };
+  }));
   return <>
     <div className="table-wrap"><table className="tbl"><thead><tr><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Precio unit.</th><th>Subtotal</th>{!disabled && <th />}</tr></thead><tbody>
       {items.map((item, index) => <tr key={item.client_key || item.id || index}>
@@ -144,7 +153,7 @@ function ItemsEditor({ items, moneda, disabled, onChange, unidades = [] }) {
         <td><input className="input" type="number" min="0" step="0.01" value={item.cantidad ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'cantidad', event.target.value)} /></td>
         <td><select className="input" value={item.unidad || ''} disabled={disabled} onChange={event => patch(item.client_key, 'unidad', event.target.value)}><option value="">Seleccione…</option>{unidadesVisibles.map(unidad => <option key={unidad.id || unidad.codigo} value={unidad.codigo}>{unidad.codigo} — {unidad.nombre}</option>)}</select></td>
         <td><input className="input" type="number" min="0" step="0.01" value={item.precio_unitario ?? ''} disabled={disabled} onChange={event => patch(item.client_key, 'precio_unitario', event.target.value)} /></td>
-        <td className="num">{formatMoney(numero(item.cantidad) * numero(item.precio_unitario), moneda)}</td>
+        <td className="num">{formatMoney(subtotalItem(item), moneda)}</td>
         {!disabled && <td><button type="button" className="btn btn-ghost" onClick={() => onChange(items.filter(row => row.client_key !== item.client_key))} disabled={items.length <= 1}>×</button></td>}
       </tr>)}
     </tbody></table></div>

@@ -5,12 +5,12 @@ import { I } from '../icons.jsx';
 import { maestrosService } from '../services/maestrosService.js';
 import { NuevaCuentaModal } from './NuevaCuentaModal.jsx';
 import { NuevoProyectoModal } from './NuevoProyectoModal.jsx';
+import { calcularTerminosEquipo } from '../lib/terminosEquipo.js';
 
 const numero = value => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
-const redondearMoneda = value => Math.round(numero(value) * 100) / 100;
 
 const nombreCuenta = cuenta => cuenta?.razon_social || cuenta?.nombre_comercial || cuenta?.id || 'Cuenta';
 const nombreActivo = activo => [activo?.codigo, activo?.nombre, activo?.marca, activo?.modelo].filter(Boolean).join(' · ') || activo?.id;
@@ -188,6 +188,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
       !linea.tarifa
       || numero(linea.horas) <= 0
       || numero(linea.horas_minimas_garantizadas ?? linea.horas) <= 0
+      || numero(linea.costo_hora ?? linea.precio) < 0
       || numero(linea.costo_hora_adicional ?? linea.precio) < 0
       || numero(linea.duracion_meses) <= 0
       || (linea.candidatos.length > 1 && !linea.contratoId)
@@ -197,15 +198,21 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
     if (contratosElegidos.length > 1) return setError('Una cotización solo puede trazarse a un contrato. Selecciona equipos del mismo contrato o genera cotizaciones separadas.');
     const monedas = [...new Set(resumenLineas.map(linea => String(linea.tarifa.moneda || cuenta?.moneda || 'PEN').toUpperCase()))];
     if (monedas.length > 1) return setError('Las tarifas seleccionadas tienen monedas distintas. Selecciona equipos de una misma moneda.');
+    const terminosDe = linea => calcularTerminosEquipo({
+      costo_hora: numero(linea.costo_hora ?? linea.precio),
+      horas_minimas_garantizadas: numero(linea.horas_minimas_garantizadas ?? linea.horas),
+      duracion_meses: numero(linea.duracion_meses),
+      cantidad: 1,
+    });
     const items = resumenLineas.map((linea, index) => ({
       id: `tarifario_${linea.activoId}_${index + 1}`,
       descripcion: nombreActivo(linea.activo),
       tipo: 'servicio',
-      detalle_cantidad: 'Horas estimadas',
-      cantidad: numero(linea.horas),
+      detalle_cantidad: 'Unidades',
+      cantidad: 1,
       unidad: linea.unidad || 'HORA',
-      precio_unitario: linea.precio,
-      total: redondearMoneda(numero(linea.horas) * linea.precio),
+      precio_unitario: numero(linea.costo_hora ?? linea.precio),
+      total: terminosDe(linea).costo_periodo,
       incluido: false,
       codigo: linea.activo?.codigo || '',
       nombre_activo: linea.activo?.nombre || '',
@@ -215,10 +222,11 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
       año_fabricacion: linea.activo?.año_fabricacion ?? null,
       año_overhaul: linea.activo?.año_overhaul ?? null,
       horas_minimas_garantizadas: numero(linea.horas_minimas_garantizadas ?? linea.horas),
+      costo_hora: numero(linea.costo_hora ?? linea.precio),
       costo_hora_adicional: numero(linea.costo_hora_adicional ?? linea.precio),
       duracion_meses: numero(linea.duracion_meses),
-      costo_mes: redondearMoneda(numero(linea.horas_minimas_garantizadas ?? linea.horas) * linea.precio),
-      costo_periodo: redondearMoneda(numero(linea.horas_minimas_garantizadas ?? linea.horas) * linea.precio * numero(linea.duracion_meses)),
+      costo_mes: terminosDe(linea).costo_mes,
+      costo_periodo: terminosDe(linea).costo_periodo,
       activo_id: linea.activoId,
       contrato_alquiler_id: linea.contrato?.id || null,
     }));
@@ -239,7 +247,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
           </div>
           {proyecto && <div className="alert alert-info" style={{ marginTop: 12 }}>Proyecto: <strong>{proyecto.codigo} · {proyecto.nombre}</strong>. Si un equipo tiene más de un contrato vigente, deberás elegir uno.</div>}
           <div style={{ marginTop: 16 }}><div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}><h3 style={{ margin: 0 }}>Equipos con tarifa estándar</h3>{cargandoContratos && <span className="text-muted">Consultando contratos…</span>}</div>
-            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Horas estimadas</th><th style={{ width: 150 }}>Horas mínimas garantizadas</th><th style={{ width: 160 }}>Costo US/hora adicional</th><th style={{ width: 120 }}>Duración (meses)</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
+            <div className="table-wrap"><table className="tbl"><thead><tr><th style={{ width: 32 }}></th><th>Equipo</th><th>Moneda</th><th className="num">Tarifa / hora</th><th style={{ width: 130 }}>Costo US/hora</th><th style={{ width: 130 }}>Horas estimadas</th><th style={{ width: 150 }}>Horas mínimas garantizadas</th><th style={{ width: 160 }}>Costo US/hora adicional</th><th style={{ width: 120 }}>Duración (meses)</th><th>Unidad</th><th>Contrato aplicado</th></tr></thead><tbody>
               {activosTarifados.map(activo => {
                 const linea = resumenLineas.find(item => item.activoId === activo.id);
                 const tarifa = tarifasPorActivo.get(activo.id);
@@ -248,6 +256,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
                   <td><strong>{nombreActivo(activo)}</strong><div className="text-muted" style={{ fontSize: 11 }}>{activo.estado}</div></td>
                   <td>{tarifa.moneda || 'PEN'}</td>
                   <td className="num">{numero(tarifa.tarifa_hora).toFixed(2)}</td>
+                  <td>{linea && <input className="input" type="number" min="0" step="0.01" value={linea.costo_hora ?? linea.precio} onChange={event => actualizarLinea(activo.id, { costo_hora: event.target.value })} />}</td>
                   <td>{linea && <input className="input" type="number" min="0.01" step="0.01" value={linea.horas} onChange={event => actualizarLinea(activo.id, { horas: event.target.value })} />}</td>
                   <td>{linea && <input className="input" type="number" min="0.01" step="0.01" value={linea.horas_minimas_garantizadas ?? linea.horas} onChange={event => actualizarLinea(activo.id, { horas_minimas_garantizadas: event.target.value })} />}</td>
                   <td>{linea && <input className="input" type="number" min="0" step="0.01" value={linea.costo_hora_adicional ?? linea.precio} onChange={event => actualizarLinea(activo.id, { costo_hora_adicional: event.target.value })} />}</td>
@@ -256,7 +265,7 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
                   <td>{linea?.candidatos?.length > 1 ? <select className="input" value={linea.contratoId} onChange={event => actualizarLinea(activo.id, { contratoId: event.target.value })}><option value="">Selecciona contrato…</option>{linea.candidatos.map(contrato => <option key={contrato.id} value={contrato.id}>{contrato.numero}{contrato.tarifa_hora_override != null ? ` · override ${numero(contrato.tarifa_hora_override).toFixed(2)}` : ' · estándar'}</option>)}</select> : linea?.contrato ? <span className="badge badge-green">{linea.contrato.numero}{linea.contrato.tarifa_hora_override != null ? ` · ${numero(linea.contrato.tarifa_hora_override).toFixed(2)}` : ' · estándar'}</span> : <span className="text-muted">Estándar</span>}</td>
                 </tr>;
               })}
-              {!activosTarifados.length && <tr><td colSpan="10" className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No hay equipos propios con tarifa estándar registrada.</td></tr>}
+              {!activosTarifados.length && <tr><td colSpan="11" className="text-muted" style={{ textAlign: 'center', padding: 24 }}>No hay equipos propios con tarifa estándar registrada.</td></tr>}
             </tbody></table></div>
           </div>
         </>}

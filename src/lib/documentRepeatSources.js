@@ -11,6 +11,7 @@ const COTIZACION_ITEM_FIELDS = [
   { id:'año_fabricacion', label:'Año de fabricación del activo', token:'{{item.año_fabricacion}}' },
   { id:'año_overhaul', label:'Año de overhaul del activo', token:'{{item.año_overhaul}}' },
   { id:'horas_estimadas', label:'Horas estimadas', token:'{{item.horas_estimadas}}' },
+  { id:'costo_hora', label:'Costo por hora', token:'{{item.costo_hora}}' },
   { id:'horas_minimas_garantizadas', label:'Horas mínimas garantizadas', token:'{{item.horas_minimas_garantizadas}}' },
   { id:'costo_hora_adicional', label:'Costo por hora adicional', token:'{{item.costo_hora_adicional}}' },
   { id:'duracion_meses', label:'Duración (meses)', token:'{{item.duracion_meses}}' },
