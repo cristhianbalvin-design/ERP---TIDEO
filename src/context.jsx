@@ -68,7 +68,8 @@ import {
   confirmarEntrega as svcConfirmarEntrega, anularGuia as svcAnularGuia,
   getTransportistas as svcGetTransportistas, crearTransportista as svcCrearTransportista,
   actualizarTransportista as svcActualizarTransportista,
-  crearVehiculo as svcCrearVehiculo, crearConductor as svcCrearConductor,
+  crearVehiculo as svcCrearVehiculo, actualizarVehiculo as svcActualizarVehiculo, eliminarVehiculo as svcEliminarVehiculo,
+  crearConductor as svcCrearConductor, actualizarConductor as svcActualizarConductor, eliminarConductor as svcEliminarConductor,
 } from './services/guiasService.js';
 import {
   getOrdenesVenta, crearOrdenVenta as svcCrearOV, actualizarOrdenVenta as svcActualizarOV,
@@ -85,7 +86,14 @@ import {
   actualizarParada as svcActualizarParada,
   reordenarParadas as svcReordenarParadas,
   quitarParada as svcQuitarParada,
+  eliminarRuta as svcEliminarRuta,
 } from './services/rutasService.js';
+import {
+  listarMantenimientosFlota as svcListarMantenimientosFlota,
+  crearMantenimientoFlota as svcCrearMantenimientoFlota,
+  actualizarMantenimientoFlota as svcActualizarMantenimientoFlota,
+  eliminarMantenimientoFlota as svcEliminarMantenimientoFlota,
+} from './services/mantenimientosFlotaService.js';
 // Conserva la misma instancia de contexto durante las recargas en caliente de Vite.
 // Sin ello, un chunk cargado antes de una actualización puede conservar useApp()
 // apuntando al contexto anterior mientras AppProvider ya usa uno nuevo.
@@ -451,6 +459,7 @@ export function AppProvider({ children }) {
   const [rutas, setRutas] = useState([]);
   const [rutaParadas, setRutaParadas] = useState([]);
   const [candidatosParadas, setCandidatosParadas] = useState({ transitos: [], guias: [] });
+  const [mantenimientosFlota, setMantenimientosFlota] = useState([]);
 
   // Personal Operativo (separado del admin, estado propio)
   const [personalOperativo, setPersonalOperativo] = useState(useSupabase ? [] : (MOCK.personalOperativo || []));
@@ -1118,6 +1127,11 @@ export function AppProvider({ children }) {
             setCandidatosParadas(candidatosData || { transitos: [], guias: [] });
           }
         } catch (_err) { /* migración de rutas aún no disponible */ }
+
+        try {
+          const mantenimientosData = await svcListarMantenimientosFlota(empresa.id);
+          if (mounted) setMantenimientosFlota(mantenimientosData || []);
+        } catch (_err) { /* mantenimientos_flota puede no estar aplicada en entornos antiguos */ }
 
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
@@ -8760,6 +8774,16 @@ export function AppProvider({ children }) {
     await recargarCandidatosParadas();
   };
 
+  const eliminarRutaCtx = async (id) => {
+    const ruta = rutas.find(item => item.id === id);
+    if (!ruta) return id;
+    if (isSupabaseConfigured()) await svcEliminarRuta(empresa.id, id);
+    setRutas(prev => prev.filter(item => item.id !== id));
+    setRutaParadas(prev => prev.filter(item => item.ruta_id !== id));
+    await recargarCandidatosParadas();
+    return id;
+  };
+
   const actualizarEstadoRutaCtx = async (id, estado) => {
     if (isSupabaseConfigured()) {
       const data = await svcActualizarEstadoRuta(empresa.id, id, estado);
@@ -8823,6 +8847,94 @@ export function AppProvider({ children }) {
   };
 
   // ─── Órdenes de Venta ─────────────────────────────────────────────────────────
+  const actualizarVehiculoCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarVehiculo(id, cambios);
+      setTransportistas(prev => prev.map(t => t.id === data.transportista_id
+        ? { ...t, vehiculos: (t.vehiculos || []).map(v => v.id === id ? data : v) }
+        : t));
+      return data;
+    }
+    let actualizado = null;
+    setTransportistas(prev => prev.map(t => ({
+      ...t,
+      vehiculos: (t.vehiculos || []).map(v => {
+        if (v.id !== id) return v;
+        actualizado = { ...v, ...cambios, id };
+        return actualizado;
+      }),
+    })));
+    return actualizado || { ...cambios, id };
+  };
+
+  const eliminarVehiculoCtx = async id => {
+    if (isSupabaseConfigured()) await svcEliminarVehiculo(id);
+    setTransportistas(prev => prev.map(t => ({ ...t, vehiculos: (t.vehiculos || []).filter(v => v.id !== id) })));
+    return id;
+  };
+
+  const actualizarConductorCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarConductor(id, cambios);
+      setTransportistas(prev => prev.map(t => t.id === data.transportista_id
+        ? { ...t, conductores: (t.conductores || []).map(c => c.id === id ? data : c) }
+        : t));
+      return data;
+    }
+    let actualizado = null;
+    setTransportistas(prev => prev.map(t => ({
+      ...t,
+      conductores: (t.conductores || []).map(c => {
+        if (c.id !== id) return c;
+        actualizado = { ...c, ...cambios, id };
+        return actualizado;
+      }),
+    })));
+    return actualizado || { ...cambios, id };
+  };
+
+  const eliminarConductorCtx = async id => {
+    if (isSupabaseConfigured()) await svcEliminarConductor(id);
+    setTransportistas(prev => prev.map(t => ({ ...t, conductores: (t.conductores || []).filter(c => c.id !== id) })));
+    return id;
+  };
+
+  const recargarMantenimientosFlota = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return mantenimientosFlota;
+    const data = await svcListarMantenimientosFlota(empresa.id);
+    setMantenimientosFlota(data || []);
+    return data;
+  };
+
+  const crearMantenimientoFlotaCtx = async payload => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const data = await svcCrearMantenimientoFlota(empresa.id, payload);
+      setMantenimientosFlota(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = { ...payload, id: generateId('mfl'), empresa_id: empresa.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    setMantenimientosFlota(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const actualizarMantenimientoFlotaCtx = async (id, payload) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarMantenimientoFlota(id, payload);
+      setMantenimientosFlota(prev => prev.map(item => item.id === id ? data : item));
+      return data;
+    }
+    const data = { ...payload, id, updated_at: new Date().toISOString() };
+    setMantenimientosFlota(prev => prev.map(item => item.id === id ? { ...item, ...data } : item));
+    return data;
+  };
+
+  const eliminarMantenimientoFlotaCtx = async id => {
+    if (isSupabaseConfigured()) await svcEliminarMantenimientoFlota(id);
+    setMantenimientosFlota(prev => prev.filter(item => item.id !== id));
+    return id;
+  };
+
   const recargarOrdenesVenta = async () => {
     if (!empresa?.id || !isSupabaseConfigured()) return;
     const data = await getOrdenesVenta(empresa.id);
@@ -11763,12 +11875,13 @@ export function AppProvider({ children }) {
     activos, setActivos, crearActivoCtx, actualizarActivoCtx, bajaActivoCtx, importarActivosCtx, recargarActivos,
     // Transporte y Guías
     guiasRemision, setGuiasRemision, crearGuiaCtx, actualizarGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx, recargarGuias,
-    transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
+    transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, actualizarVehiculoCtx, eliminarVehiculoCtx, crearConductorCtx, actualizarConductorCtx, eliminarConductorCtx,
     ordenesVenta, setOrdenesVenta, crearOVCtx, actualizarOVCtx, confirmarOVCtx, anularOVCtx, recargarOrdenesVenta,
     catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
     rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas,
-    crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx,
+    crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx, eliminarRutaCtx,
     actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
+    mantenimientosFlota, recargarMantenimientosFlota, crearMantenimientoFlotaCtx, actualizarMantenimientoFlotaCtx, eliminarMantenimientoFlotaCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,

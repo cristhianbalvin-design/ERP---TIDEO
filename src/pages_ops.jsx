@@ -78,6 +78,7 @@ import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/ImportarCuentasModal.jsx';
 import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
 import { RutasPanel } from './components/RutasPanel.jsx';
+import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -10852,7 +10853,7 @@ function Remision() {
   const {
     guiasRemision, ordenesVenta, transportistas, catalogoVenta, almacenes, ots,
     crearGuiaCtx, emitirGuiaCtx, marcarEnTransitoCtx, confirmarEntregaCtx, anularGuiaCtx,
-    crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
+    crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, actualizarVehiculoCtx, eliminarVehiculoCtx, crearConductorCtx, actualizarConductorCtx, eliminarConductorCtx,
     crearOVCtx, confirmarOVCtx, anularOVCtx,
     searchQuery, addToast, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles,
   } = useApp();
@@ -10885,12 +10886,24 @@ function Remision() {
   const [ovLinea, setOvLinea] = useState({ descripcion: '', codigo: '', unidad: 'NIU', cantidad: 1, precio_unitario: 0, descuento_pct: 0 });
 
   const [transForm, setTransForm] = useState(TRANS_FORM_INIT);
-  const [vehiculoForm, setVehiculoForm] = useState({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '' });
+  const [vehiculoForm, setVehiculoForm] = useState({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '', vigencia_certificado_habilitacion: '' });
   const [conductorForm, setConductorForm] = useState({ nombre: '', dni: '', brevete: '', categoria_brevete: 'A-III', vigencia_brevete: '' });
   const [subTab, setSubTab] = useState('lista');
+  const [vehiculoEditId, setVehiculoEditId] = useState(null);
+  const [conductorEditId, setConductorEditId] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [errores, setErrores] = useState([]);
+
+  useEffect(() => {
+    setModalGuia(null);
+    setModalOV(null);
+    setModalTrans(null);
+    setModalAnular(null);
+    setAnularMotivo('');
+    setErrores([]);
+    setWizardStep(1);
+  }, [tab]);
 
   const query = searchQuery?.toLowerCase() || '';
 
@@ -11069,15 +11082,59 @@ function Remision() {
     finally { setSubmitting(false); }
   };
 
+  useEffect(() => {
+    if (!modalTrans || modalTrans === 'nuevo') return;
+    const latest = (transportistas || []).find(item => item.id === modalTrans.id);
+    if (latest && latest !== modalTrans) setModalTrans(latest);
+  }, [transportistas, modalTrans?.id]);
+
+  const estadoVencimiento = fecha => {
+    if (!fecha) return { label: 'Sin fecha', className: 'badge-gray' };
+    const dias = Math.ceil((new Date(`${fecha}T00:00:00`).getTime() - new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`).getTime()) / 86400000);
+    if (dias < 0) return { label: `Vencido hace ${Math.abs(dias)} d`, className: 'badge-red' };
+    if (dias <= 30) return { label: `Vence en ${dias} d`, className: 'badge-orange' };
+    return { label: `Vigente hasta ${fecha}`, className: 'badge-green' };
+  };
+
+  const editarVehiculo = vehicle => {
+    setVehiculoEditId(vehicle.id);
+    setVehiculoForm({ placa: vehicle.placa || '', marca: vehicle.marca || '', modelo: vehicle.modelo || '', tipo: vehicle.tipo || 'camion', nro_certificado_habilitacion: vehicle.nro_certificado_habilitacion || '', vigencia_certificado_habilitacion: vehicle.vigencia_certificado_habilitacion || '' });
+    setSubTab('vehiculo');
+  };
+
+  const editarConductor = driver => {
+    setConductorEditId(driver.id);
+    setConductorForm({ nombre: driver.nombre || '', dni: driver.dni || '', brevete: driver.brevete || '', categoria_brevete: driver.categoria_brevete || 'A-III', vigencia_brevete: driver.vigencia_brevete || '' });
+    setSubTab('conductor');
+  };
+
+  const eliminarVehiculo = async vehicle => {
+    if (!window.confirm(`¿Eliminar el vehículo ${vehicle.placa}?`)) return;
+    setSubmitting(true);
+    try { await eliminarVehiculoCtx(vehicle.id); addToast?.('Vehículo eliminado.', 'success'); }
+    catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
+  const eliminarConductor = async driver => {
+    if (!window.confirm(`¿Eliminar al conductor ${driver.nombre}?`)) return;
+    setSubmitting(true);
+    try { await eliminarConductorCtx(driver.id); addToast?.('Conductor eliminado.', 'success'); }
+    catch (e) { setErrores([e.message]); }
+    finally { setSubmitting(false); }
+  };
+
   const guardarVehiculo = async (transId) => {
     if (!vehiculoForm.placa) { setErrores(['La placa es obligatoria']); return; }
     setSubmitting(true); setErrores([]);
     try {
-      const data = await crearVehiculoCtx({ ...vehiculoForm, transportista_id: transId });
+      const payload = { ...vehiculoForm, transportista_id: transId };
+      const data = vehiculoEditId ? await actualizarVehiculoCtx(vehiculoEditId, payload) : await crearVehiculoCtx(payload);
       setModalTrans(prev => prev && prev !== 'nuevo' && prev.id === transId
-        ? { ...prev, vehiculos: [...(prev.vehiculos || []), data] }
+        ? { ...prev, vehiculos: vehiculoEditId ? (prev.vehiculos || []).map(v => v.id === vehiculoEditId ? data : v) : [...(prev.vehiculos || []), data] }
         : prev);
-      setVehiculoForm({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '' });
+      setVehiculoEditId(null);
+      setVehiculoForm({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '', vigencia_certificado_habilitacion: '' });
       setSubTab('lista');
     } catch (e) { setErrores([e.message]); }
     finally { setSubmitting(false); }
@@ -11087,10 +11144,12 @@ function Remision() {
     if (!conductorForm.nombre || !conductorForm.dni) { setErrores(['Nombre y DNI son obligatorios']); return; }
     setSubmitting(true); setErrores([]);
     try {
-      const data = await crearConductorCtx({ ...conductorForm, transportista_id: transId });
+      const payload = { ...conductorForm, transportista_id: transId };
+      const data = conductorEditId ? await actualizarConductorCtx(conductorEditId, payload) : await crearConductorCtx(payload);
       setModalTrans(prev => prev && prev !== 'nuevo' && prev.id === transId
-        ? { ...prev, conductores: [...(prev.conductores || []), data] }
+        ? { ...prev, conductores: conductorEditId ? (prev.conductores || []).map(c => c.id === conductorEditId ? data : c) : [...(prev.conductores || []), data] }
         : prev);
+      setConductorEditId(null);
       setConductorForm({ nombre: '', dni: '', brevete: '', categoria_brevete: 'A-III', vigencia_brevete: '' });
       setSubTab('lista');
     } catch (e) { setErrores([e.message]); }
@@ -11114,7 +11173,7 @@ function Remision() {
         <div style={{display:'flex',gap:8}}>
           {tab === 'guias' && <button className="btn btn-primary" onClick={() => { setModalGuia('nueva'); setGrForm({ ...GR_FORM_INIT, sociedad_origen_id: sociedadIdEscrituraRemision || '' }); setWizardStep(1); setErrores([]); }}>{I.plus} Nueva Guía</button>}
           {tab === 'ov'    && <button className="btn btn-primary" disabled={empresa?.multisociedad_habilitado && !modoVistaSociedadRemision.permiteEscritura} title={empresa?.multisociedad_habilitado && !modoVistaSociedadRemision.permiteEscritura ? 'Selecciona una sociedad concreta en el selector superior.' : 'Nueva Orden de Venta'} onClick={() => { setModalOV('nueva'); setOvForm({ ...OV_FORM_INIT, sociedad_id: sociedadIdEscrituraRemision || '' }); setErrores([]); }}>{I.plus} Nueva OV</button>}
-          {tab === 'trans' && <button className="btn btn-primary" onClick={() => { setModalTrans('nuevo'); setTransForm(TRANS_FORM_INIT); setErrores([]); setSubTab('lista'); }}>{I.plus} Nuevo Transportista</button>}
+          {tab === 'trans' && <button className="btn btn-primary" onClick={() => { setModalTrans('nuevo'); setTransForm(TRANS_FORM_INIT); setVehiculoEditId(null); setConductorEditId(null); setErrores([]); setSubTab('lista'); }}>{I.plus} Nuevo Transportista</button>}
         </div>
       </div>
 
@@ -11136,7 +11195,7 @@ function Remision() {
       </div>
 
       <div className="tabs">
-        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas'],['rutas','Rutas']].map(([k,l]) => (
+        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas'],['rutas','Rutas'],['mantenimiento','Mantenimiento']].map(([k,l]) => (
           <div key={k} className={`tab${tab===k?' active':''}`} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -11228,11 +11287,21 @@ function Remision() {
                     <td style={{fontWeight:600}}>{t.razon_social}</td>
                     <td><span className={`badge ${(t.tipo_operador || 'tercero') === 'propio' ? 'badge-cyan' : 'badge-gray'}`}>{(t.tipo_operador || 'tercero') === 'propio' ? 'Propio' : 'Tercero'}</span></td>
                     <td style={{fontSize:11}}>{t.nro_mtc || '—'}</td>
-                    <td>{(t.vehiculos || []).filter(v => v.activo !== false).length}</td>
-                    <td>{(t.conductores || []).filter(c => c.activo !== false).length}</td>
+                    <td>
+                      <div>{(t.vehiculos || []).filter(v => v.activo !== false).length}</div>
+                      <div className="text-muted" style={{fontSize:11,maxWidth:190,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {(t.vehiculos || []).filter(v => v.activo !== false).map(v => v.placa).filter(Boolean).join(', ') || 'Sin vehículos'}
+                      </div>
+                    </td>
+                    <td>
+                      <div>{(t.conductores || []).filter(c => c.activo !== false).length}</div>
+                      <div className="text-muted" style={{fontSize:11,maxWidth:190,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {(t.conductores || []).filter(c => c.activo !== false).map(c => c.nombre).filter(Boolean).join(', ') || 'Sin conductores'}
+                      </div>
+                    </td>
                     <td><span className={`badge ${t.activo ? 'badge-green' : 'badge-gray'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span></td>
                     <td>
-                      <button className="icon-btn" onClick={() => { setModalTrans(t); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', tipo_operador:t.tipo_operador||'tercero', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
+                      <button className="icon-btn" onClick={() => { setModalTrans(t); setVehiculoEditId(null); setConductorEditId(null); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', tipo_operador:t.tipo_operador||'tercero', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
                     </td>
                   </tr>
                 ))}
@@ -11243,6 +11312,8 @@ function Remision() {
       )}
 
       {tab === 'rutas' && <RutasPanel />}
+
+      {tab === 'mantenimiento' && <MantenimientoFlotaPanel />}
 
       {/* MODAL: Nueva Guía wizard */}
       {modalGuia === 'nueva' && (
@@ -11762,19 +11833,29 @@ function Remision() {
               {modalTrans !== 'nuevo' && (
                 <div style={{borderTop:'1px solid var(--border)',paddingTop:16}}>
                   <div style={{display:'flex',gap:8,marginBottom:12}}>
-                    <div className={`tab${subTab==='lista'?' active':''}`} onClick={() => setSubTab('lista')}>Vehículos</div>
-                    <div className={`tab${subTab==='conductor'?' active':''}`} onClick={() => setSubTab('conductor')}>Conductores</div>
-                    <div className={`tab${subTab==='vehiculo'?' active':''}`} style={{marginLeft:'auto',fontSize:12,cursor:'pointer'}} onClick={() => setSubTab('vehiculo')}>{I.plus} Nuevo vehículo</div>
+                    <div className={`tab${subTab==='lista'?' active':''}`} onClick={() => { setVehiculoEditId(null); setSubTab('lista'); }}>Vehículos</div>
+                    <div className={`tab${subTab==='conductor'?' active':''}`} onClick={() => { setConductorEditId(null); setSubTab('conductor'); }}>Conductores</div>
+                    <div className={`tab${subTab==='vehiculo'?' active':''}`} style={{marginLeft:'auto',fontSize:12,cursor:'pointer'}} onClick={() => { setVehiculoEditId(null); setVehiculoForm({ placa: '', marca: '', modelo: '', tipo: 'camion', nro_certificado_habilitacion: '', vigencia_certificado_habilitacion: '' }); setSubTab('vehiculo'); }}>{I.plus} Nuevo vehículo</div>
                   </div>
 
                   {subTab === 'lista' && (
                     <table className="tbl" style={{fontSize:12}}>
-                      <thead><tr><th>Placa</th><th>Marca/Modelo</th><th>Tipo</th><th>N° Hab.</th></tr></thead>
+                      <thead><tr><th>Placa</th><th>Marca/Modelo</th><th>Tipo</th><th>N° Hab.</th><th>Vigencia</th><th></th></tr></thead>
                       <tbody>
                         {(modalTrans.vehiculos || []).length === 0
-                          ? <tr><td colSpan={4} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin vehículos</td></tr>
+                          ? <tr><td colSpan={6} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin vehículos</td></tr>
                           : (modalTrans.vehiculos || []).map(v => (
-                              <tr key={v.id}><td>{v.placa}</td><td>{v.marca} {v.modelo}</td><td>{v.tipo}</td><td>{v.nro_certificado_habilitacion || '—'}</td></tr>
+                              <tr key={v.id}>
+                                <td>{v.placa}</td>
+                                <td>{v.marca} {v.modelo}</td>
+                                <td>{v.tipo}</td>
+                                <td>{v.nro_certificado_habilitacion || '—'}</td>
+                                <td><span className={`badge ${estadoVencimiento(v.vigencia_certificado_habilitacion).className}`}>{estadoVencimiento(v.vigencia_certificado_habilitacion).label}</span></td>
+                                <td style={{whiteSpace:'nowrap'}}>
+                                  <button className="icon-btn" title="Editar vehículo" onClick={() => editarVehiculo(v)}>{I.edit}</button>
+                                  <button className="icon-btn" title="Eliminar vehículo" onClick={() => eliminarVehiculo(v)} disabled={submitting}>{I.trash}</button>
+                                </td>
+                              </tr>
                             ))
                         }
                       </tbody>
@@ -11784,22 +11865,29 @@ function Remision() {
                   {subTab === 'conductor' && (
                     <div>
                       <table className="tbl" style={{fontSize:12,marginBottom:12}}>
-                        <thead><tr><th>Nombre</th><th>DNI</th><th>Brevete</th><th>Cat.</th><th>Venc.</th></tr></thead>
+                        <thead><tr><th>Nombre</th><th>DNI</th><th>Brevete</th><th>Cat.</th><th>Venc.</th><th></th></tr></thead>
                         <tbody>
                           {(modalTrans.conductores || []).length === 0
-                            ? <tr><td colSpan={5} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin conductores</td></tr>
+                            ? <tr><td colSpan={6} style={{textAlign:'center',color:'var(--fg-muted)'}}>Sin conductores</td></tr>
                             : (modalTrans.conductores || []).map(c => (
-                                <tr key={c.id}><td>{c.nombre}</td><td>{c.dni}</td><td>{c.brevete || '—'}</td><td>{c.categoria_brevete || '—'}</td><td>{c.vigencia_brevete || '—'}</td></tr>
+                                <tr key={c.id}>
+                                  <td>{c.nombre}</td><td>{c.dni}</td><td>{c.brevete || '—'}</td><td>{c.categoria_brevete || '—'}</td>
+                                  <td><span className={`badge ${estadoVencimiento(c.vigencia_brevete).className}`}>{estadoVencimiento(c.vigencia_brevete).label}</span></td>
+                                  <td style={{whiteSpace:'nowrap'}}>
+                                    <button className="icon-btn" title="Editar conductor" onClick={() => editarConductor(c)}>{I.edit}</button>
+                                    <button className="icon-btn" title="Eliminar conductor" onClick={() => eliminarConductor(c)} disabled={submitting}>{I.trash}</button>
+                                  </td>
+                                </tr>
                               ))
                           }
                         </tbody>
                       </table>
-                      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',gap:8,alignItems:'end'}}>
+                      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr',gap:8,alignItems:'end'}}>
                         <div><label className="form-label">Nombre *</label><input className="input" value={conductorForm.nombre} onChange={e => setConductorForm(p => ({...p, nombre: e.target.value}))} /></div>
                         <div><label className="form-label">DNI *</label><input className="input" value={conductorForm.dni} onChange={e => setConductorForm(p => ({...p, dni: e.target.value}))} maxLength={8} /></div>
                         <div><label className="form-label">Brevete</label><input className="input" value={conductorForm.brevete} onChange={e => setConductorForm(p => ({...p, brevete: e.target.value}))} /></div>
                         <div><label className="form-label">Vencimiento</label><input type="date" className="input" value={conductorForm.vigencia_brevete} onChange={e => setConductorForm(p => ({...p, vigencia_brevete: e.target.value}))} /></div>
-                        <div><label className="form-label">&nbsp;</label><button className="btn btn-secondary btn-sm" onClick={() => guardarConductor(modalTrans.id)} disabled={submitting}>{I.plus}</button></div>
+                        <div><label className="form-label">&nbsp;</label><button className="btn btn-secondary btn-sm" onClick={() => guardarConductor(modalTrans.id)} disabled={submitting}>{conductorEditId ? 'Guardar' : I.plus}</button></div>
                       </div>
                     </div>
                   )}
@@ -11817,9 +11905,10 @@ function Remision() {
                             <option value="moto">Moto</option><option value="otro">Otro</option>
                           </select>
                         </div>
-                        <div style={{gridColumn:'2/-1'}}><label className="form-label">N° Cert. habilitación MTC</label><input className="input" value={vehiculoForm.nro_certificado_habilitacion} onChange={e => setVehiculoForm(p => ({...p, nro_certificado_habilitacion: e.target.value}))} /></div>
+                        <div><label className="form-label">N° Cert. habilitación MTC</label><input className="input" value={vehiculoForm.nro_certificado_habilitacion} onChange={e => setVehiculoForm(p => ({...p, nro_certificado_habilitacion: e.target.value}))} /></div>
+                        <div><label className="form-label">Vigencia documento</label><input type="date" className="input" value={vehiculoForm.vigencia_certificado_habilitacion} onChange={e => setVehiculoForm(p => ({...p, vigencia_certificado_habilitacion: e.target.value}))} /></div>
                       </div>
-                      <button className="btn btn-primary" onClick={() => guardarVehiculo(modalTrans.id)} disabled={submitting}>Agregar vehículo</button>
+                      <button className="btn btn-primary" onClick={() => guardarVehiculo(modalTrans.id)} disabled={submitting}>{vehiculoEditId ? 'Guardar cambios' : 'Agregar vehículo'}</button>
                     </div>
                   )}
                 </div>

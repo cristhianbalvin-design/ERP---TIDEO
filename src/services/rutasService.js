@@ -214,3 +214,14 @@ export async function quitarParada(empresaId, paradaId) {
   assertOk(error, 'No se pudo quitar la parada.');
   return paradaId;
 }
+
+export async function eliminarRuta(empresaId, rutaId) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase
+    .from('rutas')
+    .delete()
+    .eq('empresa_id', empresaId)
+    .eq('id', rutaId);
+  assertOk(error, 'No se pudo eliminar la ruta.');
+  return rutaId;
+}
