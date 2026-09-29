@@ -3008,6 +3008,7 @@ function ComprasView({ screen, setScreen }) {
   const [fotoArchivo, setFotoArchivo] = useState(null);
   const [campos, setCampos] = useState({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
   const [extractError, setExtractError] = useState(false);
+  const [rucExtraccionAviso, setRucExtraccionAviso] = useState('');
   const [saveError, setSaveError] = useState('');
   const saveErrorRef = useRef(null);
   const [otId, setOtId] = useState('');
@@ -3156,7 +3157,10 @@ function ComprasView({ screen, setScreen }) {
           ? 'Adjunta la foto del comprobante'
           : '';
 
-  const setC = (k, v) => setCampos(p => ({ ...p, [k]: v }));
+  const setC = (k, v) => {
+    if (k === 'ruc' && String(v || '').trim()) setRucExtraccionAviso('');
+    setCampos(p => ({ ...p, [k]: v }));
+  };
   const ESTADOS_CERRADOS = ['cerrada','cerrada_tecnica','anulada','valorizada','facturada','cerrado_conforme'];
   const otsActivas = (ots || [])
     .filter(o => !ESTADOS_CERRADOS.includes(o.estado) && (!empresa?.id || !o.empresa_id || o.empresa_id === empresa.id))
@@ -3167,7 +3171,7 @@ function ComprasView({ screen, setScreen }) {
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
-    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setRegistrarProveedor(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null); setProveedorLookup(null); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); setMontosDesdeIA(false);
+    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setRucExtraccionAviso(''); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setRegistrarProveedor(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null); setProveedorLookup(null); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); setMontosDesdeIA(false);
     setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
@@ -3190,10 +3194,14 @@ function ComprasView({ screen, setScreen }) {
       const { data: fnData, error: fnError } = await sb.functions.invoke('extraer-factura', { body: { imageBase64 } });
       if (fnError || !fnData?.success) throw new Error('failed');
       const d = fnData.data || {};
+      const rucExtraido = String(d.ruc || '').replace(/\D/g, '');
+      const rucEmpresa = String(empresa?.ruc || '').replace(/\D/g, '');
+      const rucEsReceptor = rucExtraido.length > 0 && rucEmpresa.length > 0 && rucExtraido === rucEmpresa;
       setMontosDesdeIA(Boolean(d.monto_sin_igv != null || d.igv != null || d.monto_total != null));
       setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false });
+      setRucExtraccionAviso(rucEsReceptor ? 'No se pudo identificar el RUC del proveedor automáticamente; verifícalo manualmente' : '');
       setCampos({
-        ruc: d.ruc || '',
+        ruc: rucEsReceptor ? '' : (d.ruc || ''),
         proveedor: d.proveedor || '',
         concepto: d.descripcion_compra?.trim() || (d.num_factura ? `Compra en campo · ${d.num_factura}` : 'Compra en campo'),
         num_factura: d.num_factura || '',
@@ -3395,6 +3403,7 @@ function ComprasView({ screen, setScreen }) {
             <div key={k}>
               <div className="eyebrow row" style={{gap:4,marginBottom:3}}><span className="badge badge-purple" style={{fontSize:8,padding:'0 4px'}}>IA</span>{l}</div>
               <input className="input" type={t} value={campos[k]} onChange={e=>setC(k,e.target.value)} placeholder={ph} style={k === 'ruc' && rucInvalido ? { borderColor: 'var(--danger)' } : undefined}/>
+              {k === 'ruc' && rucExtraccionAviso && <div role="alert" style={{color:'var(--orange-dk,#92400e)',fontSize:12,marginTop:4}}>{rucExtraccionAviso}</div>}
               {k === 'ruc' && rucInvalido && <div role="alert" style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:4}}>El RUC {campos.ruc} no es válido (dígito verificador). Compáralo con la factura.</div>}
               {k === 'ruc' && rucInvalido && <div style={{color:'var(--danger-dk,#991b1b)',fontSize:12,marginTop:2}}>Corrige el RUC para registrar el proveedor</div>}
               {k === 'ruc' && !rucInvalido && rucNormalizado.length === 11 && proveedorLookup && <div style={{color:'var(--green-dk,#166534)',fontSize:12,marginTop:4}}>Proveedor registrado: {proveedorLookup.razon_social || proveedorLookup.nombre_comercial}</div>}

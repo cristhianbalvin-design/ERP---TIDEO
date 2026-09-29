@@ -30,7 +30,7 @@ serve(async (req) => {
           },
           {
             type: "text",
-            text: `Analiza esta factura de proveedor peruana. En una factura electrónica peruana, el EMISOR es quien emite y cobra (el proveedor que vende), y el RECEPTOR es quien recibe y paga (el cliente que compra). Extrae los datos del EMISOR: su RUC va en "ruc" y su razón social va en "proveedor". NO uses los datos del RECEPTOR. Responde ÚNICAMENTE con JSON válido, sin texto adicional:
+            text: `Analiza esta factura de proveedor peruana. El EMISOR es quien emite y cobra (el proveedor que vende), y el RECEPTOR es quien recibe y paga (el cliente que compra). Toma el RUC y la razón social del bloque del EMISOR, normalmente ubicado arriba junto al recuadro de FACTURA y la serie-número. Nunca tomes el RUC que aparece junto a "Señor(es)", "Cliente" o cualquier otro bloque del RECEPTOR, aunque esté más cerca del bloque de totales. Si el documento es un Registro de Comprobante Físico por Contingencia u otro formato con dos bloques de RUC, verifica que el RUC devuelto corresponda al mismo bloque visual que la razón social del proveedor. Si existe ambigüedad o no puedes confirmar cuál es el bloque emisor, devuelve "ruc": "" y "proveedor": "" en vez de adivinar. Extrae los datos del EMISOR: su RUC va en "ruc" y su razón social va en "proveedor". NO uses los datos del RECEPTOR. Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
   "ruc": "",
   "proveedor": "",
