@@ -153,6 +153,46 @@ export async function crearActivoCliente(empresaId, datos, usuarioId = null) {
   throw ultimoError || new Error('No se pudo registrar el activo.');
 }
 
+export async function crearActivoClienteYRecepcion(empresaId, datos) {
+  if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
+  if (!datos?.sociedad_id) throw new Error('Selecciona una sociedad operativa antes de registrar la recepción.');
+  if (!datos?.cliente_propietario_id) throw new Error('Selecciona el cliente propietario antes de registrar el activo.');
+  if (!datos?.almacen_id) throw new Error('Selecciona el almacén de custodia.');
+  if (!datos?.fecha_ingreso) throw new Error('La fecha de ingreso es obligatoria.');
+
+  const tipoActivo = obtenerTipoActivoOpcional(datos);
+  if (!tipoActivo) throw new Error('Selecciona el tipo de activo antes de registrar.');
+  const nombre = String(datos?.nombre || '').trim();
+  if (!nombre) throw new Error('El nombre es obligatorio para registrar el activo.');
+  const marca = String(datos?.marca || '').trim();
+  const modelo = String(datos?.modelo || '').trim();
+  if (tipoActivo === 'maquinaria_completa' && !marca) throw new Error('La marca es obligatoria para una maquinaria completa.');
+  if (tipoActivo === 'maquinaria_completa' && !modelo) throw new Error('El modelo es obligatorio para una maquinaria completa.');
+
+  const anioFabricacion = obtenerAnioOpcional(datos?.['año_fabricacion'], 'El año de fabricación');
+  const anioOverhaul = obtenerAnioOpcional(datos?.['año_overhaul'], 'El año de overhaul');
+  const { data, error } = await getSupabaseClient().rpc('crear_activo_cliente_y_recepcion', {
+    p_empresa_id: empresaId,
+    p_sociedad_id: datos.sociedad_id,
+    p_cliente_propietario_id: datos.cliente_propietario_id,
+    p_nombre: nombre,
+    p_tipo_activo: tipoActivo,
+    p_codigo_origen: String(datos?.codigo_origen || '').trim() || null,
+    p_marca: marca || null,
+    p_modelo: modelo || null,
+    p_placa_serie: String(datos?.placa_serie || '').trim() || null,
+    p_anio_fabricacion: anioFabricacion,
+    p_anio_overhaul: anioOverhaul,
+    p_fecha_ingreso: datos.fecha_ingreso,
+    p_hora_ingreso: datos.hora_ingreso || null,
+    p_guia_ingreso: String(datos?.guia_ingreso || '').trim() || null,
+    p_almacen_id: datos.almacen_id,
+    p_observaciones: String(datos?.observaciones || '').trim() || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export async function listarAlmacenes(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
