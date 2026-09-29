@@ -14,23 +14,6 @@ const makeId = prefix => {
   return `${prefix}_${String(randomId).replace(/-/g, '').slice(0, 18)}`;
 };
 
-const nextNumero = async (supabase, empresaId) => {
-  const year = new Date().getFullYear();
-  const prefix = `RAC-${year}-`;
-  const { data, error } = await supabase
-    .from('recepciones_activos_cliente')
-    .select('numero')
-    .eq('empresa_id', empresaId)
-    .like('numero', `${prefix}%`);
-  if (error) throw error;
-
-  const maximo = (data || []).reduce((max, row) => {
-    const numero = Number(String(row.numero || '').slice(prefix.length));
-    return Number.isFinite(numero) ? Math.max(max, numero) : max;
-  }, 0);
-  return `${prefix}${String(maximo + 1).padStart(4, '0')}`;
-};
-
 const exigirEmpresaYSociedad = (empresaId, sociedadId) => {
   if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
   if (!sociedadId) throw new Error('Selecciona una sociedad operativa antes de continuar.');
@@ -255,10 +238,13 @@ export async function crearRecepcion(empresaId, datos) {
     p_cuenta_id: activo.cliente_propietario_id || null,
   });
   if (numeroCasoError) throw numeroCasoError;
+  if (numeroCaso === null || numeroCaso === undefined) {
+    throw new Error('No se pudo abrir el número de caso para la recepción.');
+  }
+  const numero = `RAC-${new Date().getFullYear()}-${String(numeroCaso).padStart(5, '0')}`;
 
   let ultimoError = null;
   for (let intento = 0; intento < 3; intento += 1) {
-    const numero = await nextNumero(supabase, empresaId);
     const { data, error } = await supabase
       .from('recepciones_activos_cliente')
       .insert({
