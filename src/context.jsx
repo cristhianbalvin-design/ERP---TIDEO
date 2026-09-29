@@ -2883,7 +2883,10 @@ export function AppProvider({ children }) {
       recepcionId: datos.recepcion_id || null,
       cuentaId: cuentaCaso,
     });
-    if (isSupabaseConfigured()) {
+    if (numeroCaso != null) {
+      const year = new Date().getFullYear();
+      numeroCot = `COT-${year}-${String(numeroCaso).padStart(5, '0')}`;
+    } else if (isSupabaseConfigured()) {
       const sb = await getSupabaseClient();
       const { data: numData, error: numErr } = await sb.rpc('siguiente_numero_cotizacion', { p_empresa_id: empresa.id });
       if (numErr) throw numErr;
@@ -3007,14 +3010,11 @@ export function AppProvider({ children }) {
       return cotId;
     }
 
-    const sb = await getSupabaseClient();
-    const { data: numeroCot, error: numeroError } = await sb.rpc('siguiente_numero_cotizacion', { p_empresa_id: empresa.id });
-    if (numeroError) throw numeroError;
     const cotBase = {
       id: generateId('cot'),
       oportunidad_id: hc.oportunidad_id,
       cuenta_id: hc.cuenta_id,
-      numero: numeroCot,
+      numero: null,
       version: 1,
       estado: 'borrador',
       fecha: new Date().toISOString().split('T')[0],
