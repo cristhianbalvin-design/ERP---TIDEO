@@ -295,6 +295,7 @@ export function AppProvider({ children }) {
   });
 
   const [dark, setDark] = useState(false);
+  const [isRrhhLoaded, setIsRrhhLoaded] = useState(false);
   const [mobileMode, setMobileMode] = useState(false);
   const [mobileProfile, setMobileProfile] = useState(null);
   const [dataMode] = useState(getDataMode);
@@ -1181,27 +1182,37 @@ export function AppProvider({ children }) {
           }
         } catch (_err) { /* keep mock */ }
 
+        let rrhhPromise = Promise.resolve();
         try {
-          const [persOpsData, persAdmData, turnosData, asistenciaData, nominaData, asigJornadaData] = await Promise.all([
+          rrhhPromise = Promise.all([
             rrhhService.getPersonalOperativo(empresa.id),
             rrhhService.getPersonalAdmin(empresa.id),
             rrhhService.getTurnos(empresa.id),
             rrhhService.getAsistencia(empresa.id),
             rrhhService.getPeriodosNomina(empresa.id),
             rrhhService.getAsignacionesJornada(empresa.id),
-          ]);
-          if (mounted) {
-            setPersonalOperativo(persOpsData || []);
-            setPersonalAdmin(persAdmData || []);
-            setTurnos(turnosData || []);
-            setRegistrosAsistencia(asistenciaData || []);
-            setPeriodosNomina(nominaData || []);
-            setAsignacionesJornada(asigJornadaData || []);
-          }
+          ]).then(([persOpsData, persAdmData, turnosData, asistenciaData, nominaData, asigJornadaData]) => {
+            if (mounted) {
+              setPersonalOperativo(persOpsData || []);
+              setPersonalAdmin(persAdmData || []);
+              setTurnos(turnosData || []);
+              setRegistrosAsistencia(asistenciaData || []);
+              setPeriodosNomina(nominaData || []);
+              setAsignacionesJornada(asigJornadaData || []);
+              setIsRrhhLoaded(true);
+            }
+          }).catch(() => {
+            if (mounted) {
+              setPersonalOperativo([]);
+              setPersonalAdmin([]);
+              setIsRrhhLoaded(true);
+            }
+          });
         } catch (_err) {
           if (mounted) {
             setPersonalOperativo([]);
             setPersonalAdmin([]);
+            setIsRrhhLoaded(true);
           }
         }
 
@@ -1331,10 +1342,15 @@ export function AppProvider({ children }) {
           if (mounted) setCuadrillas(cuadData || []);
         } catch (_err) { /* keep mock */ }
 
+        await rrhhPromise;
       } catch (_err) { /* keep mock on error */ }
-      if (mounted) setIsDataLoaded(true);
+      if (mounted) {
+        setIsRrhhLoaded(true);
+        setIsDataLoaded(true);
+      }
     };
     setIsDataLoaded(false);
+    setIsRrhhLoaded(false);
     loadCrm();
     return () => { mounted = false; };
   }, [empresa?.id, authSession?.user?.id, membresiaActiva?.empresa?.id]);
@@ -11653,6 +11669,7 @@ export function AppProvider({ children }) {
 
   const contextValue = {
     isDataLoaded,
+    isRrhhLoaded,
     active, navigate, activeParams,
     roleKey, setRoleKey, role, isSuperadmin,
     empresa, setEmpresa,

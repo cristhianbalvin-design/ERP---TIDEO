@@ -66,7 +66,7 @@ function parsearBloqueoSalidaGeocerca(error, fix = null) {
 }
 
 function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
-  const { authUser, usuarios, personalAdmin, personalOperativo, role } = useApp();
+  const { authUser, usuarios, personalAdmin, personalOperativo, role, isDataLoaded, isRrhhLoaded } = useApp();
   const [screen, setScreen] = useState('home');
   const fichaColaborador = getFichaColaboradorMovil({ authUser, usuarios, personalAdmin, personalOperativo });
   // Usar role.permisos.campo_modulos (de membresiaActiva, disponible desde el login)
@@ -135,9 +135,17 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
             <div className="mobile-notch"/>
             <div className="mobile-screen">
               {requiereConfiguracion ? (
-                <MobileAccessMessage text="Tu acceso de campo requiere configuracion adicional. Contacta al administrador." />
+                (!isRrhhLoaded && !isDataLoaded) ? (
+                  <MobileLoadingMessage text="Cargando acceso de campo..." />
+                ) : (
+                  <MobileAccessMessage text="Tu acceso de campo requiere configuracion adicional. Contacta al administrador." />
+                )
               ) : profiles.length === 0 ? (
-                <MobileAccessMessage text={esSupervisionSinFicha ? 'No tienes modulos de supervision habilitados para esta empresa.' : 'No tienes modulos moviles habilitados.'} />
+                (!isRrhhLoaded && !isDataLoaded) ? (
+                  <MobileLoadingMessage text="Cargando acceso de campo..." />
+                ) : (
+                  <MobileAccessMessage text={esSupervisionSinFicha ? 'No tienes modulos de supervision habilitados para esta empresa.' : 'No tienes modulos moviles habilitados.'} />
+                )
               ) : (
                 <>
                   {profile === 'tecnico' && <TecnicoView screen={screen} setScreen={setScreen}/>}
@@ -153,6 +161,27 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
               )}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileLoadingMessage({ text = 'Cargando información...' }) {
+  return (
+    <div style={{height:'100%', minHeight:280, display:'flex', alignItems:'center', justifyContent:'center', padding:24, textAlign:'center'}}>
+      <div>
+        <div style={{
+          width: 44,
+          height: 44,
+          margin: '0 auto 16px',
+          border: '3px solid var(--border, #cbd5e1)',
+          borderTopColor: 'var(--primary, #0284c7)',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <div style={{fontWeight: 600, fontSize: 15, color: 'var(--fg-muted, #64748b)', lineHeight: 1.4}}>
+          {text}
         </div>
       </div>
     </div>
@@ -336,6 +365,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const {
     authUser, usuarios, addNotificacion, registrosAsistencia, setRegistrosAsistencia, empresa, personalAdmin, personalOperativo, turnos,
     empresaConfig = {}, geocercas = [], geocercaAsignaciones = [], ubicacionConsentimientos = [], registrarConsentimientoUbicacionCtx,
+    isDataLoaded, isRrhhLoaded,
   } = useApp();
   const [loading, setLoading] = useState(false);
   const [geoEstado, setGeoEstado] = useState('');
@@ -834,8 +864,21 @@ function AsistenciaMobileView({ screen, setScreen }) {
   // Esta validación debe ejecutarse después de declarar todos los hooks. La
   // ficha llega de forma asíncrona; retornar antes hacía que React alternase
   // entre distintas cantidades de hooks (error #310) al terminar la carga.
+  const cargandoDatos = isRrhhLoaded !== undefined ? (!isRrhhLoaded && !isDataLoaded) : !isDataLoaded;
+  if (cargandoDatos) {
+    return <MobileLoadingMessage text="Cargando información de asistencia..." />;
+  }
+
+  if (!trabajadorActual) {
+    return <MobileAccessMessage text="No se encontró tu ficha de colaborador en esta empresa. Contacta a RRHH para habilitar tu usuario." />;
+  }
+
   if (!trabajadorActual?.turno_id) {
     return <MobileAccessMessage text="Tu ficha de colaborador no tiene un turno asignado. Contacta a RRHH para habilitar las marcaciones." />;
+  }
+
+  if (!turnoIdPersistible) {
+    return <MobileAccessMessage text="El turno asignado a tu ficha no se encuentra activo o disponible. Contacta a RRHH para habilitar las marcaciones." />;
   }
 
   return <>
@@ -4053,6 +4096,9 @@ function MiEspacioMobileView({ setScreen }) {
   };
 
   if (!ficha) {
+    if (!app.isRrhhLoaded && !app.isDataLoaded) {
+      return <MobileLoadingMessage text="Cargando portal del colaborador..." />;
+    }
     return (
       <div style={{ padding: 18, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import tideoIsotipo from '../../public/tideo-isotipo.png';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { useSesionOperativa } from './lib/sesionOperativa.js';
+import { OperationalHeader } from './OperationalHeader.jsx';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
 import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
@@ -17,6 +18,33 @@ const routes = {
   ordenes: { label: 'Órdenes', icon: 'orders', title: 'Órdenes de trabajo', description: 'Placeholder para la gestión de órdenes operativas.' },
   actividad: { label: 'Actividad', icon: 'activity', title: 'Actividad diaria', description: 'Placeholder para registrar y consultar la actividad operativa.' },
 };
+
+function getTitleForRoute(route, baseRoutes, navigation) {
+  if (baseRoutes[route]) return baseRoutes[route].title || baseRoutes[route].label;
+  for (const zone of navigation) {
+    if (zone.type === 'flat') {
+      const found = zone.items?.find(item => itemMatchesRoute(item, route));
+      if (found) return found.label;
+    } else if (zone.groups) {
+      for (const group of zone.groups) {
+        for (const item of (group.items || [])) {
+          if (itemMatchesRoute(item, route)) return item.label;
+        }
+        for (const item of (group.tailItems || [])) {
+          if (itemMatchesRoute(item, route)) return item.label;
+        }
+        for (const area of (group.areaItems || [])) {
+          if (itemMatchesRoute(area, route)) return area.label;
+          for (const sub of (area.subItems || [])) {
+            if (itemMatchesRoute(sub, route)) return sub.label;
+          }
+        }
+      }
+    }
+  }
+  return 'Operaciones';
+}
+
 
 function readLocation() {
   const hash = window.location.hash.replace(/^#\/?/, '');
@@ -69,32 +97,8 @@ export function OperationalApp() {
     window.location.hash = `/${key}${queryString ? `?${queryString}` : ''}`;
   };
   const page = routes[route];
+  const title = getTitleForRoute(route, routes, zahoryNavigation);
   const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
-  const estadoSesion = !isSupabaseConfigured()
-    ? 'Backend pendiente'
-    : sesionOperativa.cargando
-      ? 'Verificando sesion...'
-      : sesionOperativa.estado === 'sin_sesion'
-        ? 'Inicia sesion desde Administrativo'
-        : sesionOperativa.estado === 'sin_empresa'
-          ? 'No tienes una empresa activa'
-          : sesionOperativa.estado === 'error'
-            ? 'Sesion no disponible'
-            : sesionOperativa.vistaConsolidada
-              ? 'Vista consolidada - solo lectura'
-              : 'Sesion operativa lista';
-  const nombreTenant = sesionOperativa.empresa?.nombre_comercial || sesionOperativa.empresa?.razon_social || '';
-  const etiquetaSociedad = sesionOperativa.cargando
-    ? ''
-    : sesionOperativa.vistaConsolidada
-      ? 'Vista consolidada'
-      : sesionOperativa.empresa?.multisociedad_habilitado && sesionOperativa.sociedadActiva
-        ? (sesionOperativa.sociedadActiva.codigo || sesionOperativa.sociedadActiva.nombre || '')
-        : '';
-  const nombreUsuario = sesionOperativa.usuario?.user_metadata?.nombre
-    || sesionOperativa.usuario?.user_metadata?.full_name
-    || sesionOperativa.usuario?.email
-    || '';
 
   useEffect(() => {
     const activeGroup = findGroupForRoute(route, zahoryNavigation);
@@ -118,9 +122,14 @@ export function OperationalApp() {
     <div className="ops-shell">
       <aside className="ops-sidebar">
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
-          <span className="ops-brand-mark">T</span><span>TIDEO</span>
+          <div className="ops-brand-logo-box">
+            <img src={tideoIsotipo} alt="TIDEO" />
+          </div>
+          <div>
+            <div className="ops-brand-text">TIDEO</div>
+            <div className="ops-brand-sub">OPERACIONES</div>
+          </div>
         </a>
-        <div className="ops-product">OPERACIONES</div>
         <nav className="ops-nav" aria-label="Navegación operativa">
           {Object.entries(routes).map(([key, item]) => (
             <NavEntry key={key} item={{ ...item, id: key }} route={route} navigate={navigate} />
@@ -185,22 +194,7 @@ export function OperationalApp() {
         </nav>
       </aside>
       <section className="ops-main-column">
-        <header className="ops-header">
-          <a className="ops-header-brand" href={adminAppUrl} aria-label="Volver al selector de aplicaciones">
-            <span className="ops-header-logo-mark"><img src={tideoIsotipo} alt="" /></span>
-            <span className="ops-header-wordmark"><strong>TIDEO</strong><small>OPERACIONES</small></span>
-          </a>
-          <div className="ops-header-context">
-            {!sesionOperativa.cargando && nombreTenant && <span className="ops-tenant" title={nombreTenant}>{nombreTenant}</span>}
-            {!sesionOperativa.cargando && etiquetaSociedad && <span className={`ops-sociedad${sesionOperativa.vistaConsolidada ? ' consolidated' : ''}`} title={sesionOperativa.sociedadActiva?.nombre || etiquetaSociedad}>{etiquetaSociedad}</span>}
-            {!sesionOperativa.cargando && nombreUsuario && <span className="ops-user" title={nombreUsuario}>{nombreUsuario}</span>}
-            {sesionOperativa.estado === 'sin_sesion' && isSupabaseConfigured() ? (
-              <a className="ops-status" href={adminAppUrl}>{estadoSesion}</a>
-            ) : (
-              <span className={sesionOperativa.estado === 'listo' && !sesionOperativa.vistaConsolidada ? 'ops-status ready' : 'ops-status'} title={sesionOperativa.error || undefined}>{estadoSesion}</span>
-            )}
-          </div>
-        </header>
+        <OperationalHeader title={title} sesionOperativa={sesionOperativa} />
         {page ? (
           <main className="ops-main">
             <div className="ops-eyebrow">Operaciones</div>
