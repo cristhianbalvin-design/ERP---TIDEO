@@ -9532,7 +9532,7 @@ function Parametros() {
     afpParametros = AFP_PARAMETROS_DEFAULT, guardarAfpParametro,
     seriesDocumentarias = [], slaPlantillas = [], diccionarioComercial = [],
     monedasImpuestosUnidades = [],
-    crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
+    crearSerieDocumentaria, actualizarSerieDocumentaria, ajustarSiguienteCorrelativoSerie, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
     crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
     whatsappPlantillas = [], whatsappMatriz = [], whatsappEnvios = [],
@@ -9929,8 +9929,17 @@ function Parametros() {
     }
     setSavingSerie(true);
     try {
-      if (serieEditId) await actualizarSerieDocumentaria(serieEditId, serieForm);
-      else await crearSerieDocumentaria(serieForm);
+      if (serieEditId) {
+        const serieActual = seriesDocumentarias.find(serie => serie.id === serieEditId);
+        const siguienteNuevo = Number(serieForm.siguiente_correlativo || 1);
+        await actualizarSerieDocumentaria(serieEditId, {
+          ...serieForm,
+          siguiente_correlativo: serieActual?.siguiente_correlativo,
+        });
+        if (Number(serieActual?.siguiente_correlativo) !== siguienteNuevo) {
+          await ajustarSiguienteCorrelativoSerie(serieEditId, siguienteNuevo);
+        }
+      } else await crearSerieDocumentaria(serieForm);
       resetSerie();
       addNotificacion('Serie documentaria guardada.');
     } catch (error) {
@@ -10218,7 +10227,7 @@ function Parametros() {
           <form className="card-body" onSubmit={guardarSerie} style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
             <div className="input-group"><label>Documento</label><input className="input" value={serieForm.documento} onChange={e=>setSerieForm(p=>({...p, documento:e.target.value}))} placeholder="Cotizaciones"/></div>
             <div className="input-group"><label>Serie</label><input className="input" value={serieForm.serie} onChange={e=>setSerieForm(p=>({...p, serie:e.target.value}))} placeholder="COT-2026"/></div>
-            <div className="input-group"><label>Siguiente correlativo</label><input className="input" type="number" min="1" value={serieForm.siguiente_correlativo} onChange={e=>setSerieForm(p=>({...p, siguiente_correlativo:e.target.value}))}/></div>
+            <div className="input-group"><label>Siguiente correlativo</label><input className="input" type="number" min="1" value={serieForm.siguiente_correlativo} onChange={e=>setSerieForm(p=>({...p, siguiente_correlativo:e.target.value}))}/>{serieEditId && <div className="text-muted" style={{fontSize:12, marginTop:4}}>El ajuste se valida contra el máximo usado y queda auditado.</div>}</div>
             <div className="input-group"><label>Estado</label><ParamChipGroup value={serieForm.estado} onChange={value=>setSerieForm(p=>({...p, estado:value}))} options={[{ value:'activo', label:'Activo' }, { value:'inactivo', label:'Inactivo' }]} /></div>
             <div className="input-group" style={{gridColumn:'1/-1'}}><label>Regla</label><input className="input" value={serieForm.regla} onChange={e=>setSerieForm(p=>({...p, regla:e.target.value}))} placeholder="Anual por empresa"/></div>
             <div className="row" style={{gridColumn:'1/-1', justifyContent:'flex-end'}}>

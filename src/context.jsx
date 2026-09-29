@@ -7635,7 +7635,6 @@ export function AppProvider({ children }) {
     const payload = {
       documento: datos.documento || '',
       serie: datos.serie || '',
-      siguiente_correlativo: Number(datos.siguiente_correlativo || 1),
       regla: datos.regla || '',
       estado: datos.estado || 'activo',
       updated_at: new Date().toISOString(),
@@ -7649,6 +7648,20 @@ export function AppProvider({ children }) {
     }
     setSeriesDocumentarias(prev => prev.map(s => s.id === id ? { ...s, ...payload } : s));
     return payload;
+  };
+
+  const ajustarSiguienteCorrelativoSerie = async (id, nuevoCorrelativo) => {
+    if (!isSupabaseConfigured() || !empresa?.id) throw new Error('Supabase no configurado');
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('ajustar_siguiente_correlativo_serie', {
+      p_empresa_id: empresa.id,
+      p_serie_id: id,
+      p_nuevo_correlativo: Number(nuevoCorrelativo),
+    });
+    if (error) throw error;
+    const serie = data?.serie || data;
+    setSeriesDocumentarias(prev => prev.map(s => s.id === id ? { ...s, ...serie } : s));
+    return serie;
   };
 
   const eliminarSerieDocumentaria = async (id) => {
@@ -11636,7 +11649,7 @@ export function AppProvider({ children }) {
     // Empresa Config
     empresaConfig, guardarEmpresaConfig, subirImagenEmpresa,
     seriesDocumentarias, slaPlantillas, diccionarioComercial, recargarParametrosGenerales,
-    crearSerieDocumentaria, actualizarSerieDocumentaria, eliminarSerieDocumentaria,
+    crearSerieDocumentaria, actualizarSerieDocumentaria, ajustarSiguienteCorrelativoSerie, eliminarSerieDocumentaria,
     crearSlaPlantilla, actualizarSlaPlantilla, eliminarSlaPlantilla,
     crearDiccionarioComercial, actualizarDiccionarioComercial, eliminarDiccionarioComercial,
   };
