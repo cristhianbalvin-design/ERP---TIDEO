@@ -76,7 +76,9 @@ export async function siguienteNumeroOrdenTrabajo(supabase, empresaId) {
 }
 
 export async function crearOTDesdeOSRpc(supabase, empresaId, osClienteId, ot) {
-  const numero = ot.numero || await siguienteNumeroOrdenTrabajo(supabase, empresaId);
+  const numero = ot.numero_caso != null
+    ? null
+    : (ot.numero || await siguienteNumeroOrdenTrabajo(supabase, empresaId));
   return supabase.rpc('crear_ot_desde_os_cliente', {
     p_empresa_id: empresaId,
     p_os_cliente_id: osClienteId,
