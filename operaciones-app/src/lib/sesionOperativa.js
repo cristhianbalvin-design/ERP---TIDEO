@@ -173,6 +173,9 @@ const estadoBase = (overrides = {}) => ({
   permiteEscritura: false,
   permisos: [],
   esAdminEmpresa: false,
+  puedeVerConsolidado: false,
+  todasMembresias: [],
+  rolActivo: null,
   cargando: false,
   error: null,
   estado: 'sin_sesion',
@@ -274,6 +277,9 @@ export async function cargarSesionOperativa({
       permiteEscritura: filtroSociedad.permiteEscritura,
       permisos: permisosRows || [],
       esAdminEmpresa: Boolean(membresia.rol?.es_admin_empresa || membresia.rol?.es_superadmin),
+      puedeVerConsolidado,
+      todasMembresias: membresiasActivas,
+      rolActivo: membresia.rol,
       estado: 'listo',
     }));
   } catch (error) {
@@ -378,5 +384,32 @@ export function useSesionOperativa() {
     };
   }, [cargar]);
 
-  return { ...sesion, recargar };
+  const seleccionarSociedad = useCallback(async (sociedadId) => {
+    try {
+      if (sesion.empresa?.id) {
+        localStorage.setItem(`last_sociedad_id_${sesion.empresa.id}`, sociedadId);
+      }
+    } catch {}
+    return cargar({ forzar: true });
+  }, [sesion.empresa?.id, cargar]);
+
+  const seleccionarEmpresa = useCallback(async (empresaId) => {
+    try {
+      localStorage.setItem('last_empresa_id', empresaId);
+    } catch {}
+    return cargar({ forzar: true });
+  }, [cargar]);
+
+  const signOut = useCallback(async () => {
+    try {
+      if (isSupabaseConfigured()) {
+        const cliente = getSupabaseClient();
+        await cliente.auth.signOut();
+      }
+    } catch {}
+    const adminAppUrl = import.meta.env.VITE_ADMIN_APP_URL || '/';
+    window.location.href = adminAppUrl;
+  }, []);
+
+  return { ...sesion, recargar, seleccionarSociedad, seleccionarEmpresa, signOut };
 }

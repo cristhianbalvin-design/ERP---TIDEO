@@ -1047,10 +1047,13 @@ function AprobacionManualModal({ onClose, onConfirmar }) {
             <textarea className="input" rows={3} value={notas} onChange={e => { setNotas(e.target.value); setError(null); }}
               placeholder="Contexto sobre cómo se dio la aprobación…" />
           </div>
-          <div className="input-group" style={{margin:0}}>
+          <div className="input-group" style={{margin:0, display:'flex', flexDirection:'column', gap:6}}>
             <label>Adjuntar sustento{canalEsReunion ? ' (opcional)' : ' *'}</label>
-            <label style={{display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:6, border:'1px dashed var(--border)', cursor:'pointer', fontSize:13, color:'var(--fg-muted)', background:'var(--bg-subtle)'}}>
-              {I.file} Seleccionar archivos (PDF, JPG o PNG)
+            <label style={{display:'inline-flex', alignItems:'center', gap:8, padding:'8px 14px', borderRadius:6, border:'1px dashed var(--border)', cursor:'pointer', fontSize:13, color:'var(--fg-muted)', background:'var(--bg-subtle)', width:'fit-content'}}>
+              <span style={{width:16, height:16, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                {React.cloneElement(I.file, { style: { width: 16, height: 16 } })}
+              </span>
+              <span>Seleccionar archivos (PDF, JPG o PNG)</span>
               <input type="file" multiple accept={EVIDENCIA_APROBACION_ACCEPT} onChange={agregarArchivos} style={{display:'none'}} />
             </label>
             {archivos.length > 0 && (
