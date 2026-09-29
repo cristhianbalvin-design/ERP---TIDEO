@@ -1657,6 +1657,35 @@ export function AppProvider({ children }) {
     return result;
   };
 
+  const obtenerNumeroCasoParaDocumento = async ({
+    recepcionId = null,
+    cotizacionId = null,
+    cotizacionEspecialId = null,
+    osClienteId = null,
+    cuentaId = null,
+  } = {}) => {
+    if (!isSupabaseConfigured() || !empresa?.id) return null;
+    const padre = recepcionId
+      ? { id: recepcionId, tabla: 'recepciones_activos_cliente' }
+      : cotizacionId
+        ? { id: cotizacionId, tabla: 'cotizaciones' }
+        : cotizacionEspecialId
+          ? { id: cotizacionEspecialId, tabla: 'cotizaciones_especiales' }
+          : osClienteId
+            ? { id: osClienteId, tabla: 'os_clientes' }
+            : { id: null, tabla: null };
+    if (!padre.id && !cuentaId) return null;
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.rpc('abrir_o_heredar_numero_caso', {
+      p_empresa_id: empresa.id,
+      p_padre_id: padre.id,
+      p_padre_tabla: padre.tabla,
+      p_cuenta_id: cuentaId || null,
+    });
+    if (error) throw error;
+    return data ?? null;
+  };
+
   const siguienteNumeroOSClienteLocal = () => {
     const year = new Date().getFullYear().toString();
     const max = osClientes
@@ -2812,6 +2841,11 @@ export function AppProvider({ children }) {
     // Generar número server-side cuando Supabase está disponible para evitar
     // duplicados cuando el estado local está desactualizado (ej. permisos RLS recién aplicados).
     let numeroCot;
+    const cuentaCaso = datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null;
+    const numeroCaso = await obtenerNumeroCasoParaDocumento({
+      recepcionId: datos.recepcion_id || null,
+      cuentaId: cuentaCaso,
+    });
     if (isSupabaseConfigured()) {
       const sb = await getSupabaseClient();
       const { data: numData, error: numErr } = await sb.rpc('siguiente_numero_cotizacion', { p_empresa_id: empresa.id });
@@ -2848,6 +2882,7 @@ export function AppProvider({ children }) {
       token_aceptacion: crypto.randomUUID(),
       token_activo: true,
       ...datos,
+      numero_caso: numeroCaso,
       moneda: String(datos.moneda || oportunidades.find(o => o.id === datos.oportunidad_id)?.moneda || empresa?.moneda || empresa?.moneda_base || 'PEN').trim().toUpperCase(),
       cuenta_id: datos.cuenta_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.cuenta_id || null,
       responsable_id: datos.responsable_id || oportunidades.find(o => o.id === datos.oportunidad_id)?.responsable_id || null,
@@ -3189,11 +3224,17 @@ export function AppProvider({ children }) {
     const responsableUser = datos.responsable_comercial_id
       ? usuarios.find(u => u.id === datos.responsable_comercial_id)
       : null;
+    const numeroCaso = await obtenerNumeroCasoParaDocumento({
+      cotizacionId: esCotizacionEspecial ? null : cotId,
+      cotizacionEspecialId: esCotizacionEspecial ? cotId : null,
+      cuentaId: cot.cuenta_id || null,
+    });
     const numero = await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
       numero,
+      numero_caso: numeroCaso,
       numero_doc_cliente: datos.numero_doc_cliente || null,
       nombre: datos.nombre || null,
       cuenta_id: cot.cuenta_id,
@@ -3265,11 +3306,16 @@ export function AppProvider({ children }) {
 
   const crearOSClienteManual = async (datos, { navegarAlDetalle = true } = {}) => {
     const monto = Number(datos.monto_aprobado || 0);
+    const numeroCaso = await obtenerNumeroCasoParaDocumento({
+      cotizacionId: datos.cotizacion_id || null,
+      cuentaId: datos.cuenta_id || null,
+    });
     const numero = await siguienteNumeroOSCliente();
     const osc = {
       id: generateId('osc'),
       empresa_id: empresa.id,
       numero,
+      numero_caso: numeroCaso,
       cuenta_id: datos.cuenta_id || null,
       activo_id: datos.activo_id || null,
       cotizacion_id: datos.cotizacion_id || null,
@@ -3548,12 +3594,17 @@ export function AppProvider({ children }) {
 
   const crearOT = async (datos) => {
     const sociedadId = resolverSociedadOTLocal(datos);
+    const numeroCaso = await obtenerNumeroCasoParaDocumento({
+      osClienteId: datos.os_cliente_id || null,
+      cuentaId: datos.cuenta_id || datos.cliente || null,
+    });
     const numero = await siguienteNumeroOrdenTrabajo();
     const { numero: _numeroSolicitado, ...datosSinNumero } = datos || {};
     const ot = {
       id: generateId('ot'),
       empresa_id: empresa.id,
       numero,
+      numero_caso: numeroCaso,
       estado: 'borrador',
       sla: 'ok',
       costoEst: 0, costoReal: 0, avance: 0,

@@ -27,6 +27,7 @@ export async function persistirOT(supabase, empresaId, ot) {
     os_cliente_id: ot.os_cliente_id || null,
     backlog_id: ot.backlog_id || null,
     numero: ot.numero,
+    numero_caso: ot.numero_caso ?? null,
     cuenta_id: ot.cuenta_id || ot.cliente || null,
     tipo_servicio_interno_id: ot.tipo_servicio_interno_id || null,
     servicio: ot.tipo || 'General',
