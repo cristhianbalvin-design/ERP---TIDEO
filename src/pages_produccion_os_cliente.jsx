@@ -37,16 +37,11 @@ const emptyForm = (sociedadId = '') => ({
   responsable_comercial: '', observaciones: '',
 });
 
-const emptyCustomerAsset = (codigo = '') => ({
-  codigo, nombre: '', tipo_categoria: 'equipo', marca: '', modelo: '',
-  placa_serie: '', estado: 'operativo', observacion: '',
-});
-
 function PanelProduccionOSCliente() {
   const {
     empresa, osClientes, cuentas, cotizaciones, facturas, cxc, usuarios,
     sociedadesDisponibles = [], sociedadActiva,
-    actualizarOSCliente, crearOSClienteManual, crearActivoCtx, eliminarOSCliente, addNotificacion, addToast,
+    actualizarOSCliente, crearOSClienteManual, eliminarOSCliente, addNotificacion, addToast,
   } = useApp();
   const empresaId = empresa?.id || '';
   const [activos, setActivos] = useState([]);
@@ -56,9 +51,7 @@ function PanelProduccionOSCliente() {
   const [search, setSearch] = useState('');
   const [assetSearch, setAssetSearch] = useState('');
   const [modal, setModal] = useState(null);
-  const [modalActivoCliente, setModalActivoCliente] = useState(false);
   const [form, setForm] = useState(() => emptyForm(sociedadActiva?.id || sociedadesDisponibles[0]?.id || ''));
-  const [activoNuevo, setActivoNuevo] = useState(() => emptyCustomerAsset());
   const [saving, setSaving] = useState(false);
   const sociedadPorDefecto = sociedadActiva?.id || sociedadesDisponibles[0]?.id || '';
 
@@ -122,9 +115,6 @@ function PanelProduccionOSCliente() {
   const tieneCotizacionVinculada = Boolean(form.cotizacion_id);
   const montoCotizacion = cotizacionSeleccionada?.total ?? form.monto_aprobado;
   const monedaCotizacion = cotizacionSeleccionada?.moneda || empresa?.moneda || 'PEN';
-  const codigoYaExiste = activos.some(a => String(a.codigo || '').trim().toLowerCase() === activoNuevo.codigo.trim().toLowerCase());
-  const clienteSeleccionado = cuentas.find(c => c.id === form.cuenta_id);
-
   const updateForm = (field, value) => setForm(current => ({ ...current, [field]: value }));
   const actualizarCotizacionForm = cotizacionId => {
     const cotizacion = cotizaciones.find(c => c.id === cotizacionId);
@@ -134,34 +124,13 @@ function PanelProduccionOSCliente() {
       monto_aprobado: cotizacion ? String(cotizacion.total ?? 0) : current.monto_aprobado,
     }));
   };
-  const updateActivoNuevo = (field, value) => setActivoNuevo(current => ({ ...current, [field]: value }));
-  const cerrarModalOS = () => { setModalActivoCliente(false); setModal(null); setError(''); };
+  const cerrarModalOS = () => { setModal(null); setError(''); };
   const abrirCrear = () => {
-    setForm(emptyForm(sociedadPorDefecto)); setAssetSearch(''); setActivoNuevo(emptyCustomerAsset());
-    setModalActivoCliente(false); setError(''); setModal('crear');
+    setForm(emptyForm(sociedadPorDefecto)); setAssetSearch(''); setError(''); setModal('crear');
   };
   const abrirEditar = (os) => {
     setForm({ cuenta_id: os.cuenta_id || '', activo_id: os.activo_id || '', cotizacion_id: os.cotizacion_id || '', sociedad_id: os.sociedad_id || sociedadPorDefecto, nombre: os.nombre || '', numero: os.numero || '', estado: os.estado || 'en_ejecucion', monto_aprobado: os.monto_aprobado ?? '', fecha_emision: os.fecha_emision || '', fecha_inicio: os.fecha_inicio || '', fecha_fin: os.fecha_fin || '', fecha_cierre_real: os.fecha_cierre_real || '', responsable_comercial: os.responsable_comercial || '', observaciones: os.observaciones || '' });
-    setAssetSearch(''); setActivoNuevo(emptyCustomerAsset()); setModalActivoCliente(false); setError(''); setModal(os);
-  };
-  const abrirAltaActivoCliente = () => {
-    if (!form.cuenta_id) return setError('Selecciona primero el cliente para registrar su equipo en custodia.');
-    setError(''); setActivoNuevo(emptyCustomerAsset(assetSearch.trim())); setModalActivoCliente(true);
-  };
-  const crearActivoNuevo = async () => {
-    if (!form.cuenta_id) return setError('Selecciona primero el cliente propietario del activo nuevo.');
-    if (!activoNuevo.codigo.trim() || !activoNuevo.nombre.trim()) return setError('Código y nombre son obligatorios para crear el equipo de cliente.');
-    if (codigoYaExiste) return setError(`Ya existe un activo con el código "${activoNuevo.codigo.trim()}" en esta empresa. Selecciónalo desde el buscador.`);
-    setSaving(true);
-    try {
-      const data = await crearActivoCtx({ codigo: activoNuevo.codigo.trim(), nombre: activoNuevo.nombre.trim(), tipo_categoria: activoNuevo.tipo_categoria || 'equipo', marca: activoNuevo.marca.trim() || null, modelo: activoNuevo.modelo.trim() || null, placa_serie: activoNuevo.placa_serie.trim() || null, estado: activoNuevo.estado || 'operativo', observacion: activoNuevo.observacion.trim() || null, propietario_tipo: 'cliente', cliente_propietario_id: form.cuenta_id });
-      setActivos(previous => [...previous, data].sort((a, b) => String(a.codigo || '').localeCompare(String(b.codigo || ''))));
-      updateForm('activo_id', data.id); setAssetSearch(data.codigo || ''); setModalActivoCliente(false);
-      addNotificacion('Equipo de cliente creado y seleccionado.');
-    } catch (err) {
-      if (err?.code === '23505' || /empresa_id.*codigo|codigo.*empresa_id/i.test(err?.message || '')) setError(`Ya existe un activo con el código "${activoNuevo.codigo.trim()}" en esta empresa. Selecciónalo desde el buscador.`);
-      else setError(err?.message || 'No se pudo crear el equipo de cliente.');
-    } finally { setSaving(false); }
+    setAssetSearch(''); setError(''); setModal(os);
   };
   const guardarOS = async event => {
     event.preventDefault();
@@ -227,10 +196,9 @@ function PanelProduccionOSCliente() {
     </tbody></table></div></div>
     {modal && <div className="modal-backdrop"><div className="modal" style={{ maxWidth: 860, width: 'calc(100vw - 32px)', maxHeight: '92vh', overflow: 'auto' }}><div className="modal-head"><div><h2>{modal === 'crear' ? 'Nueva OS Cliente' : 'Editar OS Cliente'}</h2><div className="text-muted" style={{ fontSize: 12 }}>El activo se busca libremente entre todos los activos de la empresa activa.</div></div><button className="icon-btn" onClick={cerrarModalOS}>{I.x}</button></div><form onSubmit={guardarOS}><div className="modal-body">{error && <div className="alert alert-danger" style={{ marginBottom: 14 }}>{error}</div>}<div className="grid-2" style={{ gap: 14 }}>
       <div className="input-group"><label>Cliente *</label><select className="select" value={form.cuenta_id} onChange={e => updateForm('cuenta_id', e.target.value)} required><option value="">Seleccionar</option>{cuentas.filter(c => c.empresa_id === empresaId).map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}</select></div><div className="input-group"><label>Sociedad *</label><select className="select" value={form.sociedad_id} onChange={e => updateForm('sociedad_id', e.target.value)} required><option value="">Seleccionar</option>{sociedadesDisponibles.filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div><div className="input-group"><label>N° OS</label><input className="input" value={form.numero} placeholder={modal === 'crear' ? 'Se asigna al guardar' : ''} readOnly /></div><div className="input-group"><label>Cotización</label><select className="select" value={form.cotizacion_id} onChange={e => actualizarCotizacionForm(e.target.value)}><option value="">Sin cotización</option>{cotizaciones.filter(c => c.empresa_id === empresaId && c.estado === 'aprobada' && !c.os_cliente_id).map(c => <option key={c.id} value={c.id}>{c.numero}</option>)}</select></div><div className="input-group" style={{ gridColumn: '1/-1' }}><label>Descripción *</label><input className="input" value={form.nombre} onChange={e => updateForm('nombre', e.target.value)} required /></div>
-      <div className="input-group" style={{ gridColumn: '1/-1' }}><label>Buscar activo (modo libre)</label><input className="input" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder="Código, equipo, modelo o fabricante; no se filtra por cliente" /><div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 160, overflow: 'auto' }}>{activosFiltrados.slice(0, 12).map(a => <button type="button" key={a.id} onClick={() => updateForm('activo_id', a.id)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: a.id === form.activo_id ? 'var(--bg-subtle)' : 'transparent', padding: '9px 10px', cursor: 'pointer' }}><strong className="mono">{a.codigo}</strong> · {a.nombre}{a.modelo ? ` · ${a.modelo}` : ''}{a.marca ? ` · ${a.marca}` : ''}</button>)}{assetSearch && !activosFiltrados.length && <div className="text-muted" style={{ padding: 10 }}>No hay coincidencias para esta búsqueda.</div>}</div>{activoSeleccionado && <div className="text-muted" style={{ marginTop: 6, fontSize: 12 }}>Seleccionado: <strong>{activoSeleccionado.codigo}</strong> · {activoSeleccionado.nombre}</div>}<button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={abrirAltaActivoCliente}>{I.plus} Crear activo nuevo</button></div>
+      <div className="input-group" style={{ gridColumn: '1/-1' }}><label>Buscar activo (modo libre)</label><input className="input" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder="Código, equipo, modelo o fabricante; no se filtra por cliente" /><div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 160, overflow: 'auto' }}>{activosFiltrados.slice(0, 12).map(a => <button type="button" key={a.id} onClick={() => updateForm('activo_id', a.id)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: a.id === form.activo_id ? 'var(--bg-subtle)' : 'transparent', padding: '9px 10px', cursor: 'pointer' }}><strong className="mono">{a.codigo}</strong> · {a.nombre}{a.modelo ? ` · ${a.modelo}` : ''}{a.marca ? ` · ${a.marca}` : ''}</button>)}{assetSearch && !activosFiltrados.length && <div className="text-muted" style={{ padding: 10 }}>No se encontró un activo para esta búsqueda. Regístralo desde Recepción de Activos.{form.cuenta_id && <button type="button" className="btn btn-secondary btn-sm" style={{ display: 'block', marginTop: 8 }} onClick={() => window.location.assign('/operaciones/#/recepcion-activos')}>Ir a Recepción de Activos</button>}</div>}</div>{activoSeleccionado && <div className="text-muted" style={{ marginTop: 6, fontSize: 12 }}>Seleccionado: <strong>{activoSeleccionado.codigo}</strong> · {activoSeleccionado.nombre}</div>}</div>
       <div className="input-group"><label>Estado</label><select className="select" value={form.estado} onChange={e => updateForm('estado', e.target.value)}><option value="en_ejecucion">En ejecución</option><option value="en_pausa">En pausa</option><option value="cerrada">Cerrada</option><option value="anulada">Anulada</option></select></div><div className="input-group"><label>Precio</label>{tieneCotizacionVinculada ? <input className="input" style={{ minWidth: 180 }} value={`${moneyValue(montoCotizacion, monedaCotizacion)} · ${monedaCotizacion}`} readOnly aria-label="Precio de la cotización vinculada" /> : <input className="input" type="number" min="0" value={form.monto_aprobado} onChange={e => updateForm('monto_aprobado', e.target.value)} />}</div><div className="input-group"><label>Fecha emisión</label><input className="input" type="date" value={form.fecha_emision} onChange={e => updateForm('fecha_emision', e.target.value)} /></div><div className="input-group"><label>Fecha inicio</label><input className="input" type="date" value={form.fecha_inicio} onChange={e => updateForm('fecha_inicio', e.target.value)} /></div><div className="input-group"><label>Fecha fin</label><input className="input" type="date" value={form.fecha_fin} onChange={e => updateForm('fecha_fin', e.target.value)} /></div><div className="input-group"><label>Vendedor</label><input className="input" list="produccion-vendedores" value={form.responsable_comercial} onChange={e => updateForm('responsable_comercial', e.target.value)} /><datalist id="produccion-vendedores">{usuarios.map(u => <option key={u.id} value={u.nombre} />)}</datalist></div><div className="input-group" style={{ gridColumn: '1/-1' }}><label>Observaciones</label><textarea className="input" rows="3" value={form.observaciones} onChange={e => updateForm('observaciones', e.target.value)} /></div>
     </div></div><div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={cerrarModalOS}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando…' : 'Guardar OS Cliente'}</button></div></form></div></div>}
-    {modalActivoCliente && <div className="modal-backdrop" style={{ zIndex: 1001 }}><div className="modal" style={{ maxWidth: 680, width: 'calc(100vw - 32px)' }}><div className="modal-head"><div><h2>Nuevo equipo de cliente</h2><div className="text-muted" style={{ fontSize: 12 }}>Equipo en custodia asociado al cliente de esta OS.</div></div><button className="icon-btn" onClick={() => { setModalActivoCliente(false); setError(''); }}>{I.x}</button></div><div className="modal-body">{error && <div className="alert alert-danger" style={{ marginBottom: 14 }}>{error}</div>}<div className="alert alert-info" style={{ marginBottom: 14 }}>Cliente propietario: <strong>{clienteSeleccionado?.razon_social || clienteSeleccionado?.nombre_comercial || 'Sin seleccionar'}</strong></div><div className="grid-2" style={{ gap: 14 }}><div className="input-group"><label>Código *</label><input className="input" value={activoNuevo.codigo} onChange={e => updateActivoNuevo('codigo', e.target.value)} /></div><div className="input-group"><label>Nombre *</label><input className="input" value={activoNuevo.nombre} onChange={e => updateActivoNuevo('nombre', e.target.value)} /></div><div className="input-group"><label>Tipo / Categoría</label><select className="select" value={activoNuevo.tipo_categoria} onChange={e => updateActivoNuevo('tipo_categoria', e.target.value)}><option value="equipo">Equipo</option><option value="inmueble">Inmueble</option><option value="otro">Otro</option></select></div><div className="input-group"><label>Marca</label><input className="input" value={activoNuevo.marca} onChange={e => updateActivoNuevo('marca', e.target.value)} /></div><div className="input-group"><label>Modelo</label><input className="input" value={activoNuevo.modelo} onChange={e => updateActivoNuevo('modelo', e.target.value)} /></div><div className="input-group"><label>Placa / N° serie</label><input className="input" value={activoNuevo.placa_serie} onChange={e => updateActivoNuevo('placa_serie', e.target.value)} /></div><div className="input-group"><label>Estado</label><select className="select" value={activoNuevo.estado} onChange={e => updateActivoNuevo('estado', e.target.value)}><option value="operativo">Operativo</option><option value="en_mantenimiento">En mantenimiento</option><option value="dado_baja">Dado de baja</option></select></div><div className="input-group" style={{ gridColumn: '1/-1' }}><label>Observación</label><textarea className="input" rows="3" value={activoNuevo.observacion} onChange={e => updateActivoNuevo('observacion', e.target.value)} /></div></div></div><div className="modal-foot"><button type="button" className="btn btn-secondary" onClick={() => { setModalActivoCliente(false); setError(''); }}>Cancelar</button><button type="button" className="btn btn-primary" onClick={crearActivoNuevo} disabled={saving}>{saving ? 'Guardando…' : 'Crear y seleccionar activo'}</button></div></div></div>}
   </div>;
 }
 
