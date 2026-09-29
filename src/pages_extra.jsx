@@ -1720,6 +1720,8 @@ function EditorCotizacion({ opp, cuenta, cotizacionBase, sociedadIdEscritura, co
       total: p.incluido ? 0 : calcPartidaTotal(p),
       incluido: p.incluido || false,
       ...(Object.hasOwn(p, 'codigo') ? { codigo:p.codigo ?? '' } : {}),
+      ...(Object.hasOwn(p, 'nombre_activo') ? { nombre_activo:p.nombre_activo ?? '' } : {}),
+      ...(Object.hasOwn(p, 'horas_estimadas') ? { horas_estimadas:p.horas_estimadas ?? null } : {}),
       ...(Object.hasOwn(p, 'marca') ? { marca:p.marca ?? '' } : {}),
       ...(Object.hasOwn(p, 'modelo') ? { modelo:p.modelo ?? '' } : {}),
       ...(Object.hasOwn(p, 'año_fabricacion') ? { año_fabricacion:p.año_fabricacion ?? null } : {}),

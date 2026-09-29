@@ -208,6 +208,8 @@ export function CotizacionTarifarioFlota({ empresaId, cuentaInicialId = '', crea
       total: redondearMoneda(numero(linea.horas) * linea.precio),
       incluido: false,
       codigo: linea.activo?.codigo || '',
+      nombre_activo: linea.activo?.nombre || '',
+      horas_estimadas: numero(linea.horas),
       marca: linea.activo?.marca || '',
       modelo: linea.activo?.modelo || '',
       año_fabricacion: linea.activo?.año_fabricacion ?? null,
