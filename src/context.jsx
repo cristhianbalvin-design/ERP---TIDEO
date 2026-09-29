@@ -75,6 +75,17 @@ import {
   confirmarOrdenVenta as svcConfirmarOV, anularOrdenVenta as svcAnularOV,
   getCatalogoVenta, crearProductoCatalogo as svcCrearProductoCatalogo,
 } from './services/ventasService.js';
+import {
+  listarRutas as svcListarRutas,
+  listarDocumentosDisponibles as svcListarDocumentosDisponibles,
+  crearRuta as svcCrearRuta,
+  actualizarRuta as svcActualizarRuta,
+  actualizarEstadoRuta as svcActualizarEstadoRuta,
+  agregarParada as svcAgregarParada,
+  actualizarParada as svcActualizarParada,
+  reordenarParadas as svcReordenarParadas,
+  quitarParada as svcQuitarParada,
+} from './services/rutasService.js';
 // Conserva la misma instancia de contexto durante las recargas en caliente de Vite.
 // Sin ello, un chunk cargado antes de una actualización puede conservar useApp()
 // apuntando al contexto anterior mientras AppProvider ya usa uno nuevo.
@@ -436,6 +447,9 @@ export function AppProvider({ children }) {
   const [ordenesVenta, setOrdenesVenta] = useState(useSupabase ? [] : (MOCK.ordenesVentaMock || []));
   const [transportistas, setTransportistas] = useState(useSupabase ? [] : (MOCK.transportistasMock || []));
   const [catalogoVenta, setCatalogoVenta] = useState(useSupabase ? [] : (MOCK.catalogoVentaMock || []));
+  const [rutas, setRutas] = useState([]);
+  const [rutaParadas, setRutaParadas] = useState([]);
+  const [candidatosParadas, setCandidatosParadas] = useState({ transitos: [], guias: [] });
 
   // Personal Operativo (separado del admin, estado propio)
   const [personalOperativo, setPersonalOperativo] = useState(useSupabase ? [] : (MOCK.personalOperativo || []));
@@ -1091,6 +1105,18 @@ export function AppProvider({ children }) {
             setCatalogoVenta(cat || []);
           }
         } catch (_err) { /* migración 211 pendiente */ }
+
+        try {
+          const [rutasData, candidatosData] = await Promise.all([
+            svcListarRutas(empresa.id),
+            svcListarDocumentosDisponibles(empresa.id),
+          ]);
+          if (mounted) {
+            setRutas(rutasData || []);
+            setRutaParadas((rutasData || []).flatMap(ruta => ruta.ruta_paradas || []));
+            setCandidatosParadas(candidatosData || { transitos: [], guias: [] });
+          }
+        } catch (_err) { /* migración de rutas aún no disponible */ }
 
         try {
           const { data: cfgData } = await supabase.from('empresa_config').select('*').eq('empresa_id', empresa.id).maybeSingle();
@@ -8574,6 +8600,140 @@ export function AppProvider({ children }) {
   };
 
   // ─── Transportistas ───────────────────────────────────────────────────────────
+  // ── Rutas multi-parada ──────────────────────────────────────────────────────
+  const sincronizarRutasCtx = (data) => {
+    const next = data || [];
+    setRutas(next);
+    setRutaParadas(next.flatMap(ruta => ruta.ruta_paradas || []));
+    return next;
+  };
+
+  const recargarRutas = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return rutas;
+    const data = await svcListarRutas(empresa.id);
+    sincronizarRutasCtx(data);
+    return data;
+  };
+
+  const recargarCandidatosParadas = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return candidatosParadas;
+    const data = await svcListarDocumentosDisponibles(empresa.id);
+    setCandidatosParadas(data || { transitos: [], guias: [] });
+    return data;
+  };
+
+  const crearRutaCtx = async (payload) => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) {
+      const data = await svcCrearRuta(empresa.id, payload);
+      setRutas(prev => [data, ...prev]);
+      return data;
+    }
+    const nuevo = {
+      ...payload,
+      id: generateId('rut'),
+      empresa_id: empresa.id,
+      codigo: payload.codigo || `RUT-${Date.now()}`,
+      estado: 'planificada',
+      ruta_paradas: [],
+      created_at: new Date().toISOString(),
+    };
+    setRutas(prev => [nuevo, ...prev]);
+    return nuevo;
+  };
+
+  const actualizarRutaCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarRuta(empresa.id, id, cambios);
+      setRutas(prev => prev.map(ruta => ruta.id === id ? { ...ruta, ...data } : ruta));
+      return data;
+    }
+    const data = { ...cambios, id, updated_at: new Date().toISOString() };
+    setRutas(prev => prev.map(ruta => ruta.id === id ? { ...ruta, ...data } : ruta));
+    return data;
+  };
+
+  const agregarParadaRutaCtx = async (rutaId, payload) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcAgregarParada(empresa.id, rutaId, payload);
+      setRutas(prev => prev.map(ruta => ruta.id === rutaId
+        ? { ...ruta, ruta_paradas: [...(ruta.ruta_paradas || []), data] }
+        : ruta));
+      setRutaParadas(prev => [...prev, data]);
+      setCandidatosParadas(prev => ({
+        transitos: payload.tipo_documento === 'orden_compra_transito' ? prev.transitos.filter(item => item.id !== payload.documento_id) : prev.transitos,
+        guias: payload.tipo_documento === 'guia_remision' ? prev.guias.filter(item => item.id !== payload.documento_id) : prev.guias,
+      }));
+      return data;
+    }
+    const data = { ...payload, id: generateId('rpa'), empresa_id: empresa.id, ruta_id: rutaId, estado: 'pendiente' };
+    setRutas(prev => prev.map(ruta => ruta.id === rutaId ? { ...ruta, ruta_paradas: [...(ruta.ruta_paradas || []), data] } : ruta));
+    setRutaParadas(prev => [...prev, data]);
+    return data;
+  };
+
+  const actualizarParadaRutaCtx = async (id, cambios) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarParada(empresa.id, id, cambios);
+      setRutas(prev => prev.map(ruta => ({
+        ...ruta,
+        ruta_paradas: (ruta.ruta_paradas || []).map(parada => parada.id === id ? data : parada),
+      })));
+      setRutaParadas(prev => prev.map(parada => parada.id === id ? data : parada));
+      return data;
+    }
+    const data = { ...cambios, id, updated_at: new Date().toISOString() };
+    setRutas(prev => prev.map(ruta => ({
+      ...ruta,
+      ruta_paradas: (ruta.ruta_paradas || []).map(parada => parada.id === id ? { ...parada, ...data } : parada),
+    })));
+    setRutaParadas(prev => prev.map(parada => parada.id === id ? { ...parada, ...data } : parada));
+    return data;
+  };
+
+  const actualizarEstadoParadaRutaCtx = async (id, estado, observaciones = null) => {
+    const cambios = { estado };
+    if (estado === 'en_curso') cambios.llegada_at = new Date().toISOString();
+    if (estado === 'completada' || estado === 'omitida') cambios.salida_at = new Date().toISOString();
+    if (observaciones !== null) cambios.observaciones = observaciones;
+    return actualizarParadaRutaCtx(id, cambios);
+  };
+
+  const reordenarParadasRutaCtx = async (rutaId, paradas) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcReordenarParadas(empresa.id, rutaId, paradas);
+      setRutas(prev => prev.map(ruta => ruta.id === rutaId ? { ...ruta, ruta_paradas: data } : ruta));
+      setRutaParadas(prev => prev.map(parada => parada.ruta_id === rutaId ? data.find(item => item.id === parada.id) || parada : parada));
+      return data;
+    }
+    const data = paradas.map((parada, index) => ({ ...parada, secuencia: index + 1 }));
+    setRutas(prev => prev.map(ruta => ruta.id === rutaId ? { ...ruta, ruta_paradas: data } : ruta));
+    setRutaParadas(prev => prev.map(parada => parada.ruta_id === rutaId ? data.find(item => item.id === parada.id) || parada : parada));
+    return data;
+  };
+
+  const quitarParadaRutaCtx = async (id) => {
+    const parada = rutaParadas.find(item => item.id === id);
+    if (!parada) return;
+    if (isSupabaseConfigured()) await svcQuitarParada(empresa.id, id);
+    setRutas(prev => prev.map(ruta => ruta.id === parada.ruta_id
+      ? { ...ruta, ruta_paradas: (ruta.ruta_paradas || []).filter(item => item.id !== id) }
+      : ruta));
+    setRutaParadas(prev => prev.filter(item => item.id !== id));
+    await recargarCandidatosParadas();
+  };
+
+  const actualizarEstadoRutaCtx = async (id, estado) => {
+    if (isSupabaseConfigured()) {
+      const data = await svcActualizarEstadoRuta(empresa.id, id, estado);
+      setRutas(prev => prev.map(ruta => ruta.id === id ? { ...ruta, ...data } : ruta));
+      return data;
+    }
+    const data = { estado, id };
+    setRutas(prev => prev.map(ruta => ruta.id === id ? { ...ruta, ...data } : ruta));
+    return data;
+  };
+
   const crearTransportistaCtx = async (form) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await svcCrearTransportista(empresa.id, form);
@@ -11568,6 +11728,9 @@ export function AppProvider({ children }) {
     transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, crearConductorCtx,
     ordenesVenta, setOrdenesVenta, crearOVCtx, actualizarOVCtx, confirmarOVCtx, anularOVCtx, recargarOrdenesVenta,
     catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
+    rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas,
+    crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx,
+    actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,

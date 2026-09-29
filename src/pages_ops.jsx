@@ -77,6 +77,7 @@ import * as amonestacionesService from './services/amonestacionesService.js';
 import { defaultClasificacionPago } from './services/solicitudesRrhhService.js';
 import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/ImportarCuentasModal.jsx';
 import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
+import { RutasPanel } from './components/RutasPanel.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -11135,7 +11136,7 @@ function Remision() {
       </div>
 
       <div className="tabs">
-        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas']].map(([k,l]) => (
+        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas'],['rutas','Rutas']].map(([k,l]) => (
           <div key={k} className={`tab${tab===k?' active':''}`} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -11240,6 +11241,8 @@ function Remision() {
           </div>
         </div>
       )}
+
+      {tab === 'rutas' && <RutasPanel />}
 
       {/* MODAL: Nueva Guía wizard */}
       {modalGuia === 'nueva' && (
