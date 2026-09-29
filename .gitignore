@@ -14,3 +14,16 @@ operaciones-vite-dev.err.log
 diag2.cjs
 diag3.cjs
 .claude/
+
+# Carpeta temporal de la CLI de Supabase (incluye pooler-url con credenciales)
+supabase/.temp/
+
+# Material local que no debe versionarse (repo publico)
+/_pruebas/
+/scratch/
+
+# Scripts SQL/MJS temporales de raiz: pueden contener credenciales de conexion.
+/run_dry_run_*.mjs
+/verificar_462_en_frio.sql
+/dry_run_*.sql
+/[0-9][0-9][0-9]_commit_real.sql
