@@ -894,11 +894,12 @@ const papStyles = StyleSheet.create({
   fechaVal: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
   firmasRow: { flexDirection: 'row', gap: 16, marginTop: 24 },
   firmaBox: { flex: 1, alignItems: 'center' },
-  firmaLine: { borderBottomWidth: 1, borderColor: '#555', width: '100%', marginVertical: 6 },
-  firmaName: { fontSize: 8, fontFamily: 'Helvetica-Bold' },
-  firmaRole: { fontSize: 7, color: '#666' },
-  firmaFecha: { fontSize: 7, color: '#999', marginTop: 2 },
-  firmaImg: { height: 36, objectFit: 'contain', marginBottom: 2, maxWidth: 100 },
+  firmaSlot: { height: 48, width: '100%', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 2 },
+  firmaLine: { borderBottomWidth: 1, borderColor: '#555', width: '100%', marginBottom: 6 },
+  firmaName: { fontSize: 8, fontFamily: 'Helvetica-Bold', textAlign: 'center' },
+  firmaRole: { fontSize: 7, color: '#666', textAlign: 'center' },
+  firmaFecha: { fontSize: 7, color: '#999', marginTop: 2, textAlign: 'center' },
+  firmaImg: { height: 44, maxWidth: 120, objectFit: 'contain' },
   papFooter: { position: 'absolute', bottom: 20, left: 32, right: 32, borderTopWidth: 1, borderColor: '#dde3ea', paddingTop: 4, textAlign: 'center', fontSize: 7, color: '#aaa' },
 });
 
@@ -939,8 +940,13 @@ function diasCalendarioEntre(fechaInicio, fechaFin, fallback = 0) {
   return Math.floor((fin - inicio) / 86400000) + 1;
 }
 
-export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [], persona = null }) {
+export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, historial = [], persona = null, firmaTrabajadorUrl = null }) {
   const cfg = emisor || {};
+  const firmaTrabajador = firmaTrabajadorUrl
+    || persona?.firma_rubrica_url
+    || persona?.firma_url
+    || persona?.firma?.url
+    || null;
   const aprobJefe = historial.find(h => h.estado_hasta === 'aprobada_jefe');
   const confirmRrhh = historial.find(h => h.estado_hasta === 'confirmada_rrhh');
   // Las solicitudes históricas solo conservan el nombre. Completar desde la ficha permite
@@ -1068,17 +1074,24 @@ export function PapeletaMovimientoPDF({ solicitud, empresa, emisor = {}, histori
         {/* Firmas */}
         <View style={papStyles.firmasRow}>
           <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaSlot}>
+              {firmaTrabajador ? (
+                <Image src={firmaTrabajador} style={papStyles.firmaImg} />
+              ) : null}
+            </View>
             <View style={papStyles.firmaLine} />
             <Text style={papStyles.firmaName}>{solicitud.personal_nombre || '—'}</Text>
             <Text style={papStyles.firmaRole}>Trabajador</Text>
             <Text style={papStyles.firmaFecha}>Solicitud: {solicitud.creado_en ? new Date(solicitud.creado_en).toLocaleDateString('es-PE') : '—'}</Text>
           </View>
           <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaSlot} />
             <View style={papStyles.firmaLine} />
             <Text style={papStyles.firmaRole}>Jefe de área</Text>
             <Text style={papStyles.firmaFecha}>Aprobación: {fechaAprobStr}</Text>
           </View>
           <View style={papStyles.firmaBox}>
+            <View style={papStyles.firmaSlot} />
             <View style={papStyles.firmaLine} />
             <Text style={papStyles.firmaRole}>Administrador / RRHH</Text>
             <Text style={papStyles.firmaFecha}>Confirmación: {fechaConfirmStr}</Text>

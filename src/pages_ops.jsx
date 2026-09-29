@@ -35,7 +35,7 @@ import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
-import { CATEGORIA_FIRMA_RUBRICA } from './services/firmaPersonalService.js';
+import { CATEGORIA_FIRMA_RUBRICA, obtenerFirmaParaDocumento } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
 import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
 import { resolverIdentidadEmisora } from './services/identidadEmisoraService.js';
@@ -26985,10 +26985,31 @@ export function SolicitudesRrhh() {
       const hist = await solicitudesRrhhService.cargarHistorial(sol.id);
       const { pdf } = await import('@react-pdf/renderer');
       const { PapeletaMovimientoPDF } = await import('./pages_pdf.jsx');
-      const allWorkers = [...(personalOperativo || []), ...(personalAdmin || [])];
+      const allWorkers = [
+        ...(personalOperativo || []).map(p => ({ ...p, personal_tipo: 'operativo' })),
+        ...(personalAdmin || []).map(p => ({ ...p, personal_tipo: 'administrativo' })),
+      ];
       const personaSolicitud = allWorkers.find(p => String(p.id) === String(sol.personal_id)) || null;
+      let firmaTrabajadorUrl = null;
+      try {
+        firmaTrabajadorUrl = await obtenerFirmaParaDocumento({
+          empresaId: empresa?.id || sol.empresa_id,
+          personalId: sol.personal_id,
+          personalTipo: sol.personal_tipo || personaSolicitud?.personal_tipo,
+          persona: personaSolicitud,
+        });
+      } catch (errFirma) {
+        console.warn('[Papeleta] No se pudo cargar firma:', errFirma);
+      }
       const blob = await pdf(
-        <PapeletaMovimientoPDF solicitud={sol} empresa={empresa} emisor={emisor} historial={hist} persona={personaSolicitud} />
+        <PapeletaMovimientoPDF
+          solicitud={sol}
+          empresa={empresa}
+          emisor={emisor}
+          historial={hist}
+          persona={personaSolicitud}
+          firmaTrabajadorUrl={firmaTrabajadorUrl}
+        />
       ).toBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
