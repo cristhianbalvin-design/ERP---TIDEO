@@ -1,4 +1,4 @@
--- Backfill histórico posterior al despliegue de 583.
+-- Backfill histórico posterior al despliegue de 585.
 -- Solo completa cierres cuya devolución en Tesorería coincide exactamente con
 -- el saldo proyectado. ccf_3gpbbibtelw queda fuera por la diferencia de 0.28.
 
