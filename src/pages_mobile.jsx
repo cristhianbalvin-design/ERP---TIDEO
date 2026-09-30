@@ -1701,7 +1701,7 @@ function LogisticaView({ screen, setScreen }) {
       </div>)}
 
       {lecturaRuta && <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'var(--bg)',padding:20,zIndex:20,overflowY:'auto'}}>
-        <div onClick={() => setLecturaRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>â† Volver a Ruta</div>
+        <div onClick={() => setLecturaRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Ruta</div>
         <h2 className="font-display" style={{marginBottom:6}}>Lectura de vehículo</h2>
         <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{lecturaRuta.codigo}{lecturaParada ? ` · Parada ${lecturaParada.secuencia}` : ''}</div>
         <label style={{fontSize:12}}>Tipo de lectura<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={lecturaForm.tipo_lectura} onChange={event => setLecturaForm(form => ({...form, tipo_lectura:event.target.value, unidad:event.target.value === 'horometro' ? 'h' : 'km'}))}><option value="odometro">Odómetro</option><option value="horometro">Horómetro</option></select></label>
@@ -1714,7 +1714,7 @@ function LogisticaView({ screen, setScreen }) {
       </div>}
 
       {incidenteRuta && <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'var(--bg)',padding:20,zIndex:20,overflowY:'auto'}}>
-        <div onClick={() => setIncidenteRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>â† Volver a Ruta</div>
+        <div onClick={() => setIncidenteRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Ruta</div>
         <h2 className="font-display" style={{marginBottom:6}}>Reportar incidente</h2>
         <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{incidenteRuta.codigo}{incidenteParada ? ` · Parada ${incidenteParada.secuencia}` : ''}</div>
         <label style={{fontSize:12}}>Tipo<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={incidenteForm.tipo} onChange={event => setIncidenteForm(form => ({...form,tipo:event.target.value}))}><option value="mecanico">Mecánico</option><option value="accidente">Accidente</option><option value="retraso">Retraso</option><option value="otro">Otro</option></select></label>
