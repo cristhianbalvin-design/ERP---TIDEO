@@ -535,6 +535,32 @@ body {
 }
 .icon-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
 .icon-btn svg { width: 18px; height: 18px; stroke-width: 1.75; }
+.transportista-edit-btn {
+  color: var(--cyan-dk);
+  background: var(--cyan-lt);
+  border: 1px solid rgba(0,151,167,0.45);
+  box-shadow: 0 1px 2px rgba(26,43,74,0.08);
+}
+.transportista-edit-btn:hover,
+.transportista-edit-btn:focus-visible {
+  color: #fff;
+  background: var(--cyan-dk);
+  border-color: var(--cyan-dk);
+  outline: 2px solid rgba(0,188,212,0.28);
+  outline-offset: 2px;
+}
+.dark .transportista-edit-btn {
+  color: var(--cyan);
+  background: rgba(0,188,212,0.14);
+  border-color: rgba(0,188,212,0.45);
+  box-shadow: none;
+}
+.dark .transportista-edit-btn:hover,
+.dark .transportista-edit-btn:focus-visible {
+  color: var(--navy-900);
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
 .icon-btn .dot-badge {
   position: absolute;
   top: 8px; right: 8px;

@@ -11302,7 +11302,7 @@ function Remision() {
                     </td>
                     <td><span className={`badge ${t.activo ? 'badge-green' : 'badge-gray'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span></td>
                     <td>
-                      <button className="icon-btn" onClick={() => { setModalTrans(t); setVehiculoEditId(null); setConductorEditId(null); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', tipo_operador:t.tipo_operador||'tercero', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
+                      <button type="button" className="icon-btn transportista-edit-btn" title="Editar transportista" aria-label={`Editar transportista ${t.razon_social || ''}`} onClick={() => { setModalTrans(t); setVehiculoEditId(null); setConductorEditId(null); setTransForm({ ruc:t.ruc, razon_social:t.razon_social, nombre_comercial:t.nombre_comercial||'', tipo_operador:t.tipo_operador||'tercero', nro_mtc:t.nro_mtc||'', direccion:t.direccion||'', telefono:t.telefono||'', email:t.email||'' }); setSubTab('lista'); setErrores([]); }}>{I.edit}</button>
                     </td>
                   </tr>
                 ))}
