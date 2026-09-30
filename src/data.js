@@ -1019,6 +1019,7 @@ export const pantallasPermisos = [
   { key: 'hoja_costeo', modulo: 'Comercial', pantalla: 'Hoja de Costeo', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'cotizaciones', modulo: 'Comercial', pantalla: 'Cotizaciones', acciones: ['ver','crear','editar','anular','aprobar','exportar','precios'] },
   { key: 'os_cliente', modulo: 'Comercial', pantalla: 'OS Cliente', acciones: ['ver','crear','editar','anular','exportar','precios','finanzas'] },
+  { key: 'diagnostico_tecnico', modulo: 'Operaciones', pantalla: 'Diagnóstico Técnico', acciones: ['ver','crear','editar','aprobar'] },
   { key: 'planner', modulo: 'Operaciones', pantalla: 'Planner y Recursos', acciones: ['ver','crear','editar','exportar','costos'] },
   { key: 'backlog', modulo: 'Operaciones', pantalla: 'Backlog', acciones: ['ver','crear','editar','aprobar'] },
   { key: 'ot', modulo: 'Operaciones', pantalla: 'Ordenes de Trabajo', acciones: ['ver','crear','editar','anular','aprobar','exportar','costos'] },
