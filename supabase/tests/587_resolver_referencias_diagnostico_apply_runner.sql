@@ -1,6 +1,7 @@
--- 585_resolver_referencias_diagnostico.sql
+-- 587_resolver_referencias_diagnostico.sql
 -- Propuesta: resolver referencias ya guardadas sin exponer padres al frontend.
--- No aplicar sin aprobación explícita.
+-- No aplicar sin aprobaciÃ³n explÃ­cita.
+-- NOTA: este runner se ejecutó sin una sentencia BEGIN literal; terminó con COMMIT.
 
 create or replace function public.resolver_referencias_diagnostico(
   p_empresa_id text,
@@ -126,3 +127,54 @@ revoke all on function public.resolver_referencias_diagnostico(text, text, text[
 
 grant execute on function public.resolver_referencias_diagnostico(text, text, text[])
   to authenticated;
+
+do $$
+declare
+  v_prosecdef boolean;
+  v_proconfig text[];
+  v_authenticated boolean;
+  v_anon boolean;
+  v_public boolean;
+begin
+  if to_regprocedure('public.resolver_referencias_diagnostico(text,text,text[])') is null then
+    raise exception 'No existe la función resolver_referencias_diagnostico';
+  end if;
+
+  select p.prosecdef, p.proconfig
+    into v_prosecdef, v_proconfig
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.oid = 'public.resolver_referencias_diagnostico(text,text,text[])'::regprocedure;
+
+  if not v_prosecdef then
+    raise exception 'La función no es SECURITY DEFINER';
+  end if;
+  if v_proconfig is null or not ('search_path=public, pg_temp' = any(v_proconfig)) then
+    raise exception 'La función no tiene search_path fijo';
+  end if;
+
+  v_authenticated := has_function_privilege(
+    'authenticated',
+    'public.resolver_referencias_diagnostico(text,text,text[])',
+    'execute'
+  );
+  v_anon := has_function_privilege(
+    'anon',
+    'public.resolver_referencias_diagnostico(text,text,text[])',
+    'execute'
+  );
+  v_public := has_function_privilege(
+    'public',
+    'public.resolver_referencias_diagnostico(text,text,text[])',
+    'execute'
+  );
+
+  if not v_authenticated or v_anon or v_public then
+    raise exception 'Privilegios incorrectos authenticated=%s anon=%s public=%s',
+      v_authenticated, v_anon, v_public;
+  end if;
+end
+$$;
+
+commit;

@@ -1,7 +1,7 @@
 begin;
 
 -- La definición siguiente se ejecuta dentro de esta transacción únicamente.
--- Es la misma definición que supabase/migrations/585_resolver_referencias_diagnostico.sql.
+-- Es la misma definición que supabase/migrations/587_resolver_referencias_diagnostico.sql.
 create or replace function public.resolver_referencias_diagnostico(
   p_empresa_id text,
   p_tipo text,
