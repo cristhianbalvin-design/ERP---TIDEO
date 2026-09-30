@@ -1,4 +1,4 @@
--- 585_resolver_referencias_diagnostico.sql
+-- 587_resolver_referencias_diagnostico.sql
 -- Propuesta: resolver referencias ya guardadas sin exponer padres al frontend.
 -- No aplicar sin aprobación explícita.
 
