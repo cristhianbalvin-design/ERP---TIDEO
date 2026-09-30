@@ -1377,37 +1377,307 @@ function TecnicoView({ screen, setScreen }) {
 }
 
 function LogisticaView({ screen, setScreen }) {
-  const { authUser, usuarios, rutas = [], actualizarEstadoParadaRutaCtx, addToast } = useApp();
+  const {
+    authUser,
+    usuarios,
+    empresa,
+    rutas = [],
+    actualizarParadaRutaCtx,
+    crearLecturaFlotaCtx,
+    crearIncidenteFlotaCtx,
+    addToast,
+  } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const [paradaSeleccionada, setParadaSeleccionada] = useState(null);
   const [observaciones, setObservaciones] = useState('');
-  const [firmaConfirmada, setFirmaConfirmada] = useState(false);
+  const [firmaTieneTrazo, setFirmaTieneTrazo] = useState(false);
+  const [firmaEntregaUrl, setFirmaEntregaUrl] = useState('');
   const [fotoNombre, setFotoNombre] = useState('');
+  const [fotoEntregaUrl, setFotoEntregaUrl] = useState('');
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const [subiendoFirma, setSubiendoFirma] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [dibujandoFirma, setDibujandoFirma] = useState(false);
+  const [lecturaRuta, setLecturaRuta] = useState(null);
+  const [lecturaParada, setLecturaParada] = useState(null);
+  const [lecturaForm, setLecturaForm] = useState({ tipo_lectura: 'odometro', valor: '', unidad: 'km', observaciones: '' });
+  const [lecturaFotoUrl, setLecturaFotoUrl] = useState('');
+  const [lecturaFotoNombre, setLecturaFotoNombre] = useState('');
+  const [subiendoLecturaFoto, setSubiendoLecturaFoto] = useState(false);
+  const [guardandoLectura, setGuardandoLectura] = useState(false);
+  const [incidenteRuta, setIncidenteRuta] = useState(null);
+  const [incidenteParada, setIncidenteParada] = useState(null);
+  const [incidenteForm, setIncidenteForm] = useState({ tipo: 'otro', severidad: 'media', descripcion: '' });
+  const [incidenteFotoUrl, setIncidenteFotoUrl] = useState('');
+  const [incidenteFotoNombre, setIncidenteFotoNombre] = useState('');
+  const [subiendoIncidenteFoto, setSubiendoIncidenteFoto] = useState(false);
+  const [guardandoIncidente, setGuardandoIncidente] = useState(false);
+  const firmaCanvasRef = useRef(null);
+  const firmaDibujoRef = useRef(false);
   const hoy = new Date().toISOString().slice(0, 10);
   const rutasHoy = (rutas || []).filter(ruta => (ruta.fecha || '').slice(0, 10) === hoy && ruta.estado !== 'cancelada');
+
+  const abrirLectura = (ruta, parada = null) => {
+    setLecturaRuta(ruta);
+    setLecturaParada(parada);
+    setLecturaForm({ tipo_lectura: 'odometro', valor: '', unidad: 'km', observaciones: '' });
+    setLecturaFotoUrl('');
+    setLecturaFotoNombre('');
+  };
+
+  const manejarFotoLectura = async event => {
+    const file = event.target.files?.[0];
+    if (!file || !lecturaRuta) return;
+    setSubiendoLecturaFoto(true);
+    try {
+      const url = await subirArchivoEvidencia(file, 'lecturas_flota', `ruta-${lecturaRuta.id}-${Date.now()}`);
+      setLecturaFotoNombre(file.name);
+      setLecturaFotoUrl(url);
+      addToast?.('Foto del odómetro/horómetro adjuntada.');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo subir la foto de lectura.');
+    } finally {
+      setSubiendoLecturaFoto(false);
+      event.target.value = '';
+    }
+  };
+
+  const guardarLectura = async () => {
+    if (!lecturaRuta || guardandoLectura) return;
+    if (!lecturaRuta.vehiculo_id) {
+      addToast?.('La ruta activa no tiene vehículo asignado.');
+      return;
+    }
+    if (!lecturaForm.valor || Number(lecturaForm.valor) < 0 || !lecturaFotoUrl) {
+      addToast?.('Ingresa el valor y adjunta la foto del odómetro/horómetro.');
+      return;
+    }
+    setGuardandoLectura(true);
+    try {
+      await crearLecturaFlotaCtx({
+        vehiculo_id: lecturaRuta.vehiculo_id,
+        ruta_id: lecturaRuta.id,
+        parada_id: lecturaParada?.id || null,
+        conductor_id: lecturaRuta.conductor_id || null,
+        tipo_lectura: lecturaForm.tipo_lectura,
+        valor: Number(lecturaForm.valor),
+        unidad: lecturaForm.unidad,
+        foto_url: lecturaFotoUrl,
+        observaciones: lecturaForm.observaciones.trim() || null,
+      });
+      addToast?.('Lectura de flota guardada.');
+      setLecturaRuta(null);
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo guardar la lectura.');
+    } finally { setGuardandoLectura(false); }
+  };
+
+  const abrirIncidente = (ruta, parada = null) => {
+    setIncidenteRuta(ruta);
+    setIncidenteParada(parada);
+    setIncidenteForm({ tipo: 'otro', severidad: 'media', descripcion: '' });
+    setIncidenteFotoUrl('');
+    setIncidenteFotoNombre('');
+  };
+
+  const manejarFotoIncidente = async event => {
+    const file = event.target.files?.[0];
+    if (!file || !incidenteRuta) return;
+    setSubiendoIncidenteFoto(true);
+    try {
+      const url = await subirArchivoEvidencia(file, 'incidentes_flota', `ruta-${incidenteRuta.id}-${Date.now()}`);
+      setIncidenteFotoNombre(file.name);
+      setIncidenteFotoUrl(url);
+      addToast?.('Foto del incidente adjuntada.');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo subir la foto del incidente.');
+    } finally {
+      setSubiendoIncidenteFoto(false);
+      event.target.value = '';
+    }
+  };
+
+  const guardarIncidente = async () => {
+    if (!incidenteRuta || guardandoIncidente) return;
+    if (!incidenteForm.descripcion.trim()) {
+      addToast?.('Describe el incidente antes de guardarlo.');
+      return;
+    }
+    setGuardandoIncidente(true);
+    try {
+      const fix = await capturarFixGps();
+      await crearIncidenteFlotaCtx({
+        ruta_id: incidenteRuta.id,
+        parada_id: incidenteParada?.id || null,
+        vehiculo_id: incidenteRuta.vehiculo_id || null,
+        conductor_id: incidenteRuta.conductor_id || null,
+        tipo: incidenteForm.tipo,
+        severidad: incidenteForm.severidad,
+        descripcion: incidenteForm.descripcion.trim(),
+        foto_url: incidenteFotoUrl || null,
+        latitud: fix?.latitud ?? null,
+        longitud: fix?.longitud ?? null,
+        reportado_por: authUser?.id || null,
+      });
+      addToast?.('Incidente reportado.');
+      setIncidenteRuta(null);
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo guardar el incidente.');
+    } finally { setGuardandoIncidente(false); }
+  };
+
+  const capturarFixGps = async () => {
+    if (!navigator.geolocation) return null;
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+      return { latitud: position.coords.latitude, longitud: position.coords.longitude };
+    } catch (_error) {
+      return null;
+    }
+  };
+
+  const subirArchivoEvidencia = async (file, entidadTipo, entidadId) => {
+    if (!empresa?.id || !file) throw new Error('No se pudo identificar la empresa o el archivo.');
+    const resultado = await storageService.subirObjetoSinAdjunto({
+      empresaId: empresa.id,
+      entidadTipo,
+      entidadId,
+      file,
+      bucket: storageService.STORAGE_BUCKETS.DOCUMENTOS_GENERALES,
+    });
+    return resultado.url;
+  };
+
+  const iniciarCanvasFirma = () => {
+    const canvas = firmaCanvasRef.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.max(canvas.clientWidth || 300, 240);
+    const height = 180;
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    canvas.style.height = `${height}px`;
+    const context = canvas.getContext('2d');
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.lineWidth = 2.2;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.strokeStyle = '#0f172a';
+  };
+
+  useEffect(() => {
+    if (screen === 'entrega' && paradaSeleccionada) iniciarCanvasFirma();
+  }, [screen, paradaSeleccionada]);
+
+  const coordenadaCanvas = event => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const comenzarFirma = event => {
+    const canvas = event.currentTarget;
+    const context = canvas.getContext('2d');
+    const punto = coordenadaCanvas(event);
+    canvas.setPointerCapture?.(event.pointerId);
+    context.beginPath();
+    context.moveTo(punto.x, punto.y);
+    firmaDibujoRef.current = true;
+    setDibujandoFirma(true);
+    setFirmaTieneTrazo(true);
+  };
+
+  const dibujarFirma = event => {
+    if (!firmaDibujoRef.current) return;
+    const context = event.currentTarget.getContext('2d');
+    const punto = coordenadaCanvas(event);
+    context.lineTo(punto.x, punto.y);
+    context.stroke();
+  };
+
+  const terminarFirma = event => {
+    firmaDibujoRef.current = false;
+    setDibujandoFirma(false);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const limpiarFirma = () => {
+    iniciarCanvasFirma();
+    setFirmaTieneTrazo(false);
+    setFirmaEntregaUrl('');
+  };
+
+  const firmaComoArchivo = async () => {
+    const dataUrl = firmaCanvasRef.current?.toDataURL('image/png');
+    if (!dataUrl || dataUrl === 'data:,') return null;
+    const blob = await fetch(dataUrl).then(response => response.blob());
+    return new File([blob], `firma-${paradaSeleccionada.id}.png`, { type: 'image/png' });
+  };
 
   const abrirParada = parada => {
     setParadaSeleccionada(parada);
     setObservaciones(parada.observaciones || '');
-    setFirmaConfirmada(false);
-    setFotoNombre('');
+    setFirmaTieneTrazo(Boolean(parada.firma_entrega_url));
+    setFirmaEntregaUrl(parada.firma_entrega_url || '');
+    setFotoNombre(parada.foto_entrega_url ? 'Foto adjunta' : '');
+    setFotoEntregaUrl(parada.foto_entrega_url || '');
     setScreen('entrega');
+  };
+
+  const manejarFotoEntrega = async event => {
+    const file = event.target.files?.[0];
+    if (!file || !paradaSeleccionada) return;
+    setSubiendoFoto(true);
+    try {
+      const url = await subirArchivoEvidencia(file, 'ruta_paradas', paradaSeleccionada.id);
+      setFotoNombre(file.name);
+      setFotoEntregaUrl(url);
+      addToast?.('Foto de entrega adjuntada.');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo subir la foto de entrega.');
+    } finally {
+      setSubiendoFoto(false);
+      event.target.value = '';
+    }
   };
 
   const cerrarParada = async estado => {
     if (!paradaSeleccionada || guardando) return;
-    if (estado === 'completada' && !firmaConfirmada) {
-      addToast?.('Confirma la firma de recepción antes de finalizar la parada.');
+    if (estado === 'completada' && (!firmaTieneTrazo || !fotoEntregaUrl)) {
+      addToast?.('La firma y la foto de entrega son obligatorias para finalizar la parada.');
       return;
     }
     setGuardando(true);
     try {
-      await actualizarEstadoParadaRutaCtx(paradaSeleccionada.id, estado, observaciones.trim() || null);
+      let firmaUrl = firmaEntregaUrl;
+      if (estado === 'completada' && !firmaUrl) {
+        const file = await firmaComoArchivo();
+        if (!file) throw new Error('Captura una firma antes de finalizar la parada.');
+        setSubiendoFirma(true);
+        firmaUrl = await subirArchivoEvidencia(file, 'ruta_paradas', paradaSeleccionada.id);
+        setFirmaEntregaUrl(firmaUrl);
+        setSubiendoFirma(false);
+      }
+      const fix = await capturarFixGps();
+      await actualizarParadaRutaCtx(paradaSeleccionada.id, {
+        estado,
+        salida_at: new Date().toISOString(),
+        observaciones: observaciones.trim() || null,
+        ...(fotoEntregaUrl ? { foto_entrega_url: fotoEntregaUrl } : {}),
+        ...(firmaUrl ? { firma_entrega_url: firmaUrl } : {}),
+        ...(fix ? { latitud_entrega: fix.latitud, longitud_entrega: fix.longitud } : {}),
+      });
       addToast?.(`Parada ${estado === 'completada' ? 'completada' : 'omitida'}. El documento fuente mantiene su estado.`);
       setParadaSeleccionada(null);
       setScreen('home');
     } catch (error) {
+      setSubiendoFirma(false);
       addToast?.(error?.message || 'No se pudo actualizar la parada.');
     } finally { setGuardando(false); }
   };
@@ -1423,18 +1693,46 @@ function LogisticaView({ screen, setScreen }) {
       {rutasHoy.map(ruta => <div className="card" style={{padding:14, marginBottom:10}} key={ruta.id}>
         <div className="row" style={{justifyContent:'space-between', marginBottom:8}}><div className="mono" style={{fontWeight:600}}>{ruta.codigo}</div><span className="badge badge-orange">{String(ruta.estado || '').replace(/_/g, ' ')}</span></div>
         <div className="text-muted" style={{fontSize:12, marginBottom:10}}>{(ruta.ruta_paradas || []).length} parada(s)</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirLectura(ruta)}>{I.camera} Lectura</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirIncidente(ruta)}>{I.alert} Incidente</button></div>
         {[...(ruta.ruta_paradas || [])].sort((a,b) => Number(a.secuencia || 0) - Number(b.secuencia || 0)).map(parada => <div key={parada.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
           <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
           {!['completada','omitida'].includes(parada.estado) && <button className="btn btn-primary btn-sm" style={{width:'100%',marginTop:10}} onClick={() => abrirParada(parada)}>{I.check} Gestionar parada</button>}
         </div>)}
       </div>)}
 
+      {lecturaRuta && <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'var(--bg)',padding:20,zIndex:20,overflowY:'auto'}}>
+        <div onClick={() => setLecturaRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>â† Volver a Ruta</div>
+        <h2 className="font-display" style={{marginBottom:6}}>Lectura de vehículo</h2>
+        <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{lecturaRuta.codigo}{lecturaParada ? ` · Parada ${lecturaParada.secuencia}` : ''}</div>
+        <label style={{fontSize:12}}>Tipo de lectura<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={lecturaForm.tipo_lectura} onChange={event => setLecturaForm(form => ({...form, tipo_lectura:event.target.value, unidad:event.target.value === 'horometro' ? 'h' : 'km'}))}><option value="odometro">Odómetro</option><option value="horometro">Horómetro</option></select></label>
+        <label style={{fontSize:12}}>Valor<input className="input" type="number" min="0" step="0.01" value={lecturaForm.valor} onChange={event => setLecturaForm(form => ({...form, valor:event.target.value}))} placeholder="Ingresa la lectura" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label style={{fontSize:12}}>Unidad<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={lecturaForm.unidad} onChange={event => setLecturaForm(form => ({...form, unidad:event.target.value}))}><option value="km">km</option><option value="mi">mi</option><option value="h">h</option></select></label>
+        <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoLecturaFoto?.65:1}}>{I.camera} {subiendoLecturaFoto ? 'Subiendo foto…' : lecturaFotoNombre || 'Foto del odómetro/horómetro'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoLectura} style={{display:'none'}} disabled={subiendoLecturaFoto} /></label>
+        {lecturaFotoUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto de lectura adjuntada</div>}
+        <textarea className="input" rows="2" value={lecturaForm.observaciones} onChange={event => setLecturaForm(form => ({...form,observaciones:event.target.value}))} placeholder="Observaciones (opcional)" style={{width:'100%',marginBottom:10}} />
+        <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoLectura || subiendoLecturaFoto} onClick={guardarLectura}>{guardandoLectura ? 'Guardando lectura…' : 'Guardar lectura'}</button>
+      </div>}
+
+      {incidenteRuta && <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'var(--bg)',padding:20,zIndex:20,overflowY:'auto'}}>
+        <div onClick={() => setIncidenteRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>â† Volver a Ruta</div>
+        <h2 className="font-display" style={{marginBottom:6}}>Reportar incidente</h2>
+        <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{incidenteRuta.codigo}{incidenteParada ? ` · Parada ${incidenteParada.secuencia}` : ''}</div>
+        <label style={{fontSize:12}}>Tipo<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={incidenteForm.tipo} onChange={event => setIncidenteForm(form => ({...form,tipo:event.target.value}))}><option value="mecanico">Mecánico</option><option value="accidente">Accidente</option><option value="retraso">Retraso</option><option value="otro">Otro</option></select></label>
+        <label style={{fontSize:12}}>Severidad<select className="select" style={{width:'100%',margin:'5px 0 10px'}} value={incidenteForm.severidad} onChange={event => setIncidenteForm(form => ({...form,severidad:event.target.value}))}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option><option value="critica">Crítica</option></select></label>
+        <textarea className="input" rows="5" value={incidenteForm.descripcion} onChange={event => setIncidenteForm(form => ({...form,descripcion:event.target.value}))} placeholder="Describe el incidente" style={{width:'100%',marginBottom:10}} />
+        <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoIncidenteFoto?.65:1}}>{I.camera} {subiendoIncidenteFoto ? 'Subiendo foto…' : incidenteFotoNombre || 'Foto opcional'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoIncidente} style={{display:'none'}} disabled={subiendoIncidenteFoto} /></label>
+        {incidenteFotoUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto del incidente adjuntada</div>}
+        <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoIncidente || subiendoIncidenteFoto} onClick={guardarIncidente}>{guardandoIncidente ? 'Guardando incidente…' : 'Guardar incidente'}</button>
+      </div>}
+
       {screen === 'entrega' && paradaSeleccionada && <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10}}>
         <div onClick={() => { setParadaSeleccionada(null); setScreen('home'); }} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Rutas</div>
         <h2 className="font-display" style={{marginBottom:6}}>Confirmación de recepción</h2>
         <div className="text-muted mono" style={{fontSize:11,marginBottom:16}}>{paradaSeleccionada.documento_id}</div>
-        <button type="button" onClick={() => setFirmaConfirmada(value => !value)} style={{background:'var(--bg-subtle)', height:120, width:'100%', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', border:`1px dashed ${firmaConfirmada ? 'var(--green)' : 'var(--border)'}`, marginBottom:16}}><span className="text-muted">{firmaConfirmada ? '✓ Firma digital confirmada' : '[ Área para Firma Digital ]'}</span></button>
-        <label className="btn btn-secondary" style={{width:'100%', marginBottom:10}}>{I.camera} {fotoNombre || 'Adjuntar Foto Guía Firmada'}<input type="file" accept="image/*" onChange={event => setFotoNombre(event.target.files?.[0]?.name || '')} style={{display:'none'}} /></label>
+        <div style={{border:'1px solid var(--border)',borderRadius:8,padding:8,background:'#fff',marginBottom:8}}><canvas ref={firmaCanvasRef} aria-label="Canvas para firma de recepción" onPointerDown={comenzarFirma} onPointerMove={dibujarFirma} onPointerUp={terminarFirma} onPointerCancel={terminarFirma} style={{display:'block',width:'100%',height:180,touchAction:'none',cursor:'crosshair'}} /></div>
+        <div className="row" style={{justifyContent:'space-between',marginBottom:10}}><span className="text-muted" style={{fontSize:11}}>{dibujandoFirma ? 'Capturando firma…' : firmaTieneTrazo ? '✓ Firma capturada' : 'Firma obligatoria'}</span><button className="btn btn-secondary btn-sm" type="button" onClick={limpiarFirma}>Limpiar</button></div>
+        <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoFoto?.65:1}}>{I.camera} {subiendoFoto ? 'Subiendo foto…' : fotoNombre || 'Adjuntar Foto Guía Firmada'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoEntrega} style={{display:'none'}} disabled={subiendoFoto} /></label>
+        {fotoEntregaUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto adjuntada y lista para guardar</div>}
         <textarea className="input" rows="3" value={observaciones} onChange={event => setObservaciones(event.target.value)} placeholder="Observaciones de la parada" style={{width:'100%',marginBottom:10}} />
         <button className="btn btn-primary btn-lg" style={{width:'100%',marginBottom:8}} disabled={guardando} onClick={() => cerrarParada('completada')}>Finalizar parada</button>
         <button className="btn btn-secondary" style={{width:'100%'}} disabled={guardando} onClick={() => cerrarParada('omitida')}>Omitir parada</button>
