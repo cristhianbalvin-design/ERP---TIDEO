@@ -94,6 +94,8 @@ import {
   actualizarMantenimientoFlota as svcActualizarMantenimientoFlota,
   eliminarMantenimientoFlota as svcEliminarMantenimientoFlota,
 } from './services/mantenimientosFlotaService.js';
+import { listarLecturasFlota as svcListarLecturasFlota, crearLecturaFlota as svcCrearLecturaFlota } from './services/lecturasFlotaService.js';
+import { listarIncidentesFlota as svcListarIncidentesFlota, crearIncidenteFlota as svcCrearIncidenteFlota } from './services/incidentesFlotaService.js';
 // Conserva la misma instancia de contexto durante las recargas en caliente de Vite.
 // Sin ello, un chunk cargado antes de una actualización puede conservar useApp()
 // apuntando al contexto anterior mientras AppProvider ya usa uno nuevo.
@@ -8795,6 +8797,42 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const listarLecturasFlotaCtx = async filtros => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return svcListarLecturasFlota(empresa.id, filtros);
+  };
+
+  const crearLecturaFlotaCtx = async payload => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) return svcCrearLecturaFlota(empresa.id, payload);
+    return {
+      ...payload,
+      id: generateId('lec'),
+      empresa_id: empresa.id,
+      fecha: payload.fecha || new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+
+  const listarIncidentesFlotaCtx = async filtros => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return svcListarIncidentesFlota(empresa.id, filtros);
+  };
+
+  const crearIncidenteFlotaCtx = async payload => {
+    if (!empresa?.id) throw new Error('Sin empresa activa');
+    if (isSupabaseConfigured()) return svcCrearIncidenteFlota(empresa.id, payload);
+    return {
+      ...payload,
+      id: generateId('inc'),
+      empresa_id: empresa.id,
+      estado: payload.estado || 'abierto',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  };
+
   const crearTransportistaCtx = async (form) => {
     if (isSupabaseConfigured() && empresa?.id) {
       const data = await svcCrearTransportista(empresa.id, form);
@@ -11882,6 +11920,7 @@ export function AppProvider({ children }) {
     crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx, eliminarRutaCtx,
     actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
     mantenimientosFlota, recargarMantenimientosFlota, crearMantenimientoFlotaCtx, actualizarMantenimientoFlotaCtx, eliminarMantenimientoFlotaCtx,
+    listarLecturasFlotaCtx, crearLecturaFlotaCtx, listarIncidentesFlotaCtx, crearIncidenteFlotaCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,

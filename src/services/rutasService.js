@@ -155,7 +155,10 @@ export async function agregarParada(empresaId, rutaId, payload) {
 }
 
 export async function actualizarParada(empresaId, paradaId, cambios) {
-  const permitidos = ['estado', 'llegada_at', 'salida_at', 'observaciones'];
+  const permitidos = [
+    'estado', 'llegada_at', 'salida_at', 'observaciones',
+    'foto_entrega_url', 'firma_entrega_url', 'latitud_entrega', 'longitud_entrega',
+  ];
   const payload = Object.fromEntries(permitidos.filter(key => key in cambios).map(key => [key, cambios[key]]));
   if (payload.estado && !ESTADOS_PARADA.some(([key]) => key === payload.estado)) throw new Error('Estado de parada no válido.');
   const supabase = await getSupabaseClient();
