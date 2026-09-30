@@ -79,6 +79,7 @@ import { descargarPlantillaCuentas, ImportarCuentasModal } from './components/Im
 import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
 import { RutasPanel } from './components/RutasPanel.jsx';
 import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
+import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -11195,7 +11196,7 @@ function Remision() {
       </div>
 
       <div className="tabs">
-        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas'],['rutas','Rutas'],['mantenimiento','Mantenimiento']].map(([k,l]) => (
+        {[['guias','Guías de Remisión'],['ov','Órdenes de Venta'],['trans','Transportistas'],['rutas','Rutas'],['mantenimiento','Mantenimiento'],['reportes','Reportes']].map(([k,l]) => (
           <div key={k} className={`tab${tab===k?' active':''}`} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -11314,6 +11315,8 @@ function Remision() {
       {tab === 'rutas' && <RutasPanel />}
 
       {tab === 'mantenimiento' && <MantenimientoFlotaPanel />}
+
+      {tab === 'reportes' && <ReportesFlotaPanel />}
 
       {/* MODAL: Nueva Guía wizard */}
       {modalGuia === 'nueva' && (

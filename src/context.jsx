@@ -79,6 +79,8 @@ import {
 import {
   listarRutas as svcListarRutas,
   listarDocumentosDisponibles as svcListarDocumentosDisponibles,
+  buscarGastosCampo as svcBuscarGastosCampo,
+  listarParadasLibres as svcListarParadasLibres,
   crearRuta as svcCrearRuta,
   actualizarRuta as svcActualizarRuta,
   actualizarEstadoRuta as svcActualizarEstadoRuta,
@@ -8675,6 +8677,11 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const buscarGastosCampoCtx = async texto => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return svcBuscarGastosCampo(empresa.id, texto);
+  };
+
   const crearRutaCtx = async (payload) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
@@ -8818,6 +8825,11 @@ export function AppProvider({ children }) {
   const listarIncidentesFlotaCtx = async filtros => {
     if (!empresa?.id || !isSupabaseConfigured()) return [];
     return svcListarIncidentesFlota(empresa.id, filtros);
+  };
+
+  const listarParadasLibresCtx = async () => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return svcListarParadasLibres(empresa.id);
   };
 
   const crearIncidenteFlotaCtx = async payload => {
@@ -11916,11 +11928,11 @@ export function AppProvider({ children }) {
     transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, actualizarVehiculoCtx, eliminarVehiculoCtx, crearConductorCtx, actualizarConductorCtx, eliminarConductorCtx,
     ordenesVenta, setOrdenesVenta, crearOVCtx, actualizarOVCtx, confirmarOVCtx, anularOVCtx, recargarOrdenesVenta,
     catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
-    rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas,
+    rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas, buscarGastosCampoCtx,
     crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx, eliminarRutaCtx,
     actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
     mantenimientosFlota, recargarMantenimientosFlota, crearMantenimientoFlotaCtx, actualizarMantenimientoFlotaCtx, eliminarMantenimientoFlotaCtx,
-    listarLecturasFlotaCtx, crearLecturaFlotaCtx, listarIncidentesFlotaCtx, crearIncidenteFlotaCtx,
+    listarLecturasFlotaCtx, crearLecturaFlotaCtx, listarIncidentesFlotaCtx, crearIncidenteFlotaCtx, listarParadasLibresCtx,
 
     // Actions
     crearLead, actualizarLeadDatos, eliminarLead, crearCuenta,

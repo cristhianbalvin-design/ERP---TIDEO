@@ -1383,6 +1383,7 @@ function LogisticaView({ screen, setScreen }) {
     empresa,
     rutas = [],
     actualizarParadaRutaCtx,
+    agregarParadaRutaCtx,
     crearLecturaFlotaCtx,
     crearIncidenteFlotaCtx,
     addToast,
@@ -1412,6 +1413,14 @@ function LogisticaView({ screen, setScreen }) {
   const [incidenteFotoNombre, setIncidenteFotoNombre] = useState('');
   const [subiendoIncidenteFoto, setSubiendoIncidenteFoto] = useState(false);
   const [guardandoIncidente, setGuardandoIncidente] = useState(false);
+  const [paradaLibreRuta, setParadaLibreRuta] = useState(null);
+  const [paradaLibreForm, setParadaLibreForm] = useState({ descripcion_libre: '', direccion_parada: '' });
+  const [paradaLibreFotoUrl, setParadaLibreFotoUrl] = useState('');
+  const [paradaLibreFotoNombre, setParadaLibreFotoNombre] = useState('');
+  const [subiendoParadaLibreFoto, setSubiendoParadaLibreFoto] = useState(false);
+  const [paradaLibreGps, setParadaLibreGps] = useState(null);
+  const [capturandoParadaLibreGps, setCapturandoParadaLibreGps] = useState(false);
+  const [guardandoParadaLibre, setGuardandoParadaLibre] = useState(false);
   const firmaCanvasRef = useRef(null);
   const firmaDibujoRef = useRef(false);
   const hoy = new Date().toISOString().slice(0, 10);
@@ -1540,6 +1549,70 @@ function LogisticaView({ screen, setScreen }) {
     } catch (_error) {
       return null;
     }
+  };
+
+  const capturarGpsParadaLibre = async () => {
+    setCapturandoParadaLibreGps(true);
+    const fix = await capturarFixGps();
+    setParadaLibreGps(fix);
+    setCapturandoParadaLibreGps(false);
+    addToast?.(fix ? 'GPS capturado.' : 'No se pudo capturar GPS; puedes guardar sin coordenadas.');
+    return fix;
+  };
+
+  const abrirParadaLibre = ruta => {
+    setParadaLibreRuta(ruta);
+    setParadaLibreForm({ descripcion_libre: '', direccion_parada: '' });
+    setParadaLibreFotoUrl('');
+    setParadaLibreFotoNombre('');
+    setParadaLibreGps(null);
+    capturarGpsParadaLibre();
+  };
+
+  const manejarFotoParadaLibre = async event => {
+    const file = event.target.files?.[0];
+    if (!file || !paradaLibreRuta) return;
+    setSubiendoParadaLibreFoto(true);
+    try {
+      const url = await subirArchivoEvidencia(file, 'ruta_paradas', `parada-libre-${paradaLibreRuta.id}-${Date.now()}`);
+      setParadaLibreFotoNombre(file.name);
+      setParadaLibreFotoUrl(url);
+      addToast?.('Foto de parada libre adjuntada.');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo subir la foto de la parada libre.');
+    } finally {
+      setSubiendoParadaLibreFoto(false);
+      event.target.value = '';
+    }
+  };
+
+  const guardarParadaLibre = async () => {
+    if (!paradaLibreRuta || guardandoParadaLibre) return;
+    const descripcion = paradaLibreForm.descripcion_libre.trim();
+    if (!descripcion) {
+      addToast?.('La descripción de la parada libre es obligatoria.');
+      return;
+    }
+    setGuardandoParadaLibre(true);
+    try {
+      const fix = paradaLibreGps || await capturarFixGps();
+      const secuencia = (paradaLibreRuta.ruta_paradas || []).reduce((max, parada) => Math.max(max, Number(parada.secuencia || 0)), 0) + 1;
+      await agregarParadaRutaCtx(paradaLibreRuta.id, {
+        tipo_documento: 'libre',
+        documento_id: null,
+        secuencia,
+        descripcion_libre: descripcion,
+        direccion_parada: paradaLibreForm.direccion_parada.trim() || null,
+        latitud_parada: fix?.latitud ?? null,
+        longitud_parada: fix?.longitud ?? null,
+        gasto_campo_id: null,
+        ...(paradaLibreFotoUrl ? { foto_entrega_url: paradaLibreFotoUrl } : {}),
+      });
+      addToast?.('Parada libre agregada.');
+      setParadaLibreRuta(null);
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo guardar la parada libre.');
+    } finally { setGuardandoParadaLibre(false); }
   };
 
   const subirArchivoEvidencia = async (file, entidadTipo, entidadId) => {
@@ -1693,9 +1766,9 @@ function LogisticaView({ screen, setScreen }) {
       {rutasHoy.map(ruta => <div className="card" style={{padding:14, marginBottom:10}} key={ruta.id}>
         <div className="row" style={{justifyContent:'space-between', marginBottom:8}}><div className="mono" style={{fontWeight:600}}>{ruta.codigo}</div><span className="badge badge-orange">{String(ruta.estado || '').replace(/_/g, ' ')}</span></div>
         <div className="text-muted" style={{fontSize:12, marginBottom:10}}>{(ruta.ruta_paradas || []).length} parada(s)</div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirLectura(ruta)}>{I.camera} Lectura</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirIncidente(ruta)}>{I.alert} Incidente</button></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:8}}><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirLectura(ruta)}>{I.camera} Lectura</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirIncidente(ruta)}>{I.alert} Incidente</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirParadaLibre(ruta)}>+ Parada libre</button></div>
         {[...(ruta.ruta_paradas || [])].sort((a,b) => Number(a.secuencia || 0) - Number(b.secuencia || 0)).map(parada => <div key={parada.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
-          <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
+          <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'libre' ? 'Parada libre' : parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.tipo_documento === 'libre' ? (parada.descripcion_libre || 'Sin descripción') : parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
           {!['completada','omitida'].includes(parada.estado) && <button className="btn btn-primary btn-sm" style={{width:'100%',marginTop:10}} onClick={() => abrirParada(parada)}>{I.check} Gestionar parada</button>}
         </div>)}
       </div>)}
@@ -1723,6 +1796,18 @@ function LogisticaView({ screen, setScreen }) {
         <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoIncidenteFoto?.65:1}}>{I.camera} {subiendoIncidenteFoto ? 'Subiendo foto…' : incidenteFotoNombre || 'Foto opcional'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoIncidente} style={{display:'none'}} disabled={subiendoIncidenteFoto} /></label>
         {incidenteFotoUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto del incidente adjuntada</div>}
         <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoIncidente || subiendoIncidenteFoto} onClick={guardarIncidente}>{guardandoIncidente ? 'Guardando incidente…' : 'Guardar incidente'}</button>
+      </div>}
+
+      {paradaLibreRuta && <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:'var(--bg)',padding:20,zIndex:20,overflowY:'auto'}}>
+        <div onClick={() => setParadaLibreRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Ruta</div>
+        <h2 className="font-display" style={{marginBottom:6}}>Parada libre</h2>
+        <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{paradaLibreRuta.codigo}</div>
+        <label style={{fontSize:12}}>Descripción *<textarea className="input" rows="4" value={paradaLibreForm.descripcion_libre} onChange={event => setParadaLibreForm(form => ({...form,descripcion_libre:event.target.value}))} placeholder="Qué se hizo en la parada" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label style={{fontSize:12}}>Dirección (opcional)<input className="input" value={paradaLibreForm.direccion_parada} onChange={event => setParadaLibreForm(form => ({...form,direccion_parada:event.target.value}))} placeholder="Dirección del punto" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoParadaLibreFoto?.65:1}}>{I.camera} {subiendoParadaLibreFoto ? 'Subiendo foto…' : paradaLibreFotoNombre || 'Foto opcional de la parada'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoParadaLibre} style={{display:'none'}} disabled={subiendoParadaLibreFoto} /></label>
+        {paradaLibreFotoUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto de parada libre adjuntada</div>}
+        <div className="card" style={{padding:12,marginBottom:12}}><div style={{fontWeight:700,fontSize:12,marginBottom:6}}>GPS de la parada</div><div className="text-muted" style={{fontSize:11,marginBottom:8}}>{paradaLibreGps ? `${paradaLibreGps.latitud.toFixed(6)}, ${paradaLibreGps.longitud.toFixed(6)}` : 'Sin coordenadas; puedes continuar.'}</div><button className="btn btn-secondary btn-sm" type="button" onClick={capturarGpsParadaLibre} disabled={capturandoParadaLibreGps}>{capturandoParadaLibreGps ? 'Capturando GPS...' : 'Reintentar GPS'}</button></div>
+        <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoParadaLibre || !paradaLibreForm.descripcion_libre.trim()} onClick={guardarParadaLibre}>{guardandoParadaLibre ? 'Guardando...' : 'Guardar parada libre'}</button>
       </div>}
 
       {screen === 'entrega' && paradaSeleccionada && <div style={{position:'absolute', top:0, left:0, right:0, bottom:0, background:'var(--bg)', padding:20, zIndex:10}}>

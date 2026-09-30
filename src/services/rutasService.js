@@ -75,6 +75,36 @@ export async function listarDocumentosDisponibles(empresaId) {
   };
 }
 
+export async function buscarGastosCampo(empresaId, texto = '') {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  let query = supabase
+    .from('compras_gastos')
+    .select('id,empresa_id,descripcion,monto,moneda,fecha,created_at')
+    .eq('empresa_id', empresaId)
+    .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const termino = String(texto || '').trim();
+  if (termino) query = query.ilike('descripcion', `%${termino}%`);
+  const { data, error } = await query;
+  assertOk(error, 'No se pudieron buscar los gastos de campo.');
+  return data || [];
+}
+
+export async function listarParadasLibres(empresaId) {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ruta_paradas')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_documento', 'libre')
+    .order('created_at', { ascending: false });
+  assertOk(error, 'No se pudieron cargar las paradas libres.');
+  return data || [];
+}
+
 export async function crearRuta(empresaId, payload) {
   const supabase = await getSupabaseClient();
   const fecha = payload.fecha || today();
@@ -115,10 +145,26 @@ export async function actualizarRuta(empresaId, rutaId, cambios) {
 
 export async function actualizarEstadoRuta(empresaId, rutaId, estado) {
   if (!ESTADOS_RUTA.some(([key]) => key === estado)) throw new Error('Estado de ruta no válido.');
+  const supabase = await getSupabaseClient();
+  if (estado === 'en_curso' || estado === 'completada') {
+    const { data: lecturas, error: lecturasError } = await supabase
+      .from('lecturas_flota')
+      .select('id,fecha,created_at')
+      .eq('empresa_id', empresaId)
+      .eq('ruta_id', rutaId)
+      .eq('tipo_lectura', 'odometro')
+      .order('created_at', { ascending: true });
+    assertOk(lecturasError, 'No se pudieron verificar las lecturas de odómetro de la ruta.');
+    const minimo = estado === 'en_curso' ? 1 : 2;
+    if ((lecturas || []).length < minimo) {
+      throw new Error(estado === 'en_curso'
+        ? 'Registra una lectura de odómetro antes de iniciar la ruta.'
+        : 'Registra una lectura inicial y una final de odómetro antes de completar la ruta.');
+    }
+  }
   const cambios = { estado };
   if (estado === 'en_curso') cambios.hora_salida = now();
   if (estado === 'completada' || estado === 'cancelada') cambios.hora_cierre = now();
-  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from('rutas')
     .update(cambios)
@@ -131,23 +177,36 @@ export async function actualizarEstadoRuta(empresaId, rutaId, estado) {
 }
 
 export async function agregarParada(empresaId, rutaId, payload) {
-  if (!['orden_compra_transito', 'guia_remision'].includes(payload.tipo_documento)) {
+  const esLibre = payload.tipo_documento === 'libre';
+  if (!['orden_compra_transito', 'guia_remision', 'libre'].includes(payload.tipo_documento)) {
     throw new Error('Tipo de documento de parada no válido.');
   }
-  if (!payload.documento_id) throw new Error('Selecciona un documento para la parada.');
+  if (!esLibre && !payload.documento_id) throw new Error('Selecciona un documento para la parada.');
+  if (esLibre && !String(payload.descripcion_libre || '').trim()) throw new Error('Describe la parada libre.');
   const supabase = await getSupabaseClient();
+  const insertPayload = {
+    id: mkId('rpa'),
+    empresa_id: empresaId,
+    ruta_id: rutaId,
+    secuencia: Number(payload.secuencia || 1),
+    tipo_documento: payload.tipo_documento,
+    documento_id: esLibre ? null : payload.documento_id,
+    estado: 'pendiente',
+    observaciones: String(payload.observaciones || '').trim() || null,
+  };
+  const tieneUbicacion = ['direccion_parada', 'latitud_parada', 'longitud_parada'].some(key => key in payload);
+  if (esLibre || tieneUbicacion) {
+    insertPayload.direccion_parada = String(payload.direccion_parada || '').trim() || null;
+    insertPayload.latitud_parada = payload.latitud_parada === '' || payload.latitud_parada == null ? null : Number(payload.latitud_parada);
+    insertPayload.longitud_parada = payload.longitud_parada === '' || payload.longitud_parada == null ? null : Number(payload.longitud_parada);
+  }
+  if (esLibre) {
+    insertPayload.descripcion_libre = String(payload.descripcion_libre || '').trim();
+    insertPayload.gasto_campo_id = payload.gasto_campo_id || null;
+  }
   const { data, error } = await supabase
     .from('ruta_paradas')
-    .insert({
-      id: mkId('rpa'),
-      empresa_id: empresaId,
-      ruta_id: rutaId,
-      secuencia: Number(payload.secuencia || 1),
-      tipo_documento: payload.tipo_documento,
-      documento_id: payload.documento_id,
-      estado: 'pendiente',
-      observaciones: String(payload.observaciones || '').trim() || null,
-    })
+    .insert(insertPayload)
     .select('*')
     .single();
   assertOk(error, 'No se pudo agregar la parada.');
