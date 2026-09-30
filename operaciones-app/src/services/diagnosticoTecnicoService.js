@@ -22,6 +22,15 @@ const requireId = (value, message) => {
   if (!value) throw new Error(message);
 };
 
+const projectRpcRow = (data, columns) => {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return row;
+  return columns.split(',').reduce((projected, column) => {
+    if (Object.prototype.hasOwnProperty.call(row, column)) projected[column] = row[column];
+    return projected;
+  }, {});
+};
+
 const getError = error => error || new Error('No se pudo completar la operación.');
 
 export async function usuarioPuedeDiagnostico(empresaId, accion) {
@@ -207,7 +216,7 @@ export async function buscarOCrearFamiliaTrabajo(empresaId, nombre) {
     p_nombre: nombre,
   });
   if (error) throw error;
-  return Array.isArray(data) ? data[0] : data;
+  return projectRpcRow(data, FAMILIA_COLUMNS);
 }
 
 export async function buscarOCrearTipoServicioInterno(empresaId, nombre) {
@@ -217,7 +226,7 @@ export async function buscarOCrearTipoServicioInterno(empresaId, nombre) {
     p_nombre: nombre,
   });
   if (error) throw error;
-  return Array.isArray(data) ? data[0] : data;
+  return projectRpcRow(data, TIPO_SERVICIO_COLUMNS);
 }
 
 export async function obtenerDiagnosticoLinea(empresaId, lineaId) {
