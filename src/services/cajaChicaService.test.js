@@ -124,13 +124,13 @@ test('el saldo redondeado no expone -0', () => {
 test('el wrapper de cierre usa la firma posicional de la RPC 585', () => {
   assert.deepEqual(
     buildCierreFondoRpcArgs('fondo-test', {
-      destino_tipo: 'devolucion',
+      destino_tipo: 'cuenta_bancaria',
       destino_id: 'cta-test',
       referencia: 'cierre-test',
     }),
     {
       p_fondo_id: 'fondo-test',
-      p_destino_tipo: 'devolucion',
+      p_destino_tipo: 'cuenta_bancaria',
       p_destino_id: 'cta-test',
       p_referencia: 'cierre-test',
     },
