@@ -45,7 +45,7 @@ export async function listarRutas(empresaId) {
 export async function listarDocumentosDisponibles(empresaId) {
   if (!empresaId) return { transitos: [], guias: [] };
   const supabase = await getSupabaseClient();
-  const [transitosResult, guiasResult, paradasResult] = await Promise.all([
+  const [transitosResult, guiasResult, paradasResult, ordenesResult] = await Promise.all([
     supabase
       .from('orden_compra_transitos')
       .select('id,empresa_id,orden_compra_id,tipo,estado,fecha_salida,fecha_estimada_llegada,observaciones')
@@ -63,14 +63,22 @@ export async function listarDocumentosDisponibles(empresaId) {
       .from('ruta_paradas')
       .select('tipo_documento,documento_id')
       .eq('empresa_id', empresaId),
+    supabase
+      .from('ordenes_compra')
+      .select('id,codigo')
+      .eq('empresa_id', empresaId),
   ]);
   assertOk(transitosResult.error, 'No se pudieron cargar los tránsitos pendientes.');
   assertOk(guiasResult.error, 'No se pudieron cargar las guías de servicio pendientes.');
   assertOk(paradasResult.error, 'No se pudieron revisar las paradas ya asignadas.');
 
+  assertOk(ordenesResult.error, 'No se pudieron cargar los codigos de las ordenes de compra.');
   const asignados = new Set((paradasResult.data || []).map(parada => `${parada.tipo_documento}:${parada.documento_id}`));
+  const codigosOc = new Map((ordenesResult.data || []).map(orden => [orden.id, orden.codigo]));
   return {
-    transitos: (transitosResult.data || []).filter(item => !asignados.has(`orden_compra_transito:${item.id}`)),
+    transitos: (transitosResult.data || [])
+      .filter(item => !asignados.has(`orden_compra_transito:${item.id}`))
+      .map(item => ({ ...item, orden_compra_codigo: codigosOc.get(item.orden_compra_id) || null })),
     guias: (guiasResult.data || []).filter(item => !asignados.has(`guia_remision:${item.id}`)),
   };
 }
