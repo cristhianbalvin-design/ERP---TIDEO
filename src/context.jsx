@@ -9215,6 +9215,7 @@ export function AppProvider({ children }) {
         updated_at: guardado.updated_at || new Date().toISOString(),
       } : o));
     }
+    if (isSupabaseConfigured()) await recargarCandidatosParadas();
     auditSync({ modulo: 'compras', entidad: 'orden_compra_transitos', entidad_id: guardado.id, accion: 'crear', valor_nuevo: guardado });
     return guardado;
   };
