@@ -18,6 +18,7 @@ export function RutasPanel() {
   } = useApp();
   const [selectedId, setSelectedId] = useState('');
   const [selectedStopId, setSelectedStopId] = useState(null);
+  const [routeDateFilter, setRouteDateFilter] = useState('');
   const [form, setForm] = useState({ codigo: '', fecha: today(), vehiculo_id: '', conductor_id: '', transportista_id: '', observaciones: '' });
   const [type, setType] = useState('orden_compra_transito');
   const [docId, setDocId] = useState('');
@@ -28,6 +29,7 @@ export function RutasPanel() {
   const [notes, setNotes] = useState({});
   const [busy, setBusy] = useState(false);
   const route = rutas.find(row => row.id === selectedId) || rutas[0] || null;
+  const visibleRutas = useMemo(() => routeDateFilter ? rutas.filter(row => row.fecha === routeDateFilter) : rutas, [rutas, routeDateFilter]);
   const stops = useMemo(() => stopsOf(route), [route]);
   const vehicles = useMemo(() => transportistas.flatMap(t => (t.vehiculos || []).map(v => ({ ...v, transportista_id: v.transportista_id || t.id }))), [transportistas]);
   const drivers = useMemo(() => transportistas.flatMap(t => (t.conductores || []).map(c => ({ ...c, transportista_id: c.transportista_id || t.id }))), [transportistas]);
@@ -133,10 +135,10 @@ export function RutasPanel() {
       </form>
 
       <div className="card">
-        <div className="card-head"><div><div className="eyebrow">Seguimiento</div><h3 style={{ margin: 0 }}>Rutas registradas</h3></div><span className="text-muted">{rutas.length} total</span></div>
+        <div className="card-head"><div><div className="eyebrow">Seguimiento</div><h3 style={{ margin: 0 }}>Rutas registradas</h3></div><div className="row" style={{ gap: 8, alignItems: 'center' }}><label className="text-muted" htmlFor="filtro-rutas-fecha">Fecha</label><input id="filtro-rutas-fecha" className="input" type="date" value={routeDateFilter} onChange={e => setRouteDateFilter(e.target.value)} /><button className="btn btn-ghost btn-sm" type="button" onClick={() => setRouteDateFilter('')} disabled={!routeDateFilter}>Todas</button><span className="text-muted">{visibleRutas.length} total</span></div></div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, padding: 14 }}>
-          {rutas.map(row => <button key={row.id} type="button" onClick={() => setSelectedId(row.id)} style={{ textAlign: 'left', border: `1px solid ${row.id === route?.id ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 10, padding: 12, background: row.id === route?.id ? 'var(--primary-light,#eff6ff)' : 'var(--surface,#fff)', cursor: 'pointer' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}><strong>{row.codigo}</strong><Badge value={row.estado} /></div><div className="text-muted" style={{ marginTop: 8, fontSize: 12 }}>{row.fecha || 'Sin fecha'} · {row.ruta_paradas?.length || 0} paradas</div><div style={{ marginTop: 5, fontSize: 11 }}>{vehicleName(row.vehiculo_id)} · {driverName(row.conductor_id)}</div></button>)}
-          {!rutas.length && <div className="text-muted" style={{ padding: 10 }}>No hay rutas registradas.</div>}
+          {visibleRutas.map(row => <button key={row.id} type="button" onClick={() => setSelectedId(row.id)} style={{ textAlign: 'left', border: `1px solid ${row.id === route?.id ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 10, padding: 12, background: row.id === route?.id ? 'var(--primary-light,#eff6ff)' : 'var(--surface,#fff)', cursor: 'pointer' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}><strong>{row.codigo}</strong><Badge value={row.estado} /></div><div className="text-muted" style={{ marginTop: 8, fontSize: 12 }}>{row.fecha || 'Sin fecha'} · {row.ruta_paradas?.length || 0} paradas</div><div style={{ marginTop: 5, fontSize: 11 }}>{vehicleName(row.vehiculo_id)} · {driverName(row.conductor_id)}</div></button>)}
+          {!visibleRutas.length && <div className="text-muted" style={{ padding: 10 }}>No hay rutas para la fecha seleccionada.</div>}
         </div>
       </div>
     </div>
