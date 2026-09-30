@@ -92,6 +92,19 @@ export async function buscarGastosCampo(empresaId, texto = '') {
   return data || [];
 }
 
+export async function listarParadasLibres(empresaId) {
+  if (!empresaId) return [];
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('ruta_paradas')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_documento', 'libre')
+    .order('created_at', { ascending: false });
+  assertOk(error, 'No se pudieron cargar las paradas libres.');
+  return data || [];
+}
+
 export async function crearRuta(empresaId, payload) {
   const supabase = await getSupabaseClient();
   const fecha = payload.fecha || today();
