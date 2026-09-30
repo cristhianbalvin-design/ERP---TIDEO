@@ -8498,6 +8498,7 @@ function CxP() {
       c?.origen,
       c?.estado,
       semaforo?.label,
+      c?.prioridad_pago ? `prioridad ${c.prioridad_pago}` : 'sin prioridad',
       c?.fecha_emision,
       c?.fecha_vencimiento,
       c?.moneda,
@@ -8519,9 +8520,9 @@ function CxP() {
 
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
   const PRIORIDADES_PAGO = [
-    { v: 'alta', l: 'Alta', badgeCls: 'badge-red' },
-    { v: 'media', l: 'Media', badgeCls: 'badge-orange' },
-    { v: 'baja', l: 'Baja', badgeCls: 'badge-blue' },
+    { v: 'alta', l: 'Alta', badgeCls: 'badge-red', color: 'var(--danger)' },
+    { v: 'media', l: 'Media', badgeCls: 'badge-orange', color: 'var(--orange)' },
+    { v: 'baja', l: 'Baja', badgeCls: 'badge-blue', color: 'var(--cyan)' },
   ];
   const puedeEditarPrioridadCxP = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes?.('cxp'));
   const cambiarPrioridadPago = async (c, prioridad) => {
@@ -9559,7 +9560,7 @@ function CxP() {
                         const editable = puedeEditarPrioridadCxP && saldoDe(c) > 0;
                         if (!editable) return pri ? <span className={'badge '+pri.badgeCls}>{pri.l}</span> : <span className="text-muted">-</span>;
                         return (
-                          <select className="input" style={{padding:'2px 6px',fontSize:12,minWidth:84}} aria-label={`Prioridad de pago de CxP ${c.id}`} value={c.prioridad_pago || ''} onChange={e => cambiarPrioridadPago(c, e.target.value)}>
+                          <select className="input" style={{padding:'2px 6px',fontSize:12,minWidth:112,...(pri ? {color:pri.color,borderColor:pri.color,fontWeight:600,background:`color-mix(in srgb, ${pri.color} 12%, transparent)`} : {})}} aria-label={`Prioridad de pago de CxP ${c.id}`} value={c.prioridad_pago || ''} onChange={e => cambiarPrioridadPago(c, e.target.value)}>
                             <option value="">Sin prioridad</option>
                             {PRIORIDADES_PAGO.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
                           </select>
