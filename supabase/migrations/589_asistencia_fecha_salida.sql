@@ -5,23 +5,10 @@ ALTER TABLE public.registros_asistencia
 
 -- Compatibilidad histórica: los turnos nocturnos y las salidas menores que la
 -- entrada ya representaban una jornada que terminaba al día siguiente.
-UPDATE public.registros_asistencia ra
-SET fecha_salida = CASE
-  WHEN ra.hora_salida IS NULL THEN NULL
-  WHEN t.cruza_medianoche IS TRUE OR ra.hora_salida < ra.hora_entrada THEN ra.fecha + 1
-  ELSE ra.fecha
-END
-FROM public.turnos t
-WHERE t.id = ra.turno_id
-  AND ra.fecha_salida IS NULL;
-
-UPDATE public.registros_asistencia ra
-SET fecha_salida = CASE
-  WHEN ra.hora_salida IS NULL THEN NULL
-  WHEN ra.hora_salida < ra.hora_entrada THEN ra.fecha + 1
-  ELSE ra.fecha
-END
-WHERE ra.fecha_salida IS NULL;
+-- Los registros históricos sin fecha_salida se interpretan en la aplicación:
+-- una salida menor que la entrada corresponde al día siguiente. No se hace un
+-- UPDATE masivo aquí porque registros antiguos de mobile_pwa pueden activar
+-- validaciones de geolocalización al tocar la fila.
 
 CREATE INDEX IF NOT EXISTS idx_registros_asistencia_fecha_salida
   ON public.registros_asistencia (empresa_id, fecha_salida);
