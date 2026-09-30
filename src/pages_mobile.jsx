@@ -1568,7 +1568,7 @@ function LogisticaView({ screen, setScreen }) {
     if (!paradaLibreRuta || guardandoParadaLibre) return;
     const descripcion = paradaLibreForm.descripcion_libre.trim();
     if (!descripcion) {
-      addToast?.('La descripcion de la parada libre es obligatoria.');
+      addToast?.('La descripción de la parada libre es obligatoria.');
       return;
     }
     setGuardandoParadaLibre(true);
@@ -1745,7 +1745,7 @@ function LogisticaView({ screen, setScreen }) {
         <div className="text-muted" style={{fontSize:12, marginBottom:10}}>{(ruta.ruta_paradas || []).length} parada(s)</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:8}}><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirLectura(ruta)}>{I.camera} Lectura</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirIncidente(ruta)}>{I.alert} Incidente</button><button className="btn btn-secondary btn-sm" type="button" onClick={() => abrirParadaLibre(ruta)}>+ Parada libre</button></div>
         {[...(ruta.ruta_paradas || [])].sort((a,b) => Number(a.secuencia || 0) - Number(b.secuencia || 0)).map(parada => <div key={parada.id} style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:10}}>
-          <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'libre' ? 'Parada libre' : parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.tipo_documento === 'libre' ? (parada.descripcion_libre || 'Sin descripcion') : parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
+          <div className="row" style={{justifyContent:'space-between',gap:8}}><div><div style={{fontWeight:700}}>Parada {parada.secuencia} · {parada.tipo_documento === 'libre' ? 'Parada libre' : parada.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC'}</div><div className="text-muted mono" style={{fontSize:10}}>{parada.tipo_documento === 'libre' ? (parada.descripcion_libre || 'Sin descripción') : parada.documento_id}</div></div><span className="badge badge-gray">{String(parada.estado || '').replace(/_/g, ' ')}</span></div>
           {!['completada','omitida'].includes(parada.estado) && <button className="btn btn-primary btn-sm" style={{width:'100%',marginTop:10}} onClick={() => abrirParada(parada)}>{I.check} Gestionar parada</button>}
         </div>)}
       </div>)}
@@ -1779,8 +1779,8 @@ function LogisticaView({ screen, setScreen }) {
         <div onClick={() => setParadaLibreRuta(null)} style={{fontSize:12,color:'var(--cyan-dk)',marginBottom:10,cursor:'pointer'}}>← Volver a Ruta</div>
         <h2 className="font-display" style={{marginBottom:6}}>Parada libre</h2>
         <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{paradaLibreRuta.codigo}</div>
-        <label style={{fontSize:12}}>Descripcion *<textarea className="input" rows="4" value={paradaLibreForm.descripcion_libre} onChange={event => setParadaLibreForm(form => ({...form,descripcion_libre:event.target.value}))} placeholder="Que se hizo en la parada" style={{width:'100%',margin:'5px 0 10px'}} /></label>
-        <label style={{fontSize:12}}>Direccion (opcional)<input className="input" value={paradaLibreForm.direccion_parada} onChange={event => setParadaLibreForm(form => ({...form,direccion_parada:event.target.value}))} placeholder="Direccion del punto" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label style={{fontSize:12}}>Descripción *<textarea className="input" rows="4" value={paradaLibreForm.descripcion_libre} onChange={event => setParadaLibreForm(form => ({...form,descripcion_libre:event.target.value}))} placeholder="Qué se hizo en la parada" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label style={{fontSize:12}}>Dirección (opcional)<input className="input" value={paradaLibreForm.direccion_parada} onChange={event => setParadaLibreForm(form => ({...form,direccion_parada:event.target.value}))} placeholder="Dirección del punto" style={{width:'100%',margin:'5px 0 10px'}} /></label>
         <div className="card" style={{padding:12,marginBottom:12}}><div style={{fontWeight:700,fontSize:12,marginBottom:6}}>GPS de la parada</div><div className="text-muted" style={{fontSize:11,marginBottom:8}}>{paradaLibreGps ? `${paradaLibreGps.latitud.toFixed(6)}, ${paradaLibreGps.longitud.toFixed(6)}` : 'Sin coordenadas; puedes continuar.'}</div><button className="btn btn-secondary btn-sm" type="button" onClick={capturarGpsParadaLibre} disabled={capturandoParadaLibreGps}>{capturandoParadaLibreGps ? 'Capturando GPS...' : 'Reintentar GPS'}</button></div>
         <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoParadaLibre || !paradaLibreForm.descripcion_libre.trim()} onClick={guardarParadaLibre}>{guardandoParadaLibre ? 'Guardando...' : 'Guardar parada libre'}</button>
       </div>}

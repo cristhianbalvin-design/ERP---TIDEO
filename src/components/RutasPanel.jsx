@@ -66,7 +66,7 @@ export function RutasPanel() {
     const seq = stops.reduce((max, row) => Math.max(max, Number(row.secuencia || 0)), 0) + 1;
     if (type === 'libre') {
       if (!freeStop.descripcion_libre.trim()) {
-        addToast?.('La descripcion de la parada libre es obligatoria.');
+        addToast?.('La descripción de la parada libre es obligatoria.');
         return;
       }
       run(async () => {
@@ -102,7 +102,7 @@ export function RutasPanel() {
     ? 'Parada libre'
     : stop.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC';
   const stopReference = stop => stop.tipo_documento === 'libre'
-    ? (stop.descripcion_libre || 'Sin descripcion').slice(0, 90)
+    ? (stop.descripcion_libre || 'Sin descripción').slice(0, 90)
     : stop.documento_id;
 
   if (!empresa?.id) return <div className="card mt-6"><div className="card-body">Selecciona una empresa para gestionar rutas.</div></div>;
@@ -138,10 +138,10 @@ export function RutasPanel() {
             <div className="input-group"><label>Tipo</label><select className="input" value={type} onChange={e => { setType(e.target.value); setDocId(''); }}><option value="orden_compra_transito">Tránsito OC</option><option value="guia_remision">Guía despacho de servicio</option><option value="libre">Parada libre</option></select></div>
             {type !== 'libre' && <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Documento</label><select className="input" value={docId} onChange={e => setDocId(e.target.value)}><option value="">Seleccionar documento</option>{documents.map(row => <option key={row.id} value={row.id}>{type === 'guia_remision' ? (row.numero_completo || row.id) : `${row.orden_compra_id || row.id} · ${row.estado}`}</option>)}</select></div>}
             {type === 'libre' && <>
-              <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Descripcion *</label><textarea className="input" rows="2" value={freeStop.descripcion_libre} onChange={e => setFreeStop(prev => ({ ...prev, descripcion_libre: e.target.value }))} placeholder="Que se hizo en la parada" /></div>
-              <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Direccion</label><input className="input" value={freeStop.direccion_parada} onChange={e => setFreeStop(prev => ({ ...prev, direccion_parada: e.target.value }))} placeholder="Direccion opcional" /></div>
+              <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Descripción *</label><textarea className="input" rows="2" value={freeStop.descripcion_libre} onChange={e => setFreeStop(prev => ({ ...prev, descripcion_libre: e.target.value }))} placeholder="Qué se hizo en la parada" /></div>
+              <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Dirección</label><input className="input" value={freeStop.direccion_parada} onChange={e => setFreeStop(prev => ({ ...prev, direccion_parada: e.target.value }))} placeholder="Dirección opcional" /></div>
               <div className="grid-2" style={{ gap: 8, width: '100%' }}><div className="input-group"><label>Latitud</label><input className="input" type="number" step="any" value={freeStop.latitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, latitud_parada: e.target.value }))} placeholder="-12.0464" /></div><div className="input-group"><label>Longitud</label><input className="input" type="number" step="any" value={freeStop.longitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, longitud_parada: e.target.value }))} placeholder="-77.0428" /></div></div>
-              <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Buscar gasto de campo</label><input className="input" value={gastoQuery} onChange={e => { setGastoQuery(e.target.value); setFreeStop(prev => ({ ...prev, gasto_campo_id: '' })); }} placeholder="Descripcion del gasto" /><select className="input" style={{ marginTop: 6 }} value={freeStop.gasto_campo_id} onChange={e => setFreeStop(prev => ({ ...prev, gasto_campo_id: e.target.value }))}><option value="">Sin gasto vinculado</option>{loadingGastos && <option disabled>Buscando...</option>}{gastoOptions.map(gasto => <option key={gasto.id} value={gasto.id}>{gasto.descripcion} · {gasto.monto} {gasto.moneda || 'PEN'} · {gasto.fecha || '-'}</option>)}</select></div>
+              <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Buscar gasto de campo</label><input className="input" value={gastoQuery} onChange={e => { setGastoQuery(e.target.value); setFreeStop(prev => ({ ...prev, gasto_campo_id: '' })); }} placeholder="Descripción del gasto" /><select className="input" style={{ marginTop: 6 }} value={freeStop.gasto_campo_id} onChange={e => setFreeStop(prev => ({ ...prev, gasto_campo_id: e.target.value }))}><option value="">Sin gasto vinculado</option>{loadingGastos && <option disabled>Buscando...</option>}{gastoOptions.map(gasto => <option key={gasto.id} value={gasto.id}>{gasto.descripcion} · {gasto.monto} {gasto.moneda || 'PEN'} · {gasto.fecha || '-'}</option>)}</select></div>
             </>}
             <button className="btn btn-secondary" type="submit" disabled={busy || (type === 'libre' ? !freeStop.descripcion_libre.trim() : !docId)}>Agregar</button>
           </div>
