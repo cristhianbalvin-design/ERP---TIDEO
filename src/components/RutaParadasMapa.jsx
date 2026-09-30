@@ -27,7 +27,16 @@ function AjustarVista({ puntos }) {
   return null;
 }
 
-export function RutaParadasMapa({ paradas = [] }) {
+function EnfocarParada({ punto }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!punto) return;
+    map.flyTo([punto.lat, punto.lng], Math.max(map.getZoom(), 16), { duration: 0.7 });
+  }, [map, punto]);
+  return null;
+}
+
+export function RutaParadasMapa({ paradas = [], selectedStopId = null }) {
   const puntos = useMemo(() => paradas.flatMap(parada => {
     const puntosParada = [];
     const latEntrega = Number(parada.latitud_entrega);
@@ -42,6 +51,18 @@ export function RutaParadasMapa({ paradas = [] }) {
     }
     return puntosParada;
   }), [paradas]);
+  const puntoSeleccionado = useMemo(() => {
+    const parada = paradas.find(item => item.id === selectedStopId);
+    if (!parada) return null;
+    const latEntrega = Number(parada.latitud_entrega);
+    const lngEntrega = Number(parada.longitud_entrega);
+    if (Number.isFinite(latEntrega) && Number.isFinite(lngEntrega)) return { lat: latEntrega, lng: lngEntrega };
+    const latPlanificada = Number(parada.latitud_parada);
+    const lngPlanificada = Number(parada.longitud_parada);
+    return Number.isFinite(latPlanificada) && Number.isFinite(lngPlanificada)
+      ? { lat: latPlanificada, lng: lngPlanificada }
+      : null;
+  }, [paradas, selectedStopId]);
 
   if (!puntos.length) {
     return (
@@ -70,6 +91,7 @@ export function RutaParadasMapa({ paradas = [] }) {
         <MapContainer center={[puntos[0].lat, puntos[0].lng]} zoom={14} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
           <AjustarVista puntos={puntos} />
+          <EnfocarParada punto={puntoSeleccionado} />
           {puntos.map((punto, index) => (
             <Marker key={`${punto.id || index}-${punto.tipoPunto}`} position={[punto.lat, punto.lng]} icon={icono(punto.color)}>
               <Popup>
