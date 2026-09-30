@@ -495,8 +495,8 @@ export async function getTransportistas(empresaId) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase.from('transportistas').select(`
     *,
-    vehiculos:vehiculos_transporte(id, placa, marca, modelo, tipo, activo),
-    conductores:conductores_transporte(id, nombre, dni, brevete, activo)
+    vehiculos:vehiculos_transporte(id, placa, marca, modelo, tipo, nro_certificado_habilitacion, vigencia_certificado_habilitacion, activo, transportista_id),
+    conductores:conductores_transporte(id, nombre, dni, brevete, categoria_brevete, vigencia_brevete, activo, transportista_id)
   `).eq('empresa_id', empresaId).order('razon_social', { ascending: true });
   if (error) { console.error('getTransportistas:', error); return []; }
   return data || [];
@@ -554,11 +554,37 @@ export async function crearVehiculo(empresaId, form) {
     anio: form.anio ? Number(form.anio) : null,
     tipo: form.tipo || 'camion',
     nro_certificado_habilitacion: form.nro_certificado_habilitacion || null,
+    vigencia_certificado_habilitacion: form.vigencia_certificado_habilitacion || null,
     activo: true,
     created_at: new Date().toISOString(),
   }).select().single();
   if (error) throw error;
   return data;
+}
+
+export async function actualizarVehiculo(vehiculoId, cambios) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.from('vehiculos_transporte').update({
+    transportista_id: cambios.transportista_id || null,
+    placa: cambios.placa,
+    marca: cambios.marca || null,
+    modelo: cambios.modelo || null,
+    anio: cambios.anio ? Number(cambios.anio) : null,
+    tipo: cambios.tipo || 'camion',
+    nro_certificado_habilitacion: cambios.nro_certificado_habilitacion || null,
+    vigencia_certificado_habilitacion: cambios.vigencia_certificado_habilitacion || null,
+    activo: cambios.activo !== false,
+    updated_at: new Date().toISOString(),
+  }).eq('id', vehiculoId).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function eliminarVehiculo(vehiculoId) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from('vehiculos_transporte').delete().eq('id', vehiculoId);
+  if (error) throw error;
+  return vehiculoId;
 }
 
 // ─── CRUD Conductores ─────────────────────────────────────────────────────────
@@ -587,4 +613,27 @@ export async function crearConductor(empresaId, form) {
   }).select().single();
   if (error) throw error;
   return data;
+}
+
+export async function actualizarConductor(conductorId, cambios) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.from('conductores_transporte').update({
+    transportista_id: cambios.transportista_id || null,
+    nombre: cambios.nombre,
+    dni: cambios.dni,
+    brevete: cambios.brevete || null,
+    categoria_brevete: cambios.categoria_brevete || null,
+    vigencia_brevete: cambios.vigencia_brevete || null,
+    activo: cambios.activo !== false,
+    updated_at: new Date().toISOString(),
+  }).eq('id', conductorId).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function eliminarConductor(conductorId) {
+  const supabase = await getSupabaseClient();
+  const { error } = await supabase.from('conductores_transporte').delete().eq('id', conductorId);
+  if (error) throw error;
+  return conductorId;
 }
