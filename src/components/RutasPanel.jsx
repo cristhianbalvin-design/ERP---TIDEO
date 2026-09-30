@@ -28,6 +28,7 @@ export function RutasPanel() {
   const [loadingGastos, setLoadingGastos] = useState(false);
   const [notes, setNotes] = useState({});
   const [busy, setBusy] = useState(false);
+  const [evidenceModal, setEvidenceModal] = useState(null);
   const route = rutas.find(row => row.id === selectedId) || rutas[0] || null;
   const visibleRutas = useMemo(() => routeDateFilter ? rutas.filter(row => row.fecha === routeDateFilter) : rutas, [rutas, routeDateFilter]);
   const stops = useMemo(() => stopsOf(route), [route]);
@@ -112,6 +113,7 @@ export function RutasPanel() {
   const transportistaName = id => transportistas.find(t => t.id === id)?.razon_social || 'Sin transportista';
   const vehicleName = id => vehicles.find(v => v.id === id)?.placa || 'Sin vehículo';
   const driverName = id => drivers.find(c => c.id === id)?.nombre || 'Sin conductor';
+  const openEvidence = (stop, kind) => setEvidenceModal({ stop, kind });
   const stopTitle = stop => stop.tipo_documento === 'libre'
     ? 'Parada libre'
     : stop.tipo_documento === 'guia_remision' ? 'Guía de remisión' : 'Tránsito OC';
@@ -164,11 +166,22 @@ export function RutasPanel() {
       </div>
 
       <div className="card"><div className="card-head"><div><div className="eyebrow">Operación</div><h3 style={{ margin: 0 }}>Paradas</h3><div className="text-muted" style={{ marginTop: 4 }}>Completar u omitir solo modifica la parada.</div></div><span className="badge badge-gray">{stops.length} total</span></div><div className="table-wrap"><table className="tbl"><thead><tr><th>#</th><th>Documento</th><th>Estado</th><th>Observaciones</th><th>Acciones</th></tr></thead><tbody>
-        {stops.map((stop, index) => { const cerrada = ['completada', 'omitida'].includes(stop.estado); return <tr key={stop.id} onClick={() => setSelectedStopId(stop.id)} style={{ cursor: 'pointer', background: selectedStopId === stop.id ? 'var(--primary-light,#eff6ff)' : undefined }}><td><strong>{stop.secuencia}</strong></td><td>{stopTitle(stop)}<div className="text-muted mono" style={{ fontSize: 10, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stopReference(stop)}>{stopReference(stop)}</div>{stop.tipo_documento === 'libre' && stop.gasto_campo_id && <div className="text-muted" style={{ fontSize: 10 }}>Gasto vinculado</div>}</td><td><Badge value={stop.estado} /></td><td><input className="input" value={notes[stop.id] ?? stop.observaciones ?? ''} onChange={e => setNotes(prev => ({ ...prev, [stop.id]: e.target.value }))} placeholder="Opcional" /></td><td><div className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn btn-ghost btn-sm" type="button" disabled={index === 0 || busy} onClick={() => move(index, -1)}>↑</button><button className="btn btn-ghost btn-sm" type="button" disabled={index === stops.length - 1 || busy} onClick={() => move(index, 1)}>↓</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => stopAction(stop, 'completada')}>Completar</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => stopAction(stop, 'omitida')}>Omitir</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => run(() => quitarParadaRutaCtx(stop.id), 'Parada retirada; documento fuente sin cambios.')}>Quitar</button></div></td></tr>; })}
+        {stops.map((stop, index) => { const cerrada = ['completada', 'omitida'].includes(stop.estado); return <tr key={stop.id} onClick={() => setSelectedStopId(stop.id)} style={{ cursor: 'pointer', background: selectedStopId === stop.id ? 'var(--primary-light,#eff6ff)' : undefined }}><td><strong>{stop.secuencia}</strong></td><td>{stopTitle(stop)}<div className="text-muted mono" style={{ fontSize: 10, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stopReference(stop)}>{stopReference(stop)}</div>{stop.tipo_documento === 'libre' && stop.gasto_campo_id && <div className="text-muted" style={{ fontSize: 10 }}>Gasto vinculado</div>}</td><td><Badge value={stop.estado} /></td><td><input className="input" value={notes[stop.id] ?? stop.observaciones ?? ''} onChange={e => setNotes(prev => ({ ...prev, [stop.id]: e.target.value }))} placeholder="Opcional" /></td><td><div className="row" style={{ gap: 4, flexWrap: 'wrap' }}><button className="btn btn-ghost btn-sm" type="button" disabled={index === 0 || busy} onClick={() => move(index, -1)}>↑</button><button className="btn btn-ghost btn-sm" type="button" disabled={index === stops.length - 1 || busy} onClick={() => move(index, 1)}>↓</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => stopAction(stop, 'completada')}>Completar</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => stopAction(stop, 'omitida')}>Omitir</button><button className="btn btn-ghost btn-sm" type="button" disabled={busy || cerrada} onClick={() => run(() => quitarParadaRutaCtx(stop.id), 'Parada retirada; documento fuente sin cambios.')}>Quitar</button>{stop.observaciones && <button className="icon-btn" type="button" title="Ver observaciones" aria-label="Ver observaciones" onClick={e => { e.stopPropagation(); openEvidence(stop, 'observaciones'); }}>{I.file}</button>}{stop.firma_entrega_url && <button className="icon-btn" type="button" title="Ver firma" aria-label="Ver firma" onClick={e => { e.stopPropagation(); openEvidence(stop, 'firma'); }}>{I.edit}</button>}{stop.foto_entrega_url && <button className="icon-btn" type="button" title="Ver foto" aria-label="Ver foto" onClick={e => { e.stopPropagation(); openEvidence(stop, 'foto'); }}>{I.camera}</button>}</div></td></tr>; })}
         {!stops.length && <tr><td colSpan="5" className="text-muted">Agrega documentos pendientes a esta ruta.</td></tr>}
       </tbody></table></div></div>
     </div>}
 
     {route && <div style={{ marginTop: 16 }}><RutaParadasMapa paradas={stops} selectedStopId={selectedStopId} /></div>}
+
+    {evidenceModal && <div className="modal-overlay" role="presentation" onClick={() => setEvidenceModal(null)}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Evidencia de parada" style={{ width: 520, maxWidth: 'calc(100vw - 32px)' }} onClick={event => event.stopPropagation()}>
+        <div className="modal-header"><div><div className="eyebrow">Evidencia de parada</div><h2 style={{ margin: 0 }}>{stopTitle(evidenceModal.stop)}</h2></div><button className="icon-btn" type="button" onClick={() => setEvidenceModal(null)}>×</button></div>
+        <div className="modal-body">
+          {evidenceModal.kind === 'observaciones' && <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{evidenceModal.stop.observaciones}</div>}
+          {evidenceModal.kind === 'firma' && <img src={evidenceModal.stop.firma_entrega_url} alt="Firma de entrega" style={{ display: 'block', width: '100%', maxHeight: 360, objectFit: 'contain', background: 'var(--surface-2,#f8fafc)', borderRadius: 8 }} />}
+          {evidenceModal.kind === 'foto' && <img src={evidenceModal.stop.foto_entrega_url} alt="Foto de entrega" style={{ display: 'block', width: '100%', maxHeight: 420, objectFit: 'contain', background: 'var(--surface-2,#f8fafc)', borderRadius: 8 }} />}
+        </div>
+      </div>
+    </div>}
   </div>;
 }
