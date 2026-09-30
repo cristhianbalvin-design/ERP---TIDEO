@@ -342,10 +342,17 @@ begin
     raise exception 'FONDO_INACTIVO: El fondo de caja chica no se encuentra activo.';
   end if;
 
-  -- La sociedad efectiva se obtiene del fondo. El valor recibido en el
-  -- payload solo conserva compatibilidad de firma y no decide el alcance.
-  v_sociedad_id := v_fondo.sociedad_id;
-  if v_sociedad_id is null then
+  -- Un fondo clasificado es la autoridad de su sociedad. Si el cliente
+  -- intenta atribuir el egreso a otra sociedad, se rechaza explícitamente.
+  -- En fondos legacy sin sociedad se conserva la sociedad enviada por el
+  -- cliente, siempre que el alcance del usuario la autorice; solo cuando no
+  -- viene se usa el fallback histórico.
+  if v_fondo.sociedad_id is not null then
+    if v_sociedad_id is not null and v_sociedad_id <> v_fondo.sociedad_id then
+      raise exception 'SOCIEDAD_NO_COINCIDE: El egreso debe pertenecer a la misma sociedad del fondo.';
+    end if;
+    v_sociedad_id := v_fondo.sociedad_id;
+  elsif v_sociedad_id is null then
     select id into v_sociedad_id
     from public.sociedades
     where empresa_id = v_empresa_id and es_principal = true
