@@ -1,0 +1,6 @@
+supabase db query --linked --file D:\tmp\diagnostico_rpc_dry_run.sql --output json
+unexpected status 400: {"message":"Failed to run sql query: ERROR:  P0001: CAPTURA_RPC_RESULTS:[{"ok": true, "actual": "sqlstate=42501 familias=0", "sqlerrm": "No autorizado.", "usuario": "31808675-a2ad-4248-8ec3-ba09f7059b8c", "sqlstate": "42501", "case_name": "solo_ver_buscar_crear"}, {"ok": true, "actual": "sqlstate=42501 tipos=0", "sqlerrm": "No autorizado.", "usuario": "31808675-a2ad-4248-8ec3-ba09f7059b8c", "sqlstate": "42501", "case_name": "solo_ver_tipo"}, {"ok": true, "actual": "familia_1=8bd09b9c-4aa5-4874-845a-8c1936e3976d familia_2=8bd09b9c-4aa5-4874-845a-8c1936e3976d tipos_1=tsi_903058ed1beb4217b2 tipos_2=tsi_903058ed1beb4217b2 familias=1 tipos=1", "sqlerrm": null, "usuario": "03cb9bb6-cd70-4463-81a0-a97b3bb7efae", "sqlstate": null, "case_name": "tecnico_buscar_crear"}]"}
+
+supabase db query --linked --output table "select 'familia' as tabla,count(*) as filas from public.familia_trabajo where nombre ilike 'DRY-FASE3B2-RPC-%' union all select 'tipos_servicio_interno',count(*) from public.tipos_servicio_interno where nombre ilike 'DRY-FASE3B2-RPC-%';"
+familia                | 0
+tipos_servicio_interno | 0
