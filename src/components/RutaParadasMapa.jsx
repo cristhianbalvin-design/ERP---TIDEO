@@ -56,7 +56,7 @@ export function RutaParadasMapa({ paradas = [], selectedStopId = null }) {
     if (!parada) return null;
     const latEntrega = Number(parada.latitud_entrega);
     const lngEntrega = Number(parada.longitud_entrega);
-    if (Number.isFinite(latEntrega) && Number.isFinite(lngEntrega)) return { lat: latEntrega, lng: lngEntrega };
+    if (parada.latitud_entrega != null && parada.longitud_entrega != null && Number.isFinite(latEntrega) && Number.isFinite(lngEntrega)) return { lat: latEntrega, lng: lngEntrega };
     const latPlanificada = Number(parada.latitud_parada);
     const lngPlanificada = Number(parada.longitud_parada);
     return Number.isFinite(latPlanificada) && Number.isFinite(lngPlanificada)
