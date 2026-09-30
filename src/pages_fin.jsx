@@ -47,6 +47,7 @@ import {
 import * as storageService from './services/storageService.js';
 import { METODOS_PAGO, METODO_TRANSFERENCIA } from './lib/metodosPago.js';
 import { limpiarBorradorNuevoEgreso, NuevoEgreso } from './components/NuevoEgreso.jsx';
+import { CerrarFondoModal } from './components/CerrarFondoModal.jsx';
 import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
@@ -7017,7 +7018,7 @@ const CC_FONDO_FORM = {
 };
 
 function CajaChica() {
-  const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion, addToast, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCajaChica = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -7039,6 +7040,7 @@ function CajaChica() {
   const [formFondo, setFormFondo] = useState(CC_FONDO_FORM);
   const [savingFondo, setSavingFondo] = useState(false);
   const [fondoSelId, setFondoSelId] = useState(null);
+  const [cierreFondo, setCierreFondo] = useState(null);
   const [rendicionForm, setRendicionForm] = useState(null);
   const [aporteFondo, setAporteFondo] = useState(null);
   const [aporteForm, setAporteForm] = useState({ monto: '', fecha: new Date().toISOString().slice(0, 10), tipo_origen: 'cuenta_bancaria', cuenta_bancaria_id: '', aportante_id: '', tercero_nombre: '', tercero_documento: '', notas: '' });
@@ -7142,7 +7144,7 @@ function CajaChica() {
     };
   };
 
-  const cargar = async () => {
+  const cargar = async ({ propagarError = false } = {}) => {
     if (!empresaId) return;
     if (!isSupabaseMode()) {
       const mock = construirMock();
@@ -7167,6 +7169,7 @@ function CajaChica() {
         fecha_movimiento: c.fecha,
         monto_movimiento: -Number(c.monto || 0),
       })));
+      if (propagarError) throw err;
     } finally {
       setLoading(false);
     }
@@ -7432,23 +7435,6 @@ function CajaChica() {
     }
   };
 
-  const cerrarFondo = async fondo => {
-    if (!window.confirm(`Cerrar el fondo ${fondo.nombre}?`)) return;
-    const remanente = Number(window.prompt('Remanente devuelto a banco', fondo.saldo_disponible || 0) || 0);
-    try {
-      if (isSupabaseMode()) {
-        await cajaChicaService.cerrarFondo(fondo.id, { remanente, cuenta_bancaria_id: fondo.cuenta_bancaria_id || null, cerrado_por: authUser?.id || null });
-        await cargar();
-      } else {
-        setFondos(prev => prev.map(f => f.id === fondo.id ? { ...f, estado: 'cerrado', fecha_cierre: new Date().toISOString().slice(0, 10) } : f));
-      }
-      setFondoSelId(null);
-      addNotificacion('Fondo cerrado.');
-    } catch (err) {
-      addNotificacion(`No se pudo cerrar el fondo: ${err?.message || err}`);
-    }
-  };
-
   const movsFiltrados = movimientosVista.filter(m => {
     if (fFondo && m.fondo_id !== fFondo) return false;
     if (fPeriodo && String(m.fecha_movimiento || m.fecha || '').slice(0, 7) !== fPeriodo) return false;
@@ -7658,7 +7644,7 @@ function CajaChica() {
                 {(puedeGestionar || puedeCrear) && <button className="btn btn-primary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => abrirAporte(fondoSel)}>{I.plus} Agregar aporte</button>}
                 {(esResponsable(fondoSel) || puedeCrear) && <button className="btn btn-secondary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => setRendicionForm({ periodo_inicio: `${new Date().toISOString().slice(0,7)}-01`, periodo_fin: new Date().toISOString().slice(0,10), monto_solicitado: String(fondoSel.monto_gastado || 0) })}>{I.receipt} Solicitar rendicion</button>}
                 {puedeGestionar && <button className="btn btn-secondary" disabled={fondoSel.estado === 'cerrado'} title={fondoSel.estado === 'cerrado' ? 'El fondo está cerrado' : undefined} onClick={() => { setArqueoFondo(fondoSel); setArqueoForm({ efectivo_declarado: fondoSel.saldo_disponible || '', comprobantes_pendientes: '', justificacion: '' }); }}>{I.clipboard} Arqueo</button>}
-                {puedeGestionar && fondoSel.estado === 'activo' && <button className="btn btn-secondary" onClick={() => cerrarFondo(fondoSel)}>{I.x} Cerrar</button>}
+                {puedeGestionar && fondoSel.estado === 'activo' && <button className="btn btn-secondary" onClick={() => { setFondoSelId(null); setCierreFondo(fondoSel); }}>{I.x} Cerrar</button>}
               </div>
               {fondoSel.rendicion_vigente && (
                 <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}>
@@ -7801,6 +7787,24 @@ function CajaChica() {
           fondoCajaChicaFijo={fondoEgresoFijo}
           onClose={cerrarNuevoEgreso}
           onSaved={cerrarNuevoEgreso}
+        />
+      )}
+      {cierreFondo && (
+        <CerrarFondoModal
+          fondo={cierreFondo}
+          fondos={fondosVista}
+          cuentasBancarias={cuentasBancarias || []}
+          modoVistaSociedad={modoVistaSociedadCajaChica}
+          cerrarFondoAtomico={cajaChicaService.cerrarFondoAtomico}
+          supabaseMode={isSupabaseMode()}
+          onClose={() => setCierreFondo(null)}
+          onCompleted={async () => {
+            await cargar({ propagarError: true });
+            setCierreFondo(null);
+            setFondoSelId(null);
+            addNotificacion('Fondo cerrado.');
+          }}
+          addToast={addToast}
         />
       )}
     </>

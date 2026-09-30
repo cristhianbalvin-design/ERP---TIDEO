@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
+import { buildCierreFondoRpcArgs } from './cajaChicaCierreLogic.js';
+
+export { buildCierreFondoRpcArgs } from './cajaChicaCierreLogic.js';
 
 const genId = prefix => `${prefix}_${Math.random().toString(36).slice(2, 14)}`;
 
@@ -94,18 +97,6 @@ async function resolverSociedadCuentaBancaria(supabase, payload, tipoOrigen) {
     'La sociedad de la cuenta bancaria no está disponible para el usuario.',
   );
   return cuenta.sociedad_id;
-}
-
-export function buildCierreFondoRpcArgs(
-  fondoId,
-  { destino_tipo = null, destino_id = null, referencia = null } = {},
-) {
-  return {
-    p_fondo_id: fondoId,
-    p_destino_tipo: destino_tipo,
-    p_destino_id: destino_id,
-    p_referencia: referencia,
-  };
 }
 
 async function obtenerFondoAbierto(supabase, fondoId) {
@@ -495,6 +486,7 @@ export const cajaChicaService = {
     });
   },
 
+  // Obsoleto: conservar por compatibilidad hasta que la UI use cerrarFondoAtomico.
   async cerrarFondo(id, { remanente = 0, cuenta_bancaria_id = null, referencia = null, cerrado_por = null } = {}) {
     const supabase = await getSupabaseClient();
     const fondo = await updateWithFallback(supabase, 'caja_chica_fondos', id, {
