@@ -2324,6 +2324,122 @@ function ManualMovimientoPanel({ cuentasBancarias, onClose, onGuardar }) {
   );
 }
 
+const normalizarTextoImportacion = value => String(value ?? '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
+
+const parsearMontoImportacion = value => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  const raw = String(value ?? '').trim();
+  if (!raw) return NaN;
+  let normalized = raw.replace(/\s+/g, '').replace(/[^\d,().+\-]/g, '');
+  const negativeByParentheses = normalized.startsWith('(') && normalized.endsWith(')');
+  normalized = normalized.replace(/[()]/g, '');
+  const comma = normalized.lastIndexOf(',');
+  const dot = normalized.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    normalized = comma > dot ? normalized.replace(/\./g, '').replace(',', '.') : normalized.replace(/,/g, '');
+  } else if (comma >= 0) {
+    const decimals = normalized.length - comma - 1;
+    normalized = decimals === 3 && comma > 0 ? normalized.replace(/,/g, '') : normalized.replace(',', '.');
+  }
+  const number = Number(normalized);
+  if (!Number.isFinite(number)) return NaN;
+  return negativeByParentheses ? -Math.abs(number) : number;
+};
+
+const inferirPeriodoArchivoImportacion = fileName => {
+  const months = {
+    enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06',
+    julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+  };
+  const normalized = normalizarTextoImportacion(fileName).replace(/[._-]+/g, ' ');
+  const match = normalized.match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(20\d{2})\b/);
+  return match ? `${match[2]}-${months[match[1]]}` : '';
+};
+
+const decodearEntidadHtml = value => {
+  const raw = String(value ?? '');
+  if (typeof document !== 'undefined') {
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = raw;
+    return textarea.value;
+  }
+  return raw.replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'").replace(/&oacute;/gi, 'ó').replace(/&iacute;/gi, 'í')
+    .replace(/&eacute;/gi, 'é').replace(/&aacute;/gi, 'á').replace(/&uacute;/gi, 'ú')
+    .replace(/&ntilde;/gi, 'ñ');
+};
+
+const limpiarCeldaExcelImportacion = value => decodearEntidadHtml(String(value ?? '')
+  .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+
+const puntuarEncabezadosImportacion = row => {
+  const tokens = ['fecha', 'date', 'monto', 'amount', 'importe', 'saldo', 'descripcion', 'description', 'concepto', 'detalle', 'beneficiario', 'moneda', 'currency', 'tipo', 'operacion'];
+  const values = row.map(value => normalizarTextoImportacion(value));
+  return tokens.reduce((score, token) => score + (values.some(value => value.includes(token)) ? 1 : 0), 0);
+};
+
+const detectarEncabezadoMatrizImportacion = rows => {
+  let bestIndex = 0;
+  let bestScore = 0;
+  rows.slice(0, 50).forEach((row, index) => {
+    const score = puntuarEncabezadosImportacion(row);
+    if (score > bestScore) { bestScore = score; bestIndex = index; }
+  });
+  return bestScore >= 2 ? bestIndex : 0;
+};
+
+const matrizAImportacion = matrix => {
+  const rows = (matrix || []).map(row => Array.isArray(row) ? row : [])
+    .filter(row => row.some(value => String(value ?? '').trim()));
+  if (!rows.length) return { headers: [], rows: [], headerOffset: 0 };
+  const headerOffset = detectarEncabezadoMatrizImportacion(rows);
+  const headers = (rows[headerOffset] || []).map((value, index) => String(value ?? '').trim() || `Columna ${index + 1}`);
+  const parsedRows = rows.slice(headerOffset + 1)
+    .filter(row => row.some(value => String(value ?? '').trim()))
+    .map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])));
+  return { headers, rows: parsedRows, headerOffset };
+};
+
+const extraerFilasExcelHtmlImportacion = matrix => {
+  const html = (matrix || []).flat().filter(value => String(value ?? '').trim()).join('\n');
+  const logicalRows = (html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [])
+    .map(rowHtml => [...rowHtml.matchAll(/<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi)]
+      .map(match => limpiarCeldaExcelImportacion(match[1])))
+    .filter(row => row.length && row.some(Boolean));
+  const headerIndex = logicalRows.findIndex(row => {
+    const normalized = row.map(normalizarTextoImportacion);
+    return normalized.some(value => value.includes('fecha'))
+      && normalized.some(value => value.includes('importe') || value.includes('monto') || value.includes('cargo') || value.includes('abono'));
+  });
+  if (headerIndex < 0) return null;
+  const headers = logicalRows[headerIndex];
+  const rows = logicalRows.slice(headerIndex + 1).filter(row => {
+    const hasDate = /^\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?$/.test(String(row[0] || '').trim());
+    const hasAmount = row.some(value => Number.isFinite(parsearMontoImportacion(value)));
+    return row.length >= 2 && hasDate && hasAmount;
+  }).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ''])));
+  return { headers, rows, headerOffset: headerIndex, format: 'excel-html' };
+};
+
+const parsearExcelImportacion = buffer => {
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, raw: false });
+  const candidates = workbook.SheetNames.map(name => {
+    const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '', raw: false });
+    const htmlRows = extraerFilasExcelHtmlImportacion(matrix);
+    if (htmlRows?.rows?.length) return { ...htmlRows, sheetName: name };
+    const parsed = matrizAImportacion(matrix);
+    return { ...parsed, sheetName: name, score: puntuarEncabezadosImportacion(parsed.headers) };
+  }).filter(candidate => candidate.headers.length || candidate.rows.length);
+  const selected = candidates.sort((a, b) => (b.rows.length - a.rows.length) || ((b.score || 0) - (a.score || 0)))[0];
+  if (!selected) throw new Error('El archivo Excel no contiene una tabla legible.');
+  return selected;
+};
+
 function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
   const [step, setStep] = useState(1);
   const [cuentaId, setCuentaId] = useState('');
@@ -2334,13 +2450,13 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
   const [headerOffset, setHeaderOffset] = useState(0);
   const [fileBuffer, setFileBuffer] = useState(null);
   const [encoding, setEncoding] = useState('utf-8');
-  const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '', numeroOperacion: '' });
+  const [colMap, setColMap] = useState({ fecha: '', descripcion: '', monto: '', tipo: '', moneda: '', numeroOperacion: '' });
   const [errores, setErrores] = useState([]);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const fileRef = useRef();
 
-  const normalizeHeader = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalizeHeader = value => normalizarTextoImportacion(value);
   const splitCSVLine = (line, sep) => line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''));
 
   const detectHeaderOffset = lines => {
@@ -2381,11 +2497,22 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
 
   const applyParsedCSV = (text, skipRows = null) => {
     const { headers: hs, rows, headerOffset: detectedOffset } = parseCSV(text, skipRows);
+    applyParsedRows(hs, rows, skipRows === null ? detectedOffset : skipRows);
+  };
+
+  const applyParsedRows = (hs, rows, offset = 0) => {
     setHeaders(hs);
     setCsvRows(rows);
-    if (skipRows === null) setHeaderOffset(detectedOffset);
-    const guess = f => hs.find(h => h.toLowerCase().includes(f)) || '';
-    setColMap({ fecha: guess('fecha') || guess('date'), descripcion: guess('desc') || guess('concepto') || guess('detalle'), monto: guess('monto') || guess('importe') || guess('amount'), tipo: guess('tipo') || guess('type'), numeroOperacion: guess('operacion') || guess('numero') || guess('operation') });
+    setHeaderOffset(offset);
+    const guess = (...tokens) => hs.find(header => tokens.some(token => normalizeHeader(header).includes(token))) || '';
+    setColMap({
+      fecha: guess('fecha', 'date'),
+      descripcion: guess('desc', 'concepto', 'detalle', 'beneficiario'),
+      monto: guess('monto', 'importe', 'cargo', 'abono', 'amount', 'saldo'),
+      tipo: guess('tipo', 'type', 'operacion'),
+      moneda: guess('moneda', 'currency'),
+      numeroOperacion: guess('numero operacion', 'numero', 'n° oper', 'nº oper', 'n. oper', 'operacion', 'operation'),
+    });
   };
 
   const decodeBuffer = (buffer, selectedEncoding) =>
@@ -2407,12 +2534,29 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     const reader = new FileReader();
     reader.onload = ev => {
       const buffer = ev.target.result;
-      const { text, encoding: detectedEncoding } = decodeAuto(buffer);
-      setFileBuffer(buffer);
-      setEncoding(detectedEncoding);
-      setCsvText(text);
-      applyParsedCSV(text);
-      setStep(2);
+      const extension = String(file.name || '').split('.').pop().toLowerCase();
+      const periodoInferido = inferirPeriodoArchivoImportacion(file.name);
+      if (periodoInferido) setPeriodo(periodoInferido);
+      try {
+        if (extension === 'xls' || extension === 'xlsx') {
+          const parsed = parsearExcelImportacion(buffer);
+          setFileBuffer(null);
+          setEncoding('');
+          setCsvText('');
+          applyParsedRows(parsed.headers, parsed.rows, parsed.headerOffset);
+        } else {
+          const { text, encoding: detectedEncoding } = decodeAuto(buffer);
+          setFileBuffer(buffer);
+          setEncoding(detectedEncoding);
+          setCsvText(text);
+          applyParsedCSV(text);
+        }
+        setImportError('');
+        setStep(2);
+      } catch (error) {
+        setImportError(error?.message || 'No se pudo leer el archivo.');
+        setStep(1);
+      }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -2421,15 +2565,20 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     const tipoRaw = colMap.tipo
       ? normalizeHeader(row[colMap.tipo] || '')
       : '';
-    const montoNumerico = Number(row[colMap.monto] || 0);
+    const montoNumerico = parsearMontoImportacion(row[colMap.monto]);
 
-    if (['debito', 'egreso', 'cargo'].some(valor => tipoRaw.includes(valor))) {
-      return 'debito';
-    }
-    if (['credito', 'ingreso', 'abono'].some(valor => tipoRaw.includes(valor))) {
+    if (['credito', 'ingreso', 'abono', 'recibida', 'recibido'].some(valor => tipoRaw.includes(valor))) {
       return 'credito';
     }
+    if (['debito', 'egreso', 'cargo', 'pago', 'transfer', 'transf', 'compra'].some(valor => tipoRaw.includes(valor))) {
+      return 'debito';
+    }
     return montoNumerico < 0 ? 'debito' : 'credito';
+  };
+
+  const inferirMoneda = row => {
+    const monedaRaw = normalizeHeader(colMap.moneda ? row[colMap.moneda] : '');
+    return monedaRaw.includes('dolar') || monedaRaw.includes('usd') || monedaRaw.includes('us$') ? 'USD' : 'PEN';
   };
 
   const previewColumns = [
@@ -2437,6 +2586,9 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     { key: 'descripcion', label: 'Descripción' },
     { key: 'monto', label: 'Monto' },
     { key: 'tipo', label: 'Tipo' },
+    ...(colMap.moneda
+      ? [{ key: 'moneda', label: 'Moneda' }]
+      : []),
     ...(colMap.numeroOperacion
       ? [{ key: 'numeroOperacion', label: 'Número de operación' }]
       : []),
@@ -2447,14 +2599,16 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
     descripcion: r[colMap.descripcion] || '',
     monto: r[colMap.monto] || '',
     tipo: inferirTipoMovimiento(r),
+    moneda: inferirMoneda(r),
     numeroOperacion: r[colMap.numeroOperacion] || '',
   })), [csvRows, colMap]);
 
   const validar = () => {
     const errs = [];
+    if (!csvRows.length) errs.push('No se encontraron movimientos en el archivo.');
     csvRows.forEach((r, i) => {
       if (!r[colMap.fecha]) errs.push(`Fila ${i+2}: falta fecha`);
-      if (isNaN(Number(r[colMap.monto]))) errs.push(`Fila ${i+2}: monto inválido "${r[colMap.monto]}"`);
+      if (!Number.isFinite(parsearMontoImportacion(r[colMap.monto]))) errs.push(`Fila ${i+2}: monto inválido`);
     });
     setErrores(errs);
     setStep(3);
@@ -2463,7 +2617,12 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
   const normalizarFechaImportacion = value => {
     const raw = String(value || '').trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-    const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    const shortMatch = raw.match(/^(\d{1,2})[\/-](\d{1,2})$/);
+    if (shortMatch) {
+      const year = String(periodo || '').slice(0, 4) || String(new Date().getFullYear());
+      return `${year}-${shortMatch[2].padStart(2, '0')}-${shortMatch[1].padStart(2, '0')}`;
+    }
+    const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s|T|$)/);
     if (!match) return raw;
     const [, day, month, yearValue] = match;
     const year = yearValue.length === 2 ? `20${yearValue}` : yearValue;
@@ -2477,8 +2636,8 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
       const movimientos = csvRows.map(row => ({
         fecha: normalizarFechaImportacion(row[colMap.fecha]),
         descripcion: row[colMap.descripcion] || '',
-        monto: Math.abs(Number(row[colMap.monto] || 0)),
-        moneda: 'PEN',
+        monto: Math.abs(parsearMontoImportacion(row[colMap.monto] || 0)),
+        moneda: inferirMoneda(row),
         tipo: inferirTipoMovimiento(row),
         numero_operacion: row[colMap.numeroOperacion] || null,
       }));
@@ -2510,13 +2669,14 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
               </select>
             </div>
             <div className="input-group"><label>Período</label><input className="input" type="month" value={periodo} onChange={e => setPeriodo(e.target.value)} /></div>
-            <div className="input-group"><label>Archivo CSV</label><input ref={fileRef} type="file" accept=".csv,.txt" className="input" onChange={onFile} /></div>
-            <div style={{fontSize:12, color:'var(--muted)'}}>Formatos soportados: CSV con separador coma o punto y coma. PDF: próximamente.</div>
+            <div className="input-group"><label>Archivo CSV o Excel</label><input ref={fileRef} type="file" accept=".csv,.txt,.xls,.xlsx" className="input" onChange={onFile} /></div>
+            {importError && <div style={{color:'var(--danger)', fontSize:13}}>{importError}</div>}
+            <div style={{fontSize:12, color:'var(--muted)'}}>Formatos soportados: CSV, XLS y XLSX. Se detectan encabezados aunque el banco incluya filas previas.</div>
           </div>
         )}
         {step === 2 && (
           <div style={{display:'flex', flexDirection:'column', gap:12}}>
-            <div className="input-group">
+            {fileBuffer && <div className="input-group">
               <label>Saltar N filas antes del encabezado</label>
               <input
                 className="input"
@@ -2532,8 +2692,8 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
               <div style={{fontSize:11, color:'var(--muted)', marginTop:4}}>
                 La detección automática descarta las filas de metadata anteriores al encabezado.
               </div>
-            </div>
-            <div className="input-group">
+            </div>}
+            {fileBuffer && <div className="input-group">
               <label>Encoding</label>
               <select
                 className="input"
@@ -2550,9 +2710,9 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
                 <option value="windows-1252">Windows-1252</option>
                 <option value="iso-8859-1">Latin-1</option>
               </select>
-            </div>
+            </div>}
             <p style={{margin:0, fontSize:13, color:'var(--muted)'}}>Mapea las columnas de tu archivo a los campos del sistema. ({csvRows.length} filas detectadas)</p>
-            {['fecha','descripcion','monto','tipo','numeroOperacion'].map(f => (
+            {['fecha','descripcion','monto','tipo','moneda','numeroOperacion'].map(f => (
               <div className="input-group" key={f}><label style={{textTransform:'capitalize'}}>{f === 'numeroOperacion' ? 'Número de operación' : f}</label>
                 <select className="input" value={colMap[f]} onChange={e => setColMap(p => ({...p, [f]: e.target.value}))}>
                   <option value="">-- no mapear --</option>
@@ -2560,6 +2720,11 @@ function ImportarExtractoModal({ cuentasBancarias, onClose, onImportar }) {
                 </select>
               </div>
             ))}
+            {headers.some(header => normalizeHeader(header).includes('tipo operacion')) && (
+              <div style={{fontSize:12, color:'var(--muted)', padding:10, background:'var(--surface-2)', borderRadius:8}}>
+                La plantilla BBVA no trae una columna débito/crédito. Se interpretan pagos y transferencias como débitos, y créditos líquidos o transferencias recibidas como créditos.
+              </div>
+            )}
             <p style={{margin:0, fontSize:12, color:'var(--muted)'}}>Vista previa (primeras 5 filas):</p>
             <div className="table-wrap" style={{maxHeight:160}}>
               <table className="tbl">
