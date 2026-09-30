@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { resolverFechaSalida } from './asistenciaTiempo.js';
 import { esRemunerativoPorSubTipo } from './nominaService.js';
 import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
@@ -207,6 +208,12 @@ const normalizarAsistencia = (r = {}) => {
     ...r,
     hora_entrada: hhmm(r.hora_entrada),
     hora_salida: hhmm(r.hora_salida),
+    fecha_salida: resolverFechaSalida({
+      fecha: r.fecha,
+      horaEntrada: r.hora_entrada,
+      horaSalida: r.hora_salida,
+      fechaSalida: r.fecha_salida,
+    }),
     horas_trabajadas_min: Number(r.horas_trabajadas_min || 0),
     tardanza_min: Number(r.tardanza_min ?? r.tardanza_minutos ?? 0),
     horas_extra_min: Number(horasExtraMin || 0),
@@ -238,6 +245,14 @@ const toAsistenciaRow = (empresaId, registro = {}, { includeId = true } = {}) =>
     trabajador_id: registro.trabajador_id,
     turno_id: registro.turno_id || null,
     fecha: registro.fecha,
+    fecha_salida: registro.hora_salida
+      ? resolverFechaSalida({
+        fecha: registro.fecha,
+        horaEntrada: registro.hora_entrada,
+        horaSalida: registro.hora_salida,
+        fechaSalida: registro.fecha_salida,
+      })
+      : null,
     hora_entrada: registro.hora_entrada || null,
     hora_salida: registro.hora_salida || null,
     tardanza_minutos: tardanzaMin,

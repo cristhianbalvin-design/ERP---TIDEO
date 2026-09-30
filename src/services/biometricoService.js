@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.js';
+import { resolverFechaSalida, sumarDiasIso } from './asistenciaTiempo.js';
 
 const norm = value => String(value ?? '').trim();
 const normKey = value => norm(value).toLowerCase();
@@ -174,6 +175,34 @@ export async function previsualizarImportacionBiometrica({ file, perfil, trabaja
     grouped.set(key, [...(grouped.get(key) || []), m]);
   });
 
+  // Une una entrada del día D con una salida explícita del día D+1. La
+  // asistencia sigue perteneciendo a D; solo se conserva la fecha real de
+  // salida para que el cálculo no se parta en dos registros.
+  const gruposPorTrabajador = new Map();
+  grouped.forEach((items, key) => {
+    const trabajadorId = key.split(':')[0];
+    gruposPorTrabajador.set(trabajadorId, [...(gruposPorTrabajador.get(trabajadorId) || []), { key, items }]);
+  });
+  gruposPorTrabajador.forEach(grupos => {
+    grupos.sort((a, b) => a.items[0].fecha.localeCompare(b.items[0].fecha));
+    for (let i = 0; i < grupos.length - 1; i += 1) {
+      const actual = grupos[i];
+      const siguiente = grupos[i + 1];
+      const actualTieneSalida = actual.items.some(m => m.tipo === 'salida');
+      const siguienteTieneEntrada = siguiente.items.some(m => m.tipo === 'entrada');
+      const primeraSiguiente = [...siguiente.items].sort((a, b) => a.hora.localeCompare(b.hora))[0];
+      const esSalidaDelDiaSiguiente = siguiente.items.some(m => m.tipo === 'salida')
+        || (perfil.solo_marcas && primeraSiguiente?.hora < actual.items[0]?.hora);
+      if (siguiente.items[0]?.fecha === sumarDiasIso(actual.items[0]?.fecha, 1)
+        && !actualTieneSalida && !siguienteTieneEntrada && esSalidaDelDiaSiguiente) {
+        const indiceSalida = siguiente.items.findIndex(m => m.tipo === 'salida') >= 0
+          ? siguiente.items.findIndex(m => m.tipo === 'salida')
+          : 0;
+        actual.items.push(siguiente.items.splice(indiceSalida, 1)[0]);
+      }
+    }
+  });
+
   const ready = [];
   const unresolved = [];
   const errors = [];
@@ -186,6 +215,7 @@ export async function previsualizarImportacionBiometrica({ file, perfil, trabaja
   });
 
   grouped.forEach((items) => {
+    if (!items.length) return;
     const sorted = [...items].sort((a, b) => a.hora.localeCompare(b.hora));
     const base = sorted[0];
     const trabajador = base.trabajador;
@@ -204,6 +234,7 @@ export async function previsualizarImportacionBiometrica({ file, perfil, trabaja
       fecha: base.fecha,
       hora_entrada: horaEntrada,
       hora_salida: horaSalida,
+      fecha_salida: resolverFechaSalida({ fecha: base.fecha, horaEntrada, horaSalida }),
       marcas: sorted,
       existente,
       clasificacion: existente ? 'duplicado' : 'listo',

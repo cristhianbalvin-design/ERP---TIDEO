@@ -13,6 +13,7 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
+import { calcularIntervaloAsistencia, horaAMinutos, sumarDiasIso } from './services/asistenciaTiempo.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 const METODOS_PAGO_CAMPO = ['Efectivo', 'Tarjeta empresa', 'Yape / Plin', 'Transferencia bancaria'];
@@ -386,6 +387,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const trabajadorActual = getTrabajadorAsistenciaMovil({ authUser, usuarios, personalAdmin, personalOperativo });
   const hoy = new Date();
   const today = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  const yesterday = sumarDiasIso(today, -1);
   const trabajadorId = trabajadorActual?.id || '';
   const turnoIdPersistible = turnos?.some(t => t.id === trabajadorActual?.turno_id) ? trabajadorActual.turno_id : null;
   const geoCfg = { ...GEO_CONFIG_DEFAULT, ...(empresaConfig || {}) };
@@ -394,6 +396,8 @@ function AsistenciaMobileView({ screen, setScreen }) {
   const necesitaConsentimiento = geoActivo && Boolean(geoCfg.asistencia_movil_consentimiento_requerido) && !consentimientoActual;
 
   const turno = turnos?.find(t => t.id === turnoIdPersistible) || {};
+  const registrosTrabajador = registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && (r.fecha === today || r.fecha === yesterday));
+  const asistenciaAbierta = registrosTrabajador.find(r => !r.hora_salida && r.hora_entrada);
   const refrigerioHabilitado = (turno.modo_refrigerio === 'medido_informativo' || turno.modo_refrigerio === 'medido_efectivo') && 
                                (turno.refrigerio_origenes_permitidos || []).includes('mobile_pwa');
   const showRefrigerio = modo === 'salida' && refrigerioHabilitado;
@@ -422,7 +426,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       setModo('entrada');
       return;
     }
-    const rh = registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && r.fecha === today);
+    const rh = registrosTrabajador;
     if (rh.some(r => !r.hora_salida)) {
       setModo('salida');
     } else if (rh.length > 0) {
@@ -436,7 +440,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
     if (!trabajadorId || !empresa?.id) { setVerificandoHoy(false); return; }
     let cancelled = false;
     setVerificandoHoy(true);
-    rrhhService.getAsistencia(empresa.id, today, today)
+    rrhhService.getAsistencia(empresa.id, yesterday, today)
       .then(rows => {
         if (cancelled) return;
         setRegistrosAsistencia(prev => {
@@ -621,7 +625,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
       
       // Fetch fresh data
       const [rows, marcas] = await Promise.all([
-        rrhhService.getAsistencia(empresa.id, today, today),
+        rrhhService.getAsistencia(empresa.id, yesterday, today),
         rrhhService.getMarcaciones(empresa.id, trabajadorId, today)
       ]);
       setRegistrosAsistencia(prev => {
@@ -782,7 +786,7 @@ function AsistenciaMobileView({ screen, setScreen }) {
         }
       }
     } else if (modo === 'salida') {
-      const abierto = registrosAsistencia.find(r => r.trabajador_id === trabajadorId && r.fecha === today && !r.hora_salida);
+      const abierto = asistenciaAbierta;
       if (abierto) {
         const metadata = {
           latitud_salida: lat, longitud_salida: lng,
@@ -803,18 +807,48 @@ function AsistenciaMobileView({ screen, setScreen }) {
           p_empresa_id: empresa?.id || 'emp_001',
           p_trabajador_id: trabajadorId,
           p_trabajador_tipo: trabajadorActual.trabajador_tipo || 'operativo',
-          p_fecha: today,
+          // La jornada conserva la fecha de entrada; la salida puede pertenecer
+          // al día siguiente.
+          p_fecha: abierto.fecha,
           p_tipo_marca: 'salida',
           p_origen: 'mobile_pwa',
           p_metadata: metadata
         };
         
-        const updatedLocal = { ...abierto, hora_salida: horaActual, estado: 'completo', ...metadata };
+        const updatedLocal = { ...abierto, hora_salida: horaActual, fecha_salida: today, estado: 'completo', ...metadata };
 
         try {
           if (!navigator.onLine) throw new Error('offline');
           const data = await rrhhService.registrarMarcacionRPC(rpcParams);
-          
+
+          // La RPC existente consolida la marcación, pero las versiones antiguas
+          // no persistían el día real de salida. Completar la fila solo cuando la
+          // salida cruzó medianoche conserva la jornada y corrige sus minutos.
+          if (abierto.fecha !== today && data?.registro_id && data.consolidado !== false) {
+            const intervalo = calcularIntervaloAsistencia({
+              fecha: abierto.fecha,
+              horaEntrada: abierto.hora_entrada,
+              horaSalida: horaActual,
+              fechaSalida: today,
+              turno,
+              refrigerioMinutos: 0,
+            });
+            const entradaMin = horaAMinutos(abierto.hora_entrada) || 0;
+            const tardanzaMin = Math.max(0, entradaMin - (horaAMinutos(turno.hora_entrada) || 0) - (Number(turno.tolerancia_minutos) || 0));
+            const estado = tardanzaMin > 0 ? 'tardanza' : intervalo.horas_extra_min > 0 ? 'horas_extra' : 'completo';
+            await rrhhService.actualizarAsistencia(data.registro_id, {
+              ...abierto,
+              ...metadata,
+              empresa_id: empresa?.id || abierto.empresa_id,
+              hora_salida: horaActual,
+              fecha_salida: today,
+              horas_trabajadas_min: intervalo.horas_trabajadas_min,
+              horas_extra_min: intervalo.horas_extra_min,
+              tardanza_min: tardanzaMin,
+              estado,
+            });
+          }
+
           if (data.consolidado === false) {
              addNotificacion(`Tu salida se registró, pero no actualizó la jornada actual debido a una marca de mayor prioridad (${data.origen_vigente}).`);
              setAviso(`Precedencia menor: no sobrescribió marca previa de ${data.origen_vigente}.`);

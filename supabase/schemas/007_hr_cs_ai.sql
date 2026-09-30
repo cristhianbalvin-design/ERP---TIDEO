@@ -66,6 +66,7 @@ create table if not exists public.registros_asistencia (
   trabajador_id text not null,
   turno_id text references public.turnos(id),
   fecha date not null,
+  fecha_salida date,
   hora_entrada time,
   hora_salida time,
   tardanza_minutos integer default 0,

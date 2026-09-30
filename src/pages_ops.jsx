@@ -53,6 +53,7 @@ import { finanzasService } from './services/finanzasService.js';
 import { getAssignableUsers, canUserSeeOwner } from './lib/hierarchy.js';
 import { getPosicionesPorCategoriaUnidad, buildOcupantesPorPosicion } from './lib/posicionesHelpers.js';
 import { contarDiasDescontablesAsistencia } from './utils/asistenciaNomina.js';
+import { calcularIntervaloAsistencia, horaAMinutos, resolverFechaSalida } from './services/asistenciaTiempo.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { MaterialAutocomplete } from './pages_core.jsx';
 import {
@@ -15125,9 +15126,7 @@ function Tickets() {
 }
 
 function timeToMinutesHHMM(t) {
-  if (!t) return 0;
-  const [h, m] = String(t).split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
+  return horaAMinutos(t) || 0;
 }
 
 function minutesToLabel(min) {
@@ -15144,7 +15143,7 @@ function horasEfectivasTurno(entrada, salida, cruzaMedianoche, refrigerio) {
   return minutesToLabel(total);
 }
 
-function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, justificada, refrigerioTomadoMinutos = null) {
+function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, justificada, refrigerioTomadoMinutos = null, fecha = null, fechaSalida = null) {
   if (!turno?.id || !turno?.hora_entrada || !turno?.hora_salida) {
     return { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:'sin_turno', label:'Sin turno' };
   }
@@ -15154,18 +15153,14 @@ function calcularResultadoAsistencia(horaEntrada, horaSalida, turno, esFalta, ju
   if (!horaSalida || !turno) {
     return { horas_trabajadas_min:0, tardanza_min:0, horas_extra_min:0, estado:'incompleto', label:'Incompleto' };
   }
-  const entradaMin = timeToMinutesHHMM(horaEntrada);
-  let salidaMin = timeToMinutesHHMM(horaSalida);
-  if (turno.cruza_medianoche && salidaMin < entradaMin) salidaMin += 24 * 60;
-  let turnoSalidaMin = timeToMinutesHHMM(turno.hora_salida);
-  if (turno.cruza_medianoche) turnoSalidaMin += 24 * 60;
   const refriMin = refrigerioTomadoMinutos !== null && refrigerioTomadoMinutos !== '' ? Number(refrigerioTomadoMinutos) : (turno.refrigerio_minutos || 0);
-  const trabajadasMin = Math.max(0, salidaMin - entradaMin - refriMin);
+  const intervalo = calcularIntervaloAsistencia({ fecha, horaEntrada, horaSalida, fechaSalida, turno, refrigerioMinutos: refriMin });
+  const entradaMin = timeToMinutesHHMM(horaEntrada);
   const tardanzaMin = Math.max(0, entradaMin - timeToMinutesHHMM(turno.hora_entrada) - (turno.tolerancia_minutos || 0));
-  const extraMin = Math.max(0, salidaMin - turnoSalidaMin);
+  const extraMin = intervalo.horas_extra_min;
   const estado = tardanzaMin > 0 ? 'tardanza' : extraMin > 0 ? 'horas_extra' : 'completo';
   const label = tardanzaMin > 0 ? `Tardanza ${tardanzaMin}min` : extraMin > 0 ? `Horas extra ${minutesToLabel(extraMin)}` : 'Completo';
-  return { horas_trabajadas_min:trabajadasMin, tardanza_min:tardanzaMin, horas_extra_min:extraMin, estado, label };
+  return { ...intervalo, tardanza_min:tardanzaMin, estado, label };
 }
 
 function asistenciaBadge(estado) {
@@ -17345,7 +17340,7 @@ function ControlAsistencia() {
     rrhhService.getAutorizacionesHorasExtra(empresa.id).then(setAutHeRows).catch(() => {});
   }, [empresa?.id]);
 
-  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'' });
+  const [form, setForm] = useState({ trabajador_id:trabajadoresGenerales[0]?.id || '', fecha, fecha_salida:fecha, asistio:'si', hora_entrada:'08:00', hora_salida:'17:00', justificada:false, motivo_falta:'', notas:'', latitud:'', longitud:'', refrigerio_tomado_minutos:0, ubicacion_estado:'', descanso_sustitutorio_otorgado:false, descanso_sustitutorio_fecha:'' });
   // Vía independiente para registrar la asistencia real del personal por ciclo.
   // No comparte estado ni handler con "+ Manual": para un minero las horas y el
   // turno no tienen efecto de cálculo; solo el estado real corrige el roster/nómina.
@@ -17427,7 +17422,7 @@ function ControlAsistencia() {
   const trabajadorBloqueado = false;
   const turno = turnoTrabajadorEnFecha(trabajador || {}, form.fecha);
   const turnoPersistibleId = turnos.some(t => t.id === turno.id) ? turno.id : null;
-  const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos);
+  const resultado = calcularResultadoAsistencia(form.hora_entrada, form.hora_salida, turno, form.asistio === 'no', form.justificada, form.refrigerio_tomado_minutos, form.fecha, form.fecha_salida !== form.fecha ? form.fecha_salida : null);
   const esFeriadoGeneral = form.asistio === 'si' && fechasFeriado.has(form.fecha);
   const esFeriadoMinero = !['falta', 'falta_justificada'].includes(formAsistenciaMinera.estado) && fechasFeriado.has(formAsistenciaMinera.fecha);
   const currentMonth = fecha.substring(0, 7);
@@ -17495,7 +17490,7 @@ function ControlAsistencia() {
       .filter(r => r.trabajador_id === t.id && r.fecha === fecha)
       .reduce((masReciente, r) => (!masReciente || new Date(r.created_at) > new Date(masReciente.created_at)) ? r : masReciente, null);
     const trn = turnoTrabajadorEnFecha(t, fecha);
-    const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada) : null;
+    const calc = reg ? calcularResultadoAsistencia(reg.hora_entrada, reg.hora_salida, trn, reg.es_falta, reg.justificada, null, reg.fecha, reg.fecha_salida) : null;
     return { trabajador:t, turno:trn, registro:reg, calc };
   });
 
@@ -17606,6 +17601,7 @@ function ControlAsistencia() {
     }
     const nuevo = {
       empresa_id:empresa.id, trabajador_id:form.trabajador_id, fecha:form.fecha,
+      fecha_salida:form.asistio === 'no' ? null : resultado.fecha_salida,
       trabajador_tipo: trabajador?.trabajador_tipo || 'operativo',
       turno_id:turnoPersistibleId, hora_entrada:form.asistio === 'no' ? null : (form.hora_entrada || null),
       hora_salida:form.asistio === 'no' ? null : (form.hora_salida || null),
@@ -17756,19 +17752,19 @@ function ControlAsistencia() {
       }
       nuevoRegistro.hora_entrada = horaActual;
       nuevoRegistro.hora_salida = existente?.hora_salida || null;
-      calc = calcularResultadoAsistencia(horaActual, nuevoRegistro.hora_salida, turno, false, false, form.refrigerio_tomado_minutos);
+      calc = calcularResultadoAsistencia(horaActual, nuevoRegistro.hora_salida, turno, false, false, form.refrigerio_tomado_minutos, form.fecha);
     } else {
       if (!existente?.hora_entrada) {
         addNotificacion('No puedes marcar salida sin haber marcado entrada.'); return;
       }
       nuevoRegistro.hora_entrada = existente.hora_entrada;
       nuevoRegistro.hora_salida = horaActual;
-      calc = calcularResultadoAsistencia(existente.hora_entrada, horaActual, turno, false, false, form.refrigerio_tomado_minutos);
+      calc = calcularResultadoAsistencia(existente.hora_entrada, horaActual, turno, false, false, form.refrigerio_tomado_minutos, form.fecha);
     }
 
     Object.assign(nuevoRegistro, {
       horas_trabajadas_min:calc.horas_trabajadas_min, tardanza_min:calc.tardanza_min,
-      horas_extra_min:calc.horas_extra_min, estado:calc.estado
+      horas_extra_min:calc.horas_extra_min, fecha_salida:calc.fecha_salida, estado:calc.estado
     });
 
     try {
@@ -17791,7 +17787,7 @@ function ControlAsistencia() {
   const abrirEdicion = (row) => {
     const r = row.registro;
     setForm({
-      trabajador_id:row.trabajador.id, fecha, asistio:r?.es_falta ? 'no' : 'si',
+      trabajador_id:row.trabajador.id, fecha, fecha_salida:r?.fecha_salida || resolverFechaSalida({ fecha, horaEntrada:r?.hora_entrada, horaSalida:r?.hora_salida, turno:row.turno }), asistio:r?.es_falta ? 'no' : 'si',
       hora_entrada:r?.hora_entrada || row.turno.hora_entrada || '08:00',
       hora_salida:r?.hora_salida || row.turno.hora_salida || '17:00',
       justificada:Boolean(r?.justificada), motivo_falta:r?.motivo_falta || '', notas:r?.notas || ''
@@ -17856,6 +17852,7 @@ function ControlAsistencia() {
         const t = porTrabajador.get(r.trabajador_id);
         return {
           Fecha: r.fecha,
+          'Fecha salida': r.fecha_salida || r.fecha,
           Trabajador: t?.nombre || r.trabajador_id,
           Tipo: t?.trabajador_tipo === 'administrativo' ? 'Administrativo' : 'Operativo',
           Modalidad: t && esHonorarios(t) ? 'Honorarios' : 'Planilla',
@@ -17899,9 +17896,9 @@ function ControlAsistencia() {
       const trn = turnoTrabajadorEnFecha(t, fecha);
       const d = masivoDatos[t.id] || { estado: 'completo', hora_entrada: trn.hora_entrada, hora_salida: trn.hora_salida };
       const esFalta = d.estado === 'falta' || d.estado === 'falta_justificada';
-      const calc = esFalta ? { horas_trabajadas_min: 0, tardanza_min: 0, horas_extra_min: 0 } : calcularResultadoAsistencia(d.hora_entrada, d.hora_salida, trn, false, false);
+      const calc = esFalta ? { horas_trabajadas_min: 0, tardanza_min: 0, horas_extra_min: 0, fecha_salida: null } : calcularResultadoAsistencia(d.hora_entrada, d.hora_salida, trn, false, false, null, fecha, d.fecha_salida);
       const turno_id = turnos.some(x => x.id === trn.id) ? trn.id : null;
-      return { empresa_id: empresa.id, trabajador_id: t.id, fecha, turno_id, hora_entrada: esFalta ? null : d.hora_entrada, hora_salida: esFalta ? null : d.hora_salida, horas_trabajadas_min: calc.horas_trabajadas_min, tardanza_min: calc.tardanza_min || 0, horas_extra_min: calc.horas_extra_min, estado: d.estado, es_falta: esFalta, justificada: d.estado === 'falta_justificada', motivo_falta: null, notas: 'Registro masivo', regimen_jornada: 'general' };
+      return { empresa_id: empresa.id, trabajador_id: t.id, fecha, fecha_salida: esFalta ? null : calc.fecha_salida, turno_id, hora_entrada: esFalta ? null : d.hora_entrada, hora_salida: esFalta ? null : d.hora_salida, horas_trabajadas_min: calc.horas_trabajadas_min, tardanza_min: calc.tardanza_min || 0, horas_extra_min: calc.horas_extra_min, estado: d.estado, es_falta: esFalta, justificada: d.estado === 'falta_justificada', motivo_falta: null, notas: 'Registro masivo', regimen_jornada: 'general' };
     });
     let omitidos = 0;
     const resultados = await Promise.all(ops.map(async registro => {
@@ -18032,12 +18029,13 @@ function ControlAsistencia() {
           // la asignación vigente ese día, nunca de la ficha actual del trabajador.
           const trabajadorEnFecha = trabajadorConJornadaEnFecha(row.trabajador, row.fecha);
           const trn = workerTurno(turnos, trabajadorEnFecha, row.fecha);
-          const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false);
+          const calc = calcularResultadoAsistencia(row.hora_entrada, row.hora_salida, trn, false, false, null, row.fecha, row.fecha_salida);
           const registro = {
             empresa_id: empresa?.id || 'emp_001',
             trabajador_id: row.trabajador.id,
             trabajador_tipo: trabajadorEnFecha.trabajador_tipo || 'operativo',
             fecha: row.fecha,
+            fecha_salida: calc.fecha_salida,
             turno_id: turnos.some(t => t.id === trn.id) ? trn.id : null,
             hora_entrada: row.hora_entrada,
             hora_salida: row.hora_salida,
@@ -18740,6 +18738,8 @@ function ControlAsistencia() {
                       esFalta,
                       esFaltaJustificada,
                       registro.refrigerio_tomado_minutos,
+                      registro.fecha,
+                      registro.fecha_salida,
                     ) : null;
                     const estado = calculo?.estado || registro?.estado;
                     const tardanzaMin = calculo?.tardanza_min ?? registro?.tardanza_min ?? 0;
