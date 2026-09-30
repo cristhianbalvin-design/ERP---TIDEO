@@ -1,0 +1,60 @@
+=== COMPARACION MIGRACION REPO VS PAYLOAD APLICADO ===
+El payload aplicado se construyo leyendo directamente el mismo archivo con Get-Content -Raw antes de enviarlo al canal enlazado.
+Get-FileHash repo:    8741B7B8B2B736056D74FA4D0665E9D04854DB2C466551522FD9F6FBBD822E35
+Get-FileHash aplicado:8741B7B8B2B736056D74FA4D0665E9D04854DB2C466551522FD9F6FBBD822E35
+git diff --no-index: sin salida (diff vacio)
+
+=== COMANDO DE PRUEBAS PENDIENTES ===
+supabase db query --linked --file supabase/tests/584_listar_referencias_diagnostico_linked_runner.sql --output table --agent no
+
+=== SALIDA CRUDA DEL RUNNER ===
+unexpected status 400: {"message":"Failed to run sql query: ERROR:  P0001: LINKED_TEST_RESULTS:[{\"case_name\":\"busqueda_cliente\",\"ok\":true,\"expected\":\"filas > 0 para cliente FABRICACION INDUSTRIAL OROPEZA DEXTRE SRL\",\"actual\":\"filas=2\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','mantenimiento','OROPEZA')\"},
+ {\"case_name\":\"busqueda_fragmento_numero\",\"ok\":true,\"expected\":\"filas > 0 para fragmento 0002\",\"actual\":\"filas=1\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','mantenimiento','0002')\"},
+ {\"case_name\":\"busqueda_nombre_oportunidad\",\"ok\":true,\"expected\":\"filas > 0 para fragmento del nombre de oportunidad\",\"actual\":\"filas=1\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','fabricacion','UNIDAD HIDRAULICA')\"},
+ {\"case_name\":\"busqueda_sin_coincidencias\",\"ok\":true,\"expected\":\"0 filas\",\"actual\":\"filas=0\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','mantenimiento','NO_EXISTE_584')\"},
+ {\"case_name\":\"oportunidad_ganada_excluida\",\"ok\":true,\"expected\":\"0 filas para oportunidad ganada opp_864773\",\"actual\":\"filas=0\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','fabricacion','whynco')\"},
+ {\"case_name\":\"oportunidad_perdida_excluida\",\"ok\":true,\"expected\":\"0 filas para oportunidad perdida opp_455772\",\"actual\":\"filas=0\",\"sqlerrm\":null,\"statement\":\"select count(*) from listar_referencias_diagnostico('emp_20513453711','fabricacion','Sandro Calizaya Taco')\"},
+ {\"case_name\":\"permiso_03cb_antes_despues\",\"ok\":true,\"expected\":\"N filas antes (>0) y 0 despues de puede_ver=false\",\"actual\":\"antes=2 despues=0\",\"sqlerrm\":null,\"statement\":\"03cb9bb6: contar con diagnostico.ver=true; update permisos_roles puede_ver=false; volver a contar\"},
+ {\"case_name\":\"tipo_resultado\",\"ok\":true,\"expected\":\"TABLE(id text, numero text, cliente text, activo text, sociedad_id uuid)\",\"actual\":\"TABLE(id text, numero text, cliente text, activo text, sociedad_id uuid)\",\"sqlerrm\":null,\"statement\":\"select pg_get_function_result('public.listar_referencias_diagnostico(text,text,text)')\"}]
+CONTEXT:  PL/pgSQL function inline_code_block line 11 at RAISE"}
+
+=== APLICACION ===
+supabase db query --linked --output table --agent no
+┌───────────────────┐
+│     resultado     │
+├───────────────────┤
+│ COMMIT COMPLETADO │
+└───────────────────┘
+
+=== VERIFICACION POSTERIOR: TO_REGPROCEDURE ===
+┌────────────────────────────────────────────────┐
+│                    funcion                     │
+├────────────────────────────────────────────────┤
+│ listar_referencias_diagnostico(text,text,text) │
+└────────────────────────────────────────────────┘
+
+=== VERIFICACION POSTERIOR: ROUTINE_PRIVILEGES ===
+┌───────────────┬────────────────┬────────────────┬────────────────────────────────┬───────────────────────────────────────┐
+│    grantee    │ privilege_type │ routine_schema │          routine_name          │             specific_name             │
+├───────────────┼────────────────┼────────────────┼────────────────────────────────┼───────────────────────────────────────┤
+│ authenticated │ EXECUTE        │ public         │ listar_referencias_diagnostico │ listar_referencias_diagnostico_250037 │
+│ postgres      │ EXECUTE        │ public         │ listar_referencias_diagnostico │ listar_referencias_diagnostico_250037 │
+└───────────────┴────────────────┴────────────────┴────────────────────────────────┴───────────────────────────────────────┘
+
+=== VERIFICACION POSTERIOR: HUMO 03CB9BB6 ===
+ERROR: P0001: SMOKE_RESULT: mantenimiento=2 fabricacion=1; transaccion sera revertida
+CONTEXT: PL/pgSQL function inline_code_block line 6 at RAISE
+
+=== VERIFICACION POSTERIOR: DATOS ===
+┌───────────────────────┐
+│ diagnosticos_tecnicos │
+├───────────────────────┤
+│ 0                     │
+└───────────────────────┘
+
+=== RESIDUOS PREVIOS A LA APLICACION ===
+┌─────────┬──────────────┬─────────┬────────────────┐
+│ funcion │ diagnosticos │ rac_dry │ relaciones_dry │
+├─────────┼──────────────┼─────────┼────────────────┤
+│ NULL    │ 0            │ 0       │ 0              │
+└─────────┴──────────────┴─────────┴────────────────┘
