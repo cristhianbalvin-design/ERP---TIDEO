@@ -79,6 +79,7 @@ import {
 import {
   listarRutas as svcListarRutas,
   listarDocumentosDisponibles as svcListarDocumentosDisponibles,
+  buscarGastosCampo as svcBuscarGastosCampo,
   crearRuta as svcCrearRuta,
   actualizarRuta as svcActualizarRuta,
   actualizarEstadoRuta as svcActualizarEstadoRuta,
@@ -8675,6 +8676,11 @@ export function AppProvider({ children }) {
     return data;
   };
 
+  const buscarGastosCampoCtx = async texto => {
+    if (!empresa?.id || !isSupabaseConfigured()) return [];
+    return svcBuscarGastosCampo(empresa.id, texto);
+  };
+
   const crearRutaCtx = async (payload) => {
     if (!empresa?.id) throw new Error('Sin empresa activa');
     if (isSupabaseConfigured()) {
@@ -11916,7 +11922,7 @@ export function AppProvider({ children }) {
     transportistas, setTransportistas, crearTransportistaCtx, actualizarTransportistaCtx, crearVehiculoCtx, actualizarVehiculoCtx, eliminarVehiculoCtx, crearConductorCtx, actualizarConductorCtx, eliminarConductorCtx,
     ordenesVenta, setOrdenesVenta, crearOVCtx, actualizarOVCtx, confirmarOVCtx, anularOVCtx, recargarOrdenesVenta,
     catalogoVenta, setCatalogoVenta, crearProductoCatalogoCtx,
-    rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas,
+    rutas, setRutas, rutaParadas, candidatosParadas, recargarRutas, recargarCandidatosParadas, buscarGastosCampoCtx,
     crearRutaCtx, actualizarRutaCtx, actualizarEstadoRutaCtx, agregarParadaRutaCtx, eliminarRutaCtx,
     actualizarParadaRutaCtx, actualizarEstadoParadaRutaCtx, reordenarParadasRutaCtx, quitarParadaRutaCtx,
     mantenimientosFlota, recargarMantenimientosFlota, crearMantenimientoFlotaCtx, actualizarMantenimientoFlotaCtx, eliminarMantenimientoFlotaCtx,
