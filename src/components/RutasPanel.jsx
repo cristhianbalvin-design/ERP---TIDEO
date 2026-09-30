@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context.jsx';
+import { I } from '../icons.jsx';
 import { RutaParadasMapa } from './RutaParadasMapa.jsx';
 
 const today = () => new Date().toISOString().slice(0, 10);
