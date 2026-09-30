@@ -8358,6 +8358,8 @@ function CxP() {
   const [filtMoneda, setFiltMoneda] = useState('todos');
   const [filtMes, setFiltMes] = useState('todos');
   const [filtBusqueda, setFiltBusqueda] = useState('');
+  const [filtPrioridad, setFiltPrioridad] = useState('todas');
+  const [ordenPorPrioridad, setOrdenPorPrioridad] = useState(false);
 
   const mesesDisponibles = useMemo(() => {
     const set = new Set();
@@ -8516,6 +8518,20 @@ function CxP() {
   };
 
   const pagosDe = cxpId => (cxpPagos || []).filter(p => p.cxp_id === cxpId);
+  const PRIORIDADES_PAGO = [
+    { v: 'alta', l: 'Alta', badgeCls: 'badge-red' },
+    { v: 'media', l: 'Media', badgeCls: 'badge-orange' },
+    { v: 'baja', l: 'Baja', badgeCls: 'badge-blue' },
+  ];
+  const puedeEditarPrioridadCxP = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes?.('cxp'));
+  const cambiarPrioridadPago = async (c, prioridad) => {
+    try {
+      const updated = await finanzasService.actualizarPrioridadPagoCxP(c.id, prioridad);
+      setCxp(prev => prev.map(x => x.id === c.id ? { ...x, prioridad_pago: updated?.prioridad_pago ?? null } : x));
+    } catch (e) {
+      addNotificacion('Error al guardar la prioridad de pago: ' + e.message);
+    }
+  };
   const puedeAnularCxP = Boolean(role?.permisos?.todo || role?.permisos?.anular === true || role?.permisos?.anular?.includes?.('cxp'));
   const puedeEliminarCxP = Boolean(role?.permisos?.todo || role?.es_admin_empresa || role?.es_superadmin);
   const cxpEsPreliminar = c => {
@@ -8650,6 +8666,8 @@ function CxP() {
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
+    if (filtPrioridad === 'sin' && c.prioridad_pago) return false;
+    if (['alta', 'media', 'baja'].includes(filtPrioridad) && c.prioridad_pago !== filtPrioridad) return false;
     if (filtBusqueda) {
       if (!textoBusquedaCxP(c).includes(normalizarBusquedaCxP(filtBusqueda))) return false;
     }
@@ -8660,6 +8678,10 @@ function CxP() {
     const fecha = c.fecha_emision || c.emision || '';
     return fecha.startsWith(filtMes);
   });
+  const RANGO_PRIORIDAD_PAGO = { alta: 0, media: 1, baja: 2 };
+  const cxpOrdenada = ordenPorPrioridad
+    ? [...cxpFiltrada].sort((a, b) => (RANGO_PRIORIDAD_PAGO[a.prioridad_pago] ?? 3) - (RANGO_PRIORIDAD_PAGO[b.prioridad_pago] ?? 3))
+    : cxpFiltrada;
   const cxpTributos = cxpVista.filter(cxpEsTributo);
 
   const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c), 0);
@@ -9443,6 +9465,11 @@ function CxP() {
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
+          <select className="input" style={{flex:'1 1 120px'}} value={filtPrioridad} onChange={e => setFiltPrioridad(e.target.value)} title="Filtrar por prioridad de pago">
+            <option value="todas">Todas las prioridades</option>
+            {PRIORIDADES_PAGO.map(p => <option key={p.v} value={p.v}>Prioridad {p.l.toLowerCase()}</option>)}
+            <option value="sin">Sin prioridad</option>
+          </select>
         </div>
         <div className="table-wrap">
           <table className="tbl">
@@ -9458,11 +9485,16 @@ function CxP() {
                 <th>Total</th>
                 <th>{tabCxP === 'tributos' ? 'Estado' : 'Pagado'}</th>
                 <th>{tabCxP === 'tributos' ? 'Formulario' : 'Saldo'}</th>
+                <th>
+                  <button type="button" className="btn btn-ghost" style={{padding:0,fontSize:'inherit',fontWeight:'inherit',textTransform:'inherit',letterSpacing:'inherit'}} onClick={() => setOrdenPorPrioridad(v => !v)} title={ordenPorPrioridad ? 'Quitar orden por prioridad' : 'Ordenar por prioridad de pago'}>
+                    Prioridad{ordenPorPrioridad ? ' ↑' : ''}
+                  </button>
+                </th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {cxpFiltrada.length ? cxpFiltrada.map(c => {
+              {cxpOrdenada.length ? cxpOrdenada.map(c => {
                 const sem = semaforoDe(c);
                 const ben = beneficiarioDetalle(c);
                 const ocRelacionada = c.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
@@ -9522,6 +9554,19 @@ function CxP() {
                       {tabCxP === 'tributos' ? (c.tributo_formulario || c.factura_numero || '-') : <strong>{money(saldoDe(c), symOf(c.moneda))}</strong>}
                     </td>
                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
+                      {(() => {
+                        const pri = PRIORIDADES_PAGO.find(p => p.v === c.prioridad_pago);
+                        const editable = puedeEditarPrioridadCxP && saldoDe(c) > 0;
+                        if (!editable) return pri ? <span className={'badge '+pri.badgeCls}>{pri.l}</span> : <span className="text-muted">-</span>;
+                        return (
+                          <select className="input" style={{padding:'2px 6px',fontSize:12,minWidth:84}} aria-label={`Prioridad de pago de CxP ${c.id}`} value={c.prioridad_pago || ''} onChange={e => cambiarPrioridadPago(c, e.target.value)}>
+                            <option value="">Sin prioridad</option>
+                            {PRIORIDADES_PAGO.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
+                          </select>
+                        );
+                      })()}
+                    </td>
+                    <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                       <div className="cxp-row-actions" aria-label={`Acciones de CxP ${c.id}`}>
                         {c.archivo_factura_url && <a href={c.archivo_factura_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver comprobante adjunto" title="Ver comprobante adjunto">{I.file}</a>}
                         {c.archivo_constancia_url && <a href={c.archivo_constancia_url} target="_blank" rel="noreferrer" className="icon-btn cxp-action-icon" aria-label="Ver constancia de suspensión" title="Ver constancia de suspensión">{I.doc}</a>}
@@ -9537,7 +9582,7 @@ function CxP() {
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={10 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
+                <tr><td colSpan={11 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
               )}
             </tbody>
           </table>
