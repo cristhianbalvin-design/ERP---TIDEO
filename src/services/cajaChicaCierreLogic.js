@@ -18,8 +18,27 @@ const MENSAJES_CIERRE = Object.freeze({
   DESTINO_INVALIDO: 'El destino debe ser una transferencia a otra caja o una devolución a cuenta bancaria.',
 });
 
+export const MENSAJE_CUENTAS_SIN_SOCIEDAD_ACTIVA = 'No hay una sociedad activa seleccionada; solo se pueden usar cuentas bancarias sin sociedad clasificada.';
+export const MENSAJE_CUENTAS_SIN_DESTINO = 'No hay cuentas activas en esta moneda dentro del alcance.';
+export const MENSAJE_CIERRE_EXITO_REFRESH_FALLIDO = 'El fondo se cerró correctamente, pero no se pudo actualizar la lista. Recarga la pantalla para ver el estado actualizado.';
+export const MENSAJE_CIERRE_MODO_DEMO = 'El cierre de fondos no está disponible en modo demostración.';
+
 const normalizarMoneda = value => String(value == null ? 'PEN' : value).toUpperCase();
 const estadoActivo = row => String(row?.estado || '').toLowerCase() === 'activo';
+
+export function adaptarAlcanceCuentasCajaChica(modoVistaSociedad = {}) {
+  const sinFiltro = modoVistaSociedad.sinFiltro === true;
+  const sociedadesIds = Array.isArray(modoVistaSociedad.sociedadesIds)
+    ? [...new Set(modoVistaSociedad.sociedadesIds.filter(Boolean))]
+    : [];
+  const sociedadIdEscritura = modoVistaSociedad.sociedadIdEscritura || null;
+  return {
+    sinFiltro,
+    sociedadesIds,
+    sociedadIdEscritura,
+    tieneAlcance: sinFiltro || Boolean(sociedadIdEscritura) || sociedadesIds.length > 0,
+  };
+}
 
 export function filtrarDestinosTransferencia(fondo, fondos = []) {
   if (!fondo?.sociedad_id) return [];
@@ -35,6 +54,8 @@ export function filtrarDestinosTransferencia(fondo, fondos = []) {
 }
 
 function cuentaDentroDelAlcance(cuenta, alcance) {
+  // La RPC 585 no aplica alcance societario a cuentas sin sociedad.
+  if (!cuenta?.sociedad_id) return true;
   if (!alcance) return true;
   if (alcance.sociedadIdEscritura) return cuenta?.sociedad_id === alcance.sociedadIdEscritura;
   if (alcance.sinFiltro) return true;
@@ -47,10 +68,36 @@ export function filtrarCuentasDevolucion(fondo, cuentas = [], alcance = null) {
   return cuentas.filter(cuenta => (
     cuenta?.id
     && !ESTADOS_INACTIVOS.has(String(cuenta.estado || '').toLowerCase())
+    && cuenta.es_cuenta_detracciones !== true
     && normalizarMoneda(cuenta.moneda) === moneda
     && cuentaDentroDelAlcance(cuenta, alcance)
     && (!fondo?.sociedad_id || cuenta.sociedad_id === fondo.sociedad_id)
   ));
+}
+
+export function mensajeCuentasDevolucion(alcance, cuentas = []) {
+  if (cuentas.length > 0) return null;
+  if (alcance?.tieneAlcance === false) return MENSAJE_CUENTAS_SIN_SOCIEDAD_ACTIVA;
+  return MENSAJE_CUENTAS_SIN_DESTINO;
+}
+
+export function puedeConfirmarCierreCajaChica({
+  guardando = false,
+  finalizado = false,
+  supabaseMode = true,
+  saldoNegativo = false,
+  requiereDestinoVisible = false,
+  destinoTipo = '',
+  destinoId = '',
+  sinDestinosActuales = false,
+} = {}) {
+  return Boolean(
+    !guardando
+      && !finalizado
+      && supabaseMode
+      && !saldoNegativo
+      && (!requiereDestinoVisible || (destinoTipo && destinoId && !sinDestinosActuales)),
+  );
 }
 
 export function extraerCodigoErrorCierre(error) {

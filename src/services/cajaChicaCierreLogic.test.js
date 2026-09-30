@@ -1,13 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  adaptarAlcanceCuentasCajaChica,
   buildCierreFondoRpcArgs,
   extraerCodigoErrorCierre,
   filtrarCuentasDevolucion,
   filtrarDestinosTransferencia,
   mapTransferenciasHistorial,
+  mensajeCuentasDevolucion,
   mensajeErrorCierre,
+  MENSAJE_CIERRE_EXITO_REFRESH_FALLIDO,
+  MENSAJE_CIERRE_MODO_DEMO,
+  puedeConfirmarCierreCajaChica,
 } from './cajaChicaCierreLogic.js';
+import {
+  PERFIL_SOCIEDAD,
+  SOCIEDAD_TODAS_ID,
+  resolverFiltroSociedadesVista,
+} from './sociedadesService.js';
 
 const fondo = (overrides = {}) => ({
   id: 'origen',
@@ -27,11 +37,69 @@ test('filtra cajas destino por estado, moneda, sociedad y origen', () => {
 
   assert.deepEqual(result.map(row => row.id), ['valida']);
   assert.deepEqual(filtrarDestinosTransferencia(fondo({ sociedad_id: null }), result), []);
+  assert.deepEqual(
+    filtrarDestinosTransferencia(fondo({ moneda: null }), [
+      { id: 'pen', estado: 'activo', moneda: 'PEN', sociedad_id: 'soc-a' },
+    ]).map(row => row.id),
+    ['pen'],
+  );
+});
+
+test('adapta las salidas reales del resolver de sociedades', () => {
+  const disponibles = [{ id: 'soc-a' }, { id: 'soc-b' }, { id: 'soc-c' }];
+  const casos = {
+    tenant_sin_multisociedad: resolverFiltroSociedadesVista({
+      multisociedadHabilitado: false,
+      perfilSociedad: PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+      sociedadesDisponibles: [],
+    }),
+    perfil_sin_multisociedad_en_tenant_multi: resolverFiltroSociedadesVista({
+      multisociedadHabilitado: true,
+      perfilSociedad: PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+      sociedadesDisponibles: disponibles,
+    }),
+    grupo_completo: resolverFiltroSociedadesVista({
+      multisociedadHabilitado: true,
+      perfilSociedad: PERFIL_SOCIEDAD.GRUPO,
+      sociedadActiva: SOCIEDAD_TODAS_ID,
+      sociedadesDisponibles: disponibles,
+    }),
+    sociedad_activa: resolverFiltroSociedadesVista({
+      multisociedadHabilitado: true,
+      perfilSociedad: PERFIL_SOCIEDAD.MULTISOCIEDAD,
+      sociedadActiva: 'soc-a',
+      sociedadesIdsAlcance: ['soc-a', 'soc-b'],
+      sociedadesDisponibles: disponibles,
+    }),
+    sin_sociedad_activa: resolverFiltroSociedadesVista({
+      multisociedadHabilitado: true,
+      perfilSociedad: PERFIL_SOCIEDAD.MULTISOCIEDAD,
+      sociedadesIdsAlcance: ['soc-a'],
+      sociedadesDisponibles: disponibles,
+    }),
+  };
+
+  assert.deepEqual(adaptarAlcanceCuentasCajaChica(casos.tenant_sin_multisociedad), {
+    sinFiltro: true, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: true,
+  });
+  assert.deepEqual(adaptarAlcanceCuentasCajaChica(casos.perfil_sin_multisociedad_en_tenant_multi), {
+    sinFiltro: false, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: false,
+  });
+  assert.deepEqual(adaptarAlcanceCuentasCajaChica(casos.grupo_completo), {
+    sinFiltro: true, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: true,
+  });
+  assert.deepEqual(adaptarAlcanceCuentasCajaChica(casos.sociedad_activa), {
+    sinFiltro: false, sociedadesIds: ['soc-a'], sociedadIdEscritura: 'soc-a', tieneAlcance: true,
+  });
+  assert.deepEqual(adaptarAlcanceCuentasCajaChica(casos.sin_sociedad_activa), {
+    sinFiltro: false, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: false,
+  });
 });
 
 test('filtra cuentas destino por estado, moneda, alcance y sociedad del fondo', () => {
   const cuentas = [
-    { id: 'cta-valida', estado: 'activo', moneda: 'PEN', sociedad_id: 'soc-a' },
+    { id: 'cta-valida', nombre: 'Cuenta operativa', banco: 'Banco Demo', numero_cuenta: '0012345678', estado: 'activo', moneda: 'PEN', sociedad_id: 'soc-a', es_cuenta_detracciones: false },
+    { id: 'cta-detracciones', nombre: 'Cuenta detracciones', banco: 'Banco Demo', numero_cuenta: '0099999999', estado: 'activo', moneda: 'PEN', sociedad_id: 'soc-a', es_cuenta_detracciones: true },
     { id: 'cta-otra-sociedad', estado: 'activo', moneda: 'PEN', sociedad_id: 'soc-b' },
     { id: 'cta-usd', estado: 'activo', moneda: 'USD', sociedad_id: 'soc-a' },
     { id: 'cta-inactiva', estado: 'inactivo', moneda: 'PEN', sociedad_id: 'soc-a' },
@@ -49,6 +117,34 @@ test('filtra cuentas destino por estado, moneda, alcance y sociedad del fondo', 
     filtrarCuentasDevolucion(fondo({ sociedad_id: null }), cuentas, { sociedadesIds: ['soc-b'] }).map(row => row.id),
     ['cta-otra-sociedad'],
   );
+  assert.deepEqual(
+    filtrarCuentasDevolucion(
+      fondo({ sociedad_id: null }),
+      [{ id: 'cta-sin-sociedad', estado: 'activo', moneda: 'PEN', sociedad_id: null }],
+      { sinFiltro: false, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: false },
+    ).map(row => row.id),
+    ['cta-sin-sociedad'],
+  );
+  assert.deepEqual(
+    filtrarCuentasDevolucion(
+      fondo(),
+      [{ id: 'cta-sin-sociedad', estado: 'activo', moneda: 'PEN', sociedad_id: null }],
+      { sinFiltro: true, sociedadesIds: [], sociedadIdEscritura: null, tieneAlcance: true },
+    ),
+    [],
+  );
+});
+
+test('distingue mensaje de falta de sociedad activa de falta de cuentas', () => {
+  assert.equal(
+    mensajeCuentasDevolucion({ tieneAlcance: false }, []),
+    'No hay una sociedad activa seleccionada; solo se pueden usar cuentas bancarias sin sociedad clasificada.',
+  );
+  assert.equal(
+    mensajeCuentasDevolucion({ tieneAlcance: true }, []),
+    'No hay cuentas activas en esta moneda dentro del alcance.',
+  );
+  assert.equal(mensajeCuentasDevolucion({ tieneAlcance: false }, [{ id: 'cta' }]), null);
 });
 
 test('extrae y traduce códigos de error conocidos', () => {
@@ -84,6 +180,37 @@ test('los argumentos de cierre no incluyen monto y solo envían destino y refere
       p_referencia: 'cierre-test',
     },
   );
+});
+
+test('expone el mensaje terminal cuando el cierre tuvo éxito pero falló el refresco', () => {
+  assert.equal(
+    MENSAJE_CIERRE_EXITO_REFRESH_FALLIDO,
+    'El fondo se cerró correctamente, pero no se pudo actualizar la lista. Recarga la pantalla para ver el estado actualizado.',
+  );
+});
+
+test('bloquea el cierre en modo demo con el aviso definido', () => {
+  assert.equal(MENSAJE_CIERRE_MODO_DEMO, 'El cierre de fondos no está disponible en modo demostración.');
+});
+
+test('la regla pura de confirmación cubre los siete estados del cierre', () => {
+  const base = {
+    guardando: false,
+    finalizado: false,
+    supabaseMode: true,
+    saldoNegativo: false,
+    requiereDestinoVisible: true,
+    destinoTipo: 'cuenta_bancaria',
+    destinoId: 'cta-1',
+    sinDestinosActuales: false,
+  };
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, destinoTipo: '', destinoId: '' }), false);
+  assert.equal(puedeConfirmarCierreCajaChica(base), true);
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, saldoNegativo: true }), false);
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, supabaseMode: false }), false);
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, finalizado: true }), false);
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, guardando: true }), false);
+  assert.equal(puedeConfirmarCierreCajaChica({ ...base, requiereDestinoVisible: false, destinoTipo: '', destinoId: '' }), true);
 });
 
 test('mapea transferencias entrantes y salientes sin convertirlas en ingresos o egresos', () => {

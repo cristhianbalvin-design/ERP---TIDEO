@@ -224,11 +224,6 @@ export const cajaChicaService = {
     return listarTransferenciasPaginadas(supabase, empresaId);
   },
 
-  async listarTransferenciasHistorial(empresaId) {
-    const supabase = await getSupabaseClient();
-    return listarTransferenciasPaginadas(supabase, empresaId);
-  },
-
   async listarMovimientos(empresaId) {
     const supabase = await getSupabaseClient();
     const [egresos, rendiciones, aportes, fondos] = await Promise.all([
