@@ -165,11 +165,14 @@ export async function agregarParada(empresaId, rutaId, payload) {
     estado: 'pendiente',
     observaciones: String(payload.observaciones || '').trim() || null,
   };
-  if (esLibre) {
-    insertPayload.descripcion_libre = String(payload.descripcion_libre || '').trim();
+  const tieneUbicacion = ['direccion_parada', 'latitud_parada', 'longitud_parada'].some(key => key in payload);
+  if (esLibre || tieneUbicacion) {
     insertPayload.direccion_parada = String(payload.direccion_parada || '').trim() || null;
     insertPayload.latitud_parada = payload.latitud_parada === '' || payload.latitud_parada == null ? null : Number(payload.latitud_parada);
     insertPayload.longitud_parada = payload.longitud_parada === '' || payload.longitud_parada == null ? null : Number(payload.longitud_parada);
+  }
+  if (esLibre) {
+    insertPayload.descripcion_libre = String(payload.descripcion_libre || '').trim();
     insertPayload.gasto_campo_id = payload.gasto_campo_id || null;
   }
   const { data, error } = await supabase

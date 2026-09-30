@@ -87,7 +87,18 @@ export function RutasPanel() {
       return;
     }
     if (!docId) return;
-    run(async () => { await agregarParadaRutaCtx(route.id, { tipo_documento: type, documento_id: docId, secuencia: seq }); setDocId(''); }, 'Parada agregada; el documento fuente no cambió.');
+    run(async () => {
+      await agregarParadaRutaCtx(route.id, {
+        tipo_documento: type,
+        documento_id: docId,
+        secuencia: seq,
+        direccion_parada: freeStop.direccion_parada,
+        latitud_parada: freeStop.latitud_parada,
+        longitud_parada: freeStop.longitud_parada,
+      });
+      setDocId('');
+      setFreeStop(prev => ({ ...prev, direccion_parada: '', latitud_parada: '', longitud_parada: '' }));
+    }, 'Parada agregada; el documento fuente no cambió.');
   };
   const move = (index, delta) => { const next = [...stops]; const target = index + delta; if (target < 0 || target >= next.length) return; [next[index], next[target]] = [next[target], next[index]]; run(() => reordenarParadasRutaCtx(route.id, next), 'Orden de paradas actualizado.'); };
   const stopAction = (stop, state) => run(() => actualizarEstadoParadaRutaCtx(stop.id, state, notes[stop.id] || null), `Parada ${state === 'completada' ? 'completada' : 'omitida'}; documento fuente sin cambios.`);
@@ -137,10 +148,10 @@ export function RutasPanel() {
           <div className="row" style={{ gap: 8, alignItems: 'end', flexWrap: 'wrap', marginTop: 8 }}>
             <div className="input-group"><label>Tipo</label><select className="input" value={type} onChange={e => { setType(e.target.value); setDocId(''); }}><option value="orden_compra_transito">Tránsito OC</option><option value="guia_remision">Guía despacho de servicio</option><option value="libre">Parada libre</option></select></div>
             {type !== 'libre' && <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Documento</label><select className="input" value={docId} onChange={e => setDocId(e.target.value)}><option value="">Seleccionar documento</option>{documents.map(row => <option key={row.id} value={row.id}>{type === 'guia_remision' ? (row.numero_completo || row.id) : `${row.orden_compra_id || row.id} · ${row.estado}`}</option>)}</select></div>}
+            {type === 'libre' && <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Descripción *</label><textarea className="input" rows="2" value={freeStop.descripcion_libre} onChange={e => setFreeStop(prev => ({ ...prev, descripcion_libre: e.target.value }))} placeholder="Qué se hizo en la parada" /></div>}
+            <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Dirección</label><input className="input" value={freeStop.direccion_parada} onChange={e => setFreeStop(prev => ({ ...prev, direccion_parada: e.target.value }))} placeholder="Dirección opcional" /></div>
+            <div className="grid-2" style={{ gap: 8, width: '100%' }}><div className="input-group"><label>Latitud</label><input className="input" type="number" step="any" value={freeStop.latitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, latitud_parada: e.target.value }))} placeholder="-12.0464" /></div><div className="input-group"><label>Longitud</label><input className="input" type="number" step="any" value={freeStop.longitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, longitud_parada: e.target.value }))} placeholder="-77.0428" /></div></div>
             {type === 'libre' && <>
-              <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Descripción *</label><textarea className="input" rows="2" value={freeStop.descripcion_libre} onChange={e => setFreeStop(prev => ({ ...prev, descripcion_libre: e.target.value }))} placeholder="Qué se hizo en la parada" /></div>
-              <div className="input-group" style={{ minWidth: 220, flex: 1 }}><label>Dirección</label><input className="input" value={freeStop.direccion_parada} onChange={e => setFreeStop(prev => ({ ...prev, direccion_parada: e.target.value }))} placeholder="Dirección opcional" /></div>
-              <div className="grid-2" style={{ gap: 8, width: '100%' }}><div className="input-group"><label>Latitud</label><input className="input" type="number" step="any" value={freeStop.latitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, latitud_parada: e.target.value }))} placeholder="-12.0464" /></div><div className="input-group"><label>Longitud</label><input className="input" type="number" step="any" value={freeStop.longitud_parada} onChange={e => setFreeStop(prev => ({ ...prev, longitud_parada: e.target.value }))} placeholder="-77.0428" /></div></div>
               <div className="input-group" style={{ minWidth: 260, flex: 1 }}><label>Buscar gasto de campo</label><input className="input" value={gastoQuery} onChange={e => { setGastoQuery(e.target.value); setFreeStop(prev => ({ ...prev, gasto_campo_id: '' })); }} placeholder="Descripción del gasto" /><select className="input" style={{ marginTop: 6 }} value={freeStop.gasto_campo_id} onChange={e => setFreeStop(prev => ({ ...prev, gasto_campo_id: e.target.value }))}><option value="">Sin gasto vinculado</option>{loadingGastos && <option disabled>Buscando...</option>}{gastoOptions.map(gasto => <option key={gasto.id} value={gasto.id}>{gasto.descripcion} · {gasto.monto} {gasto.moneda || 'PEN'} · {gasto.fecha || '-'}</option>)}</select></div>
             </>}
             <button className="btn btn-secondary" type="submit" disabled={busy || (type === 'libre' ? !freeStop.descripcion_libre.trim() : !docId)}>Agregar</button>
