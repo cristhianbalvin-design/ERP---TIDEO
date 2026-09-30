@@ -1026,7 +1026,7 @@ export const finanzasService = {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase.rpc('actualizar_prioridad_pago_cxp', {
       p_cxp_id: cxpId,
-      p_prioridad: prioridad || null,
+      p_prioridad_pago: prioridad || null,
     });
     if (error) throw error;
     return data;
