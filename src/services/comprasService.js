@@ -243,17 +243,29 @@ export const comprasService = {
     if (error) { console.error('Error fetching proveedores:', error); return []; }
     return data;
   },
+  // Las columnas UUID no aceptan una cadena vacía. El formulario usa '' para
+  // representar "Sin asignar", por lo que debe persistirse como NULL.
+  normalizarProveedor: (proveedor) => ({
+    ...proveedor,
+    ...(Object.prototype.hasOwnProperty.call(proveedor || {}, 'responsable_compras_posicion_id')
+      ? { responsable_compras_posicion_id: proveedor.responsable_compras_posicion_id || null }
+      : {}),
+  }),
   crearProveedor: async (empresaId, proveedor) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('proveedores').insert([{ ...proveedor, empresa_id: empresaId }]).select().single();
+      .from('proveedores')
+      .insert([{ ...comprasService.normalizarProveedor(proveedor), empresa_id: empresaId }])
+      .select().single();
     if (error) throw error;
     return data;
   },
   actualizarProveedor: async (id, cambios) => {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('proveedores').update({ ...cambios, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+      .from('proveedores')
+      .update({ ...comprasService.normalizarProveedor(cambios), updated_at: new Date().toISOString() })
+      .eq('id', id).select().single();
     if (error) throw error;
     return data;
   },
