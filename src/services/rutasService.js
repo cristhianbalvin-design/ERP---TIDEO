@@ -145,10 +145,26 @@ export async function actualizarRuta(empresaId, rutaId, cambios) {
 
 export async function actualizarEstadoRuta(empresaId, rutaId, estado) {
   if (!ESTADOS_RUTA.some(([key]) => key === estado)) throw new Error('Estado de ruta no válido.');
+  const supabase = await getSupabaseClient();
+  if (estado === 'en_curso' || estado === 'completada') {
+    const { data: lecturas, error: lecturasError } = await supabase
+      .from('lecturas_flota')
+      .select('id,fecha,created_at')
+      .eq('empresa_id', empresaId)
+      .eq('ruta_id', rutaId)
+      .eq('tipo_lectura', 'odometro')
+      .order('created_at', { ascending: true });
+    assertOk(lecturasError, 'No se pudieron verificar las lecturas de odómetro de la ruta.');
+    const minimo = estado === 'en_curso' ? 1 : 2;
+    if ((lecturas || []).length < minimo) {
+      throw new Error(estado === 'en_curso'
+        ? 'Registra una lectura de odómetro antes de iniciar la ruta.'
+        : 'Registra una lectura inicial y una final de odómetro antes de completar la ruta.');
+    }
+  }
   const cambios = { estado };
   if (estado === 'en_curso') cambios.hora_salida = now();
   if (estado === 'completada' || estado === 'cancelada') cambios.hora_cierre = now();
-  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from('rutas')
     .update(cambios)
