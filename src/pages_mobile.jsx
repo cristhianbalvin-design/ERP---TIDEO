@@ -1415,6 +1415,9 @@ function LogisticaView({ screen, setScreen }) {
   const [guardandoIncidente, setGuardandoIncidente] = useState(false);
   const [paradaLibreRuta, setParadaLibreRuta] = useState(null);
   const [paradaLibreForm, setParadaLibreForm] = useState({ descripcion_libre: '', direccion_parada: '' });
+  const [paradaLibreFotoUrl, setParadaLibreFotoUrl] = useState('');
+  const [paradaLibreFotoNombre, setParadaLibreFotoNombre] = useState('');
+  const [subiendoParadaLibreFoto, setSubiendoParadaLibreFoto] = useState(false);
   const [paradaLibreGps, setParadaLibreGps] = useState(null);
   const [capturandoParadaLibreGps, setCapturandoParadaLibreGps] = useState(false);
   const [guardandoParadaLibre, setGuardandoParadaLibre] = useState(false);
@@ -1560,8 +1563,27 @@ function LogisticaView({ screen, setScreen }) {
   const abrirParadaLibre = ruta => {
     setParadaLibreRuta(ruta);
     setParadaLibreForm({ descripcion_libre: '', direccion_parada: '' });
+    setParadaLibreFotoUrl('');
+    setParadaLibreFotoNombre('');
     setParadaLibreGps(null);
     capturarGpsParadaLibre();
+  };
+
+  const manejarFotoParadaLibre = async event => {
+    const file = event.target.files?.[0];
+    if (!file || !paradaLibreRuta) return;
+    setSubiendoParadaLibreFoto(true);
+    try {
+      const url = await subirArchivoEvidencia(file, 'ruta_paradas', `parada-libre-${paradaLibreRuta.id}-${Date.now()}`);
+      setParadaLibreFotoNombre(file.name);
+      setParadaLibreFotoUrl(url);
+      addToast?.('Foto de parada libre adjuntada.');
+    } catch (error) {
+      addToast?.(error?.message || 'No se pudo subir la foto de la parada libre.');
+    } finally {
+      setSubiendoParadaLibreFoto(false);
+      event.target.value = '';
+    }
   };
 
   const guardarParadaLibre = async () => {
@@ -1584,6 +1606,7 @@ function LogisticaView({ screen, setScreen }) {
         latitud_parada: fix?.latitud ?? null,
         longitud_parada: fix?.longitud ?? null,
         gasto_campo_id: null,
+        ...(paradaLibreFotoUrl ? { foto_entrega_url: paradaLibreFotoUrl } : {}),
       });
       addToast?.('Parada libre agregada.');
       setParadaLibreRuta(null);
@@ -1781,6 +1804,8 @@ function LogisticaView({ screen, setScreen }) {
         <div className="text-muted mono" style={{fontSize:11,marginBottom:14}}>{paradaLibreRuta.codigo}</div>
         <label style={{fontSize:12}}>Descripción *<textarea className="input" rows="4" value={paradaLibreForm.descripcion_libre} onChange={event => setParadaLibreForm(form => ({...form,descripcion_libre:event.target.value}))} placeholder="Qué se hizo en la parada" style={{width:'100%',margin:'5px 0 10px'}} /></label>
         <label style={{fontSize:12}}>Dirección (opcional)<input className="input" value={paradaLibreForm.direccion_parada} onChange={event => setParadaLibreForm(form => ({...form,direccion_parada:event.target.value}))} placeholder="Dirección del punto" style={{width:'100%',margin:'5px 0 10px'}} /></label>
+        <label className="btn btn-secondary" style={{width:'100%',marginBottom:10,opacity:subiendoParadaLibreFoto?.65:1}}>{I.camera} {subiendoParadaLibreFoto ? 'Subiendo foto…' : paradaLibreFotoNombre || 'Foto opcional de la parada'}<input type="file" accept="image/*" capture="environment" onChange={manejarFotoParadaLibre} style={{display:'none'}} disabled={subiendoParadaLibreFoto} /></label>
+        {paradaLibreFotoUrl && <div style={{fontSize:11,color:'var(--green)',marginBottom:10}}>✓ Foto de parada libre adjuntada</div>}
         <div className="card" style={{padding:12,marginBottom:12}}><div style={{fontWeight:700,fontSize:12,marginBottom:6}}>GPS de la parada</div><div className="text-muted" style={{fontSize:11,marginBottom:8}}>{paradaLibreGps ? `${paradaLibreGps.latitud.toFixed(6)}, ${paradaLibreGps.longitud.toFixed(6)}` : 'Sin coordenadas; puedes continuar.'}</div><button className="btn btn-secondary btn-sm" type="button" onClick={capturarGpsParadaLibre} disabled={capturandoParadaLibreGps}>{capturandoParadaLibreGps ? 'Capturando GPS...' : 'Reintentar GPS'}</button></div>
         <button className="btn btn-primary btn-lg" style={{width:'100%'}} disabled={guardandoParadaLibre || !paradaLibreForm.descripcion_libre.trim()} onClick={guardarParadaLibre}>{guardandoParadaLibre ? 'Guardando...' : 'Guardar parada libre'}</button>
       </div>}
