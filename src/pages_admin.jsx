@@ -1650,7 +1650,7 @@ function Usuarios() {
     const memNombre = mem?.empresa?.nombre_comercial || mem?.empresa?.razon_social || mem?.empresa?.nombre;
     return memNombre || MOCK.empresas.find(e => e.id === id)?.nombre || 'Tenant asignado';
   };
-  
+
   return (
     <>
       <div className="page-header">
@@ -3373,7 +3373,9 @@ function MaterialesMaestro({ onClose }) {
   const [formErr, setFormErr] = useState('');
   const [spotCatalogo, setSpotCatalogo] = useState([]);
   const [importando, setImportando] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
   const [resultImport, setResultImport] = useState(null);
+  const importAbortRef = useRef(null);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
 
@@ -3499,20 +3501,15 @@ function MaterialesMaestro({ onClose }) {
     catch (err) { addNotificacion(err.message, 'error'); }
   };
 
-  const withImportTimeout = (promise, ms, message) => {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), ms);
-    });
-    return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
-  };
-
   // ─── Importación Excel ────────────────────────────────────────────────────
   const importarExcel = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    const controller = new AbortController();
+    importAbortRef.current = controller;
     setImportando(true);
+    setImportProgress({ procesados: 0, total: 0, creados: 0, actualizados: 0, errores: 0 });
     setResultImport(null);
     try {
       const buf = await file.arrayBuffer();
@@ -3564,21 +3561,21 @@ function MaterialesMaestro({ onClose }) {
         })),
       })).filter(f => f.descripcion && f.unidad);
       if (!filas.length) { setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: 'No se encontraron filas válidas en el archivo.' }] }); return; }
-      const importTimeoutMs = Math.max(45000, Math.min(180000, filas.length * 900));
-      const res = await withImportTimeout(
-        importarMaterialesMasivo(empresa.id, filas),
-        importTimeoutMs,
-        'La importacion esta demorando mas de lo esperado. Revisa tu conexion o intenta con menos filas.'
-      );
-      await withImportTimeout(
-        recargarMateriales(),
-        30000,
-        'La importacion termino, pero no se pudo recargar el catalogo automaticamente.'
-      );
+      setImportProgress({ procesados: 0, total: filas.length, creados: 0, actualizados: 0, errores: 0 });
+      const res = await importarMaterialesMasivo(empresa.id, filas, {
+        signal: controller.signal,
+        batchSize: 25,
+        onProgress: setImportProgress,
+      });
+      await recargarMateriales();
       setResultImport(res);
     } catch (err) {
       setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: err.message }] });
-    } finally { setImportando(false); }
+    } finally {
+      if (importAbortRef.current === controller) importAbortRef.current = null;
+      setImportando(false);
+      setImportProgress(null);
+    }
   };
 
   const descargarPlantillaMateriales = () => {
@@ -3724,6 +3721,14 @@ function MaterialesMaestro({ onClose }) {
                   {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
                   <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
                 </label>
+                {importando && importProgress && (
+                  <>
+                    <span className="text-muted" style={{ fontSize: 12 }}>
+                      Procesando {importProgress.procesados}/{importProgress.total} · {importProgress.creados} nuevos · {importProgress.actualizados} actualizados
+                    </span>
+                    <button className="btn btn-secondary" type="button" onClick={() => importAbortRef.current?.abort()}>Cancelar carga</button>
+                  </>
+                )}
                 <button className="btn btn-secondary" onClick={descargarPlantillaMateriales}>{I.download} Descargar plantilla</button>
                 <button className="btn btn-secondary" onClick={exportarMaterialesExcel}>{I.download} Exportar Excel</button>
                 {resultImport && (

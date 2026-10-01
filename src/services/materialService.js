@@ -420,7 +420,7 @@ const importarMaterialesMasivoLegacy = async (empresaId, filas) => {
   return { creados: creados.length, actualizados: actualizados.length, errores };
 };
 
-export const importarMaterialesMasivo = async (empresaId, filas) => {
+const importarMaterialesMasivoLegacyCurrent = async (empresaId, filas) => {
   const supabase = await getSupabaseClient();
   const creados = [];
   const actualizados = [];
@@ -648,4 +648,292 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
   }
 
   return { creados: creados.length, actualizados: actualizados.length, errores };
+};
+
+// La clave no usa el codigo generado: el codigo puede cambiar de correlativo,
+// pero la misma fila del Excel debe resolver siempre al mismo material.
+export const construirClaveImportacionMaterial = ({ empresaId, grupoId, familiaId, subfamiliaId, descripcion, unidad, nroParte }) => [
+  empresaId,
+  grupoId,
+  familiaId,
+  subfamiliaId,
+  normalizarTextoMatching(descripcion),
+  normalizarTextoMatching(unidad),
+  normalizarTextoMatching(nroParte),
+].map(value => encodeURIComponent(String(value ?? ''))).join('|');
+
+const esErrorAbortado = (error) => error?.name === 'AbortError' || error?.code === 'ABORT_ERR';
+
+export const importarMaterialesMasivo = async (empresaId, filas, opciones = {}) => {
+  const supabase = await getSupabaseClient();
+  const { onProgress, signal, batchSize = 25 } = opciones;
+  const rows = Array.isArray(filas) ? filas : [];
+  const creados = [];
+  const actualizados = [];
+  const errores = [];
+  const total = rows.length;
+  const normCode = value => String(value ?? '').trim();
+  const codeKey = value => normCode(value).toLocaleUpperCase('es-PE');
+  const normText = value => String(value ?? '').trim();
+  const keyText = value => normText(value).toLowerCase();
+  const abortarSiCorresponde = () => {
+    if (!signal?.aborted) return;
+    const error = new Error('La importación fue cancelada.');
+    error.name = 'AbortError';
+    throw error;
+  };
+  const reportar = procesados => {
+    try {
+      onProgress?.({ procesados, total, creados: creados.length, actualizados: actualizados.length, errores: errores.length });
+    } catch { /* el callback de UI nunca debe romper una importación */ }
+  };
+
+  reportar(0);
+  abortarSiCorresponde();
+  if (!empresaId || total === 0) return { creados: 0, actualizados: 0, errores: [], procesados: 0 };
+
+  const [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes, fabricantesRes] = await Promise.all([
+    supabase.from('material_grupos').select('*').eq('empresa_id', empresaId),
+    supabase.from('material_familias').select('*').eq('empresa_id', empresaId),
+    supabase.from('material_subfamilias').select('*').eq('empresa_id', empresaId),
+    supabase.from('almacenes').select('id,nombre').eq('empresa_id', empresaId),
+    supabase.from('materiales').select('id,codigo,clave_importacion,descripcion,unidad,nro_parte,grupo_id,familia_id,subfamilia_id').eq('empresa_id', empresaId),
+    supabase.from('fabricantes').select('*').eq('empresa_id', empresaId),
+  ]);
+  const firstError = [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes, fabricantesRes].find(result => result.error)?.error;
+  if (firstError) throw firstError;
+
+  const grupos = gruposRes.data || [];
+  const familias = familiasRes.data || [];
+  const subfamilias = subfamiliasRes.data || [];
+  const materiales = materialesRes.data || [];
+  const gruposByCode = new Map(grupos.map(row => [codeKey(row.codigo), row]));
+  const gruposByName = new Map(grupos.map(row => [normalizarTextoMatching(row.nombre), row]));
+  const familiasByCode = new Map(familias.map(row => [`${row.grupo_id}|${codeKey(row.codigo)}`, row]));
+  const familiasByName = new Map(familias.map(row => [`${row.grupo_id}|${normalizarTextoMatching(row.nombre)}`, row]));
+  const subfamiliasByCode = new Map(subfamilias.map(row => [`${row.familia_id}|${codeKey(row.codigo)}`, row]));
+  const subfamiliasByName = new Map(subfamilias.map(row => [`${row.familia_id}|${normalizarTextoMatching(row.nombre)}`, row]));
+  const almacenesByName = new Map((almacenesRes.data || []).map(row => [keyText(row.nombre), row]));
+  const materialesByCode = new Map(materiales.filter(row => row.codigo).map(row => [normText(row.codigo), row]));
+  const materialesByImportKey = new Map(materiales.filter(row => row.clave_importacion).map(row => [row.clave_importacion, row]));
+  const materialesByFallbackKey = new Map(materiales.map(row => [construirClaveImportacionMaterial({ empresaId, ...row, nroParte: row.nro_parte }), row]));
+  const fabricantesByNombre = new Map((fabricantesRes.data || []).map(row => [normalizarTextoMatching(row.nombre), row]));
+  const usadosMateriales = new Set(materialesByCode.keys());
+  const nextHierarchySequences = new Map();
+  const nextMaterialSequences = new Map();
+
+  const siguienteCodigoJerarquia = (scopeKey, prefix, rowsForScope) => {
+    const key = `${scopeKey}|${prefix}`;
+    let next = nextHierarchySequences.get(key);
+    if (next === undefined) {
+      const max = (rowsForScope || []).reduce((currentMax, row) => {
+        const codigo = normCode(row.codigo);
+        if (!codigo.toLocaleUpperCase('es-PE').startsWith(prefix)) return currentMax;
+        const suffix = codigo.slice(prefix.length);
+        return /^\d+$/.test(suffix) ? Math.max(currentMax, Number(suffix)) : currentMax;
+      }, 0);
+      next = max + 1;
+    }
+    let codigo = `${prefix}${String(next).padStart(2, '0')}`;
+    const usados = new Set((rowsForScope || []).map(row => codeKey(row.codigo)));
+    while (usados.has(codeKey(codigo))) codigo = `${prefix}${String(++next).padStart(2, '0')}`;
+    nextHierarchySequences.set(key, next + 1);
+    return codigo;
+  };
+  const siguienteCodigoMaterial = prefix => {
+    let next = nextMaterialSequences.get(prefix);
+    if (next === undefined) {
+      next = materiales.reduce((max, row) => {
+        const codigo = normCode(row.codigo);
+        if (!codigo.startsWith(prefix)) return max;
+        const suffix = codigo.slice(prefix.length);
+        return /^\d+$/.test(suffix) ? Math.max(max, Number(suffix)) : max;
+      }, 0) + 1;
+    }
+    let codigo = `${prefix}${String(next).padStart(2, '0')}`;
+    while (usadosMateriales.has(codeKey(codigo))) codigo = `${prefix}${String(++next).padStart(2, '0')}`;
+    nextMaterialSequences.set(prefix, next + 1);
+    usadosMateriales.add(codeKey(codigo));
+    return codigo;
+  };
+  const registrarGrupo = row => {
+    grupos.push(row);
+    gruposByCode.set(codeKey(row.codigo), row);
+    gruposByName.set(normalizarTextoMatching(row.nombre), row);
+  };
+  const registrarFamilia = row => {
+    familias.push(row);
+    familiasByCode.set(`${row.grupo_id}|${codeKey(row.codigo)}`, row);
+    familiasByName.set(`${row.grupo_id}|${normalizarTextoMatching(row.nombre)}`, row);
+  };
+  const registrarSubfamilia = row => {
+    subfamilias.push(row);
+    subfamiliasByCode.set(`${row.familia_id}|${codeKey(row.codigo)}`, row);
+    subfamiliasByName.set(`${row.familia_id}|${normalizarTextoMatching(row.nombre)}`, row);
+  };
+  const insertarJerarquiaConRecuperacion = async (table, payload, buscar) => {
+    const { data, error } = await supabase.from(table).insert([payload]).select().single();
+    if (!error) return data;
+    if (error.code !== '23505') throw error;
+    const existente = await buscar();
+    if (existente) return existente;
+    throw error;
+  };
+
+  const resolverJerarquia = async fila => {
+    const codigoGrupo = normCode(fila.cod_grupo);
+    const codigoFamilia = normCode(fila.cod_familia);
+    const codigoSubfamilia = normCode(fila.cod_subfamilia);
+    const nombreGrupo = normText(fila.grupo) || `Grupo ${codigoGrupo || 'nuevo'}`;
+    const nombreFamilia = normText(fila.familia) || `Familia ${codigoFamilia || 'nueva'}`;
+    const nombreSubfamilia = normText(fila.subfamilia) || `Sub-familia ${codigoSubfamilia || 'nueva'}`;
+    let grupo = codigoGrupo ? gruposByCode.get(codeKey(codigoGrupo)) : gruposByName.get(normalizarTextoMatching(nombreGrupo));
+    if (!grupo) {
+      const codigo = codigoGrupo || siguienteCodigoJerarquia('grupo', 'GRP', grupos);
+      grupo = await insertarJerarquiaConRecuperacion('material_grupos', { id: makeId('mg'), empresa_id: empresaId, codigo, nombre: nombreGrupo, estado: 'activo' }, async () => (await supabase.from('material_grupos').select('*').eq('empresa_id', empresaId).eq('codigo', codigo).maybeSingle()).data);
+      registrarGrupo(grupo);
+    }
+    let familia = codigoFamilia
+      ? familiasByCode.get(`${grupo.id}|${codeKey(codigoFamilia)}`)
+      : familiasByName.get(`${grupo.id}|${normalizarTextoMatching(nombreFamilia)}`);
+    if (!familia) {
+      const codigo = codigoFamilia || siguienteCodigoJerarquia(`familia:${grupo.id}`, 'FAM', familias.filter(row => row.grupo_id === grupo.id));
+      familia = await insertarJerarquiaConRecuperacion('material_familias', { id: makeId('mf'), empresa_id: empresaId, grupo_id: grupo.id, codigo, nombre: nombreFamilia, estado: 'activo' }, async () => (await supabase.from('material_familias').select('*').eq('empresa_id', empresaId).eq('grupo_id', grupo.id).eq('codigo', codigo).maybeSingle()).data);
+      registrarFamilia(familia);
+    }
+    let subfamilia = codigoSubfamilia
+      ? subfamiliasByCode.get(`${familia.id}|${codeKey(codigoSubfamilia)}`)
+      : subfamiliasByName.get(`${familia.id}|${normalizarTextoMatching(nombreSubfamilia)}`);
+    if (!subfamilia) {
+      const codigo = codigoSubfamilia || siguienteCodigoJerarquia(`subfamilia:${familia.id}`, 'SUB', subfamilias.filter(row => row.familia_id === familia.id));
+      subfamilia = await insertarJerarquiaConRecuperacion('material_subfamilias', { id: makeId('ms'), empresa_id: empresaId, familia_id: familia.id, codigo, nombre: nombreSubfamilia, estado: 'activo' }, async () => (await supabase.from('material_subfamilias').select('*').eq('empresa_id', empresaId).eq('familia_id', familia.id).eq('codigo', codigo).maybeSingle()).data);
+      registrarSubfamilia(subfamilia);
+    }
+    return { grupo, familia, subfamilia };
+  };
+
+  const alternativosDeFila = fila => Array.isArray(fila.alternativos) ? fila.alternativos : [1, 2, 3, 4].map(orden => ({
+    numero_parte: fila[`nro_parte_alternativo_${orden}`] ?? fila[`numero_parte_alternativo_${orden}`] ?? '',
+    fabricante_nombre: fila[`fabricante_alternativo_${orden}`] ?? fila[`fabricante_${orden}`] ?? '',
+    notas: fila[`notas_alternativo_${orden}`] ?? '',
+    precio_referencial: fila[`precio_referencial_alternativo_${orden}`] ?? fila[`precio_alternativo_${orden}`] ?? '',
+    moneda: fila[`moneda_alternativo_${orden}`] ?? '',
+  }));
+  const incluyeAlternativos = fila => fila.alternativos_proporcionados === true
+    || (fila.alternativos_proporcionados !== false && Array.isArray(fila.alternativos))
+    || [1, 2, 3, 4].some(orden => Object.prototype.hasOwnProperty.call(fila, `nro_parte_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `numero_parte_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `precio_referencial_alternativo_${orden}`)
+      || Object.prototype.hasOwnProperty.call(fila, `moneda_alternativo_${orden}`));
+  const resolverFabricante = async nombre => {
+    const limpio = normText(nombre);
+    if (!limpio) return null;
+    const key = normalizarTextoMatching(limpio);
+    const existente = fabricantesByNombre.get(key);
+    if (existente) return existente;
+    const creado = await findOrCreateFabricante(empresaId, limpio, Array.from(fabricantesByNombre.values()));
+    fabricantesByNombre.set(key, creado);
+    return creado;
+  };
+
+  const preparados = [];
+  for (const fila of rows) {
+    abortarSiCorresponde();
+    try {
+      const { grupo, familia, subfamilia } = await resolverJerarquia(fila);
+      const claveImportacion = construirClaveImportacionMaterial({ empresaId, grupoId: grupo.id, familiaId: familia.id, subfamiliaId: subfamilia.id, descripcion: fila.descripcion, unidad: fila.unidad, nroParte: fila.nro_parte });
+      const existente = materialesByImportKey.get(claveImportacion) || materialesByFallbackKey.get(claveImportacion) || null;
+      const prefijoMaterial = [grupo.codigo, familia.codigo, subfamilia.codigo].map(normCode).join('');
+      preparados.push({
+        fila,
+        claveImportacion,
+        existente,
+        prefijoMaterial,
+        payload: {
+          empresa_id: empresaId,
+          clave_importacion: claveImportacion,
+          codigo: existente?.codigo || siguienteCodigoMaterial(prefijoMaterial),
+          descripcion: normText(fila.descripcion),
+          unidad: normText(fila.unidad),
+          grupo_id: grupo.id,
+          familia_id: familia.id,
+          subfamilia_id: subfamilia.id,
+          nro_parte: normText(fila.nro_parte) || null,
+          unidades_contenidas: Number(fila.unidades_contenidas) || 1,
+          almacen_id: fila.almacen ? (almacenesByName.get(keyText(fila.almacen))?.id || null) : null,
+          ubicacion: normText(fila.ubicacion) || null,
+          observacion: normText(fila.observacion) || null,
+          precio_unitario: Number(fila.precio_unitario) || 0,
+          estado: normText(fila.estado) || 'activo',
+        },
+      });
+    } catch (error) {
+      if (esErrorAbortado(error)) throw error;
+      errores.push({ fila: fila.descripcion || fila.codigo, error: error.message });
+    }
+  }
+
+  const guardarFila = async item => {
+    abortarSiCorresponde();
+    let existente = item.existente;
+    let payload = { ...item.payload };
+    let material = null;
+    for (let intento = 0; intento < 4 && !material; intento += 1) {
+      if (existente) {
+        const result = await supabase.from('materiales').update(payload).eq('id', existente.id).select('id,codigo,clave_importacion,descripcion,unidad,nro_parte,grupo_id,familia_id,subfamilia_id').single();
+        if (!result.error) { material = result.data; break; }
+        if (result.error.code !== '23505') throw result.error;
+      } else {
+        const result = await supabase.from('materiales').insert([{ id: makeId('mat'), ...payload }]).select('id,codigo,clave_importacion,descripcion,unidad,nro_parte,grupo_id,familia_id,subfamilia_id').single();
+        if (!result.error) { material = result.data; break; }
+        if (result.error.code !== '23505') throw result.error;
+        const porClave = (await supabase.from('materiales').select('id,codigo,clave_importacion,descripcion,unidad,nro_parte,grupo_id,familia_id,subfamilia_id').eq('empresa_id', empresaId).eq('clave_importacion', item.claveImportacion).maybeSingle()).data;
+        if (porClave) { existente = porClave; payload = { ...payload, codigo: porClave.codigo }; continue; }
+        payload = { ...payload, codigo: siguienteCodigoMaterial(item.prefijoMaterial) };
+      }
+    }
+    if (!material) throw new Error('No se pudo guardar el material después de varios intentos.');
+    const fueActualizacion = Boolean(item.existente || existente);
+    materialesByCode.set(normText(material.codigo), material);
+    materialesByImportKey.set(item.claveImportacion, material);
+    materialesByFallbackKey.set(item.claveImportacion, material);
+    if (fueActualizacion) actualizados.push(material.codigo); else creados.push(material.codigo);
+
+    const fila = item.fila;
+    if (incluyeAlternativos(fila)) {
+      const alternativos = [];
+      for (const row of alternativosDeFila(fila)) {
+        const numeroParte = normText(row?.numero_parte);
+        if (!numeroParte) continue;
+        const fabricante = await resolverFabricante(row?.fabricante_nombre || row?.fabricante || '');
+        alternativos.push({ numero_parte: numeroParte, fabricante_id: fabricante?.id || null, notas: normText(row?.notas) || null, precio_referencial: row?.precio_referencial, moneda: row?.moneda || 'PEN', activo: row?.activo !== false });
+      }
+      await guardarMaterialNumerosParte(empresaId, material.id, alternativos);
+    }
+    if (fila.original_proporcionado === true && normText(fila.nro_parte)) {
+      const original = fila.original || {};
+      const fabricante = await resolverFabricante(original.fabricante_nombre || original.fabricante || '');
+      await guardarFabricanteNumeroParteOriginal(empresaId, material.id, fabricante?.id || null, null, { precio_referencial: original.precio_referencial, moneda: original.moneda || 'PEN' });
+    }
+  };
+
+  let procesados = 0;
+  const tamanoLote = Math.max(1, Number(batchSize) || 25);
+  for (let inicio = 0; inicio < preparados.length; inicio += tamanoLote) {
+    abortarSiCorresponde();
+    const lote = preparados.slice(inicio, inicio + tamanoLote);
+    await Promise.all(lote.map(async item => {
+      try {
+        await guardarFila(item);
+      } catch (error) {
+        if (esErrorAbortado(error)) throw error;
+        errores.push({ fila: item.fila.descripcion || item.fila.codigo, error: error.message });
+      } finally {
+        procesados += 1;
+        reportar(procesados);
+      }
+    }));
+  }
+  reportar(total);
+  return { creados: creados.length, actualizados: actualizados.length, errores, procesados: total };
 };
