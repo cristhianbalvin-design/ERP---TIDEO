@@ -460,4 +460,41 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(css).not.toMatch(/\.diagnostico-line-card[^{}]*overflow:\s*hidden/);
     expect(css).not.toMatch(/\.card\s*\{[^}]*overflow:\s*hidden/);
   });
+
+  it('R16: el modal explica por qué una sesión sin sociedad no puede editar', async () => {
+    mocks.session.permiteEscritura = false;
+    await renderPage();
+    await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(20); });
+    const reason = 'Selecciona una sociedad concreta en la barra superior para poder editar.';
+    const save = buttonByText(renderer, 'Guardar');
+    const occurrences = textOf(renderer.root).split(reason).length - 1;
+    console.log('R16_READONLY_SOCIETY_RESULT', JSON.stringify({ occurrences, save_disabled: save?.props.disabled }));
+    expect(occurrences).toBe(1);
+    expect(save.props.disabled).toBe(true);
+  });
+
+  it('R17: el modal distingue falta de permiso de edición', async () => {
+    mocks.service.usuarioPuedeDiagnostico.mockImplementation(async (_empresa, action) => action !== 'editar');
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
+    expect(textOf(renderer.root)).toContain('No tienes permiso para editar diagnósticos.');
+  });
+
+  it('R18: el modal distingue un diagnóstico emitido', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({ ...detail('one'), estado: 'emitido' });
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
+    expect(textOf(renderer.root)).toContain('Este diagnóstico está emitido y es de solo lectura.');
+  });
+
+  it('R19: el tema y los menús quedan acotados al modal', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.card\s*\{[\s\S]*background:\s*white;/);
+    expect(css).toContain('.diagnostico-modal-card { background: var(--white);');
+    expect(css).toContain('.diagnostico-combobox-menu { position: fixed;');
+    expect(source).toContain('onMouseDown={event => event.preventDefault()}');
+    expect(source).toContain("window.addEventListener('scroll', closeOnViewportChange, true)");
+    expect(source).toContain("window.addEventListener('resize', closeOnViewportChange)");
+  });
 });

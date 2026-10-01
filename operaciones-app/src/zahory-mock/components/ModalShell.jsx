@@ -31,7 +31,7 @@ export function ModalShell({ open, title, subtitle, status, width = 1040, dirty 
       onMouseDown={event => { if (event.target === event.currentTarget) requestClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.65)', display: 'grid', placeItems: 'center', padding: 20, overflowY: 'auto' }}
     >
-      <div className="card" style={{ width: '100%', maxWidth: width, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
+      <div className="card diagnostico-modal-card" style={{ width: '100%', maxWidth: width, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
         <div className="card-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>

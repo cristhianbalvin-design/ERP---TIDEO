@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
 import { ModalShell } from '../components/ModalShell.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
@@ -119,10 +119,53 @@ function AccessState({ loading, title, error }) {
   );
 }
 
+function useComboboxMenuPosition(open, rootRef, onViewportChange) {
+  const [menuStyle, setMenuStyle] = useState({});
+
+  useLayoutEffect(() => {
+    if (!open || typeof window === 'undefined' || typeof window.innerHeight !== 'number') {
+      setMenuStyle({});
+      return undefined;
+    }
+    const updatePosition = () => {
+      const input = rootRef.current?.querySelector?.('input[role="combobox"]');
+      if (!input) return;
+      const rect = input.getBoundingClientRect();
+      const gap = 8;
+      const maxHeight = 220;
+      const below = Math.max(0, window.innerHeight - rect.bottom - gap);
+      const above = Math.max(0, rect.top - gap);
+      const opensUp = below < maxHeight && above > below;
+      const available = opensUp ? above : below;
+      setMenuStyle({
+        position: 'fixed',
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        maxHeight: Math.max(80, Math.min(maxHeight, Math.round(available))),
+        ...(opensUp
+          ? { bottom: Math.max(gap, Math.round(window.innerHeight - rect.top + gap)) }
+          : { top: Math.round(rect.bottom + gap) }),
+      });
+    };
+    updatePosition();
+    const closeOnViewportChange = () => onViewportChange();
+    window.addEventListener('resize', closeOnViewportChange);
+    window.addEventListener('scroll', closeOnViewportChange, true);
+    return () => {
+      window.removeEventListener('resize', closeOnViewportChange);
+      window.removeEventListener('scroll', closeOnViewportChange, true);
+    };
+  }, [open, onViewportChange, rootRef]);
+
+  return menuStyle;
+}
+
 export function ReferenceSelector({ tipo, value, search, references, loading, disabled, onSearch, onSelect }) {
   const isFabricacion = tipo === 'fabricacion';
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  const menuStyle = useComboboxMenuPosition(open, rootRef, closeMenu);
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
@@ -160,7 +203,7 @@ export function ReferenceSelector({ tipo, value, search, references, loading, di
         }}
         onChange={event => { setOpen(true); onSelect(null); onSearch(event.target.value); }}
       />
-      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox">
+      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
         {loading && <div className="muted" style={{ padding: 12 }}>Buscando referencias...</div>}
         {!loading && !references.length && <div className="muted" style={{ padding: 12 }}>Sin referencias encontradas.</div>}
         {!loading && references.map(reference => (
@@ -194,6 +237,8 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
+  const closeMenu = useCallback(() => setOpen(false), []);
+  const menuStyle = useComboboxMenuPosition(open, rootRef, closeMenu);
 
   useEffect(() => {
     setQuery(value ? optionLabel(value, kind) : '');
@@ -258,7 +303,7 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
         }} onChange={event => { setOpen(true); setQuery(event.target.value); }} />
         {clearable && !disabled && value && <button type="button" className="diagnostico-combobox-clear" aria-label={`Quitar ${label}`} onClick={() => select(null)}>×</button>}
       </div>
-      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox">
+      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
         {visible.map(option => (
           <button type="button" key={option.id} onClick={() => select(option)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: value?.id === option.id ? 'var(--cyan-lt)' : 'transparent', textAlign: 'left', padding: 8, cursor: 'pointer' }}>
             {optionLabel(option, kind)}
@@ -676,6 +721,13 @@ export function DiagnosticoTecnicoPage() {
     : Boolean(form.referencia);
   const modalBusy = saving || Boolean(savingLine);
   const modalOpen = Boolean(form.tipo || selected);
+  const readOnlyReason = !sesion.permiteEscritura
+    ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
+    : !access.editar
+      ? 'No tienes permiso para editar diagnósticos.'
+      : isReadOnly
+        ? 'Este diagnóstico está emitido y es de solo lectura.'
+        : '';
 
   if (sesion.estado !== 'listo' || !empresaId) return <AccessState title="No se puede abrir Diagnóstico Técnico" error={sessionError} />;
   if (access.loading) return <AccessState loading />;
@@ -704,7 +756,7 @@ export function DiagnosticoTecnicoPage() {
         {notice && <div className="alert alert-success" style={{ marginBottom: 12 }}>{notice}</div>}
       </>}
 
-      {!sesion.permiteEscritura && <div className="alert alert-error" style={{ marginBottom: 12 }}>La empresa operativa está en modo solo lectura; no se pueden guardar diagnósticos.</div>}
+      {!modalOpen && !sesion.permiteEscritura && <div className="alert alert-warning" style={{ marginBottom: 12 }}>Selecciona una sociedad concreta en la barra superior para poder editar.</div>}
 
       <div className="card" style={{ marginBottom: 18, width: '100%' }}>
         <div className="card-header"><h2 style={{ margin: 0, fontSize: 17 }}>Diagnósticos</h2></div>
@@ -746,9 +798,10 @@ export function DiagnosticoTecnicoPage() {
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
           <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
-          {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference}>{saving ? 'Guardando...' : 'Guardar'}</button>}
+          {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >
+        {readOnlyReason && <div className="alert alert-warning diagnostico-readonly-alert">{readOnlyReason}</div>}
         {!selected && <form id="diagnostico-cabecera-form" onSubmit={save}>
           <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16 }}>
             <div className="field"><label>Tipo</label><input className="input" value={typeLabel(form.tipo)} disabled /></div>
