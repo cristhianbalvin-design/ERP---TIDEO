@@ -119,7 +119,7 @@ function AccessState({ loading, title, error }) {
   );
 }
 
-function ReferenceSelector({ tipo, value, search, references, loading, disabled, onSearch, onSelect }) {
+export function ReferenceSelector({ tipo, value, search, references, loading, disabled, onSearch, onSelect }) {
   const isFabricacion = tipo === 'fabricacion';
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -145,17 +145,20 @@ function ReferenceSelector({ tipo, value, search, references, loading, disabled,
         className="input"
         role="combobox"
         aria-label={isFabricacion ? 'Oportunidad' : 'Recepción de activo'}
-        value={search || (value ? referenceLabel(value) : '')}
+        value={search}
         disabled={disabled}
         placeholder={isFabricacion ? 'Buscar por nombre de oportunidad...' : 'Buscar por número, cliente o activo...'}
         onFocus={() => setOpen(true)}
+        onBlur={event => {
+          if (!rootRef.current?.contains(event.relatedTarget)) setOpen(false);
+        }}
         onKeyDown={event => {
           if (event.key === 'Escape') {
             event.stopPropagation();
             setOpen(false);
           }
         }}
-        onChange={event => { setOpen(true); onSearch(event.target.value); }}
+        onChange={event => { setOpen(true); onSelect(null); onSearch(event.target.value); }}
       />
       {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox">
         {loading && <div className="muted" style={{ padding: 12 }}>Buscando referencias...</div>}
@@ -186,7 +189,7 @@ function optionLabel(option, kind) {
   return option.nombre || 'No disponible';
 }
 
-function CatalogSelector({ label, kind, value, options, disabled, placeholder, canCreate, clearable, onSelect, onCreate, onError }) {
+export function CatalogSelector({ label, kind, value, options, disabled, placeholder, canCreate, clearable, onSelect, onCreate, onError }) {
   const [query, setQuery] = useState(value ? optionLabel(value, kind) : '');
   const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(false);
@@ -199,7 +202,10 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
     const handleOutside = event => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+        setQuery(value ? optionLabel(value, kind) : '');
+      }
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
@@ -208,7 +214,15 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
   const normalizedQuery = normalizedText(query);
   const exactOption = options.some(option => [option.nombre, optionLabel(option, kind)].some(labelText => normalizedText(labelText) === normalizedQuery));
   const canOfferCreate = canCreate && Boolean(query.trim()) && !query.includes('·') && !exactOption && !(value?.id && value.nombre === 'No disponible');
-  const visible = options.filter(option => optionLabel(option, kind).toLocaleLowerCase().includes(normalizedQuery));
+  const selectedLabel = value ? optionLabel(value, kind) : '';
+  const visible = normalizedQuery === normalizedText(selectedLabel)
+    ? options
+    : options.filter(option => optionLabel(option, kind).toLocaleLowerCase().includes(normalizedQuery));
+  const restoreQuery = () => setQuery(value ? optionLabel(value, kind) : '');
+  const closeWithoutSelection = () => {
+    setOpen(false);
+    restoreQuery();
+  };
   const select = option => {
     onSelect(option);
     setQuery(option ? optionLabel(option, kind) : '');
@@ -234,10 +248,12 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
     <div ref={rootRef} className="field diagnostico-combobox">
       <label>{label}</label>
       <div className="diagnostico-combobox-control">
-        <input className="input" role="combobox" aria-label={label} value={query} disabled={disabled} placeholder={placeholder} onFocus={() => setOpen(true)} onKeyDown={event => {
+        <input className="input" role="combobox" aria-label={label} value={query} disabled={disabled} placeholder={placeholder} onFocus={() => setOpen(true)} onBlur={event => {
+          if (!rootRef.current?.contains(event.relatedTarget)) closeWithoutSelection();
+        }} onKeyDown={event => {
           if (event.key === 'Escape') {
             event.stopPropagation();
-            setOpen(false);
+            closeWithoutSelection();
           }
         }} onChange={event => { setOpen(true); setQuery(event.target.value); }} />
         {clearable && !disabled && value && <button type="button" className="diagnostico-combobox-clear" aria-label={`Quitar ${label}`} onClick={() => select(null)}>×</button>}

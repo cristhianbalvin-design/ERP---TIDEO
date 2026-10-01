@@ -374,7 +374,7 @@ a { color: var(--cyan); text-decoration: none; }
 
 /* ---------- Primitives ---------- */
 .card {
-  background: white;
+  background: var(--white);
   border: 1px solid var(--card-border);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
@@ -1236,6 +1236,8 @@ a { color: var(--cyan); text-decoration: none; }
   --bg: #020617;
   --card-border: rgba(255, 255, 255, 0.1);
   --row-alt: #0f172a;
+  --orange: #f59e0b;
+  --orange-soft: #451a03;
   --text: #f8fafc;
   --text-muted: #94a3b8;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);

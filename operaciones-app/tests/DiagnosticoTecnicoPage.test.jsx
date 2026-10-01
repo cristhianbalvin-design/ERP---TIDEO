@@ -17,7 +17,7 @@ vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mock
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
 
-import { DiagnosticoTecnicoPage } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
+import { CatalogSelector, DiagnosticoTecnicoPage } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
 
 const detail = (id, tipo = 'fabricacion', lineas = []) => ({
   id,
@@ -47,6 +47,7 @@ async function waitFor(read, timeout = 1000) {
 
 const textOf = node => node?.children?.map(child => typeof child === 'string' ? child : textOf(child)).join('') || '';
 const buttonByText = (renderer, label) => renderer.root.findAllByType('button').find(button => textOf(button).trim() === label);
+const buttonContaining = (renderer, label) => renderer.root.findAllByType('button').find(button => textOf(button).includes(label));
 let renderer;
 
 beforeEach(() => {
@@ -60,6 +61,12 @@ beforeEach(() => {
     addEventListener: (name, listener) => listeners.set(name, listener),
     removeEventListener: name => listeners.delete(name),
     dispatchEvent: event => listeners.get(event.type)?.(event),
+  };
+  const documentListeners = new Map();
+  globalThis.document = {
+    addEventListener: (name, listener) => documentListeners.set(name, listener),
+    removeEventListener: name => documentListeners.delete(name),
+    dispatchEvent: event => documentListeners.get(event.type)?.(event),
   };
   Object.values(mocks.service).forEach(mock => mock.mockReset());
   mocks.service.usuarioPuedeDiagnostico.mockResolvedValue(true);
@@ -371,5 +378,86 @@ describe('Diagnostico Tecnico - Etapa B', () => {
   it('R8: existe la clase alert-warning', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     expect(css).toContain('.alert-warning');
+  });
+
+  it('R9: cerrar un CatalogSelector sin elegir restaura la etiqueta seleccionada', async () => {
+    const onSelect = vi.fn();
+    await act(async () => {
+      renderer = create(<CatalogSelector label="Tarea *" kind="tipo" value={{ id: 'task-1', nombre: 'Tarea 1' }} options={[{ id: 'task-1', nombre: 'Tarea 1' }]} disabled={false} placeholder="Buscar" canCreate={false} clearable={false} onSelect={onSelect} onError={vi.fn()} />);
+      await wait(0);
+    });
+    const taskInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Tarea *' })[0];
+    await act(async () => { taskInput.props.onChange({ target: { value: 'xyz' } }); await wait(0); });
+    await act(async () => { globalThis.document.dispatchEvent({ type: 'mousedown', target: {} }); await wait(0); });
+    console.log('R9_CATALOG_CANCEL_RESULT', JSON.stringify({ input: taskInput.props.value, select_calls: onSelect.mock.calls.length }));
+    expect(taskInput.props.value).toBe('Tarea 1');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('R10: editar ReferenceSelector invalida la seleccion y bloquea Guardar', async () => {
+    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([{ id: 'opp-new', numero: 'Oportunidad nueva', cliente: 'Cliente' }]);
+    await renderPage();
+    await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(350); });
+    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
+    await act(async () => { referenceInput.props.onFocus(); await wait(0); });
+    await act(async () => { buttonContaining(renderer, 'Oportunidad nueva').props.onClick(); await wait(0); });
+    await act(async () => { referenceInput.props.onChange({ target: { value: 'otra búsqueda' } }); await wait(0); });
+    const save = buttonByText(renderer, 'Guardar');
+    console.log('R10_REFERENCE_EDIT_RESULT', JSON.stringify({ input: referenceInput.props.value, save_disabled: save?.props.disabled, create_calls: mocks.service.crearDiagnosticoTecnico.mock.calls.length }));
+    expect(referenceInput.props.value).toBe('otra búsqueda');
+    expect(save.props.disabled).toBe(true);
+    expect(mocks.service.crearDiagnosticoTecnico).not.toHaveBeenCalled();
+  });
+
+  it('R11: ReferenceSelector permite borrar completamente el texto', async () => {
+    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([{ id: 'opp-new', numero: 'Oportunidad nueva', cliente: 'Cliente' }]);
+    await renderPage();
+    await act(async () => { buttonByText(renderer, 'Fabricación').props.onClick(); await wait(350); });
+    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
+    await act(async () => { referenceInput.props.onFocus(); await wait(0); });
+    await act(async () => { buttonContaining(renderer, 'Oportunidad nueva').props.onClick(); await wait(0); });
+    await act(async () => { referenceInput.props.onChange({ target: { value: '' } }); await wait(0); });
+    console.log('R11_REFERENCE_CLEAR_RESULT', JSON.stringify({ input: referenceInput.props.value }));
+    expect(referenceInput.props.value).toBe('');
+  });
+
+  it('R12: perder foco cierra el menú y restaura el valor', async () => {
+    await openDetailAndAddLine();
+    const taskInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Tarea *' })[0];
+    await act(async () => { taskInput.props.onFocus(); taskInput.props.onChange({ target: { value: 'xyz' } }); await wait(0); });
+    await act(async () => { taskInput.props.onBlur({ relatedTarget: {} }); await wait(0); });
+    console.log('R12_FOCUSOUT_RESULT', JSON.stringify({ input: taskInput.props.value, list_open: renderer.root.findAllByProps({ role: 'listbox' }).length > 0 }));
+    expect(taskInput.props.value).toBe('Tarea 1');
+    expect(renderer.root.findAllByProps({ role: 'listbox' })).toHaveLength(0);
+  });
+
+  it('R13: etiqueta seleccionada muestra todas las opciones y escribir filtra', async () => {
+    mocks.service.listarTiposServicioInterno.mockResolvedValue([
+      { id: 'task-1', nombre: 'Tarea 1' },
+      { id: 'activity-1', nombre: 'Actividad 1' },
+    ]);
+    await openDetailAndAddLine();
+    const taskInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Tarea *' })[0];
+    await act(async () => { taskInput.props.onFocus(); await wait(0); });
+    const allOptions = renderer.root.findAllByProps({ role: 'listbox' })[0].findAllByType('button').map(button => textOf(button).trim());
+    await act(async () => { taskInput.props.onChange({ target: { value: 'Act' } }); await wait(0); });
+    const filteredOptions = renderer.root.findAllByProps({ role: 'listbox' })[0].findAllByType('button').map(button => textOf(button).trim());
+    console.log('R13_CATALOG_FILTER_RESULT', JSON.stringify({ all_options: allOptions, filtered_options: filteredOptions }));
+    expect(allOptions).toContain('Actividad 1');
+    expect(filteredOptions).toContain('Actividad 1');
+    expect(filteredOptions).not.toContain('Tarea 1');
+  });
+
+  it('R14: tokens del pie sticky tienen valores claro y oscuro', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    for (const token of ['--white', '--card-border', '--shadow-md', '--orange-soft', '--orange', '--row-alt', '--text']) expect(css).toContain(token);
+    expect(css).toMatch(/\[data-theme='dark'\][\s\S]*--white:/);
+    expect(css).toMatch(/\[data-theme='dark'\][\s\S]*--orange-soft:/);
+  });
+
+  it('R15: las reglas de overflow no ocultan el menú del card de línea', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/\.diagnostico-line-card[^{}]*overflow:\s*hidden/);
+    expect(css).not.toMatch(/\.card\s*\{[^}]*overflow:\s*hidden/);
   });
 });
