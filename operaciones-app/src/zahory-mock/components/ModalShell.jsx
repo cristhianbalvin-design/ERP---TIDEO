@@ -1,18 +1,7 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 
 export function ModalShell({ open, title, subtitle, status, width = 1040, dirty = false, busy = false, onClose, children, footer }) {
-  useEffect(() => {
-    if (!open || typeof window === 'undefined' || !window.addEventListener) return undefined;
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') requestClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [busy, dirty, onClose, open]);
-
-  if (!open) return null;
-
-  const requestClose = () => {
+  const requestClose = useCallback(() => {
     if (busy) {
       if (typeof window.confirm === 'function' && !window.confirm('Hay un guardado en curso. Si cierras, puede completarse igualmente; verifica la lista al volver.')) return;
       onClose();
@@ -20,7 +9,18 @@ export function ModalShell({ open, title, subtitle, status, width = 1040, dirty 
     }
     if (dirty && typeof window.confirm === 'function' && !window.confirm('Tienes cambios sin guardar')) return;
     onClose();
-  };
+  }, [busy, dirty, onClose]);
+
+  useEffect(() => {
+    if (!open || typeof window === 'undefined' || !window.addEventListener) return undefined;
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') requestClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, requestClose]);
+
+  if (!open) return null;
 
   return (
     <div
@@ -43,7 +43,7 @@ export function ModalShell({ open, title, subtitle, status, width = 1040, dirty 
           </div>
         </div>
         {children}
-        {footer && <div className="card-body" style={{ borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>{footer}</div>}
+        {footer && <div className="card-body diagnostico-modal-footer">{typeof footer === 'function' ? footer(requestClose) : footer}</div>}
       </div>
     </div>
   );

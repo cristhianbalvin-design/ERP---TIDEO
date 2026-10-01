@@ -121,26 +121,50 @@ function AccessState({ loading, title, error }) {
 
 function ReferenceSelector({ tipo, value, search, references, loading, disabled, onSearch, onSelect }) {
   const isFabricacion = tipo === 'fabricacion';
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    const handleOutside = event => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
+
+  const select = reference => {
+    onSelect(reference);
+    setOpen(false);
+  };
+
   return (
-    <div className="field" style={{ gridColumn: '1 / -1' }}>
+    <div ref={rootRef} className="field diagnostico-combobox" style={{ gridColumn: '1 / -1' }}>
       <label>{isFabricacion ? 'Oportunidad' : 'Recepción de activo'}</label>
       <input
         className="input"
         role="combobox"
         aria-label={isFabricacion ? 'Oportunidad' : 'Recepción de activo'}
-        value={search}
+        value={search || (value ? referenceLabel(value) : '')}
         disabled={disabled}
         placeholder={isFabricacion ? 'Buscar por nombre de oportunidad...' : 'Buscar por número, cliente o activo...'}
-        onChange={event => onSearch(event.target.value)}
+        onFocus={() => setOpen(true)}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        onChange={event => { setOpen(true); onSearch(event.target.value); }}
       />
-      {!disabled && <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 8, maxHeight: 220, overflowY: 'auto' }}>
+      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox">
         {loading && <div className="muted" style={{ padding: 12 }}>Buscando referencias...</div>}
         {!loading && !references.length && <div className="muted" style={{ padding: 12 }}>Sin referencias encontradas.</div>}
         {!loading && references.map(reference => (
           <button
             type="button"
             key={reference.id}
-            onClick={() => onSelect(reference)}
+            onClick={() => select(reference)}
             style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: value?.id === reference.id ? 'var(--cyan-lt)' : 'transparent', textAlign: 'left', padding: 10, cursor: 'pointer' }}
           >
             <strong>{referenceLabel(reference)}</strong>
@@ -165,10 +189,21 @@ function optionLabel(option, kind) {
 function CatalogSelector({ label, kind, value, options, disabled, placeholder, canCreate, clearable, onSelect, onCreate, onError }) {
   const [query, setQuery] = useState(value ? optionLabel(value, kind) : '');
   const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
 
   useEffect(() => {
     setQuery(value ? optionLabel(value, kind) : '');
   }, [kind, value?.id]);
+
+  useEffect(() => {
+    if (!open || typeof document === 'undefined') return undefined;
+    const handleOutside = event => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [open]);
 
   const normalizedQuery = normalizedText(query);
   const exactOption = options.some(option => [option.nombre, optionLabel(option, kind)].some(labelText => normalizedText(labelText) === normalizedQuery));
@@ -177,6 +212,7 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
   const select = option => {
     onSelect(option);
     setQuery(option ? optionLabel(option, kind) : '');
+    setOpen(false);
   };
   const create = async () => {
     const nombre = createName(query);
@@ -186,6 +222,7 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
       const created = await onCreate(nombre);
       onSelect(created);
       setQuery(optionLabel(created, kind));
+      setOpen(false);
     } catch (error) {
       onError(error);
     } finally {
@@ -194,11 +231,18 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
   };
 
   return (
-    <div className="field">
+    <div ref={rootRef} className="field diagnostico-combobox">
       <label>{label}</label>
-       <input className="input" role="combobox" aria-label={label} value={query} disabled={disabled} placeholder={placeholder} onChange={event => setQuery(event.target.value)} />
-      {clearable && !disabled && value && <button type="button" className="btn btn-secondary" onClick={() => select(null)} style={{ marginTop: 6 }}>Quitar</button>}
-      {!disabled && <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, maxHeight: 170, overflowY: 'auto' }}>
+      <div className="diagnostico-combobox-control">
+        <input className="input" role="combobox" aria-label={label} value={query} disabled={disabled} placeholder={placeholder} onFocus={() => setOpen(true)} onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }} onChange={event => { setOpen(true); setQuery(event.target.value); }} />
+        {clearable && !disabled && value && <button type="button" className="diagnostico-combobox-clear" aria-label={`Quitar ${label}`} onClick={() => select(null)}>×</button>}
+      </div>
+      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox">
         {visible.map(option => (
           <button type="button" key={option.id} onClick={() => select(option)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: value?.id === option.id ? 'var(--cyan-lt)' : 'transparent', textAlign: 'left', padding: 8, cursor: 'pointer' }}>
             {optionLabel(option, kind)}
@@ -290,10 +334,14 @@ export function DiagnosticoTecnicoPage() {
   const [lineValidationErrors, setLineValidationErrors] = useState({});
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
   const openRequestRef = useRef(0);
+  const listRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const modalSessionRef = useRef(0);
 
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const canCreate = access.ver && access.crear;
   const isReadOnly = selected?.estado === 'emitido';
@@ -303,20 +351,25 @@ export function DiagnosticoTecnicoPage() {
 
   const cargarLista = useCallback(async () => {
     if (!access.ver || !empresaId) return;
+    const requestId = ++listRequestRef.current;
     setLoadingList(true);
     setReferenceError('');
     try {
       const rows = await listarDiagnosticosTecnicos(empresaId);
+      if (requestId !== listRequestRef.current) return;
       try {
-        setDiagnosticos(await adjuntarReferencias(empresaId, rows));
+        const rowsWithReferences = await adjuntarReferencias(empresaId, rows);
+        if (requestId !== listRequestRef.current) return;
+        setDiagnosticos(rowsWithReferences);
       } catch (referenceLoadError) {
+        if (requestId !== listRequestRef.current) return;
         setReferenceError(errorMessage(referenceLoadError));
         setDiagnosticos(rows.map(row => ({ ...row, referencia: null })));
       }
     } catch (loadError) {
-      if (requestId === openRequestRef.current) setError(errorMessage(loadError));
+      if (requestId === listRequestRef.current) setError(errorMessage(loadError));
     } finally {
-      setLoadingList(false);
+      if (requestId === listRequestRef.current) setLoadingList(false);
     }
   }, [access.ver, empresaId]);
 
@@ -445,7 +498,10 @@ export function DiagnosticoTecnicoPage() {
     } catch (saveError) {
       if (isActive()) setError(errorMessage(saveError));
     } finally {
-      if (mountedRef.current) setSaving(false);
+      if (isActive()) {
+        setSaving(false);
+        setSlowSaveWarning('');
+      }
     }
   };
 
@@ -534,7 +590,10 @@ export function DiagnosticoTecnicoPage() {
         setError(`La línea no se guardó: ${originalError}`);
       }
     } finally {
-      if (mountedRef.current) setSavingLine(null);
+      if (isActive()) {
+        setSavingLine(null);
+        setSlowSaveWarning('');
+      }
     }
   };
 
@@ -600,6 +659,7 @@ export function DiagnosticoTecnicoPage() {
     ? (selected.lineas || []).some(line => line._dirty)
     : Boolean(form.referencia);
   const modalBusy = saving || Boolean(savingLine);
+  const modalOpen = Boolean(form.tipo || selected);
 
   if (sesion.estado !== 'listo' || !empresaId) return <AccessState title="No se puede abrir Diagnóstico Técnico" error={sessionError} />;
   if (access.loading) return <AccessState loading />;
@@ -620,6 +680,13 @@ export function DiagnosticoTecnicoPage() {
           <button type="button" className="btn btn-secondary" onClick={() => openNew('mantenimiento')}><Icon name="plus" size={14} /> Mantenimiento</button>
         </div>}
       </div>
+
+      {!modalOpen && <>
+        {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
+        {referenceError && <div className="alert alert-error" style={{ marginBottom: 12 }}>No se pudo resolver la referencia: {referenceError}</div>}
+        {catalogError && <div className="alert alert-error" style={{ marginBottom: 12 }}>No se pudieron cargar los catálogos: {catalogError}</div>}
+        {notice && <div className="alert alert-success" style={{ marginBottom: 12 }}>{notice}</div>}
+      </>}
 
       {!sesion.permiteEscritura && <div className="alert alert-error" style={{ marginBottom: 12 }}>La empresa operativa está en modo solo lectura; no se pueden guardar diagnósticos.</div>}
 
@@ -654,7 +721,7 @@ export function DiagnosticoTecnicoPage() {
         dirty={detailDirty}
         busy={modalBusy}
         onClose={closeDetail}
-        footer={<>
+        footer={requestClose => <>
           <div style={{ flex: 1 }}>
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
             {error && <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>}
@@ -662,7 +729,7 @@ export function DiagnosticoTecnicoPage() {
             {catalogError && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>No se pudieron cargar los catálogos: {catalogError}</div>}
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
-          <button type="button" className="btn btn-secondary" onClick={closeDetail}>Cerrar</button>
+          <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
           {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >

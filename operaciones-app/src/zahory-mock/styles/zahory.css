@@ -586,6 +586,14 @@ a { color: var(--cyan); text-decoration: none; }
 .input-lg { height: 48px; font-size: 15px; padding: 0 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.3px; }
+.diagnostico-combobox { position: relative; min-width: 0; }
+.diagnostico-combobox-control { position: relative; display: flex; align-items: center; min-height: 38px; }
+.diagnostico-combobox-control .input { width: 100%; padding-right: 38px; }
+.diagnostico-combobox-clear { position: absolute; right: 8px; width: 24px; height: 24px; border-radius: 50%; color: var(--text-muted); font-size: 18px; line-height: 1; }
+.diagnostico-combobox-clear:hover { background: var(--row-alt); color: var(--text); }
+.diagnostico-combobox-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; max-height: 220px; overflow-y: auto; background: var(--white); border: 1px solid var(--card-border); border-radius: 8px; box-shadow: var(--shadow-md); }
+.diagnostico-modal-footer { position: sticky; bottom: 0; z-index: 20; background: var(--white); border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 10px; }
+.alert-warning { background: var(--orange-soft); color: #8A4B00; border: 1px solid var(--orange); border-radius: 8px; padding: 10px 12px; }
 
 .diagnostico-line-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .diagnostico-line-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }

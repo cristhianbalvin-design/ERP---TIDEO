@@ -1,4 +1,5 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { act, create } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,6 +50,9 @@ const buttonByText = (renderer, label) => renderer.root.findAllByType('button').
 let renderer;
 
 beforeEach(() => {
+  mocks.session.empresaId = 'empresa-prueba';
+  mocks.session.estado = 'listo';
+  mocks.session.permiteEscritura = true;
   const listeners = new Map();
   globalThis.window = {
     setTimeout,
@@ -63,6 +67,7 @@ beforeEach(() => {
     { id: 'one', tipo: 'fabricacion', estado: 'borrador', oportunidad_id: 'opp-one', recepcion_id: null, updated_at: null },
     { id: 'two', tipo: 'mantenimiento', estado: 'borrador', oportunidad_id: null, recepcion_id: 'rac-two', updated_at: null },
   ]);
+  mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one'));
   mocks.service.resolverReferenciasDiagnostico.mockImplementation(async (_empresa, _tipo, ids) => ids.map(id => ({ id, numero: id, cliente: 'Cliente de prueba', activo: 'Activo de prueba' })));
   mocks.service.listarReferenciasDiagnostico.mockResolvedValue([]);
   mocks.service.listarFamiliasTrabajo.mockResolvedValue([{ id: 'fam-1', nombre: 'Trabajo 1' }]);
@@ -100,6 +105,14 @@ async function openDetailAndAddLine() {
   await act(async () => {
     buttonByText(renderer, 'Agregar l\u00ednea').props.onClick();
     await wait(20);
+  });
+  await act(async () => {
+    renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Trabajo *' })[0].props.onFocus?.();
+    await wait(0);
+  });
+  await act(async () => {
+    renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Tarea *' })[0].props.onFocus?.();
+    await wait(0);
   });
   await act(async () => {
     buttonByText(renderer, 'Trabajo 1').props.onClick();
@@ -226,5 +239,137 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
     await act(async () => { buttonByText(renderer, 'Guardar l\u00ednea').props.onClick(); await wait(20); });
     expect(textOf(renderer.root)).toContain('error visible de prueba');
+  });
+
+  it('R1: Cerrar en el pie respeta confirmacion cuando hay cambios sucios', async () => {
+    await openDetailAndAddLine();
+    globalThis.window.confirm = vi.fn(() => false);
+    await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
+    console.log('R1_DIRTY_CLOSE_RESULT', JSON.stringify({ confirm_calls: globalThis.window.confirm.mock.calls.length, dialog_open: renderer.root.findAllByProps({ role: 'dialog' }).length === 1 }));
+    expect(globalThis.window.confirm).toHaveBeenCalledWith('Tienes cambios sin guardar');
+    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
+  });
+
+  it('R2a: un error de lista queda visible sin modal', async () => {
+    mocks.service.listarDiagnosticosTecnicos.mockRejectedValue(new Error('fallo de lista'));
+    await renderPage();
+    await act(async () => { await wait(100); });
+    console.log('R2A_LIST_ERROR_RESULT', JSON.stringify({ modal_open: renderer.root.findAllByProps({ role: 'dialog' }).length === 1, error_visible: textOf(renderer.root).includes('fallo de lista') }));
+    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain('fallo de lista');
+  });
+
+  it('R2b: un error de detalle queda visible sin modal', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockRejectedValue(new Error('fallo de detalle'));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
+    console.log('R2B_DETAIL_ERROR_RESULT', JSON.stringify({ modal_open: renderer.root.findAllByProps({ role: 'dialog' }).length === 1, error_visible: textOf(renderer.root).includes('fallo de detalle') }));
+    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain('fallo de detalle');
+  });
+
+  it('R3: la respuesta vieja de cargarLista no pisa la lista nueva', async () => {
+    const firstList = deferred();
+    let calls = 0;
+    mocks.service.listarDiagnosticosTecnicos.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) return firstList.promise;
+      return [{ id: 'two', tipo: 'mantenimiento', estado: 'borrador', oportunidad_id: null, recepcion_id: 'rac-two', updated_at: null }];
+    });
+    await renderPage();
+    await waitFor(() => calls === 1);
+    mocks.session.empresaId = 'empresa-dos';
+    await act(async () => { renderer.update(<DiagnosticoTecnicoPage />); await wait(100); });
+    firstList.resolve([{ id: 'one', tipo: 'fabricacion', estado: 'borrador', oportunidad_id: 'opp-one', recepcion_id: null, updated_at: null }]);
+    await act(async () => { await wait(120); });
+    const dom = textOf(renderer.root);
+    console.log('R3_LIST_RACE_RESULT', JSON.stringify({ calls, has_new: dom.includes('rac-two'), has_old: dom.includes('opp-one') }));
+    expect(dom).toContain('rac-two');
+    expect(dom).not.toContain('opp-one');
+  });
+
+  it('R4: resolver el guardado viejo no desbloquea el boton del diagnostico nuevo', async () => {
+    const firstSync = deferred();
+    const secondSync = deferred();
+    let syncCalls = 0;
+    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async (_empresa, id) => detail(id));
+    mocks.service.sincronizarMaterialesLinea.mockImplementation(() => {
+      syncCalls += 1;
+      return syncCalls === 1 ? firstSync.promise : secondSync.promise;
+    });
+    await openDetailAndAddLine();
+    fillMaterialDescription('Filtro uno');
+    await act(async () => { buttonByText(renderer, 'Guardar l\u00ednea').props.onClick(); await wait(40); });
+    globalThis.window.confirm = vi.fn(() => true);
+    await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
+    await act(async () => { renderer.root.findAllByType('tr')[2].props.onClick(); await wait(100); });
+    await act(async () => {
+      buttonByText(renderer, 'Agregar l\u00ednea').props.onClick();
+      await wait(20);
+    });
+    await act(async () => {
+      renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Trabajo *' })[0].props.onFocus?.();
+      await wait(0);
+    });
+    await act(async () => {
+      renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Tarea *' })[0].props.onFocus?.();
+      await wait(0);
+    });
+    await act(async () => {
+      buttonByText(renderer, 'Trabajo 1').props.onClick();
+      buttonByText(renderer, 'Tarea 1').props.onClick();
+      await wait(20);
+    });
+    await act(async () => {
+      buttonByText(renderer, 'Agregar repuesto').props.onClick();
+      await wait(20);
+    });
+    fillMaterialDescription('Filtro dos');
+    await act(async () => { buttonByText(renderer, 'Guardar l\u00ednea').props.onClick(); await wait(40); });
+    firstSync.resolve();
+    await act(async () => { await wait(100); });
+    const secondButton = buttonByText(renderer, 'Guardando...');
+    console.log('R4_STALE_FINALLY_RESULT', JSON.stringify({ sync_calls: syncCalls, new_button: secondButton ? textOf(secondButton).trim() : null }));
+    expect(secondButton).toBeTruthy();
+    secondSync.resolve();
+    await act(async () => { await wait(100); });
+  });
+
+  it('R5: el pie del modal usa posicion sticky', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    expect(css).toContain('position: sticky');
+    expect(css).toContain('bottom: 0');
+  });
+
+  it('R6: los selectores se comportan como comboboxes limpiables y Esc no cierra el modal', async () => {
+    mocks.service.listarTiposServicioInterno.mockResolvedValue([
+      { id: 'activity-1', nombre: 'Actividad 1' },
+      { id: 'task-1', nombre: 'Tarea 1' },
+    ]);
+    await openDetailAndAddLine();
+    const activityInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Actividad (opcional)' })[0];
+    expect(renderer.root.findAllByType('button').some(button => textOf(button).trim() === 'Actividad 1')).toBe(false);
+    await act(async () => { activityInput.props.onFocus(); await wait(0); });
+    await act(async () => { buttonByText(renderer, 'Actividad 1').props.onClick(); });
+    expect(activityInput.props.value).toBe('Actividad 1');
+    const clear = renderer.root.findAllByProps({ 'aria-label': 'Quitar Actividad (opcional)' })[0];
+    await act(async () => { clear.props.onClick(); });
+    expect(activityInput.props.value).toBe('');
+    const stopPropagation = vi.fn();
+    await act(async () => { activityInput.props.onFocus(); activityInput.props.onKeyDown({ key: 'Escape', stopPropagation }); });
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
+  });
+
+  it('R7: mountedRef se activa y se limpia con un useEffect explicito', async () => {
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(source).toContain('useEffect(() => {');
+    expect(source).toContain('mountedRef.current = true;');
+    expect(source).toContain('mountedRef.current = false;');
+  });
+
+  it('R8: existe la clase alert-warning', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    expect(css).toContain('.alert-warning');
   });
 });
