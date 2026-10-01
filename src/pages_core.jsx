@@ -25,6 +25,7 @@ import {
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 import { AdvertenciaHojaCosteoDuplicada } from './components/AdvertenciaHojaCosteoDuplicada.jsx';
+import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura) => (
   sociedadIdEscritura
@@ -39,13 +40,18 @@ function computeNextMaterialCode(subfamiliaId, grupos, familias, subfamilias, ma
   if (!fam) return '';
   const grp = grupos.find(g => g.id === fam.grupo_id);
   if (!grp) return '';
-  const prefix = String(grp.codigo || '').padStart(2, '0') + String(fam.codigo || '').padStart(2, '0') + String(sub.codigo || '').padStart(2, '0');
-  const existentes = materiales.filter(m => m.subfamilia_id === subfamiliaId && (m.empresa_id === empresaId || !m.empresa_id) && typeof m.codigo === 'string' && m.codigo.length === 10 && m.codigo.startsWith(prefix));
+  const prefix = [grp.codigo, fam.codigo, sub.codigo].map(codigo => String(codigo || '').trim()).join('');
+  const existentes = materiales.filter(m => {
+    if (m.subfamilia_id !== subfamiliaId || (m.empresa_id && m.empresa_id !== empresaId)) return false;
+    const codigo = String(m.codigo || '');
+    const correlativo = codigo.slice(prefix.length);
+    return prefix && codigo.startsWith(prefix) && /^\d+$/.test(correlativo);
+  });
   const maxCorr = existentes.reduce((max, m) => {
-    const n = parseInt(m.codigo.slice(6), 10);
+    const n = parseInt(String(m.codigo).slice(prefix.length), 10);
     return Number.isNaN(n) ? max : Math.max(max, n);
   }, 0);
-  return prefix + String(maxCorr + 1).padStart(4, '0');
+  return prefix + String(maxCorr + 1).padStart(2, '0');
 }
 
 // ─── MaterialAutocomplete ─────────────────────────────────────────────────────
@@ -74,33 +80,6 @@ function preciosReferencialesPartesEnPen(material, convertirMonto, tipoCambioHoy
       : null,
   };
 }
-
-const UNIDADES_MEDIDA_MATERIAL = [
-  ['und', 'Unidad'],
-  ['pza', 'Pieza'],
-  ['par', 'Par'],
-  ['doc', 'Docena'],
-  ['caja', 'Caja'],
-  ['paquete', 'Paquete'],
-  ['rollo', 'Rollo'],
-  ['saco', 'Saco'],
-  ['juego', 'Juego'],
-  ['set', 'Set'],
-  ['kg', 'Kilogramo'],
-  ['g', 'Gramo'],
-  ['t', 'Tonelada'],
-  ['lb', 'Libra'],
-  ['m', 'Metro'],
-  ['cm', 'Centímetro'],
-  ['mm', 'Milímetro'],
-  ['m²', 'Metro cuadrado'],
-  ['cm²', 'Centímetro cuadrado'],
-  ['m³', 'Metro cúbico'],
-  ['lt', 'Litro'],
-  ['ml', 'Mililitro'],
-  ['gl', 'Galón'],
-  ['glb', 'Global'],
-];
 
 export function MaterialAutocomplete({ value, onChange, materiales = [], inventario = [], style = {}, inlineOptions = false, permitirCrearMaterial = true }) {
   const [query, setQuery] = useState(value?.nombre || '');
@@ -270,8 +249,9 @@ export function MaterialAutocomplete({ value, onChange, materiales = [], inventa
                   </select>
                 </div>
                 <div className="input-group">
-                  <label>Codigo</label>
-                  <input className="input" readOnly value={codigoAuto || '-'} style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                  <label>Codigo <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>· Automático</span></label>
+                  <input className="input" readOnly value="" style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                  <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>No es obligatorio. El sistema lo generará automáticamente con grupo, familia, sub-familia y correlativo.</div>
                 </div>
                 <div className="input-group" style={{ gridColumn: '1 / -1' }}>
                   <label>Descripcion *</label>

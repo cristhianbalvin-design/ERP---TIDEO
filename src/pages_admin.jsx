@@ -67,6 +67,7 @@ const symOf = m => m === 'USD' ? 'US$' : 'S/';
 import { SmartTextField } from './components/SmartTextField.jsx';
 import { listNavModules, listNavSections, useTenantNavLabels } from './services/navLabelsService.js';
 import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
+import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -3335,10 +3336,18 @@ function computeNextCodigo(subfamiliaId, grupos, familias, subfamilias, material
   if (!fam) return '';
   const grp = grupos.find(g => g.id === fam.grupo_id);
   if (!grp) return '';
-  const prefix = grp.codigo.padStart(2,'0') + fam.codigo.padStart(2,'0') + sub.codigo.padStart(2,'0');
-  const existentes = materiales.filter(m => m.subfamilia_id === subfamiliaId && (m.empresa_id === empresaId || !m.empresa_id) && typeof m.codigo === 'string' && m.codigo.length === 10 && m.codigo.startsWith(prefix));
-  const maxCorr = existentes.reduce((max, m) => { const n = parseInt(m.codigo.slice(6), 10); return isNaN(n) ? max : Math.max(max, n); }, 0);
-  return prefix + String(maxCorr + 1).padStart(4, '0');
+  const prefix = [grp.codigo, fam.codigo, sub.codigo].map(codigo => String(codigo || '').trim()).join('');
+  const existentes = materiales.filter(m => {
+    if (m.subfamilia_id !== subfamiliaId || (m.empresa_id && m.empresa_id !== empresaId)) return false;
+    const codigo = String(m.codigo || '');
+    const correlativo = codigo.slice(prefix.length);
+    return prefix && codigo.startsWith(prefix) && /^\d+$/.test(correlativo);
+  });
+  const maxCorr = existentes.reduce((max, m) => {
+    const n = parseInt(String(m.codigo).slice(prefix.length), 10);
+    return Number.isNaN(n) ? max : Math.max(max, n);
+  }, 0);
+  return prefix + String(maxCorr + 1).padStart(2, '0');
 }
 
 // ─── MaterialesMaestro ────────────────────────────────────────────────────────
@@ -3508,7 +3517,7 @@ function MaterialesMaestro({ onClose }) {
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
-      const columnasObligatorias = ['cod grupo', 'cod familia', 'cod sub-familia', 'descripcion', 'um'];
+      const columnasObligatorias = ['descripcion', 'um'];
       const hojaMateriales = wb.SheetNames.find(nombre => String(nombre).trim().toLocaleLowerCase('es-PE') === 'materiales')
         || wb.SheetNames.find(nombre => {
           const [encabezados = []] = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '' });
@@ -3553,12 +3562,7 @@ function MaterialesMaestro({ onClose }) {
            precio_referencial: r[`Precio Referencial Alternativo ${n}`] ?? r[`precio_referencial_alternativo_${n}`] ?? '',
            moneda: String(r[`Moneda Alternativo ${n}`] ?? r[`moneda_alternativo_${n}`] ?? 'PEN').trim() || 'PEN',
         })),
-      })).filter(f => {
-        if (!f.cod_grupo || !f.cod_familia || !f.cod_subfamilia) return false;
-        if (!f.descripcion) return false;
-        if (!f.unidad) return false;
-        return true;
-      });
+      })).filter(f => f.descripcion && f.unidad);
       if (!filas.length) { setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: 'No se encontraron filas válidas en el archivo.' }] }); return; }
       const importTimeoutMs = Math.max(45000, Math.min(180000, filas.length * 900));
       const res = await withImportTimeout(
@@ -3580,18 +3584,18 @@ function MaterialesMaestro({ onClose }) {
   const descargarPlantillaMateriales = () => {
     const headers = ['Cod Grupo','Grupo','Cod Familia','Familia','Cod Sub-Familia','Sub-Familia','Codigo','Descripcion','Nro Parte','Fabricante Original','Precio Referencial Original','Moneda Original','UM','Unidades Contenidas','Estado','Almacen','Ubicacion','Observacion','Precio referencial general (PEN)'];
     headers.push(...[1,2,3,4].flatMap(n => [`Nro Parte Alternativo ${n}`, `Fabricante Alternativo ${n}`, `Notas Alternativo ${n}`, `Precio Referencial Alternativo ${n}`, `Moneda Alternativo ${n}`]));
-    const ejemplo = ['GRP01','Herramientas','FAM01','Herramientas Manuales','SUB01','Llaves','','Llave francesa 10"','MFR-1234','Fabricante OEM','25.50','PEN','und','1','activo','Almacén Central','Estante A-3','','25.50','ALT-MFR-1234','Fabricante Alternativo','Equivalente','22.00','USD'];
+    const ejemplo = ['','Herramientas','','Herramientas Manuales','','Llaves','','Llave francesa 10"','MFR-1234','Fabricante OEM','25.50','PEN','und','1','activo','Almacén Central','Estante A-3','','25.50','ALT-MFR-1234','Fabricante Alternativo','Equivalente','22.00','USD'];
     const ws = XLSX.utils.aoa_to_sheet([headers, ejemplo]);
     ws['!cols'] = headers.map((h,i) => ({ wch: i < 6 ? 12 : i === 7 ? 30 : 16 }));
     
     const instrucciones = [
       ['INSTRUCCIONES PARA LLENAR LA PLANTILLA'],
       [''],
-      ['1. Cod Grupo, Cod Familia, Cod Sub-Familia:', 'Deben ser códigos cortos y únicos (ej: GRP01, FAM01). Son obligatorios.'],
-      ['2. Grupo, Familia, Sub-Familia:', 'Nombres descriptivos de la jerarquía (ej: Herramientas, Herramientas Manuales). Obligatorios.'],
-      ['3. Codigo:', 'Dejar en blanco para que el sistema lo autogenere, o colocar un código único personalizado.'],
+      ['1. Cod Grupo, Cod Familia, Cod Sub-Familia:', 'Son opcionales. Si se dejan vacíos, el sistema genera GRP01/FAM01/SUB01 y continúa la secuencia existente. Si se informan, se respetan.'],
+      ['2. Grupo, Familia, Sub-Familia:', 'Nombres descriptivos de la jerarquía. Si no tienen código, se usan para encontrar o crear la jerarquía.'],
+      ['3. Codigo:', 'El sistema siempre lo genera como Cod Grupo + Cod Familia + Cod Sub-Familia + correlativo, comenzando en 01. Si la plantilla trae un valor, se ignora.'],
       ['4. Descripcion:', 'Nombre completo del material (ej: Llave francesa 10"). Obligatorio.'],
-      ['5. UM:', 'Unidad de medida (ej: und, kg, m). Obligatorio.'],
+      ['5. UM:', 'Selecciona una unidad principal del rubro (ej: und, kg, m, m², lt). Obligatorio.'],
       ['6. Estado:', 'Colocar "activo" o "inactivo". Por defecto es "activo".'],
        ['7. Precios referenciales:', 'El precio referencial general (PEN) se usa como referencia inicial al presupuestar OTs. Los precios por número de parte sirven para comparar fabricantes; ninguno actualiza el costo de inventario ni se copia automáticamente a OCs.'],
        ['8. Números alternativos:', 'Las cinco columnas de cada alternativo son opcionales. Registra hasta 4 equivalencias; el fabricante se busca normalizado o se crea automáticamente.'],
@@ -3785,8 +3789,9 @@ function MaterialesMaestro({ onClose }) {
                     </select>
                   </div>
                   <div className="input-group">
-                    <label>Código <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>· Auto</span></label>
-                    <input className="input" readOnly value={editandoId ? (materiales.find(m => m.id === editandoId)?.codigo || '') : (codigoAuto || '—')} style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                    <label>Código <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>· Automático</span></label>
+                    <input className="input" readOnly value={editandoId ? (materiales.find(m => m.id === editandoId)?.codigo || '') : ''} style={{ color: 'var(--fg-muted)', background: 'var(--bg-subtle)', cursor: 'default' }} />
+                    {!editandoId && <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>No es obligatorio. El sistema lo generará automáticamente con grupo, familia, sub-familia y correlativo.</div>}
                   </div>
                   <div className="input-group" style={{ gridColumn: 'span 2' }}>
                     <label>Descripción *</label>
@@ -3794,7 +3799,11 @@ function MaterialesMaestro({ onClose }) {
                   </div>
                   <div className="input-group">
                     <label>UM *</label>
-                    <input className="input" required value={formMat.unidad} onChange={e => setFormMat(p => ({ ...p, unidad: e.target.value }))} placeholder="Ej: und, kg, m" />
+                    <select className="select" required value={formMat.unidad} onChange={e => setFormMat(p => ({ ...p, unidad: e.target.value }))}>
+                      <option value="">Seleccionar unidad...</option>
+                      {formMat.unidad && !UNIDADES_MEDIDA_MATERIAL.some(([codigo]) => codigo === formMat.unidad) && <option value={formMat.unidad}>Valor actual: {formMat.unidad}</option>}
+                      {UNIDADES_MEDIDA_MATERIAL.map(([codigo, nombre]) => <option key={codigo} value={codigo}>{nombre} ({codigo})</option>)}
+                    </select>
                   </div>
                   <div className="input-group">
                     <label>Nro Parte</label>

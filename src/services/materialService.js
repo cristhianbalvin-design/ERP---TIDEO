@@ -426,13 +426,10 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
   const actualizados = [];
   const errores = [];
 
-  const normSegment = (value) => {
-    const raw = String(value ?? '').trim();
-    if (!raw) return '';
-    const asNumber = Number(raw);
-    if (Number.isFinite(asNumber) && /^-?\d+(\.0+)?$/.test(raw)) return String(Math.trunc(asNumber)).padStart(2, '0');
-    return raw.padStart(2, '0');
-  };
+  // Los códigos proporcionados en la plantilla se respetan literalmente.
+  // Solo los códigos ausentes se generan con prefijo + correlativo.
+  const normCode = (value) => String(value ?? '').trim();
+  const codeKey = (value) => normCode(value).toLocaleUpperCase('es-PE');
   const normText = (value) => String(value ?? '').trim();
   const keyText = (value) => normText(value).toLowerCase();
 
@@ -448,12 +445,54 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
   const firstError = [gruposRes, familiasRes, subfamiliasRes, almacenesRes, materialesRes, fabricantesRes].find(r => r.error)?.error;
   if (firstError) throw firstError;
 
-  const gruposByCode = new Map((gruposRes.data || []).map(g => [normSegment(g.codigo), g]));
-  const familiasByGroupCode = new Map((familiasRes.data || []).map(f => [`${f.grupo_id}|${normSegment(f.codigo)}`, f]));
-  const subfamiliasByFamilyCode = new Map((subfamiliasRes.data || []).map(s => [`${s.familia_id}|${normSegment(s.codigo)}`, s]));
+  const gruposByCode = new Map((gruposRes.data || []).map(g => [codeKey(g.codigo), g]));
+  const gruposByName = new Map((gruposRes.data || []).map(g => [normalizarTextoMatching(g.nombre), g]));
+  const familiasByGroupCode = new Map((familiasRes.data || []).map(f => [`${f.grupo_id}|${codeKey(f.codigo)}`, f]));
+  const familiasByGroupName = new Map((familiasRes.data || []).map(f => [`${f.grupo_id}|${normalizarTextoMatching(f.nombre)}`, f]));
+  const subfamiliasByFamilyCode = new Map((subfamiliasRes.data || []).map(s => [`${s.familia_id}|${codeKey(s.codigo)}`, s]));
+  const subfamiliasByFamilyName = new Map((subfamiliasRes.data || []).map(s => [`${s.familia_id}|${normalizarTextoMatching(s.nombre)}`, s]));
   const almacenesByName = new Map((almacenesRes.data || []).map(a => [keyText(a.nombre), a]));
   const materialesByCode = new Map((materialesRes.data || []).filter(m => m.codigo).map(m => [normText(m.codigo), m]));
   const fabricantesByNombre = new Map((fabricantesRes.data || []).map(f => [normalizarTextoMatching(f.nombre), f]));
+
+  const nextHierarchySequences = new Map();
+  const siguienteCodigoJerarquia = (scopeKey, prefix, rows) => {
+    const sequenceKey = `${scopeKey}|${prefix}`;
+    let max = nextHierarchySequences.get(sequenceKey);
+    if (max === undefined) {
+      max = (rows || []).reduce((currentMax, row) => {
+        const codigo = normCode(row.codigo);
+        if (!codigo.toLocaleUpperCase('es-PE').startsWith(prefix)) return currentMax;
+        const suffix = codigo.slice(prefix.length);
+        return /^\d+$/.test(suffix) ? Math.max(currentMax, Number(suffix)) : currentMax;
+      }, 0);
+    }
+    let next = max + 1;
+    let codigo = `${prefix}${String(next).padStart(2, '0')}`;
+    const usados = new Set((rows || []).map(row => codeKey(row.codigo)));
+    while (usados.has(codeKey(codigo))) {
+      next += 1;
+      codigo = `${prefix}${String(next).padStart(2, '0')}`;
+    }
+    nextHierarchySequences.set(sequenceKey, next);
+    return codigo;
+  };
+
+  const nextMaterialSequences = new Map();
+  const siguienteCodigoMaterial = (prefix) => {
+    let max = nextMaterialSequences.get(prefix);
+    if (max === undefined) {
+      max = Array.from(materialesByCode.values()).reduce((currentMax, material) => {
+        const codigo = normCode(material.codigo);
+        if (!codigo.startsWith(prefix)) return currentMax;
+        const suffix = codigo.slice(prefix.length);
+        return /^\d+$/.test(suffix) ? Math.max(currentMax, Number(suffix)) : currentMax;
+      }, 0);
+    }
+    const next = max + 1;
+    nextMaterialSequences.set(prefix, next);
+    return `${prefix}${String(next).padStart(2, '0')}`;
+  };
 
   const alternativosDeFila = (fila) => {
     if (Array.isArray(fila.alternativos)) return fila.alternativos;
@@ -482,76 +521,61 @@ export const importarMaterialesMasivo = async (empresaId, filas) => {
     return creado;
   };
 
-  const gruposPendientes = new Map();
-  filas.forEach(fila => {
-    const codigo = normSegment(fila.cod_grupo);
-    if (codigo && !gruposByCode.has(codigo) && !gruposPendientes.has(codigo)) {
-      gruposPendientes.set(codigo, fila.grupo || `Grupo ${codigo}`);
-    }
-  });
-
-  for (const [codigo, nombre] of gruposPendientes) {
-    try {
-      const grupo = await crearMaterialGrupo(empresaId, { codigo, nombre, estado: 'activo' });
-      gruposByCode.set(codigo, grupo);
-    } catch (err) {
-      errores.push({ fila: `Grupo ${codigo}`, error: err.message });
-    }
-  }
-
-  const familiasPendientes = new Map();
-  filas.forEach(fila => {
-    const grupo = gruposByCode.get(normSegment(fila.cod_grupo));
-    const codigo = normSegment(fila.cod_familia);
-    if (!grupo || !codigo) return;
-    const key = `${grupo.id}|${codigo}`;
-    if (!familiasByGroupCode.has(key) && !familiasPendientes.has(key)) {
-      familiasPendientes.set(key, { grupo_id: grupo.id, codigo, nombre: fila.familia || `Familia ${codigo}` });
-    }
-  });
-
-  for (const [key, familiaData] of familiasPendientes) {
-    try {
-      const familia = await crearMaterialFamilia(empresaId, { ...familiaData, estado: 'activo' });
-      familiasByGroupCode.set(key, familia);
-    } catch (err) {
-      errores.push({ fila: `Familia ${familiaData.codigo}`, error: err.message });
-    }
-  }
-
-  const subfamiliasPendientes = new Map();
-  filas.forEach(fila => {
-    const grupo = gruposByCode.get(normSegment(fila.cod_grupo));
-    const familia = grupo ? familiasByGroupCode.get(`${grupo.id}|${normSegment(fila.cod_familia)}`) : null;
-    const codigo = normSegment(fila.cod_subfamilia);
-    if (!familia || !codigo) return;
-    const key = `${familia.id}|${codigo}`;
-    if (!subfamiliasByFamilyCode.has(key) && !subfamiliasPendientes.has(key)) {
-      subfamiliasPendientes.set(key, { familia_id: familia.id, codigo, nombre: fila.subfamilia || `Sub ${codigo}` });
-    }
-  });
-
-  for (const [key, subfamiliaData] of subfamiliasPendientes) {
-    try {
-      const subfamilia = await crearMaterialSubfamilia(empresaId, { ...subfamiliaData, estado: 'activo' });
-      subfamiliasByFamilyCode.set(key, subfamilia);
-    } catch (err) {
-      errores.push({ fila: `Sub-familia ${subfamiliaData.codigo}`, error: err.message });
-    }
-  }
-
   for (const fila of filas) {
     try {
-      const grupo = gruposByCode.get(normSegment(fila.cod_grupo));
-      const familia = grupo ? familiasByGroupCode.get(`${grupo.id}|${normSegment(fila.cod_familia)}`) : null;
-      const subfamilia = familia ? subfamiliasByFamilyCode.get(`${familia.id}|${normSegment(fila.cod_subfamilia)}`) : null;
+      const codigoGrupoPlantilla = normCode(fila.cod_grupo);
+      const codigoFamiliaPlantilla = normCode(fila.cod_familia);
+      const codigoSubfamiliaPlantilla = normCode(fila.cod_subfamilia);
+      const nombreGrupo = normText(fila.grupo) || `Grupo ${codigoGrupoPlantilla || 'nuevo'}`;
+      const nombreFamilia = normText(fila.familia) || `Familia ${codigoFamiliaPlantilla || 'nueva'}`;
+      const nombreSubfamilia = normText(fila.subfamilia) || `Sub-familia ${codigoSubfamiliaPlantilla || 'nueva'}`;
+
+      let grupo = codigoGrupoPlantilla
+        ? gruposByCode.get(codeKey(codigoGrupoPlantilla))
+        : gruposByName.get(normalizarTextoMatching(nombreGrupo));
+      if (!grupo) {
+        const codigo = codigoGrupoPlantilla || siguienteCodigoJerarquia('grupo', 'GRP', gruposRes.data || []);
+        grupo = await crearMaterialGrupo(empresaId, { codigo, nombre: nombreGrupo, estado: 'activo' });
+        gruposByCode.set(codeKey(codigo), grupo);
+        gruposByName.set(normalizarTextoMatching(nombreGrupo), grupo);
+        gruposRes.data.push(grupo);
+      }
+
+      const familiaKey = `${grupo.id}|${codeKey(codigoFamiliaPlantilla)}`;
+      const familiaNameKey = `${grupo.id}|${normalizarTextoMatching(nombreFamilia)}`;
+      let familia = codigoFamiliaPlantilla
+        ? familiasByGroupCode.get(familiaKey)
+        : familiasByGroupName.get(familiaNameKey);
+      if (!familia) {
+        const codigo = codigoFamiliaPlantilla || siguienteCodigoJerarquia(`familia:${grupo.id}`, 'FAM', (familiasRes.data || []).filter(item => item.grupo_id === grupo.id));
+        familia = await crearMaterialFamilia(empresaId, { grupo_id: grupo.id, codigo, nombre: nombreFamilia, estado: 'activo' });
+        familiasByGroupCode.set(`${grupo.id}|${codeKey(codigo)}`, familia);
+        familiasByGroupName.set(`${grupo.id}|${normalizarTextoMatching(nombreFamilia)}`, familia);
+        familiasRes.data.push(familia);
+      }
+
+      const subfamiliaKey = `${familia.id}|${codeKey(codigoSubfamiliaPlantilla)}`;
+      const subfamiliaNameKey = `${familia.id}|${normalizarTextoMatching(nombreSubfamilia)}`;
+      let subfamilia = codigoSubfamiliaPlantilla
+        ? subfamiliasByFamilyCode.get(subfamiliaKey)
+        : subfamiliasByFamilyName.get(subfamiliaNameKey);
+      if (!subfamilia) {
+        const codigo = codigoSubfamiliaPlantilla || siguienteCodigoJerarquia(`subfamilia:${familia.id}`, 'SUB', (subfamiliasRes.data || []).filter(item => item.familia_id === familia.id));
+        subfamilia = await crearMaterialSubfamilia(empresaId, { familia_id: familia.id, codigo, nombre: nombreSubfamilia, estado: 'activo' });
+        subfamiliasByFamilyCode.set(`${familia.id}|${codeKey(codigo)}`, subfamilia);
+        subfamiliasByFamilyName.set(`${familia.id}|${normalizarTextoMatching(nombreSubfamilia)}`, subfamilia);
+        subfamiliasRes.data.push(subfamilia);
+      }
 
       if (!grupo || !familia || !subfamilia) {
         errores.push({ fila: fila.descripcion || fila.codigo || 'Fila sin descripcion', error: 'No se pudo resolver grupo/familia/sub-familia.' });
         continue;
       }
 
-      const codigo = normText(fila.codigo) || null;
+      // El código del material siempre sigue la regla jerarquía + correlativo.
+      // Aunque la plantilla traiga "Codigo", ese valor no se usa.
+      const prefijoMaterial = [grupo.codigo, familia.codigo, subfamilia.codigo].map(normCode).join('');
+      const codigo = siguienteCodigoMaterial(prefijoMaterial);
       const existente = codigo ? materialesByCode.get(codigo) : null;
       const almacenId = fila.almacen ? (almacenesByName.get(keyText(fila.almacen))?.id || null) : null;
       const payload = {
