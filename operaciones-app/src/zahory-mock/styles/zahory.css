@@ -587,6 +587,20 @@ a { color: var(--cyan); text-decoration: none; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.3px; }
 
+.diagnostico-line-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.diagnostico-line-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.diagnostico-line-full { grid-column: 1 / -1; }
+
+@media (max-width: 900px) {
+  .diagnostico-line-grid,
+  .diagnostico-line-grid-three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .diagnostico-line-grid,
+  .diagnostico-line-grid-three { grid-template-columns: 1fr; }
+}
+
 /* OT form */
 .ot-form-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .ot-form-section {

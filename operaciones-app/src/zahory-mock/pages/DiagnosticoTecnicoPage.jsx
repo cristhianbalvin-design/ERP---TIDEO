@@ -1,5 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
+import { ModalShell } from '../components/ModalShell.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -41,7 +42,7 @@ const typeLabel = tipo => tipo === 'fabricacion' ? 'Fabricación' : 'Mantenimien
 const statusLabel = estado => estado === 'emitido' ? 'Emitido' : 'Borrador';
 const statusClass = estado => estado === 'emitido' ? 'badge green' : 'badge orange';
 const materialKey = material => material.id || material._key;
-const lineKey = line => line.id || line._key;
+const lineKey = line => line._key || line.id;
 const normalizedText = value => String(value || '').trim().toLocaleLowerCase();
 const createName = value => String(value || '').trim().split(/\s+·\s+/)[0].trim();
 const materialValidationError = material => {
@@ -49,6 +50,20 @@ const materialValidationError = material => {
   const cantidad = Number(material.cantidad);
   if (!Number.isFinite(cantidad) || cantidad <= 0) return 'La cantidad debe ser mayor que 0.';
   return '';
+};
+const SLOW_SAVE_WARNING = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
+const observeSaveStep = (step, operation, onSlow) => {
+  const startedAt = Date.now();
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (!settled) onSlow(step, Date.now() - startedAt);
+  }, 10000);
+  return Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      settled = true;
+      clearTimeout(timer);
+    });
 };
 const prepararDetalle = detail => ({
   ...detail,
@@ -111,6 +126,8 @@ function ReferenceSelector({ tipo, value, search, references, loading, disabled,
       <label>{isFabricacion ? 'Oportunidad' : 'Recepción de activo'}</label>
       <input
         className="input"
+        role="combobox"
+        aria-label={isFabricacion ? 'Oportunidad' : 'Recepción de activo'}
         value={search}
         disabled={disabled}
         placeholder={isFabricacion ? 'Buscar por nombre de oportunidad...' : 'Buscar por número, cliente o activo...'}
@@ -132,7 +149,6 @@ function ReferenceSelector({ tipo, value, search, references, loading, disabled,
           </button>
         ))}
       </div>}
-      {value && <div className="hint" style={{ marginTop: 6 }}>Seleccionado: {referenceLabel(value)}</div>}
       {disabled && !value && <div className="hint" style={{ marginTop: 6 }}>Referencia no disponible</div>}
     </div>
   );
@@ -156,7 +172,7 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
 
   const normalizedQuery = normalizedText(query);
   const exactOption = options.some(option => [option.nombre, optionLabel(option, kind)].some(labelText => normalizedText(labelText) === normalizedQuery));
-  const canOfferCreate = canCreate && Boolean(query.trim()) && !exactOption && !(value?.id && value.nombre === 'No disponible');
+  const canOfferCreate = canCreate && Boolean(query.trim()) && !query.includes('·') && !exactOption && !(value?.id && value.nombre === 'No disponible');
   const visible = options.filter(option => optionLabel(option, kind).toLocaleLowerCase().includes(normalizedQuery));
   const select = option => {
     onSelect(option);
@@ -180,7 +196,7 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
   return (
     <div className="field">
       <label>{label}</label>
-      <input className="input" value={query} disabled={disabled} placeholder={placeholder} onChange={event => setQuery(event.target.value)} />
+       <input className="input" role="combobox" aria-label={label} value={query} disabled={disabled} placeholder={placeholder} onChange={event => setQuery(event.target.value)} />
       {clearable && !disabled && value && <button type="button" className="btn btn-secondary" onClick={() => select(null)} style={{ marginTop: 6 }}>Quitar</button>}
       {!disabled && <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 8, maxHeight: 170, overflowY: 'auto' }}>
         {visible.map(option => (
@@ -193,7 +209,6 @@ function CatalogSelector({ label, kind, value, options, disabled, placeholder, c
         </button>}
         {!visible.length && !canOfferCreate && <div className="muted" style={{ padding: 8 }}>Sin coincidencias.</div>}
       </div>}
-      {value && <div className="hint" style={{ marginTop: 5 }}>{optionLabel(value, kind)}</div>}
     </div>
   );
 }
@@ -214,15 +229,19 @@ function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validat
         <strong>{line.id ? 'Línea guardada' : 'Nueva línea'}</strong>
         {canEdit && <button type="button" className="btn btn-danger" onClick={onDelete}>{line.id ? 'Eliminar línea' : 'Quitar línea'}</button>}
       </div>
-      <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 14 }}>
-        <CatalogSelector label="Trabajo" kind="familia" value={selected(catalogs.familias, line.familia_trabajo_id, 'familia')} options={catalogs.familias} disabled={!canEdit} placeholder="Buscar trabajo..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ familia_trabajo_id: item?.id || null })} onCreate={catalogs.crearFamilia} onError={onError} />
-        <CatalogSelector label="Actividad (opcional)" kind="tipo" value={selected(catalogs.tipos, line.actividad_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar actividad..." canCreate={canEdit && canCreateCatalog} clearable onSelect={item => patch({ actividad_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
-        <CatalogSelector label="Tarea" kind="tipo" value={selected(catalogs.tipos, line.tarea_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar tarea sin componente..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ tarea_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
-        <CatalogSelector label="Cargo" kind="cargo" value={selected(catalogs.cargos, line.cargo_id, 'cargo')} options={catalogs.cargos} disabled={!canEdit} placeholder="Buscar cargo..." clearable onSelect={item => patch({ cargo_id: item?.id || null })} onError={onError} />
-        <CatalogSelector label="Activo propio" kind="activo" value={activo} options={catalogs.activos} disabled={!canEdit} placeholder="Buscar activo propio..." clearable onSelect={item => patch({ activo_id: item?.id || null, horas_maquina: item?.id ? line.horas_maquina : 0 })} onError={onError} />
-        <div className="field"><label>Horas-hombre</label><input className="input" type="number" min="0" step="0.01" value={line.horas_mano_obra ?? 0} disabled={!canEdit} onChange={event => patch({ horas_mano_obra: event.target.value })} /></div>
-        <div className="field"><label>Horas-máquina</label><input className="input" type="number" min="0" step="0.01" value={line.horas_maquina ?? 0} disabled={!canEdit || !line.activo_id} onChange={event => patch({ horas_maquina: event.target.value })} /></div>
-        <div className="field" style={{ gridColumn: '1 / -1' }}><label>Hallazgo</label><textarea className="input" rows="3" value={line.hallazgo || ''} disabled={!canEdit} onChange={event => patch({ hallazgo: event.target.value })} /></div>
+      <div className="card-body" style={{ display: 'grid', gap: 14 }}>
+        <div className="diagnostico-line-grid">
+          <CatalogSelector label="Trabajo *" kind="familia" value={selected(catalogs.familias, line.familia_trabajo_id, 'familia')} options={catalogs.familias} disabled={!canEdit} placeholder="Buscar trabajo..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ familia_trabajo_id: item?.id || null })} onCreate={catalogs.crearFamilia} onError={onError} />
+          <CatalogSelector label="Actividad (opcional)" kind="tipo" value={selected(catalogs.tipos, line.actividad_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar actividad..." canCreate={canEdit && canCreateCatalog} clearable onSelect={item => patch({ actividad_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
+          <CatalogSelector label="Tarea *" kind="tipo" value={selected(catalogs.tipos, line.tarea_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar tarea sin componente..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ tarea_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
+          <CatalogSelector label="Cargo" kind="cargo" value={selected(catalogs.cargos, line.cargo_id, 'cargo')} options={catalogs.cargos} disabled={!canEdit} placeholder="Buscar cargo..." clearable onSelect={item => patch({ cargo_id: item?.id || null })} onError={onError} />
+        </div>
+        <div className="diagnostico-line-grid diagnostico-line-grid-three">
+          <div className="field"><label>Horas-hombre</label><input className="input" type="number" min="0" step="0.01" value={line.horas_mano_obra ?? 0} disabled={!canEdit} onChange={event => patch({ horas_mano_obra: event.target.value })} /></div>
+          <CatalogSelector label="Activo propio" kind="activo" value={activo} options={catalogs.activos} disabled={!canEdit} placeholder="Buscar activo propio..." clearable onSelect={item => patch({ activo_id: item?.id || null, horas_maquina: item?.id ? line.horas_maquina : 0 })} onError={onError} />
+          <div className="field"><label>Horas-máquina</label><input className="input" type="number" min="0" step="0.01" value={line.horas_maquina ?? 0} disabled={!canEdit || !line.activo_id} onChange={event => patch({ horas_maquina: event.target.value })} /></div>
+        </div>
+        <div className="field diagnostico-line-full"><label>Hallazgo</label><textarea className="input" rows="3" value={line.hallazgo || ''} disabled={!canEdit} onChange={event => patch({ hallazgo: event.target.value })} /></div>
       </div>
       <div className="card-body" style={{ paddingTop: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
@@ -269,6 +288,12 @@ export function DiagnosticoTecnicoPage() {
   const [notice, setNotice] = useState('');
   const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [] });
   const [lineValidationErrors, setLineValidationErrors] = useState({});
+  const [slowSaveWarning, setSlowSaveWarning] = useState('');
+  const openRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const modalSessionRef = useRef(0);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const canCreate = access.ver && access.crear;
   const isReadOnly = selected?.estado === 'emitido';
@@ -289,7 +314,7 @@ export function DiagnosticoTecnicoPage() {
         setDiagnosticos(rows.map(row => ({ ...row, referencia: null })));
       }
     } catch (loadError) {
-      setError(errorMessage(loadError));
+      if (requestId === openRequestRef.current) setError(errorMessage(loadError));
     } finally {
       setLoadingList(false);
     }
@@ -356,6 +381,7 @@ export function DiagnosticoTecnicoPage() {
   }, [access.ver, empresaId, form.tipo, search, selected?.estado]);
 
   const openNew = tipo => {
+    openRequestRef.current += 1;
     setSelected(null);
     setForm({ ...EMPTY_FORM, tipo });
     setSearch('');
@@ -366,19 +392,23 @@ export function DiagnosticoTecnicoPage() {
   };
 
   const openExisting = async diagnostico => {
+    const requestId = ++openRequestRef.current;
     setError('');
     setReferenceError('');
     setNotice('');
     try {
       const detail = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, diagnostico.id));
+      if (requestId !== openRequestRef.current) return;
       const referenceId = detail.tipo === 'fabricacion' ? detail.oportunidad_id : detail.recepcion_id;
       let reference = null;
       try {
         const resolved = await resolverReferenciasPorTipo(empresaId, detail.tipo, [referenceId]);
+        if (requestId !== openRequestRef.current) return;
         reference = resolved.find(candidate => candidate.id === referenceId) || null;
       } catch (referenceLoadError) {
-        setReferenceError(errorMessage(referenceLoadError));
+        if (requestId === openRequestRef.current) setReferenceError(errorMessage(referenceLoadError));
       }
+      if (requestId !== openRequestRef.current) return;
       setSelected(detail);
       setForm({ tipo: detail.tipo, referencia: reference });
       setSearch('');
@@ -400,46 +430,46 @@ export function DiagnosticoTecnicoPage() {
     setSaving(true);
     setError('');
     setNotice('');
+    const session = modalSessionRef.current;
+    const isActive = () => mountedRef.current && modalSessionRef.current === session;
     try {
       const created = await crearDiagnosticoTecnico(empresaId, usuarioId, {
         tipo: form.tipo,
         oportunidad_id: form.tipo === 'fabricacion' ? selectedReference?.id : null,
         recepcion_id: form.tipo === 'mantenimiento' ? selectedReference?.id : null,
       });
-      setNotice('Diagnóstico guardado en borrador.');
+      if (isActive()) setNotice('Diagnóstico guardado en borrador.');
       await cargarLista();
+      if (!isActive()) return;
       await openExisting(created);
     } catch (saveError) {
-      setError(errorMessage(saveError));
+      if (isActive()) setError(errorMessage(saveError));
     } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   };
 
   const patchLine = (line, changes) => {
     const key = lineKey(line);
-    setSelected(current => ({ ...current, lineas: (current.lineas || []).map(item => lineKey(item) === key ? changes : item) }));
+    setSelected(current => ({ ...current, lineas: (current.lineas || []).map(item => lineKey(item) === key ? { ...changes, _dirty: true } : item) }));
   };
 
   const addLine = () => {
     if (!canEditLines) return;
-    setSelected(current => ({ ...current, lineas: [...(current.lineas || []), { ...EMPTY_LINE, orden: current.lineas?.length || 0, _key: `line-${Date.now()}-${Math.random()}` }] }));
+    setSelected(current => ({ ...current, lineas: [...(current.lineas || []), { ...EMPTY_LINE, orden: current.lineas?.length || 0, _key: `line-${Date.now()}-${Math.random()}`, _dirty: true }] }));
   };
 
-  const preserveFailedLine = async (line, persistedId) => {
+  const reloadPersistedLine = async (line, persistedId, runStep, isActive) => {
     const lineId = persistedId || line.id;
     if (!lineId) return;
-    try {
-      const persisted = prepararDetalle({ lineas: [await obtenerDiagnosticoLinea(empresaId, lineId)] }).lineas[0];
-      setSelected(current => ({
-        ...current,
-        lineas: (current.lineas || []).map(item => lineKey(item) === lineKey(line)
-          ? { ...item, id: persisted.id, _materialesIniciales: persisted._materialesIniciales }
-          : item),
-      }));
-    } catch (reloadError) {
-      throw reloadError;
-    }
+    const persisted = prepararDetalle({ lineas: [await runStep('obtenerDiagnosticoLinea', () => obtenerDiagnosticoLinea(empresaId, lineId))] }).lineas[0];
+    if (!isActive()) return;
+    setSelected(current => ({
+      ...current,
+      lineas: (current.lineas || []).map(item => lineKey(item) === lineKey(line)
+        ? { ...item, id: persisted.id, _materialesIniciales: persisted._materialesIniciales }
+        : item),
+    }));
   };
 
   const validateLine = line => (line.materiales || []).map(materialValidationError);
@@ -447,6 +477,12 @@ export function DiagnosticoTecnicoPage() {
   const saveLine = async line => {
     if (!selected || !canEditLines) return;
     const key = lineKey(line);
+    const session = modalSessionRef.current;
+    const isActive = () => mountedRef.current && modalSessionRef.current === session;
+    const runStep = (step, operation) => observeSaveStep(step, operation, (name, elapsedMs) => {
+      console.warn(`[diagnostico_tecnico] ${name} pendiente ${elapsedMs} ms`);
+      if (isActive()) setSlowSaveWarning(SLOW_SAVE_WARNING);
+    });
     const validationErrors = validateLine(line);
     if (validationErrors.some(Boolean)) {
       setLineValidationErrors(current => ({ ...current, [key]: validationErrors }));
@@ -457,31 +493,48 @@ export function DiagnosticoTecnicoPage() {
     setSavingLine(key);
     setError('');
     setNotice('');
+    setSlowSaveWarning('');
     let saved = null;
+    let phase = 'linea';
     try {
-      saved = await guardarDiagnosticoLinea(empresaId, selected.id, line);
-      await sincronizarMaterialesLinea(empresaId, saved.id, line._materialesIniciales || [], line.materiales || []);
-      const refreshed = prepararDetalle({ lineas: [await obtenerDiagnosticoLinea(empresaId, saved.id)] }).lineas[0];
-      setSelected(current => ({
+      saved = await runStep('guardarDiagnosticoLinea', () => guardarDiagnosticoLinea(empresaId, selected.id, line));
+      phase = 'repuestos';
+      if (isActive()) setSelected(current => ({
+        ...current,
+        lineas: (current.lineas || []).map(item => lineKey(item) === key
+          ? { ...item, ...saved, id: saved.id, _dirty: true }
+          : item),
+      }));
+      await runStep('sincronizarMaterialesLinea', () => sincronizarMaterialesLinea(empresaId, saved.id, line._materialesIniciales || [], line.materiales || []));
+      phase = 'recarga';
+      const refreshed = prepararDetalle({ lineas: [await runStep('obtenerDiagnosticoLinea', () => obtenerDiagnosticoLinea(empresaId, saved.id))] }).lineas[0];
+      if (isActive()) setSelected(current => ({
         ...current,
         lineas: (current.lineas || []).map(item => lineKey(item) === key ? refreshed : item),
       }));
-      setLineValidationErrors(current => {
+      if (isActive()) setLineValidationErrors(current => {
         const next = { ...current };
         delete next[key];
         return next;
       });
-      setNotice('Línea guardada.');
+      if (isActive()) setNotice('Línea guardada.');
     } catch (saveError) {
+      if (!isActive()) return;
       const originalError = errorMessage(saveError);
-      setError(originalError);
-      try {
-        await preserveFailedLine(line, saved?.id);
-      } catch (reloadError) {
-        setError(`${originalError}. No se pudo recargar solo la línea fallida: ${errorMessage(reloadError)}`);
+      if (saved?.id && phase === 'repuestos') {
+        try {
+          await reloadPersistedLine(line, saved.id, runStep, isActive);
+          setError(`La línea se guardó, pero los repuestos no se guardaron: ${originalError}`);
+        } catch (reloadError) {
+          setError(`La línea se guardó, pero los repuestos no se guardaron: ${originalError}. No se pudo recargar la línea: ${errorMessage(reloadError)}`);
+        }
+      } else if (saved?.id && phase === 'recarga') {
+        setError(`La línea y los repuestos se guardaron, pero no se pudo recargar la línea: ${originalError}`);
+      } else {
+        setError(`La línea no se guardó: ${originalError}`);
       }
     } finally {
-      setSavingLine(null);
+      if (mountedRef.current) setSavingLine(null);
     }
   };
 
@@ -529,6 +582,25 @@ export function DiagnosticoTecnicoPage() {
     ? 'No se pudo identificar la empresa operativa del usuario.'
     : sesion.error || `La sesión operativa no está lista (estado: ${sesion.estado}).`;
 
+  const closeDetail = () => {
+    openRequestRef.current += 1;
+    modalSessionRef.current += 1;
+    setSaving(false);
+    setSavingLine(null);
+    setSlowSaveWarning('');
+    setSelected(null);
+    setForm(EMPTY_FORM);
+    setSearch('');
+    setError('');
+    setReferenceError('');
+    setCatalogError('');
+    setNotice('');
+  };
+  const detailDirty = selected
+    ? (selected.lineas || []).some(line => line._dirty)
+    : Boolean(form.referencia);
+  const modalBusy = saving || Boolean(savingLine);
+
   if (sesion.estado !== 'listo' || !empresaId) return <AccessState title="No se puede abrir Diagnóstico Técnico" error={sessionError} />;
   if (access.loading) return <AccessState loading />;
   if (!access.ver) return <AccessState error={access.error} />;
@@ -549,10 +621,6 @@ export function DiagnosticoTecnicoPage() {
         </div>}
       </div>
 
-      {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
-      {referenceError && <div className="alert alert-error" style={{ marginBottom: 12 }}>No se pudo resolver la referencia: {referenceError}</div>}
-      {catalogError && <div className="alert alert-error" style={{ marginBottom: 12 }}>No se pudieron cargar los catálogos: {catalogError}</div>}
-      {notice && <div className="alert alert-success" style={{ marginBottom: 12 }}>{notice}</div>}
       {!sesion.permiteEscritura && <div className="alert alert-error" style={{ marginBottom: 12 }}>La empresa operativa está en modo solo lectura; no se pueden guardar diagnósticos.</div>}
 
       <div className="card" style={{ marginBottom: 18, width: '100%' }}>
@@ -577,20 +645,35 @@ export function DiagnosticoTecnicoPage() {
         )}
       </div>
 
-      {(form.tipo || selected) && <section className="card" style={{ width: '100%' }}>
-        <div className="card-header"><h2 style={{ margin: 0, fontSize: 17 }}>{detailTitle}</h2><span className={statusClass(selected?.estado)}>{statusLabel(selected?.estado)}</span></div>
-        {!selected && <form onSubmit={save}>
-          <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 16 }}>
+      {(form.tipo || selected) && <ModalShell
+        key={selected?.id || `nuevo-${form.tipo}`}
+        open
+        title={detailTitle}
+        subtitle={selected ? `${selected.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción'}: ${referenceLabel(form.referencia)}` : 'Completa la referencia para crear un borrador.'}
+        status={<span className={statusClass(selected?.estado)}>{statusLabel(selected?.estado)}</span>}
+        dirty={detailDirty}
+        busy={modalBusy}
+        onClose={closeDetail}
+        footer={<>
+          <div style={{ flex: 1 }}>
+            {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
+            {error && <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>}
+            {referenceError && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>No se pudo resolver la referencia: {referenceError}</div>}
+            {catalogError && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>No se pudieron cargar los catálogos: {catalogError}</div>}
+            {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={closeDetail}>Cerrar</button>
+          {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference}>{saving ? 'Guardando...' : 'Guardar'}</button>}
+        </>}
+      >
+        {!selected && <form id="diagnostico-cabecera-form" onSubmit={save}>
+          <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16 }}>
             <div className="field"><label>Tipo</label><input className="input" value={typeLabel(form.tipo)} disabled /></div>
             <ReferenceSelector tipo={form.tipo} value={selectedReference} search={search} references={references} loading={loadingReferences} disabled={false} onSearch={setSearch} onSelect={reference => { setForm(current => ({ ...current, referencia: reference })); setSearch(referenceLabel(reference)); }} />
-          </div>
-          <div className="card-body" style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 0 }}>
-            {canSave && <button className="btn btn-primary" type="submit" disabled={saving || !selectedReference}>{saving ? 'Guardando...' : 'Guardar'}</button>}
           </div>
         </form>}
         {selected && <>
           <div className="card-body" style={{ paddingTop: 0 }}>
-            <div className="muted">{selected.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción'}: {referenceLabel(form.referencia)}</div>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="muted">Activo: {form.referencia.activo}</div>}
           </div>
           <div className="card-body" style={{ paddingTop: 0 }}>
@@ -606,7 +689,7 @@ export function DiagnosticoTecnicoPage() {
               canEdit={canEditLines}
               canCreateCatalog={canCreate}
               validationErrors={lineValidationErrors[lineKey(line)]}
-              saving={savingLine === (line.id || line._key)}
+              saving={savingLine === lineKey(line)}
               onChange={changes => {
                 patchLine(line, changes);
                 setLineValidationErrors(current => {
@@ -624,7 +707,7 @@ export function DiagnosticoTecnicoPage() {
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
         </>}
-      </section>}
+      </ModalShell>}
     </main>
   );
 }
