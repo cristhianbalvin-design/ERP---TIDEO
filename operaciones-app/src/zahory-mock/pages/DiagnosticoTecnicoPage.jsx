@@ -121,6 +121,7 @@ function AccessState({ loading, title, error }) {
 
 function useComboboxMenuPosition(open, rootRef, onViewportChange) {
   const [menuStyle, setMenuStyle] = useState({});
+  const menuRef = useRef(null);
 
   useLayoutEffect(() => {
     if (!open || typeof window === 'undefined' || typeof window.innerHeight !== 'number') {
@@ -148,7 +149,10 @@ function useComboboxMenuPosition(open, rootRef, onViewportChange) {
       });
     };
     updatePosition();
-    const closeOnViewportChange = () => onViewportChange();
+    const closeOnViewportChange = event => {
+      if (event?.type === 'scroll' && menuRef.current?.contains?.(event.target)) return;
+      onViewportChange();
+    };
     window.addEventListener('resize', closeOnViewportChange);
     window.addEventListener('scroll', closeOnViewportChange, true);
     return () => {
@@ -157,7 +161,7 @@ function useComboboxMenuPosition(open, rootRef, onViewportChange) {
     };
   }, [open, onViewportChange, rootRef]);
 
-  return menuStyle;
+  return { menuRef, menuStyle };
 }
 
 export function ReferenceSelector({ tipo, value, search, references, loading, disabled, onSearch, onSelect }) {
@@ -165,7 +169,7 @@ export function ReferenceSelector({ tipo, value, search, references, loading, di
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const closeMenu = useCallback(() => setOpen(false), []);
-  const menuStyle = useComboboxMenuPosition(open, rootRef, closeMenu);
+  const { menuRef, menuStyle } = useComboboxMenuPosition(open, rootRef, closeMenu);
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
@@ -203,7 +207,7 @@ export function ReferenceSelector({ tipo, value, search, references, loading, di
         }}
         onChange={event => { setOpen(true); onSelect(null); onSearch(event.target.value); }}
       />
-      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
+      {!disabled && open && <div ref={menuRef} className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
         {loading && <div className="muted" style={{ padding: 12 }}>Buscando referencias...</div>}
         {!loading && !references.length && <div className="muted" style={{ padding: 12 }}>Sin referencias encontradas.</div>}
         {!loading && references.map(reference => (
@@ -211,7 +215,8 @@ export function ReferenceSelector({ tipo, value, search, references, loading, di
             type="button"
             key={reference.id}
             onClick={() => select(reference)}
-            style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: value?.id === reference.id ? 'var(--cyan-lt)' : 'transparent', textAlign: 'left', padding: 10, cursor: 'pointer' }}
+            className={value?.id === reference.id ? 'diagnostico-combobox-option is-selected' : 'diagnostico-combobox-option'}
+            style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', textAlign: 'left', padding: 10, cursor: 'pointer' }}
           >
             <strong>{referenceLabel(reference)}</strong>
             {reference.cliente && <span className="muted" style={{ display: 'block', marginTop: 3 }}>{reference.cliente}</span>}
@@ -238,7 +243,7 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const closeMenu = useCallback(() => setOpen(false), []);
-  const menuStyle = useComboboxMenuPosition(open, rootRef, closeMenu);
+  const { menuRef, menuStyle } = useComboboxMenuPosition(open, rootRef, closeMenu);
 
   useEffect(() => {
     setQuery(value ? optionLabel(value, kind) : '');
@@ -303,9 +308,9 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
         }} onChange={event => { setOpen(true); setQuery(event.target.value); }} />
         {clearable && !disabled && value && <button type="button" className="diagnostico-combobox-clear" aria-label={`Quitar ${label}`} onClick={() => select(null)}>×</button>}
       </div>
-      {!disabled && open && <div className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
+      {!disabled && open && <div ref={menuRef} className="diagnostico-combobox-menu" role="listbox" style={menuStyle} onMouseDown={event => event.preventDefault()}>
         {visible.map(option => (
-          <button type="button" key={option.id} onClick={() => select(option)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: value?.id === option.id ? 'var(--cyan-lt)' : 'transparent', textAlign: 'left', padding: 8, cursor: 'pointer' }}>
+          <button type="button" key={option.id} className={value?.id === option.id ? 'diagnostico-combobox-option is-selected' : 'diagnostico-combobox-option'} onClick={() => select(option)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', textAlign: 'left', padding: 8, cursor: 'pointer' }}>
             {optionLabel(option, kind)}
           </button>
         ))}
@@ -723,8 +728,10 @@ export function DiagnosticoTecnicoPage() {
   const modalOpen = Boolean(form.tipo || selected);
   const readOnlyReason = !sesion.permiteEscritura
     ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
-    : !access.editar
-      ? 'No tienes permiso para editar diagnósticos.'
+    : !selected && !canCreate
+      ? 'No tienes permiso para crear diagnósticos.'
+      : selected && !access.editar
+        ? 'No tienes permiso para editar diagnósticos.'
       : isReadOnly
         ? 'Este diagnóstico está emitido y es de solo lectura.'
         : '';

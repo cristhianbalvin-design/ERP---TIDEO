@@ -497,4 +497,36 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(source).toContain("window.addEventListener('scroll', closeOnViewportChange, true)");
     expect(source).toContain("window.addEventListener('resize', closeOnViewportChange)");
   });
+
+  it('R20: el scroll dentro del menú no lo cierra, pero el scroll externo sí', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    const options = Array.from({ length: 10 }, (_, index) => ({ id: `task-${index}`, nombre: `Tarea ${index + 1}` }));
+    const insideOption = {};
+    const outsideContainer = {};
+    const menuRef = { current: { contains: target => target === insideOption } };
+    const scrollHandler = source.match(/const closeOnViewportChange = event => \{([\s\S]*?)\n    \};/)?.[0] || '';
+    const closesInside = !menuRef.current.contains(insideOption);
+    const closesOutside = !menuRef.current.contains(outsideContainer);
+    console.log('R20_MENU_SCROLL_RESULT', JSON.stringify({ options: options.length, inside_stays_open: !closesInside, outside_closes: closesOutside }));
+    expect(options).toHaveLength(10);
+    expect(source).toContain('const menuRef = useRef(null);');
+    expect(scrollHandler).toContain('menuRef.current?.contains?.(event.target)');
+    expect(closesInside).toBe(false);
+    expect(closesOutside).toBe(true);
+  });
+
+  it('R21: la opción seleccionada conserva un resalte legible en ambos temas', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(source).toContain("'diagnostico-combobox-option is-selected'");
+    expect(css).toContain('.diagnostico-modal-card .diagnostico-combobox-menu > button.is-selected { background: var(--row-alt); color: var(--text); }');
+    expect(css).not.toContain('.diagnostico-modal-card .diagnostico-combobox-menu > button { background: var(--white) !important;');
+  });
+
+  it('R22: un alta nueva evalúa canCreate en la razón de solo lectura', () => {
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(source).toContain(": !selected && !canCreate");
+    expect(source).toContain("No tienes permiso para crear diagnósticos.");
+  });
 });

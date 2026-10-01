@@ -600,8 +600,10 @@ a { color: var(--cyan); text-decoration: none; }
 .diagnostico-modal-card th,
 .diagnostico-modal-card td { color: var(--text); border-color: var(--card-border); }
 .diagnostico-combobox-menu { position: fixed; z-index: 1100; max-height: 220px; overflow-y: auto; background: var(--white); color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; box-shadow: var(--shadow-md); }
-.diagnostico-modal-card .diagnostico-combobox-menu > button { background: var(--white) !important; color: var(--text); border-color: var(--card-border) !important; }
-.diagnostico-modal-card .diagnostico-combobox-menu > button:hover { background: var(--row-alt) !important; }
+.diagnostico-modal-card .diagnostico-combobox-menu > button { background: var(--white); color: var(--text); border-color: var(--card-border); }
+.diagnostico-modal-card .diagnostico-combobox-menu > button.is-selected { background: var(--row-alt); color: var(--text); }
+.diagnostico-modal-card .diagnostico-combobox-menu > button:hover,
+.diagnostico-modal-card .diagnostico-combobox-menu > button.is-selected:hover { background: var(--row-alt); color: var(--text); }
 .diagnostico-modal-footer { position: sticky; bottom: 0; z-index: 20; background: var(--white); border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 10px; }
 .diagnostico-readonly-alert { margin: 12px 20px 0; }
 .alert-warning { background: var(--orange-soft); color: #8A4B00; border: 1px solid var(--orange); border-radius: 8px; padding: 10px 12px; }
