@@ -62,6 +62,17 @@ const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 const moneySpot = value => moneyD(value, 'S/');
 const moneySpotCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
+const renderCajaCurrencyTotals = (totals = {}) => {
+  const entries = Object.entries(totals);
+  if (!entries.length) return moneyDCurrency(0);
+  const ordered = [...entries].sort(([a], [b]) => {
+    if (a === 'PEN') return -1;
+    if (b === 'PEN') return 1;
+    return a.localeCompare(b);
+  });
+  if (ordered.length === 1) return moneyDCurrency(ordered[0][1], ordered[0][0]);
+  return ordered.map(([moneda, value]) => <div key={moneda}>{moneyDCurrency(value, moneda)}</div>);
+};
 const renderCurrencyTotals = (totals = {}) => {
   const entries = Object.entries(totals);
   if (!entries.length) return money(0);
@@ -7018,6 +7029,7 @@ const CC_FONDO_FORM = {
 };
 
 function CajaChica() {
+  const moneyCurrency = moneyDCurrency;
   const { empresa, authUser, role, cajaChica, centrosCosto, cuentasBancarias, usuarios, addNotificacion, addToast, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCajaChica = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
@@ -7483,9 +7495,9 @@ function CajaChica() {
       </div>
 
       <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Saldo disponible</div><div className="kpi-value" style={{color:'var(--cyan)'}}>{renderCurrencyTotals(saldoTotalPorMoneda)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Asignado</div><div className="kpi-value">{renderCurrencyTotals(asignadoTotalPorMoneda)}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Egresos mes</div><div className="kpi-value">{renderCurrencyTotals(egresosMesPorMoneda)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Saldo disponible</div><div className="kpi-value" style={{color:'var(--cyan)'}}>{renderCajaCurrencyTotals(saldoTotalPorMoneda)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Asignado</div><div className="kpi-value">{renderCajaCurrencyTotals(asignadoTotalPorMoneda)}</div></div>
+        <div className="kpi-card"><div className="kpi-label">Egresos mes</div><div className="kpi-value">{renderCajaCurrencyTotals(egresosMesPorMoneda)}</div></div>
         <div className="kpi-card"><div className="kpi-label">Alertas</div><div className="kpi-value" style={{color:fondosAlerta.length?'var(--orange)':'var(--green)'}}>{fondosAlerta.length}</div></div>
       </div>
 
@@ -7526,9 +7538,9 @@ function CajaChica() {
                       {mostrarBadgeSociedadCajaChica && <td><SociedadBadge sociedadId={sociedadIdCajaDe(f)} /></td>}
                       <td className="text-muted">{responsable?.nombre || responsable?.email || 'Sin asignar'}</td>
                       <td className="text-muted">{origenFondoLabel(f)}</td>
-                      <td className="num">{moneyCurrency(f.monto_asignado, f.moneda)}</td>
-                      <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(f.saldo_disponible, f.moneda)}</strong></td>
-                      <td>{moneyCurrency(f.monto_minimo, f.moneda)}</td>
+                      <td className="num">{moneyDCurrency(f.monto_asignado, f.moneda)}</td>
+                      <td className="num"><strong style={{color:f.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyDCurrency(f.saldo_disponible, f.moneda)}</strong></td>
+                      <td>{moneyDCurrency(f.monto_minimo, f.moneda)}</td>
                       <td><span className={`badge ${f.estado === 'activo' ? 'badge-green' : f.estado === 'cerrado' ? 'badge-gray' : 'badge-orange'}`}>{f.estado}</span></td>
                       {(puedeEditar || puedeEliminar) && <td onClick={event => event.stopPropagation()} style={{textAlign:'right', whiteSpace:'nowrap'}}>
                         {puedeModificarFondo && puedeEditar && <button type="button" className="icon-btn" title="Editar fondo" style={{color:'var(--cyan)'}} onClick={() => abrirEditarFondo(f)}>{I.edit}</button>}
@@ -7583,7 +7595,7 @@ function CajaChica() {
                 }}
               >
                 <div style={{fontSize:12, fontWeight:700}}>{t.label}</div>
-                <div style={{fontSize:15, fontWeight:700, marginTop:3}}>{renderCurrencyTotals(t.total)}</div>
+                <div style={{fontSize:15, fontWeight:700, marginTop:3}}>{renderCajaCurrencyTotals(t.total)}</div>
               </button>
             ))}
           </div>
@@ -7606,7 +7618,7 @@ function CajaChica() {
                         <div>{m.num_comprobante || m.transferencia_reposicion_ref || '-'}</div>
                         {tipo === 'egreso' && <AccionesAdjuntoCajaChica movimiento={m} empresaId={empresaId} puedeSubir={puedeEditar || puedeCrear} />}
                       </td>
-                      <td className="num"><strong>{moneyCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda)}</strong></td>
+                      <td className="num"><strong>{moneyDCurrency(Math.abs(Number(m.monto_movimiento || m.monto || 0)), m.moneda)}</strong></td>
                       <td><span className={`badge ${m.estado === 'anulado' || m.estado === 'rechazada' ? 'badge-red' : 'badge-green'}`}>{m.estado || 'registrado'}</span></td>
                     </tr>
                   );
@@ -7629,9 +7641,9 @@ function CajaChica() {
             </div>
             <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:16}}>
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
-                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Disponible</div><div className="kpi-value" style={{fontSize:24,color:fondoSel.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyCurrency(fondoSel.saldo_disponible, fondoSel.moneda)}</div></div>
-                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Asignado</div><div className="kpi-value" style={{fontSize:20}}>{moneyCurrency(fondoSel.monto_asignado, fondoSel.moneda)}</div></div>
-                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Minimo</div><div className="kpi-value" style={{fontSize:20}}>{moneyCurrency(fondoSel.monto_minimo, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Disponible</div><div className="kpi-value" style={{fontSize:24,color:fondoSel.requiere_reposicion?'var(--orange)':'var(--green)'}}>{moneyDCurrency(fondoSel.saldo_disponible, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Asignado</div><div className="kpi-value" style={{fontSize:20}}>{moneyDCurrency(fondoSel.monto_asignado, fondoSel.moneda)}</div></div>
+                <div style={{padding:14,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Minimo</div><div className="kpi-value" style={{fontSize:20}}>{moneyDCurrency(fondoSel.monto_minimo, fondoSel.moneda)}</div></div>
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,fontSize:13}}>
                 <div><span className="text-muted">Responsable: </span><strong>{usuarioDe(fondoSel.responsable_id)?.nombre || usuarioDe(fondoSel.responsable_id)?.email || 'Sin asignar'}</strong></div>
@@ -7698,7 +7710,7 @@ function CajaChica() {
                       }}
                     >
                       <div style={{fontSize:12, fontWeight:700}}>{t.label}</div>
-                      <div style={{fontSize:14, fontWeight:700, marginTop:2}}>{renderCurrencyTotals(t.total)}</div>
+                      <div style={{fontSize:14, fontWeight:700, marginTop:2}}>{renderCajaCurrencyTotals(t.total)}</div>
                     </button>
                   ))}
                 </div>
@@ -7748,7 +7760,7 @@ function CajaChica() {
           <div className="side-panel" style={{width:'min(520px,96vw)'}}>
             <div className="side-panel-head"><div><div className="eyebrow">Caja chica</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>Agregar aporte</div></div><button className="icon-btn" disabled={savingAporte} onClick={() => setAporteFondo(null)}>{I.x}</button></div>
             <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Fondo</div><strong>{aporteFondo.nombre}</strong><div className="text-muted" style={{fontSize:12,marginTop:4}}>Disponible actual: {moneyCurrency(aporteFondo.saldo_disponible, aporteFondo.moneda)}</div></div>
+              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Fondo</div><strong>{aporteFondo.nombre}</strong><div className="text-muted" style={{fontSize:12,marginTop:4}}>Disponible actual: {moneyDCurrency(aporteFondo.saldo_disponible, aporteFondo.moneda)}</div></div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div className="input-group"><label>Monto *</label><input className="input" type="number" min="0.01" step="0.01" value={aporteForm.monto} onChange={e=>setAporteForm(p=>({...p,monto:e.target.value}))}/></div>
                 <div className="input-group"><label>Fecha</label><input className="input" type="date" value={aporteForm.fecha} onChange={e=>setAporteForm(p=>({...p,fecha:e.target.value}))}/></div>
@@ -7770,7 +7782,7 @@ function CajaChica() {
           <div className="side-panel" style={{width:'min(460px,96vw)'}}>
             <div className="side-panel-head"><div><div className="eyebrow">Arqueo</div><div className="font-display" style={{fontSize:18,fontWeight:700}}>{arqueoFondo.nombre}</div></div><button className="icon-btn" onClick={() => setArqueoFondo(null)}>{I.x}</button></div>
             <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Saldo sistema</div><div style={{fontSize:22,fontWeight:700}}>{moneyCurrency(arqueoFondo.saldo_disponible, arqueoFondo.moneda)}</div></div>
+              <div style={{padding:12,border:'1px solid var(--border)',borderRadius:8}}><div className="kpi-label">Saldo sistema</div><div style={{fontSize:22,fontWeight:700}}>{moneyDCurrency(arqueoFondo.saldo_disponible, arqueoFondo.moneda)}</div></div>
               <div className="input-group"><label>Efectivo declarado</label><input className="input" type="number" min="0" step="0.01" value={arqueoForm.efectivo_declarado} onChange={e=>setArqueoForm(p=>({...p,efectivo_declarado:e.target.value}))}/></div>
               <div className="input-group"><label>Comprobantes pendientes</label><input className="input" type="number" min="0" step="0.01" value={arqueoForm.comprobantes_pendientes} onChange={e=>setArqueoForm(p=>({...p,comprobantes_pendientes:e.target.value}))}/></div>
               <div className="input-group"><label>Justificacion si hay diferencia</label><textarea className="input" rows={3} value={arqueoForm.justificacion} onChange={e=>setArqueoForm(p=>({...p,justificacion:e.target.value}))}/></div>
