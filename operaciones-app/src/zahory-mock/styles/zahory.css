@@ -605,7 +605,7 @@ a { color: var(--cyan); text-decoration: none; }
 .diagnostico-modal-card .diagnostico-combobox-menu > button:hover,
 .diagnostico-modal-card .diagnostico-combobox-menu > button.is-selected:hover { background: var(--row-alt); color: var(--text); }
 .diagnostico-modal-footer { position: sticky; bottom: 0; z-index: 20; background: var(--white); border-top: 1px solid var(--card-border); display: flex; justify-content: flex-end; gap: 10px; }
-.diagnostico-readonly-alert { margin: 12px 20px 0; }
+.diagnostico-readonly-alert { margin: 12px 20px; }
 .alert-warning { background: var(--orange-soft); color: #8A4B00; border: 1px solid var(--orange); border-radius: 8px; padding: 10px 12px; }
 [data-theme="dark"] .diagnostico-modal-card .alert-warning { color: #FED7AA; }
 
