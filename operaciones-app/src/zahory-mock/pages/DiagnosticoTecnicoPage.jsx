@@ -45,6 +45,11 @@ const materialKey = material => material.id || material._key;
 const lineKey = line => line._key || line.id;
 const normalizedText = value => String(value || '').trim().toLocaleLowerCase();
 const createName = value => String(value || '').trim().split(/\s+·\s+/)[0].trim();
+const eventIsInside = (event, root) => {
+  if (!root) return false;
+  const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
+  return path.includes(root) || root.contains?.(event?.target);
+};
 const materialValidationError = material => {
   if (!String(material.descripcion || '').trim()) return 'La descripción es obligatoria.';
   const cantidad = Number(material.cantidad);
@@ -174,7 +179,7 @@ export function ReferenceSelector({ tipo, value, search, references, loading, di
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
     const handleOutside = event => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
+      if (!eventIsInside(event, rootRef.current)) setOpen(false);
     };
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
@@ -252,7 +257,7 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
   useEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
     const handleOutside = event => {
-      if (!rootRef.current?.contains(event.target)) {
+      if (!eventIsInside(event, rootRef.current)) {
         setOpen(false);
         setQuery(value ? optionLabel(value, kind) : '');
       }

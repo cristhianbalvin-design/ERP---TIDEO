@@ -17,7 +17,7 @@ vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mock
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
 
-import { CatalogSelector, DiagnosticoTecnicoPage } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
+import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
 
 const detail = (id, tipo = 'fabricacion', lineas = []) => ({
   id,
@@ -49,6 +49,7 @@ const textOf = node => node?.children?.map(child => typeof child === 'string' ? 
 const buttonByText = (renderer, label) => renderer.root.findAllByType('button').find(button => textOf(button).trim() === label);
 const buttonContaining = (renderer, label) => renderer.root.findAllByType('button').find(button => textOf(button).includes(label));
 let renderer;
+let documentListeners;
 
 beforeEach(() => {
   mocks.session.empresaId = 'empresa-prueba';
@@ -62,11 +63,15 @@ beforeEach(() => {
     removeEventListener: name => listeners.delete(name),
     dispatchEvent: event => listeners.get(event.type)?.(event),
   };
-  const documentListeners = new Map();
+  documentListeners = new Map();
   globalThis.document = {
-    addEventListener: (name, listener) => documentListeners.set(name, listener),
-    removeEventListener: name => documentListeners.delete(name),
-    dispatchEvent: event => documentListeners.get(event.type)?.(event),
+    addEventListener: (name, listener) => {
+      const listeners = documentListeners.get(name) || new Set();
+      listeners.add(listener);
+      documentListeners.set(name, listeners);
+    },
+    removeEventListener: (name, listener) => documentListeners.get(name)?.delete(listener),
+    dispatchEvent: event => documentListeners.get(event.type)?.forEach(listener => listener(event)),
   };
   Object.values(mocks.service).forEach(mock => mock.mockReset());
   mocks.service.usuarioPuedeDiagnostico.mockResolvedValue(true);
@@ -139,6 +144,39 @@ function fillMaterialDescription(value) {
 }
 
 describe('Diagnostico Tecnico - Etapa B', () => {
+  it('A: composedPath conserva abiertos los selectores dentro de Shadow DOM', async () => {
+    const rootNodes = [];
+    const createNodeMock = element => {
+      const node = { contains: vi.fn(() => false) };
+      if (element.props?.className === 'field diagnostico-combobox') rootNodes.push(node);
+      return node;
+    };
+    const referenceSelect = vi.fn();
+    const catalogSelect = vi.fn();
+    await act(async () => {
+      renderer = create(<>
+        <ReferenceSelector tipo="fabricacion" value={null} search="" references={[{ id: 'opp-1', numero: 'Oportunidad 1' }]} loading={false} disabled={false} onSearch={vi.fn()} onSelect={referenceSelect} />
+        <CatalogSelector label="Trabajo *" kind="familia" value={null} options={[{ id: 'fam-1', nombre: 'Trabajo 1' }]} disabled={false} placeholder="Buscar" canCreate={false} clearable={false} onSelect={catalogSelect} onError={vi.fn()} />
+      </>, { createNodeMock });
+      await wait(0);
+    });
+    const referenceInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Oportunidad' })[0];
+    const catalogInput = renderer.root.findAllByProps({ role: 'combobox', 'aria-label': 'Trabajo *' })[0];
+    await act(async () => { referenceInput.props.onFocus(); catalogInput.props.onFocus(); await wait(0); });
+    const host = {};
+    await act(async () => {
+      documentListeners.get('mousedown').forEach(listener => listener({ target: host, composedPath: () => [host, ...rootNodes, {}] }));
+      await wait(0);
+    });
+    expect(renderer.root.findAllByProps({ role: 'listbox' })).toHaveLength(2);
+    await act(async () => {
+      buttonByText(renderer, 'Oportunidad 1').props.onClick();
+      buttonByText(renderer, 'Trabajo 1').props.onClick();
+    });
+    expect(referenceSelect).toHaveBeenCalledWith({ id: 'opp-1', numero: 'Oportunidad 1' });
+    expect(catalogSelect).toHaveBeenCalledWith({ id: 'fam-1', nombre: 'Trabajo 1' });
+  });
+
   it('T1: flujo exacto con repuesto vacio valida antes de guardar', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one'));
     await openDetailAndAddLine();
