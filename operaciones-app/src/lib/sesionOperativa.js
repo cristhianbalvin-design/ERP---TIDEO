@@ -292,6 +292,19 @@ export async function cargarSesionOperativa({
 // shell y cualquier pantalla consumen un único bootstrap de sesión.
 let resultadoSesionCompartida = null;
 let promesaSesionCompartida = null;
+const listenersSesionCompartida = new Set();
+
+const suscribirSesionCompartida = listener => {
+  listenersSesionCompartida.add(listener);
+  return () => listenersSesionCompartida.delete(listener);
+};
+
+const notificarSesionCompartida = resultado => {
+  listenersSesionCompartida.forEach(listener => listener(resultado));
+};
+
+// Solo para pruebas: permite comprobar que las instancias se suscriben y limpian.
+export const __getSesionCompartidaListenerCount = () => listenersSesionCompartida.size;
 
 const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
   // Una recarga explícita también se comparte: si ya está en vuelo, los demás
@@ -302,6 +315,7 @@ const cargarSesionOperativaCompartida = ({ forzar = false } = {}) => {
   const promesa = cargarSesionOperativa()
     .then(resultado => {
       resultadoSesionCompartida = resultado;
+      notificarSesionCompartida(resultado);
       return resultado;
     })
     .finally(() => {
@@ -349,7 +363,14 @@ export function useSesionOperativa() {
 
   useEffect(() => {
     montadoRef.current = true;
-    if (!isSupabaseConfigured()) return undefined;
+    const desuscribirSesion = suscribirSesionCompartida(resultado => {
+      if (montadoRef.current) setSesion(resultado);
+    });
+    if (!isSupabaseConfigured()) return () => {
+      montadoRef.current = false;
+      requestIdRef.current += 1;
+      desuscribirSesion();
+    };
 
     // En un remount, el estado inicial ya tomó resultadoSesionCompartida.
     // Solo se necesita cargar si todavía no existe un bootstrap resuelto.
@@ -380,6 +401,7 @@ export function useSesionOperativa() {
     return () => {
       montadoRef.current = false;
       requestIdRef.current += 1;
+      desuscribirSesion();
       listener?.subscription?.unsubscribe?.();
     };
   }, [cargar]);
