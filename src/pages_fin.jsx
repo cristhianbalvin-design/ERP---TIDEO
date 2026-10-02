@@ -13,7 +13,6 @@ import {
   claveEquivalenciaMovimientoCuenta,
   monedasDifierenMovimientoCuenta,
   montoMovimientoEnCuenta,
-  resumirMovimientosSinCuenta,
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
@@ -3110,10 +3109,6 @@ function Tesoreria() {
       : saldoPorCuenta;
     return calcularTotalesPorMonedaCuentas(cuentasSaldo);
   }, [saldoPorCuenta, cuentaResumenActiva]);
-  const resumenMovimientosSinCuenta = useMemo(
-    () => resumirMovimientosSinCuenta(movimientosEmpresa),
-    [movimientosEmpresa],
-  );
   const movimientosSinCuentaPorMoneda = useMemo(
     () => calcularMovimientosSinCuentaPorMoneda(movimientosPeriodoTesoreria),
     [movimientosPeriodoTesoreria],
@@ -3604,6 +3599,7 @@ function Tesoreria() {
           const guardandoSaldoInicial = guardandoSaldoInicialId === cb.id;
           const tieneMovimientosCuenta = Number(cb.movimientos_asignados || 0) > 0;
           const movimientosSinConversion = Number(cb.movimientos_sin_conversion?.cantidad || 0);
+          const movimientosExcluidosPorFecha = Number(cb.movimientos_excluidos_por_fecha || 0);
           const sinVincularCuenta = sinVincularPorCuenta[cb.id] ?? 0;
           return (
             <div key={cb.id} style={{...accountCardStyle, opacity: tieneMovimientosCuenta ? 1 : 0.6}}>
@@ -3619,6 +3615,11 @@ function Tesoreria() {
               {movimientosSinConversion > 0 && (
                 <div style={{fontSize:11, color:'var(--orange)', marginTop:5}}>
                   {movimientosSinConversion} {movimientosSinConversion === 1 ? 'movimiento' : 'movimientos'} en otra moneda sin conversión no están incluidos
+                </div>
+              )}
+              {!cb.sin_fecha_corte && movimientosExcluidosPorFecha > 0 && (
+                <div className="text-muted" style={{fontSize:11, marginTop:5}}>
+                  {movimientosExcluidosPorFecha} {movimientosExcluidosPorFecha === 1 ? 'movimiento' : 'movimientos'} con fecha anterior o igual al corte no están incluidos
                 </div>
               )}
               {editandoSaldoInicial ? (
@@ -3671,10 +3672,6 @@ function Tesoreria() {
           <div className="text-muted" style={{fontSize:11, marginTop:8}}>{sinCuentaTienePendientes ? 'Movimientos pendientes de match bancario' : 'Todos los movimientos vinculados'}</div>
         </div>
       </div>
-      <div className="text-muted" style={{fontSize:11, marginTop:8}}>
-        {resumenMovimientosSinCuenta.cantidad} {resumenMovimientosSinCuenta.cantidad === 1 ? 'movimiento no anulado no tiene cuenta bancaria asignada' : 'movimientos no anulados no tienen cuenta bancaria asignada'}; no afectan los saldos por cuenta.
-      </div>
-
       <div className="tabs mt-6">
         {[{id:'match',label:'Match Bancario'},{id:'resumen',label:'Flujo de caja'},{id:'extracto',label:'Extracto banco'}].map(t => (
           <div key={t.id} className={'tab '+(tab===t.id?'active':'')} onClick={()=>setTab(t.id)}>{t.label}</div>
