@@ -73,28 +73,86 @@ export const montoMovimientoEnCuenta = (mov, cuenta, equivalencias = {}) => {
   return Number(equivalencias[claveEquivalenciaMovimientoCuenta(mov, cuenta)] || 0);
 };
 
+const fechaDia = value => String(value || '').slice(0, 10);
+const fechaCorteValida = value => /^\d{4}-\d{2}-\d{2}$/.test(fechaDia(value)) ? fechaDia(value) : null;
+
+const movimientoTieneConversion = (mov, cuenta, equivalencias = {}) => {
+  if (!monedasDifierenMovimientoCuenta(mov, cuenta)) return true;
+  if (mov?.monto_en_moneda_cuenta != null && mov?.monto_en_moneda_cuenta !== '') return true;
+  const equivalencia = equivalencias[claveEquivalenciaMovimientoCuenta(mov, cuenta)];
+  return equivalencia != null && equivalencia !== '' && Number.isFinite(Number(equivalencia));
+};
+
+export function analizarSaldoCuentaBancaria(cuenta, movimientos = [], equivalencias = {}) {
+  if (!cuenta?.id) {
+    return {
+      saldo: 0,
+      sin_fecha_corte: true,
+      fecha_corte: null,
+      movimientos_considerados: 0,
+      movimientos_excluidos_por_fecha: 0,
+      movimientos_sin_conversion: { cantidad: 0, monto: {}, monto_por_moneda: {} },
+      saldo_parcial: false,
+    };
+  }
+
+  const fechaCorte = fechaCorteValida(cuenta.fecha_saldo_inicial);
+  const movimientosAsignados = movimientos.filter(mov => movimientoAsignadoACuenta(mov, cuenta));
+  const movimientosActivos = movimientosAsignados.filter(mov => mov.estado !== 'anulado');
+  const movimientosPosteriores = fechaCorte
+    ? movimientosActivos.filter(mov => fechaDia(fechaMovimiento(mov)) > fechaCorte)
+    : movimientosActivos;
+  const movimientosExcluidosPorFecha = fechaCorte
+    ? movimientosActivos.filter(mov => fechaDia(fechaMovimiento(mov)) <= fechaCorte)
+    : [];
+  const movimientosSinConversion = movimientosPosteriores.filter(mov => !movimientoTieneConversion(mov, cuenta, equivalencias));
+  const movimientosCalculables = movimientosPosteriores.filter(mov => movimientoTieneConversion(mov, cuenta, equivalencias));
+  const montoSinConversion = sumByCurrency(movimientosSinConversion, mov => mov.monto, monedaMovimiento);
+
+  const saldo = movimientosCalculables.reduce((saldoActual, mov) => {
+    const monto = montoMovimientoEnCuenta(mov, cuenta, equivalencias);
+    if (esIngreso(mov)) return saldoActual + monto;
+    if (esEgreso(mov)) return saldoActual - monto;
+    return saldoActual;
+  }, Number(cuenta.saldo_inicial ?? 0));
+
+  return {
+    saldo: redondear2(saldo),
+    sin_fecha_corte: !fechaCorte,
+    fecha_corte: fechaCorte,
+    movimientos_considerados: movimientosCalculables.filter(mov => esIngreso(mov) || esEgreso(mov)).length,
+    movimientos_excluidos_por_fecha: movimientosExcluidosPorFecha.length,
+    movimientos_sin_conversion: {
+      cantidad: movimientosSinConversion.length,
+      monto: montoSinConversion,
+      monto_por_moneda: montoSinConversion,
+    },
+    saldo_parcial: movimientosSinConversion.length > 0,
+  };
+}
+
 export function calcularSaldoCuentaBancaria(cuenta, movimientos = [], equivalencias = {}) {
-  if (!cuenta?.id) return 0;
-  const saldoInicial = Number(cuenta?.saldo_inicial ?? 0);
-  return movimientos
-    .filter(mov => movimientoAsignadoACuenta(mov, cuenta))
-    .reduce((saldo, mov) => {
-      const monto = montoMovimientoEnCuenta(mov, cuenta, equivalencias);
-      if (esIngreso(mov)) return saldo + monto;
-      if (esEgreso(mov)) return saldo - monto;
-      return saldo;
-    }, saldoInicial);
+  return analizarSaldoCuentaBancaria(cuenta, movimientos, equivalencias).saldo;
 }
 
 export function calcularSaldosCuentasBancarias(cuentas = [], movimientos = [], equivalencias = {}) {
   return cuentas.map(cuenta => {
     const movimientosAsignados = movimientos.filter(mov => movimientoAsignadoACuenta(mov, cuenta)).length;
+    const detalleSaldo = analizarSaldoCuentaBancaria(cuenta, movimientos, equivalencias);
     return {
       ...cuenta,
       movimientos_asignados: movimientosAsignados,
-      saldo: redondear2(calcularSaldoCuentaBancaria(cuenta, movimientos, equivalencias)),
+      ...detalleSaldo,
     };
   });
+}
+
+export function resumirMovimientosSinCuenta(movimientos = []) {
+  const filas = movimientos.filter(mov => !movimientoTieneCuentaBancaria(mov) && mov?.estado !== 'anulado');
+  return {
+    cantidad: filas.length,
+    monto_por_moneda: sumByCurrency(filas, mov => mov.monto, monedaMovimiento),
+  };
 }
 
 export function calcularTotalesPorMonedaCuentas(cuentas = []) {

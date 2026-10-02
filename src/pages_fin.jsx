@@ -13,6 +13,7 @@ import {
   claveEquivalenciaMovimientoCuenta,
   monedasDifierenMovimientoCuenta,
   montoMovimientoEnCuenta,
+  resumirMovimientosSinCuenta,
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
@@ -59,6 +60,10 @@ import * as XLSX from 'xlsx';
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
+const formatearFechaCorte = fecha => {
+  const [yyyy, mm, dd] = String(fecha || '').slice(0, 10).split('-');
+  return yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '';
+};
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 const moneySpot = value => moneyD(value, 'S/');
 const moneySpotCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
@@ -3105,6 +3110,10 @@ function Tesoreria() {
       : saldoPorCuenta;
     return calcularTotalesPorMonedaCuentas(cuentasSaldo);
   }, [saldoPorCuenta, cuentaResumenActiva]);
+  const resumenMovimientosSinCuenta = useMemo(
+    () => resumirMovimientosSinCuenta(movimientosEmpresa),
+    [movimientosEmpresa],
+  );
   const movimientosSinCuentaPorMoneda = useMemo(
     () => calcularMovimientosSinCuentaPorMoneda(movimientosPeriodoTesoreria),
     [movimientosPeriodoTesoreria],
@@ -3594,6 +3603,7 @@ function Tesoreria() {
           const editandoSaldoInicial = editandoSaldoInicialId === cb.id;
           const guardandoSaldoInicial = guardandoSaldoInicialId === cb.id;
           const tieneMovimientosCuenta = Number(cb.movimientos_asignados || 0) > 0;
+          const movimientosSinConversion = Number(cb.movimientos_sin_conversion?.cantidad || 0);
           const sinVincularCuenta = sinVincularPorCuenta[cb.id] ?? 0;
           return (
             <div key={cb.id} style={{...accountCardStyle, opacity: tieneMovimientosCuenta ? 1 : 0.6}}>
@@ -3601,6 +3611,16 @@ function Tesoreria() {
               <div style={{fontSize:13, fontWeight:500, marginTop:4}}>{cb.alias || cb.nombre}</div>
               {mostrarBadgeSociedadTesoreria && <div style={{marginTop:6}}><SociedadBadge sociedadId={cb.sociedad_id} /></div>}
               <div style={{fontSize:20, fontWeight:800, color: cb.saldo >= 0 ? 'var(--green)' : 'var(--danger)', marginTop:8}}>{moneyCurrency(cb.saldo, cb.moneda)}</div>
+              <div className="text-muted" style={{fontSize:11, marginTop:4}}>
+                {cb.sin_fecha_corte
+                  ? 'Sin fecha de corte: saldo no confiable'
+                  : `Saldo al corte del ${formatearFechaCorte(cb.fecha_corte)}`}
+              </div>
+              {movimientosSinConversion > 0 && (
+                <div style={{fontSize:11, color:'var(--orange)', marginTop:5}}>
+                  {movimientosSinConversion} {movimientosSinConversion === 1 ? 'movimiento' : 'movimientos'} en otra moneda sin conversión no están incluidos
+                </div>
+              )}
               {editandoSaldoInicial ? (
                 <div className="row" style={{gap:6, alignItems:'center', marginTop:6, flexWrap:'nowrap'}}>
                   <span className="text-muted" style={{fontSize:11}}>Saldo inicial:</span>
@@ -3650,6 +3670,9 @@ function Tesoreria() {
           ))}
           <div className="text-muted" style={{fontSize:11, marginTop:8}}>{sinCuentaTienePendientes ? 'Movimientos pendientes de match bancario' : 'Todos los movimientos vinculados'}</div>
         </div>
+      </div>
+      <div className="text-muted" style={{fontSize:11, marginTop:8}}>
+        {resumenMovimientosSinCuenta.cantidad} {resumenMovimientosSinCuenta.cantidad === 1 ? 'movimiento no anulado no tiene cuenta bancaria asignada' : 'movimientos no anulados no tienen cuenta bancaria asignada'}; no afectan los saldos por cuenta.
       </div>
 
       <div className="tabs mt-6">
