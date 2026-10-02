@@ -15,7 +15,9 @@ import {
   montoMovimientoEnCuenta,
   movimientoPosteriorAlCorte,
   movimientoTieneConversion,
+  mensajePosicionTotal,
   periodoEmpiezaDespuesDelDiaSiguienteCorte,
+  validarSaldoInicial,
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
@@ -2825,6 +2827,7 @@ function Tesoreria() {
   const [equivalenciasCuenta, setEquivalenciasCuenta] = useState({});
   const [editandoSaldoInicialId, setEditandoSaldoInicialId] = useState(null);
   const [saldoInicialDraft, setSaldoInicialDraft] = useState('');
+  const [saldoInicialFechaDraft, setSaldoInicialFechaDraft] = useState('');
   const [guardandoSaldoInicialId, setGuardandoSaldoInicialId] = useState(null);
   const [hoverCuentaSaldoId, setHoverCuentaSaldoId] = useState(null);
   const [resumenDesde, setResumenDesde] = useState(new Date().toISOString().slice(0,7) + '-01');
@@ -3284,25 +3287,27 @@ function Tesoreria() {
   const iniciarEdicionSaldoInicial = cuenta => {
     setEditandoSaldoInicialId(cuenta.id);
     setSaldoInicialDraft(String(Number(cuenta.saldo_inicial || 0)));
+    setSaldoInicialFechaDraft(String(cuenta.fecha_saldo_inicial || ''));
   };
 
   const cancelarEdicionSaldoInicial = () => {
     setEditandoSaldoInicialId(null);
     setSaldoInicialDraft('');
+    setSaldoInicialFechaDraft('');
   };
 
   const guardarSaldoInicialCuenta = async cuenta => {
     if (!cuenta?.id || guardandoSaldoInicialId) return;
-    const saldoInicial = Number(saldoInicialDraft || 0);
-    if (!Number.isFinite(saldoInicial)) {
-      alert('Ingrese un saldo inicial valido.');
+    const validacion = validarSaldoInicial({ monto: saldoInicialDraft, fecha: saldoInicialFechaDraft });
+    if (!validacion.ok) {
+      alert(validacion.error);
       return;
     }
     setGuardandoSaldoInicialId(cuenta.id);
     try {
       await actualizarCuentaBancaria?.(cuenta.id, {
-        saldo_inicial: saldoInicial,
-        fecha_saldo_inicial: cuenta.fecha_saldo_inicial || new Date().toISOString().slice(0, 10),
+        saldo_inicial: validacion.saldoInicial,
+        fecha_saldo_inicial: validacion.fechaSaldoInicial,
       });
       addNotificacion?.('Saldo inicial actualizado.');
       cancelarEdicionSaldoInicial();
@@ -3522,6 +3527,7 @@ function Tesoreria() {
   const posicionTotalEntries = monedasCuentasActivas.length
     ? monedasCuentasActivas.map(moneda => [moneda, Number(saldoDisponiblePorMoneda[moneda] || 0)])
     : totalesEntries(saldoDisponiblePorMoneda);
+  const hayCuentaSinFechaCorte = saldoPorCuenta.some(cuenta => cuenta.sin_fecha_corte);
   const cobrosPeriodoEntries = totalesEntries(cobrosDelMes);
   const pagosCuentaEntries = totalesEntries(pagosPeriodoCuentaPorMoneda);
   const pagosOrigenEntries = Object.entries(pagosPeriodoOrigenPorMoneda).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
@@ -3573,7 +3579,7 @@ function Tesoreria() {
           {posicionTotalEntries.slice(1).map(([moneda, value]) => (
             <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
           ))}
-          <div className="text-muted" style={{fontSize:11, marginTop:8}}>Saldo acumulado real</div>
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{mensajePosicionTotal(hayCuentaSinFechaCorte)}</div>
         </div>
         <div style={metricCardStyle}>
           <div className="kpi-label">Cobros - {periodoTesoreriaLabelCorto}</div>
@@ -3653,13 +3659,22 @@ function Tesoreria() {
                     placeholder="0.00"
                     style={{fontSize:11, padding:'3px 6px', width:92}}
                   />
+                  <label className="text-muted" style={{fontSize:11, whiteSpace:'nowrap'}}>Saldo al cierre del día</label>
+                  <input
+                    className="input"
+                    type="date"
+                    aria-label="Saldo al cierre del día"
+                    value={saldoInicialFechaDraft}
+                    onChange={e => setSaldoInicialFechaDraft(e.target.value)}
+                    style={{fontSize:11, padding:'3px 6px', width:132}}
+                  />
                   <button className="icon-btn" style={{width:22, height:22}} title="Guardar saldo inicial" disabled={guardandoSaldoInicial} onClick={() => guardarSaldoInicialCuenta(cb)}>{I.check}</button>
                   <button className="icon-btn" style={{width:22, height:22}} title="Cancelar" disabled={guardandoSaldoInicial} onClick={cancelarEdicionSaldoInicial}>{I.x}</button>
                 </div>
               ) : (
                 <div className="text-muted" style={{fontSize:11, marginTop:6, display:'flex', alignItems:'center', gap:6}}>
                   <span>Saldo inicial: {moneyCurrency(saldoInicialCuenta, cb.moneda)}</span>
-                  <button className="icon-btn" style={{width:22, height:22}} title="Editar saldo inicial" onClick={() => iniciarEdicionSaldoInicial(cb)}>{I.edit}</button>
+                  <button className="icon-btn" style={{width:22, height:22, color:'var(--fg-muted)'}} title="Editar saldo inicial" onClick={() => iniciarEdicionSaldoInicial(cb)}>{I.edit}</button>
                 </div>
               )}
               <div style={{borderTop:'1px solid var(--border-subtle)', marginTop:10, paddingTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8}}>

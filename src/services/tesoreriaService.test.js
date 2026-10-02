@@ -6,8 +6,11 @@ import {
   calcularSaldosCuentasBancarias,
   movimientoPosteriorAlCorte,
   movimientoTieneConversion,
+  mensajePosicionTotal,
   periodoEmpiezaDespuesDelDiaSiguienteCorte,
+  fechaLocalHoy,
   resumirMovimientosSinCuenta,
+  validarSaldoInicial,
 } from './tesoreriaService.js';
 
 const cuenta = {
@@ -128,6 +131,51 @@ test('el aviso de período detecta un inicio posterior al día siguiente del cor
   assert.equal(periodoEmpiezaDespuesDelDiaSiguienteCorte('2026-09-10', '2026-09-12'), true);
   assert.equal(periodoEmpiezaDespuesDelDiaSiguienteCorte('2026-09-10', '2026-09-11'), false);
   assert.equal(periodoEmpiezaDespuesDelDiaSiguienteCorte(null, '2026-09-12'), false);
+});
+
+test('validar saldo inicial exige fecha', () => {
+  assert.deepEqual(validarSaldoInicial({ monto: '100', fecha: '', hoy: '2026-10-02' }), {
+    ok: false,
+    error: 'La fecha del saldo inicial es obligatoria.',
+  });
+});
+
+test('validar saldo inicial exige formato de fecha', () => {
+  assert.deepEqual(validarSaldoInicial({ monto: '100', fecha: '02/10/2026', hoy: '2026-10-02' }), {
+    ok: false,
+    error: 'La fecha del saldo inicial debe tener formato YYYY-MM-DD.',
+  });
+});
+
+test('validar saldo inicial rechaza fecha futura', () => {
+  assert.deepEqual(validarSaldoInicial({ monto: '100', fecha: '2026-10-03', hoy: '2026-10-02' }), {
+    ok: false,
+    error: 'La fecha del saldo inicial no puede ser posterior a hoy.',
+  });
+});
+
+test('validar saldo inicial rechaza monto no finito', () => {
+  assert.deepEqual(validarSaldoInicial({ monto: 'no-numero', fecha: '2026-10-02', hoy: '2026-10-02' }), {
+    ok: false,
+    error: 'El saldo inicial debe ser un número finito.',
+  });
+});
+
+test('validar saldo inicial devuelve monto y fecha válidos', () => {
+  assert.deepEqual(validarSaldoInicial({ monto: '100.50', fecha: '2026-10-02', hoy: '2026-10-02' }), {
+    ok: true,
+    saldoInicial: 100.5,
+    fechaSaldoInicial: '2026-10-02',
+  });
+});
+
+test('la fecha de hoy usa componentes locales', () => {
+  assert.equal(fechaLocalHoy({ getFullYear: () => 2026, getMonth: () => 9, getDate: () => 2 }), '2026-10-02');
+});
+
+test('el texto de posición total advierte cuando falta fecha de corte', () => {
+  assert.equal(mensajePosicionTotal(true), 'Hay cuentas sin fecha de corte: saldo no confiable');
+  assert.equal(mensajePosicionTotal(false), 'Saldo acumulado real');
 });
 
 test('resume movimientos no anulados sin cuenta por moneda', () => {

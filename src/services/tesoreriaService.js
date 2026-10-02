@@ -133,6 +133,36 @@ export const periodoEmpiezaDespuesDelDiaSiguienteCorte = (fechaCorte, fechaInici
   return Boolean(siguiente && inicio && inicio > siguiente);
 };
 
+export const fechaLocalHoy = (ahora = new Date()) => [
+  ahora.getFullYear(),
+  String(ahora.getMonth() + 1).padStart(2, '0'),
+  String(ahora.getDate()).padStart(2, '0'),
+].join('-');
+
+export function validarSaldoInicial({ monto, fecha, hoy = fechaLocalHoy() } = {}) {
+  if (monto == null || (typeof monto === 'string' && monto.trim() === '') || !Number.isFinite(Number(monto))) {
+    return { ok: false, error: 'El saldo inicial debe ser un número finito.' };
+  }
+  if (!fecha) {
+    return { ok: false, error: 'La fecha del saldo inicial es obligatoria.' };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha))) {
+    return { ok: false, error: 'La fecha del saldo inicial debe tener formato YYYY-MM-DD.' };
+  }
+  if (String(fecha) > String(hoy)) {
+    return { ok: false, error: 'La fecha del saldo inicial no puede ser posterior a hoy.' };
+  }
+  return {
+    ok: true,
+    saldoInicial: Number(monto),
+    fechaSaldoInicial: String(fecha),
+  };
+}
+
+export const mensajePosicionTotal = hayCuentaSinFechaCorte => hayCuentaSinFechaCorte
+  ? 'Hay cuentas sin fecha de corte: saldo no confiable'
+  : 'Saldo acumulado real';
+
 export function analizarSaldoCuentaBancaria(cuenta, movimientos = [], equivalencias = {}) {
   if (!cuenta?.id) {
     return {
