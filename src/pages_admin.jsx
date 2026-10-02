@@ -1650,7 +1650,7 @@ function Usuarios() {
     const memNombre = mem?.empresa?.nombre_comercial || mem?.empresa?.razon_social || mem?.empresa?.nombre;
     return memNombre || MOCK.empresas.find(e => e.id === id)?.nombre || 'Tenant asignado';
   };
-  
+
   return (
     <>
       <div className="page-header">
@@ -3373,7 +3373,9 @@ function MaterialesMaestro({ onClose }) {
   const [formErr, setFormErr] = useState('');
   const [spotCatalogo, setSpotCatalogo] = useState([]);
   const [importando, setImportando] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
   const [resultImport, setResultImport] = useState(null);
+  const importAbortRef = useRef(null);
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 50;
 
@@ -3499,20 +3501,15 @@ function MaterialesMaestro({ onClose }) {
     catch (err) { addNotificacion(err.message, 'error'); }
   };
 
-  const withImportTimeout = (promise, ms, message) => {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), ms);
-    });
-    return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
-  };
-
   // ─── Importación Excel ────────────────────────────────────────────────────
   const importarExcel = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+    const controller = new AbortController();
+    importAbortRef.current = controller;
     setImportando(true);
+    setImportProgress({ procesados: 0, total: 0, creados: 0, actualizados: 0, errores: 0 });
     setResultImport(null);
     try {
       const buf = await file.arrayBuffer();
@@ -3564,21 +3561,21 @@ function MaterialesMaestro({ onClose }) {
         })),
       })).filter(f => f.descripcion && f.unidad);
       if (!filas.length) { setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: 'No se encontraron filas válidas en el archivo.' }] }); return; }
-      const importTimeoutMs = Math.max(45000, Math.min(180000, filas.length * 900));
-      const res = await withImportTimeout(
-        importarMaterialesMasivo(empresa.id, filas),
-        importTimeoutMs,
-        'La importacion esta demorando mas de lo esperado. Revisa tu conexion o intenta con menos filas.'
-      );
-      await withImportTimeout(
-        recargarMateriales(),
-        30000,
-        'La importacion termino, pero no se pudo recargar el catalogo automaticamente.'
-      );
+      setImportProgress({ procesados: 0, total: filas.length, creados: 0, actualizados: 0, errores: 0 });
+      const res = await importarMaterialesMasivo(empresa.id, filas, {
+        signal: controller.signal,
+        batchSize: 25,
+        onProgress: setImportProgress,
+      });
+      await recargarMateriales();
       setResultImport(res);
     } catch (err) {
       setResultImport({ creados: 0, actualizados: 0, errores: [{ fila: '—', error: err.message }] });
-    } finally { setImportando(false); }
+    } finally {
+      if (importAbortRef.current === controller) importAbortRef.current = null;
+      setImportando(false);
+      setImportProgress(null);
+    }
   };
 
   const descargarPlantillaMateriales = () => {
@@ -3724,6 +3721,14 @@ function MaterialesMaestro({ onClose }) {
                   {importando ? 'Importando...' : <>{I.download} Importar Excel</>}
                   <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display: 'none' }} disabled={importando} />
                 </label>
+                {importando && importProgress && (
+                  <>
+                    <span className="text-muted" style={{ fontSize: 12 }}>
+                      Procesando {importProgress.procesados}/{importProgress.total} · {importProgress.creados} nuevos · {importProgress.actualizados} actualizados
+                    </span>
+                    <button className="btn btn-secondary" type="button" onClick={() => importAbortRef.current?.abort()}>Cancelar carga</button>
+                  </>
+                )}
                 <button className="btn btn-secondary" onClick={descargarPlantillaMateriales}>{I.download} Descargar plantilla</button>
                 <button className="btn btn-secondary" onClick={exportarMaterialesExcel}>{I.download} Exportar Excel</button>
                 {resultImport && (
@@ -5482,7 +5487,7 @@ function TrabajosMaestro({ onClose, onChanged, onDescargarPlantilla, onImportar,
 function Maestros() {
   const {
     navigate, cuentas, proveedores, personalAdmin = [], personalOperativo = [],
-    areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, sedes, industrias,
+    areasEmpresa, cargos, especialidades, nivelesJerarquicos, tiposServicio, sedes, almacenes, industrias,
     monedasImpuestosUnidades = [],
     unidadesOrganizacionales = [], crearUnidadOrganizacional, actualizarUnidadOrganizacional, eliminarUnidadOrganizacional,
     crearCargo, actualizarCargo, eliminarCargo, fusionarCargos,
@@ -5490,6 +5495,7 @@ function Maestros() {
     crearNivelJerarquico, actualizarNivelJerarquico, eliminarNivelJerarquico,
     crearTipoServicio, actualizarTipoServicio, eliminarTipoServicio,
     crearSede, actualizarSede, eliminarSede,
+    crearAlmacen, actualizarAlmacen, eliminarAlmacen,
     crearIndustria, actualizarIndustria, eliminarIndustria,
     crearMonedaImpuestoUnidad, actualizarMonedaImpuestoUnidad, eliminarMonedaImpuestoUnidad,
     tiposContrato = [], crearTipoContrato, actualizarTipoContrato, eliminarTipoContrato,
@@ -5550,6 +5556,7 @@ function Maestros() {
   const maestrosCatalogos = [
     { id: 'mst_industrias', tabla: 'Industrias' },
     { id: 'mst_sedes', tabla: 'Sedes y ubicaciones GPS' },
+    { id: 'mst_almacenes', tabla: 'Almacenes' },
     { id: 'mst_ceco_cebe', tabla: 'Centros de Costo y Beneficio' },
     { id: 'mst_unidades_organizacionales', tabla: 'Unidades Organizacionales' },
     { id: 'mst_cargos', tabla: 'Cargos de la empresa' },
@@ -5650,6 +5657,7 @@ function Maestros() {
     if (sel.id === 'mst_tipos_servicio') return tiposServicio;
     if (sel.id === 'mst_fabricantes') return fabricantes;
     if (sel.id === 'mst_sedes') return sedes;
+    if (sel.id === 'mst_almacenes') return almacenes;
     if (sel.id === 'mst_industrias') return industrias;
     if (sel.id === 'mst_impuestos') return monedasImpuestosUnidades;
     if (sel.id === 'mst_tipos_contrato') return tiposContrato;
@@ -5763,6 +5771,13 @@ function Maestros() {
       fields:  ['codigo','nombre','direccion','gps','tipo','estado'],
       ejemplo: ['SED-001','Sede Lima Norte','Av. Naranjal 456, Lima','-12.0464,-77.0428','oficina','activo'],
       hint: 'Tipo: oficina / unidad_minera',
+    },
+    mst_almacenes: {
+      sheetName: 'Almacenes', filename: 'almacenes.xlsx',
+      headers: ['Codigo','Nombre','Tipo','Responsable','Direccion','Estado'],
+      fields:  ['codigo','nombre','tipo','responsable','direccion','estado'],
+      ejemplo: ['ALM-001','Almacen Central','Central','Responsable de almacen','Av. Industrial 1450, Lima','activo'],
+      hint: 'Tipo sugerido: Central, Operativo, Tránsito, Consignación, Obra/Proyecto u Otro.',
     },
     mst_industrias: {
       sheetName: 'Industrias', filename: 'industrias.xlsx',
@@ -6192,6 +6207,7 @@ function Maestros() {
           r._advertencias = advertencias;
         }
         else if (sel.id === 'mst_sedes') await crearSede({ ...base, direccion: r.direccion || '', gps: r.gps || '', tipo: r.tipo || 'oficina' });
+        else if (sel.id === 'mst_almacenes') await crearAlmacen({ ...base, tipo: r.tipo || 'Central', responsable: r.responsable || '', direccion: r.direccion || '' });
         else if (sel.id === 'mst_industrias') await crearIndustria({ ...base, categoria: r.categoria || r.detalle || 'General' });
         else if (sel.id === 'mst_impuestos') await crearMonedaImpuestoUnidad({ codigo: (r.codigo||'').trim().toUpperCase(), tipo: r.tipo || 'moneda', nombre: r.nombre, detalle: r.detalle || '', estado: r.estado || 'activo' });
         else if (sel.id === 'mst_tipos_documento') await crearTipoDocumento({ ...base, ambito: r.ambito || 'Ambos', exige_vencimiento: (r.exige_vencimiento||'').toLowerCase()==='si', dias_alerta: parseInt(r.dias_alerta)||30, es_habilitante: (r.es_habilitante||'').toLowerCase()==='si', requiere_validacion: (r.requiere_validacion||'si').toLowerCase()==='si', orden: parseInt(r.orden)||0 });
@@ -6223,7 +6239,7 @@ function Maestros() {
   };
 
   const autoCode = (id, len) => {
-    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_fabricantes:'FAB', mst_sedes:'SED', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
+    const prefixMap = { mst_unidades_organizacionales:'UO', mst_cargos:'CAR', mst_especialidades:'ESP', mst_tipos_servicio:'TSI', mst_fabricantes:'FAB', mst_sedes:'SED', mst_almacenes:'ALM', mst_industrias:'IND', mst_clientes:'CLI', mst_proveedores:'PRV', mst_centros_costo:'CC', mst_materiales:'MAT', mst_impuestos:'TAX', mst_tipos_documento:'TDOC', mst_requisitos_cargo:'CDR', mst_tipos_contrato:'TCON' };
     const prefix = prefixMap[id] || id.slice(4,7).toUpperCase();
     return `${prefix}-${String(len+1).padStart(3,'0')}`;
   };
@@ -6327,6 +6343,15 @@ function Maestros() {
         const item = { ...base, direccion: nuevo.direccion || 'Sin direccion', gps: nuevo.gps || '', tipo: nuevoTipo };
         if (editandoId) await actualizarSede(editandoId, item);
         else await crearSede(item);
+      } else if (sel.id === 'mst_almacenes') {
+        const item = {
+          ...base,
+          tipo: nuevo.tipo || 'Central',
+          responsable: String(nuevo.responsable || '').trim(),
+          direccion: String(nuevo.direccion || '').trim(),
+        };
+        if (editandoId) await actualizarAlmacen(editandoId, item);
+        else await crearAlmacen(item);
       } else if (sel.id === 'mst_industrias') {
         const item = { ...base, categoria: nuevo.detalle || 'General' };
         if (editandoId) await actualizarIndustria(editandoId, item);
@@ -6475,6 +6500,7 @@ function Maestros() {
       else if (sel.id === 'mst_niveles_jerarquicos') await eliminarNivelJerarquico(r.id);
       else if (sel.id === 'mst_tipos_servicio') await eliminarTipoServicio(r.id);
       else if (sel.id === 'mst_sedes') await eliminarSede(r.id);
+      else if (sel.id === 'mst_almacenes') await eliminarAlmacen(r.id);
       else if (sel.id === 'mst_industrias') await eliminarIndustria(r.id);
       else if (sel.id === 'mst_impuestos') await eliminarMonedaImpuestoUnidad(r.id);
       else if (sel.id === 'mst_tipos_contrato') await eliminarTipoContrato(r.id);
@@ -6538,6 +6564,7 @@ function Maestros() {
     switch (mId) {
       case 'mst_industrias': arr = industrias || []; break;
       case 'mst_sedes': arr = sedes || []; break;
+      case 'mst_almacenes': arr = almacenes || []; break;
       case 'mst_unidades_organizacionales': arr = unidadesOrganizacionales || []; break;
       case 'mst_cargos': arr = cargos || []; break;
       case 'mst_tipos_documento': arr = tiposDocumento || []; break;
@@ -6742,6 +6769,19 @@ function Maestros() {
           <div className="input-group" style={{gridColumn:'span 3'}}><label>Dirección física</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Ate Vitarte, Lima"/></div>
           <div className="input-group" style={{gridColumn:'span 2'}}><label>Coordenadas GPS <span style={{fontSize:10,color:'var(--fg-subtle)',fontWeight:400}}>· lat, lng</span></label><input className="input" value={nuevo.gps} onChange={e=>setNuevo(v=>({...v,gps:e.target.value}))} placeholder="Ej: -12.0464, -77.0428"/></div>
           <FormActions label="sede" />
+        </div>
+      </form>
+    );
+    if (sel?.id === 'mst_almacenes') return (
+      <form ref={formRef} className="card" style={{padding:16, marginBottom:18}} onSubmit={addRow}>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12}}>
+          {renderCodPreview(sel.id, formLen)}
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Nombre del almacén *</label><input className="input" required value={nuevo.nombre} onChange={e=>setNuevo(v=>({...v,nombre:e.target.value}))} placeholder="Ej: Almacén Central" autoFocus/></div>
+          <div className="input-group"><label>Estado</label><select className="select" value={nuevo.estado} onChange={e=>setNuevo(v=>({...v,estado:e.target.value}))}><option>activo</option><option>inactivo</option></select></div>
+          <div className="input-group"><label>Tipo de almacén</label><select className="select" value={nuevo.tipo || 'Central'} onChange={e=>setNuevo(v=>({...v,tipo:e.target.value}))}><option value="Central">Central</option><option value="Operativo">Operativo</option><option value="Tránsito">Tránsito</option><option value="Consignación">Consignación</option><option value="Obra/Proyecto">Obra/Proyecto</option><option value="Otro">Otro</option></select></div>
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Responsable</label><input className="input" value={nuevo.responsable} onChange={e=>setNuevo(v=>({...v,responsable:e.target.value}))} placeholder="Ej: Jefe de almacén"/></div>
+          <div className="input-group" style={{gridColumn:'span 2'}}><label>Dirección física</label><input className="input" value={nuevo.direccion} onChange={e=>setNuevo(v=>({...v,direccion:e.target.value}))} placeholder="Ej: Av. Industrial 1450, Lima"/></div>
+          <FormActions label="almacén" />
         </div>
       </form>
     );
@@ -7111,6 +7151,23 @@ function Maestros() {
             <td><span className="mono" style={{fontSize:11, color:'var(--cyan-dk)', background:'var(--cyan-lt)', padding:'2px 7px', borderRadius:6}}>{r.gps || '—'}</span></td>
             <td><span className={'badge '+(r.tipo==='unidad_minera'?'badge-orange':'badge-gray')}>{r.tipo === 'unidad_minera' ? 'Unidad minera' : 'Oficina'}</span></td>
             <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado}</span></td>
+            <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
+          </tr>
+        ))}</tbody>
+      </table>
+    );
+    if (sel?.id === 'mst_almacenes') return (
+      <table className="tbl">
+        <thead><tr><th style={{width:40}}><input type="checkbox" checked={checkedIds.length === selectedRows.length && selectedRows.length > 0} onChange={e => setCheckedIds(e.target.checked ? selectedRows.map(x=>x.id) : [])}/></th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Responsable</th><th>Dirección</th><th>Estado</th><th style={{textAlign:'right'}}>Acciones</th></tr></thead>
+        <tbody>{selectedRows.map((r,i) => (
+          <tr key={`${r.codigo || r.id}-${i}`}>
+            <td><input type="checkbox" checked={checkedIds.includes(r.id)} onChange={e => { e.stopPropagation(); setCheckedIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(x => x !== r.id)); }} /></td>
+            <td className="mono text-muted">{r.codigo || '—'}</td>
+            <td><strong>{r.nombre}</strong></td>
+            <td><span className="badge badge-gray">{r.tipo || 'Central'}</span></td>
+            <td className="text-muted">{r.responsable || '—'}</td>
+            <td className="text-muted" style={{fontSize:12}}>{r.direccion || '—'}</td>
+            <td><span className={'badge '+(r.estado==='activo'?'badge-green':'badge-gray')}>{r.estado || 'activo'}</span></td>
             <td style={{textAlign:'right', whiteSpace:'nowrap'}}><RowActions item={r} /></td>
           </tr>
         ))}</tbody>
