@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 import zahoryStyles from './styles/zahory.css?inline';
 import { ZahoryRoutes } from './ZahoryRoutes.jsx';
 
-const shadowZahoryStyles = zahoryStyles
-  .replace(':root {', ':host {')
-  .replace("[data-theme='dark'] {", ":host([data-theme='dark']) {");
+export const transformShadowZahoryStyles = css => String(css || '')
+  .replace(/:root\s*\{/g, ':host {')
+  .replace(/\[data-theme\s*=\s*(?:"dark"|'dark'|dark)\]/g, ':host([data-theme="dark"])');
+
+const shadowZahoryStyles = transformShadowZahoryStyles(zahoryStyles);
 
 const integrationStyles = `
   :host { display: block; min-width: 0; color: var(--text); }
