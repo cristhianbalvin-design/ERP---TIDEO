@@ -25,19 +25,19 @@ const CARGO_CFG = {
 
 // ── Columna 4: Estado técnico — dot 8px + label
 const ESTADO_CFG = {
-  'Planificada':      { dotColor: '#94A3B8', bg: '#F1F5F9', textColor: '#475569', label: 'Planificada'       },
+  'Planificada':      { dotColor: 'var(--text-subtle)', bg: 'var(--badge-slate-bg)', textColor: 'var(--badge-slate-fg)', label: 'Planificada'       },
   'En Ejecución':     { dotColor: '#4CAF50', bg: '#E8F5E9', textColor: '#1B5E20', label: 'En Ejecución'      },
-  'Espera Repuestos': { dotColor: '#FF9800', bg: '#FFF3E0', textColor: '#C15D00', label: 'Espera Repuestos'  },
-  'Finalizada':       { dotColor: '#00BCD4', bg: '#E0F7FA', textColor: '#006978', label: 'Finalizada'        },
-  'Cerrada':          { dotColor: '#64748b', bg: '#F1F5F9', textColor: '#475569', label: 'Cerrada'           },
+  'Espera Repuestos': { dotColor: 'var(--orange)', bg: 'var(--badge-orange-bg)', textColor: 'var(--badge-orange-fg)', label: 'Espera Repuestos'  },
+  'Finalizada':       { dotColor: 'var(--cyan)', bg: 'var(--badge-cyan-bg)', textColor: 'var(--badge-cyan-fg)', label: 'Finalizada'        },
+  'Cerrada':          { dotColor: 'var(--text-muted)', bg: 'var(--badge-slate-bg)', textColor: 'var(--badge-slate-fg)', label: 'Cerrada'           },
 };
 
 // ── Centro de costo — badge monospace
 const CC_CFG = {
-  'FLO-ALQ':  { bg: 'rgba(245,158,11,0.12)',  color: '#f59e0b' },
-  'OPS-INT':  { bg: 'rgba(100,116,139,0.12)', color: '#94a3b8' },
-  'PROD-MAE': { bg: 'rgba(139,92,246,0.12)',  color: '#8b5cf6' },
-  'PROD-SOL': { bg: 'rgba(249,115,22,0.12)',  color: '#f97316' },
+  'FLO-ALQ':  { bg: 'var(--badge-orange-bg)', color: 'var(--badge-orange-fg)' },
+  'OPS-INT':  { bg: 'var(--badge-slate-bg)', color: 'var(--badge-slate-fg)' },
+  'PROD-MAE': { bg: 'var(--badge-purple-bg)', color: 'var(--badge-purple-fg)' },
+  'PROD-SOL': { bg: 'var(--badge-orange-bg)', color: 'var(--badge-orange-fg)' },
 };
 
 // ── Variación de costo (retorna null si no aplica)
@@ -300,7 +300,7 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
               const etCfg    = ESTADO_CFG[r.estadoTecnico]  || ESTADO_CFG['Planificada'];
               const tCfg     = TRABAJO_CFG[r.tipoTrabajo]   || { label: r.tipoTrabajo,  cls: 'badge-tipo' };
               const cargoCfg = CARGO_CFG[r.tipoCargo]       || { label: r.tipoCargo,    cls: 'badge slate' };
-              const ccCfg    = CC_CFG[r.centro_costo]       || { bg: 'rgba(100,116,139,0.12)', color: '#94a3b8' };
+              const ccCfg    = CC_CFG[r.centro_costo]       || { bg: 'var(--badge-slate-bg)', color: 'var(--badge-slate-fg)' };
               const costoVar = getCostoVariacion(r);
               return (
                 <tr key={r.codigo} className="clickable"
@@ -320,17 +320,17 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{r.proy}</div>
                     {r.tipoCargo === 'Cliente_Contrato' && r.objeto_costo_id && (
                       <div
-                        style={{ fontSize:'10px', color:'#60a5fa', fontFamily:'monospace', marginTop:'2px', cursor:'pointer' }}
+                        style={{ fontSize:'10px', color:'var(--info-fg)', fontFamily:'monospace', marginTop:'2px', cursor:'pointer' }}
                         onClick={e => { e.stopPropagation(); onNav('contratos-rental'); }}
                       >{r.objeto_costo_id}</div>
                     )}
                     {r.tipoCargo === 'Interno_Zahory' && (
-                      <div style={{ fontSize:'10px', color:'#64748b', marginTop:'2px' }}>
+                      <div style={{ fontSize:'10px', color:'var(--text-muted)', marginTop:'2px' }}>
                         Interno · {r.centro_costo}
                       </div>
                     )}
                     {r.horometro_apertura && (
-                      <div style={{ fontSize:'9.5px', color:'#475569', fontFamily:'monospace', marginTop:'1px' }}>
+                      <div style={{ fontSize:'9.5px', color:'var(--text-strong-muted)', fontFamily:'monospace', marginTop:'1px' }}>
                         Horóm. ap.: {r.horometro_apertura.toLocaleString()}h
                       </div>
                     )}
@@ -346,7 +346,7 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
                         {r.tipoCargo === 'Reclamo_Rework' && (
                           <span
                             title={r.motivo_rework || '⚠ Sin motivo registrado'}
-                            style={{ cursor:'help', marginLeft:'4px', color: r.motivo_rework ? '#ef4444' : '#b91c1c', fontSize:'11px' }}
+                            style={{ cursor:'help', marginLeft:'4px', color: r.motivo_rework ? 'var(--red)' : 'var(--badge-red-fg)', fontSize:'11px' }}
                           >ⓘ</span>
                         )}
                       </span>
@@ -387,21 +387,21 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
                     {r.costo_estimado > 0 ? (
                       r.costo_real > 0 ? (
                         <div>
-                          <span style={{ fontWeight:700, fontSize:'13px', color:'var(--navy)' }}>
+                          <span style={{ fontWeight:700, fontSize:'13px', color:'var(--heading)' }}>
                             ${r.costo_real.toLocaleString()}
                           </span>
-                          <span style={{ display:'block', fontSize:'10px', color:'#64748b' }}>
+                          <span style={{ display:'block', fontSize:'10px', color:'var(--text-muted)' }}>
                             est. ${r.costo_estimado.toLocaleString()}
                           </span>
                           {costoVar && (
-                            <span style={{ fontSize:'9px', fontWeight:600, color: costoVar.ok ? '#22c55e' : '#ef4444' }}>
+                            <span style={{ fontSize:'9px', fontWeight:600, color: costoVar.ok ? 'var(--green)' : 'var(--red)' }}>
                               {costoVar.ok ? '▼' : '▲'}{Math.abs(costoVar.pct).toFixed(0)}%
                               {!costoVar.ok && ' sobre est.'}
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span style={{ color:'#64748b', fontSize:'12px' }}>
+                        <span style={{ color:'var(--text-muted)', fontSize:'12px' }}>
                           Est. ${r.costo_estimado.toLocaleString()}
                         </span>
                       )
@@ -422,7 +422,7 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
                         <button
                           onClick={() => handleCierreLiquidacion(r)}
                           style={{
-                            background:'rgba(34,197,94,0.15)', color:'#22c55e',
+                            background:'var(--badge-green-bg)', color:'var(--badge-green-fg)',
                             border:'1px solid rgba(34,197,94,0.3)',
                             borderRadius:'6px', padding:'4px 8px',
                             fontSize:'11px', fontWeight:600, cursor:'pointer',
@@ -457,11 +457,11 @@ const OTsListadoPageMock = ({ onNav, setCurrentOT }) => {
       {toast && (
         <div style={{
           position:'fixed', bottom:24, right:24, zIndex:1000,
-          background:'#1e293b', color:'white',
+          background:'var(--navy-2)', color:'white',
           padding:'12px 20px', borderRadius:10,
           fontSize:13, fontWeight:600,
           boxShadow:'0 8px 24px rgba(0,0,0,0.3)',
-          borderLeft:'4px solid #22c55e',
+          borderLeft:'4px solid var(--green)',
         }}>
           ✓ {toast}
         </div>
@@ -1062,7 +1062,7 @@ export const GestionPartesTallerPage = ({ onNav }) => {
         openMenu={openMenu} setOpenMenu={setOpenMenu}
       />
       {cargandoPartes && <div className="muted" style={{ marginTop: 12, textAlign: 'center' }}>Cargando partes diarios reales...</div>}
-      {errorPartes && <div style={{ marginTop: 12, color: '#B91C1C', textAlign: 'center' }}>{errorPartes}</div>}
+      {errorPartes && <div style={{ marginTop: 12, color: 'var(--text-danger)', textAlign: 'center' }}>{errorPartes}</div>}
       <FooterBrand/>
     </div>
   );
@@ -1211,7 +1211,7 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     <div style={{ position:'relative', width:'100%', minWidth:0 }}>
       <input className="input" style={{ width:'100%' }} value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
       {abierto && texto.trim().length >= 2 && (
-        <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'#fff', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
+        <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'var(--white)', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
           {buscando && <div className="hint" style={{ padding:'8px' }}>Buscando materiales...</div>}
           {!buscando && resultados.map(material => <button key={material.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)} style={{ display:'block', width:'100%', border:0, background:'transparent', textAlign:'left', padding:'8px', cursor:'pointer' }}><b>{material.codigo}</b> · {material.descripcion}<span className="muted" style={{ marginLeft:5 }}>{material.unidad || 'und'}</span></button>)}
           {!buscando && resultados.length === 0 && <div className="hint" style={{ padding:'8px' }}>{busquedaError || 'Sin materiales coincidentes.'}</div>}
@@ -1222,7 +1222,7 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     {crearAbierto && <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}><div className="card" style={{ width:'min(760px, 100%)' }}>
       <div className="card-header"><h3>Nuevo material</h3><div className="spacer"/><button className="icon-btn" onClick={() => setCrearAbierto(false)}><Icon name="x" size={16}/></button></div>
       <div className="card-body ot-form-grid dbs">
-        {error && <div style={{ gridColumn:'1/-1', color:'#b91c1c' }}>{error}</div>}
+        {error && <div style={{ gridColumn:'1/-1', color:'var(--text-danger)' }}>{error}</div>}
         <div className="input-group"><label>Grupo *</label><select className="select" value={form.grupo_id} onChange={event => setForm(actual => ({ ...actual, grupo_id:event.target.value, familia_id:'', subfamilia_id:'' }))}><option value="">Seleccionar...</option>{grupos.map(grupo => <option key={grupo.id} value={grupo.id}>{grupo.codigo} - {grupo.nombre}</option>)}</select></div>
         <div className="input-group"><label>Familia *</label><select className="select" value={form.familia_id} disabled={!form.grupo_id} onChange={event => setForm(actual => ({ ...actual, familia_id:event.target.value, subfamilia_id:'' }))}><option value="">Seleccionar...</option>{familiasFiltradas.map(familia => <option key={familia.id} value={familia.id}>{familia.codigo} - {familia.nombre}</option>)}</select></div>
         <div className="input-group"><label>Subfamilia *</label><select className="select" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
@@ -1489,7 +1489,7 @@ export const SolicitudesPage = ({ onNav }) => {
           ))}
         </div>
       </div>
-      {error && <div className="card" style={{ padding:'12px 16px', marginBottom:'12px', color:'#b91c1c', border:'1px solid rgba(239,68,68,0.35)' }}>{error}</div>}
+      {error && <div className="card" style={{ padding:'12px 16px', marginBottom:'12px', color:'var(--text-danger)', border:'1px solid var(--border-danger)' }}>{error}</div>}
       <div className="card">
         <table className="tbl">
           <thead>
@@ -1506,22 +1506,22 @@ export const SolicitudesPage = ({ onNav }) => {
             </tr>
           </thead>
           <tbody>
-            {cargando && <tr><td colSpan="9" style={{ textAlign:'center', color:'#64748b', padding:'28px' }}>Cargando solicitudes SOLPE...</td></tr>}
-            {!cargando && solpesVisibles.length === 0 && <tr><td colSpan="9" style={{ textAlign:'center', color:'#64748b', padding:'28px' }}>No hay solicitudes en esta pestaña.</td></tr>}
+            {cargando && <tr><td colSpan="9" style={{ textAlign:'center', color:'var(--text-muted)', padding:'28px' }}>Cargando solicitudes SOLPE...</td></tr>}
+            {!cargando && solpesVisibles.length === 0 && <tr><td colSpan="9" style={{ textAlign:'center', color:'var(--text-muted)', padding:'28px' }}>No hay solicitudes en esta pestaña.</td></tr>}
             {!cargando && solpesVisibles.map((s) => (
               <tr key={s.id}>
                 <td>
                   {s.urgenciaVisible === 'urgente'
-                    ? <span style={{ background:'#ef4444', color:'#fff', fontWeight:700,
+                    ? <span style={{ background:'var(--red)', color:'white', fontWeight:700,
                                      fontSize:'10px', padding:'2px 8px', borderRadius:'5px' }}>URGENTE</span>
-                    : <span style={{ background:'rgba(59,130,246,0.15)', color:'#3b82f6',
+                    : <span style={{ background:'var(--info-soft-bg)', color:'var(--info-fg)',
                                      fontSize:'10px', padding:'2px 8px', borderRadius:'5px' }}>NORMAL</span>
                   }
                 </td>
                 <td>
-                  <div style={{ fontWeight:600, fontSize:'13px', color:'#1F2937' }}>{s.descripcionVisible}</div>
+                  <div style={{ fontWeight:600, fontSize:'13px', color:'var(--text)' }}>{s.descripcionVisible}</div>
                   {s.itemCodigo && (
-                    <div style={{ fontSize:'10px', fontFamily:'monospace', color:'#f59e0b', marginTop:'2px' }}>
+                    <div style={{ fontSize:'10px', fontFamily:'monospace', color:'var(--orange)', marginTop:'2px' }}>
                       {s.itemCodigo}
                     </div>
                   )}
@@ -1531,25 +1531,25 @@ export const SolicitudesPage = ({ onNav }) => {
                 <td>
                   {s.origen_tipo === 'ot' && s.ot_id ? (
                     <div>
-                      <span style={{ fontSize:'10px', color:'#60a5fa', fontFamily:'monospace',
+                      <span style={{ fontSize:'10px', color:'var(--info-fg)', fontFamily:'monospace',
                                      cursor:'pointer', display:'block' }}
                         role="link" tabIndex={0}
                         onClick={() => onNav && onNav('ots')}
                         onKeyDown={event => { if (event.key === 'Enter') onNav && onNav('ots'); }}>
                         {s.otNumero}
                       </span>
-                      <span style={{ fontSize:'9px', color:'#475569' }}>Orden de Trabajo</span>
+                      <span style={{ fontSize:'9px', color:'var(--text-strong-muted)' }}>Orden de Trabajo</span>
                     </div>
                   ) : s.origen === 'automatico' ? (
-                    <div><span style={{ fontSize:'11px', color:'#475569' }}>Reorden automático</span><div style={{ fontSize:'9px', color:'#475569' }}>Stock mínimo</div></div>
+                    <div><span style={{ fontSize:'11px', color:'var(--text-strong-muted)' }}>Reorden automático</span><div style={{ fontSize:'9px', color:'var(--text-strong-muted)' }}>Stock mínimo</div></div>
                   ) : (
-                    <span style={{ color:'#475569', fontSize:'11px' }}>Manual</span>
+                    <span style={{ color:'var(--text-strong-muted)', fontSize:'11px' }}>Manual</span>
                   )}
                 </td>
                 <td>
-                  <div style={{ fontSize:'12px', color:'#64748b' }}>{s.ubicacion}</div>
+                  <div style={{ fontSize:'12px', color:'var(--text-muted)' }}>{s.ubicacion}</div>
                 </td>
-                <td style={{ fontSize:'12px', color:'#64748b', fontFamily:'monospace' }}>{s.fecha || s.fecha_requerida || '—'}</td>
+                <td style={{ fontSize:'12px', color:'var(--text-muted)', fontFamily:'monospace' }}>{s.fecha || s.fecha_requerida || '—'}</td>
                 <td>
                   {(() => { const [color, etiqueta] = etiquetaEstado(s.estado); return <span className={`badge ${color}`}><span className="dot"/>{etiqueta}</span>; })()}
                 </td>

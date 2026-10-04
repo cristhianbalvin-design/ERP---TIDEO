@@ -90,9 +90,9 @@ export const GroupedBars = ({ data, currency, fx }) => {
           return (
             <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
               <rect x={padL + bw * i} y={padT} width={bw} height={h - padT - padB} fill="transparent"/>
-              <rect x={revX} y={h - padB - revH} width={barW} height={revH} fill="#1A2B4A" opacity={isHover ? 1 : 0.92} rx="2"/>
+              <rect x={revX} y={h - padB - revH} width={barW} height={revH} fill="var(--chart-income)" opacity={isHover ? 1 : 0.92} rx="2"/>
               <rect x={costX} y={h - padB - costH} width={barW} height={costH} fill="#607D8B" opacity={isHover ? 1 : 0.92} rx="2"/>
-              <text x={cx} y={h - padB + 14} fontSize="9.5" fill="#1A2B4A" textAnchor="middle" fontFamily="ui-monospace, monospace">{d.label}</text>
+              <text x={cx} y={h - padB + 14} fontSize="9.5" fill="var(--heading)" textAnchor="middle" fontFamily="ui-monospace, monospace">{d.label}</text>
               <text x={cx} y={h - padB + 26} fontSize="10" fill={d.margin >= 60 ? "#4CAF50" : d.margin >= 30 ? "#FF9800" : "#E53935"} textAnchor="middle" fontWeight="700">{d.margin.toFixed(0)}%</text>
             </g>
           );
@@ -107,7 +107,7 @@ export const GroupedBars = ({ data, currency, fx }) => {
         </div>
       )}
       <div className="chart-legend">
-        <div className="item"><span className="sw" style={{ background: "#1A2B4A" }}/><span>Ingreso facturable</span></div>
+        <div className="item"><span className="sw" style={{ background: "var(--chart-income)" }}/><span>Ingreso facturable</span></div>
         <div className="item"><span className="sw" style={{ background: "#607D8B" }}/><span>Costo total</span></div>
       </div>
     </div>
@@ -135,7 +135,7 @@ export const MarginBars = ({ data }) => {
           const barW = x(d.margin) - padL;
           return (
             <g key={d.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
-              <text x={padL - 8} y={yRow + 12} fontSize="10.5" fill="#1A2B4A" textAnchor="end" fontFamily="ui-monospace, monospace">{d.label}</text>
+              <text x={padL - 8} y={yRow + 12} fontSize="10.5" fill="var(--heading)" textAnchor="end" fontFamily="ui-monospace, monospace">{d.label}</text>
               <rect x={padL} y={yRow} width={w - padL - padR} height={rowH - 10} fill="#F4F6F8" rx="3"/>
               <rect x={padL} y={yRow} width={barW} height={rowH - 10} fill={color} rx="3" opacity={hover === i ? 1 : 0.9}/>
               <text x={x(d.margin) + 4} y={yRow + 12} fontSize="10.5" fill={color} fontWeight="700">{d.margin.toFixed(1)}%</text>
@@ -187,7 +187,7 @@ export const CumulativeLines = ({ data, currency, fx }) => {
             <rect x={x(i) - (w / data.length / 2)} y={padT} width={w / data.length} height={h - padT - padB} fill="transparent"/>
             {hover === i && (
               <>
-                <line x1={x(i)} x2={x(i)} y1={padT} y2={h - padB} stroke="#1A2B4A" strokeDasharray="3 3"/>
+                <line x1={x(i)} x2={x(i)} y1={padT} y2={h - padB} stroke="var(--heading)" strokeDasharray="3 3"/>
                 <circle cx={x(i)} cy={y(d.rev)} r="4" fill="#4CAF50"/>
                 <circle cx={x(i)} cy={y(d.cost)} r="4" fill="#E53935"/>
               </>
@@ -211,4 +211,3 @@ export const CumulativeLines = ({ data, currency, fx }) => {
     </div>
   );
 };
-

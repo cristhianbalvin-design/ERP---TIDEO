@@ -7,6 +7,24 @@ export const transformShadowZahoryStyles = css => String(css || '')
   .replace(/:root\s*\{/g, ':host {')
   .replace(/\[data-theme\s*=\s*(?:"dark"|'dark'|dark)\]/g, ':host([data-theme="dark"])');
 
+export function syncZahoryHostTheme(host, documentElement = globalThis.document?.documentElement) {
+  if (!host || !documentElement) return;
+  if (documentElement.classList.contains('dark')) host.setAttribute('data-theme', 'dark');
+  else host.removeAttribute('data-theme');
+}
+
+export function observeZahoryHostTheme(host, documentElement = globalThis.document?.documentElement) {
+  if (!host || !documentElement) return () => {};
+  syncZahoryHostTheme(host, documentElement);
+  if (typeof globalThis.MutationObserver !== 'function') return () => {};
+  const observer = new MutationObserver(() => syncZahoryHostTheme(host, documentElement));
+  observer.observe(documentElement, { attributes: true, attributeFilter: ['class'] });
+  return () => {
+    observer.disconnect();
+    host.removeAttribute('data-theme');
+  };
+}
+
 const shadowZahoryStyles = transformShadowZahoryStyles(zahoryStyles);
 
 const integrationStyles = `
@@ -51,6 +69,8 @@ export function ZahoryScreenHost({ route, routeParams, onNavigate }) {
     if (!hostRef.current) return;
     setShadowRoot(hostRef.current.shadowRoot || hostRef.current.attachShadow({ mode: 'open' }));
   }, []);
+
+  useEffect(() => observeZahoryHostTheme(hostRef.current), []);
 
   return (
     <div className="ops-zahory-host" ref={hostRef}>

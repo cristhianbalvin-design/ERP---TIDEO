@@ -12,7 +12,7 @@ export function AdministrativeAppLinkPage({ title, adminRoute }) {
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
         flexWrap: 'wrap', padding: '12px 20px', margin: '12px 20px 0',
-        border: '1px solid #93c5fd', borderRadius: 10, background: '#eff6ff', color: '#1e3a8a',
+        border: '1px solid var(--link-banner-border)', borderRadius: 10, background: 'var(--link-banner-bg)', color: 'var(--link-banner-fg)',
       }}
     >
       <div style={{ fontSize: 13 }}>
