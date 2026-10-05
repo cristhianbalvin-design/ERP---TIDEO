@@ -331,7 +331,7 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
   const [tiposGasto, setTiposGasto] = useState([]);
   const [buscarTipo, setBuscarTipo] = useState('');
   const [tc, setTc]               = useState(null);
-  const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || '');
+  const [archivoUrl, setArchivoUrl] = useState(registroEditar?.archivo_url || registroEditar?.archivo_factura_url || registroEditar?.comprobante_url || '');
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState('');
   const [errCeco, setErrCeco]     = useState(false);
@@ -1455,6 +1455,8 @@ export function NuevoEgreso({ onClose, onSaved, origen = 'compras_gastos', preco
           metodo_pago:      form.ya_pagado ? form.metodo_pago : null,
           referencia_pago:  form.ya_pagado ? (form.referencia_pago || null) : null,
           centro_costo_id:  form.centro_costo_id,
+          tipo_comprobante: form.tipo_comprobante || null,
+          num_comprobante:  form.num_comprobante || null,
           ...(form.ot_vinc_id ? { ot_vinc_id: form.ot_vinc_id } : {}),
           proveedor_referencia: proveedorNombre || null,
           archivo_url:      archivoUrl || null,

@@ -8,8 +8,10 @@ export const CXP_MASSIVE_HEADERS = [
   'fecha_emision', 'fecha_vencimiento', 'moneda', 'monto_total', 'monto_pagado',
   'fecha_pago', 'cuenta_bancaria', 'referencia_pago', 'categoria_er', 'centro_costo_codigo',
   'personal_id', 'numero_rhe', 'monto_bruto', 'trabajo_facturable',
+  'tributo_tipo', 'tributo_periodo', 'tributo_formulario', 'socio_nombre', 'socio_participacion_pct',
+  'periodo_utilidades', 'acta_referencia', 'codigo_spot', 'tipo_cambio_detraccion', 'tipo_cambio_fuente',
 ];
-export const TIPOS_CXP_MASIVA = ['Factura', 'Boleta', 'Nota de débito', 'Sin comprobante', 'RHE'];
+export const TIPOS_CXP_MASIVA = ['Factura', 'Boleta', 'Nota de débito', 'Sin comprobante', 'RHE', 'Tributo', 'Distribucion de utilidades', 'Viaticos'];
 
 export const normalizarRucCxp = value => String(value ?? '').replace(/\D/g, '');
 export const normalizarTextoCxp = value => String(value ?? '')
@@ -100,15 +102,16 @@ const rucDeCxp = (cxp, proveedoresPorId) => cxp?.ruc_emisor
   || '';
 
 export async function cargarCatalogosCxpMasivo(supabase, empresaId) {
-  const [proveedoresR, cecosR, categoriasR, cxpR, personalAdminR, personalOperativoR] = await Promise.all([
+  const [proveedoresR, cecosR, categoriasR, cxpR, personalAdminR, personalOperativoR, spotR] = await Promise.all([
     supabase.from('proveedores').select('id,ruc,razon_social,estado').eq('empresa_id', empresaId),
     supabase.from('centros_costo').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('er_categorias').select('nombre,activo,tipo_sistema,seccion,orden').eq('empresa_id', empresaId),
     supabase.from('cxp').select('id,sociedad_id,proveedor_id,ruc_emisor,personal_id,tipo_comprobante,factura_numero,concepto,fecha_emision,monto_total,proveedores(ruc)').eq('empresa_id', empresaId),
     supabase.from('personal_administrativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,retencion_ir_comision,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
     supabase.from('personal_operativo').select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,suspension_retenciones,vencimiento_suspension').eq('empresa_id', empresaId),
+    supabase.from('spot_catalogo').select('id,codigo,porcentaje,monto_minimo,umbral_operador,vigencia_desde,vigencia_hasta,estado').eq('estado', 'activo').order('codigo'),
   ]);
-  const error = [proveedoresR, cecosR, categoriasR, cxpR, personalAdminR, personalOperativoR].find(result => result.error)?.error;
+  const error = [proveedoresR, cecosR, categoriasR, cxpR, personalAdminR, personalOperativoR, spotR].find(result => result.error)?.error;
   if (error) throw error;
   return {
     proveedores: proveedoresR.data || [],
@@ -119,11 +122,12 @@ export async function cargarCatalogosCxpMasivo(supabase, empresaId) {
       ...(personalAdminR.data || []).map(persona => ({ ...persona, _origen_personal: 'administrativo' })),
       ...(personalOperativoR.data || []).map(persona => ({ ...persona, _origen_personal: 'operativo' })),
     ],
+    spotCatalogo: spotR.data || [],
   };
 }
 
 export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNombre = '') {
-  const [cecosR, categoriasR, personalAdminR, personalOperativoR] = await Promise.all([
+  const [cecosR, categoriasR, personalAdminR, personalOperativoR, spotR] = await Promise.all([
     supabase.from('centros_costo')
       .select('codigo,nombre,fecha_inicio,fecha_fin')
       .eq('empresa_id', empresaId)
@@ -140,11 +144,15 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     supabase.from('personal_operativo')
       .select('id,nombre,estado,tipo_contrato,ruc_colaborador,retencion_ir,suspension_retenciones,vencimiento_suspension')
       .eq('empresa_id', empresaId).order('nombre'),
+    supabase.from('spot_catalogo')
+      .select('id,codigo,porcentaje,monto_minimo,umbral_operador,vigencia_desde,vigencia_hasta,estado')
+      .eq('estado', 'activo').order('codigo'),
   ]);
   if (cecosR.error) throw cecosR.error;
   if (categoriasR.error) throw categoriasR.error;
   if (personalAdminR.error) throw personalAdminR.error;
   if (personalOperativoR.error) throw personalOperativoR.error;
+  if (spotR.error) throw spotR.error;
 
   const colaboradoresRhe = [
     ...(personalAdminR.data || []).map(persona => ({ ...persona, _origen_personal: 'administrativo' })),
@@ -156,10 +164,12 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     '20123456789', 'Proveedor Ejemplo S.A.C.', 'Factura', 'F001-000123', 'Servicio de mantenimiento',
     '2026-07-27', '2026-08-26', 'PEN', '1180.00', '0.00', '', '', '',
     (categoriasR.data || [])[0]?.nombre || '', (cecosR.data || [])[0]?.codigo || '', '', '', '', '',
+    ...Array(10).fill(''),
   ], [
     '', '', 'RHE', '', 'Servicio profesional',
     '2026-07-27', '2026-08-26', 'PEN', '920.00', '0.00', '', '', '',
     'Servicios terceros', (cecosR.data || [])[0]?.codigo || '', '', 'RHE-00001', '1000.00', '',
+    ...Array(10).fill(''),
   ]]);
   dataSheet['!cols'] = CXP_MASSIVE_HEADERS.map(header => ({ wch: Math.max(14, header.length + 2) }));
 
@@ -182,6 +192,12 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     ['11', 'Para RHE, monto_total es neto (monto_bruto menos retención); el pago parcial se compara contra el neto.'],
     ['12', 'Formato de fechas: DD/MM/AAAA o AAAA-MM-DD.'],
     [],
+    ['12', 'Tributo: tributo_tipo + tributo_periodo AAAA-MM + formulario; no requiere proveedor y no devenga ER.'],
+    ['13', 'Distribucion de utilidades: socio_nombre + periodo_utilidades AAAA + acta_referencia; no requiere proveedor y no devenga ER.'],
+    ['14', 'Viaticos: personal_id; se registra como reembolso al colaborador y no requiere proveedor.'],
+    ['15', 'Compra SPOT: codigo_spot valida porcentaje, vigencia y umbral; una CxP con SPOT no puede venir pagada.'],
+    ['16', 'Formato de fechas: DD/MM/AAAA o AAAA-MM-DD.'],
+    [],
     ['Valores permitidos de tipo_cxp', ...TIPOS_CXP_MASIVA],
     [],
     ['CECOs activos'],
@@ -191,6 +207,10 @@ export async function descargarPlantillaCxpMasiva(supabase, empresaId, empresaNo
     ['Categorías ER activas'],
     ['Nombre', 'Sección', 'Regla OT'],
     ...(categoriasR.data || []).map(c => [c.nombre, c.seccion, c.regla_ot]),
+    [],
+    ['Catalogo SPOT activo'],
+    ['Codigo', 'Porcentaje', 'Monto minimo', 'Operador', 'Vigencia desde', 'Vigencia hasta'],
+    ...(spotR.data || []).map(c => [c.codigo, c.porcentaje, c.monto_minimo, c.umbral_operador, c.vigencia_desde || '', c.vigencia_hasta || '']),
     [],
     ['Colaboradores elegibles para RHE'],
     ['personal_id', 'Nombre', 'RUC', 'Tipo contrato', 'Retención IR', 'Suspensión vigente'],
@@ -230,6 +250,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
   const categorias = (catalogos.categoriasEr || []).filter(c => c.activo !== false);
   const personalPorId = new Map((catalogos.personal || []).map(persona => [persona.id, persona]));
   const cecosPorCodigo = new Map((catalogos.centrosCosto || []).map(c => [normalizarCodigoCxp(c.codigo), c]));
+  const spotsPorCodigo = new Map((catalogos.spotCatalogo || []).map(c => [normalizarCodigoCxp(c.codigo), c]));
   const dbFingerprints = new Set((catalogos.cxpExistentes || []).filter(cxp => !mismoTexto(cxp.tipo_comprobante, 'RHE')).map(cxp => huellaDuplicadoCxp({
     ruc_emisor: rucDeCxp(cxp, proveedoresPorId), concepto: cxp.concepto,
     fecha_emision: cxp.fecha_emision, monto_total: cxp.monto_total,
@@ -248,6 +269,10 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
     let razon_social = texto(source.razon_social);
     const tipo_cxp = TIPOS_CXP_MASIVA.find(tipo => mismoTexto(tipo, source.tipo_cxp));
     const esRhe = tipo_cxp === 'RHE';
+    const esTributo = tipo_cxp === 'Tributo';
+    const esDividendo = tipo_cxp === 'Distribucion de utilidades';
+    const esViatico = tipo_cxp === 'Viaticos';
+    const requiereProveedor = !esRhe && !esTributo && !esDividendo && !esViatico;
     const documento = texto(source.documento);
     const personal_id = texto(source.personal_id);
     const numero_rhe = texto(source.numero_rhe);
@@ -266,9 +291,22 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
     const centro_costo_codigo = normalizarCodigoCxp(source.centro_costo_codigo);
     const centroCosto = cecosPorCodigo.get(centro_costo_codigo);
     const sociedad_id = centroCosto?.sociedad_id || null;
+    const tributo_tipo = texto(source.tributo_tipo) || null;
+    const tributo_periodo = texto(source.tributo_periodo) || null;
+    const tributo_formulario = texto(source.tributo_formulario) || null;
+    const socio_nombre = texto(source.socio_nombre) || null;
+    const socio_participacion_pct = numero(source.socio_participacion_pct);
+    const periodo_utilidades = texto(source.periodo_utilidades) || null;
+    const acta_referencia = texto(source.acta_referencia) || null;
+    const codigo_spot = normalizarCodigoCxp(source.codigo_spot) || null;
+    const spot = codigo_spot ? spotsPorCodigo.get(codigo_spot) : null;
+    const tipo_cambio_detraccion = numero(source.tipo_cambio_detraccion);
+    const tipo_cambio_fuente = texto(source.tipo_cambio_fuente).toLowerCase() || null;
+    if (esTributo && !categoriaInput) categoria = categorias.find(item => mismoTexto(item.nombre, 'Tributos')) || null;
+    if (esViatico && !categoriaInput) categoria = categorias.find(item => mismoTexto(item.nombre, 'Administrativos')) || null;
 
-    if (!esRhe && !/^\d{11}$/.test(ruc_emisor)) errores.push('RUC emisor inválido: debe tener 11 dígitos.');
-    if (!esRhe && !razon_social) errores.push('Razón social obligatoria.');
+    if (requiereProveedor && !/^\d{11}$/.test(ruc_emisor)) errores.push('RUC emisor inválido: debe tener 11 dígitos.');
+    if (requiereProveedor && !razon_social) errores.push('Razón social obligatoria.');
     if (!tipo_cxp) errores.push(`Tipo CxP inválido. Valores permitidos: ${TIPOS_CXP_MASIVA.join(', ')}.`);
     if (!concepto) errores.push('Concepto obligatorio.');
     if (!fecha_emision) errores.push('Fecha de emisión inválida: usa AAAA-MM-DD.');
@@ -280,7 +318,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
     if (Number.isFinite(monto_total) && Number.isFinite(monto_pagado) && monto_pagado >= monto_total) errores.push('Solo se permiten saldos pendientes: monto_pagado debe ser menor que monto_total.');
     if (monto_pagado > 0 && !fecha_pago) errores.push('Fecha de pago obligatoria cuando existe monto pagado.');
     if (monto_pagado === 0 && texto(source.fecha_pago) && !fecha_pago) errores.push('Fecha de pago inválida: usa AAAA-MM-DD.');
-    if (!esRhe && !categoria) errores.push(`Categoría ER inválida o inactiva: "${categoriaInput || '-'}".`);
+    if (!esRhe && !esDividendo && !categoria) errores.push(`Categoría ER inválida o inactiva: "${categoriaInput || '-'}".`);
     if (!centro_costo_codigo) errores.push('Código de centro de costo obligatorio.');
     else if (!centroCosto) errores.push(`CECO inexistente: no se encontró el código "${centro_costo_codigo}" en este tenant.`);
     else if (centroCosto.estado !== 'activo') errores.push(`CECO inactivo: "${centro_costo_codigo}" no está activo.`);
@@ -290,7 +328,22 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       errores.push(`El CECO "${centro_costo_codigo}" no tiene sociedad asignada; corrígelo antes de importar.`);
     }
 
-    if (esRhe) {
+    if (esTributo) {
+      if (!tributo_tipo) errores.push('tributo_tipo obligatorio para una obligacion tributaria.');
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(tributo_periodo || '')) errores.push('tributo_periodo debe tener formato AAAA-MM.');
+      if (!documento) errores.push('documento/formulario obligatorio para un tributo.');
+      if (!categoria) errores.push('Debe existir una categoria ER activa llamada Tributos.');
+    } else if (esDividendo) {
+      if (!socio_nombre) errores.push('socio_nombre obligatorio para distribucion de utilidades.');
+      if (!/^\d{4}$/.test(periodo_utilidades || '')) errores.push('periodo_utilidades debe tener formato AAAA.');
+      if (Number.isFinite(socio_participacion_pct) && (socio_participacion_pct < 0 || socio_participacion_pct > 100)) errores.push('socio_participacion_pct debe estar entre 0 y 100.');
+      if (!acta_referencia) errores.push('acta_referencia obligatoria para distribucion de utilidades.');
+    } else if (esViatico) {
+      if (!personal_id) errores.push('personal_id obligatorio para viaticos.');
+      else if (!personal) errores.push('personal_id inexistente en el maestro del tenant.');
+      else if (personal.estado === 'inactivo') errores.push('personal_id inactivo para viaticos.');
+      if (!categoria) errores.push('Debe existir una categoria ER activa llamada Administrativos.');
+    } else if (esRhe) {
       const esInterno = Boolean(personal_id);
       if (!numero_rhe) errores.push('Número RHE obligatorio para carga masiva.');
       if (!Number.isFinite(monto_bruto) || monto_bruto <= 0) errores.push('Monto bruto RHE inválido: debe ser mayor que cero.');
@@ -332,8 +385,25 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
 
     // El número de factura identifica el documento frente al proveedor dentro
     // de la misma sociedad. Con otro proveedor se muestra como advertencia.
+    if (codigo_spot) {
+      if (!requiereProveedor) errores.push('codigo_spot solo aplica a comprobantes de proveedor.');
+      if (!spot) errores.push(`Codigo SPOT inexistente o inactivo: "${codigo_spot}".`);
+      if (monto_pagado > 0) errores.push('Una CxP con detraccion SPOT no puede tener pagos previos.');
+      if (moneda === 'USD' && (!(tipo_cambio_detraccion > 0) || !['manual', 'referencial'].includes(tipo_cambio_fuente))) {
+        errores.push('Para SPOT en USD informa tipo_cambio_detraccion y tipo_cambio_fuente manual o referencial.');
+      }
+      if (moneda === 'PEN' && (texto(source.tipo_cambio_detraccion) || texto(source.tipo_cambio_fuente))) errores.push('Para SPOT en PEN no se informa tipo de cambio.');
+      if (spot && fecha_emision) {
+        const vigente = (!spot.vigencia_desde || fecha_emision >= String(spot.vigencia_desde).slice(0, 10))
+          && (!spot.vigencia_hasta || fecha_emision <= String(spot.vigencia_hasta).slice(0, 10));
+        if (!vigente) errores.push(`Codigo SPOT fuera de vigencia para la fecha de emision: "${codigo_spot}".`);
+        const baseSoles = moneda === 'USD' ? monto_total * tipo_cambio_detraccion : monto_total;
+        if ((spot.umbral_operador === '>' && baseSoles <= Number(spot.monto_minimo || 0)) || (spot.umbral_operador !== '>' && baseSoles < Number(spot.monto_minimo || 0))) errores.push(`La base SPOT no supera el minimo de S/ ${Number(spot.monto_minimo || 0).toFixed(2)}.`);
+      }
+    }
+
     const numeroDocumento = normalizarNumeroDocumentoCxp(documento);
-    if (!esRhe && numeroDocumento) {
+    if (requiereProveedor && numeroDocumento) {
       const coincidencias = (catalogos.cxpExistentes || []).filter(cxp =>
         !mismoTexto(cxp.tipo_comprobante, 'RHE')
         && (cxp.sociedad_id || null) === sociedad_id
@@ -351,9 +421,15 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       documentosArchivo.set(claveDocumento, posiciones);
     }
 
-    const fingerprint = esRhe
-      ? huellaDuplicadoRhe({ ruc_emisor, personal_id, numero_rhe })
-      : huellaDuplicadoCxp({ ruc_emisor, concepto, fecha_emision, monto_total });
+    const fingerprint = esTributo
+      ? `TRIBUTO|${normalizarTextoCxp(tributo_tipo)}|${tributo_periodo}|${monto_total.toFixed(2)}`
+      : esDividendo
+        ? `DIVIDENDO|${normalizarTextoCxp(socio_nombre)}|${periodo_utilidades}|${monto_total.toFixed(2)}`
+        : esViatico
+          ? `VIATICO|${personal_id}|${fecha_emision}|${monto_total.toFixed(2)}`
+          : esRhe
+            ? huellaDuplicadoRhe({ ruc_emisor, personal_id, numero_rhe })
+            : huellaDuplicadoCxp({ ruc_emisor, concepto, fecha_emision, monto_total });
     const positions = fileFingerprints.get(fingerprint) || [];
     positions.push(index + 2);
     fileFingerprints.set(fingerprint, positions);
@@ -368,8 +444,13 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
       ruc_emisor, razon_social, tipo_cxp, documento, concepto, fecha_emision, fecha_vencimiento,
       moneda, monto_total, monto_pagado, fecha_pago, categoria_er: categoria?.nombre || categoriaInput,
       centro_costo_codigo, centro_costo_id: centroCosto?.id || null, sociedad_id,
-      personal_id: esRhe && personal_id ? personal_id : null, numero_rhe: esRhe ? numero_rhe : null,
+      personal_id: (esRhe || esViatico) && personal_id ? personal_id : null, numero_rhe: esRhe ? numero_rhe : null,
       monto_bruto: esRhe ? monto_bruto : null, trabajo_facturable: esRhe && personal_id ? trabajo_facturable : null,
+      tributo_tipo, tributo_periodo, tributo_formulario, socio_nombre,
+      socio_participacion_pct: Number.isFinite(socio_participacion_pct) ? socio_participacion_pct : null,
+      periodo_utilidades, acta_referencia, codigo_spot,
+      tipo_cambio_detraccion: Number.isFinite(tipo_cambio_detraccion) ? tipo_cambio_detraccion : null,
+      tipo_cambio_fuente,
       cuenta_bancaria: texto(source.cuenta_bancaria) || null,
       referencia_pago: texto(source.referencia_pago) || null,
       _fila: index + 2, _huella: fingerprint, _errores: errores, _advertencias: [], _estado: errores.length ? 'RECHAZADA' : 'LISTA',
@@ -382,7 +463,7 @@ export function validarFilasCxpMasiva(rows, catalogos = {}, { multisociedadHabil
         : `Duplicado en archivo: la combinación RUC + concepto + fecha + monto aparece en filas ${positions.join(', ')}.`);
       row._estado = 'RECHAZADA';
     }
-    if (row.tipo_cxp !== 'RHE' && row.documento) {
+    if (['Factura', 'Boleta', 'Nota de débito', 'Sin comprobante'].includes(row.tipo_cxp) && row.documento) {
       const posicionesDocumento = documentosArchivo.get(`${row.sociedad_id || 'sin-sociedad'}|${normalizarNumeroDocumentoCxp(row.documento)}`) || [];
       const mismaRuc = posicionesDocumento.filter(item => item.ruc === row.ruc_emisor);
       const otraRuc = posicionesDocumento.filter(item => item.ruc !== row.ruc_emisor);
@@ -415,7 +496,7 @@ export async function ejecutarImportacionCxpMasiva({
   const proveedoresPorRuc = new Map((proveedores || [])
     .filter(p => normalizarRucCxp(p.ruc))
     .map(p => [normalizarRucCxp(p.ruc), p]));
-  const resultado = { creadas: 0, rechazadas: 0, fallidas: 0, proveedoresCreados: 0, pagosRegistrados: 0, filas: [], registros: [], proveedoresNuevos: [] };
+  const resultado = { creadas: 0, rechazadas: 0, fallidas: 0, proveedoresCreados: 0, pagosRegistrados: 0, detraccionesRegistradas: 0, filas: [], registros: [], proveedoresNuevos: [] };
 
   for (const original of filas || []) {
     const row = { ...original, _errores: [...(original._errores || [])] };
@@ -426,9 +507,13 @@ export async function ejecutarImportacionCxpMasiva({
     }
     try {
       const esRhe = row.tipo_cxp === 'RHE';
+      const esTributo = row.tipo_cxp === 'Tributo';
+      const esDividendo = row.tipo_cxp === 'Distribucion de utilidades';
+      const esViatico = row.tipo_cxp === 'Viaticos';
+      const requiereProveedor = !esRhe && !esTributo && !esDividendo && !esViatico;
       let proveedor = null;
       // Se conserva intacta la rama de proveedores de fase 1. RHE nunca crea proveedor.
-      if (!esRhe) {
+      if (requiereProveedor) {
         proveedor = proveedoresPorRuc.get(row.ruc_emisor);
         if (!proveedor) {
           const { data: coincidencias, error: proveedorError } = await supabase
@@ -456,24 +541,36 @@ export async function ejecutarImportacionCxpMasiva({
         if (!tc?.usd || !Number.isFinite(Number(tc.usd))) throw new Error('No se encontró tipo de cambio USD vigente para la fecha de emisión.');
         tipoCambio = Number(tc.usd);
       }
-      const { data, error } = await supabase.rpc('importar_cxp_masiva_fila', {
+      const tipoComprobante = esDividendo ? 'distribucion_utilidades' : row.tipo_cxp === 'Nota de débito' ? 'Nota de débito' : row.tipo_cxp;
+      const { data, error } = await supabase.rpc('importar_cxp_masiva_fila_v2', {
         p_payload: {
-          empresa_id: empresaId, proveedor_id: proveedor?.id || null, ruc_emisor: row.ruc_emisor,
-          razon_social: row.razon_social, tipo_comprobante: row.tipo_cxp,
+          empresa_id: empresaId, proveedor_id: proveedor?.id || null, ruc_emisor: requiereProveedor || esRhe ? row.ruc_emisor : null,
+          razon_social: requiereProveedor || esRhe ? row.razon_social : null, tipo_comprobante: tipoComprobante,
           factura_numero: esRhe ? row.numero_rhe : (row.documento || null),
           concepto: row.concepto, fecha_emision: row.fecha_emision, fecha_vencimiento: row.fecha_vencimiento,
           moneda: row.moneda, monto_total: row.monto_total, monto_pagado: row.monto_pagado,
           fecha_pago: row.fecha_pago || null, cuenta_bancaria: row.cuenta_bancaria,
           referencia_pago: row.referencia_pago, categoria_er: row.categoria_er,
           centro_costo_id: row.centro_costo_id, tipo_cambio: tipoCambio, registrado_por: authUserId,
-          personal_id: esRhe ? row.personal_id : null, monto_bruto: esRhe ? row.monto_bruto : null,
+          personal_id: (esRhe || esViatico) ? row.personal_id : null, monto_bruto: esRhe ? row.monto_bruto : null,
           trabajo_facturable: esRhe ? row.trabajo_facturable : null,
+          tributo_tipo: esTributo ? row.tributo_tipo : null, tributo_periodo: esTributo ? row.tributo_periodo : null,
+          tributo_formulario: esTributo ? row.tributo_formulario : null, socio_nombre: esDividendo ? row.socio_nombre : null,
+          socio_participacion_pct: esDividendo ? row.socio_participacion_pct : null, periodo_utilidades: esDividendo ? row.periodo_utilidades : null,
+          acta_referencia: esDividendo ? row.acta_referencia : null,
+          tipo_beneficiario: esDividendo ? 'socio_accionista' : esViatico ? 'personal' : esTributo ? 'colectivo' : null,
+          origen: esDividendo ? 'dividendos' : esViatico ? 'viaticos' : esTributo ? 'tributos' : null,
+          no_devengar_er: esDividendo || esTributo || esViatico,
+          motivo_cxp: esViatico ? 'viaticos_reembolso' : null, ot_vinc_id: esViatico ? (row.ot_vinc_id || null) : null,
+          codigo_spot: row.codigo_spot || null, tipo_cambio_detraccion: row.tipo_cambio_detraccion || null,
+          tipo_cambio_fuente: row.tipo_cambio_fuente || null,
           confirmar_numero_duplicado: confirmarNumerosRepetidos,
         },
       });
       if (error) throw error;
       resultado.creadas++;
       if (row.monto_pagado > 0) resultado.pagosRegistrados++;
+      if (data?.detraccion) resultado.detraccionesRegistradas = (resultado.detraccionesRegistradas || 0) + 1;
       resultado.registros.push(data);
       resultado.filas.push({ ...row, _estado: 'CREADA', _resultado: data });
     } catch (error) {

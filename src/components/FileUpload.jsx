@@ -13,6 +13,7 @@ export const FileUpload = forwardRef(function FileUpload({
   deferUpload = false,
   disabled = false,
   readOnly = false,
+  permitirAgregar = false,
   soloImagenes = false,
   soloUltimo = false,
   adjuntosExternos = [],
@@ -259,14 +260,44 @@ export const FileUpload = forwardRef(function FileUpload({
   const adjuntosBlock = adjuntoItems.length ? adjuntoItems : (
     <div className="text-muted" style={{fontSize:12, padding:'10px 0'}}>Sin adjuntos.</div>
   );
+  const selectorInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      multiple={multiple}
+      disabled={disabled || uploading}
+      accept={soloImagenes ? '.jpg,.jpeg,.png,image/jpeg,image/png' : '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed'}
+      onChange={event => {
+        agregarArchivos(event.target.files);
+        event.target.value = '';
+      }}
+      style={{display:'none'}}
+    />
+  );
 
   return (
     <div className="card" style={{padding:0}}>
-      <div className="card-head">
+      <div className="card-head" style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8}}>
         <h3>Adjuntos</h3>
-        <span className="badge badge-gray">{totalAdjuntos}</span>
+        <div className="row" style={{gap:6}}>
+          {permitirAgregar && (
+            <button
+              type="button"
+              className="icon-btn"
+              title="Agregar adjunto"
+              aria-label="Agregar adjunto"
+              onClick={abrirSelector}
+              disabled={disabled || uploading}
+              style={{color:'var(--cyan)'}}
+            >
+              {I.plus}
+            </button>
+          )}
+          <span className="badge badge-gray">{totalAdjuntos}</span>
+        </div>
       </div>
       <div style={{padding:16}}>
+        {readOnly && permitirAgregar && selectorInput}
         {!readOnly && <div
           role="button"
           tabIndex={0}
@@ -290,18 +321,7 @@ export const FileUpload = forwardRef(function FileUpload({
               <div className="text-muted" style={{fontSize:11}}>{soloImagenes ? 'Imagen JPG o PNG - max. 20 MB' : 'PDF, imagen, Office o ZIP - max. 20 MB'}</div>
             </div>
           </div>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple={multiple}
-            disabled={disabled || uploading}
-            accept={soloImagenes ? '.jpg,.jpeg,.png,image/jpeg,image/png' : '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.zip,application/pdf,image/jpeg,image/png,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip,application/x-zip-compressed'}
-            onChange={event => {
-              agregarArchivos(event.target.files);
-              event.target.value = '';
-            }}
-            style={{display:'none'}}
-          />
+          {selectorInput}
         </div>}
 
         {error && <div style={{color:'var(--danger)', fontSize:12, marginTop:8}}>{error}</div>}
@@ -310,7 +330,7 @@ export const FileUpload = forwardRef(function FileUpload({
 
         <div className="row" style={{justifyContent:'space-between', marginTop:12}}>
           <div className="text-muted" style={{fontSize:11}}>{loading ? 'Cargando adjuntos...' : soloUltimo ? 'Archivo vigente' : 'Archivos vinculados'}</div>
-          {!readOnly && uploadButton}
+          {(!readOnly || permitirAgregar) && uploadButton}
         </div>
         <div style={{marginTop:4}}>{adjuntosBlock}</div>
       </div>

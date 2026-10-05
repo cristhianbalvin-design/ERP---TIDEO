@@ -204,7 +204,7 @@ export const PermisosTrabajoHSE = () => {
                       <span className="badge orange">⚠ Firmas incompletas</span>
                     )}
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--heading)' }}>
                     {petar.tipo}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
@@ -234,7 +234,7 @@ export const PermisosTrabajoHSE = () => {
               <div style={{ borderTop: '1px solid var(--card-border)', padding: '16px 20px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--red, #E53935)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: 'var(--red)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
                       Riesgos identificados
                     </div>
                     {petar.riesgos_identificados.map((r, i) => (
@@ -244,7 +244,7 @@ export const PermisosTrabajoHSE = () => {
                     ))}
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--green, #4CAF50)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
                       Medidas de control
                     </div>
                     {petar.medidas_control.map((m, i) => (
@@ -366,10 +366,10 @@ export const RegistroIncidentes = () => {
             {expandido && (
               <div style={{ borderTop: '1px solid var(--card-border)', padding: '16px 20px' }}>
                 <div style={{
-                  background: '#FFEBEE', borderLeft: '3px solid var(--red, #E53935)',
+                    background: 'var(--red-soft)', borderLeft: '3px solid var(--red)',
                   borderRadius: '0 8px 8px 0', padding: '12px 14px', marginBottom: 14
                 }}>
-                  <div style={{ fontSize: 10, color: 'var(--red, #E53935)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: 'var(--red)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>
                     Análisis de causas
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text)', marginBottom: 6 }}>
@@ -379,7 +379,7 @@ export const RegistroIncidentes = () => {
                     <strong>Causa raíz:</strong>{' '}{inc.causa_raiz}
                   </div>
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--green, #4CAF50)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 10, fontWeight: 700 }}>
+          <div style={{ fontSize: 10, color: 'var(--green)', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 10, fontWeight: 700 }}>
                   Acciones correctivas
                 </div>
                 {inc.acciones_correctivas.map((ac, i) => (

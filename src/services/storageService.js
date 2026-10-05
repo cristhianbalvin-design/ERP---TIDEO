@@ -337,6 +337,24 @@ export async function cargarAdjuntos({ empresaId, entidadTipo, entidadId }) {
   return data || [];
 }
 
+export async function cargarAdjuntosPorEntidades({ empresaId, entidadTipo, entidadIds = [] }) {
+  if (!isSupabaseMode()) return [];
+  const ids = [...new Set((entidadIds || []).map(id => String(id || '').trim()).filter(Boolean))];
+  if (!empresaId || !entidadTipo || !ids.length) return [];
+
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase
+    .from('adjuntos')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .eq('entidad_tipo', entidadTipo)
+    .in('entidad_id', ids)
+    .order('subido_en', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
 async function cargarAdjuntoPorId(adjuntoId) {
   const supabase = await getSupabaseClient();
   const { data, error } = await supabase

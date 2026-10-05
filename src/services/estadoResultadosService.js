@@ -50,17 +50,24 @@ const amount = value => Number(value || 0);
 // Corrección 2: no colapsar monedas desconocidas a PEN — preservar el código ISO real.
 const currencyOf = value => normalizeCurrency(value || 'PEN');
 
-const addToBlock = (block, label, value, currency = 'PEN') => {
+const addToBlock = (block, label, value, currency = 'PEN', detail = null) => {
   const numeric = amount(value);
   if (!numeric) return;
   const moneda = currencyOf(currency);
   block.total[moneda] = (block.total[moneda] || 0) + numeric;
   let item = block.items.find(i => i.label === label);
   if (!item) {
-    item = { label, totals: zeroTotals() };
+    item = { label, totals: zeroTotals(), details: [] };
     block.items.push(item);
   }
   item.totals[moneda] = (item.totals[moneda] || 0) + numeric;
+  if (detail) {
+    item.details.push({
+      ...detail,
+      amount: numeric,
+      currency: moneda,
+    });
+  }
 };
 
 const subtractTotals = (left, right) => Object.fromEntries(
@@ -344,7 +351,15 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
     )
     .forEach(g => {
       const blockKey = resolverSeccionGasto({ naturaleza: naturalezaCeco.get(g.centro_costo_id) });
-      addToBlock(localBlockForSection(blockKey), g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN');
+      addToBlock(localBlockForSection(blockKey), g.categoria || 'Gasto operativo', g.monto, g.moneda || 'PEN', {
+        fuente: 'Compras/Gastos',
+        id: g.id,
+        fecha: g.fecha,
+        concepto: g.descripcion || g.subcategoria || g.categoria || 'Gasto operativo',
+        subcategoria: g.subcategoria,
+        origen: g.origen_registro,
+        cecoId: g.centro_costo_id,
+      });
     });
 
   ots
@@ -355,7 +370,12 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
         naturaleza: naturalezaCeco.get(o.centro_costo_id),
         fallback: 'costo_ventas',
       });
-      addToBlock(localBlockForSection(blockKey), 'Mano de obra directa', o.costo_real, 'PEN');
+      addToBlock(localBlockForSection(blockKey), 'Mano de obra directa', o.costo_real, 'PEN', {
+        fuente: 'Orden de trabajo',
+        id: o.id,
+        fecha: o.fecha_fin || o.fecha_inicio || o.fecha_programada,
+        concepto: o.numero || o.servicio || o.descripcion || 'Costo de OT',
+      });
     });
 
   const intereses = comprasGastos.filter(g =>
@@ -364,7 +384,15 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
     matchesSociedad(g.sociedad_id, scopeSociedades) &&
     inferTipoSistema(g.categoria) === 'gastos_financieros'
   );
-  intereses.forEach(g => addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda || 'PEN'));
+  intereses.forEach(g => addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda || 'PEN', {
+    fuente: 'Compras/Gastos',
+    id: g.id,
+    fecha: g.fecha,
+    concepto: g.descripcion || g.subcategoria || 'Gastos financieros',
+    subcategoria: g.subcategoria,
+    origen: g.origen_registro,
+    cecoId: g.centro_costo_id,
+  }));
 
   return finalizeResult(result, {
     ingresos: result.er.ingresos.items.length,
@@ -628,7 +656,13 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     resolverCategoriaPorTipoSistema(erConfig, tipoSistema, { hasOt })?.nombre || fallback;
 
   facturas.forEach(f => {
-    addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda);
+    addToBlock(result.er.ingresos, 'Ventas de servicios', f.subtotal, f.moneda, {
+      fuente: 'Facturación',
+      id: f.id,
+      fecha: f.fecha_emision,
+      concepto: f.numero || f.tipo_documento || 'Venta de servicios',
+      documento: f.numero,
+    });
   });
 
   costosOt
@@ -641,11 +675,19 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
         naturaleza: c.naturaleza_economica,
         fallback: 'costo_ventas',
       }));
-      addToBlock(block, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda);
-      addToBlock(block, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda);
-      addToBlock(block, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda);
-      addToBlock(block, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda);
-      addToBlock(block, 'Otros costos directos', c.otros, c.moneda);
+      const detalleOt = {
+        fuente: 'Orden de trabajo',
+        id: c.id || c.orden_trabajo_id,
+        fecha: c.fecha_er,
+        concepto: c.ordenes_trabajo?.numero || c.ordenes_trabajo?.servicio || c.ordenes_trabajo?.descripcion || 'Costo de OT',
+        documento: c.ordenes_trabajo?.numero,
+        cecoId: c.ordenes_trabajo?.centro_costo_id,
+      };
+      addToBlock(block, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda, { ...detalleOt, detalle: 'Mano de obra' });
+      addToBlock(block, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda, { ...detalleOt, detalle: 'Materiales' });
+      addToBlock(block, labelByTipo('servicios_terceros', 'Servicios terceros'), c.servicios_terceros, c.moneda, { ...detalleOt, detalle: 'Servicios de terceros' });
+      addToBlock(block, labelByTipo('logistica', 'Logistica directa'), c.logistica, c.moneda, { ...detalleOt, detalle: 'Logística' });
+      addToBlock(block, 'Otros costos directos', c.otros, c.moneda, { ...detalleOt, detalle: 'Otros costos' });
     });
 
   const comprasGastosParaEr = detalleNomina.length
@@ -655,6 +697,15 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   comprasGastosParaEr.forEach(g => {
     const hasOt = g.ot_vinc_id != null;
     const entry = resolverCategoriaEr(erConfig, g.categoria, { hasOt });
+    const detalleGasto = {
+      fuente: 'Compras/Gastos',
+      id: g.id,
+      fecha: g.fecha,
+      concepto: g.descripcion || g.subcategoria || g.categoria || 'Gasto operativo',
+      subcategoria: g.subcategoria,
+      origen: g.origen_registro,
+      cecoId: g.centro_costo_id,
+    };
     if (entry) {
       const incompatibleConOt = entry.regla_ot === 'sin_ot' && hasOt;
       const block = blockForSection(resolverSeccionGasto({
@@ -663,18 +714,18 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
         incompatibleConOt,
       }));
       if (entry.regla_ot === 'con_ot') {
-        addToBlock(block, entry.nombre, g.monto, g.moneda);
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
       } else if (entry.regla_ot === 'sin_ot') {
-        addToBlock(block, entry.nombre, g.monto, g.moneda);
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
       } else {
-        addToBlock(block, entry.nombre, g.monto, g.moneda);
+        addToBlock(block, entry.nombre, g.monto, g.moneda, detalleGasto);
       }
     } else if (inferTipoSistema(g.categoria) === 'gastos_financieros') {
       // Categoría financiera sin config explícita — comportamiento original preservado.
-      addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda);
+      addToBlock(result.er.gastosFin, g.subcategoria || g.descripcion || 'Gastos financieros', g.monto, g.moneda, detalleGasto);
     } else {
       // Sin coincidencia en categorías del sistema ni personalizadas: clasificar como Otros gastos.
-      addToBlock(result.er.gastosOp, 'Otros gastos', g.monto, g.moneda);
+      addToBlock(result.er.gastosOp, 'Otros gastos', g.monto, g.moneda, detalleGasto);
     }
   });
 
@@ -697,19 +748,34 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
       entry,
       naturaleza: naturalezaCeco.get(cxp.centro_costo_id),
     }));
-    addToBlock(block, entry?.nombre || label, cxpDevengoAmount(cxp), cxp.moneda);
+    addToBlock(block, entry?.nombre || label, cxpDevengoAmount(cxp), cxp.moneda, {
+      fuente: 'Cuentas por pagar',
+      id: cxp.id,
+      fecha: cxp.fecha_emision,
+      concepto: cxp.concepto || cxp.nombre_emisor || cxp.factura_numero || 'Cuenta por pagar',
+      documento: cxp.factura_numero || cxp.tipo_comprobante,
+      tercero: cxp.nombre_emisor,
+      origen: cxp.origen,
+      cecoId: cxp.centro_costo_id,
+    });
   });
 
   detalleNomina.forEach(n => {
     const block = blockForSection(resolverSeccionGasto({
       naturaleza: naturalezaCeco.get(n.centro_costo_id),
     }));
-    addToBlock(block, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda);
+    addToBlock(block, labelByTipo('planilla', 'Planilla neta', false), n.neto, n.moneda, {
+      fuente: 'Planilla',
+      id: n.id,
+      concepto: 'Neto de planilla',
+      cecoId: n.centro_costo_id,
+    });
     addToBlock(
       block,
       labelByTipo('cargas_sociales', 'Cargas sociales', false),
       amount(n.essalud) + amount(n.cts) + amount(n.gratificacion) + amount(n.vacaciones),
-      n.moneda
+      n.moneda,
+      { fuente: 'Planilla', id: n.id, concepto: 'Cargas sociales', cecoId: n.centro_costo_id }
     );
   });
 
@@ -720,11 +786,22 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
       entry,
       naturaleza: naturalezaCeco.get(r.ceco_id),
     }));
-    addToBlock(block, entry?.nombre || r.categoria || 'Caja chica', r.monto, r.moneda);
+    addToBlock(block, entry?.nombre || r.categoria || 'Caja chica', r.monto, r.moneda, {
+      fuente: 'Caja chica',
+      id: r.id,
+      fecha: r.fecha,
+      concepto: r.categoria || 'Egreso de caja chica',
+      cecoId: r.ceco_id,
+    });
   });
 
   pagosFinancieros.forEach(p => {
-    addToBlock(result.er.gastosFin, labelByTipo('intereses_financiamiento', 'Intereses de financiamiento', false), p.interes, p.moneda);
+    addToBlock(result.er.gastosFin, labelByTipo('intereses_financiamiento', 'Intereses de financiamiento', false), p.interes, p.moneda, {
+      fuente: 'Financiamiento',
+      id: p.id,
+      fecha: p.fecha_pago,
+      concepto: 'Intereses de financiamiento',
+    });
   });
 
   return finalizeResult(result, {
@@ -754,9 +831,15 @@ export function consolidarEstadosResultados(resultados = [], eliminaciones = [],
     });
     ['ingresos', 'costoVentas', 'gastosOp', 'gastosFin', 'depreciacion'].forEach(blockKey => {
       (data.er?.[blockKey]?.items || []).forEach(item => {
-        Object.entries(item.totals || {}).forEach(([moneda, value]) => {
-          addToBlock(result.er[blockKey], item.label, value, moneda);
-        });
+        if (Array.isArray(item.details) && item.details.length) {
+          item.details.forEach(detail => {
+            addToBlock(result.er[blockKey], item.label, detail.amount, detail.currency, detail);
+          });
+        } else {
+          Object.entries(item.totals || {}).forEach(([moneda, value]) => {
+            addToBlock(result.er[blockKey], item.label, value, moneda);
+          });
+        }
       });
     });
   });
