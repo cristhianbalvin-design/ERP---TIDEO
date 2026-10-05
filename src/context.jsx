@@ -4378,6 +4378,7 @@ export function AppProvider({ children }) {
     proveedor_referencia: gasto.proveedor_referencia || null,
     ruc_proveedor: gasto.ruc_proveedor || null,
     num_comprobante: gasto.num_comprobante || null,
+    tipo_comprobante: gasto.tipo_comprobante || null,
     archivo_url: gasto.archivo_url || null,
     metodo_pago: gasto.metodo_pago || null,
     origen_registro: gasto.origen_registro || 'backoffice',
@@ -7216,7 +7217,10 @@ export function AppProvider({ children }) {
   };
 
   const registrarPagoCxP = async (cxpId, monto, datos = {}) => {
-    const cuentaPagar = cxp.find(c => c.id === cxpId);
+    // Al crear una CxP y pagarla en la misma operación, React todavía puede
+    // no haber actualizado el arreglo `cxp`. Permitir que el flujo caller
+    // entregue la cuenta recién creada evita registrar un pago sin contexto.
+    const cuentaPagar = cxp.find(c => c.id === cxpId) || datos.cuenta_pagar || null;
     const montoPagado = Number(monto || 0);
     const archivoAdjunto = datos.archivo_adjunto || null;
     let nuevoEstado = '';

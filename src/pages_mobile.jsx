@@ -3483,6 +3483,7 @@ function ComprasView({ screen, setScreen }) {
   } = useApp();
   const usuarioMovil = getUsuarioMovil(authUser, usuarios);
   const fileInputRef = useRef(null);
+  const manualFileInputRef = useRef(null);
   const modoVistaSociedadCompras = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -3492,6 +3493,7 @@ function ComprasView({ screen, setScreen }) {
   });
 
   const [paso, setPaso] = useState('inicio');
+  const [ingresoManual, setIngresoManual] = useState(false);
   const [fotoUrl, setFotoUrl] = useState('');
   const [fotoArchivo, setFotoArchivo] = useState(null);
   const [campos, setCampos] = useState({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
@@ -3659,13 +3661,14 @@ function ComprasView({ screen, setScreen }) {
 
   const reiniciar = () => {
     if (fotoUrl) URL.revokeObjectURL(fotoUrl);
-    setFotoUrl(''); setFotoArchivo(null); setExtractError(false); setRucExtraccionAviso(''); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setRegistrarProveedor(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null); setProveedorLookup(null); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); setMontosDesdeIA(false);
+    setFotoUrl(''); setFotoArchivo(null); setIngresoManual(false); setExtractError(false); setRucExtraccionAviso(''); setSaveError(''); setOtId(''); setCecoId(''); setGenCxP(false); setRegistrarProveedor(false); setCxpVence(''); setMetodoPago(''); setGuardando(false); setUsarLineasSolpe(false); setLineasSeleccionadas([]); setResultadoGuardado(null); setProveedorLookup(null); setMontosManuales({ monto_sin_igv: false, igv: false, monto_total: false }); setMontosDesdeIA(false);
     setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     setPaso('inicio');
   };
 
   const analizarFoto = async (file) => {
     if (!file) return;
+    setIngresoManual(false);
     setFotoArchivo(file);
     const url = URL.createObjectURL(file);
     setFotoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return url; });
@@ -3703,6 +3706,15 @@ function ComprasView({ screen, setScreen }) {
       setCampos({ ruc:'', proveedor:'', concepto:'', num_factura:'', fecha_emision: new Date().toISOString().split('T')[0], monto_sin_igv:'', igv:'', monto_total:'' });
     }
     setPaso('revision');
+  };
+
+  const adjuntarFotoManual = file => {
+    if (!file) return;
+    setFotoArchivo(file);
+    setFotoUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+    setExtractError(false);
+    setRucExtraccionAviso('');
+    setSaveError('');
   };
 
   const actualizarMonto = (campo, valor) => {
@@ -3853,7 +3865,7 @@ function ComprasView({ screen, setScreen }) {
           <div style={{fontSize:12,color:'var(--fg-muted)'}}>La IA extraerá los datos automáticamente</div>
         </div>
         <button className="btn btn-secondary" style={{width:'100%',marginTop:12}}
-          onClick={() => { setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0], concepto: c.concepto || (c.num_factura ? `Compra en campo · ${c.num_factura}` : 'Compra en campo')})); setPaso('revision'); }}>
+          onClick={() => { setIngresoManual(true); setCampos(c => ({...c, fecha_emision: new Date().toISOString().split('T')[0], concepto: c.concepto || (c.num_factura ? `Compra en campo · ${c.num_factura}` : 'Compra en campo')})); setPaso('revision'); }}>
           Ingresar datos manualmente
         </button>
       </div>
@@ -3885,6 +3897,17 @@ function ComprasView({ screen, setScreen }) {
         )}
 
         {fotoUrl && <img src={fotoUrl} alt="Factura" style={{width:'100%',borderRadius:8,marginBottom:12,maxHeight:140,objectFit:'cover'}}/>}
+
+        {ingresoManual && (
+          <>
+            <input ref={manualFileInputRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+              onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) adjuntarFotoManual(f); }}/>
+            <button type="button" className="btn btn-secondary" style={{width:'100%',marginBottom:12}}
+              onClick={() => manualFileInputRef.current?.click()}>
+              {fotoArchivo ? 'Cambiar foto del comprobante' : 'Adjuntar foto del comprobante'}
+            </button>
+          </>
+        )}
 
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {[['ruc','RUC proveedor','20512345678','text'],['proveedor','Proveedor','Ferretería Industrial SAC','text'],['num_factura','N° Factura','F001-0001','text']].map(([k,l,ph,t]) => (
@@ -3983,7 +4006,6 @@ function ComprasView({ screen, setScreen }) {
         </div>
 
         <div className="row mt-6" style={{gap:8}}>
-          <button className="btn btn-secondary" onClick={reiniciar}>Nueva foto</button>
           <button className="btn btn-primary flex-1" onClick={guardar} disabled={guardando || !fotoArchivo || !cecoId || !metodoPago || (genCxP && !cxpVence) || (usarLineasSolpe && (!lineasSeleccionadas.length || !lineasCuadran))}>
             {guardando ? 'Guardando...' : <>{I.check} Guardar gasto</>}
           </button>

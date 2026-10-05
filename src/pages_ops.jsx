@@ -9703,7 +9703,7 @@ function TabAnalisisGasto({ ocsSource, gastosSource, provSource }) {
 }
 
 function Compras() {
-  const { comprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, crearCxP, centrosCosto, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const { comprasGastos, setComprasGastos, proveedores, ordenesCompra, ordenesServicio, recepciones, crearGasto, crearCxP, registrarPagoCxP, persistirCompraGasto, centrosCosto, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
   const modoVistaSociedadCompras = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -9761,16 +9761,33 @@ function Compras() {
       activo_tipo: esActivoFijo ? (activoTipo || null) : null,
       vida_util_anos: esActivoFijo && activoVidaUtil ? Number(activoVidaUtil) : null,
     };
-    if (!esActivoFijo && estadoPago === 'pendiente') {
-      const cxpPrefixId = `cxp_${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
-      await crearCxP({
-        id: cxpPrefixId,
+    if (esActivoFijo) {
+      // Un activo fijo no es una CxP operativa: se conserva como alta directa
+      // para que pase por el módulo de Activos Fijos.
+      crearGasto(gastoData);
+    } else {
+      // El flujo legado de #compras antes guardaba los gastos pagados con
+      // crearGasto() y sin CxP; por eso luego aparecían como "Directo" en
+      // #compras_gastos. Primero creamos el gasto con origen Backoffice y
+      // luego enlazamos la CxP al mismo registro.
+      const gasto = crearGasto({
+        ...gastoData,
+        estado_pago: 'pendiente',
+        cxp_id: null,
+        metodo_pago: estadoPago === 'pagado' ? 'transferencia' : null,
+      }, { notificar: false, persistir: false });
+      // El gasto debe existir antes de insertar la CxP porque esta guarda
+      // `gasto_id` como vínculo de trazabilidad.
+      await persistirCompraGasto(gasto);
+      const cxpId = await crearCxP({
+        id: `cxp_${Math.random().toString(36).slice(2, 10)}`,
+        gasto_id: gasto.id,
         proveedor_id: gastoCxpProvId || null,
         tipo_beneficiario: 'proveedor',
         factura_numero: gastoForm.num_comprobante || null,
         concepto: gastoForm.descripcion,
         fecha_emision: gastoForm.fecha,
-        fecha_vencimiento: gastoCxpVence,
+        fecha_vencimiento: estadoPago === 'pendiente' ? gastoCxpVence : gastoForm.fecha,
         monto_total: monto,
         moneda: gastoForm.moneda || 'PEN',
         estado: 'por_pagar',
@@ -9778,9 +9795,37 @@ function Compras() {
         mecanismo_origen: 'compras_gastos',
         categoria_er: gastoData.categoria,
         centro_costo_id: gastoData.centro_costo_id,
+        sociedad_id: destinoGastoAntiguo.sociedadId || null,
       });
-    } else {
-      crearGasto(gastoData);
+      const gastoVinculado = { ...gasto, cxp_id: cxpId, estado_pago: estadoPago };
+      setComprasGastos(prev => prev.map(item => item.id === gasto.id ? gastoVinculado : item));
+      if (isSupabaseConfigured()) {
+        const sb = await getSupabaseClient();
+        const { error } = await sb.from('compras_gastos')
+          .update({ cxp_id: cxpId, estado_pago: estadoPago })
+          .eq('id', gasto.id);
+        if (error) throw error;
+      }
+
+      if (estadoPago === 'pagado') {
+        await registrarPagoCxP(cxpId, monto, {
+          fecha: gastoForm.fecha,
+          metodo_pago: 'transferencia',
+          referencia: referenciaPago || null,
+          cuenta_pagar: {
+            ...gastoVinculado,
+            id: cxpId,
+            gasto_id: gasto.id,
+            estado: 'por_pagar',
+            monto_total: monto,
+            monto_pagado: 0,
+            saldo: monto,
+            moneda: gastoForm.moneda || 'PEN',
+            concepto: gastoForm.descripcion,
+            factura_numero: gastoForm.num_comprobante || null,
+          },
+        });
+      }
     }
     resetGastoForm();
   };
@@ -26133,6 +26178,7 @@ export function ComprasGastos() {
   const [tab, setTab] = useState('todos');
   const [filtroCeco, setFiltroCeco] = useState('');
   const [filtroEstadoPago, setFiltroEstadoPago] = useState('');
+  const [filtroComprobante, setFiltroComprobante] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
   const [panel, setPanel] = useState(false);
   const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
@@ -26143,6 +26189,41 @@ export function ComprasGastos() {
   const [selCampo, setSelCampo] = useState(null);
   const [confirmando, setConfirmando] = useState(false);
   const [gastoEditando, setGastoEditando] = useState(null);
+  const [adjuntosPorGasto, setAdjuntosPorGasto] = useState({});
+
+  const idsGastosKey = useMemo(
+    () => [...new Set((comprasGastos || []).map(g => String(g.id || '').trim()).filter(Boolean))].sort().join('|'),
+    [comprasGastos],
+  );
+
+  useEffect(() => {
+    let activo = true;
+    const ids = idsGastosKey ? idsGastosKey.split('|') : [];
+    if (!isSupabaseConfigured() || !empresa?.id || !ids.length) {
+      setAdjuntosPorGasto({});
+      return () => { activo = false; };
+    }
+
+    storageService.cargarAdjuntosPorEntidades({
+      empresaId: empresa.id,
+      entidadTipo: 'compras_gastos',
+      entidadIds: ids,
+    }).then(adjuntos => {
+      if (!activo) return;
+      const agrupados = {};
+      (adjuntos || []).forEach(adjunto => {
+        const id = String(adjunto.entidad_id || '');
+        if (!id) return;
+        agrupados[id] = [...(agrupados[id] || []), adjunto];
+      });
+      setAdjuntosPorGasto(agrupados);
+    }).catch(error => {
+      console.warn('[ComprasGastos] no se pudieron cargar los comprobantes adjuntos:', error?.message || error);
+      if (activo) setAdjuntosPorGasto({});
+    });
+
+    return () => { activo = false; };
+  }, [empresa?.id, idsGastosKey]);
 
   const cecosActivos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const cecosEscrituraComprasGastos = filtrarOpcionesPorSociedadEscritura(
@@ -26232,6 +26313,37 @@ export function ComprasGastos() {
     [cajaChica],
   );
 
+  const datosComprobante = gasto => {
+    const cuenta = gasto.cxp_id ? cxpPorId.get(gasto.cxp_id) : null;
+    const adjunto = (adjuntosPorGasto[gasto.id] || [])[0] || null;
+    const numero = gasto.num_comprobante || gasto.factura_numero || cuenta?.factura_numero || '';
+    const tipo = gasto.tipo_comprobante || cuenta?.tipo_comprobante || '';
+    const archivo = gasto.archivo_url || gasto.archivo_factura_url || gasto.comprobante_url || cuenta?.archivo_factura_url || adjunto?.url || '';
+    return {
+      numero: String(numero || '').trim(),
+      tipo: String(tipo || '').trim(),
+      archivo: String(archivo || '').trim(),
+      nombreArchivo: adjunto?.nombre_original || '',
+      adjunto,
+    };
+  };
+
+  const tieneComprobante = gasto => {
+    const comprobante = datosComprobante(gasto);
+    return Boolean(comprobante.numero || comprobante.archivo);
+  };
+
+  const abrirComprobante = async comprobante => {
+    try {
+      const url = comprobante.adjunto
+        ? await storageService.obtenerUrlAdjunto(comprobante.adjunto)
+        : comprobante.archivo;
+      if (url && !url.startsWith('storage://')) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      addToast?.(`No se pudo abrir el comprobante: ${error?.message || 'error desconocido'}`);
+    }
+  };
+
   const vinculadoAGasto = (gasto) => {
     if (gasto.ot_vinc_id) {
       const ot = otsPorId.get(gasto.ot_vinc_id);
@@ -26285,6 +26397,8 @@ export function ComprasGastos() {
     if (tab === 'pendientes' && g.estado !== 'pendiente_revision') return false;
     if (filtroCeco && g.centro_costo_id !== filtroCeco) return false;
     if (filtroEstadoPago && g.estado_pago !== filtroEstadoPago) return false;
+    if (filtroComprobante === 'con' && !tieneComprobante(g)) return false;
+    if (filtroComprobante === 'sin' && tieneComprobante(g)) return false;
     if (filtroMes && tab !== 'pendientes' && mesMostrar(g.fecha) !== filtroMes) return false;
     return true;
   });
@@ -26338,8 +26452,13 @@ export function ComprasGastos() {
             <option value="pagado">Pagado</option>
             <option value="pendiente">Pendiente</option>
           </select>
-          {(filtroMes || filtroCeco || filtroEstadoPago) && (
-            <button className="btn btn-ghost" style={{fontSize:12, flexShrink:0, marginLeft:'auto'}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); }}>Limpiar filtros</button>
+          <select className="select" style={{width:170, flexShrink:0, fontSize:13}} value={filtroComprobante} onChange={e => setFiltroComprobante(e.target.value)}>
+            <option value="">Todo comprobante</option>
+            <option value="con">Con comprobante</option>
+            <option value="sin">Sin comprobante</option>
+          </select>
+          {(filtroMes || filtroCeco || filtroEstadoPago || filtroComprobante) && (
+            <button className="btn btn-ghost" style={{fontSize:12, flexShrink:0, marginLeft:'auto'}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); setFiltroComprobante(''); }}>Limpiar filtros</button>
           )}
         </div>
       </div>
@@ -26389,7 +26508,18 @@ export function ComprasGastos() {
                     </td>
                     <td style={{fontSize:12, whiteSpace:'nowrap'}}>{vinculadoAGasto(g)}</td>
                     <td style={{textAlign:'center'}}>
-                      {g.num_comprobante ? <span title={g.num_comprobante} style={{color:'var(--green)'}}>{I.receipt}</span> : <span className="text-muted">—</span>}
+                      {(() => {
+                        const comprobante = datosComprobante(g);
+                        if (!comprobante.numero && !comprobante.archivo) return <span className="text-muted">—</span>;
+                        const etiqueta = [comprobante.tipo, comprobante.numero].filter(Boolean).join(' ') || comprobante.nombreArchivo || 'Comprobante adjunto';
+                        return (
+                          <div style={{display:'inline-flex', alignItems:'center', gap:5, maxWidth:180}} title={etiqueta}>
+                            <span style={{color:'var(--green)', whiteSpace:'nowrap'}}>{I.receipt}</span>
+                            <span style={{fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{etiqueta}</span>
+                            {comprobante.archivo && <button type="button" className="icon-btn" onClick={() => abrirComprobante(comprobante)} title="Abrir comprobante" style={{color:'var(--cyan)', lineHeight:1, padding:0}}>{I.file}</button>}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td>
                       {(() => {
