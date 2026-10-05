@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { transform } from 'esbuild';
 import fs from 'node:fs';
-import { transformShadowZahoryStyles } from '../src/zahory-mock/ZahoryScreenHost.jsx';
+import {
+  observeZahoryHostTheme,
+  syncZahoryHostTheme,
+  transformShadowZahoryStyles,
+} from '../src/zahory-mock/ZahoryScreenHost.jsx';
 
 describe('ZahoryScreenHost CSS transform', () => {
   it('conserva variables en Shadow DOM con CSS minificado y no minificado', async () => {
@@ -20,5 +24,42 @@ describe('ZahoryScreenHost CSS transform', () => {
     expect(realCss).toContain(':host {');
     expect(realCss).toMatch(/:host\(\[data-theme="dark"\]\)\s*\{/);
     expect(realCss).not.toMatch(/:root\s*\{/);
+  });
+});
+
+describe('ZahoryScreenHost theme bridge', () => {
+  it('aplica el estado inicial, reacciona a dark y limpia al desmontar', () => {
+    const host = {
+      attrs: new Map(),
+      setAttribute(name, value) { this.attrs.set(name, value); },
+      removeAttribute(name) { this.attrs.delete(name); },
+    };
+    const documentElement = {
+      classList: {
+        values: new Set(),
+        contains(name) { return this.values.has(name); },
+      },
+    };
+    const observers = [];
+    const previousObserver = globalThis.MutationObserver;
+    globalThis.MutationObserver = class {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe(target, options) { this.target = target; this.options = options; }
+      disconnect() { this.disconnected = true; }
+    };
+    try {
+      syncZahoryHostTheme(host, documentElement);
+      expect(host.attrs.has('data-theme')).toBe(false);
+      documentElement.classList.values.add('dark');
+      const cleanup = observeZahoryHostTheme(host, documentElement);
+      expect(host.attrs.get('data-theme')).toBe('dark');
+      observers[0].callback();
+      expect(host.attrs.get('data-theme')).toBe('dark');
+      cleanup();
+      expect(observers[0].disconnected).toBe(true);
+      expect(host.attrs.has('data-theme')).toBe(false);
+    } finally {
+      globalThis.MutationObserver = previousObserver;
+    }
   });
 });

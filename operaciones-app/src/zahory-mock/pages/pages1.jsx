@@ -84,9 +84,9 @@ const ALERTAS_CRITICAS = [
 ];
 
 const ALERTA_COLS = {
-  rojo:     { border:'#E53935', bg:'#FFF5F5', tag:'badge solid-red',  dot:'#E53935' },
-  amarillo: { border:'#FF9800', bg:'#FFFBF0', tag:'badge orange',     dot:'#FF9800' },
-  azul:     { border:'#1565C0', bg:'#EFF4FF', tag:'badge navy',       dot:'#1565C0' },
+  rojo:     { border:'var(--red)', bg:'var(--surface-danger)', tag:'badge solid-red',  dot:'var(--red)' },
+  amarillo: { border:'var(--orange)', bg:'var(--surface-warning)', tag:'badge orange',     dot:'var(--orange)' },
+  azul:     { border:'var(--type-pm-fg)', bg:'var(--surface-info)', tag:'badge navy',       dot:'var(--type-pm-fg)' },
 };
 
 const ACTIVE_OT_STATES = new Set(['abierta', 'en_ejecucion', 'pendiente_partes']);
@@ -160,17 +160,17 @@ const MonthlyBars = () => {
               {/* hover bg */}
               {isHov && <rect x={cx - bw/2} y={padT} width={bw} height={H - padT - padB} fill="#F0F4F8" rx={3}/>}
               {/* ingreso bar */}
-              <rect x={cx - barW - 2} y={y(ing)} width={barW} height={H - padB - y(ing)} fill="var(--navy)" rx={2}
+              <rect x={cx - barW - 2} y={y(ing)} width={barW} height={H - padB - y(ing)} fill="var(--chart-income)" rx={2}
                 opacity={hover === null || isHov ? 1 : 0.4}/>
               {/* costo bar */}
-              <rect x={cx + 2} y={y(cos)} width={barW} height={H - padB - y(cos)} fill="#EF5350" rx={2}
+              <rect x={cx + 2} y={y(cos)} width={barW} height={H - padB - y(cos)} fill="var(--trend-bad)" rx={2}
                 opacity={hover === null || isHov ? 1 : 0.4}/>
               {/* label mes */}
               <text x={cx} y={H - 6} fontSize={10} fill="#78909C" textAnchor="middle">{mes}</text>
               {/* hover values */}
               {isHov && (
                 <>
-                  <text x={cx - barW/2 - 2} y={y(ing) - 5} fontSize={9} fill="var(--navy)" textAnchor="middle" fontWeight={700}>
+                  <text x={cx - barW/2 - 2} y={y(ing) - 5} fontSize={9} fill="var(--heading)" textAnchor="middle" fontWeight={700}>
                     ${(ing/1000).toFixed(0)}k
                   </text>
                   <text x={cx + barW/2 + 2} y={y(cos) - 5} fontSize={9} fill="#E53935" textAnchor="middle" fontWeight={700}>
@@ -195,8 +195,8 @@ const MonthlyBars = () => {
       {/* Leyenda */}
       <div style={{ display:'flex', gap:18, padding:'4px 0 0 48px', fontSize:11, color:'var(--text-muted)' }}>
         {[
-          { color:'var(--navy)', label:'Ingreso atribuible (OTs cliente)' },
-          { color:'#EF5350',     label:'Costos operativos' },
+          { color:'var(--chart-income)', label:'Ingreso atribuible (OTs cliente)' },
+          { color:'var(--trend-bad)', label:'Costos operativos' },
           { color:'var(--cyan)', label:'Margen neto', dash:true },
         ].map(l => (
           <span key={l.label} style={{ display:'flex', alignItems:'center', gap:5 }}>
@@ -269,33 +269,33 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
         <>
           <div>{activeInProgress} En ejecucion · {activePendingResources} Pendiente recursos · {activeInWorkshop} En taller</div>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:4 }}>
-            <Sparkline vals={activeSparkVals.length ? activeSparkVals : [0,0,0,0,0,0,0]} color={activeTrendGood ? '#7FD889' : '#EF5350'} up={activeTrendGood}/>
+          <Sparkline vals={activeSparkVals.length ? activeSparkVals : [0,0,0,0,0,0,0]} color={activeTrendGood ? 'var(--trend-good)' : 'var(--trend-bad)'} up={activeTrendGood}/>
             <span>OTs abiertas ultimos 7 dias</span>
           </div>
         </>
       ),
       sub:'',
       sparkVals:activeSparkVals.length ? activeSparkVals : [0,0,0,0,0,0,0],
-      accent: activeTrendGood ? '#1B5E20' : '#E53935',
-      bg:'linear-gradient(135deg,#1A2B4A 0%,#1E3A5F 100%)', textCol:'white',
+       accent: activeTrendGood ? 'var(--text-success)' : 'var(--red)',
+       bg:'linear-gradient(135deg,var(--navy) 0%,var(--navy-3) 100%)', textCol:'white',
     },
     {
       label:'Disponibilidad Global (DMR)', unit:'%',
       val:'91.5%', trend:'−1.2 pp', trendUp:false, trendNote:'Riesgo penalidad en 1 contrato',
-      sub:'Riesgo de penalidad · Nexa', sparkVals:[93,94,92,95,93,91], accent:'#E53935',
-      bg:'#FFF5F5', textCol:'var(--navy)',
+      sub:'Riesgo de penalidad · Nexa', sparkVals:[93,94,92,95,93,91], accent:'var(--red)',
+       bg:'var(--surface-danger)', textCol:'var(--heading)',
     },
     {
       label:'Capital Detenido (WIP)', unit:'USD',
       val:'$45,200', trend:'+8%', trendUp:false, trendNote:'Capital inmovilizado en taller',
-      sub:'5 OTs esperando repuestos', sparkVals:[38,42,35,50,48,45], accent:'#C15D00',
-      bg:'#FFF8F0', textCol:'var(--navy)',
+      sub:'5 OTs esperando repuestos', sparkVals:[38,42,35,50,48,45], accent:'var(--badge-orange-fg)',
+       bg:'var(--surface-warning)', textCol:'var(--heading)',
     },
     {
       label:'Utilización de Flota', unit:'%',
       val:'85%', trend:'+3%', trendUp:true, trendNote:'vs semana anterior',
-      sub:'12 de 15 equipos activos', sparkVals:[75,80,78,83,82,85], accent:'#1565C0',
-      bg:'#EFF4FF', textCol:'var(--navy)',
+      sub:'12 de 15 equipos activos', sparkVals:[75,80,78,83,82,85], accent:'var(--type-pm-fg)',
+       bg:'var(--surface-info)', textCol:'var(--heading)',
     },
   ];
 
@@ -313,11 +313,11 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
             <span style={{ color:'var(--card-border)' }}>·</span>
             <span style={{
               display:'inline-flex', alignItems:'center', gap:5,
-              background:'#FFF5F5', color:'#C62828', fontWeight:700,
+              background:'var(--surface-danger)', color:'var(--text-danger)', fontWeight:700,
               padding:'2px 9px', borderRadius:20, fontSize:11,
-              border:'1px solid #FFCDD2',
+              border:'1px solid var(--border-danger)',
             }}>
-              <span style={{ width:6, height:6, borderRadius:'50%', background:'#E53935', display:'inline-block' }}/>
+              <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--red)', display:'inline-block' }}/>
               3 alertas críticas requieren atención
             </span>
           </div>
@@ -365,14 +365,14 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
                   }}>
                     {k.val}
                   </div>
-                  <Sparkline vals={k.sparkVals} color={k.textCol === 'white' ? '#4FC3F7' : k.accent} up={k.trendGood ?? k.trendUp}/>
+                  <Sparkline vals={k.sparkVals} color={k.textCol === 'white' ? 'var(--cyan-highlight)' : k.accent} up={k.trendGood ?? k.trendUp}/>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:7, marginTop:2 }}>
                   <span style={{
                     display:'inline-flex', alignItems:'center', gap:3,
                     fontSize:11, fontWeight:800, padding:'2px 7px', borderRadius:20,
-                    background: (k.trendGood ?? k.trendUp) ? '#E8F5E9' : '#FFF3E0',
-                    color:      (k.trendGood ?? k.trendUp) ? '#2E7D32' : '#C15D00',
+                    background: (k.trendGood ?? k.trendUp) ? 'var(--badge-green-bg)' : 'var(--badge-orange-bg)',
+                    color:      (k.trendGood ?? k.trendUp) ? 'var(--text-success)' : 'var(--badge-orange-fg)',
                   }}>
                     {k.trendUp ? '▲' : '▼'} {k.trend}
                   </span>
@@ -407,8 +407,8 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
                 {/* Resumen del período */}
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginTop:16 }}>
                   {[
-                    { label:'Ingreso atribuible Abr', val:'$125.4k', color:'var(--navy)' },
-                    { label:'Costo operativo', val:'$71.2k', color:'#EF5350' },
+                    { label:'Ingreso atribuible Abr', val:'$125.4k', color:'var(--heading)' },
+                    { label:'Costo operativo', val:'$71.2k', color:'var(--trend-bad)' },
                     { label:'Margen bruto', val:'$54.2k', color:'var(--cyan)', bold:true },
                   ].map(m => (
                     <div key={m.label} style={{
@@ -428,7 +428,7 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
               <div className="card-header" style={{ borderBottom:'1px solid var(--card-border)', paddingBottom:12 }}>
                 <h3>Centro de Alertas</h3>
                 <span style={{
-                  marginLeft:'auto', background:'#E53935', color:'white',
+                  marginLeft:'auto', background:'var(--solid-red)', color:'white',
                   fontWeight:800, fontSize:11, padding:'2px 8px', borderRadius:20,
                 }}>{ALERTAS_CRITICAS.length}</span>
               </div>
@@ -451,7 +451,7 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
                           <span className="dot" style={{ background:cfg.dot }}/>{a.tag}
                         </span>
                       </div>
-                      <div style={{ fontWeight:700, fontSize:13, color:'var(--navy)', lineHeight:1.3 }}>{a.titulo}</div>
+                      <div style={{ fontWeight:700, fontSize:13, color:'var(--heading)', lineHeight:1.3 }}>{a.titulo}</div>
                       <div style={{ fontSize:11.5, color:'var(--text-muted)', lineHeight:1.4 }}>{a.detalle}</div>
                       <button className="btn btn-ghost btn-sm" style={{ alignSelf:'flex-start', color:'var(--cyan)', padding:'2px 0', marginTop:2 }}
                         onClick={() => handleAlertAction(a)}>
@@ -487,7 +487,7 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
                   <div key={i} style={{ padding:'10px 10px', borderBottom:'1px solid var(--card-border)', display:'flex', alignItems:'flex-start', gap:10 }}>
                     <span className="badge solid-red" style={{ flexShrink:0 }}>URGENTE</span>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:600, color:'var(--navy)' }}>{s.desc}</div>
+                      <div style={{ fontWeight:600, color:'var(--heading)' }}>{s.desc}</div>
                       <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:2 }}>{s.tec} · {s.proy} · {s.fecha}</div>
                     </div>
                     <button className="btn btn-ghost btn-sm">Atender</button>
@@ -507,9 +507,9 @@ export const DashboardPage = ({ onNav, setCurrentOT }) => {
               <span className="hint">Ordenado por score de prioridad</span>
               <div style={{ display:'flex', gap:10, marginLeft:'auto' }}>
                 {[
-                  { label:'Emergencia', val: D.backlog.filter(b => b.prioridad === 'Emergencia').length, color:'#E53935', bg:'#FFF5F5' },
-                  { label:'Urgentes',   val: D.backlog.filter(b => b.prioridad === 'Urgente').length,   color:'#C15D00', bg:'var(--orange-soft)' },
-                  { label:'Listos OT',  val: D.backlog.filter(b => b.estado === 'Listo para OT').length, color:'#2E7D32', bg:'var(--green-soft)' },
+                  { label:'Emergencia', val: D.backlog.filter(b => b.prioridad === 'Emergencia').length, color:'var(--emergency-fg)', bg:'var(--surface-danger)' },
+                  { label:'Urgentes',   val: D.backlog.filter(b => b.prioridad === 'Urgente').length,   color:'var(--badge-orange-fg)', bg:'var(--orange-soft)' },
+                  { label:'Listos OT',  val: D.backlog.filter(b => b.estado === 'Listo para OT').length, color:'var(--text-success)', bg:'var(--green-soft)' },
                 ].map(k => (
                   <div key={k.label} style={{ padding:'3px 12px', background:k.bg, borderRadius:20, fontSize:11, fontWeight:800, color:k.color }}>
                     {k.val} {k.label}
@@ -623,7 +623,7 @@ const TrabajoTipoChart = ({ ots }) => {
           const pct = total ? (r.count / total) * 100 : 0;
           return (
             <div key={r.key} style={{ display:'grid', gridTemplateColumns:'180px 1fr 70px', gap:12, alignItems:'center', marginBottom:10 }}>
-              <div style={{ fontWeight:700, color:'var(--navy)' }}>{r.label}</div>
+              <div style={{ fontWeight:700, color:'var(--heading)' }}>{r.label}</div>
               <div style={{ height:20, background:'#F1F5F9', borderRadius:4, overflow:'hidden' }}>
                 <div style={{ width:`${pct}%`, height:'100%', background:r.color, borderRadius:4 }}/>
               </div>
@@ -1012,7 +1012,7 @@ const CostosContent = ({ onNav, setCurrentOT }) => {
             const barW = Math.min(pct * 2.5, 100);
             return (
               <div key={r.codigo} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8, fontSize:12 }}>
-                <div style={{ width:110, textAlign:'right', fontFamily:'ui-monospace,monospace', fontWeight:600, color:'var(--navy)', flexShrink:0 }}>{r.codigo.replace('OT-2026-','OT-')}</div>
+                <div style={{ width:110, textAlign:'right', fontFamily:'ui-monospace,monospace', fontWeight:600, color:'var(--heading)', flexShrink:0 }}>{r.codigo.replace('OT-2026-','OT-')}</div>
                 <div style={{ flex:1, position:'relative', height:22, background:'#F1F5F9', borderRadius:4, overflow:'hidden' }}>
                   <div style={{ position:'absolute', [isExceso?'left':'right']:0, width:`${barW}%`, height:'100%', background: isExceso ? '#EF5350' : '#66BB6A', opacity:0.85, borderRadius:4, transition:'width 0.5s' }}/>
                   <span style={{ position:'absolute', top:'50%', transform:'translateY(-50%)', [isExceso?'left':'right']: barW < 20 ? '105%' : 8, fontSize:10, fontWeight:700, color: barW < 20 ? (isExceso?'#E53935':'#2E7D32') : 'white' }}>{isExceso ? '+' : '-'}{fmt(Math.abs(desv), currency, fx)}</span>

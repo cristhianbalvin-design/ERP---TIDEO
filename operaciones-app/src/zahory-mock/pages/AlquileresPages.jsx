@@ -4660,9 +4660,9 @@ const _RENTAL_STATS = (() => {
 })();
 
 const _DMR_COLOR = (dmr, meta) => {
-  if (dmr >= 90)          return { bg: '#E8F5E9', color: '#1B5E20', dot: '#4CAF50' };
-  if (dmr >= meta)        return { bg: '#FFF3E0', color: '#C15D00', dot: '#FF9800' };
-  return                         { bg: '#FFEBEE', color: '#B71C1C', dot: '#E53935' };
+  if (dmr >= 90)          return { bg: 'var(--badge-green-bg)', color: 'var(--badge-green-fg)', dot: 'var(--green)' };
+  if (dmr >= meta)        return { bg: 'var(--badge-orange-bg)', color: 'var(--badge-orange-fg)', dot: 'var(--orange)' };
+  return                         { bg: 'var(--badge-red-bg)', color: 'var(--badge-red-fg)', dot: 'var(--red)' };
 };
 
 export const DashboardRentalPage = ({ onNav }) => {
@@ -4674,9 +4674,9 @@ export const DashboardRentalPage = ({ onNav }) => {
       borderRadius: 10, padding: '18px 20px',
       border: '1px solid rgba(255,255,255,0.06)',
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1px', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 28, fontWeight: 800, color: accent || '#f1f5f9', lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>{sub}</div>}
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '1px', color: 'var(--text-subtle)', textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: accent || 'var(--surface-8)', lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>{sub}</div>}
     </div>
   );
 
@@ -4746,7 +4746,7 @@ export const DashboardRentalPage = ({ onNav }) => {
       {s.criticos > 0 && (
         <div className="card" style={{ borderLeft: '4px solid var(--red)' }}>
           <div className="card-body">
-            <div style={{ display:'flex', alignItems:'center', gap:10, color:'var(--red)', fontWeight:700, marginBottom:8 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, color:'var(--alert-danger-fg)', fontWeight:700, marginBottom:8 }}>
               <Icon name="alert" size={16}/>
               {s.criticos} equipo(s) con DMR por debajo de la meta contractual
             </div>
