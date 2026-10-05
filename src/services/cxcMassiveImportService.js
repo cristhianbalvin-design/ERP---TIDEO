@@ -9,8 +9,9 @@ export const CXC_MASSIVE_SHEET = 'CxC';
 export const CXC_MASSIVE_HEADERS = [
   'ruc_cliente', 'razon_social', 'tipo_documento', 'numero',
   'fecha_emision', 'fecha_vencimiento', 'moneda', 'subtotal', 'igv', 'monto_total',
-  'monto_pagado', 'monto_detraccion', 'codigo_spot', 'cuenta_detraccion_id', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
-  'os_cliente_codigo', 'centro_beneficio_codigo', 'confirmar_exceso', 'glosa', 'notas',
+  'monto_pagado', 'monto_detraccion', 'codigo_spot', 'porcentaje_detraccion', 'detraccion_estado',
+  'tipo_cambio_detraccion', 'tipo_cambio_fuente', 'cuenta_detraccion_id', 'fecha_cobro', 'medio_pago', 'cuenta_bancaria', 'numero_operacion',
+  'condicion_pago', 'os_cliente_codigo', 'centro_beneficio_codigo', 'confirmar_exceso', 'glosa', 'notas',
 ];
 export const TIPOS_CXC_MASIVA = ['Factura', 'Boleta'];
 
@@ -70,33 +71,45 @@ const confirmarExceso = value => ['si', 'sí', 'true', '1'].includes(mismoTexto(
 export const huellaDuplicadoCxc = ({ numero }) => normalizarNumeroCxc(numero);
 
 export async function cargarCatalogosCxcMasivo(supabase, empresaId) {
-  const [cuentasR, cebeR, osR, facturasR] = await Promise.all([
+  const [cuentasR, cebeR, osR, facturasR, spotR, bancosR] = await Promise.all([
     supabase.from('cuentas').select('id,ruc,tipo_documento,razon_social,nombre_comercial,agente_retencion_sunat,tasa_retencion_sunat').eq('empresa_id', empresaId),
     supabase.from('centros_beneficio').select('id,codigo,nombre,estado,fecha_inicio,fecha_fin,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('os_clientes').select('id,numero,cuenta_id,centro_beneficio_id,saldo_por_facturar,monto_facturado,estado,sociedad_id').eq('empresa_id', empresaId),
     supabase.from('facturas').select('id,cuenta_id,sociedad_id,numero').eq('empresa_id', empresaId),
+    supabase.from('spot_catalogo').select('id,codigo,porcentaje,monto_minimo,umbral_operador,vigencia_desde,vigencia_hasta,estado').eq('estado', 'activo').order('codigo'),
+    supabase.from('cuentas_bancarias').select('id,nombre,numero_cuenta,moneda,estado,sociedad_id,es_cuenta_detracciones').eq('empresa_id', empresaId).eq('es_cuenta_detracciones', true).order('nombre'),
   ]);
-  const error = [cuentasR, cebeR, osR, facturasR].find(result => result.error)?.error;
+  const error = [cuentasR, cebeR, osR, facturasR, spotR, bancosR].find(result => result.error)?.error;
   if (error) throw error;
   return {
     cuentas: cuentasR.data || [], centrosBeneficio: cebeR.data || [], osClientes: osR.data || [], facturas: facturasR.data || [],
+    spotCatalogo: spotR.data || [], cuentasDetracciones: bancosR.data || [],
   };
 }
 
 export async function descargarPlantillaCxcMasiva(supabase, empresaId, empresaNombre = '') {
   const hoy = new Date().toISOString().slice(0, 10);
-  const { data: cebes, error } = await supabase.from('centros_beneficio')
-    .select('codigo,nombre,fecha_inicio,fecha_fin').eq('empresa_id', empresaId).eq('estado', 'activo')
-    .or(`fecha_inicio.is.null,fecha_inicio.lte.${hoy}`)
-    .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`)
-    .order('codigo');
-  if (error) throw error;
+  const [cebesR, spotR, bancosR] = await Promise.all([
+    supabase.from('centros_beneficio')
+      .select('codigo,nombre,fecha_inicio,fecha_fin').eq('empresa_id', empresaId).eq('estado', 'activo')
+      .or(`fecha_inicio.is.null,fecha_inicio.lte.${hoy}`)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`)
+      .order('codigo'),
+    supabase.from('spot_catalogo').select('codigo,porcentaje,monto_minimo,umbral_operador,vigencia_desde,vigencia_hasta').eq('estado', 'activo').order('codigo'),
+    supabase.from('cuentas_bancarias').select('id,nombre,numero_cuenta,moneda,sociedad_id').eq('empresa_id', empresaId).eq('es_cuenta_detracciones', true).eq('estado', 'activo').order('nombre'),
+  ]);
+  if (cebesR.error) throw cebesR.error;
+  if (spotR.error) throw spotR.error;
+  if (bancosR.error) throw bancosR.error;
+  const cebes = cebesR.data || [];
+  const spots = spotR.data || [];
+  const bancos = bancosR.data || [];
 
   const wb = XLSX.utils.book_new();
   const data = XLSX.utils.aoa_to_sheet([CXC_MASSIVE_HEADERS, [
     '20123456789', 'Cliente Ejemplo S.A.C.', 'Factura', 'F001-000123',
     new Date().toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), 'PEN', '1000.00', '180.00', '1180.00',
-    '0.00', '0.00', '', '', '', '', '', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
+    '0.00', '0.00', '', '', 'pendiente', '', '', '', '', '', '', 'Crédito', '', (cebes || [])[0]?.codigo || '', 'NO', 'Venta registrada previamente', '',
   ]]);
   data['!cols'] = CXC_MASSIVE_HEADERS.map(header => ({ wch: Math.max(16, header.length + 2) }));
 
@@ -110,13 +123,19 @@ export async function descargarPlantillaCxcMasiva(supabase, empresaId, empresaNo
     ['3', 'Con OS Cliente, el CEBE se hereda de la OS. Sin OS, centro_beneficio_codigo es obligatorio.'],
     ['4', 'El CEBE debe estar activo y vigente para fecha_emision; fechas nulas son extremos abiertos.'],
     ['5', 'El monto no puede exceder el saldo de la OS salvo confirmar_exceso=SI; en ese caso el saldo queda en cero.'],
-    ['6', 'Si monto_pagado o monto_detraccion es mayor a cero, fecha_cobro es obligatoria y debe quedar saldo pendiente.'],
-    ['7', 'monto_detraccion genera un segundo cobro con medio de pago Detraccion; monto_pagado es el depósito neto en la cuenta habitual.'],
-    ['8', 'La retencion SUNAT se consulta en vivo desde la cuenta del cliente; el saldo CxC se calcula sobre el neto cobrable.'],
-    ['9', 'Cliente inexistente por RUC: se crea automaticamente con RUC y razon social.'],
+    ['6', 'monto_pagado es el cobro normal; si es mayor a cero, fecha_cobro es obligatoria.'],
+    ['7', 'Para SPOT informa codigo_spot. El sistema calcula el porcentaje y monto; monto_detraccion es opcional como control.'],
+    ['8', 'detraccion_estado admite pendiente, depositada o por_autodetraer. Depositada exige fecha_cobro y cuenta_detraccion_id.'],
+    ['9', 'Para moneda USD con SPOT informa tipo_cambio_detraccion y tipo_cambio_fuente (manual o referencial).'],
+    ['10', 'La retencion SUNAT se consulta en vivo desde la cuenta del cliente; no se permite combinar retencion y detraccion.'],
+    ['11', 'condicion_pago se conserva en la factura y CxC. Cliente inexistente por RUC se crea automaticamente.'],
     [], ['Valores permitidos de tipo_documento', ...TIPOS_CXC_MASIVA], [],
     ['CEBEs activos al momento de la descarga'], ['Codigo', 'Nombre', 'Fecha inicio', 'Fecha fin'],
     ...(cebes || []).map(c => [c.codigo, c.nombre, c.fecha_inicio || '', c.fecha_fin || '']),
+    [], ['Catalogo SPOT vigente'], ['Codigo', 'Porcentaje', 'Monto minimo', 'Operador', 'Desde', 'Hasta'],
+    ...spots.map(s => [s.codigo, s.porcentaje, s.monto_minimo, s.umbral_operador, s.vigencia_desde || '', s.vigencia_hasta || '']),
+    [], ['Cuentas de detracciones activas'], ['ID', 'Nombre', 'Numero', 'Moneda', 'Sociedad'],
+    ...bancos.map(b => [b.id, b.nombre, b.numero_cuenta || '', b.moneda, b.sociedad_id || '']),
   ]);
   reference['!cols'] = [{ wch: 28 }, { wch: 80 }, { wch: 20 }, { wch: 20 }];
   reference['!protect'] = { selectLockedCells: true, selectUnlockedCells: false };
@@ -150,6 +169,8 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
   const cuentasPorId = new Map((catalogos.cuentas || []).map(c => [c.id, c]));
   const cuentasPorIdentificador = new Map((catalogos.cuentas || []).map(c => [normalizarIdentificadorClienteCxc(c.ruc), c]));
   const cebePorId = new Map((catalogos.centrosBeneficio || []).map(c => [c.id, c]));
+  const spotsPorCodigo = new Map((catalogos.spotCatalogo || []).map(c => [normalizarCodigoCxc(c.codigo), c]));
+  const cuentasDetraccionesPorId = new Map((catalogos.cuentasDetracciones || []).map(c => [c.id, c]));
   const enArchivo = new Map();
 
   return (rows || []).map((source, index) => {
@@ -167,7 +188,18 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     const igv = numero(source.igv);
     const monto_total = numero(source.monto_total);
     const monto_pagado = numero(source.monto_pagado);
-    const monto_detraccion = numero(source.monto_detraccion);
+    const monto_detraccionInput = numero(source.monto_detraccion);
+    const porcentaje_detraccion = numero(source.porcentaje_detraccion);
+    const codigo_spot = normalizarCodigoCxc(source.codigo_spot);
+    const detraccion_estado = texto(source.detraccion_estado || (monto_detraccionInput > 0 ? 'pendiente' : '')).toLowerCase();
+    const tipo_cambio_detraccion = numero(source.tipo_cambio_detraccion);
+    const tipo_cambio_fuente = texto(source.tipo_cambio_fuente).toLowerCase();
+    const cuenta_detraccion_id = texto(source.cuenta_detraccion_id);
+    const cuentaDetraccion = cuentasDetraccionesPorId.get(cuenta_detraccion_id);
+    // El RPC legado de importacion modela una detraccion como ya depositada.
+    // Para obligaciones pendientes la validacion antigua debe quedar inactiva;
+    // el RPC v2 registra luego la obligacion con su estado real.
+    const monto_detraccion = ['pendiente', 'por_autodetraer'].includes(detraccion_estado) ? 0 : monto_detraccionInput;
     const os_cliente_codigo = normalizarCodigoCxc(source.os_cliente_codigo);
     const centro_beneficio_codigo = normalizarCodigoCxc(source.centro_beneficio_codigo);
     const os = os_cliente_codigo ? osPorCodigo.get(os_cliente_codigo) : null;
@@ -177,6 +209,7 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     const ruc_cliente = esTaxIdExtranjero ? identificador_cliente : rucNormalizado;
     const cebeAsignado = os ? cebePorId.get(os.centro_beneficio_id) : cebesPorCodigo.get(centro_beneficio_codigo);
     const sociedad_id = os?.sociedad_id || cebeAsignado?.sociedad_id || null;
+    const spot = codigo_spot ? spotsPorCodigo.get(codigo_spot) : null;
 
     if (esTaxIdExtranjero) {
       if (identificador_cliente.length < TAX_ID_EXTRANJERO_MIN_LENGTH || identificador_cliente.length > TAX_ID_EXTRANJERO_MAX_LENGTH) {
@@ -190,8 +223,29 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     if (!fecha_vencimiento) errores.push('Fecha de vencimiento invalida: usa AAAA-MM-DD.');
     if (fecha_emision && fecha_vencimiento && fecha_vencimiento < fecha_emision) errores.push('Fecha de vencimiento no puede ser anterior a emision.');
     if (!['PEN', 'USD'].includes(moneda)) errores.push('Moneda invalida: usa PEN o USD.');
-    if (![subtotal, igv, monto_total, monto_pagado, monto_detraccion].every(Number.isFinite) || subtotal < 0 || igv < 0 || monto_total <= 0 || monto_pagado < 0 || monto_detraccion < 0) errores.push('Importes invalidos.');
+    if (![subtotal, igv, monto_total, monto_pagado, monto_detraccionInput].every(Number.isFinite) || subtotal < 0 || igv < 0 || monto_total <= 0 || monto_pagado < 0 || monto_detraccionInput < 0) errores.push('Importes invalidos.');
     if (Number.isFinite(subtotal) && Number.isFinite(igv) && Number.isFinite(monto_total) && Math.abs((subtotal + igv) - monto_total) > 0.01) errores.push('Monto total debe coincidir con subtotal mas IGV.');
+    if (monto_detraccionInput > 0) {
+      if (!['pendiente', 'depositada', 'por_autodetraer'].includes(detraccion_estado)) errores.push('detraccion_estado invalido: usa pendiente, depositada o por_autodetraer.');
+      if (codigo_spot && !spot) errores.push(`Codigo SPOT inexistente o inactivo: "${codigo_spot}".`);
+      if (spot && fecha_emision) {
+        const vigente = (!spot.vigencia_desde || fecha_emision >= String(spot.vigencia_desde).slice(0, 10))
+          && (!spot.vigencia_hasta || fecha_emision <= String(spot.vigencia_hasta).slice(0, 10));
+        if (!vigente) errores.push(`Codigo SPOT fuera de vigencia para la fecha de emision: "${codigo_spot}".`);
+        if (moneda === 'USD' && !(tipo_cambio_detraccion > 0)) errores.push('Para SPOT en USD informa tipo_cambio_detraccion mayor que cero.');
+        const baseSoles = moneda === 'USD' ? monto_total * tipo_cambio_detraccion : monto_total;
+        if (Number.isFinite(baseSoles) && ((spot.umbral_operador === '>' && baseSoles <= Number(spot.monto_minimo || 0)) || (spot.umbral_operador !== '>' && baseSoles < Number(spot.monto_minimo || 0)))) errores.push(`La base SPOT no supera el minimo de S/ ${Number(spot.monto_minimo || 0).toFixed(2)}.`);
+        const esperado = moneda === 'USD' ? Math.round(monto_total * Number(spot.porcentaje || 0) / 100 * 100) / 100 : Math.round(monto_total * Number(spot.porcentaje || 0) / 100);
+        if (Math.abs(monto_detraccionInput - esperado) > 0.01) errores.push(`Monto de detraccion no coincide con el catalogo SPOT: se espera ${esperado.toFixed(2)}.`);
+        if (Number.isFinite(porcentaje_detraccion) && Math.abs(porcentaje_detraccion - Number(spot.porcentaje || 0)) > 0.0001) errores.push('porcentaje_detraccion no coincide con el catalogo SPOT vigente.');
+      }
+      if (moneda === 'USD' && !['manual', 'referencial'].includes(tipo_cambio_fuente)) errores.push('Para SPOT en USD informa tipo_cambio_fuente manual o referencial.');
+      if (moneda === 'PEN' && (texto(source.tipo_cambio_detraccion) || texto(source.tipo_cambio_fuente))) errores.push('Para SPOT en PEN no se informa tipo de cambio.');
+      if (cuenta_detraccion_id && (!cuentaDetraccion || cuentaDetraccion.moneda !== 'PEN' || cuentaDetraccion.estado !== 'activo' || cuentaDetraccion.es_cuenta_detracciones !== true || (sociedad_id && cuentaDetraccion.sociedad_id !== sociedad_id))) errores.push('cuenta_detraccion_id debe ser una cuenta PEN activa de detracciones de la misma sociedad.');
+      if (detraccion_estado === 'depositada' && monto_pagado <= 0) errores.push('Una detraccion depositada requiere monto_pagado como deposito neto.');
+      if (detraccion_estado === 'depositada' && !cuenta_detraccion_id) errores.push('cuenta_detraccion_id es obligatoria para una detraccion depositada.');
+      if (detraccion_estado === 'depositada' && !fecha_cobro) errores.push('fecha_cobro es obligatoria para una detraccion depositada.');
+    }
     if (monto_detraccion > 0 && monto_pagado <= 0) errores.push('Monto pagado debe incluir el depósito neto cuando se informa monto_detraccion.');
     if ((monto_pagado + monto_detraccion) >= monto_total) errores.push('Solo se permiten saldos pendientes: monto_pagado más monto_detraccion debe ser menor que monto_total.');
     if ((monto_pagado + monto_detraccion) > 0 && !fecha_cobro) errores.push('Fecha de cobro obligatoria para pago parcial.');
@@ -235,8 +289,11 @@ export function validarFilasCxcMasiva(rows, catalogos = {}, { multisociedadHabil
     }
     return {
       ...source, _fila: index + 2, ruc_cliente, razon_social, tipo_documento: tipo_documento?.toLowerCase() || texto(source.tipo_documento),
-      numero: numeroDocumento, fecha_emision, fecha_vencimiento, fecha_cobro, moneda, subtotal, igv, monto_total, monto_pagado, monto_detraccion,
-      os_cliente_codigo, centro_beneficio_codigo, sociedad_id, _errores: errores, _advertencias: [], _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
+      numero: numeroDocumento, fecha_emision, fecha_vencimiento, fecha_cobro, moneda, subtotal, igv, monto_total, monto_pagado,
+      monto_detraccion: monto_detraccionInput, codigo_spot: codigo_spot || null, porcentaje_detraccion: Number.isFinite(porcentaje_detraccion) ? porcentaje_detraccion : null,
+      detraccion_estado: detraccion_estado || null, tipo_cambio_detraccion: Number.isFinite(tipo_cambio_detraccion) ? tipo_cambio_detraccion : null,
+      tipo_cambio_fuente: tipo_cambio_fuente || null, cuenta_detraccion_id: cuenta_detraccion_id || null,
+      condicion_pago: texto(source.condicion_pago) || null, os_cliente_codigo, centro_beneficio_codigo, sociedad_id, _errores: errores, _advertencias: [], _estado: errores.length ? 'RECHAZADA' : 'VALIDA',
     };
   }).map(row => {
     const huella = huellaDuplicadoCxc(row);
@@ -268,12 +325,15 @@ export async function ejecutarImportacionCxcMasiva({ filas, empresaId, supabase,
       continue;
     }
     try {
-      const { data, error } = await supabase.rpc('importar_cxc_masiva_fila', {
+      const { data, error } = await supabase.rpc('importar_cxc_masiva_fila_v2', {
         p_payload: {
           empresa_id: empresaId, ruc_cliente: row.ruc_cliente, razon_social: row.razon_social,
           tipo_documento: row.tipo_documento, numero: row.numero, fecha_emision: row.fecha_emision,
           fecha_vencimiento: row.fecha_vencimiento, moneda: row.moneda, subtotal: row.subtotal, igv: row.igv,
-          monto_total: row.monto_total, monto_pagado: row.monto_pagado, monto_detraccion: row.monto_detraccion, codigo_spot: row.codigo_spot || null, cuenta_detraccion_id: row.cuenta_detraccion_id || null, fecha_cobro: row.fecha_cobro || null,
+          monto_total: row.monto_total, monto_pagado: row.monto_pagado, monto_detraccion: row.monto_detraccion, codigo_spot: row.codigo_spot || null,
+          porcentaje_detraccion: row.porcentaje_detraccion || null, detraccion_estado: row.detraccion_estado || null,
+          tipo_cambio_detraccion: row.tipo_cambio_detraccion || null, tipo_cambio_fuente: row.tipo_cambio_fuente || null,
+          cuenta_detraccion_id: row.cuenta_detraccion_id || null, fecha_cobro: row.fecha_cobro || null,
           medio_pago: row.medio_pago || null, cuenta_bancaria: row.cuenta_bancaria || null, numero_operacion: row.numero_operacion || null,
           os_cliente_codigo: row.os_cliente_codigo || null, centro_beneficio_codigo: row.centro_beneficio_codigo || null,
           confirmar_exceso: row.confirmar_exceso || null, glosa: row.glosa || null, notas: row.notas || null,
