@@ -4129,6 +4129,7 @@ function Resultados({ role }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [erData, setErData] = useState(null);
+  const [detalleCategoria, setDetalleCategoria] = useState(null);
   const [tcPeriodo, setTcPeriodo] = useState(null);
   const [scopeMode, setScopeMode] = useState(() => (
     multisociedadActiva && !modoVistaSociedadERInicial.permiteEscritura
@@ -4301,8 +4302,24 @@ function Resultados({ role }) {
         <MoneyCols totals={totals} neg={neg} marginTotals={marginTotals} />
       </div>
       {expandKey && expanded[expandKey] && items && items.map((it, i) => (
-        <div key={`${it.label}-${i}`} style={{ display:'flex', gap:12, padding:'8px 20px 8px 52px', borderBottom:'1px solid var(--border-subtle)', fontSize:12, color:'var(--fg-muted)' }}>
-          <div style={{ flex:1 }}>{it.label}</div>
+        <div
+          key={`${it.label}-${i}`}
+          role={it.details?.length ? 'button' : undefined}
+          tabIndex={it.details?.length ? 0 : undefined}
+          title={it.details?.length ? 'Ver gastos que componen esta categoría' : undefined}
+          onClick={() => it.details?.length && setDetalleCategoria({ label: it.label, totals: it.totals, details: it.details })}
+          onKeyDown={event => {
+            if (it.details?.length && (event.key === 'Enter' || event.key === ' ')) {
+              event.preventDefault();
+              setDetalleCategoria({ label: it.label, totals: it.totals, details: it.details });
+            }
+          }}
+          style={{ display:'flex', gap:12, padding:'8px 20px 8px 52px', borderBottom:'1px solid var(--border-subtle)', fontSize:12, color:'var(--fg-muted)', cursor:it.details?.length?'pointer':'default' }}
+        >
+          <div style={{ flex:1, display:'flex', alignItems:'center', gap:8 }}>
+            <span>{it.label}</span>
+            {it.details?.length ? <span className="badge badge-gray">{it.details.length}</span> : null}
+          </div>
           <MoneyCols totals={it.totals} neg={neg} />
         </div>
       ))}
@@ -4420,6 +4437,50 @@ function Resultados({ role }) {
         Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.
         {tcRef && <span> · La columna Total S/ es referencial y usa el TC {tcRefLabel} del período. El ER no consolida monedas para fines contables.</span>}
       </div>
+      {detalleCategoria && (
+        <>
+          <div className="side-panel-backdrop" onClick={() => setDetalleCategoria(null)} />
+          <div className="side-panel" style={{ width:'min(780px, 96vw)' }}>
+            <div className="side-panel-head">
+              <div>
+                <div className="eyebrow">Estado de Resultados</div>
+                <div style={{ fontSize:22, fontWeight:700 }}>{detalleCategoria.label}</div>
+                <div className="text-muted" style={{ fontSize:12, marginTop:3 }}>Gastos que componen esta categoría · {periodoLabel}</div>
+              </div>
+              <button type="button" className="icon-btn" onClick={() => setDetalleCategoria(null)} aria-label="Cerrar detalle">{I.x}</button>
+            </div>
+            <div className="side-panel-body">
+              <div className="card" style={{ padding:14, marginBottom:14 }}>
+                <div className="text-muted" style={{ fontSize:11, textTransform:'uppercase', fontWeight:700, letterSpacing:1, marginBottom:8 }}>Total de la categoría</div>
+                <div className="row" style={{ gap:18, flexWrap:'wrap' }}>
+                  {ER_CURRENCIES.map(currency => <strong key={currency}>{erMoney(detalleCategoria.totals, currency)}</strong>)}
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr><th>Fecha</th><th>Concepto</th><th>Origen</th><th>Documento / tercero</th><th className="num">Importe</th></tr>
+                  </thead>
+                  <tbody>
+                    {detalleCategoria.details?.map((detail, index) => (
+                      <tr key={`${detail.id || detail.concepto || 'detalle'}-${index}`}>
+                        <td className="text-muted">{detail.fecha || '-'}</td>
+                        <td>
+                          <div style={{ fontWeight:600 }}>{detail.concepto || '-'}</div>
+                          {detail.detalle && <div className="text-muted" style={{ fontSize:11 }}>{detail.detalle}</div>}
+                        </td>
+                        <td><span className="badge badge-gray">{detail.fuente || 'Registro'}</span></td>
+                        <td className="text-muted">{detail.documento || detail.tercero || detail.subcategoria || detail.origen || '-'}</td>
+                        <td className="num" style={{ fontWeight:700 }}>{moneyCurrency(detail.amount, detail.currency || 'PEN')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -10226,6 +10287,9 @@ function CxP() {
                     entidadId={selGastoOrigen.id}
                     empresaId={empresa?.id}
                     readOnly
+                    permitirAgregar={puedeEditarSpotCompra && sel.estado !== 'anulada'}
+                    multiple
+                    categoria="comprobante"
                   />
                 ) : (
                   <a href={sel.archivo_factura_url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{width:'100%',justifyContent:'center'}}>

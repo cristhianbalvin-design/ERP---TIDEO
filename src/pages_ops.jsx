@@ -26494,7 +26494,7 @@ export function ComprasGastos() {
                     </td>
                     <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
                     <td style={{fontSize:12}}>{g.categoria || '—'}</td>
-                    <td className="num"><strong>{moneyCurrency(g.monto, g.moneda || 'PEN')}</strong></td>
+                    <td className="num"><strong>{moneyD(g.monto, symOf(g.moneda || 'PEN'))}</strong></td>
                     <td>
                       <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
                         {g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente'}
