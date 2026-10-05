@@ -15,6 +15,11 @@ begin
 end;
 $$;
 
+-- El runner de migraciones ejecuta este archivo dentro de una transaccion.
+-- Si una tabla esta bloqueada, abortar la transaccion completa antes de continuar.
+set local lock_timeout = '3s';
+set local statement_timeout = '60s';
+
 create table if not exists public.cxp_distribucion_ceco (
   id          text primary key,
   empresa_id  text not null references public.empresas(id),
@@ -575,33 +580,6 @@ $$;
 
 revoke all on function public.cxp_distribucion_after_cxp_change() from public, anon, authenticated, service_role;
 
-drop trigger if exists trg_cxp_distribucion_after_change on public.cxp;
-create trigger trg_cxp_distribucion_after_change
-after insert or update of monto_total, centro_costo_id, orden_compra_id
-on public.cxp
-for each row
-execute function public.cxp_distribucion_after_cxp_change();
-
-drop trigger if exists trg_cxp_distribucion_ceco_tenant on public.cxp_distribucion_ceco;
-create trigger trg_cxp_distribucion_ceco_tenant
-before insert or update on public.cxp_distribucion_ceco
-for each row
-execute function public.cxp_validar_distribucion_ceco();
-
-drop trigger if exists trg_cxp_distribucion_ceco_total on public.cxp_distribucion_ceco;
-create constraint trigger trg_cxp_distribucion_ceco_total
-after insert or update or delete on public.cxp_distribucion_ceco
-deferrable initially deferred
-for each row
-execute function public.cxp_validar_distribucion_total();
-
-drop trigger if exists trg_cxp_distribucion_cxp_total on public.cxp;
-create constraint trigger trg_cxp_distribucion_cxp_total
-after insert or update of monto_total, centro_costo_id, orden_compra_id on public.cxp
-deferrable initially deferred
-for each row
-execute function public.cxp_validar_distribucion_total();
-
 -- Fuente vigente: pg_get_functiondef(public.generar_cxp_centralizado),
 -- verificada contra producción antes de preparar esta migración.
 create or replace function public.generar_cxp_centralizado(
@@ -813,5 +791,69 @@ $$;
 
 revoke all on function public.obtener_lineas_sourcing(text) from public, anon;
 grant execute on function public.obtener_lineas_sourcing(text) to authenticated;
+
+-- PostgreSQL no admite CREATE OR REPLACE TRIGGER. La migracion es versionada
+-- y se aplica una vez; si un trigger ya existe, se aborta en vez de hacer DROP
+-- y tomar nuevamente un lock fuerte sobre cxp.
+do $$
+begin
+  if exists (select 1 from pg_trigger where tgrelid = 'public.cxp_distribucion_ceco'::regclass and tgname = 'trg_cxp_distribucion_ceco_tenant' and not tgisinternal) then
+    raise exception 'El trigger trg_cxp_distribucion_ceco_tenant ya existe; no se reemplaza con DROP';
+  end if;
+  execute $sql$
+    create trigger trg_cxp_distribucion_ceco_tenant
+    before insert or update on public.cxp_distribucion_ceco
+    for each row
+    execute function public.cxp_validar_distribucion_ceco()
+  $sql$;
+end;
+$$;
+
+do $$
+begin
+  if exists (select 1 from pg_trigger where tgrelid = 'public.cxp_distribucion_ceco'::regclass and tgname = 'trg_cxp_distribucion_ceco_total' and not tgisinternal) then
+    raise exception 'El trigger trg_cxp_distribucion_ceco_total ya existe; no se reemplaza con DROP';
+  end if;
+  execute $sql$
+    create constraint trigger trg_cxp_distribucion_ceco_total
+    after insert or update or delete on public.cxp_distribucion_ceco
+    deferrable initially deferred
+    for each row
+    execute function public.cxp_validar_distribucion_total()
+  $sql$;
+end;
+$$;
+
+-- Los dos triggers sobre cxp toman un lock fuerte ShareRowExclusiveLock;
+-- quedan al final para reducir la ventana de bloqueo.
+do $$
+begin
+  if exists (select 1 from pg_trigger where tgrelid = 'public.cxp'::regclass and tgname = 'trg_cxp_distribucion_after_change' and not tgisinternal) then
+    raise exception 'El trigger trg_cxp_distribucion_after_change ya existe; no se reemplaza con DROP';
+  end if;
+  execute $sql$
+    create trigger trg_cxp_distribucion_after_change
+    after insert or update of monto_total, centro_costo_id, orden_compra_id
+    on public.cxp
+    for each row
+    execute function public.cxp_distribucion_after_cxp_change()
+  $sql$;
+end;
+$$;
+
+do $$
+begin
+  if exists (select 1 from pg_trigger where tgrelid = 'public.cxp'::regclass and tgname = 'trg_cxp_distribucion_cxp_total' and not tgisinternal) then
+    raise exception 'El trigger trg_cxp_distribucion_cxp_total ya existe; no se reemplaza con DROP';
+  end if;
+  execute $sql$
+    create constraint trigger trg_cxp_distribucion_cxp_total
+    after insert or update of monto_total, centro_costo_id, orden_compra_id on public.cxp
+    deferrable initially deferred
+    for each row
+    execute function public.cxp_validar_distribucion_total()
+  $sql$;
+end;
+$$;
 
 select pg_notify('pgrst', 'reload schema');
