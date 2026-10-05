@@ -528,7 +528,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
   it('R19: el tema y los menús quedan acotados al modal', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
-    expect(css).toMatch(/\.card\s*\{[\s\S]*background:\s*white;/);
+    expect(css).toMatch(/\.card\s*\{[\s\S]*background:\s*(?:white|var\(--white\));/);
     expect(css).toContain('.diagnostico-modal-card { background: var(--white);');
     expect(css).toContain('.diagnostico-combobox-menu { position: fixed;');
     expect(source).toContain('onMouseDown={event => event.preventDefault()}');

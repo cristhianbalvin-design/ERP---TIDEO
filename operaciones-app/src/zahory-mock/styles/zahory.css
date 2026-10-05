@@ -687,6 +687,23 @@ a { color: var(--cyan); text-decoration: none; }
 .diagnostico-modal-card table { background: var(--white); color: var(--text); border-color: var(--card-border); }
 .diagnostico-modal-card th,
 .diagnostico-modal-card td { color: var(--text); border-color: var(--card-border); }
+.diagnostico-modal-card .btn-secondary {
+  background: var(--white);
+  color: var(--text);
+  border-color: var(--card-border);
+}
+.diagnostico-modal-card .btn-secondary:hover { background: var(--row-alt); }
+.diagnostico-modal-card .btn-primary {
+  background: var(--navy);
+  color: #fff;
+}
+.diagnostico-modal-card .btn-primary:hover { background: var(--navy-2); }
+[data-theme='light'] .diagnostico-modal-card .btn-secondary {
+  background: var(--white);
+  color: var(--heading);
+  border-color: var(--navy);
+}
+[data-theme='light'] .diagnostico-modal-card .btn-secondary:hover { background: var(--surface-3); }
 .diagnostico-combobox-menu { position: fixed; z-index: 1100; max-height: 220px; overflow-y: auto; background: var(--white); color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; box-shadow: var(--shadow-md); }
 .diagnostico-modal-card .diagnostico-combobox-menu > button { background: var(--white); color: var(--text); border-color: var(--card-border); }
 .diagnostico-modal-card .diagnostico-combobox-menu > button.is-selected { background: var(--row-alt); color: var(--text); }
