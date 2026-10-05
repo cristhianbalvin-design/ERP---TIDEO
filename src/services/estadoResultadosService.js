@@ -681,6 +681,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
         fecha: c.fecha_er,
         concepto: c.ordenes_trabajo?.numero || c.ordenes_trabajo?.servicio || c.ordenes_trabajo?.descripcion || 'Costo de OT',
         documento: c.ordenes_trabajo?.numero,
+        cecoId: c.ordenes_trabajo?.centro_costo_id,
       };
       addToBlock(block, labelByTipo('mano_obra', 'Mano de obra directa'), c.mano_obra, c.moneda, { ...detalleOt, detalle: 'Mano de obra' });
       addToBlock(block, labelByTipo('materiales', 'Materiales consumidos'), c.materiales, c.moneda, { ...detalleOt, detalle: 'Materiales' });

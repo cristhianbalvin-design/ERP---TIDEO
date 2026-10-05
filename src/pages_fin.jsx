@@ -4433,6 +4433,9 @@ function Resultados({ role }) {
         )}
         </>}
       </div>
+      <div className="alert alert-info" style={{ marginTop:16, fontSize:12 }}>
+        <strong>Clasificación por CECO:</strong> los gastos asignados a un CECO <strong>productivo</strong> se muestran en <strong>Costo de Ventas</strong>; los asignados a un CECO de <strong>apoyo</strong> o <strong>estructural</strong> se muestran en <strong>Gastos Operativos</strong>. Por eso una misma categoría puede aparecer en ambas secciones.
+      </div>
       <div className="text-muted mt-4" style={{ fontSize:12, textAlign:'center' }}>
         Haz clic en las filas principales para expandir el detalle por concepto. El ER no convierte entre PEN y USD.
         {tcRef && <span> · La columna Total S/ es referencial y usa el TC {tcRefLabel} del período. El ER no consolida monedas para fines contables.</span>}
@@ -4459,7 +4462,7 @@ function Resultados({ role }) {
               <div className="table-wrap">
                 <table className="tbl">
                   <thead>
-                    <tr><th>Fecha</th><th>Concepto</th><th>Origen</th><th>Documento / tercero</th><th className="num">Importe</th></tr>
+                    <tr><th>Fecha</th><th>Concepto</th><th>CECO</th><th>Origen</th><th>Documento / tercero</th><th className="num">Importe</th></tr>
                   </thead>
                   <tbody>
                     {detalleCategoria.details?.map((detail, index) => (
@@ -4468,6 +4471,18 @@ function Resultados({ role }) {
                         <td>
                           <div style={{ fontWeight:600 }}>{detail.concepto || '-'}</div>
                           {detail.detalle && <div className="text-muted" style={{ fontSize:11 }}>{detail.detalle}</div>}
+                        </td>
+                        <td>
+                          {(() => {
+                            const ceco = centrosCosto?.find(item => item.id === detail.cecoId);
+                            const naturaleza = ceco?.naturaleza_economica;
+                            return (
+                              <>
+                                <div style={{ fontWeight:600 }}>{ceco?.nombre || detail.cecoId || '-'}</div>
+                                {naturaleza && <div className="text-muted" style={{ fontSize:11 }}>{naturaleza}</div>}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td><span className="badge badge-gray">{detail.fuente || 'Registro'}</span></td>
                         <td className="text-muted">{detail.documento || detail.tercero || detail.subcategoria || detail.origen || '-'}</td>
