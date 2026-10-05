@@ -13,6 +13,17 @@ SELECT
 FROM pg_proc p
 WHERE p.oid = 'public.listar_referencias_diagnostico(text,text,text)'::regprocedure;
 
+CREATE TEMP TABLE dry_visible_results (
+  result text,
+  row_count bigint,
+  contains_mojibake boolean,
+  contains_separator boolean,
+  output text,
+  sqlstate text,
+  message text
+);
+GRANT INSERT, SELECT ON dry_visible_results TO authenticated;
+
 DO $$
 DECLARE
   v_body_md5 text;
@@ -144,8 +155,9 @@ BEGIN
     RETURN;
   END IF;
 
-  RAISE EXCEPTION 'Tipo de referencia no válido: %', p_tipo
-    USING errcode = '22023';
+  RAISE EXCEPTION USING
+    MESSAGE = format(U&'Tipo de referencia no v\00E1lido: %s', p_tipo),
+    ERRCODE = '22023';
 END;
 $function$;
 
@@ -222,6 +234,13 @@ WITH behavior AS (
     NULL
   )
 )
+INSERT INTO dry_visible_results (
+  result,
+  row_count,
+  contains_mojibake,
+  contains_separator,
+  output
+)
 SELECT
   'BEHAVIOR_VISIBLE' AS result,
   row_count,
@@ -229,6 +248,44 @@ SELECT
   position(U&'\00B7' IN output) > 0 AS contains_separator,
   output
 FROM behavior;
+
+DO $$
+DECLARE
+  v_sqlstate text;
+  v_message text;
+BEGIN
+  BEGIN
+    PERFORM 1
+    FROM public.listar_referencias_diagnostico(
+      'emp_2000000000',
+      'tipo_invalido_para_prueba',
+      NULL
+    );
+    ASSERT false,
+      'INVALID_TYPE_FAILED: no se produjo SQLSTATE 22023';
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    GET STACKED DIAGNOSTICS
+      v_sqlstate = RETURNED_SQLSTATE,
+      v_message = MESSAGE_TEXT;
+  END;
+
+  ASSERT v_sqlstate = '22023',
+    format('INVALID_TYPE_FAILED: sqlstate=%s', v_sqlstate);
+  ASSERT position(U&'v\00E1lido' IN v_message) > 0,
+    format('INVALID_TYPE_FAILED: mensaje no contiene válido: %s', v_message);
+  ASSERT position(U&'\00C3' IN v_message) = 0,
+    format('INVALID_TYPE_FAILED: mensaje contiene U+00C3: %s', v_message);
+  ASSERT position(U&'\00C2' IN v_message) = 0,
+    format('INVALID_TYPE_FAILED: mensaje contiene U+00C2: %s', v_message);
+
+  INSERT INTO dry_visible_results (result, sqlstate, message)
+  VALUES ('INVALID_TYPE_VISIBLE', v_sqlstate, v_message);
+END;
+$$;
+
+SELECT *
+FROM dry_visible_results
+ORDER BY result;
 
 ROLLBACK;
 

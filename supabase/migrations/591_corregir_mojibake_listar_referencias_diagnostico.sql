@@ -1,5 +1,6 @@
 -- 591_corregir_mojibake_listar_referencias_diagnostico.sql
--- Corrige exclusivamente el separador mojibake de listar_referencias_diagnostico.
+-- Corrige exclusivamente el separador y el mensaje de error mojibake de
+-- listar_referencias_diagnostico.
 -- No modifica resolver_referencias_diagnostico ni otras funciones.
 
 CREATE OR REPLACE FUNCTION public.listar_referencias_diagnostico(
@@ -119,7 +120,8 @@ BEGIN
     RETURN;
   END IF;
 
-  RAISE EXCEPTION 'Tipo de referencia no válido: %', p_tipo
-    USING errcode = '22023';
+  RAISE EXCEPTION USING
+    MESSAGE = format(U&'Tipo de referencia no v\00E1lido: %s', p_tipo),
+    ERRCODE = '22023';
 END;
 $function$;

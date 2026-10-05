@@ -1,6 +1,7 @@
 -- TIDEO ERP - Reversion de 591_corregir_mojibake_listar_referencias_diagnostico.sql
 -- Ejecutar unicamente de forma explicita y controlada.
--- Esta reversion restaura el separador U+00C2 U+00B7 anterior en
+-- Esta reversion restaura el separador U+00C2 U+00B7 y el mensaje de error
+-- anterior en
 -- public.listar_referencias_diagnostico(text, text, text).
 -- No es una migracion y no debe copiarse al directorio supabase/migrations.
 
@@ -121,7 +122,7 @@ BEGIN
     RETURN;
   END IF;
 
-  RAISE EXCEPTION 'Tipo de referencia no válido: %', p_tipo
+  RAISE EXCEPTION 'Tipo de referencia no vÃ¡lido: %', p_tipo
     USING errcode = '22023';
 END;
 $function$;
