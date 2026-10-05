@@ -1,128 +1,126 @@
 -- TIDEO ERP - Reversion de 591_corregir_mojibake_listar_referencias_diagnostico.sql
 -- Ejecutar unicamente de forma explicita y controlada.
--- Esta reversion restaura el separador U+00C2 U+00B7 y el mensaje de error
--- anterior en
--- public.listar_referencias_diagnostico(text, text, text).
+-- Esta reversion restaura exactamente public.listar_referencias_diagnostico.
 -- No es una migracion y no debe copiarse al directorio supabase/migrations.
 
-CREATE OR REPLACE FUNCTION public.listar_referencias_diagnostico(
+create or replace function public.listar_referencias_diagnostico(
   p_empresa_id text,
   p_tipo text,
   p_busqueda text default null
 )
-RETURNS TABLE (
+returns table (
   id text,
   numero text,
   cliente text,
   activo text,
   sociedad_id uuid
 )
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-DECLARE
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $function$
+declare
   v_sociedades uuid[];
   v_busqueda text := nullif(btrim(p_busqueda), '');
-BEGIN
-  IF NOT public.usuario_tiene_empresa(p_empresa_id) THEN
-    RETURN;
-  END IF;
+begin
+  if not public.usuario_tiene_empresa(p_empresa_id) then
+    return;
+  end if;
 
-  IF NOT public.usuario_puede(
+  if not public.usuario_puede(
     p_empresa_id,
     'diagnostico_tecnico',
     'ver'
-  ) THEN
-    RETURN;
-  END IF;
+  ) then
+    return;
+  end if;
 
   v_sociedades := public.usuario_alcance_sociedades(p_empresa_id);
 
-  IF p_tipo = 'mantenimiento' THEN
-    RETURN QUERY
-    SELECT
+  if p_tipo = 'mantenimiento' then
+    return query
+    select
       r.id,
       r.numero,
       coalesce(
         nullif(btrim(c.razon_social), ''),
         nullif(btrim(c.nombre_comercial), ''),
         c.id
-      ) AS cliente,
+      ) as cliente,
       concat_ws(
-        U&' \00C2\00B7 ',
+        ' Â· ',
         a.codigo,
         a.nombre,
         a.marca,
         a.modelo,
         a.placa_serie
-      ) AS activo,
+      ) as activo,
       r.sociedad_id
-    FROM public.recepciones_activos_cliente r
-    JOIN public.activos a
-      ON a.id = r.activo_id
-     AND a.empresa_id = r.empresa_id
-    LEFT JOIN public.cuentas c
-      ON c.id = a.cliente_propietario_id
-     AND c.empresa_id = r.empresa_id
-    WHERE r.empresa_id = p_empresa_id
-      AND (
-        v_sociedades IS NULL
-        OR (
-          r.sociedad_id IS NOT NULL
-          AND r.sociedad_id = ANY(v_sociedades)
+    from public.recepciones_activos_cliente r
+    join public.activos a
+      on a.id = r.activo_id
+     and a.empresa_id = r.empresa_id
+    left join public.cuentas c
+      on c.id = a.cliente_propietario_id
+     and c.empresa_id = r.empresa_id
+    where r.empresa_id = p_empresa_id
+      and (
+        v_sociedades is null
+        or (
+          r.sociedad_id is not null
+          and r.sociedad_id = any(v_sociedades)
         )
       )
-      AND (
-        v_busqueda IS NULL
-        OR r.numero ILIKE '%' || v_busqueda || '%'
-        OR coalesce(c.razon_social, '') ILIKE '%' || v_busqueda || '%'
-        OR coalesce(c.nombre_comercial, '') ILIKE '%' || v_busqueda || '%'
-        OR concat_ws(
+      and (
+        v_busqueda is null
+        or r.numero ilike '%' || v_busqueda || '%'
+        or coalesce(c.razon_social, '') ilike '%' || v_busqueda || '%'
+        or coalesce(c.nombre_comercial, '') ilike '%' || v_busqueda || '%'
+        or concat_ws(
           ' ',
           a.codigo,
           a.nombre,
           a.marca,
           a.modelo,
           a.placa_serie
-        ) ILIKE '%' || v_busqueda || '%'
+        ) ilike '%' || v_busqueda || '%'
       )
-    ORDER BY r.numero;
+    order by r.numero;
 
-    RETURN;
-  END IF;
+    return;
+  end if;
 
-  IF p_tipo = 'fabricacion' THEN
-    RETURN QUERY
-    SELECT
+  if p_tipo = 'fabricacion' then
+    return query
+    select
       o.id,
       o.nombre,
       coalesce(
         nullif(btrim(c.razon_social), ''),
         nullif(btrim(c.nombre_comercial), ''),
         c.id
-      ) AS cliente,
-      null::text AS activo,
-      null::uuid AS sociedad_id
-    FROM public.oportunidades o
-    LEFT JOIN public.cuentas c
-      ON c.id = o.cuenta_id
-     AND c.empresa_id = o.empresa_id
-    WHERE o.empresa_id = p_empresa_id
-      AND o.estado = 'abierta'
-      AND (
-        v_busqueda IS NULL
-        OR o.nombre ILIKE '%' || v_busqueda || '%'
-        OR coalesce(c.razon_social, '') ILIKE '%' || v_busqueda || '%'
-        OR coalesce(c.nombre_comercial, '') ILIKE '%' || v_busqueda || '%'
+      ) as cliente,
+      null::text as activo,
+      null::uuid as sociedad_id
+    from public.oportunidades o
+    left join public.cuentas c
+      on c.id = o.cuenta_id
+     and c.empresa_id = o.empresa_id
+    where o.empresa_id = p_empresa_id
+      and o.estado = 'abierta'
+      and (
+        v_busqueda is null
+        or o.nombre ilike '%' || v_busqueda || '%'
+        or coalesce(c.razon_social, '') ilike '%' || v_busqueda || '%'
+        or coalesce(c.nombre_comercial, '') ilike '%' || v_busqueda || '%'
       )
-    ORDER BY o.nombre, o.id;
+    order by o.nombre, o.id;
 
-    RETURN;
-  END IF;
+    return;
+  end if;
 
-  RAISE EXCEPTION 'Tipo de referencia no vÃ¡lido: %', p_tipo
-    USING errcode = '22023';
-END;
+  raise exception 'Tipo de referencia no vÃ¡lido: %', p_tipo
+    using errcode = '22023';
+end;
 $function$;

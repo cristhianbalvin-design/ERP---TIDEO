@@ -3,6 +3,30 @@
 -- listar_referencias_diagnostico.
 -- No modifica resolver_referencias_diagnostico ni otras funciones.
 
+BEGIN;
+
+CREATE TEMP TABLE _591_before ON COMMIT DROP AS
+SELECT
+  p.oid,
+  md5(pg_get_functiondef(p.oid)) AS body_md5,
+  p.proacl,
+  p.proowner::regrole::text AS proowner,
+  p.prosecdef,
+  p.proconfig,
+  p.provolatile
+FROM pg_proc p
+WHERE p.oid = 'public.listar_referencias_diagnostico(text,text,text)'::regprocedure;
+
+DO $$
+DECLARE
+  v_body_md5 text;
+BEGIN
+  SELECT body_md5 INTO v_body_md5 FROM _591_before;
+  ASSERT v_body_md5 = '9fb853397728ae6240828845df59a319',
+    format('PRECONDITION_FAILED: md5 actual=%s esperado=9fb853397728ae6240828845df59a319', v_body_md5);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.listar_referencias_diagnostico(
   p_empresa_id text,
   p_tipo text,
@@ -125,3 +149,59 @@ BEGIN
     ERRCODE = '22023';
 END;
 $function$;
+
+DO $$
+DECLARE
+  v_before _591_before%ROWTYPE;
+  v_after record;
+BEGIN
+  SELECT * INTO v_before FROM _591_before;
+  SELECT
+    p.proacl,
+    p.proowner::regrole::text AS proowner,
+    p.prosecdef,
+    p.proconfig,
+    p.provolatile
+  INTO v_after
+  FROM pg_proc p
+  WHERE p.oid = v_before.oid;
+
+  ASSERT v_after.proacl IS NOT DISTINCT FROM v_before.proacl,
+    'ATTRIBUTE_CHANGED: proacl';
+  ASSERT v_after.proowner IS NOT DISTINCT FROM v_before.proowner,
+    'ATTRIBUTE_CHANGED: proowner';
+  ASSERT v_after.prosecdef IS NOT DISTINCT FROM v_before.prosecdef,
+    'ATTRIBUTE_CHANGED: prosecdef';
+  ASSERT v_after.proconfig IS NOT DISTINCT FROM v_before.proconfig,
+    'ATTRIBUTE_CHANGED: proconfig';
+  ASSERT v_after.provolatile IS NOT DISTINCT FROM v_before.provolatile,
+    'ATTRIBUTE_CHANGED: provolatile';
+END;
+$$;
+
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"30bc196b-808f-4f4b-a3ec-9bfe6b8f7837","role":"authenticated"}',
+  true
+);
+
+DO $$
+DECLARE
+  v_output text;
+BEGIN
+  SELECT coalesce(string_agg(coalesce(activo, ''), E'\n'), '')
+    INTO v_output
+  FROM public.listar_referencias_diagnostico(
+    'emp_2000000000',
+    'mantenimiento',
+    NULL
+  );
+
+  ASSERT position(U&'\00C2' IN v_output) = 0,
+    'POSTCONDITION_FAILED: la salida contiene U+00C2';
+  ASSERT position(U&'\00C3' IN v_output) = 0,
+    'POSTCONDITION_FAILED: la salida contiene U+00C3';
+END;
+$$;
+
+COMMIT;
