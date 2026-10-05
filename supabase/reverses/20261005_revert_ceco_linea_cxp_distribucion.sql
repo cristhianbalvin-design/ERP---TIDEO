@@ -1,4 +1,7 @@
 \set ON_ERROR_STOP on
+set local lock_timeout = '3s';
+set local statement_timeout = '60s';
+
 update public.solpe_interna s
 set items = coalesce((
   select jsonb_agg(
@@ -20,6 +23,19 @@ set items = coalesce((
 where o.items is not null;
 
 set constraints all immediate;
+
+-- Eliminar primero las FK evita que DROP TABLE las resuelva mientras espera
+-- locks sobre tablas de negocio. La reversa solo elimina objetos de esta fase.
+alter table if exists public.cxp_distribucion_ceco
+  drop constraint if exists cxp_distribucion_ceco_empresa_id_fkey;
+alter table if exists public.cxp_distribucion_ceco
+  drop constraint if exists cxp_distribucion_ceco_cxp_id_fkey;
+alter table if exists public.cxp_distribucion_ceco
+  drop constraint if exists cxp_distribucion_ceco_ceco_id_fkey;
+alter table if exists public.cxp_distribucion_ceco_excepciones
+  drop constraint if exists cxp_distribucion_ceco_excepciones_empresa_id_fkey;
+alter table if exists public.cxp_distribucion_ceco_excepciones
+  drop constraint if exists cxp_distribucion_ceco_excepciones_cxp_id_fkey;
 
 drop trigger if exists trg_cxp_distribucion_after_change on public.cxp;
 drop trigger if exists trg_cxp_distribucion_ceco_tenant on public.cxp_distribucion_ceco;
