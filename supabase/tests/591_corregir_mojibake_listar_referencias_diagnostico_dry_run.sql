@@ -212,29 +212,65 @@ BEGIN
 END;
 $$;
 
-ROLLBACK;
-
+WITH behavior AS (
+  SELECT
+    count(*) AS row_count,
+    coalesce(string_agg(coalesce(activo, ''), E'\n'), '') AS output
+  FROM public.listar_referencias_diagnostico(
+    'emp_2000000000',
+    'mantenimiento',
+    NULL
+  )
+)
 SELECT
-  md5(pg_get_functiondef(p.oid)) AS body_md5_after_rollback,
-  p.proacl,
-  p.proowner::regrole::text AS proowner,
-  p.prosecdef,
-  p.proconfig,
-  p.provolatile
-FROM pg_proc p
-WHERE p.oid = 'public.listar_referencias_diagnostico(text,text,text)'::regprocedure;
+  'BEHAVIOR_VISIBLE' AS result,
+  row_count,
+  position(U&'\00C2' IN output) > 0 AS contains_mojibake,
+  position(U&'\00B7' IN output) > 0 AS contains_separator,
+  output
+FROM behavior;
+
+ROLLBACK;
 
 DO $$
 DECLARE
   v_body_md5 text;
+  v_proacl aclitem[];
+  v_proowner text;
+  v_prosecdef boolean;
+  v_proconfig text[];
+  v_provolatile "char";
 BEGIN
-  SELECT md5(pg_get_functiondef(p.oid))
-    INTO v_body_md5
+  SELECT
+    md5(pg_get_functiondef(p.oid)),
+    p.proacl,
+    p.proowner::regrole::text,
+    p.prosecdef,
+    p.proconfig,
+    p.provolatile
+    INTO
+      v_body_md5,
+      v_proacl,
+      v_proowner,
+      v_prosecdef,
+      v_proconfig,
+      v_provolatile
   FROM pg_proc p
   WHERE p.oid = 'public.listar_referencias_diagnostico(text,text,text)'::regprocedure;
 
   ASSERT v_body_md5 = '9fb853397728ae6240828845df59a319',
     format('POST_ROLLBACK_FAILED: md5=%s esperado=9fb853397728ae6240828845df59a319', v_body_md5);
-  RAISE NOTICE 'POST_ROLLBACK_OK: md5=%', v_body_md5;
+  ASSERT v_proacl IS NOT DISTINCT FROM '{postgres=X/postgres,authenticated=X/postgres}'::aclitem[],
+    'POST_ROLLBACK_FAILED: proacl';
+  ASSERT v_proowner = 'postgres',
+    format('POST_ROLLBACK_FAILED: proowner=%s', v_proowner);
+  ASSERT v_prosecdef IS TRUE,
+    'POST_ROLLBACK_FAILED: prosecdef';
+  ASSERT v_proconfig IS NOT DISTINCT FROM ARRAY['search_path=public, pg_temp']::text[],
+    'POST_ROLLBACK_FAILED: proconfig';
+  ASSERT v_provolatile = 's',
+    format('POST_ROLLBACK_FAILED: provolatile=%s', v_provolatile);
+  RAISE NOTICE 'POST_ROLLBACK_OK: md5=%; proacl=%; proowner=%; prosecdef=%; proconfig=%; provolatile=%',
+    v_body_md5, v_proacl, v_proowner, v_prosecdef, v_proconfig, v_provolatile;
 END;
 $$;
