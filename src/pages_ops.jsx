@@ -8093,8 +8093,13 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{etiquetaCeco(cecoIdDeLinea(i), centrosCosto)}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
-                    <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
+                    <td>{i.descripcion}</td>
+                    <td>{etiquetaCeco(cecoIdDeLinea(i), centrosCosto)}</td>
+                    <td>{i.cantidad}</td>
+                    <td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td>
+                    <td>{i.unidad}</td>
+                    <td>{moneyD(i.precio_unitario)}</td>
+                    <td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
                         <button type="button" className="btn btn-secondary btn-sm" data-local-form="true" onClick={() => abrirLiberacion(i)}>
