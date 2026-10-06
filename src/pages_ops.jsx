@@ -7444,6 +7444,7 @@ function OrdenesCompra() {
   const proveedoresOC = homologados.length ? homologados : proveedores;
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
+  const cecoBloqueadoPorCxP = Boolean(editandoOC?.id && cxpPorOrdenCompra.get(editandoOC.id)?.cxps?.length);
   const otDestinoOC = (ots || []).find(o => o.id === form.ot_id);
   const cecoDestinoOC = (centrosCosto || []).find(c => c.id === form.centro_costo_id);
   const destinoOC = resolverSociedadDestino({
@@ -7508,7 +7509,9 @@ function OrdenesCompra() {
         item_id: item.item_id || null,
         solpe_id: item.solpe_id || null,
         solpe_item_id: item.solpe_item_id || null,
-        ceco_id: cecoMixto ? cecoIdDeLinea(item) : form.centro_costo_id,
+        ceco_id: cecoBloqueadoPorCxP
+          ? cecoIdDeLinea(item)
+          : cecoMixto ? cecoIdDeLinea(item) : form.centro_costo_id,
         material_id: item.material_id || null,
         codigo: mat?.codigo || item.codigo || null,
         descripcion: item.descripcion || mat?.descripcion || 'Item de compra',
@@ -7519,7 +7522,9 @@ function OrdenesCompra() {
       };
     }).filter(item => item.descripcion && item.cantidad > 0);
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
-    const centroCostoCabecera = cecoMixto
+    const centroCostoCabecera = cecoBloqueadoPorCxP
+      ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
+      : cecoMixto
       ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
       : form.centro_costo_id;
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
@@ -7563,7 +7568,7 @@ function OrdenesCompra() {
       <div className="card" style={{padding:12, marginBottom:12}}><label className="text-muted" style={{fontSize:12, display:'block', marginBottom:6}}>Origen de compra</label><select className="select" style={{maxWidth:260}} value={origenFiltro} onChange={e=>setOrigenFiltro(e.target.value)}><option value="todos">Todas las compras</option><option value="campo">Compra en campo</option><option value="otros">Compras normales</option></select></div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})} onRegistrarCxP={o => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: o.id })}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} cecoBloqueadoPorCxP={cecoBloqueadoPorCxP} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
@@ -7766,11 +7771,12 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
   );
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, modoEdicion = false, onClose, onCrear }) {
+function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, cecoBloqueadoPorCxP = false, modoEdicion = false, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const lineas = form.items?.length ? form.items : [nuevaLineaOC({ precio_unitario: 0 })];
   const cecoIdsLineas = idsCecoUnicos(lineas);
-  const cecoMixto = gruposCecoDeLineas(lineas).length > 1;
+  const gruposCecoLineas = gruposCecoDeLineas(lineas);
+  const cecoMixto = gruposCecoLineas.length > 1;
   const cecoCabecera = cecoMixto ? '' : (form.centro_costo_id || cecoIdsLineas[0] || '');
   const materialKey = lineas.map(i => i.material_id || '').join('|');
   const [precioHistorico, setPrecioHistorico] = useState({});
@@ -7819,7 +7825,8 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
   return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{modoEdicion ? 'Revisar orden de compra' : 'Nueva OC'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id || ''} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><SearchSelect value={form.proveedor_id} placeholder="Buscar proveedor..." options={proveedores.map(p => ({ id:p.id, label:`${p.razon_social}${p.estado==='observado'?' - observado':''}`, searchText:[p.razon_social, p.nombre_comercial, p.ruc, p.codigo].filter(Boolean).join(' ') }))} onChange={proveedor_id=>setForm(v=>({...v,proveedor_id}))}/></div>
-      <div className="input-group"><label>CECO *</label>{cecoMixto ? <select className="select" value="" disabled><option value="">Múltiples ({cecoIdsLineas.length})</option></select> : form.origen_compra === 'directa' ? <SearchSelect value={cecoCabecera} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={cecoCabecera} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
+      <div className="input-group"><label>CECO *</label>{cecoMixto ? <select className="select" value="" disabled><option value="">Múltiples ({gruposCecoLineas.length})</option></select> : cecoBloqueadoPorCxP ? <select className="select" value={cecoCabecera} disabled><option value="">{cecoCabecera ? etiquetaCeco(cecoCabecera, centrosCosto) : 'Sin CECO'}</option></select> : form.origen_compra === 'directa' ? <SearchSelect value={cecoCabecera} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={cecoCabecera} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
+      {cecoBloqueadoPorCxP && <div className="text-muted" style={{fontSize:11, marginTop:-6}}>El CECO está bloqueado porque esta OC tiene una CxP no anulada.</div>}
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
       <SociedadReadOnlyField {...destinoSociedad} style={{gridColumn:'1/-1'}} />
