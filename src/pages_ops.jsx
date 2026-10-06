@@ -7847,7 +7847,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, usuarios = [], personalOperativo = [], personalAdmin = [], addToast, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, usuarios = [], personalOperativo = [], personalAdmin = [], centrosCosto = [], addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
@@ -7858,6 +7858,19 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
   const [savingLiberacion, setSavingLiberacion] = useState(false);
 
   const ordenActual = ordenesCompra.find(o => o.id === orden.id) || orden;
+  const lineasCecoDetalle = ordenActual.items || [];
+  const cecoIdsDetalle = idsCecoUnicos(lineasCecoDetalle);
+  const tieneLineaSinCecoDetalle = lineasCecoDetalle.some(item => !cecoIdDeLinea(item));
+  const cecoBucketsDetalle = [...cecoIdsDetalle, ...(tieneLineaSinCecoDetalle ? [null] : [])];
+  const cecoMixtoDetalle = cecoBucketsDetalle.length > 1;
+  const cecoCabeceraDetalle = cecoMixtoDetalle ? null : (cecoBucketsDetalle[0] || ordenActual.centro_costo_id || null);
+  const desgloseCecosDetalle = cecoBucketsDetalle.map(cecoId => ({
+    cecoId,
+    etiqueta: etiquetaCeco(cecoId, centrosCosto),
+    monto: lineasCecoDetalle
+      .filter(item => cecoIdDeLinea(item) === cecoId)
+      .reduce((total, item) => total + Number(item.subtotal ?? (Number(item.cantidad || 0) * Number(item.precio_unitario || 0))), 0),
+  }));
   const transitosOC = (ocTransitos || []).filter(t => t.orden_compra_id === ordenActual.id)
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
   const transitoActual = transitoPrincipalOC(transitosOC);
@@ -8042,6 +8055,10 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
             <p><strong>Recepción:</strong> {ordenActual.porcentaje_recibido >= 100 ? 'Recibida' : 'Pendiente de recepción'}</p>
           </div>}
           <p><strong>SOLPE origen:</strong> {ordenActual.solpe_codigo || ordenActual.solpe_id || '-'}</p>
+          <p><strong>CECO:</strong> {cecoMixtoDetalle ? `Múltiples (${cecoBucketsDetalle.length})` : etiquetaCeco(cecoCabeceraDetalle, centrosCosto)}</p>
+          {cecoMixtoDetalle && <ul style={{ marginTop: 0, paddingLeft: 22 }}>
+            {desgloseCecosDetalle.map(item => <li key={item.cecoId || 'sin-ceco'}>{item.etiqueta}: {moneyD(item.monto)}</li>)}
+          </ul>}
           <p><strong>Descripcion:</strong> {ordenActual.descripcion}</p>
           <p><strong>Condicion pago:</strong> {ordenActual.condicion_pago}</p>
           <p><strong>Entrega esperada:</strong> {ordenActual.fecha_entrega_esperada}</p>
@@ -8053,7 +8070,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Item</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Item</th><th>CECO</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
               <tbody>{ordenActual.items?.map((i, idx) => {
                 const pedido = Number(i.cantidad || 0);
                 const recibido = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, i);
@@ -8061,7 +8078,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
+                    <td>{i.descripcion}</td><td>{etiquetaCeco(cecoIdDeLinea(i), centrosCosto)}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
                     <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
