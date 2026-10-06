@@ -1,6 +1,7 @@
 import { normalizeCurrency } from '../lib/currency.js';
 import { isSupabaseMode } from '../lib/dataMode.js';
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { crearEntradasDevengoCxp } from './cxpDistribucionCeco.js';
 
 export const ER_CURRENCIES = ['PEN', 'USD'];
 
@@ -501,6 +502,22 @@ async function loadCxPDevengos(supabase, empresaId, periodo, sociedadIds = null)
   return data || [];
 }
 
+async function loadCxPDistribucionesCeco(supabase, empresaId, cxpDevengos) {
+  const cxpIds = [...new Set((cxpDevengos || []).map(cxp => cxp.id).filter(Boolean))];
+  const filas = [];
+  for (let inicio = 0; inicio < cxpIds.length; inicio += 200) {
+    const lote = cxpIds.slice(inicio, inicio + 200);
+    const { data, error } = await supabase
+      .from('cxp_distribucion_ceco')
+      .select('cxp_id, ceco_id, monto')
+      .eq('empresa_id', empresaId)
+      .in('cxp_id', lote);
+    if (error) throw error;
+    filas.push(...(data || []));
+  }
+  return filas;
+}
+
 async function loadNomina(supabase, empresaId, periodo, effectiveCecoIds, sociedadIds = null) {
   if (effectiveCecoIds && effectiveCecoIds.length === 0) return [];
   const [year, month] = String(periodo || '').split('-').map(Number);
@@ -638,9 +655,16 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
     loadCajaChica(supabase, empresaId, periodo, scopeSociedades),
     cargarConfiguracionER(empresaId),
   ]);
+  const cxpDistribuciones = await loadCxPDistribucionesCeco(supabase, empresaId, cxpDevengos);
+  const distribucionesPorCxp = new Map();
+  cxpDistribuciones.forEach(fila => {
+    if (!distribucionesPorCxp.has(fila.cxp_id)) distribucionesPorCxp.set(fila.cxp_id, []);
+    distribucionesPorCxp.get(fila.cxp_id).push(fila);
+  });
   const naturalezaCeco = await loadNaturalezasCeco(supabase, empresaId, [
     ...comprasGastos.map(g => g.centro_costo_id),
     ...cxpDevengos.map(cxp => cxp.centro_costo_id),
+    ...cxpDistribuciones.map(fila => fila.ceco_id),
     ...detalleNomina.map(n => n.centro_costo_id),
     ...cajaChica.map(r => r.ceco_id),
   ]);
@@ -734,29 +758,37 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const cxpDevengosEr = cxpDevengos.filter(cxp => {
     if (!cxpCanDevengarEr(cxp)) return false;
     if (compraCoversCxp(cxp, comprasGastos)) return false;
-    if (!hasScopedFilters) return true;
-    if (!cxp.centro_costo_id) return false;
-    if (effectiveCecoIds && !effectiveCecoIds.includes(cxp.centro_costo_id)) return false;
-    return true;
+    return crearEntradasDevengoCxp(
+      { ...cxp, devengoAmount: cxpDevengoAmount(cxp) },
+      distribucionesPorCxp.get(cxp.id),
+      { hasScopedFilters, effectiveCecoIds },
+    ).length > 0;
   });
   cxpDevengosEr.forEach(cxp => {
     const label = cxpDevengoLabel(cxp);
     // Corrección 6: CxP con label Gastos financieros (via categoria_er) va a gastosFin, no gastosOp.
     const hasOt = cxp.ot_vinc_id != null;
     const entry = resolverCategoriaEr(erConfig, label, { hasOt });
-    const block = blockForSection(resolverSeccionGasto({
-      entry,
-      naturaleza: naturalezaCeco.get(cxp.centro_costo_id),
-    }));
-    addToBlock(block, entry?.nombre || label, cxpDevengoAmount(cxp), cxp.moneda, {
-      fuente: 'Cuentas por pagar',
-      id: cxp.id,
-      fecha: cxp.fecha_emision,
-      concepto: cxp.concepto || cxp.nombre_emisor || cxp.factura_numero || 'Cuenta por pagar',
-      documento: cxp.factura_numero || cxp.tipo_comprobante,
-      tercero: cxp.nombre_emisor,
-      origen: cxp.origen,
-      cecoId: cxp.centro_costo_id,
+    const entradas = crearEntradasDevengoCxp(
+      { ...cxp, devengoAmount: cxpDevengoAmount(cxp) },
+      distribucionesPorCxp.get(cxp.id),
+      { hasScopedFilters, effectiveCecoIds },
+    );
+    entradas.forEach(({ cecoId, amount: montoDevengable }) => {
+      const block = blockForSection(resolverSeccionGasto({
+        entry,
+        naturaleza: naturalezaCeco.get(cecoId),
+      }));
+      addToBlock(block, entry?.nombre || label, montoDevengable, cxp.moneda, {
+        fuente: 'Cuentas por pagar',
+        id: cxp.id,
+        fecha: cxp.fecha_emision,
+        concepto: cxp.concepto || cxp.nombre_emisor || cxp.factura_numero || 'Cuenta por pagar',
+        documento: cxp.factura_numero || cxp.tipo_comprobante,
+        tercero: cxp.nombre_emisor,
+        origen: cxp.origen,
+        cecoId,
+      });
     });
   });
 
