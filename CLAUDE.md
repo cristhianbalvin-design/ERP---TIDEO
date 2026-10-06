@@ -73,3 +73,36 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
+## 6. Flujo Claude (líder técnico) + Codex (desarrollador)
+
+**Aplica cuando el trabajo lo coordina Claude desde un chat del Project "ERP TIDEO Estandard" y lo ejecuta Codex vía el puente codexmcp.**
+
+### Roles
+- Claude: diagnostica, redacta prompts, revisa y verifica. Cristhian decide.
+- Codex: ejecuta. Su informe no es evidencia hasta que se verifica con salida literal (archivo:línea, salida de comandos) o leyendo el repo directamente.
+
+### Ciclo de trabajo
+1. Diagnóstico en solo lectura. Termina con STOP.
+2. Cristhian decide el alcance.
+3. Implementación en escritura acotada (`workspace-write`, sin red), con lista cerrada de archivos permitidos.
+4. Claude verifica por su cuenta: lee los archivos, ejecuta las pruebas y revisa el estado de git.
+5. Correcciones agrupadas en un solo prompt. Si Codex omite algo, se reporta y se corrige.
+
+### Estructura de cada prompt a Codex
+Contexto → Objetivo → Restricciones → Checklist. Sin código dentro del prompt. Pedir evidencia literal y cerrar con STOP.
+
+### Prohibido sin autorización explícita de Cristhian
+- `git commit`, `merge`, `push`, `stash`, `reset`, `clean`, `checkout`.
+- `supabase db push` y cualquier comando supabase.
+- Herramientas del conector Supabase que escriban (`apply_migration`, `execute_sql`) contra producción.
+- `git add .` (agregar siempre archivos por nombre).
+- Instalar paquetes o usar la red desde Codex.
+
+### SQL y base de datos
+Todo trabajo apunta a producción; no existe proyecto de desarrollo. El SQL se entrega solo como script `BEGIN … ROLLBACK` (dry-run) para que Cristhian lo revise. El COMMIT lo ejecuta él manualmente.
+
+### Entorno
+Windows / PowerShell: usar `Select-String`, no `grep`. Los PDF llevan la marca TIDEO. Las pruebas de la herramienta se hacen en un worktree descartable, nunca en la carpeta principal.
