@@ -6607,6 +6607,13 @@ function CxPResumenBadges({ cxpResumen, totalOc }) {
 }
 
 const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+const cecoIdDeLinea = linea => String(linea?.ceco_id || '').trim() || null;
+const idsCecoUnicos = lineas => [...new Set((lineas || []).map(cecoIdDeLinea).filter(Boolean))];
+const etiquetaCeco = (cecoId, centrosCosto = []) => {
+  if (!cecoId) return 'Sin CECO';
+  const ceco = centrosCosto.find(item => item.id === cecoId);
+  return ceco ? `${ceco.codigo ? `${ceco.codigo} - ` : ''}${ceco.nombre || ceco.id}` : cecoId;
+};
 const nuevaLineaOC = (overrides = {}) => ({
   item_id: generarItemOcId(),
   material_id: '',
@@ -6841,6 +6848,7 @@ function BandejaSourcing() {
   const [draggedKey, setDraggedKey] = useState('');
   const [generandoProveedores, setGenerandoProveedores] = useState(() => new Set());
   const [erroresSociedad, setErroresSociedad] = useState({});
+  const [erroresCeco, setErroresCeco] = useState({});
   const [otroProveedorAbierto, setOtroProveedorAbierto] = useState('');
   const [confirmacionFamilia, setConfirmacionFamilia] = useState(null);
   const [habilitandoFamilia, setHabilitandoFamilia] = useState(false);
@@ -6916,6 +6924,12 @@ function BandejaSourcing() {
     const key = sourcingLineaKey(linea);
     const anterior = linea.proveedor_asignado_id || null;
     setErroresSociedad(prev => {
+      const next = { ...prev };
+      if (anterior) delete next[anterior];
+      if (proveedorId) delete next[proveedorId];
+      return next;
+    });
+    setErroresCeco(prev => {
       const next = { ...prev };
       if (anterior) delete next[anterior];
       if (proveedorId) delete next[proveedorId];
@@ -7026,7 +7040,7 @@ function BandejaSourcing() {
   const resolverSociedadLinea = linea => {
     const solpe = solpesContext.find(item => item.id === linea.solpe_id);
     const ot = (ots || []).find(item => item.id === solpe?.ot_id);
-    const ceco = (centrosCosto || []).find(item => item.id === solpe?.centro_costo_id);
+    const ceco = (centrosCosto || []).find(item => item.id === cecoIdDeLinea(linea));
     return resolverSociedadDestino({
       sociedades: sociedadesDisponibles,
       origenes: [
@@ -7036,9 +7050,9 @@ function BandejaSourcing() {
           label: ('La OT ' + (ot?.numero || solpe?.ot_id || '')).trim(),
         },
         {
-          seleccionado: Boolean(solpe?.centro_costo_id),
+          seleccionado: Boolean(cecoIdDeLinea(linea)),
           sociedadId: ceco?.sociedad_id || null,
-          label: ('El CECO ' + (ceco?.codigo || solpe?.centro_costo_id || '')).trim(),
+          label: ('El CECO ' + (ceco?.codigo || cecoIdDeLinea(linea) || '')).trim(),
         },
       ],
       mensajeSinOrigen: 'No se pudo determinar la sociedad: la SOLPE no tiene OT ni CECO derivable.',
@@ -7061,8 +7075,39 @@ function BandejaSourcing() {
     }));
   };
 
+  const analizarCecosColumna = columna => {
+    const ids = idsCecoUnicos(columna?.lineas);
+    const tieneSinCeco = (columna?.lineas || []).some(linea => !cecoIdDeLinea(linea));
+    return {
+      ids,
+      tieneSinCeco,
+      mezclados: ids.length > 1 || (ids.length > 0 && tieneSinCeco),
+      todosSinCeco: ids.length === 0 && tieneSinCeco,
+      etiquetas: [...ids.map(id => etiquetaCeco(id, centrosCosto)), ...(tieneSinCeco ? ['Sin CECO'] : [])],
+    };
+  };
+
   const generarOCDesdeColumna = async columna => {
     if (!columna?.lineas?.length || generandoProveedores.has(columna.proveedorId)) return;
+    const resumenCeco = analizarCecosColumna(columna);
+    if (resumenCeco.mezclados) {
+      setErroresCeco(prev => ({
+        ...prev,
+        [columna.proveedorId]: {
+          titulo: 'No se puede generar la OC: hay CECOs mezclados.',
+          detalles: [
+            `CECOs en la columna: ${resumenCeco.etiquetas.join(', ')}.`,
+            'Reasigna las líneas conflictivas a otra columna antes de generar la OC.',
+          ],
+        },
+      }));
+      return;
+    }
+    setErroresCeco(prev => {
+      const next = { ...prev };
+      delete next[columna.proveedorId];
+      return next;
+    });
     const resoluciones = columna.lineas.map(linea => ({
       linea,
       resolucion: resolverSociedadLinea(linea),
@@ -7116,12 +7161,13 @@ function BandejaSourcing() {
       origen_tipo: 'solpe',
       proveedor_id: columna.proveedorId,
       ot_id: primeraSolpe?.ot_id || null,
-      centro_costo_id: primeraSolpe?.centro_costo_id || null,
+      centro_costo_id: resumenCeco.ids.length === 1 ? resumenCeco.ids[0] : null,
       descripcion: 'Sourcing consolidado - ' + sourceSolpes.length + ' SOLPE(s)',
       items: columna.lineas.map(linea => ({
         item_id: generarItemOcId(),
         solpe_id: linea.solpe_id || null,
         solpe_item_id: linea.solpe_item_id || null,
+        ceco_id: cecoIdDeLinea(linea),
         material_id: linea.material_id || null,
         codigo: linea.material_codigo || null,
         descripcion: linea.material_descripcion || 'Item de compra',
@@ -7177,6 +7223,7 @@ function BandejaSourcing() {
     const dias = diasEnCampo(linea);
     const puedeArrastrar = !estaEnCampo && !guardando.has(key) && otroProveedorAbierto !== key;
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
+    const cecoId = cecoIdDeLinea(linea);
     return <article
       className="card sourcing-card"
       key={key}
@@ -7206,6 +7253,7 @@ function BandejaSourcing() {
       >En campo: {linea.comprador_nombre || linea.comprador_campo_id} · hace {dias} {dias === 1 ? 'día' : 'días'}</div>}
       <div className="text-muted" style={{fontSize:12, marginTop:10}}>Cantidad: <strong>{linea.cantidad ?? '-'}</strong> {linea.unidad || ''}</div>
       <div className="text-muted" style={{fontSize:12, marginTop:4}}>SOLPE: <strong>{linea.solpe_codigo || linea.solpe_id}</strong></div>
+      <div className="text-muted" style={{fontSize:12, marginTop:4}}>CECO: <strong style={{color: cecoId ? 'var(--fg)' : 'var(--orange)'}}>{etiquetaCeco(cecoId, centrosCosto)}</strong></div>
       {!asignada && <div style={{marginTop:12}}>
         <div className="text-muted" style={{fontSize:12, marginBottom:7}}>Asignar proveedor</div>
         {estaEnCampo
@@ -7280,6 +7328,7 @@ function BandejaSourcing() {
       {columnasProveedor.map(columna => {
         const proveedor = proveedores.find(item => item.id === columna.proveedorId);
         const nombre = proveedor?.razon_social || proveedor?.nombre_comercial || columna.proveedorId;
+        const resumenCeco = analizarCecosColumna(columna);
         return <section
           className="card"
           key={columna.proveedorId}
@@ -7293,6 +7342,16 @@ function BandejaSourcing() {
             <span className="badge">En espera</span>
           </div>
           <div style={{display:'grid', gap:10, marginTop:12}}>{columna.lineas.map(linea => renderTarjeta(linea, true))}</div>
+          {resumenCeco.todosSinCeco && <div className="alert alert-warning" style={{marginTop:14, fontSize:12}} role="alert">
+            <strong>Advertencia: esta columna no tiene CECO.</strong>
+            <div>La OC se generará sin CECO por línea hasta que se asigne uno.</div>
+          </div>}
+          {erroresCeco[columna.proveedorId] && <div className="alert alert-danger" style={{marginTop:14, fontSize:12}} role="alert">
+            <strong>{erroresCeco[columna.proveedorId].titulo}</strong>
+            <ul style={{margin:'8px 0 0', paddingLeft:18}}>
+              {erroresCeco[columna.proveedorId].detalles.map(detalle => <li key={detalle}>{detalle}</li>)}
+            </ul>
+          </div>}
           {erroresSociedad[columna.proveedorId] && <div className="alert alert-danger" style={{marginTop:14, fontSize:12}} role="alert">
             <strong>{erroresSociedad[columna.proveedorId].titulo}</strong>
             <ul style={{margin:'8px 0 0', paddingLeft:18}}>
