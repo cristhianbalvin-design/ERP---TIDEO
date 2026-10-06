@@ -7491,13 +7491,18 @@ function OrdenesCompra() {
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
     const gruposCecoLineas = gruposCecoDeLineas(form.items);
-    const cecoIdsLineas = idsCecoUnicos(form.items);
     const cecoMixto = gruposCecoLineas.length > 1;
+    const tieneSinCeco = gruposCecoLineas.includes('__sin_ceco__');
+    const cecoCabeceraEfectivo = form.centro_costo_id || (cecoMixto ? null : idsCecoUnicos(form.items)[0] || null);
     if (cecoMixto) {
       const etiquetas = gruposCecoLineas.map(grupo => grupo === '__sin_ceco__' ? 'Sin CECO' : etiquetaCeco(grupo, centrosCosto));
       addToast(`La OC tiene CECOs mixtos (${etiquetas.join(', ')}). Reasigna las líneas o completa el CECO antes de dejarla lista.`);
+      if (emitir && tieneSinCeco) {
+        addToast('No se puede emitir una OC mixta con líneas Sin CECO. Guarda el borrador y reasigna las líneas o completa el CECO antes de emitir.');
+        return;
+      }
     }
-    if (!cecoMixto && !form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
+    if (!cecoMixto && !cecoCabeceraEfectivo) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addToast('Selecciona una sociedad antes de continuar.'); return; }
     const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
     if (!proveedorSeleccionado) { addToast('Selecciona un proveedor valido antes de emitir la OC.'); return; }
@@ -7511,7 +7516,7 @@ function OrdenesCompra() {
         solpe_item_id: item.solpe_item_id || null,
         ceco_id: cecoBloqueadoPorCxP
           ? cecoIdDeLinea(item)
-          : cecoMixto ? cecoIdDeLinea(item) : form.centro_costo_id,
+          : cecoMixto ? cecoIdDeLinea(item) : cecoCabeceraEfectivo,
         material_id: item.material_id || null,
         codigo: mat?.codigo || item.codigo || null,
         descripcion: item.descripcion || mat?.descripcion || 'Item de compra',
@@ -7526,7 +7531,7 @@ function OrdenesCompra() {
       ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
       : cecoMixto
       ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
-      : form.centro_costo_id;
+      : cecoCabeceraEfectivo;
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
     const oc = { id:editandoOC?.id || `oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:editandoOC?.codigo || `OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:centroCostoCabecera, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:editandoOC?.fecha_emision || new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:editandoOC?.porcentaje_recibido || 0, notas_proveedor:editandoOC?.notas_proveedor || '', notas_internas:editandoOC?.notas_internas || '', creado_por:editandoOC?.creado_por || authUser?.id || null };
