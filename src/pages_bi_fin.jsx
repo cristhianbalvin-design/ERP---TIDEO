@@ -6,6 +6,7 @@ import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
+import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
 
 const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
@@ -13,6 +14,11 @@ const vc = (v) => v >= 0 ? 'var(--green)' : 'var(--danger)';
 const vi = (v) => v >= 0 ? '▲' : '▼';
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const normalizarCategoriaPresupuesto = valor => String(valor || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim();
 
 function KPI({ label, value, sub, subColor }) {
   return (
@@ -334,7 +340,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
   const {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
-    comprasGastos, ots, usuarios, empresa, authUser,
+    comprasGastos, cxp, cxpDistribucionesCeco, ots, usuarios, empresa, authUser,
     centrosCosto, centrosBeneficio,
   } = useApp();
 
@@ -366,7 +372,33 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
   const esPeriodoMensual = periodo.length === 7;
 
-  const calcularReal = (categoria) => {
+  const filasRealCxp = useMemo(() => crearFilasRealPresupuestoCxp({
+    cxp,
+    cxpDistribucionesCeco,
+    comprasGastos,
+    empresaId,
+    periodo,
+    efectivoCecos,
+  }), [cxp, cxpDistribucionesCeco, comprasGastos, empresaId, periodo, efectivoCecos]);
+
+  const filasCxpDeCategoria = categoria => filasRealCxp.filter(fila =>
+    normalizarCategoriaPresupuesto(fila.categoriaEr) === normalizarCategoriaPresupuesto(categoria)
+  );
+  const filasCxpSinCategoria = useMemo(() => filasRealCxp.filter(fila => !partidas.some(partida =>
+    normalizarCategoriaPresupuesto(partida.categoria) === normalizarCategoriaPresupuesto(fila.categoriaEr)
+  )), [filasRealCxp, partidas]);
+  const realFilasCxp = filas => filas.reduce((s, fila) => s + Number(fila.monto || 0), 0);
+  const desgloseFilasCxp = filas => filas.map(fila => ({
+    fecha: fila.fecha,
+    descripcion: fila.concepto || 'Cuenta por pagar',
+    proveedor: fila.proveedor || '—',
+    monto: Number(fila.monto || 0),
+    documento: fila.documento || '—',
+  }));
+
+  const calcularReal = (categoria, esSinCategoriaCxp = false) => {
+    if (esSinCategoriaCxp) return realFilasCxp(filasCxpSinCategoria);
+    const realCxp = realFilasCxp(filasCxpDeCategoria(categoria));
     if (categoria === 'Mano de obra') {
       return (ots || []).filter(o => {
         if (o.empresa_id !== empresaId) return false;
@@ -375,7 +407,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
         if (!['cerrada', 'facturada'].includes(o.estado)) return false;
         if (presActivo?.centro_costo_id && o.centro_costo_id && o.centro_costo_id !== presActivo.centro_costo_id) return false;
         return true;
-      }).reduce((s, o) => s + Number(o.costo_real || 0), 0);
+      }).reduce((s, o) => s + Number(o.costo_real || 0), 0) + realCxp;
     }
     return (comprasGastos || []).filter(g => {
       if (g.empresa_id !== empresaId) return false;
@@ -383,10 +415,12 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
       if (gP !== periodo || g.categoria !== categoria) return false;
       if (efectivoCecos && !efectivoCecos.includes(g.centro_costo_id)) return false;
       return true;
-    }).reduce((s, g) => s + Number(g.monto || 0), 0);
+    }).reduce((s, g) => s + Number(g.monto || 0), 0) + realCxp;
   };
 
-  const getDesglose = (categoria) => {
+  const getDesglose = (categoria, esSinCategoriaCxp = false) => {
+    if (esSinCategoriaCxp) return desgloseFilasCxp(filasCxpSinCategoria);
+    const desgloseCxp = desgloseFilasCxp(filasCxpDeCategoria(categoria));
     if (categoria === 'Mano de obra') {
       return (ots || [])
         .filter(o => {
@@ -394,7 +428,8 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
           const otP = esPeriodoMensual ? (o.fecha_cierre || o.fecha_inicio || '').slice(0, 7) : (o.fecha_cierre || o.fecha_inicio || '').slice(0, 4);
           return otP === periodo && ['cerrada', 'facturada'].includes(o.estado);
         })
-        .map(o => ({ fecha: o.fecha_cierre || o.fecha_inicio || '', descripcion: o.numero ? `OT ${o.numero}` : o.nombre || 'OT', proveedor: o.tecnico_lider || '—', monto: Number(o.costo_real || 0), documento: o.numero || '—' }));
+        .map(o => ({ fecha: o.fecha_cierre || o.fecha_inicio || '', descripcion: o.numero ? `OT ${o.numero}` : o.nombre || 'OT', proveedor: o.tecnico_lider || '—', monto: Number(o.costo_real || 0), documento: o.numero || '—' }))
+        .concat(desgloseCxp);
     }
     return (comprasGastos || [])
       .filter(g => {
@@ -402,11 +437,13 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
         const gP = esPeriodoMensual ? (g.fecha || '').slice(0, 7) : (g.fecha || '').slice(0, 4);
         return gP === periodo && g.categoria === categoria;
       })
-      .map(g => ({ fecha: g.fecha || '', descripcion: g.descripcion || '—', proveedor: g.proveedor || '—', monto: Number(g.monto || 0), documento: g.numero_documento || g.factura || '—' }));
+      .map(g => ({ fecha: g.fecha || '', descripcion: g.descripcion || '—', proveedor: g.proveedor || '—', monto: Number(g.monto || 0), documento: g.numero_documento || g.factura || '—' }))
+      .concat(desgloseCxp);
   };
 
   const totPres = partidas.reduce((s, p) => s + Number(p.monto_presupuestado || 0), 0);
-  const totReal = partidas.reduce((s, p) => s + calcularReal(p.categoria), 0);
+  const totRealSinCategoria = realFilasCxp(filasCxpSinCategoria);
+  const totReal = partidas.reduce((s, p) => s + calcularReal(p.categoria), 0) + totRealSinCategoria;
   const varNeta = totReal - totPres;
   const execPct = totPres > 0 ? Math.round(totReal / totPres * 100) : 0;
   const alertas = partidas.filter(p => calcularReal(p.categoria) > Number(p.monto_presupuestado || 0));
@@ -564,6 +601,25 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                       </tr>
                     );
                   })}
+                  {filasCxpSinCategoria.length > 0 && (() => {
+                    const real = totRealSinCategoria;
+                    return (
+                      <tr key="compras-oc-sin-categoria" style={{ cursor: 'pointer' }} onClick={() => setPanelDetalle({
+                        id: 'compras-oc-sin-categoria',
+                        categoria: 'Compras por OC sin categoría',
+                        descripcion: 'CxP de OC sin partida presupuestal coincidente',
+                        monto_presupuestado: 0,
+                        esSinCategoriaCxp: true,
+                      })}>
+                        <td><span style={{ color: 'var(--danger)', fontWeight: 700, marginRight: 4 }}>!</span>Compras por OC sin categoría</td>
+                        <td style={{ color: 'var(--fg-muted)' }}>Sin partida presupuestal</td>
+                        <td style={{ textAlign: 'right' }}>—</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{S(real)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger)' }}>+{S(real)}</td>
+                        <td style={{ color: 'var(--fg-subtle)', textAlign: 'center', fontSize: 10 }}>—</td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -723,19 +779,19 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                 <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Presupuestado</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{S(panelDetalle.monto_presupuestado)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{panelDetalle.esSinCategoriaCxp ? '—' : S(panelDetalle.monto_presupuestado)}</div>
                 </div>
                 <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Real ejecutado</div>
                   {(() => {
-                    const r = calcularReal(panelDetalle.categoria);
+                    const r = calcularReal(panelDetalle.categoria, panelDetalle.esSinCategoriaCxp);
                     return <div style={{ fontSize: 18, fontWeight: 700, color: r > Number(panelDetalle.monto_presupuestado) ? 'var(--danger)' : 'var(--green)' }}>{S(r)}</div>;
                   })()}
                 </div>
               </div>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Desglose del Real</div>
               {(() => {
-                const items = getDesglose(panelDetalle.categoria);
+                const items = getDesglose(panelDetalle.categoria, panelDetalle.esSinCategoriaCxp);
                 if (!items.length) return <div style={{ color: 'var(--fg-muted)', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>Sin registros para este período.</div>;
                 return (
                   <table className="tbl" style={{ fontSize: 12 }}>
