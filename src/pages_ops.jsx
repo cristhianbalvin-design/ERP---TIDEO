@@ -12268,6 +12268,7 @@ function SOLPE() {
   const [errItems, setErrItems] = useState(false);
   const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
   const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
+  const [filtrosSOLPE, setFiltrosSOLPE] = useState({ estado: '', fechaDesde: '', fechaHasta: '', solicitante: '', ceco: '' });
 
   useEffect(() => {
     let vigente = true;
@@ -12292,13 +12293,89 @@ function SOLPE() {
     modoVistaSociedadSOLPE.sociedadIdEscritura,
   );
 
-  const query = searchQuery.toLowerCase();
-  const filteredSolpes = solpes.filter(s =>
-    (s.numero || s.codigo || '').toLowerCase().includes(query) ||
-    getOTNumero(s.ot_id).toLowerCase().includes(query) ||
-    (s.solicitante || '').toLowerCase().includes(query) ||
-    (s.centro_costo || '').toLowerCase().includes(query)
-  );
+  const solpeCECOs = useMemo(() => new Map((solpes || []).map(solpe => [solpe.id, (solpe.items || []).map(item => {
+    // Legacy SOLPE rows can omit line ceco_id; use the header CECO as the documented fallback.
+    return cecoIdDeLinea(item) || String(solpe.centro_costo_id || '').trim() || null;
+  })])), [solpes]);
+  const ocPorSolpe = useMemo(() => {
+    const porSolpe = new Map();
+    const agregar = (solpeId, oc) => {
+      if (!solpeId || !oc) return;
+      if (!porSolpe.has(solpeId)) porSolpe.set(solpeId, []);
+      if (!porSolpe.get(solpeId).some(item => item.id === oc.id)) porSolpe.get(solpeId).push(oc);
+    };
+    (ordenesCompra || []).forEach(oc => {
+      agregar(oc.solpe_id, oc);
+      (oc.items || []).forEach(item => agregar(item?.solpe_id, oc));
+    });
+    (procesosCompra || []).forEach(proceso => {
+      if (!proceso.solpe_id) return;
+      (ordenesCompra || []).filter(oc => oc.proceso_compra_id === proceso.id).forEach(oc => agregar(proceso.solpe_id, oc));
+    });
+    return porSolpe;
+  }, [ordenesCompra, procesosCompra]);
+  const sociedadesIdsVistaSOLPEKey = modoVistaSociedadSOLPE.sociedadesIds.join('|');
+  const solpesConSociedadVista = useMemo(() => {
+    if (modoVistaSociedadSOLPE.sinFiltro) return solpes || [];
+    const permitidas = new Set(modoVistaSociedadSOLPE.sociedadesIds);
+    return (solpes || []).filter(solpe => {
+      const ot = (ots || []).find(item => item.id === solpe.ot_id);
+      const cecosLinea = solpeCECOs.get(solpe.id) || [];
+      const cecosUnicos = [...new Set(cecosLinea.length ? cecosLinea : [solpe.centro_costo_id || null])];
+      const origenes = [
+        { seleccionado: Boolean(solpe.ot_id), sociedadId: ot?.sociedad_id || null, label: `La OT ${ot?.numero || solpe.ot_id || ''}`.trim() },
+        ...cecosUnicos.map(cecoId => {
+          const ceco = (centrosCosto || []).find(item => item.id === cecoId);
+          return { seleccionado: Boolean(cecoId), sociedadId: ceco?.sociedad_id || null, label: `El CECO ${ceco?.codigo || cecoId || ''}`.trim() };
+        }),
+      ];
+      const destino = resolverSociedadDestino({ sociedades: sociedadesDisponibles, origenes });
+      return Boolean(destino.sociedadId && permitidas.has(destino.sociedadId));
+    });
+  }, [solpes, ots, centrosCosto, sociedadesDisponibles, solpeCECOs, modoVistaSociedadSOLPE.sinFiltro, sociedadesIdsVistaSOLPEKey]);
+  const query = String(searchQuery || '').trim().toLocaleLowerCase();
+  const solpesConBusqueda = solpesConSociedadVista.filter(s => {
+    if (!query) return true;
+    const estado = normEstadoSolpe(s).replace(/_/g, ' ');
+    const textoItems = (s.items || []).map(item => `${item.descripcion || ''} ${item.nombre || ''} ${item.material_codigo || ''} ${item.material_id || ''}`).join(' ');
+    return [s.numero, s.codigo, getOTNumero(s.ot_id), s.solicitante, s.area, s.centro_costo, estado, s.descripcion, textoItems]
+      .some(valor => String(valor || '').toLocaleLowerCase().includes(query));
+  });
+  const solicitantesSOLPE = [...new Set((solpesConSociedadVista || []).map(s => s.solicitante || s.area).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'es'));
+  const cecosSOLPE = [...new Set((solpesConSociedadVista || []).flatMap(s => solpeCECOs.get(s.id) || []).filter(Boolean))];
+  const solpesFiltradas = solpesConBusqueda.filter(s => {
+    const estado = normEstadoSolpe(s);
+    const fecha = String(s.fecha || '').slice(0, 10);
+    const cecos = solpeCECOs.get(s.id) || [];
+    const coincideEstado = !filtrosSOLPE.estado || (filtrosSOLPE.estado === 'oc_generada'
+      ? ['oc_generada', 'oc generada'].includes(estado)
+      : estado === filtrosSOLPE.estado);
+    const coincideDesde = !filtrosSOLPE.fechaDesde || Boolean(fecha && fecha >= filtrosSOLPE.fechaDesde);
+    const coincideHasta = !filtrosSOLPE.fechaHasta || Boolean(fecha && fecha <= filtrosSOLPE.fechaHasta);
+    const coincideSolicitante = !filtrosSOLPE.solicitante || (s.solicitante || s.area || '') === filtrosSOLPE.solicitante;
+    // CECO filtering uses ANY effective line CECO; missing line ceco_id falls back to the SOLPE header above.
+    const coincideCeco = !filtrosSOLPE.ceco || (filtrosSOLPE.ceco === '__sin_ceco__'
+      ? !cecos.length || cecos.some(cecoId => !cecoId)
+      : cecos.includes(filtrosSOLPE.ceco));
+    return coincideEstado && coincideDesde && coincideHasta && coincideSolicitante && coincideCeco;
+  });
+  const kpiSOLPE = {
+    total: solpesFiltradas.length,
+    borrador: solpesFiltradas.filter(s => normEstadoSolpe(s) === 'borrador').length,
+    solicitada: solpesFiltradas.filter(s => normEstadoSolpe(s) === 'solicitada').length,
+    aprobada: solpesFiltradas.filter(s => normEstadoSolpe(s) === 'aprobada').length,
+    ocParcial: solpesFiltradas.filter(s => normEstadoSolpe(s) === 'oc_parcial').length,
+    ocGenerada: solpesFiltradas.filter(s => ['oc_generada', 'oc generada'].includes(normEstadoSolpe(s))).length,
+  };
+  const limpiarFiltrosSOLPE = () => setFiltrosSOLPE({ estado: '', fechaDesde: '', fechaHasta: '', solicitante: '', ceco: '' });
+  const mapaEtapaCompras = {
+    borrador: { glifo:'○', texto:'Aún no está en sourcing', color:'var(--fg-muted)' },
+    solicitada: { glifo:'○', texto:'Aún no está en sourcing', color:'var(--fg-muted)' },
+    aprobada: { glifo:'◆', texto:'En la Bandeja de Sourcing esperando OC', color:'var(--primary)' },
+    oc_parcial: { glifo:'◆', texto:'En la Bandeja de Sourcing esperando OC', color:'var(--primary)' },
+    oc_generada: { glifo:'✓', texto:'Ya tiene OC', color:'var(--success,#22c55e)' },
+    'oc generada': { glifo:'✓', texto:'Ya tiene OC', color:'var(--success,#22c55e)' },
+  };
 
   const closeForm = () => { setShowForm(false); setItems([newItem()]); setErrCeco(false); setErrItems(false); };
   const handleSubmit = () => {
@@ -12361,6 +12438,28 @@ function SOLPE() {
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>{I.plus} Nueva SOLPE</button>
       </div>
       <div className="card mt-6">
+        <div className="kpi-grid" style={{padding:16}}>
+          <div className="kpi-card"><div className="kpi-label">Total</div><div className="kpi-value">{kpiSOLPE.total}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Borrador</div><div className="kpi-value">{kpiSOLPE.borrador}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Solicitada</div><div className="kpi-value">{kpiSOLPE.solicitada}</div></div>
+          <div className="kpi-card"><div className="kpi-label">Aprobada</div><div className="kpi-value">{kpiSOLPE.aprobada}</div></div>
+          <div className="kpi-card"><div className="kpi-label">OC parcial</div><div className="kpi-value">{kpiSOLPE.ocParcial}</div></div>
+          <div className="kpi-card"><div className="kpi-label">OC generada</div><div className="kpi-value">{kpiSOLPE.ocGenerada}</div></div>
+        </div>
+        <div style={{padding:'0 16px 16px', display:'flex', gap:10, alignItems:'end', flexWrap:'wrap'}}>
+          <div className="input-group" style={{minWidth:150, flex:'1 1 150px'}}><label>Estado</label><select className="select" value={filtrosSOLPE.estado} onChange={e => setFiltrosSOLPE(p => ({...p, estado:e.target.value}))}>
+            <option value="">Todos</option>{[['borrador','Borrador'],['solicitada','Solicitada'],['aprobada','Aprobada'],['oc_parcial','OC parcial'],['oc_generada','OC generada'],['atendida','Atendida']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+          </select></div>
+          <div className="input-group" style={{minWidth:145, flex:'1 1 145px'}}><label>Fecha desde</label><input className="input" type="date" value={filtrosSOLPE.fechaDesde} onChange={e => setFiltrosSOLPE(p => ({...p, fechaDesde:e.target.value}))} /></div>
+          <div className="input-group" style={{minWidth:145, flex:'1 1 145px'}}><label>Fecha hasta</label><input className="input" type="date" value={filtrosSOLPE.fechaHasta} onChange={e => setFiltrosSOLPE(p => ({...p, fechaHasta:e.target.value}))} /></div>
+          <div className="input-group" style={{minWidth:175, flex:'1 1 175px'}}><label>Solicitante</label><select className="select" value={filtrosSOLPE.solicitante} onChange={e => setFiltrosSOLPE(p => ({...p, solicitante:e.target.value}))}>
+            <option value="">Todos</option>{solicitantesSOLPE.map(solicitante => <option key={solicitante} value={solicitante}>{solicitante}</option>)}
+          </select></div>
+          <div className="input-group" style={{minWidth:175, flex:'1 1 175px'}}><label>CECO</label><select className="select" value={filtrosSOLPE.ceco} onChange={e => setFiltrosSOLPE(p => ({...p, ceco:e.target.value}))}>
+            <option value="">Todos</option><option value="__sin_ceco__">Sin CECO</option>{cecosSOLPE.map(id => <option key={id} value={id}>{etiquetaCeco(id, centrosCosto)}</option>)}
+          </select></div>
+          <button className="btn btn-secondary" onClick={limpiarFiltrosSOLPE}>Limpiar filtros</button>
+        </div>
         <div className="table-wrap">
           <table className="tbl">
             <thead>
@@ -12368,18 +12467,29 @@ function SOLPE() {
                 <th>N° SOLPE</th>
                 <th>OT Asociada</th>
                 <th>Área / Solicitante</th>
-                <th>Centro de Costo</th>
+                <th>CECO</th>
                 <th>Tipo</th>
                 <th>Urgencia</th>
                 <th>Fecha</th>
                 <th>Estado</th>
+                <th>Etapa de compras</th>
                 <th>Acción</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSolpes.map(s => {
-                const ceco = cecosActivos.find(c => c.id === s.centro_costo_id);
+              {solpesFiltradas.map(s => {
+                const cecosGrupos = [...new Set((solpeCECOs.get(s.id) || []).map(id => id || '__sin_ceco__'))];
+                const cecoTexto = cecosGrupos.length > 1
+                  ? `Múltiples (${cecosGrupos.length})`
+                  : cecosGrupos.length === 1 && cecosGrupos[0] !== '__sin_ceco__'
+                    ? etiquetaCeco(cecosGrupos[0], centrosCosto)
+                    : 'Sin CECO';
                 const liveSolpe = solpes.find(x => x.id === s.id) || s;
+                const estadoEtapa = normEstadoSolpe(liveSolpe);
+                const etapaCompras = mapaEtapaCompras[estadoEtapa];
+                const ocsRelacionadas = ocPorSolpe.get(s.id) || [];
+                const codigoOC = ocsRelacionadas.map(oc => oc.codigo || oc.numero).filter(Boolean).join(', ');
+                const etiquetaEtapa = etapaCompras?.texto === 'Ya tiene OC' && codigoOC ? `${etapaCompras.texto}: ${codigoOC}` : etapaCompras?.texto;
                 return (
                   <tr key={s.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirDetalle(liveSolpe)}>
                     <td className="mono" style={{fontWeight:600}}>
@@ -12393,7 +12503,7 @@ function SOLPE() {
                     </td>
                     <td className="mono">{getOTNumero(s.ot_id)}</td>
                     <td>{s.solicitante || s.area || '—'}</td>
-                    <td className="text-muted">{ceco ? `${ceco.codigo} – ${ceco.nombre}` : (s.centro_costo || '—')}</td>
+                    <td className="text-muted">{cecoTexto}</td>
                     <td>{s.tipo || '—'}</td>
                     <td>{s.prioridad || s.urgencia || '—'}</td>
                     <td className="text-muted">{s.fecha}</td>
@@ -12402,6 +12512,7 @@ function SOLPE() {
                         {(liveSolpe.estado || '').replace('_',' ').toUpperCase()}
                       </span>
                     </td>
+                    <td>{etapaCompras && <span title={etiquetaEtapa} aria-label={etiquetaEtapa} style={{display:'inline-flex', alignItems:'center', justifyContent:'center', width:24, height:24, borderRadius:etapaCompras.glifo === '○' ? '50%' : 5, border: `1px solid ${etapaCompras.color}`, color:etapaCompras.color, fontWeight:700, lineHeight:1}}>{etapaCompras.glifo}</span>}</td>
                     <td onClick={e => e.stopPropagation()}>
                       {liveSolpe.estado === 'borrador' && (
                         <button className="btn btn-sm btn-primary" onClick={e => handleEnviar(e, liveSolpe)}>Enviar</button>
@@ -12419,8 +12530,8 @@ function SOLPE() {
                   </tr>
                 );
               })}
-              {filteredSolpes.length === 0 && (
-                <tr><td colSpan="9" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
+              {solpesFiltradas.length === 0 && (
+                <tr><td colSpan="10" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{solpes.length > 0 ? 'Ninguna SOLPE coincide con los filtros o la búsqueda.' : 'No hay SOLPEs registradas.'}</td></tr>
               )}
             </tbody>
           </table>
