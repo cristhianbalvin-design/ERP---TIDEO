@@ -3,6 +3,7 @@ import { Icon } from '../components/shell.jsx';
 import { ModalShell } from '../components/ModalShell.jsx';
 import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
+import { DiagnosticoTrabajoGrupo } from './DiagnosticoTrabajoGrupo.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -404,6 +405,8 @@ export function DiagnosticoTecnicoPage() {
   const [catalogError, setCatalogError] = useState('');
   const [notice, setNotice] = useState('');
   const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [] });
+  const [extraFamilyIds, setExtraFamilyIds] = useState([]);
+  const [familyToAdd, setFamilyToAdd] = useState('');
   const [lineValidationErrors, setLineValidationErrors] = useState({});
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
   const [hallazgosDirty, setHallazgosDirty] = useState(false);
@@ -632,6 +635,7 @@ export function DiagnosticoTecnicoPage() {
     const validationErrors = validateLine(line);
     if (validationErrors.some(Boolean)) {
       setLineValidationErrors(current => ({ ...current, [key]: validationErrors }));
+      setSelected(current => ({ ...current, lineas: current.lineas.map(item => lineKey(item) === key ? { ...item, _saveError: 'Corrige los repuestos marcados antes de guardar.' } : item) }));
       setError('Corrige los repuestos marcados antes de guardar la línea.');
       setNotice('');
       return;
@@ -656,7 +660,7 @@ export function DiagnosticoTecnicoPage() {
       const refreshed = prepararDetalle({ lineas: [await runStep('obtenerDiagnosticoLinea', () => obtenerDiagnosticoLinea(empresaId, saved.id))] }).lineas[0];
       if (isActive()) setSelected(current => ({
         ...current,
-        lineas: (current.lineas || []).map(item => lineKey(item) === key ? refreshed : item),
+        lineas: (current.lineas || []).map(item => lineKey(item) === key ? { ...refreshed, _saveError: '' } : item),
       }));
       if (isActive()) setLineValidationErrors(current => {
         const next = { ...current };
@@ -664,6 +668,7 @@ export function DiagnosticoTecnicoPage() {
         return next;
       });
       if (isActive()) setNotice('Línea guardada.');
+      return true;
     } catch (saveError) {
       if (!isActive()) return;
       const originalError = errorMessage(saveError);
@@ -679,12 +684,20 @@ export function DiagnosticoTecnicoPage() {
       } else {
         setError(`La línea no se guardó: ${originalError}`);
       }
+      if (isActive()) setSelected(current => ({ ...current, lineas: current.lineas.map(item => lineKey(item) === key ? { ...item, _saveError: `No se guardó: ${originalError}` } : item) }));
+      return false;
     } finally {
       if (isActive()) {
         setSavingLine(null);
         setSlowSaveWarning('');
       }
     }
+  };
+
+  const saveAllLines = async () => {
+    if (!selected || !canEditLines) return;
+    const dirtyLines = (selected.lineas || []).filter(line => line._dirty);
+    for (const line of dirtyLines) await saveLine(line);
   };
 
   const deleteLine = async line => {
@@ -776,6 +789,22 @@ export function DiagnosticoTecnicoPage() {
 
   const detailTitle = selected ? `${typeLabel(selected.tipo)} · ${referenceLabel(form.referencia)}` : `Nuevo diagnóstico · ${typeLabel(form.tipo)}`;
 
+  const lineasActuales = selected?.lineas || [];
+  const familiasPorId = new Map(catalogs.familias.map(item => [item.id, item]));
+  const gruposMap = new Map();
+  lineasActuales.forEach(line => {
+    const familia = familiasPorId.get(line.familia_trabajo_id) || { id: line.familia_trabajo_id || 'sin-familia', nombre: 'Trabajo no disponible' };
+    if (!gruposMap.has(familia.id)) gruposMap.set(familia.id, { familia, lines: [] });
+    gruposMap.get(familia.id).lines.push(line);
+  });
+  extraFamilyIds.forEach(id => {
+    if (!gruposMap.has(id) && familiasPorId.has(id)) gruposMap.set(id, { familia: familiasPorId.get(id), lines: [] });
+  });
+  const grupos = [...gruposMap.values()];
+  const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
+  const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
+  const dirtyLineCount = lineasActuales.filter(line => line._dirty).length;
+
   return (
     <main className="ops-page" style={{ padding: 24, width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -824,6 +853,12 @@ export function DiagnosticoTecnicoPage() {
       {(form.tipo || selected) && <ModalShell
         key={selected?.id || `nuevo-${form.tipo}`}
         open
+        variant={selected ? 'dx-modal' : undefined}
+        width={selected ? 1160 : 1040}
+        titleClassName={selected ? 'dx-modal-title' : ''}
+        subtitleClassName={selected ? 'dx-modal-subtitle' : ''}
+        statusClassName={selected ? 'dx-modal-status' : ''}
+        closeClassName={selected ? 'dx-modal-close' : ''}
         title={detailTitle}
         subtitle={selected ? `${selected.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción'}: ${referenceLabel(form.referencia)}` : 'Completa la referencia para crear un borrador.'}
         status={<span className={statusClass(selected?.estado)}>{statusLabel(selected?.estado)}</span>}
@@ -832,6 +867,7 @@ export function DiagnosticoTecnicoPage() {
         onClose={closeDetail}
         footer={requestClose => <>
           <div style={{ flex: 1 }}>
+            {selected && dirtyLineCount > 0 && <div className="dx-dirty-count"><i />{dirtyLineCount} tarea{dirtyLineCount === 1 ? '' : 's'} con cambios sin guardar</div>}
             {selected && hallazgosDirty && <div className="hallazgos-dirty-summary">{hallazgosDirtySummary.hallazgos} hallazgo{hallazgosDirtySummary.hallazgos === 1 ? '' : 's'} y {hallazgosDirtySummary.tareas} tarea{hallazgosDirtySummary.tareas === 1 ? '' : 's'} con cambios sin guardar</div>}
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
             {error && <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>}
@@ -840,7 +876,8 @@ export function DiagnosticoTecnicoPage() {
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
           <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
-          {selected && hallazgosDirty && canEditLines && <button type="button" className="btn btn-primary" onClick={() => hallazgosSaveRef.current?.()} disabled={hallazgosSaving}>{hallazgosSaving ? 'Guardando...' : 'Guardar todo'}</button>}
+          {selected && canEditLines && <button type="button" className="btn btn-primary dx-save" onClick={saveAllLines} disabled={!dirtyLineCount || Boolean(savingLine)}>{savingLine ? 'Guardando...' : 'Guardar cambios'}</button>}
+          {selected && hallazgosDirty && canEditLines && <button type="button" className="btn btn-primary" onClick={() => hallazgosSaveRef.current?.()} disabled={hallazgosSaving}>{hallazgosSaving ? 'Guardando hallazgos...' : 'Guardar hallazgos'}</button>}
           {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >
@@ -851,46 +888,23 @@ export function DiagnosticoTecnicoPage() {
             <ReferenceSelector tipo={form.tipo} value={selectedReference} search={search} references={references} loading={loadingReferences} disabled={false} onSearch={setSearch} onSelect={reference => { setForm(current => ({ ...current, referencia: reference })); setSearch(referenceLabel(reference)); }} />
           </div>
         </form>}
-        {selected && <>
-          <div className="card-body" style={{ paddingTop: 0 }}>
-            {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="muted">Activo: {form.referencia.activo}</div>}
+        {selected && <div className="dx-scope">
+          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} />}
+          <div className="dx-summary">
+            <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
+            {canEditLines && <div className="dx-add-work"><button type="button" onClick={() => setFamilyToAdd(value => value ? '' : '__choose__')}>Agregar trabajo</button>{familyToAdd && <select aria-label="Elegir familia de trabajo" value={familyToAdd === '__choose__' ? '' : familyToAdd} onChange={event => { const id = event.target.value; if (!id) return; setExtraFamilyIds(current => current.includes(id) ? current : [...current, id]); setFamilyToAdd(''); }}><option value="">Elegir trabajo...</option>{catalogs.familias.map(item => <option value={item.id} key={item.id}>{item.nombre}</option>)}</select>}</div>}
           </div>
-          {access.ver && <DiagnosticoEstadoPanel
-            empresaId={empresaId}
-            diagnostico={selected}
-            puedeAprobar={access.aprobar}
-            permiteEscritura={Boolean(sesion.permiteEscritura)}
-            cambiosSinGuardar={cambiosSinGuardar}
-            onCambioCompleto={recargarEstadoDiagnostico}
-          />}
-          <div className="card-body" style={{ paddingTop: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ margin: 0 }}>Líneas</h3>
-              {canEditLines && <button type="button" className="btn btn-secondary" onClick={addLine}><Icon name="plus" size={14} /> Agregar línea</button>}
-            </div>
-            {loadingCatalogs ? <div className="muted" style={{ marginTop: 12 }}>Cargando catálogos...</div> : !catalogError && !(selected.lineas || []).length ? <div className="muted" style={{ marginTop: 12 }}>No hay líneas registradas.</div> : null}
-            {!loadingCatalogs && !catalogError && (selected.lineas || []).map(line => <LineEditor
-              key={line.id || line._key}
-              line={line}
-              catalogs={{ ...catalogs, crearFamilia, crearTipo }}
-              canEdit={canEditLines}
-              canCreateCatalog={canCreate}
-              validationErrors={lineValidationErrors[lineKey(line)]}
-              saving={savingLine === lineKey(line)}
-              onChange={changes => {
-                patchLine(line, changes);
-                setLineValidationErrors(current => {
-                  const key = lineKey(line);
-                  if (!current[key]) return current;
-                  const next = { ...current };
-                  delete next[key];
-                  return next;
-                });
-              }}
-              onSave={() => saveLine(line)}
-              onDelete={() => deleteLine(line)}
-              onError={lineError => setError(errorMessage(lineError))}
-            />)}
+          <div className="dx-body">
+            {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
+            <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
+            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
+              if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; }
+              patchLine(line, changes);
+              const key = lineKey(line);
+              setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; });
+            }} onError={lineError => setError(errorMessage(lineError))} />)}
+          </div>
+          <div className="dx-hallazgos">
             <HallazgosTrabajoPanel
               empresaId={empresaId}
               diagnostico={selected}
@@ -910,7 +924,7 @@ export function DiagnosticoTecnicoPage() {
             />
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
-        </>}
+        </div>}
       </ModalShell>}
     </main>
   );
