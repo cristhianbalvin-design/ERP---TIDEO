@@ -99,12 +99,16 @@ describe('DiagnosticoEstadoPanel', () => {
       { id: 'h2', estado_anterior: 'borrador', estado_nuevo: 'emitido', usuario_nombre: 'Usuario ····1234', ocurrido_en: '2024-12-01T12:00:00Z' },
     ]);
     await render();
+    const historyToggle = renderer.root.findByProps({ className: 'diagnostico-estado-history-toggle' });
+    expect(historyToggle.props['aria-expanded']).toBe(false);
+    await act(async () => { historyToggle.props.onClick(); });
     expect(textOf(renderer.root)).toContain('Emitido → Borrador');
     expect(textOf(renderer.root)).toContain('Borrador → Emitido');
     expect(textOf(renderer.root)).toContain('Corrección solicitada');
     await act(async () => { renderer.unmount(); });
     service.listarHistorialEstadosDiagnostico.mockResolvedValueOnce([]);
     await render();
+    await act(async () => { renderer.root.findByProps({ className: 'diagnostico-estado-history-toggle' }).props.onClick(); });
     expect(textOf(renderer.root)).toContain('Sin movimientos registrados.');
   });
 });

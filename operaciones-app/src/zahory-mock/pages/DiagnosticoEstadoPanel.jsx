@@ -11,6 +11,7 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
   const busyRef = useRef(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const cargarHistorial = async () => {
     setLoadingHistory(true);
@@ -60,14 +61,16 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
     </div>}
     {error && <div className="alert alert-error" role="alert">{error}</div>}
     {notice && <div className="alert alert-success" role="status">{notice}</div>}
-    <h3>Historial de estados</h3>
-    {loadingHistory ? <div className="muted">Cargando historial...</div> : historyError ? <div className="alert alert-error">{historyError}</div> : historial.length === 0 ? <div className="muted">Sin movimientos registrados.</div> : <ol className="diagnostico-estado-history">
+    <button type="button" className="diagnostico-estado-history-toggle" aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>
+      <span aria-hidden="true">{historyOpen ? '▾' : '›'}</span> Historial de estados ({loadingHistory ? '…' : historial.length})
+    </button>
+    {historyOpen && (loadingHistory ? <div className="muted">Cargando historial...</div> : historyError ? <div className="alert alert-error">{historyError}</div> : historial.length === 0 ? <div className="muted">Sin movimientos registrados.</div> : <ol className="diagnostico-estado-history">
       {historial.map(row => <li key={row.id}>
         <div><strong>{transicion(row)}</strong> · {row.ocurrido_en ? new Date(row.ocurrido_en).toLocaleString('es-PE') : '—'}</div>
         <div className="muted">{row.usuario_nombre}</div>
         {row.estado_anterior === 'emitido' && row.estado_nuevo === 'borrador' && row.motivo && <div>Motivo: {row.motivo}</div>}
       </li>)}
-    </ol>}
+    </ol>)}
     {dialogo && <div className="diagnostico-estado-dialog" role="dialog" aria-modal="true" aria-labelledby="diagnostico-estado-titulo" onKeyDown={event => { if (event.key === 'Escape' && !busy) setDialogo(''); }}>
       <div className="card">
         <div className="card-header"><h3 id="diagnostico-estado-titulo">{dialogo === 'emitir' ? 'Emitir diagnóstico' : 'Reabrir diagnóstico'}</h3></div>

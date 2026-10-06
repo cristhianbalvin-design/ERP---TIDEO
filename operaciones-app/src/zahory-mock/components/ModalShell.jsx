@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 
-export function ModalShell({ open, title, subtitle, status, width = 1040, dirty = false, busy = false, onClose, children, footer }) {
+export function ModalShell({ open, title, subtitle, status, width = 1040, dirty = false, busy = false, onClose, children, footer, variant, titleClassName = '', subtitleClassName = '', statusClassName = '', closeClassName = '' }) {
   const requestClose = useCallback(() => {
     if (busy) {
       if (typeof window.confirm === 'function' && !window.confirm('Hay un guardado en curso. Si cierras, puede completarse igualmente; verifica la lista al volver.')) return;
@@ -31,15 +31,15 @@ export function ModalShell({ open, title, subtitle, status, width = 1040, dirty 
       onMouseDown={event => { if (event.target === event.currentTarget) requestClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.65)', display: 'grid', placeItems: 'center', padding: 20, overflowY: 'auto' }}
     >
-      <div className="card diagnostico-modal-card" style={{ width: '100%', maxWidth: width, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
+      <div className={`card diagnostico-modal-card${variant ? ` ${variant} dx-scope` : ''}`} style={{ width: '100%', maxWidth: variant ? 'min(1160px, calc(100vw - 48px))' : width, maxHeight: 'min(1012px, calc(100vh - 40px))', overflowY: 'auto' }}>
         <div className="card-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-            {subtitle && <div className="muted" style={{ marginTop: 4 }}>{subtitle}</div>}
+            <h2 className={titleClassName || undefined} style={{ margin: 0, fontSize: 18 }}>{title}</h2>
+            {subtitle && <div className={`muted${subtitleClassName ? ` ${subtitleClassName}` : ''}`} style={{ marginTop: 4 }}>{subtitle}</div>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {status}
-            <button type="button" className="btn btn-secondary" aria-label="Cerrar" onClick={requestClose}>×</button>
+            {status && <span className={statusClassName || undefined}>{status}</span>}
+            <button type="button" className={`btn btn-secondary${closeClassName ? ` ${closeClassName}` : ''}`} aria-label="Cerrar" onClick={requestClose}>{'\u00d7'}</button>
           </div>
         </div>
         {children}
