@@ -7,7 +7,7 @@ import { useApp } from './context.jsx';
 import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
-import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto } from './services/presupuestoReal.js';
+import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 
 const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
@@ -378,7 +378,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
   const resumenReal = useMemo(() => crearResumenRealPresupuesto({
     partidas, comprasGastos, ots, filasCxp: filasRealCxp, empresaId, periodo, efectivoCecos,
-    incluirRegistro: (registro, tipo) => tipo !== 'ot' || !presActivo?.centro_costo_id || !registro.centro_costo_id || registro.centro_costo_id === presActivo.centro_costo_id,
+    incluirRegistro: (registro, tipo) => tipo !== 'ot' || otCompatibleConPresupuesto(registro, presActivo),
   }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, efectivoCecos, presActivo]);
   const resultadosPartidas = resumenReal.porPartida;
   const resultadosSinPartida = resumenReal.sinPartida;
