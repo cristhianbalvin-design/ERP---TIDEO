@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
     'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarCargosEmpresa',
     'listarActivosPropios', 'guardarDiagnosticoLinea', 'sincronizarMaterialesLinea', 'obtenerDiagnosticoLinea',
     'eliminarDiagnosticoLinea', 'crearDiagnosticoTecnico', 'buscarOCrearFamiliaTrabajo', 'buscarOCrearTipoServicioInterno',
+    'listarCatalogosHallazgos', 'crearDiagnosticoHallazgo', 'actualizarDiagnosticoHallazgo', 'eliminarDiagnosticoHallazgo',
+    'crearDiagnosticoMedicion', 'actualizarDiagnosticoMedicion', 'eliminarDiagnosticoMedicion',
+    'crearEnlaceDiagnosticoHallazgoLinea', 'eliminarEnlaceDiagnosticoHallazgoLinea',
   ].map(name => [name, vi.fn()])),
 }));
 
@@ -86,6 +89,7 @@ beforeEach(() => {
   mocks.service.listarTiposServicioInterno.mockResolvedValue([{ id: 'task-1', nombre: 'Tarea 1' }]);
   mocks.service.listarCargosEmpresa.mockResolvedValue([]);
   mocks.service.listarActivosPropios.mockResolvedValue([]);
+  mocks.service.listarCatalogosHallazgos.mockResolvedValue([]);
   mocks.service.guardarDiagnosticoLinea.mockResolvedValue({ id: 'line-new' });
   mocks.service.sincronizarMaterialesLinea.mockResolvedValue(undefined);
   mocks.service.obtenerDiagnosticoLinea.mockResolvedValue({ id: 'line-new', materiales: [{ id: 'mat-1', descripcion: 'Filtro', cantidad: 1, unidad: 'und' }] });

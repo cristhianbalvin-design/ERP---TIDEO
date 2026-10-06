@@ -7,6 +7,10 @@ const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
 const TIPO_SERVICIO_COLUMNS = 'id,empresa_id,codigo,nombre,clasificacion,estado';
 const CARGO_COLUMNS = 'id,codigo,nombre,tipo,estado';
 const ACTIVO_COLUMNS = 'id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id';
+const HALLAZGO_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,componente_parte,tipo_dano_codigo,causa_probable_codigo,condicion,riesgo,matriz_version,prioridad_calculada,prioridad_override,prioridad_override_motivo,prioridad_efectiva,accion_recomendada,atribuible_a,observacion,incluir_en_informe,created_by,created_at,updated_at';
+const MEDICION_COLUMNS = 'id,empresa_id,hallazgo_id,parametro,unidad,nominal,minimo,maximo,medido,resultado_calculado,condicion_sugerida,created_by,created_at,updated_at';
+const HALLAZGO_LINEA_COLUMNS = 'id,empresa_id,hallazgo_id,linea_id,created_by,created_at';
+const DIAGNOSTICO_CATALOGO_COLUMNS = 'id,empresa_id,catalogo,codigo,etiqueta,orden,activo,default_id';
 
 const requireEmpresa = empresaId => {
   if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
@@ -98,13 +102,164 @@ export async function obtenerDiagnosticoTecnico(empresaId, diagnosticoId) {
     materialesPorLinea.set(material.linea_id, actuales);
   });
 
+  const { data: hallazgos, error: hallazgosError } = await supabase
+    .from('diagnostico_tecnico_hallazgos')
+    .select(HALLAZGO_COLUMNS)
+    .eq('empresa_id', empresaId)
+    .eq('diagnostico_id', diagnosticoId)
+    .order('created_at');
+  if (hallazgosError) throw hallazgosError;
+
+  const hallazgoIds = (hallazgos || []).map(hallazgo => hallazgo.id);
+  let mediciones = [];
+  let enlaces = [];
+  if (hallazgoIds.length) {
+    const [{ data: medicionesData, error: medicionesError }, { data: enlacesData, error: enlacesError }] = await Promise.all([
+      supabase.from('diagnostico_tecnico_hallazgo_mediciones').select(MEDICION_COLUMNS).eq('empresa_id', empresaId).in('hallazgo_id', hallazgoIds).order('created_at'),
+      supabase.from('diagnostico_tecnico_hallazgo_lineas').select(HALLAZGO_LINEA_COLUMNS).eq('empresa_id', empresaId).in('hallazgo_id', hallazgoIds).order('created_at'),
+    ]);
+    if (medicionesError) throw medicionesError;
+    if (enlacesError) throw enlacesError;
+    mediciones = medicionesData || [];
+    enlaces = enlacesData || [];
+  }
+  const medicionesPorHallazgo = new Map();
+  mediciones.forEach(medicion => medicionesPorHallazgo.set(medicion.hallazgo_id, [...(medicionesPorHallazgo.get(medicion.hallazgo_id) || []), medicion]));
+  const enlacesPorHallazgo = new Map();
+  enlaces.forEach(enlace => enlacesPorHallazgo.set(enlace.hallazgo_id, [...(enlacesPorHallazgo.get(enlace.hallazgo_id) || []), enlace]));
+
   return {
     ...diagnostico,
     lineas: (lineas || []).map(linea => ({
       ...linea,
       materiales: materialesPorLinea.get(linea.id) || [],
     })),
+    hallazgos: (hallazgos || []).map(hallazgo => ({
+      ...hallazgo,
+      mediciones: medicionesPorHallazgo.get(hallazgo.id) || [],
+      lineas: enlacesPorHallazgo.get(hallazgo.id) || [],
+    })),
   };
+}
+
+export async function listarCatalogosHallazgos(empresaId) {
+  requireEmpresa(empresaId);
+  const { data, error } = await getSupabaseClient()
+    .from('diagnostico_catalogo_valores')
+    .select(DIAGNOSTICO_CATALOGO_COLUMNS)
+    .eq('empresa_id', empresaId)
+    .eq('activo', true)
+    .order('catalogo')
+    .order('orden');
+  if (error) throw error;
+  return data || [];
+}
+
+const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => ({
+  empresa_id: empresaId,
+  diagnostico_id: diagnosticoId,
+  familia_trabajo_id: hallazgo.familia_trabajo_id,
+  componente_parte: String(hallazgo.componente_parte || '').trim(),
+  tipo_dano_codigo: hallazgo.tipo_dano_codigo,
+  causa_probable_codigo: hallazgo.causa_probable_codigo,
+  condicion: hallazgo.condicion,
+  riesgo: hallazgo.riesgo,
+  matriz_version: Number(hallazgo.matriz_version) || 1,
+  prioridad_override: hallazgo.prioridad_override || null,
+  prioridad_override_motivo: hallazgo.prioridad_override_motivo || null,
+  accion_recomendada: hallazgo.accion_recomendada,
+  atribuible_a: hallazgo.atribuible_a,
+  observacion: hallazgo.observacion || null,
+  incluir_en_informe: hallazgo.incluir_en_informe !== false,
+});
+
+export async function crearDiagnosticoHallazgo(empresaId, diagnosticoId, hallazgo) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient()
+    .from('diagnostico_tecnico_hallazgos')
+    .insert(hallazgoPayload(empresaId, diagnosticoId, hallazgo))
+    .select(HALLAZGO_COLUMNS)
+    .single();
+  if (error) throw getError(error);
+  return data;
+}
+
+export async function actualizarDiagnosticoHallazgo(empresaId, diagnosticoId, hallazgo) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  requireId(hallazgo?.id, 'Falta el hallazgo técnico.');
+  const { data, error } = await getSupabaseClient()
+    .from('diagnostico_tecnico_hallazgos')
+    .update(hallazgoPayload(empresaId, diagnosticoId, hallazgo))
+    .eq('id', hallazgo.id)
+    .eq('empresa_id', empresaId)
+    .eq('diagnostico_id', diagnosticoId)
+    .select(HALLAZGO_COLUMNS)
+    .single();
+  if (error) throw getError(error);
+  return data;
+}
+
+export async function eliminarDiagnosticoHallazgo(empresaId, hallazgoId) {
+  requireEmpresa(empresaId);
+  requireId(hallazgoId, 'Falta el hallazgo técnico.');
+  const { error } = await getSupabaseClient()
+    .from('diagnostico_tecnico_hallazgos')
+    .delete()
+    .eq('id', hallazgoId)
+    .eq('empresa_id', empresaId);
+  if (error) throw getError(error);
+}
+
+const medicionPayload = (empresaId, hallazgoId, medicion) => ({
+  empresa_id: empresaId,
+  hallazgo_id: hallazgoId,
+  parametro: String(medicion.parametro || '').trim(),
+  unidad: medicion.unidad,
+  nominal: medicion.nominal === '' || medicion.nominal == null ? null : Number(medicion.nominal),
+  minimo: medicion.minimo === '' || medicion.minimo == null ? null : Number(medicion.minimo),
+  maximo: medicion.maximo === '' || medicion.maximo == null ? null : Number(medicion.maximo),
+  medido: medicion.medido === '' || medicion.medido == null ? null : Number(medicion.medido),
+});
+
+export async function crearDiagnosticoMedicion(empresaId, hallazgoId, medicion) {
+  requireEmpresa(empresaId);
+  requireId(hallazgoId, 'Falta el hallazgo técnico.');
+  const { data, error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_mediciones').insert(medicionPayload(empresaId, hallazgoId, medicion)).select(MEDICION_COLUMNS).single();
+  if (error) throw getError(error);
+  return data;
+}
+
+export async function actualizarDiagnosticoMedicion(empresaId, hallazgoId, medicion) {
+  requireEmpresa(empresaId);
+  requireId(medicion?.id, 'Falta la medición técnica.');
+  const { data, error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_mediciones').update(medicionPayload(empresaId, hallazgoId, medicion)).eq('id', medicion.id).eq('empresa_id', empresaId).eq('hallazgo_id', hallazgoId).select(MEDICION_COLUMNS).single();
+  if (error) throw getError(error);
+  return data;
+}
+
+export async function eliminarDiagnosticoMedicion(empresaId, medicionId) {
+  requireEmpresa(empresaId);
+  requireId(medicionId, 'Falta la medición técnica.');
+  const { error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_mediciones').delete().eq('id', medicionId).eq('empresa_id', empresaId);
+  if (error) throw getError(error);
+}
+
+export async function crearEnlaceDiagnosticoHallazgoLinea(empresaId, hallazgoId, lineaId) {
+  requireEmpresa(empresaId);
+  requireId(hallazgoId, 'Falta el hallazgo técnico.');
+  requireId(lineaId, 'Falta la línea técnica.');
+  const { data, error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_lineas').insert({ empresa_id: empresaId, hallazgo_id: hallazgoId, linea_id: lineaId }).select(HALLAZGO_LINEA_COLUMNS).single();
+  if (error) throw getError(error);
+  return data;
+}
+
+export async function eliminarEnlaceDiagnosticoHallazgoLinea(empresaId, enlaceId) {
+  requireEmpresa(empresaId);
+  requireId(enlaceId, 'Falta el enlace del hallazgo.');
+  const { error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_lineas').delete().eq('id', enlaceId).eq('empresa_id', empresaId);
+  if (error) throw getError(error);
 }
 
 export async function crearDiagnosticoTecnico(empresaId, usuarioId, datos) {

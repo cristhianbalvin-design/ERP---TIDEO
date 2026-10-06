@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 
 export function ModalShell({ open, title, subtitle, status, width = 1040, dirty = false, busy = false, onClose, children, footer }) {
   const requestClose = useCallback(() => {

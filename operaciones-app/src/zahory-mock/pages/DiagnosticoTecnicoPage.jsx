@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
 import { ModalShell } from '../components/ModalShell.jsx';
+import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -404,10 +405,14 @@ export function DiagnosticoTecnicoPage() {
   const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [] });
   const [lineValidationErrors, setLineValidationErrors] = useState({});
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
+  const [hallazgosDirty, setHallazgosDirty] = useState(false);
+  const [hallazgosDirtySummary, setHallazgosDirtySummary] = useState({ hallazgos: 0, tareas: 0 });
+  const [hallazgosSaving, setHallazgosSaving] = useState(false);
   const openRequestRef = useRef(0);
   const listRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const modalSessionRef = useRef(0);
+  const hallazgosSaveRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -512,6 +517,10 @@ export function DiagnosticoTecnicoPage() {
     setReferenceError('');
     setCatalogError('');
     setNotice('');
+    setHallazgosDirty(false);
+    setHallazgosDirtySummary({ hallazgos: 0, tareas: 0 });
+    setHallazgosSaving(false);
+    hallazgosSaveRef.current = null;
     setError('');
   };
 
@@ -520,6 +529,10 @@ export function DiagnosticoTecnicoPage() {
     setError('');
     setReferenceError('');
     setNotice('');
+    setHallazgosDirty(false);
+    setHallazgosDirtySummary({ hallazgos: 0, tareas: 0 });
+    setHallazgosSaving(false);
+    hallazgosSaveRef.current = null;
     try {
       const detail = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, diagnostico.id));
       if (requestId !== openRequestRef.current) return;
@@ -554,6 +567,10 @@ export function DiagnosticoTecnicoPage() {
     setSaving(true);
     setError('');
     setNotice('');
+    setHallazgosDirty(false);
+    setHallazgosDirtySummary({ hallazgos: 0, tareas: 0 });
+    setHallazgosSaving(false);
+    hallazgosSaveRef.current = null;
     const session = modalSessionRef.current;
     const isActive = () => mountedRef.current && modalSessionRef.current === session;
     try {
@@ -725,11 +742,15 @@ export function DiagnosticoTecnicoPage() {
     setReferenceError('');
     setCatalogError('');
     setNotice('');
+    setHallazgosDirty(false);
+    setHallazgosDirtySummary({ hallazgos: 0, tareas: 0 });
+    setHallazgosSaving(false);
+    hallazgosSaveRef.current = null;
   };
   const detailDirty = selected
-    ? (selected.lineas || []).some(line => line._dirty)
+    ? (selected.lineas || []).some(line => line._dirty) || hallazgosDirty
     : Boolean(form.referencia);
-  const modalBusy = saving || Boolean(savingLine);
+  const modalBusy = saving || Boolean(savingLine) || hallazgosSaving;
   const modalOpen = Boolean(form.tipo || selected);
   const readOnlyReason = !sesion.permiteEscritura
     ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
@@ -803,6 +824,7 @@ export function DiagnosticoTecnicoPage() {
         onClose={closeDetail}
         footer={requestClose => <>
           <div style={{ flex: 1 }}>
+            {selected && hallazgosDirty && <div className="hallazgos-dirty-summary">{hallazgosDirtySummary.hallazgos} hallazgo{hallazgosDirtySummary.hallazgos === 1 ? '' : 's'} y {hallazgosDirtySummary.tareas} tarea{hallazgosDirtySummary.tareas === 1 ? '' : 's'} con cambios sin guardar</div>}
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
             {error && <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>}
             {referenceError && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>No se pudo resolver la referencia: {referenceError}</div>}
@@ -810,6 +832,7 @@ export function DiagnosticoTecnicoPage() {
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
           <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
+          {selected && hallazgosDirty && canEditLines && <button type="button" className="btn btn-primary" onClick={() => hallazgosSaveRef.current?.()} disabled={hallazgosSaving}>{hallazgosSaving ? 'Guardando...' : 'Guardar todo'}</button>}
           {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >
@@ -852,6 +875,23 @@ export function DiagnosticoTecnicoPage() {
               onDelete={() => deleteLine(line)}
               onError={lineError => setError(errorMessage(lineError))}
             />)}
+            <HallazgosTrabajoPanel
+              empresaId={empresaId}
+              diagnostico={selected}
+              lines={selected.lineas || []}
+              familias={catalogs.familias}
+              tipos={catalogs.tipos}
+              cargos={catalogs.cargos}
+              activos={catalogs.activos}
+              canEdit={canEditLines}
+              readOnly={isReadOnly}
+              onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }}
+              onDirtyChange={setHallazgosDirty}
+              onDirtySummary={setHallazgosDirtySummary}
+              onSavingChange={setHallazgosSaving}
+              onError={message => setError(message || '')}
+              onNotice={setNotice}
+            />
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
         </>}
