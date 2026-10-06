@@ -7,6 +7,7 @@ import { useApp } from './context.jsx';
 import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
+import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto } from './services/presupuestoReal.js';
 
 const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
@@ -14,12 +15,6 @@ const vc = (v) => v >= 0 ? 'var(--green)' : 'var(--danger)';
 const vi = (v) => v >= 0 ? '▲' : '▼';
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-const normalizarCategoriaPresupuesto = valor => String(valor || '')
-  .toLowerCase()
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .trim();
-
 function KPI({ label, value, sub, subColor }) {
   return (
     <div className="kpi-card">
@@ -350,7 +345,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
   const [panelDetalle, setPanelDetalle] = useState(null);
   const [panelEnviar, setPanelEnviar]   = useState(false);
   const [formPre, setFormPre]       = useState({ nombre: '', periodo, centro_costo_id: '', cebe_id: '' });
-  const [formPartidas, setFormPartidas] = useState([{ categoria: 'Materiales', descripcion: '', monto_presupuestado: '' }]);
+  const [formPartidas, setFormPartidas] = useState([{ categoria: 'Materiales', descripcion: '', monto_presupuestado: '', moneda: 'PEN' }]);
   const [aprobadores, setAprobadores]   = useState([null]);
   const [comentarioApr, setComentarioApr] = useState('');
   const [saving, setSaving]         = useState(false);
@@ -381,72 +376,23 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
     efectivoCecos,
   }), [cxp, cxpDistribucionesCeco, comprasGastos, empresaId, periodo, efectivoCecos]);
 
-  const filasCxpDeCategoria = categoria => filasRealCxp.filter(fila =>
-    normalizarCategoriaPresupuesto(fila.categoriaEr) === normalizarCategoriaPresupuesto(categoria)
-  );
-  const filasCxpSinCategoria = useMemo(() => filasRealCxp.filter(fila => !partidas.some(partida =>
-    normalizarCategoriaPresupuesto(partida.categoria) === normalizarCategoriaPresupuesto(fila.categoriaEr)
-  )), [filasRealCxp, partidas]);
-  const realFilasCxp = filas => filas.reduce((s, fila) => s + Number(fila.monto || 0), 0);
-  const desgloseFilasCxp = filas => filas.map(fila => ({
-    fecha: fila.fecha,
-    descripcion: fila.concepto || 'Cuenta por pagar',
-    proveedor: fila.proveedor || '—',
-    monto: Number(fila.monto || 0),
-    documento: fila.documento || '—',
-  }));
-
-  const calcularReal = (categoria, esSinCategoriaCxp = false) => {
-    if (esSinCategoriaCxp) return realFilasCxp(filasCxpSinCategoria);
-    const realCxp = realFilasCxp(filasCxpDeCategoria(categoria));
-    if (categoria === 'Mano de obra') {
-      return (ots || []).filter(o => {
-        if (o.empresa_id !== empresaId) return false;
-        const otP = esPeriodoMensual ? (o.fecha_cierre || o.fecha_inicio || '').slice(0, 7) : (o.fecha_cierre || o.fecha_inicio || '').slice(0, 4);
-        if (otP !== periodo) return false;
-        if (!['cerrada', 'facturada'].includes(o.estado)) return false;
-        if (presActivo?.centro_costo_id && o.centro_costo_id && o.centro_costo_id !== presActivo.centro_costo_id) return false;
-        return true;
-      }).reduce((s, o) => s + Number(o.costo_real || 0), 0) + realCxp;
-    }
-    return (comprasGastos || []).filter(g => {
-      if (g.empresa_id !== empresaId) return false;
-      const gP = esPeriodoMensual ? (g.fecha || '').slice(0, 7) : (g.fecha || '').slice(0, 4);
-      if (gP !== periodo || g.categoria !== categoria) return false;
-      if (efectivoCecos && !efectivoCecos.includes(g.centro_costo_id)) return false;
-      return true;
-    }).reduce((s, g) => s + Number(g.monto || 0), 0) + realCxp;
+  const resumenReal = useMemo(() => crearResumenRealPresupuesto({
+    partidas, comprasGastos, ots, filasCxp: filasRealCxp, empresaId, periodo, efectivoCecos,
+    incluirRegistro: (registro, tipo) => tipo !== 'ot' || !presActivo?.centro_costo_id || !registro.centro_costo_id || registro.centro_costo_id === presActivo.centro_costo_id,
+  }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, efectivoCecos, presActivo]);
+  const resultadosPartidas = resumenReal.porPartida;
+  const resultadosSinPartida = resumenReal.sinPartida;
+  const formatoMoneda = (monto, moneda = 'PEN') => `${normalizarMonedaPresupuesto(moneda) === 'USD' ? 'US$' : 'S/'} ${Number(monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const lineasKpi = (montos, conSigno = false) => ['PEN', ...(Number(montos.USD || 0) !== 0 ? ['USD'] : [])].map(moneda => {
+    const monto = Number(montos[moneda] || 0);
+    return <div key={moneda}>{conSigno && monto > 0 ? '+' : ''}{formatoMoneda(monto, moneda)}</div>;
+  });
+  const ejecucionPorMoneda = moneda => {
+    const pres = resumenReal.totales.presupuestado[moneda];
+    return pres > 0 ? Math.round(resumenReal.totales.real[moneda] / pres * 100) : 0;
   };
-
-  const getDesglose = (categoria, esSinCategoriaCxp = false) => {
-    if (esSinCategoriaCxp) return desgloseFilasCxp(filasCxpSinCategoria);
-    const desgloseCxp = desgloseFilasCxp(filasCxpDeCategoria(categoria));
-    if (categoria === 'Mano de obra') {
-      return (ots || [])
-        .filter(o => {
-          if (o.empresa_id !== empresaId) return false;
-          const otP = esPeriodoMensual ? (o.fecha_cierre || o.fecha_inicio || '').slice(0, 7) : (o.fecha_cierre || o.fecha_inicio || '').slice(0, 4);
-          return otP === periodo && ['cerrada', 'facturada'].includes(o.estado);
-        })
-        .map(o => ({ fecha: o.fecha_cierre || o.fecha_inicio || '', descripcion: o.numero ? `OT ${o.numero}` : o.nombre || 'OT', proveedor: o.tecnico_lider || '—', monto: Number(o.costo_real || 0), documento: o.numero || '—' }))
-        .concat(desgloseCxp);
-    }
-    return (comprasGastos || [])
-      .filter(g => {
-        if (g.empresa_id !== empresaId) return false;
-        const gP = esPeriodoMensual ? (g.fecha || '').slice(0, 7) : (g.fecha || '').slice(0, 4);
-        return gP === periodo && g.categoria === categoria;
-      })
-      .map(g => ({ fecha: g.fecha || '', descripcion: g.descripcion || '—', proveedor: g.proveedor || '—', monto: Number(g.monto || 0), documento: g.numero_documento || g.factura || '—' }))
-      .concat(desgloseCxp);
-  };
-
-  const totPres = partidas.reduce((s, p) => s + Number(p.monto_presupuestado || 0), 0);
-  const totRealSinCategoria = realFilasCxp(filasCxpSinCategoria);
-  const totReal = partidas.reduce((s, p) => s + calcularReal(p.categoria), 0) + totRealSinCategoria;
-  const varNeta = totReal - totPres;
-  const execPct = totPres > 0 ? Math.round(totReal / totPres * 100) : 0;
-  const alertas = partidas.filter(p => calcularReal(p.categoria) > Number(p.monto_presupuestado || 0));
+  const obtenerResultado = partida => resultadosPartidas.find(resultado => resultado.partida === partida);
+  const alertas = resultadosPartidas.filter(resultado => resultado.real > Number(resultado.partida.monto_presupuestado || 0)).map(resultado => resultado.partida);
 
   const siguienteApr = cadena.find(a => a.estado === 'pendiente');
   const puedoAprobar = siguienteApr && siguienteApr.aprobador_id === authUser?.id;
@@ -455,7 +401,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
   const abrirNuevo = () => {
     setFormPre({ nombre: '', periodo, centro_costo_id: '', cebe_id: '' });
-    setFormPartidas([{ categoria: 'Materiales', descripcion: '', monto_presupuestado: '' }]);
+    setFormPartidas([{ categoria: 'Materiales', descripcion: '', monto_presupuestado: '', moneda: 'PEN' }]);
     setPanelNuevo(true);
   };
 
@@ -544,10 +490,10 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
         <>
           {/* ── KPIs ──────────────────────────────────────────────────── */}
           <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-            <div className="kpi-card"><div className="kpi-label">Presupuestado</div><div className="kpi-value" style={{ fontSize: 20 }}>{S(totPres)}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Real ejecutado</div><div className="kpi-value" style={{ fontSize: 20, color: totReal > totPres ? 'var(--danger)' : 'var(--fg)' }}>{S(totReal)}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Variación neta</div><div className="kpi-value" style={{ fontSize: 20, color: vc(-varNeta) }}>{varNeta > 0 ? '+' : ''}{S(varNeta)}</div></div>
-            <div className="kpi-card"><div className="kpi-label">Ejecución</div><div className="kpi-value" style={{ fontSize: 20, color: execPct > 100 ? 'var(--danger)' : execPct > 80 ? 'var(--warning)' : 'var(--green)' }}>{execPct}%</div></div>
+            <div className="kpi-card"><div className="kpi-label">Presupuestado</div><div className="kpi-value" style={{ fontSize: 20 }}>{lineasKpi(resumenReal.totales.presupuestado)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Real ejecutado</div><div className="kpi-value" style={{ fontSize: 20 }}>{lineasKpi(resumenReal.totales.real)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Variación neta</div><div className="kpi-value" style={{ fontSize: 20 }}>{lineasKpi(resumenReal.totales.variacion, true)}</div></div>
+            <div className="kpi-card"><div className="kpi-label">Ejecución</div><div className="kpi-value" style={{ fontSize: 20 }}>{['PEN', ...(resumenReal.totales.presupuestado.USD || resumenReal.totales.real.USD ? ['USD'] : [])].map(moneda => <div key={moneda} style={{ color: ejecucionPorMoneda(moneda) > 100 ? 'var(--danger)' : ejecucionPorMoneda(moneda) > 80 ? 'var(--warning)' : 'var(--green)' }}>{ejecucionPorMoneda(moneda)}%{(resumenReal.totales.presupuestado.USD || resumenReal.totales.real.USD) ? ` (${moneda === 'USD' ? 'US$' : 'S/'})` : ''}</div>)}</div></div>
           </div>
 
           {/* ── Sub-tabs ──────────────────────────────────────────────── */}
@@ -575,7 +521,8 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                     <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--fg-muted)', padding: 24 }}>Sin partidas.</td></tr>
                   )}
                   {partidas.map(p => {
-                    const real = calcularReal(p.categoria);
+                    const resultado = obtenerResultado(p);
+                    const real = resultado?.real || 0;
                     const pres = Number(p.monto_presupuestado || 0);
                     const varAbs = real - pres;
                     const excede = real > pres;
@@ -587,10 +534,10 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                           {p.categoria}
                         </td>
                         <td style={{ color: 'var(--fg-muted)' }}>{p.descripcion || '—'}</td>
-                        <td style={{ textAlign: 'right' }}>{S(pres)}</td>
-                        <td style={{ textAlign: 'right', color: excede ? 'var(--danger)' : 'var(--fg)', fontWeight: excede ? 700 : 400 }}>{S(real)}</td>
+                        <td style={{ textAlign: 'right' }}>{formatoMoneda(pres, p.moneda)}</td>
+                        <td style={{ textAlign: 'right', color: excede ? 'var(--danger)' : 'var(--fg)', fontWeight: excede ? 700 : 400 }}>{formatoMoneda(real, p.moneda)}</td>
                         <td style={{ textAlign: 'right', color: excede ? 'var(--danger)' : 'var(--green)' }}>
-                          {varAbs >= 0 ? '+' : ''}{S(varAbs)}
+                          {varAbs >= 0 ? '+' : ''}{formatoMoneda(varAbs, p.moneda)}
                         </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -601,25 +548,26 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                       </tr>
                     );
                   })}
-                  {filasCxpSinCategoria.length > 0 && (() => {
-                    const real = totRealSinCategoria;
+                  {resultadosSinPartida.map(resultado => {
+                    const real = resultado.real;
                     return (
-                      <tr key="compras-oc-sin-categoria" style={{ cursor: 'pointer' }} onClick={() => setPanelDetalle({
-                        id: 'compras-oc-sin-categoria',
-                        categoria: 'Compras por OC sin categoría',
-                        descripcion: 'CxP de OC sin partida presupuestal coincidente',
+                      <tr key={resultado.id} style={{ cursor: 'pointer' }} onClick={() => setPanelDetalle({
+                        id: resultado.id,
+                        categoria: resultado.categoria,
+                        descripcion: resultado.descripcion,
                         monto_presupuestado: 0,
-                        esSinCategoriaCxp: true,
+                        moneda: resultado.moneda,
+                        resultadoSinPartida: resultado,
                       })}>
-                        <td><span style={{ color: 'var(--danger)', fontWeight: 700, marginRight: 4 }}>!</span>Compras por OC sin categoría</td>
-                        <td style={{ color: 'var(--fg-muted)' }}>Sin partida presupuestal</td>
+                        <td><span style={{ color: 'var(--danger)', fontWeight: 700, marginRight: 4 }}>!</span>{resultado.categoria} ({resultado.moneda === 'USD' ? 'US$' : 'S/'})</td>
+                        <td style={{ color: 'var(--fg-muted)' }}>{resultado.descripcion}</td>
                         <td style={{ textAlign: 'right' }}>—</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{S(real)}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger)' }}>+{S(real)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: 700 }}>{formatoMoneda(real, resultado.moneda)}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--danger)' }}>+{formatoMoneda(real, resultado.moneda)}</td>
                         <td style={{ color: 'var(--fg-subtle)', textAlign: 'center', fontSize: 10 }}>—</td>
                       </tr>
                     );
-                  })()}
+                  })}
                 </tbody>
               </table>
             </div>
@@ -720,7 +668,8 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
                     <th style={{ textAlign: 'left', padding: '4px 4px 4px 0', fontWeight: 600 }}>Categoría</th>
                     <th style={{ textAlign: 'left', padding: '4px', fontWeight: 600 }}>Descripción</th>
-                    <th style={{ textAlign: 'right', padding: '4px 0 4px 4px', fontWeight: 600 }}>Monto S/</th>
+                    <th style={{ textAlign: 'left', padding: '4px', fontWeight: 600 }}>Moneda</th>
+                    <th style={{ textAlign: 'right', padding: '4px 0 4px 4px', fontWeight: 600 }}>Monto</th>
                     <th style={{ width: 24 }}></th>
                   </tr>
                 </thead>
@@ -737,6 +686,11 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                         <input className="input" style={{ fontSize: 12 }} value={fp.descripcion} placeholder="Descripción"
                           onChange={e => setFormPartidas(prev => prev.map((x, j) => j === i ? { ...x, descripcion: e.target.value } : x))} />
                       </td>
+                      <td style={{ padding: '3px 4px' }}>
+                        <select className="select" style={{ fontSize: 12 }} value={fp.moneda || 'PEN'} onChange={e => setFormPartidas(prev => prev.map((x, j) => j === i ? { ...x, moneda: e.target.value } : x))}>
+                          <option value="PEN">PEN</option><option value="USD">USD</option>
+                        </select>
+                      </td>
                       <td style={{ padding: '3px 0 3px 4px' }}>
                         <input className="input" style={{ fontSize: 12, textAlign: 'right' }} type="number" min="0" step="0.01" value={fp.monto_presupuestado} placeholder="0.00"
                           onChange={e => setFormPartidas(prev => prev.map((x, j) => j === i ? { ...x, monto_presupuestado: e.target.value } : x))} />
@@ -750,7 +704,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                 </tbody>
               </table>
               <button className="btn btn-ghost" style={{ fontSize: 12, width: '100%', marginBottom: 20 }}
-                onClick={() => setFormPartidas(prev => [...prev, { categoria: 'Materiales', descripcion: '', monto_presupuestado: '' }])}>
+                onClick={() => setFormPartidas(prev => [...prev, { categoria: 'Materiales', descripcion: '', monto_presupuestado: '', moneda: 'PEN' }])}>
                 + Agregar partida
               </button>
               <button className="btn btn-primary" style={{ width: '100%' }}
@@ -779,19 +733,19 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                 <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Presupuestado</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{panelDetalle.esSinCategoriaCxp ? '—' : S(panelDetalle.monto_presupuestado)}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{panelDetalle.resultadoSinPartida ? '—' : formatoMoneda(panelDetalle.monto_presupuestado, panelDetalle.moneda)}</div>
                 </div>
                 <div style={{ background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 14px' }}>
                   <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>Real ejecutado</div>
                   {(() => {
-                    const r = calcularReal(panelDetalle.categoria, panelDetalle.esSinCategoriaCxp);
-                    return <div style={{ fontSize: 18, fontWeight: 700, color: r > Number(panelDetalle.monto_presupuestado) ? 'var(--danger)' : 'var(--green)' }}>{S(r)}</div>;
+                    const r = panelDetalle.resultadoSinPartida ? panelDetalle.resultadoSinPartida.real : obtenerResultado(panelDetalle)?.real || 0;
+                    return <div style={{ fontSize: 18, fontWeight: 700, color: r > Number(panelDetalle.monto_presupuestado) ? 'var(--danger)' : 'var(--green)' }}>{formatoMoneda(r, panelDetalle.moneda)}</div>;
                   })()}
                 </div>
               </div>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Desglose del Real</div>
               {(() => {
-                const items = getDesglose(panelDetalle.categoria, panelDetalle.esSinCategoriaCxp);
+                const items = panelDetalle.resultadoSinPartida ? panelDetalle.resultadoSinPartida.desglose : obtenerResultado(panelDetalle)?.desglose || [];
                 if (!items.length) return <div style={{ color: 'var(--fg-muted)', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>Sin registros para este período.</div>;
                 return (
                   <table className="tbl" style={{ fontSize: 12 }}>
@@ -802,7 +756,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
                           <td style={{ whiteSpace: 'nowrap' }}>{g.fecha}</td>
                           <td>{g.descripcion}</td>
                           <td style={{ color: 'var(--fg-muted)' }}>{g.proveedor}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{S(g.monto)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatoMoneda(g.monto, g.moneda || panelDetalle.moneda)}</td>
                           <td style={{ color: 'var(--fg-muted)' }}>{g.documento}</td>
                         </tr>
                       ))}
