@@ -1,0 +1,4 @@
+The previous Tee-Object capture attempt failed before executing the SQL:
+WARNING: Error loading config file: open C:\Users\tideo_design\.docker\config.json: Access is denied.
+Access token not provided. Supply an access token by running supabase login or setting the SUPABASE_ACCESS_TOKEN environment variable.
+Run supabase login first.

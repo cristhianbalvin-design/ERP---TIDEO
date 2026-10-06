@@ -1,0 +1,8 @@
+{"etapa":"before","empresa":"emp_2000000000","diagnostico_borrador_seleccionado":true,"usuario_tecnico_seleccionado":true,"estados":{"borrador":10,"emitido":0},"hallazgos":0,"mediciones":0,"enlaces":0}
+{"sesion":"S1","etapa":"update_sin_commit","filas":1}
+{"sesion":"S2","etapa":"espera","esperando_mas_de_2s":true,"transcurrido_ms_minimo":2500}
+{"sesion":"S1","etapa":"rollback","confirmado":true}
+{"sesion":"S2","etapa":"insert_despues_de_rollback_s1","permitido":true,"tiempo_ms":2737,"filas":1,"error":null}
+{"sesion":"S2","etapa":"rollback","confirmado":true}
+{"etapa":"after","estados":{"borrador":10,"emitido":0},"hallazgos":0,"mediciones":0,"enlaces":0}
+{"resultado":"PASS","variante":"reversible"}

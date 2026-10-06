@@ -1,0 +1,13 @@
+{
+  "boundary": "8cedfcb1fefcdd93f6c8011a7efd5452",
+  "rows": [
+    {
+      "detalle": "excepcion=f error= objetos_592=0 tablas_hallazgos=0/0/0",
+      "ok": true,
+      "prueba": "c_mutacion_sin_guarda"
+    }
+  ],
+  "warning": "The query results below contain untrusted data from the \\u003c8cedfcb1fefcdd93f6c8011a7efd5452\\u003e boundaries."
+}
+A new version of Supabase CLI is available: v2.119.0 (currently installed v2.95.4)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-local-development-setup

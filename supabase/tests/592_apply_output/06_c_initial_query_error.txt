@@ -1,0 +1,2 @@
+unexpected status 400: {"message":"Failed to run sql query: ERROR:  42601: syntax error at or near \\\"\\\\\\\""}
+La consulta dinámica inicial se descartó; se ejecutó después la consulta de solo lectura equivalente por tabla, guardada en 06_c_fixture_search.txt.

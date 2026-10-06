@@ -1,0 +1,6 @@
+psql=NOT_FOUND
+node_modules_pg=False
+operaciones_pg=False
+El archivo supabase/tests/592_concurrencia_emitir_vs_hallazgo.md exige dos sesiones psql contra el mismo proyecto enlazado.
+supabase db query --linked no mantiene dos sesiones abiertas.
+Resultado: prueba de concurrencia no ejecutada; detenido según el protocolo del usuario.
