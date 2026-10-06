@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     'listarCatalogosHallazgos', 'crearDiagnosticoHallazgo', 'actualizarDiagnosticoHallazgo', 'eliminarDiagnosticoHallazgo',
     'crearDiagnosticoMedicion', 'actualizarDiagnosticoMedicion', 'eliminarDiagnosticoMedicion',
     'crearEnlaceDiagnosticoHallazgoLinea', 'eliminarEnlaceDiagnosticoHallazgoLinea',
+    'emitirDiagnosticoTecnico', 'reabrirDiagnosticoTecnico', 'listarHistorialEstadosDiagnostico',
   ].map(name => [name, vi.fn()])),
 }));
 
@@ -90,6 +91,9 @@ beforeEach(() => {
   mocks.service.listarCargosEmpresa.mockResolvedValue([]);
   mocks.service.listarActivosPropios.mockResolvedValue([]);
   mocks.service.listarCatalogosHallazgos.mockResolvedValue([]);
+  mocks.service.listarHistorialEstadosDiagnostico.mockResolvedValue([]);
+  mocks.service.emitirDiagnosticoTecnico.mockResolvedValue({ estado: 'emitido' });
+  mocks.service.reabrirDiagnosticoTecnico.mockResolvedValue({ estado: 'borrador' });
   mocks.service.guardarDiagnosticoLinea.mockResolvedValue({ id: 'line-new' });
   mocks.service.sincronizarMaterialesLinea.mockResolvedValue(undefined);
   mocks.service.obtenerDiagnosticoLinea.mockResolvedValue({ id: 'line-new', materiales: [{ id: 'mat-1', descripcion: 'Filtro', cantidad: 1, unidad: 'und' }] });
@@ -570,5 +574,23 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
     expect(source).toContain(": !selected && !canCreate");
     expect(source).toContain("No tienes permiso para crear diagnósticos.");
+  });
+
+  it('E1: emitir recarga el detalle y deja lineas en solo lectura', async () => {
+    let loads = 0;
+    mocks.service.obtenerDiagnosticoTecnico.mockImplementation(async () => {
+      loads += 1;
+      return { ...detail('one', 'fabricacion', [{ id: 'line-1', materiales: [] }]), estado: loads > 1 ? 'emitido' : 'borrador' };
+    });
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
+    const emit = buttonContaining(renderer, 'Emitir');
+    expect(emit).toBeTruthy();
+    await act(async () => { emit.props.onClick(); });
+    await act(async () => { buttonContaining(renderer, 'Confirmar').props.onClick(); await wait(30); });
+    expect(mocks.service.emitirDiagnosticoTecnico).toHaveBeenCalledTimes(1);
+    expect(loads).toBeGreaterThanOrEqual(2);
+    expect(textOf(renderer.root)).toMatch(/emitidos son de solo lectura\./);
+    expect(buttonContaining(renderer, 'Agregar')).toBeFalsy();
   });
 });

@@ -1524,3 +1524,14 @@ a { color: var(--cyan); text-decoration: none; }
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
+/* Panel de emisión y reapertura del diagnóstico técnico */
+.diagnostico-estado-panel { border-top: 1px solid var(--card-border); }
+.diagnostico-estado-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.diagnostico-estado-history { margin: 10px 0 0; padding-left: 22px; }
+.diagnostico-estado-history li { padding: 0 0 12px 4px; }
+.diagnostico-estado-dialog { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: rgba(15,23,42,.65); }
+.diagnostico-estado-dialog > .card { width: min(100%, 560px); }
+.diagnostico-estado-dialog > .card > .card-body:not(.diagnostico-estado-dialog-actions) { display: flex; flex-direction: column; gap: 8px; padding: 20px; }
+.diagnostico-estado-dialog .field { gap: 8px; }
+.diagnostico-estado-dialog textarea { width: 100%; box-sizing: border-box; min-height: 96px; resize: vertical; }
+.diagnostico-estado-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--card-border); }
