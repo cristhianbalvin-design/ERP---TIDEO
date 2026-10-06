@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crearEntradasDevengoCxp, resolverCecosCxP, resumirCecosCxP } from './cxpDistribucionCeco.js';
+import { crearEntradasDevengoCxp, participacionCecoCxP, resolverCecosCxP, resumirCecosCxP } from './cxpDistribucionCeco.js';
 
 const cxp = (devengoAmount, overrides = {}) => ({
   id: 'cxp-1',
@@ -91,6 +91,36 @@ test('sin distribución usa el CECO de cabecera con su monto', () => {
   assert.deepEqual(resolverCecosCxP(cxp(42, { monto_total: 42 })), [
     { cecoId: 'ceco-cabecera', monto: 42, distribuido: false },
   ]);
+});
+
+test('calcula la participación de cada CECO en el reparto', () => {
+  const reparto = [
+    { ceco_id: 'ceco-a', monto: 826 },
+    { ceco_id: 'ceco-b', monto: 354 },
+  ];
+  assert.equal(participacionCecoCxP(cxp(1180), 'ceco-a', reparto), 0.7);
+  assert.equal(participacionCecoCxP(cxp(1180), 'ceco-b', reparto), 0.3);
+});
+
+test('la CxP sin reparto asigna toda la participación a su CECO de cabecera', () => {
+  assert.equal(participacionCecoCxP(cxp(42, { monto_total: 42 }), 'ceco-cabecera'), 1);
+});
+
+test('un CECO ausente no participa del reparto', () => {
+  assert.equal(participacionCecoCxP(cxp(1180), 'ceco-ausente', [
+    { ceco_id: 'ceco-a', monto: 826 },
+    { ceco_id: 'ceco-b', monto: 354 },
+  ]), 0);
+});
+
+test('las participaciones de todos los CECO suman uno', () => {
+  const reparto = [
+    { ceco_id: 'ceco-a', monto: 826 },
+    { ceco_id: 'ceco-b', monto: 354 },
+  ];
+  const total = ['ceco-a', 'ceco-b']
+    .reduce((suma, cecoId) => suma + participacionCecoCxP(cxp(1180), cecoId, reparto), 0);
+  assert.equal(total, 1);
 });
 
 test('sin distribución ni cabecera queda Sin CECO', () => {
