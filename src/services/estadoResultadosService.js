@@ -232,12 +232,12 @@ const naturalezaByCeco = centrosCosto => new Map(
 const excludedCxpOrigins = new Set(['nomina', 'nc_devolucion', 'recepcion', 'tributos', 'dividendos']);
 const excludedCxpMotives = new Set(['devolucion_nc', 'planilla', 'essalud', 'pensiones', 'ir_5ta']);
 
-const cxpDevengoAmount = cxp => {
+export const cxpDevengoAmount = cxp => {
   if (cxpIsRhe(cxp)) return amount(cxp?.monto_bruto) || amount(cxp?.monto_total);
   return amount(cxp?.monto_total);
 };
 
-const cxpDevengoLabel = cxp => {
+export const cxpDevengoLabel = cxp => {
   if (cxp?.categoria_er) return cxp.categoria_er;
   const origin = cxpOrigin(cxp);
   const motive = cxpMotive(cxp);
@@ -248,7 +248,7 @@ const cxpDevengoLabel = cxp => {
   return 'Gastos operativos';
 };
 
-const cxpCanDevengarEr = cxp => {
+export const cxpCanDevengarEr = cxp => {
   if (!cxp || cxpIsCancelled(cxp)) return false;
   // Corrección 5: excluir si el campo no_devengar_er está activado.
   if (cxp.no_devengar_er) return false;
@@ -259,7 +259,7 @@ const cxpCanDevengarEr = cxp => {
   return cxpDevengoAmount(cxp) > 0;
 };
 
-const compraCoversCxp = (cxp, comprasGastos = []) => {
+export const compraCoversCxp = (cxp, comprasGastos = []) => {
   const cxpId = cxp?.id;
   const gastoId = cxp?.gasto_id;
   // FK exacto primero (migration 168 agrega cxp_id a compras_gastos)
