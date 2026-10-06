@@ -12531,7 +12531,7 @@ function SOLPE() {
                 );
               })}
               {solpesFiltradas.length === 0 && (
-                <tr><td colSpan="10" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>No hay SOLPEs registradas.</td></tr>
+                <tr><td colSpan="10" style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{solpes.length > 0 ? 'Ninguna SOLPE coincide con los filtros o la búsqueda.' : 'No hay SOLPEs registradas.'}</td></tr>
               )}
             </tbody>
           </table>
