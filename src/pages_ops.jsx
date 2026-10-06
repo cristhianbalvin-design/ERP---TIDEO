@@ -6607,8 +6607,17 @@ function CxPResumenBadges({ cxpResumen, totalOc }) {
 }
 
 const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+const cecoIdDeLinea = linea => String(linea?.ceco_id || '').trim() || null;
+const idsCecoUnicos = lineas => [...new Set((lineas || []).map(cecoIdDeLinea).filter(Boolean))];
+const gruposCecoDeLineas = lineas => [...new Set((lineas || []).map(linea => cecoIdDeLinea(linea) || '__sin_ceco__'))];
+const etiquetaCeco = (cecoId, centrosCosto = []) => {
+  if (!cecoId) return 'Sin CECO';
+  const ceco = centrosCosto.find(item => item.id === cecoId);
+  return ceco ? `${ceco.codigo ? `${ceco.codigo} - ` : ''}${ceco.nombre || ceco.id}` : cecoId;
+};
 const nuevaLineaOC = (overrides = {}) => ({
   item_id: generarItemOcId(),
+  ceco_id: null,
   material_id: '',
   descripcion: 'Item de compra',
   cantidad: 1,
@@ -6738,6 +6747,7 @@ function CotizacionesCompras() {
     const proceso = {
       id: `pc_${String(next).padStart(3,'0')}`, empresa_id: empresa.id, codigo: `COT-COMP-${String(next).padStart(3,'0')}`,
       solpe_id: form.origen_solpe === 'si' ? form.solpe_id : null, ot_id: selectedSolpe?.ot_id || '', tipo: form.tipo,
+      centro_costo_id: form.origen_solpe === 'si' ? (selectedSolpe?.centro_costo_id || null) : null,
       descripcion: form.descripcion || 'Requerimiento de compra', monto_referencial: 4500, proveedores_consultados: form.proveedores,
       fecha_limite: form.fecha_limite, responsable: form.responsable, estado: 'solicitud_enviada',
       proveedor_ganador: null, monto_seleccionado: null, documento_generado: null
@@ -6766,8 +6776,8 @@ function CotizacionesCompras() {
       const id = `oc_${String(Date.now()).slice(-5)}`;
       const oc = {
         id, empresa_id: empresa.id, codigo:`OC-2025-${String(Math.floor(Math.random()*9000)+1000)}`, proceso_compra_id: proceso.id,
-        proveedor_id: proveedorId, ot_id: proceso.ot_id, descripcion: proceso.descripcion,
-        items:[{ descripcion: proceso.descripcion, cantidad:1, unidad:'Glb', precio_unitario: resp?.precio_total || proceso.monto_referencial, subtotal: resp?.precio_total || proceso.monto_referencial }],
+        proveedor_id: proveedorId, ot_id: proceso.ot_id, centro_costo_id: proceso.centro_costo_id || null, descripcion: proceso.descripcion,
+        items:[{ ceco_id: proceso.centro_costo_id || null, descripcion: proceso.descripcion, cantidad:1, unidad:'Glb', precio_unitario: resp?.precio_total || proceso.monto_referencial, subtotal: resp?.precio_total || proceso.monto_referencial }],
         subtotal: resp?.precio_total || proceso.monto_referencial, igv:(resp?.precio_total || proceso.monto_referencial)*0.18, total:(resp?.precio_total || proceso.monto_referencial)*1.18,
         condicion_pago: prov.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:new Date().toISOString().slice(0,10), fecha_entrega_esperada:proceso.fecha_limite,
         almacen_destino:'ALM-001', estado:'emitida', porcentaje_recibido:0, notas_proveedor:'', notas_internas:'Generada desde comparativo'
@@ -6841,6 +6851,7 @@ function BandejaSourcing() {
   const [draggedKey, setDraggedKey] = useState('');
   const [generandoProveedores, setGenerandoProveedores] = useState(() => new Set());
   const [erroresSociedad, setErroresSociedad] = useState({});
+  const [erroresCeco, setErroresCeco] = useState({});
   const [otroProveedorAbierto, setOtroProveedorAbierto] = useState('');
   const [confirmacionFamilia, setConfirmacionFamilia] = useState(null);
   const [habilitandoFamilia, setHabilitandoFamilia] = useState(false);
@@ -6916,6 +6927,12 @@ function BandejaSourcing() {
     const key = sourcingLineaKey(linea);
     const anterior = linea.proveedor_asignado_id || null;
     setErroresSociedad(prev => {
+      const next = { ...prev };
+      if (anterior) delete next[anterior];
+      if (proveedorId) delete next[proveedorId];
+      return next;
+    });
+    setErroresCeco(prev => {
       const next = { ...prev };
       if (anterior) delete next[anterior];
       if (proveedorId) delete next[proveedorId];
@@ -7026,7 +7043,7 @@ function BandejaSourcing() {
   const resolverSociedadLinea = linea => {
     const solpe = solpesContext.find(item => item.id === linea.solpe_id);
     const ot = (ots || []).find(item => item.id === solpe?.ot_id);
-    const ceco = (centrosCosto || []).find(item => item.id === solpe?.centro_costo_id);
+    const ceco = (centrosCosto || []).find(item => item.id === cecoIdDeLinea(linea));
     return resolverSociedadDestino({
       sociedades: sociedadesDisponibles,
       origenes: [
@@ -7036,9 +7053,9 @@ function BandejaSourcing() {
           label: ('La OT ' + (ot?.numero || solpe?.ot_id || '')).trim(),
         },
         {
-          seleccionado: Boolean(solpe?.centro_costo_id),
+          seleccionado: Boolean(cecoIdDeLinea(linea)),
           sociedadId: ceco?.sociedad_id || null,
-          label: ('El CECO ' + (ceco?.codigo || solpe?.centro_costo_id || '')).trim(),
+          label: ('El CECO ' + (ceco?.codigo || cecoIdDeLinea(linea) || '')).trim(),
         },
       ],
       mensajeSinOrigen: 'No se pudo determinar la sociedad: la SOLPE no tiene OT ni CECO derivable.',
@@ -7061,8 +7078,39 @@ function BandejaSourcing() {
     }));
   };
 
+  const analizarCecosColumna = columna => {
+    const ids = idsCecoUnicos(columna?.lineas);
+    const tieneSinCeco = (columna?.lineas || []).some(linea => !cecoIdDeLinea(linea));
+    return {
+      ids,
+      tieneSinCeco,
+      mezclados: ids.length > 1 || (ids.length > 0 && tieneSinCeco),
+      todosSinCeco: ids.length === 0 && tieneSinCeco,
+      etiquetas: [...ids.map(id => etiquetaCeco(id, centrosCosto)), ...(tieneSinCeco ? ['Sin CECO'] : [])],
+    };
+  };
+
   const generarOCDesdeColumna = async columna => {
     if (!columna?.lineas?.length || generandoProveedores.has(columna.proveedorId)) return;
+    const resumenCeco = analizarCecosColumna(columna);
+    if (resumenCeco.mezclados) {
+      setErroresCeco(prev => ({
+        ...prev,
+        [columna.proveedorId]: {
+          titulo: 'No se puede generar la OC: hay CECOs mezclados.',
+          detalles: [
+            `CECOs en la columna: ${resumenCeco.etiquetas.join(', ')}.`,
+            'Reasigna las líneas conflictivas a otra columna antes de generar la OC.',
+          ],
+        },
+      }));
+      return;
+    }
+    setErroresCeco(prev => {
+      const next = { ...prev };
+      delete next[columna.proveedorId];
+      return next;
+    });
     const resoluciones = columna.lineas.map(linea => ({
       linea,
       resolucion: resolverSociedadLinea(linea),
@@ -7116,12 +7164,13 @@ function BandejaSourcing() {
       origen_tipo: 'solpe',
       proveedor_id: columna.proveedorId,
       ot_id: primeraSolpe?.ot_id || null,
-      centro_costo_id: primeraSolpe?.centro_costo_id || null,
+      centro_costo_id: resumenCeco.ids.length === 1 ? resumenCeco.ids[0] : null,
       descripcion: 'Sourcing consolidado - ' + sourceSolpes.length + ' SOLPE(s)',
       items: columna.lineas.map(linea => ({
         item_id: generarItemOcId(),
         solpe_id: linea.solpe_id || null,
         solpe_item_id: linea.solpe_item_id || null,
+        ceco_id: cecoIdDeLinea(linea),
         material_id: linea.material_id || null,
         codigo: linea.material_codigo || null,
         descripcion: linea.material_descripcion || 'Item de compra',
@@ -7177,6 +7226,7 @@ function BandejaSourcing() {
     const dias = diasEnCampo(linea);
     const puedeArrastrar = !estaEnCampo && !guardando.has(key) && otroProveedorAbierto !== key;
     const candidatos = Array.isArray(linea.proveedores_candidatos) ? linea.proveedores_candidatos.slice(0, 3) : [];
+    const cecoId = cecoIdDeLinea(linea);
     return <article
       className="card sourcing-card"
       key={key}
@@ -7206,6 +7256,7 @@ function BandejaSourcing() {
       >En campo: {linea.comprador_nombre || linea.comprador_campo_id} · hace {dias} {dias === 1 ? 'día' : 'días'}</div>}
       <div className="text-muted" style={{fontSize:12, marginTop:10}}>Cantidad: <strong>{linea.cantidad ?? '-'}</strong> {linea.unidad || ''}</div>
       <div className="text-muted" style={{fontSize:12, marginTop:4}}>SOLPE: <strong>{linea.solpe_codigo || linea.solpe_id}</strong></div>
+      <div className="text-muted" style={{fontSize:12, marginTop:4}}>CECO: <strong style={{color: cecoId ? 'var(--fg)' : 'var(--orange)'}}>{etiquetaCeco(cecoId, centrosCosto)}</strong></div>
       {!asignada && <div style={{marginTop:12}}>
         <div className="text-muted" style={{fontSize:12, marginBottom:7}}>Asignar proveedor</div>
         {estaEnCampo
@@ -7280,6 +7331,7 @@ function BandejaSourcing() {
       {columnasProveedor.map(columna => {
         const proveedor = proveedores.find(item => item.id === columna.proveedorId);
         const nombre = proveedor?.razon_social || proveedor?.nombre_comercial || columna.proveedorId;
+        const resumenCeco = analizarCecosColumna(columna);
         return <section
           className="card"
           key={columna.proveedorId}
@@ -7293,6 +7345,16 @@ function BandejaSourcing() {
             <span className="badge">En espera</span>
           </div>
           <div style={{display:'grid', gap:10, marginTop:12}}>{columna.lineas.map(linea => renderTarjeta(linea, true))}</div>
+          {resumenCeco.todosSinCeco && <div className="alert alert-warning" style={{marginTop:14, fontSize:12}} role="alert">
+            <strong>Advertencia: esta columna no tiene CECO.</strong>
+            <div>La OC se generará sin CECO por línea hasta que se asigne uno.</div>
+          </div>}
+          {erroresCeco[columna.proveedorId] && <div className="alert alert-danger" style={{marginTop:14, fontSize:12}} role="alert">
+            <strong>{erroresCeco[columna.proveedorId].titulo}</strong>
+            <ul style={{margin:'8px 0 0', paddingLeft:18}}>
+              {erroresCeco[columna.proveedorId].detalles.map(detalle => <li key={detalle}>{detalle}</li>)}
+            </ul>
+          </div>}
           {erroresSociedad[columna.proveedorId] && <div className="alert alert-danger" style={{marginTop:14, fontSize:12}} role="alert">
             <strong>{erroresSociedad[columna.proveedorId].titulo}</strong>
             <ul style={{margin:'8px 0 0', paddingLeft:18}}>
@@ -7382,6 +7444,7 @@ function OrdenesCompra() {
   const proveedoresOC = homologados.length ? homologados : proveedores;
   const kpi = { emitidas: ordenesCompra.length, pendientes: ordenesCompra.filter(o=>o.porcentaje_recibido<100).length, parcial: ordenesCompra.filter(o=>o.estado==='recibida_parcial').length, total: ordenesCompra.reduce((s,o)=>s+(o.total||0),0) };
   const ocsPendientesRecepcion = ordenesCompra.filter(o => ['recibida_parcial','confirmada','en_transito'].includes(o.estado));
+  const cecoBloqueadoPorCxP = Boolean(editandoOC?.id && cxpPorOrdenCompra.get(editandoOC.id)?.cxps?.length);
   const otDestinoOC = (ots || []).find(o => o.id === form.ot_id);
   const cecoDestinoOC = (centrosCosto || []).find(c => c.id === form.centro_costo_id);
   const destinoOC = resolverSociedadDestino({
@@ -7427,7 +7490,19 @@ function OrdenesCompra() {
 
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
-    if (!form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
+    const gruposCecoLineas = gruposCecoDeLineas(form.items);
+    const cecoMixto = gruposCecoLineas.length > 1;
+    const tieneSinCeco = gruposCecoLineas.includes('__sin_ceco__');
+    const cecoCabeceraEfectivo = form.centro_costo_id || (cecoMixto ? null : idsCecoUnicos(form.items)[0] || null);
+    if (cecoMixto) {
+      const etiquetas = gruposCecoLineas.map(grupo => grupo === '__sin_ceco__' ? 'Sin CECO' : etiquetaCeco(grupo, centrosCosto));
+      addToast(`La OC tiene CECOs mixtos (${etiquetas.join(', ')}). Reasigna las líneas o completa el CECO antes de dejarla lista.`);
+      if (emitir && tieneSinCeco) {
+        addToast('No se puede emitir una OC mixta con líneas Sin CECO. Guarda el borrador y reasigna las líneas o completa el CECO antes de emitir.');
+        return;
+      }
+    }
+    if (!cecoMixto && !cecoCabeceraEfectivo) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addToast('Selecciona una sociedad antes de continuar.'); return; }
     const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
     if (!proveedorSeleccionado) { addToast('Selecciona un proveedor valido antes de emitir la OC.'); return; }
@@ -7439,6 +7514,9 @@ function OrdenesCompra() {
         item_id: item.item_id || null,
         solpe_id: item.solpe_id || null,
         solpe_item_id: item.solpe_item_id || null,
+        ceco_id: cecoBloqueadoPorCxP
+          ? cecoIdDeLinea(item)
+          : cecoMixto ? cecoIdDeLinea(item) : cecoCabeceraEfectivo,
         material_id: item.material_id || null,
         codigo: mat?.codigo || item.codigo || null,
         descripcion: item.descripcion || mat?.descripcion || 'Item de compra',
@@ -7449,9 +7527,14 @@ function OrdenesCompra() {
       };
     }).filter(item => item.descripcion && item.cantidad > 0);
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
+    const centroCostoCabecera = cecoBloqueadoPorCxP
+      ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
+      : cecoMixto
+      ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
+      : cecoCabeceraEfectivo;
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
-    const oc = { id:editandoOC?.id || `oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:editandoOC?.codigo || `OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:form.centro_costo_id, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:editandoOC?.fecha_emision || new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:editandoOC?.porcentaje_recibido || 0, notas_proveedor:editandoOC?.notas_proveedor || '', notas_internas:editandoOC?.notas_internas || '', creado_por:editandoOC?.creado_por || authUser?.id || null };
+    const oc = { id:editandoOC?.id || `oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:editandoOC?.codigo || `OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:centroCostoCabecera, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:editandoOC?.fecha_emision || new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:editandoOC?.porcentaje_recibido || 0, notas_proveedor:editandoOC?.notas_proveedor || '', notas_internas:editandoOC?.notas_internas || '', creado_por:editandoOC?.creado_por || authUser?.id || null };
     try {
       let ocGuardada;
       if (editandoOC?.id) {
@@ -7490,7 +7573,7 @@ function OrdenesCompra() {
       <div className="card" style={{padding:12, marginBottom:12}}><label className="text-muted" style={{fontSize:12, display:'block', marginBottom:6}}>Origen de compra</label><select className="select" style={{maxWidth:260}} value={origenFiltro} onChange={e=>setOrigenFiltro(e.target.value)}><option value="todos">Todas las compras</option><option value="campo">Compra en campo</option><option value="otros">Compras normales</option></select></div>
       {tab !== 'pendientes_recepcion' && <OrdenesTable list={list} proveedores={proveedores} cxpPorOrdenCompra={cxpPorOrdenCompra} onSel={setSel} onEdit={abrirEdicionOC} onRecepcion={(o)=>navigate('recepciones',{ocId:o.id})} onRegistrarCxP={o => navigate('cxp', { action: 'nuevo_egreso_oc', ocId: o.id })}/>}
       {tab === 'pendientes_recepcion' && <PendientesRecepcionOC ocs={ocsPendientesRecepcion} proveedores={proveedores} recepciones={recepciones} onSel={setSel}/>}
-      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
+      {panel && <PanelOC form={form} setForm={setForm} proveedores={proveedoresOC} procesos={procesosCompra} ots={otsEscrituraOC} centrosCosto={centrosCostoEscrituraOC} materiales={materiales} empresaId={empresa?.id} destinoSociedad={destinoOC} cecoBloqueadoPorCxP={cecoBloqueadoPorCxP} modoEdicion={Boolean(editandoOC)} onClose={()=>{ setPanel(false); setEditandoOC(null); }} onCrear={crear}/>}
     </>
   );
 }
@@ -7693,9 +7776,13 @@ function PendientesRecepcionOC({ ocs, proveedores, recepciones, onSel }) {
   );
 }
 
-function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, modoEdicion = false, onClose, onCrear }) {
+function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [], materiales = [], empresaId, destinoSociedad, cecoBloqueadoPorCxP = false, modoEdicion = false, onClose, onCrear }) {
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const lineas = form.items?.length ? form.items : [nuevaLineaOC({ precio_unitario: 0 })];
+  const cecoIdsLineas = idsCecoUnicos(lineas);
+  const gruposCecoLineas = gruposCecoDeLineas(lineas);
+  const cecoMixto = gruposCecoLineas.length > 1;
+  const cecoCabecera = cecoMixto ? '' : (form.centro_costo_id || cecoIdsLineas[0] || '');
   const materialKey = lineas.map(i => i.material_id || '').join('|');
   const [precioHistorico, setPrecioHistorico] = useState({});
   const subtotal = lineas.reduce((sum, item) => sum + (Number(item.cantidad || 0) * Number(item.precio_unitario || 0)), 0);
@@ -7743,7 +7830,8 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
   return <><div className="side-panel-backdrop" onClick={onClose}/><div className="side-panel" style={{width:'min(760px,96vw)'}}><div className="side-panel-head"><div><div className="eyebrow">Orden de compra</div><div className="font-display" style={{fontSize:22,fontWeight:700}}>{modoEdicion ? 'Revisar orden de compra' : 'Nueva OC'}</div></div><button className="icon-btn" onClick={onClose}>{I.x}</button></div><div className="side-panel-body"><div className="grid-2" style={{gap:12}}>
       <div className="input-group"><label>Proceso de cotizacion</label><select className="select" value={form.proceso_compra_id || ''} onChange={e=>cambiarProcesoCotizacion(e.target.value)}><option value="">Compra directa</option>{procesos.map(p=><option key={p.id} value={p.id}>{p.codigo}</option>)}</select></div>
       <div className="input-group"><label>Proveedor</label><SearchSelect value={form.proveedor_id} placeholder="Buscar proveedor..." options={proveedores.map(p => ({ id:p.id, label:`${p.razon_social}${p.estado==='observado'?' - observado':''}`, searchText:[p.razon_social, p.nombre_comercial, p.ruc, p.codigo].filter(Boolean).join(' ') }))} onChange={proveedor_id=>setForm(v=>({...v,proveedor_id}))}/></div>
-      <div className="input-group"><label>CECO *</label>{form.origen_compra === 'directa' ? <SearchSelect value={form.centro_costo_id} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={form.centro_costo_id} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
+      <div className="input-group"><label>CECO *</label>{cecoMixto ? <select className="select" value="" disabled><option value="">Múltiples ({gruposCecoLineas.length})</option></select> : cecoBloqueadoPorCxP ? <select className="select" value={cecoCabecera} disabled><option value="">{cecoCabecera ? etiquetaCeco(cecoCabecera, centrosCosto) : 'Sin CECO'}</option></select> : form.origen_compra === 'directa' ? <SearchSelect value={cecoCabecera} placeholder={cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos'} options={cecos.map(c=>({ id: c.id, label: `${c.codigo ? c.codigo + ' - ' : ''}${c.nombre}` }))} onChange={id=>setForm(v=>({...v,centro_costo_id:id}))}/> : <select className="select" value={cecoCabecera} onChange={e=>setForm(v=>({...v,centro_costo_id:e.target.value}))}><option value="">{cecos.length ? 'Seleccionar CECO...' : 'No hay Centros de Costo activos. Crea uno en Maestros Base antes de continuar.'}</option>{cecos.map(c=><option key={c.id} value={c.id}>{c.codigo ? `${c.codigo} - ` : ''}{c.nombre}</option>)}</select>}</div>
+      {cecoBloqueadoPorCxP && <div className="text-muted" style={{fontSize:11, marginTop:-6}}>El CECO está bloqueado porque esta OC tiene una CxP no anulada.</div>}
       <SociedadFormField value={form.sociedad_id} onChange={sociedad_id => setForm(v => ({ ...v, sociedad_id }))} />
       <div className="input-group"><label>OT vinculada</label><select className="select" value={form.ot_id} onChange={e=>setForm(v=>({...v,ot_id:e.target.value}))}><option value="">Sin OT</option>{ots.map(o=><option key={o.id} value={o.id}>{o.numero || o.id}</option>)}</select></div>
       <SociedadReadOnlyField {...destinoSociedad} style={{gridColumn:'1/-1'}} />
@@ -7779,7 +7867,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
 }
 
 function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack, onEdit, onConfirmar, confirmando, onRecepcion }) {
-  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, usuarios = [], personalOperativo = [], personalAdmin = [], addToast, navigate } = useApp();
+  const { ordenesCompra, setOrdenesCompra, recepciones, ocAnticipos, registrarAnticipoOC, ocTransitos, registrarTransitoOCCtx, transportistas, empresa, authUser, usuarios = [], personalOperativo = [], personalAdmin = [], centrosCosto = [], addToast, navigate } = useApp();
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('detalle');
   const [panelAnticipo, setPanelAnticipo] = useState(false);
@@ -7790,6 +7878,19 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
   const [savingLiberacion, setSavingLiberacion] = useState(false);
 
   const ordenActual = ordenesCompra.find(o => o.id === orden.id) || orden;
+  const lineasCecoDetalle = ordenActual.items || [];
+  const cecoIdsDetalle = idsCecoUnicos(lineasCecoDetalle);
+  const gruposCecoDetalle = gruposCecoDeLineas(lineasCecoDetalle);
+  const cecoBucketsDetalle = gruposCecoDetalle.map(grupo => grupo === '__sin_ceco__' ? null : grupo);
+  const cecoMixtoDetalle = gruposCecoDetalle.length > 1;
+  const cecoCabeceraDetalle = cecoMixtoDetalle ? null : (cecoBucketsDetalle[0] || ordenActual.centro_costo_id || null);
+  const desgloseCecosDetalle = cecoBucketsDetalle.map(cecoId => ({
+    cecoId,
+    etiqueta: etiquetaCeco(cecoId, centrosCosto),
+    monto: lineasCecoDetalle
+      .filter(item => cecoIdDeLinea(item) === cecoId)
+      .reduce((total, item) => total + Number(item.subtotal ?? (Number(item.cantidad || 0) * Number(item.precio_unitario || 0))), 0),
+  }));
   const transitosOC = (ocTransitos || []).filter(t => t.orden_compra_id === ordenActual.id)
     .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
   const transitoActual = transitoPrincipalOC(transitosOC);
@@ -7974,6 +8075,10 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
             <p><strong>Recepción:</strong> {ordenActual.porcentaje_recibido >= 100 ? 'Recibida' : 'Pendiente de recepción'}</p>
           </div>}
           <p><strong>SOLPE origen:</strong> {ordenActual.solpe_codigo || ordenActual.solpe_id || '-'}</p>
+          <p><strong>CECO:</strong> {cecoMixtoDetalle ? `Múltiples (${cecoBucketsDetalle.length})` : etiquetaCeco(cecoCabeceraDetalle, centrosCosto)}</p>
+          {cecoMixtoDetalle && <ul style={{ marginTop: 0, paddingLeft: 22 }}>
+            {desgloseCecosDetalle.map(item => <li key={item.cecoId || 'sin-ceco'}>{item.etiqueta}: {moneyD(item.monto)}</li>)}
+          </ul>}
           <p><strong>Descripcion:</strong> {ordenActual.descripcion}</p>
           <p><strong>Condicion pago:</strong> {ordenActual.condicion_pago}</p>
           <p><strong>Entrega esperada:</strong> {ordenActual.fecha_entrega_esperada}</p>
@@ -7985,7 +8090,7 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
         <div className="card">
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Item</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
+              <thead><tr><th>Item</th><th>CECO</th><th>Pedido</th><th>Recibido</th><th>Unidad</th><th>P.Unit</th><th>Subtotal</th><th>Acciones</th></tr></thead>
               <tbody>{ordenActual.items?.map((i, idx) => {
                 const pedido = Number(i.cantidad || 0);
                 const recibido = cantidadRecibidaPorItemOc(recepciones, ordenActual.id, i);
@@ -7993,8 +8098,13 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
                 const tieneOrigen = Boolean(i.solpe_id && i.solpe_item_id);
                 return (
                   <tr key={idx}>
-                    <td>{i.descripcion}</td><td>{i.cantidad}</td><td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td><td>{i.unidad}</td>
-                    <td>{moneyD(i.precio_unitario)}</td><td>{moneyD(i.subtotal)}</td>
+                    <td>{i.descripcion}</td>
+                    <td>{etiquetaCeco(cecoIdDeLinea(i), centrosCosto)}</td>
+                    <td>{i.cantidad}</td>
+                    <td style={{ color: tieneSaldo ? 'var(--orange)' : 'var(--green)' }}>{recibido}</td>
+                    <td>{i.unidad}</td>
+                    <td>{moneyD(i.precio_unitario)}</td>
+                    <td>{moneyD(i.subtotal)}</td>
                     <td>
                       {estadoLiberable && tieneOrigen && tieneSaldo ? (
                         <button type="button" className="btn btn-secondary btn-sm" data-local-form="true" onClick={() => abrirLiberacion(i)}>
