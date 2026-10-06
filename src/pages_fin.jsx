@@ -52,6 +52,7 @@ import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
+import { resumirCecosCxP } from './services/cxpDistribucionCeco.js';
 import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
 import { SearchSelect } from './components/SearchSelect.jsx';
 import * as XLSX from 'xlsx';
@@ -8321,7 +8322,7 @@ function ModalCompletarFacturaCxP({ recepcion, onClose, onCompletar }) {
 }
 
 function CxP() {
-  const { cxp, recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], listarCuentasBancariasProveedor, setCxp, setCxpPagos, setComprasGastos, setProveedores, registrarNotaProveedorCtx, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
+  const { cxp, cxpDistribucionesCeco = [], recepciones = [], cxpPagos, proveedores, ordenesCompra = [], personalAdmin, personalOperativo, partes, recibosHonorarios, ots, comprasGastos = [], movimientosTesoreria = [], registrarPagoCxP, completarRecepcionConCxP, crearCxP, anularCxP, eliminarCxP, crearGasto, addNotificacion, addToast, centrosCosto, cuentasBancarias = [], listarCuentasBancariasProveedor, setCxp, setCxpPagos, setComprasGastos, setProveedores, registrarNotaProveedorCtx, authUser, role, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], activeParams, navigate } = useApp();
   const modoVistaSociedadCxP = resolverFiltroSociedadesVista({
     multisociedadHabilitado: empresa?.multisociedad_habilitado,
     perfilSociedad,
@@ -8616,6 +8617,7 @@ function CxP() {
   const [filtMes, setFiltMes] = useState('todos');
   const [filtBusqueda, setFiltBusqueda] = useState('');
   const [filtPrioridad, setFiltPrioridad] = useState('todas');
+  const [filtCeco, setFiltCeco] = useState('todos');
   const [ordenPorPrioridad, setOrdenPorPrioridad] = useState(false);
 
   const mesesDisponibles = useMemo(() => {
@@ -8637,6 +8639,16 @@ function CxP() {
     const ceco = (centrosCosto || []).find(c => c.id === id);
     return ceco ? `${ceco.codigo ? `${ceco.codigo} - ` : ''}${ceco.nombre}` : '';
   };
+  const distribucionesCecoPorCxp = useMemo(() => {
+    const porCxp = new Map();
+    (cxpDistribucionesCeco || []).forEach(fila => {
+      if (!porCxp.has(fila.cxp_id)) porCxp.set(fila.cxp_id, []);
+      porCxp.get(fila.cxp_id).push(fila);
+    });
+    return porCxp;
+  }, [cxpDistribucionesCeco]);
+  const resumenCecoDe = c => resumirCecosCxP(c, distribucionesCecoPorCxp.get(c?.id) || [], centrosCosto);
+  const cecosFiltro = (centrosCosto || []).filter(ceco => ceco.estado === 'activo');
   const categoriaGastoDe = gasto => gasto?.categoria_er || gasto?.categoria || '';
 
   const addDays = (dateStr, n) => {
@@ -8761,6 +8773,7 @@ function CxP() {
       c?.moneda,
       c?.sociedad_id,
       c?.centro_costo_id,
+      resumenCecoDe(c).detalle,
       c?.tributo_formulario,
       c?.categoria_er,
       c?.orden_compra_id,
@@ -8924,6 +8937,7 @@ function CxP() {
     if (filtTipo !== 'todos' && (c.tipo_beneficiario || 'proveedor') !== filtTipo) return false;
     if (filtOrigen !== 'todos' && (c.origen || 'manual') !== filtOrigen) return false;
     if (filtMoneda !== 'todos' && (c.moneda || 'PEN') !== filtMoneda) return false;
+    if (filtCeco !== 'todos' && !resumenCecoDe(c).filas.some(fila => fila.cecoId === filtCeco)) return false;
     if (filtPrioridad === 'sin' && c.prioridad_pago) return false;
     if (['alta', 'media', 'baja'].includes(filtPrioridad) && c.prioridad_pago !== filtPrioridad) return false;
     if (filtBusqueda) {
@@ -9526,6 +9540,10 @@ function CxP() {
     const filasCxp = cxpVista.map(c => {
       const beneficiario = beneficiarioDetalle(c);
       const semaforo = semaforoDe(c);
+      const resumenCeco = resumenCecoDe(c);
+      const distribucionCeco = resumenCeco.filas.length > 1
+        ? resumenCeco.filas.map(fila => `${cecoNombreDe(fila.cecoId) || fila.cecoId}: ${money(fila.monto, symOf(c.moneda))}`).join(' | ')
+        : '';
       return {
         'ID CxP': c.id || '',
         'Sociedad': sociedadesPorId.get(c.sociedad_id) || c.sociedad_id || 'Sin sociedad',
@@ -9544,7 +9562,8 @@ function CxP() {
         'Saldo': saldoDe(c),
         'Estado': c.estado || '',
         'Semáforo': semaforo.label,
-        'CECO': cecoNombreDe(c.centro_costo_id),
+        'CECO': resumenCeco.etiqueta,
+        'Distribución CECO': distribucionCeco,
         'Categoría ER': c.categoria_er || '',
         'No devengar en ER': c.no_devengar_er ? 'Sí' : 'No',
         'Monto bruto': c.monto_bruto ?? '',
@@ -9580,7 +9599,7 @@ function CxP() {
       { wch: 38 }, { wch: 24 }, { wch: 30 }, { wch: 18 }, { wch: 16 }, { wch: 20 },
       { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 10 },
       { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 24 },
-      { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 18 },
+      { wch: 24 }, { wch: 48 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 18 },
       { wch: 22 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 },
       { wch: 24 },
     ];
@@ -9602,6 +9621,7 @@ function CxP() {
   const selSemaforo = sel ? semaforoDe(sel) : null;
   const selDocumento = sel ? (sel.factura_numero || sel.tipo_comprobante || sel.concepto || 'Sin documento') : '';
   const selCecoNombre = sel ? (cecoNombreDe(sel.centro_costo_id) || '-') : '-';
+  const selResumenCeco = sel ? resumenCecoDe(sel) : null;
   const selGastoCecoNombre = selGastoOrigen ? (cecoNombreDe(selGastoOrigen.centro_costo_id) || '-') : '-';
   const selGastoConcepto = conceptoGastoDe(selGastoOrigen);
   const selGastoCategoria = categoriaGastoDe(selGastoOrigen);
@@ -9618,7 +9638,9 @@ function CxP() {
     ['Saldo pendiente', money(saldoDe(sel), symOf(sel.moneda))],
     ['Fecha de emision', sel.fecha_emision || '-'],
     ['Fecha de vencimiento', sel.fecha_vencimiento || '-'],
-    ['CECO', selCecoNombre],
+    ...(selResumenCeco?.filas.length > 1
+      ? selResumenCeco.filas.map(fila => ['CECO', `${cecoNombreDe(fila.cecoId) || fila.cecoId} — ${money(fila.monto, symOf(sel.moneda))}`])
+      : [['CECO', selCecoNombre]]),
     ['Categoria ER', sel.categoria_er || '-'],
     ['Comprobante', selComprobanteValor],
   ] : [];
@@ -9717,6 +9739,10 @@ function CxP() {
               <option key={f.v} value={f.v}>{f.l}</option>
             ))}
           </select>
+          <select className="input" style={{flex:'1 1 160px'}} value={filtCeco} onChange={e => setFiltCeco(e.target.value)}>
+            <option value="todos">Todos los CECO</option>
+            {cecosFiltro.map(ceco => <option key={ceco.id} value={ceco.id}>{ceco.codigo ? `${ceco.codigo} - ` : ''}{ceco.nombre}</option>)}
+          </select>
           <select className="input" style={{flex:'1 1 120px'}} value={filtMes} onChange={e => setFiltMes(e.target.value)}>
             <option value="todos">Todos los meses</option>
             {mesesDisponibles.map(m => (
@@ -9738,6 +9764,7 @@ function CxP() {
                 <th>{tabCxP === 'tributos' ? 'Periodo tributario' : 'Beneficiario'}</th>
                 <th>{tabCxP === 'tributos' ? 'Tipo de tributo' : 'Documento / Concepto'}</th>
                 <th>OC relacionada</th>
+                <th>CECO</th>
                 <th>Emisión</th>
                 <th>{tabCxP === 'tributos' ? 'Vencimiento SUNAT' : 'Vencimiento'}</th>
                 <th>Total</th>
@@ -9756,6 +9783,7 @@ function CxP() {
                 const sem = semaforoDe(c);
                 const ben = beneficiarioDetalle(c);
                 const ocRelacionada = c.orden_compra_id ? ordenesCompraPorId.get(c.orden_compra_id) : null;
+                const resumenCeco = resumenCecoDe(c);
                 return (
                   <tr key={c.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => abrirFicha(c)}>
                     <td><span title={sem.label} style={{display:'inline-block',width:10,height:10,borderRadius:999,background:sem.bg,flexShrink:0}}/></td>
@@ -9795,6 +9823,7 @@ function CxP() {
                         >{ocRelacionada.codigo || c.orden_compra_id}</button> : c.orden_compra_id
                       ) : '-'}
                     </td>
+                    <td title={resumenCeco.detalle}>{resumenCeco.etiqueta}</td>
                     <td className="text-muted">{c.fecha_emision}</td>
                     <td style={{color: sem.badgeCls === 'badge-red' || sem.badgeCls === 'badge-orange' ? sem.bg : undefined, fontWeight: sem.badgeCls === 'badge-red' ? 600 : undefined}}>
                       <span style={{display:'flex',alignItems:'center',gap:5}}>
@@ -9840,7 +9869,7 @@ function CxP() {
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={11 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
+                <tr><td colSpan={12 + (mostrarBadgeSociedadCxP ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay cuentas por pagar registradas.</td></tr>
               )}
             </tbody>
           </table>
@@ -9933,8 +9962,8 @@ function CxP() {
                 <div className="card" style={{padding:14,marginBottom:16}}>
                   <div style={{fontSize:11,color:'var(--fg-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:1,marginBottom:10}}>Datos del comprobante</div>
                   <div style={{display:'grid',gridTemplateColumns:'minmax(130px, 0.8fr) 1fr',gap:'8px 12px',fontSize:13,marginBottom:12}}>
-                    {selDatosComprobante.map(([l,v]) => (
-                      <React.Fragment key={l}>
+                    {selDatosComprobante.map(([l,v], index) => (
+                      <React.Fragment key={`${l}-${index}`}>
                         <div style={{color:'var(--fg-muted)'}}>{l}</div>
                         <div style={{fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                           <span>{v}</span>
