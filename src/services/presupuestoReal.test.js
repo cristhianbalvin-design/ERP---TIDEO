@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crearResumenRealPresupuesto, normalizarCategoriaPresupuesto } from './presupuestoReal.js';
+import { crearResumenRealPresupuesto, normalizarCategoriaPresupuesto, otCompatibleConPresupuesto } from './presupuestoReal.js';
 
 const empresaId = 'empresa-1';
 const partida = (categoria, moneda = 'PEN', monto_presupuestado = 100) => ({ id: `${categoria}-${moneda}`, categoria, moneda, monto_presupuestado });
@@ -89,4 +89,13 @@ test('compra de categoría sin partida se ignora, pero CxP sin categoría se con
   assert.equal(resultado.sinPartida[0].categoria, 'Compras por OC sin categoría');
   assert.equal(resultado.sinPartida[0].moneda, 'USD');
   assert.equal(resultado.sinPartida[0].real, 15);
+});
+
+test('una OT solo se excluye si declara un CECO distinto al del presupuesto', () => {
+  const presupuesto = { centro_costo_id: 'c1' };
+  assert.equal(otCompatibleConPresupuesto({ centro_costo_id: 'c1' }, presupuesto), true);
+  assert.equal(otCompatibleConPresupuesto({}, presupuesto), true);
+  assert.equal(otCompatibleConPresupuesto({ centro_costo_id: 'c2' }, presupuesto), false);
+  assert.equal(otCompatibleConPresupuesto({ centro_costo_id: 'c2' }, { centro_costo_id: null }), true);
+  assert.equal(otCompatibleConPresupuesto({ centro_costo_id: 'c2' }, null), true);
 });

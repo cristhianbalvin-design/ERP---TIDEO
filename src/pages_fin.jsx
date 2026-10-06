@@ -16,7 +16,7 @@ import {
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
-import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto } from './services/presupuestoReal.js';
+import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
@@ -11753,7 +11753,7 @@ function Presupuestos() {
   }), [cxp, cxpDistribucionesCeco, comprasGastos, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
   const resumenReal = useMemo(() => crearResumenRealPresupuesto({
     partidas, comprasGastos, ots, filasCxp: filasRealCxp, empresaId, periodo, efectivoCecos: null,
-    incluirRegistro: (registro, tipo) => tipo === 'cxp' || perteneceASociedadActiva(registro),
+    incluirRegistro: (registro, tipo) => tipo === 'cxp' || (perteneceASociedadActiva(registro) && (tipo !== 'ot' || otCompatibleConPresupuesto(registro, presActivo))),
   }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
   const resultadosPartidas = resumenReal.porPartida;
   const resultadosSinPartida = resumenReal.sinPartida;

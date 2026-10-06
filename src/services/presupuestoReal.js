@@ -8,6 +8,10 @@ export const normalizarCategoriaPresupuesto = valor => {
   return categoria === 'logistica directa' ? 'logistica' : categoria;
 };
 
+/** Una OT cuenta en un presupuesto con CECO solo si no declara otro CECO distinto. */
+export const otCompatibleConPresupuesto = (ot, presupuesto) =>
+  !presupuesto?.centro_costo_id || !ot?.centro_costo_id || ot.centro_costo_id === presupuesto.centro_costo_id;
+
 export const normalizarMonedaPresupuesto = moneda => String(moneda || 'PEN').toUpperCase() === 'USD' ? 'USD' : 'PEN';
 
 const perteneceAlPeriodo = (fecha, periodo) => String(fecha || '').slice(0, periodo?.length === 7 ? 7 : 4) === periodo;
