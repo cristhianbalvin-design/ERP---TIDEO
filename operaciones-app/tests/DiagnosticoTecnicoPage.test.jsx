@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   session: { empresaId: 'empresa-prueba', usuario: { id: 'usuario-prueba' }, estado: 'listo', permiteEscritura: true, error: '' },
   service: Object.fromEntries([
     'usuarioPuedeDiagnostico', 'listarDiagnosticosTecnicos', 'obtenerDiagnosticoTecnico', 'resolverReferenciasDiagnostico',
-    'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarCargosEmpresa',
+    'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarPlantillasActividad', 'listarUsoTareasPorEmpresa', 'listarCargosEmpresa',
     'listarActivosPropios', 'guardarDiagnosticoLinea', 'sincronizarMaterialesLinea', 'obtenerDiagnosticoLinea',
     'eliminarDiagnosticoLinea', 'crearDiagnosticoTecnico', 'buscarOCrearFamiliaTrabajo', 'buscarOCrearTipoServicioInterno',
     'listarCatalogosHallazgos', 'crearDiagnosticoHallazgo', 'actualizarDiagnosticoHallazgo', 'eliminarDiagnosticoHallazgo',
@@ -88,6 +88,8 @@ beforeEach(() => {
   mocks.service.listarReferenciasDiagnostico.mockResolvedValue([]);
   mocks.service.listarFamiliasTrabajo.mockResolvedValue([{ id: 'fam-1', nombre: 'Trabajo 1' }]);
   mocks.service.listarTiposServicioInterno.mockResolvedValue([{ id: 'task-1', nombre: 'Tarea 1' }]);
+  mocks.service.listarPlantillasActividad.mockResolvedValue([]);
+  mocks.service.listarUsoTareasPorEmpresa.mockResolvedValue({});
   mocks.service.listarCargosEmpresa.mockResolvedValue([]);
   mocks.service.listarActivosPropios.mockResolvedValue([]);
   mocks.service.listarCatalogosHallazgos.mockResolvedValue([]);
@@ -663,5 +665,33 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(loads).toBeGreaterThanOrEqual(2);
     expect(textOf(renderer.root)).toMatch(/emitidos son de solo lectura\./);
     expect(buttonContaining(renderer, 'Agregar')).toBeFalsy();
+  });
+
+  it('F2: agrega líneas sucias al final del grupo con orden consecutivo', async () => {
+    mocks.service.listarTiposServicioInterno.mockResolvedValue([
+      { id: 'task-1', nombre: 'Tarea existente', codigo: 'T-1' },
+      { id: 'task-2', nombre: 'Tarea nueva 2', codigo: 'T-2' },
+      { id: 'task-3', nombre: 'Tarea nueva 3', codigo: 'T-3' },
+    ]);
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [{
+      id: 'line-existing', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', actividad_id: null,
+      cargo_id: null, orden: 7, horas_mano_obra: 0, horas_maquina: 0, materiales: [],
+    }]));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+    const openPanel = buttonByText(renderer, 'Agregar tareas');
+    expect(openPanel).toBeTruthy();
+    await act(async () => { openPanel.props.onClick(); await wait(0); });
+    let checkbox = renderer.root.findByProps({ 'aria-label': 'Tarea nueva 2' });
+    await act(async () => { checkbox.props.onChange(); await wait(0); });
+    await act(async () => { buttonByText(renderer, 'Agregar 1 tareas').props.onClick(); await wait(0); });
+    await act(async () => { buttonByText(renderer, 'Agregar tareas').props.onClick(); await wait(0); });
+    checkbox = renderer.root.findByProps({ 'aria-label': 'Tarea nueva 3' });
+    await act(async () => { checkbox.props.onChange(); await wait(0); });
+    await act(async () => { buttonByText(renderer, 'Agregar 1 tareas').props.onClick(); await wait(0); });
+    expect(renderer.root.findAll(node => node.props.className?.includes('dx-row is-dirty'))).toHaveLength(2);
+    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(100); });
+    expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].orden)).toEqual([8, 9]);
+    expect(mocks.service.guardarDiagnosticoLinea.mock.calls.every(call => call[2]._dirty === true)).toBe(true);
   });
 });
