@@ -376,6 +376,41 @@ export async function listarTiposServicioInterno(empresaId) {
   return data || [];
 }
 
+export async function listarPlantillasActividad(empresaId) {
+  requireEmpresa(empresaId);
+  const { data, error } = await getSupabaseClient()
+    .from('plantillas_actividad')
+    .select('actividad_id,tarea_id,cargo_id,orden')
+    .eq('empresa_id', empresaId)
+    .order('actividad_id')
+    .order('orden');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function listarUsoTareasPorEmpresa(empresaId) {
+  requireEmpresa(empresaId);
+  const frecuencias = {};
+  const pageSize = 1000;
+  let offset = 0;
+  while (true) {
+    // La consulta conserva el aislamiento de empresa y respeta las políticas RLS del cliente.
+    const { data, error } = await getSupabaseClient()
+      .from('diagnostico_tecnico_lineas')
+      .select('tarea_id')
+      .eq('empresa_id', empresaId)
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const rows = data || [];
+    rows.forEach(({ tarea_id: tareaId }) => {
+      if (tareaId) frecuencias[tareaId] = (frecuencias[tareaId] || 0) + 1;
+    });
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return frecuencias;
+}
+
 export async function listarCargosEmpresa(empresaId) {
   requireEmpresa(empresaId);
   const { data, error } = await getSupabaseClient()

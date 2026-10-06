@@ -4,13 +4,18 @@ const lineId = line => line._key || line.id;
 const labelOf = item => item?.nombre || 'No disponible';
 const hours = value => Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onChange, onDelete, onError, validationErrors, Selector, initialOpen = false }) {
+export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onChange, onDelete, onError, validationErrors, Selector, initialOpen = false, onOpenTaskPanel }) {
   const [open, setOpen] = useState(initialOpen);
   const [expanded, setExpanded] = useState({});
   const [query, setQuery] = useState('');
   const selected = (options, id) => options.find(option => option.id === id) || (id ? { id, nombre: 'No disponible' } : null);
   const patch = (line, changes) => onChange(line, { ...line, ...changes });
-  const activityIds = [...new Set(lines.map(line => line.actividad_id).filter(Boolean))];
+  const activityCounts = lines.reduce((counts, line) => {
+    if (line.actividad_id) counts.set(line.actividad_id, (counts.get(line.actividad_id) || 0) + 1);
+    return counts;
+  }, new Map());
+  const activityIds = [...activityCounts.keys()];
+  const mostCommonActivityId = [...activityCounts].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
   const activities = activityIds.map(id => selected(catalogs.tipos, id)?.nombre).filter(Boolean);
   const hh = lines.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const hm = lines.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
@@ -18,19 +23,18 @@ export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onC
     const needle = query.trim().toLocaleLowerCase();
     return needle ? catalogs.tipos.filter(item => `${item.nombre || ''} ${item.codigo || ''}`.toLocaleLowerCase().includes(needle)) : [];
   }, [catalogs.tipos, query]);
-
   const addFromSearch = item => {
     if (!item || !canEdit) return;
-    const newLine = { id: null, _key: `line-${Date.now()}-${Math.random()}`, familia_trabajo_id: familia.id, actividad_id: null, tarea_id: item.id, hallazgo: '', cargo_id: null, horas_mano_obra: 0, activo_id: null, horas_maquina: 0, orden: lines.length, materiales: [], _materialesIniciales: [], _dirty: true };
-    onChange(null, newLine);
+    onChange(null, { id: null, _key: `line-${Date.now()}-${Math.random()}`, familia_trabajo_id: familia.id, actividad_id: null, tarea_id: item.id, hallazgo: '', cargo_id: null, horas_mano_obra: 0, activo_id: null, horas_maquina: 0, orden: lines.length, materiales: [], _materialesIniciales: [], _dirty: true });
     setQuery('');
   };
+  const openPanel = mode => onOpenTaskPanel?.({ familia, lines, actividadId: mostCommonActivityId, mode });
 
   return <section className="dx-group">
-    <button type="button" className="dx-group-head" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+    <div className="dx-group-toolbar"><button type="button" className="dx-group-head" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span className={`dx-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</span>
       <span className="dx-group-heading"><span className="dx-group-name">{familia.nombre}</span><span className="dx-tags">{activities.length ? activities.map(name => <span className="dx-tag" key={name}>Actividad: {name}</span>) : <span className="dx-tag is-muted">Sin actividad</span>}</span><span className="dx-group-summary">{lines.length} tareas · {hours(hh)} h-hombre · {hours(hm)} h-máquina</span></span>
-    </button>
+    </button>{canEdit && <div className="dx-group-panel-actions"><button type="button" onClick={() => openPanel('todas')}>Agregar tareas</button><button type="button" onClick={() => openPanel('actividad')}>Aplicar actividad</button></div>}</div>
     {open && <>
       <div className="dx-columns dx-band"><span /><span>MANO DE OBRA</span><span>MAQUINA</span><span /></div>
       <div className="dx-columns dx-labels"><span>Tarea</span><span>Cargo</span><span>Horas-hombre</span><span>Activo propio</span><span>Horas-máquina</span><span>Detalle</span></div>

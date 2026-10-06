@@ -4,6 +4,7 @@ import { ModalShell } from '../components/ModalShell.jsx';
 import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
 import { DiagnosticoTrabajoGrupo } from './DiagnosticoTrabajoGrupo.jsx';
+import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -15,8 +16,10 @@ import {
   listarCargosEmpresa,
   listarDiagnosticosTecnicos,
   listarFamiliasTrabajo,
+  listarPlantillasActividad,
   listarReferenciasDiagnostico,
   listarTiposServicioInterno,
+  listarUsoTareasPorEmpresa,
   obtenerDiagnosticoLinea,
   obtenerDiagnosticoTecnico,
   resolverReferenciasDiagnostico,
@@ -407,6 +410,11 @@ export function DiagnosticoTecnicoPage() {
   const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [] });
   const [extraFamilyIds, setExtraFamilyIds] = useState([]);
   const [familyToAdd, setFamilyToAdd] = useState('');
+  const [taskPanel, setTaskPanel] = useState(null);
+  const [plantillasActividad, setPlantillasActividad] = useState([]);
+  const [usoTareas, setUsoTareas] = useState({});
+  const [plantillaLoadError, setPlantillaLoadError] = useState(false);
+  const [usoLoadError, setUsoLoadError] = useState(false);
   const [lineValidationErrors, setLineValidationErrors] = useState({});
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
   const [hallazgosDirty, setHallazgosDirty] = useState(false);
@@ -492,6 +500,18 @@ export function DiagnosticoTecnicoPage() {
       })
       .catch(loadError => { if (vigente) setCatalogError(errorMessage(loadError)); })
       .finally(() => { if (vigente) setLoadingCatalogs(false); });
+    return () => { vigente = false; };
+  }, [access.ver, empresaId, selected?.id]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!selected || !access.ver || !empresaId) return () => { vigente = false; };
+    setPlantillaLoadError(false);
+    setUsoLoadError(false);
+    setPlantillasActividad([]);
+    setUsoTareas({});
+    listarPlantillasActividad(empresaId).then(rows => { if (vigente) setPlantillasActividad(rows); }).catch(() => { if (vigente) setPlantillaLoadError(true); });
+    listarUsoTareasPorEmpresa(empresaId).then(rows => { if (vigente) setUsoTareas(rows); }).catch(() => { if (vigente) setUsoLoadError(true); });
     return () => { vigente = false; };
   }, [access.ver, empresaId, selected?.id]);
 
@@ -751,6 +771,7 @@ export function DiagnosticoTecnicoPage() {
     setSavingLine(null);
     setSlowSaveWarning('');
     setSelected(null);
+    setTaskPanel(null);
     setForm(EMPTY_FORM);
     setSearch('');
     setError('');
@@ -761,6 +782,27 @@ export function DiagnosticoTecnicoPage() {
     setHallazgosDirtySummary({ hallazgos: 0, tareas: 0 });
     setHallazgosSaving(false);
     hallazgosSaveRef.current = null;
+  };
+  const appendTaskLines = (family, taskRows, actividadId = null) => {
+    if (!selected || !canEditLines) return;
+    setSelected(current => {
+      const existing = new Set((current.lineas || []).filter(line => line.familia_trabajo_id === family.id).map(line => line.tarea_id));
+      const additions = taskRows.filter(row => !existing.has(row.tarea_id)).map((row, index) => ({
+        ...EMPTY_LINE,
+        id: null,
+        _key: `line-${Date.now()}-${Math.random()}-${index}`,
+        familia_trabajo_id: family.id,
+        actividad_id: actividadId,
+        tarea_id: row.tarea_id,
+        cargo_id: row.cargo_id || null,
+        orden: Math.max(-1, ...(current.lineas || []).filter(line => line.familia_trabajo_id === family.id).map(line => Number(line.orden) || 0)) + 1 + index,
+        materiales: [],
+        _materialesIniciales: [],
+        _dirty: true,
+      }));
+      return additions.length ? { ...current, lineas: [...(current.lineas || []), ...additions] } : current;
+    });
+    setTaskPanel(null);
   };
   const detailDirty = selected
     ? (selected.lineas || []).some(line => line._dirty) || hallazgosDirty
@@ -897,7 +939,7 @@ export function DiagnosticoTecnicoPage() {
           <div className="dx-body">
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
-            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
+            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onOpenTaskPanel={setTaskPanel} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
               if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; }
               patchLine(line, changes);
               const key = lineKey(line);
@@ -924,6 +966,7 @@ export function DiagnosticoTecnicoPage() {
             />
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
+          {taskPanel && <DiagnosticoAgregarTareasPanel familia={taskPanel.familia} tipos={catalogs.tipos} plantillas={plantillasActividad} uso={usoTareas} plantillaError={plantillaLoadError} usoError={usoLoadError} actividadId={taskPanel.actividadId} lineas={selected.lineas.filter(line => line.familia_trabajo_id === taskPanel.familia.id)} initialFocus={taskPanel.mode === 'actividad'} onClose={() => setTaskPanel(null)} onAdd={taskIds => appendTaskLines(taskPanel.familia, taskIds.map(tarea_id => ({ tarea_id })))} onApplyTemplate={(rows, actividadId) => appendTaskLines(taskPanel.familia, rows, actividadId)} />}
         </div>}
       </ModalShell>}
     </main>
