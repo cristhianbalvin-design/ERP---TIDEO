@@ -6609,6 +6609,7 @@ function CxPResumenBadges({ cxpResumen, totalOc }) {
 const generarItemOcId = () => `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const cecoIdDeLinea = linea => String(linea?.ceco_id || '').trim() || null;
 const idsCecoUnicos = lineas => [...new Set((lineas || []).map(cecoIdDeLinea).filter(Boolean))];
+const gruposCecoDeLineas = lineas => [...new Set((lineas || []).map(linea => cecoIdDeLinea(linea) || '__sin_ceco__'))];
 const etiquetaCeco = (cecoId, centrosCosto = []) => {
   if (!cecoId) return 'Sin CECO';
   const ceco = centrosCosto.find(item => item.id === cecoId);
@@ -7488,8 +7489,13 @@ function OrdenesCompra() {
 
   const crear = async (emitir=true) => {
     if (destinoOC.conflictMessage) { addToast(destinoOC.conflictMessage); return; }
+    const gruposCecoLineas = gruposCecoDeLineas(form.items);
     const cecoIdsLineas = idsCecoUnicos(form.items);
-    const cecoMixto = cecoIdsLineas.length > 1;
+    const cecoMixto = gruposCecoLineas.length > 1;
+    if (cecoMixto) {
+      const etiquetas = gruposCecoLineas.map(grupo => grupo === '__sin_ceco__' ? 'Sin CECO' : etiquetaCeco(grupo, centrosCosto));
+      addToast(`La OC tiene CECOs mixtos (${etiquetas.join(', ')}). Reasigna las líneas o completa el CECO antes de dejarla lista.`);
+    }
     if (!cecoMixto && !form.centro_costo_id) { addToast('Selecciona un Centro de Costo (CECO) antes de continuar.'); return; }
     if (empresa?.multisociedad_habilitado && !form.sociedad_id) { addToast('Selecciona una sociedad antes de continuar.'); return; }
     const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id);
@@ -7513,7 +7519,9 @@ function OrdenesCompra() {
       };
     }).filter(item => item.descripcion && item.cantidad > 0);
     if (!items.length) { addToast('Agrega al menos un item con cantidad mayor a cero.'); return; }
-    const centroCostoCabecera = cecoMixto ? null : form.centro_costo_id;
+    const centroCostoCabecera = cecoMixto
+      ? (editandoOC?.centro_costo_id ?? form.centro_costo_id ?? null)
+      : form.centro_costo_id;
     const subtotal = Math.round(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0) * 100) / 100;
     const p = proveedorSeleccionado;
     const oc = { id:editandoOC?.id || `oc_${Date.now()}`, empresa_id:empresa.id, sociedad_id:empresa?.multisociedad_habilitado ? form.sociedad_id : null, codigo:editandoOC?.codigo || `OC-2025-${String(ordenesCompra.length+91).padStart(4,'0')}`, proceso_compra_id:form.proceso_compra_id || null, solpe_id:form.solpe_id || null, solpe_codigo:form.solpe_codigo || null, origen_tipo:form.origen_compra || 'directa', proveedor_id:form.proveedor_id, ot_id:form.ot_id || null, centro_costo_id:centroCostoCabecera, descripcion:form.descripcion || items[0]?.descripcion || 'Compra directa', items, subtotal, igv:Math.round(subtotal*0.18*100)/100, total:Math.round(subtotal*1.18*100)/100, condicion_pago:p.condicion_pago || 'Contado', moneda:'PEN', fecha_emision:editandoOC?.fecha_emision || new Date().toISOString().slice(0,10), fecha_entrega_esperada:form.fecha_entrega_esperada, estado:emitir?'emitida':'borrador', porcentaje_recibido:editandoOC?.porcentaje_recibido || 0, notas_proveedor:editandoOC?.notas_proveedor || '', notas_internas:editandoOC?.notas_internas || '', creado_por:editandoOC?.creado_por || authUser?.id || null };
@@ -7762,7 +7770,7 @@ function PanelOC({ form, setForm, proveedores, procesos, ots, centrosCosto = [],
   const cecos = (centrosCosto || []).filter(c => c.estado === 'activo');
   const lineas = form.items?.length ? form.items : [nuevaLineaOC({ precio_unitario: 0 })];
   const cecoIdsLineas = idsCecoUnicos(lineas);
-  const cecoMixto = cecoIdsLineas.length > 1;
+  const cecoMixto = gruposCecoDeLineas(lineas).length > 1;
   const cecoCabecera = cecoMixto ? '' : (form.centro_costo_id || cecoIdsLineas[0] || '');
   const materialKey = lineas.map(i => i.material_id || '').join('|');
   const [precioHistorico, setPrecioHistorico] = useState({});
@@ -7860,9 +7868,9 @@ function DetalleOrden({ orden, proveedor, cxpResumen, comprasGastos = [], onBack
   const ordenActual = ordenesCompra.find(o => o.id === orden.id) || orden;
   const lineasCecoDetalle = ordenActual.items || [];
   const cecoIdsDetalle = idsCecoUnicos(lineasCecoDetalle);
-  const tieneLineaSinCecoDetalle = lineasCecoDetalle.some(item => !cecoIdDeLinea(item));
-  const cecoBucketsDetalle = [...cecoIdsDetalle, ...(tieneLineaSinCecoDetalle ? [null] : [])];
-  const cecoMixtoDetalle = cecoBucketsDetalle.length > 1;
+  const gruposCecoDetalle = gruposCecoDeLineas(lineasCecoDetalle);
+  const cecoBucketsDetalle = gruposCecoDetalle.map(grupo => grupo === '__sin_ceco__' ? null : grupo);
+  const cecoMixtoDetalle = gruposCecoDetalle.length > 1;
   const cecoCabeceraDetalle = cecoMixtoDetalle ? null : (cecoBucketsDetalle[0] || ordenActual.centro_costo_id || null);
   const desgloseCecosDetalle = cecoBucketsDetalle.map(cecoId => ({
     cecoId,
