@@ -2,6 +2,7 @@ import React, { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useSt
 import { Icon } from '../components/shell.jsx';
 import { ModalShell } from '../components/ModalShell.jsx';
 import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
+import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -387,7 +388,7 @@ export function DiagnosticoTecnicoPage() {
   const sesion = useSesionOperativa();
   const empresaId = sesion.empresaId;
   const usuarioId = sesion.usuario?.id;
-  const [access, setAccess] = useState({ loading: true, ver: false, crear: false, editar: false, error: '' });
+  const [access, setAccess] = useState({ loading: true, ver: false, crear: false, editar: false, aprobar: false, error: '' });
   const [diagnosticos, setDiagnosticos] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -458,17 +459,18 @@ export function DiagnosticoTecnicoPage() {
         const ver = await usuarioPuedeDiagnostico(empresaId, 'ver');
         if (!vigente) return;
         if (!ver) {
-          setAccess({ loading: false, ver: false, crear: false, editar: false, error: '' });
+          setAccess({ loading: false, ver: false, crear: false, editar: false, aprobar: false, error: '' });
           return;
         }
-        const [crear, editar] = await Promise.all([
+        const [crear, editar, aprobar] = await Promise.all([
           usuarioPuedeDiagnostico(empresaId, 'crear'),
           usuarioPuedeDiagnostico(empresaId, 'editar'),
+          usuarioPuedeDiagnostico(empresaId, 'aprobar'),
         ]);
         if (!vigente) return;
-        setAccess({ loading: false, ver: true, crear, editar, error: '' });
+        setAccess({ loading: false, ver: true, crear, editar, aprobar, error: '' });
       } catch (permissionError) {
-        if (vigente) setAccess({ loading: false, ver: false, crear: false, editar: false, error: errorMessage(permissionError) });
+        if (vigente) setAccess({ loading: false, ver: false, crear: false, editar: false, aprobar: false, error: errorMessage(permissionError) });
       }
     })();
     return () => { vigente = false; };
@@ -751,6 +753,12 @@ export function DiagnosticoTecnicoPage() {
     ? (selected.lineas || []).some(line => line._dirty) || hallazgosDirty
     : Boolean(form.referencia);
   const modalBusy = saving || Boolean(savingLine) || hallazgosSaving;
+  const cambiosSinGuardar = Boolean(selected && ((selected.lineas || []).some(line => line._dirty) || hallazgosDirty));
+  const recargarEstadoDiagnostico = async resultado => {
+    if (resultado?.estado) setSelected(current => current?.id === selected.id ? { ...current, estado: resultado.estado } : current);
+    const refreshed = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, selected.id));
+    setSelected(refreshed);
+  };
   const modalOpen = Boolean(form.tipo || selected);
   const readOnlyReason = !sesion.permiteEscritura
     ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
@@ -847,6 +855,14 @@ export function DiagnosticoTecnicoPage() {
           <div className="card-body" style={{ paddingTop: 0 }}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="muted">Activo: {form.referencia.activo}</div>}
           </div>
+          {access.ver && <DiagnosticoEstadoPanel
+            empresaId={empresaId}
+            diagnostico={selected}
+            puedeAprobar={access.aprobar}
+            permiteEscritura={Boolean(sesion.permiteEscritura)}
+            cambiosSinGuardar={cambiosSinGuardar}
+            onCambioCompleto={recargarEstadoDiagnostico}
+          />}
           <div className="card-body" style={{ paddingTop: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <h3 style={{ margin: 0 }}>Líneas</h3>

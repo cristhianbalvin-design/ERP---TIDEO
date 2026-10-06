@@ -48,6 +48,44 @@ export async function usuarioPuedeDiagnostico(empresaId, accion) {
   return Boolean(data);
 }
 
+const mensajeErrorEstado = (error, accion) => {
+  const codigo = error?.code;
+  if (codigo === '42501') return `No tienes permiso para ${accion} el diagnóstico.`;
+  if (codigo === 'P0002') return 'El diagnóstico ya no existe.';
+  if (codigo === '22023' && error?.message) return error.message;
+  return error?.message || 'No se pudo completar el cambio de estado.';
+};
+
+export async function emitirDiagnosticoTecnico(diagnosticoId) {
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient().rpc('emitir_diagnostico_tecnico', { p_id: diagnosticoId });
+  if (error) throw new Error(mensajeErrorEstado(error, 'emitir'));
+  return projectRpcRow(data, 'id,estado,emitido_por,emitido_en');
+}
+
+export async function reabrirDiagnosticoTecnico(diagnosticoId, motivo) {
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient().rpc('reabrir_diagnostico_tecnico', { p_id: diagnosticoId, p_motivo: motivo });
+  if (error) throw new Error(mensajeErrorEstado(error, 'reabrir'));
+  return projectRpcRow(data, 'id,estado,emitido_por,emitido_en');
+}
+
+export async function listarHistorialEstadosDiagnostico(empresaId, diagnosticoId) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const { data, error } = await getSupabaseClient()
+    .from('diagnostico_tecnico_estado_historial')
+    .select('id,empresa_id,diagnostico_id,estado_anterior,estado_nuevo,motivo,usuario_id,ocurrido_en')
+    .eq('empresa_id', empresaId)
+    .eq('diagnostico_id', diagnosticoId)
+    .order('ocurrido_en', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(row => ({
+    ...row,
+    usuario_nombre: `Usuario ····${String(row.usuario_id || '').slice(-4) || '????'}`,
+  }));
+}
+
 export async function listarDiagnosticosTecnicos(empresaId) {
   requireEmpresa(empresaId);
   const { data, error } = await getSupabaseClient()
