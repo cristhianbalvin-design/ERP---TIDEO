@@ -385,6 +385,7 @@ export function AppProvider({ children }) {
   const [cotizaciones, setCotizaciones] = useState(useSupabase ? [] : MOCK.cotizaciones);
   const [osClientes, setOsClientes] = useState(useSupabase ? [] : MOCK.osClientes);
   const [cxp, setCxp] = useState(useSupabase ? [] : (MOCK.cxp || []));
+  const [cxpDistribucionesCeco, setCxpDistribucionesCeco] = useState([]);
   const [cxpPagos, setCxpPagos] = useState([]);
   const [cajaChica, setCajaChica] = useState([]);
   const [cxc, setCxc] = useState(useSupabase ? [] : (MOCK.cxc || []));
@@ -744,6 +745,7 @@ export function AppProvider({ children }) {
       setFacturas([]);
       setCxc([]);
       setCxp([]);
+      setCxpDistribucionesCeco([]);
       setCxpPagos([]);
       setMovimientosBanco([]);
 
@@ -797,6 +799,11 @@ export function AppProvider({ children }) {
         safeFinanceLoad('caja_chica', () => finanzasService.getCajaChica(empresaId)),
       ]);
 
+      const cxpDistribucionesCecoData = await safeFinanceLoad(
+        'cxp_distribucion_ceco',
+        () => finanzasService.getCxPDistribucionesCeco(empresaId, (cxpData || []).map(item => item.id)),
+      );
+
       const financiamientosConDetalle = (financiamientosData || []).map(financiamiento => ({
         ...financiamiento,
         tabla_amortizacion: amortizacion.filter(cuota => cuota.financiamiento_id === financiamiento.id),
@@ -811,6 +818,7 @@ export function AppProvider({ children }) {
       setFacturas(facData || []);
       setCxc(cxcData || []);
       setCxp(cxpData || []);
+      setCxpDistribucionesCeco(cxpDistribucionesCecoData || []);
       setCxpPagos(cxpPagosData || []);
       setMovimientosBanco(mbData || []);
       setCajaChica(ccData || []);
@@ -11865,6 +11873,7 @@ export function AppProvider({ children }) {
     cotizaciones, setCotizaciones, actualizarCotizacion,
     osClientes, setOsClientes, actualizarOSCliente,
     cxp, setCxp,
+    cxpDistribucionesCeco, setCxpDistribucionesCeco,
     cxpPagos, setCxpPagos,
     cajaChica, setCajaChica, registrarEgresoCajaChica,
     cxc, setCxc,

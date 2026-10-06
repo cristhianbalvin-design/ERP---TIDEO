@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crearEntradasDevengoCxp } from './cxpDistribucionCeco.js';
+import { crearEntradasDevengoCxp, resolverCecosCxP, resumirCecosCxP } from './cxpDistribucionCeco.js';
 
 const cxp = (devengoAmount, overrides = {}) => ({
   id: 'cxp-1',
@@ -79,4 +79,48 @@ test('el monto devengable cero produce filas distribuidas con monto cero', () =>
       { cecoId: 'ceco-b', amount: 0, distributed: true },
     ],
   );
+});
+
+const centrosCosto = [
+  { id: 'ceco-a', codigo: 'A-01', nombre: 'Administración' },
+  { id: 'ceco-b', codigo: 'B-02', nombre: 'Operaciones' },
+  { id: 'ceco-cabecera', codigo: 'C-03', nombre: 'Cabecera' },
+];
+
+test('sin distribución usa el CECO de cabecera con su monto', () => {
+  assert.deepEqual(resolverCecosCxP(cxp(42, { monto_total: 42 })), [
+    { cecoId: 'ceco-cabecera', monto: 42, distribuido: false },
+  ]);
+});
+
+test('sin distribución ni cabecera queda Sin CECO', () => {
+  assert.deepEqual(resolverCecosCxP(cxp(42, { centro_costo_id: null })), []);
+  assert.equal(resumirCecosCxP(cxp(42, { centro_costo_id: null }), [], centrosCosto).etiqueta, 'Sin CECO');
+});
+
+test('una distribución muestra el CECO con código y nombre', () => {
+  const resumen = resumirCecosCxP(cxp(42), [{ ceco_id: 'ceco-a', monto: 42 }], centrosCosto);
+  assert.deepEqual(resumen.filas, [{ cecoId: 'ceco-a', monto: 42, distribuido: true }]);
+  assert.equal(resumen.etiqueta, 'A-01 - Administración');
+});
+
+test('varias distribuciones muestran la etiqueta Múltiples', () => {
+  const resumen = resumirCecosCxP(cxp(42), [
+    { ceco_id: 'ceco-a', monto: 20 },
+    { ceco_id: 'ceco-b', monto: 22 },
+  ], centrosCosto);
+  assert.equal(resumen.etiqueta, 'Múltiples (2)');
+  assert.equal(resumen.detalle, 'A-01 - Administración | B-02 - Operaciones');
+});
+
+test('las distribuciones se ordenan establemente por CECO', () => {
+  assert.deepEqual(resolverCecosCxP(cxp(42), [
+    { ceco_id: 'ceco-b', monto: 20 },
+    { ceco_id: 'ceco-a', monto: 10 },
+    { ceco_id: 'ceco-b', monto: 12 },
+  ]), [
+    { cecoId: 'ceco-a', monto: 10, distribuido: true },
+    { cecoId: 'ceco-b', monto: 20, distribuido: true },
+    { cecoId: 'ceco-b', monto: 12, distribuido: true },
+  ]);
 });

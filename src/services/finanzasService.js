@@ -882,6 +882,24 @@ export const finanzasService = {
     return data;
   },
 
+  async getCxPDistribucionesCeco(empresaId, cxpIds = []) {
+    const ids = [...new Set((cxpIds || []).filter(Boolean))];
+    if (!ids.length) return [];
+    const supabase = await getSupabaseClient();
+    const filas = [];
+    for (let inicio = 0; inicio < ids.length; inicio += 200) {
+      const lote = ids.slice(inicio, inicio + 200);
+      const { data, error } = await supabase
+        .from('cxp_distribucion_ceco')
+        .select('cxp_id, ceco_id, monto, empresa_id')
+        .eq('empresa_id', empresaId)
+        .in('cxp_id', lote);
+      if (error) throw error;
+      filas.push(...(data || []));
+    }
+    return filas;
+  },
+
   async getCxPById(cxpId) {
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
