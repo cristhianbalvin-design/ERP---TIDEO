@@ -30,6 +30,23 @@ export const resolverCecosCxP = (cxp, distribuciones = []) => {
   }];
 };
 
+/** Devuelve la participación acotada de un CECO en el reparto de una CxP. */
+export const participacionCecoCxP = (cxp, cecoId, distribuciones = []) => {
+  const filas = resolverCecosCxP(cxp, distribuciones);
+  if (!cecoId || !filas.length) return 0;
+  if (filas.length === 1 && !filas[0].distribuido) return filas[0].cecoId === cecoId ? 1 : 0;
+
+  const montoPositivo = value => {
+    const monto = toAmount(value);
+    return Number.isFinite(monto) ? Math.max(0, monto) : 0;
+  };
+  const total = filas.reduce((suma, fila) => suma + montoPositivo(fila.monto), 0);
+  const montoCeco = filas
+    .filter(fila => fila.cecoId === cecoId)
+    .reduce((suma, fila) => suma + montoPositivo(fila.monto), 0);
+  return total > 0 ? Math.min(1, Math.max(0, montoCeco / total)) : 0;
+};
+
 /** Devuelve la etiqueta y el detalle completo de CECO para listados, filtros y exportaciones. */
 export const resumirCecosCxP = (cxp, distribuciones = [], centrosCosto = []) => {
   const filas = resolverCecosCxP(cxp, distribuciones);

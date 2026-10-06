@@ -52,7 +52,7 @@ import { FileUpload } from './components/FileUpload.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { filtrarRegistrosPorAlcanceSociedad, PERFIL_SOCIEDAD, resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
-import { resumirCecosCxP } from './services/cxpDistribucionCeco.js';
+import { participacionCecoCxP, resumirCecosCxP } from './services/cxpDistribucionCeco.js';
 import NotaAfectacionForm from './components/NotaAfectacionForm.jsx';
 import { SearchSelect } from './components/SearchSelect.jsx';
 import * as XLSX from 'xlsx';
@@ -8648,6 +8648,9 @@ function CxP() {
     return porCxp;
   }, [cxpDistribucionesCeco]);
   const resumenCecoDe = c => resumirCecosCxP(c, distribucionesCecoPorCxp.get(c?.id) || [], centrosCosto);
+  const participacionCecoDe = c => filtCeco === 'todos'
+    ? 1
+    : participacionCecoCxP(c, filtCeco, distribucionesCecoPorCxp.get(c?.id) || []);
   const cecosFiltro = (centrosCosto || []).filter(ceco => ceco.estado === 'activo');
   const categoriaGastoDe = gasto => gasto?.categoria_er || gasto?.categoria || '';
 
@@ -8956,14 +8959,14 @@ function CxP() {
     : cxpFiltrada;
   const cxpTributos = cxpVista.filter(cxpEsTributo);
 
-  const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c), 0);
-  const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c), 0);
+  const totalPorPagar = cxpFiltrada.reduce((s, c) => s + saldoDe(c) * participacionCecoDe(c), 0);
+  const totalVencido  = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red').reduce((s, c) => s + saldoDe(c) * participacionCecoDe(c), 0);
   const porVencer7    = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-orange' && saldoDe(c) > 0).length;
 
-  const saldosPEN  = cxpFiltrada.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0);
-  const saldosUSD  = cxpFiltrada.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
-  const vencidoPEN = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c), 0);
-  const vencidoUSD = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c), 0);
+  const saldosPEN  = cxpFiltrada.filter(c => (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c) * participacionCecoDe(c), 0);
+  const saldosUSD  = cxpFiltrada.filter(c => (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c) * participacionCecoDe(c), 0);
+  const vencidoPEN = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') !== 'USD').reduce((s,c) => s + saldoDe(c) * participacionCecoDe(c), 0);
+  const vencidoUSD = cxpFiltrada.filter(c => semaforoDe(c).badgeCls === 'badge-red' && (c.moneda||'PEN') === 'USD').reduce((s,c) => s + saldoDe(c) * participacionCecoDe(c), 0);
   const cxpPagadaPorId = useMemo(
     () => new Map(cxpFiltradaSinMes.map(c => [c.id, c])),
     [cxpFiltradaSinMes],
@@ -8979,10 +8982,10 @@ function CxP() {
   });
   const montoPagadoPEN = pagosAcumulados
     .filter(pago => (cxpPagadaPorId.get(pago.cxp_id)?.moneda || 'PEN') !== 'USD')
-    .reduce((s, pago) => s + Number(pago.monto || 0), 0);
+    .reduce((s, pago) => s + Number(pago.monto || 0) * participacionCecoDe(cxpPagadaPorId.get(pago.cxp_id)), 0);
   const montoPagadoUSD = pagosAcumulados
     .filter(pago => cxpPagadaPorId.get(pago.cxp_id)?.moneda === 'USD')
-    .reduce((s, pago) => s + Number(pago.monto || 0), 0);
+    .reduce((s, pago) => s + Number(pago.monto || 0) * participacionCecoDe(cxpPagadaPorId.get(pago.cxp_id)), 0);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const abrirFicha = c => {
