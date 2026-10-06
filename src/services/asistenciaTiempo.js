@@ -71,3 +71,31 @@ export function calcularIntervaloAsistencia({
     horas_extra_min: Math.max(0, salidaAbsolutaMin - turnoSalidaMin),
   };
 }
+
+// Determina el estado del reloj móvil sin confundir la jornada anterior con la
+// jornada actual. La única excepción es un turno que realmente puede cruzar
+// medianoche y cuya entrada de ayer siga abierta.
+export function turnoPuedeCruzarMedianoche(turno = {}) {
+  if (turno?.cruza_medianoche) return true;
+  const entradaMin = horaAMinutos(turno?.hora_entrada);
+  const salidaMin = horaAMinutos(turno?.hora_salida);
+  return entradaMin != null && salidaMin != null && salidaMin <= entradaMin;
+}
+
+export function resolverEstadoMarcacionMovil({ registros = [], today, yesterday, turno = {} }) {
+  const registrosHoy = registros.filter(r => r?.fecha === today);
+  const entradaAbiertaHoy = registrosHoy.find(r => Boolean(r?.hora_entrada) && !r?.hora_salida);
+  if (entradaAbiertaHoy) return { modo: 'salida', asistenciaAbierta: entradaAbiertaHoy };
+
+  const jornadaCompletadaHoy = registrosHoy.find(r => Boolean(r?.hora_entrada) && Boolean(r?.hora_salida));
+  if (jornadaCompletadaHoy) return { modo: 'completado', asistenciaAbierta: null };
+
+  const entradaAbiertaAyer = registros.find(r => r?.fecha === yesterday && Boolean(r?.hora_entrada) && !r?.hora_salida);
+  if (entradaAbiertaAyer && turnoPuedeCruzarMedianoche(turno)) {
+    return { modo: 'salida', asistenciaAbierta: entradaAbiertaAyer };
+  }
+
+  // Faltas, permisos y cualquier fila sin entrada válida no representan una
+  // jornada abierta. La persona debe poder marcar su entrada del día.
+  return { modo: 'entrada', asistenciaAbierta: null };
+}

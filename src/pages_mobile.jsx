@@ -13,7 +13,7 @@ import { getSupabaseClient } from './lib/supabaseClient.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { construirAutoservicioLocal } from './services/autoservicioEmpleadoService.js';
 import { GEO_CONFIG_DEFAULT, GEO_CONSENT_VERSION, enqueueGeoMark, evaluarGeofenceLocal, getGeoQueue, setGeoQueue, syncGeoQueue } from './services/geofencingService.js';
-import { calcularIntervaloAsistencia, horaAMinutos, sumarDiasIso } from './services/asistenciaTiempo.js';
+import { calcularIntervaloAsistencia, horaAMinutos, resolverEstadoMarcacionMovil, sumarDiasIso } from './services/asistenciaTiempo.js';
 import * as ticketsService from './services/ticketsService.js';
 import * as storageService from './services/storageService.js';
 const METODOS_PAGO_CAMPO = ['Efectivo', 'Tarjeta empresa', 'Yape / Plin', 'Transferencia bancaria'];
@@ -397,7 +397,8 @@ function AsistenciaMobileView({ screen, setScreen }) {
 
   const turno = turnos?.find(t => t.id === turnoIdPersistible) || {};
   const registrosTrabajador = registrosAsistencia.filter(r => r.trabajador_id === trabajadorId && (r.fecha === today || r.fecha === yesterday));
-  const asistenciaAbierta = registrosTrabajador.find(r => !r.hora_salida && r.hora_entrada);
+  const estadoMarcacion = resolverEstadoMarcacionMovil({ registros: registrosTrabajador, today, yesterday, turno });
+  const asistenciaAbierta = estadoMarcacion.asistenciaAbierta;
   const refrigerioHabilitado = (turno.modo_refrigerio === 'medido_informativo' || turno.modo_refrigerio === 'medido_efectivo') && 
                                (turno.refrigerio_origenes_permitidos || []).includes('mobile_pwa');
   const showRefrigerio = modo === 'salida' && refrigerioHabilitado;
@@ -426,15 +427,8 @@ function AsistenciaMobileView({ screen, setScreen }) {
       setModo('entrada');
       return;
     }
-    const rh = registrosTrabajador;
-    if (rh.some(r => !r.hora_salida)) {
-      setModo('salida');
-    } else if (rh.length > 0) {
-      setModo('completado');
-    } else if (geoActivo) {
-      setModo('entrada');
-    }
-  }, [registrosAsistencia, trabajadorId, today]);
+    setModo(estadoMarcacion.modo);
+  }, [estadoMarcacion.modo, trabajadorId]);
 
   useEffect(() => {
     if (!trabajadorId || !empresa?.id) { setVerificandoHoy(false); return; }
