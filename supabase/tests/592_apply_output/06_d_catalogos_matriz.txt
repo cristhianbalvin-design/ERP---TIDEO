@@ -1,0 +1,15 @@
+┌─────────────────┬───────────────────────┬───────┐
+│   empresa_id    │   nombre_comercial    │ filas │
+├─────────────────┼───────────────────────┼───────┤
+│ emp_2000000000  │ PRUEBA                │ 32    │
+│ emp_20513453711 │ WHYNCO                │ 32    │
+│ emp_20541435833 │ ZAHORY                │ 32    │
+│ emp_20600026446 │ MIC                   │ 32    │
+│ emp_20601829101 │ DIFESMAQ              │ 32    │
+│ emp_20606120487 │ INGETEC               │ 32    │
+│ emp_20609996464 │ TIDEO TECH & STRATEGY │ 32    │
+│ emp_tideo       │ TIDEO                 │ 32    │
+│ NULL            │ matriz_prioridad      │ 16    │
+└─────────────────┴───────────────────────┴───────┘
+A new version of Supabase CLI is available: v2.119.0 (currently installed v2.95.4)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-local-development-setup

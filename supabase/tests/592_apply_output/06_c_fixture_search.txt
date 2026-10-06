@@ -1,0 +1,10 @@
+┌─────────────────────────────────────────┬───────────────┐
+│                  tabla                  │ coincidencias │
+├─────────────────────────────────────────┼───────────────┤
+│ diagnostico_tecnico_hallazgo_lineas     │ 0             │
+│ diagnostico_tecnico_hallazgo_mediciones │ 0             │
+│ diagnostico_tecnico_hallazgos           │ 0             │
+│ diagnostico_tecnico_lineas              │ 0             │
+└─────────────────────────────────────────┴───────────────┘
+A new version of Supabase CLI is available: v2.119.0 (currently installed v2.95.4)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-local-development-setup

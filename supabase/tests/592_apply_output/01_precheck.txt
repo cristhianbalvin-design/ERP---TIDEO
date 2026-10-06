@@ -1,0 +1,10 @@
+┌────────────────────┬───────┐
+│     check_name     │ value │
+├────────────────────┼───────┤
+│ companies          │ 8     │
+│ new_tables_present │ 0     │
+│ prueba_borrador    │ 10    │
+│ prueba_emitido     │ 0     │
+└────────────────────┴───────┘
+A new version of Supabase CLI is available: v2.119.0 (currently installed v2.95.4)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-local-development-setup

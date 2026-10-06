@@ -1,0 +1,5 @@
+archivo | BOM | U+00C2 | U+00C3 | U+FFFD | â€
+supabase/migrations/592_diagnostico_hallazgos_base.sql | False | False | False | False | False
+supabase/reversiones/592_revert_diagnostico_hallazgos_base.sql | False | False | False | False | False
+supabase/tests/592_reversion_roundtrip_rollback.sql | False | False | False | False | False
+supabase/tests/592_reversion_mutation_rollback.sql | False | False | False | False | False
