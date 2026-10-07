@@ -4,7 +4,7 @@ const lineId = line => line._key || line.id;
 const labelOf = item => item?.nombre || 'No disponible';
 const hours = value => Number(value || 0).toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onChange, onDelete, onError, validationErrors, Selector, initialOpen = false, onOpenTaskPanel }) {
+export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onChange, onDelete, onError, validationErrors, Selector, initialOpen = false, onOpenTaskPanel, tipoDiagnostico, onChooseActivity, recipeMessage }) {
   const [open, setOpen] = useState(initialOpen);
   const [expanded, setExpanded] = useState({});
   const [query, setQuery] = useState('');
@@ -34,7 +34,11 @@ export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onC
     <div className="dx-group-toolbar"><button type="button" className="dx-group-head" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       <span className={`dx-chevron${open ? ' is-open' : ''}`} aria-hidden="true">›</span>
       <span className="dx-group-heading"><span className="dx-group-name">{familia.nombre}</span><span className="dx-tags">{activities.length ? activities.map(name => <span className="dx-tag" key={name}>Actividad: {name}</span>) : <span className="dx-tag is-muted">Sin actividad</span>}</span><span className="dx-group-summary">{lines.length} tareas · {hours(hh)} h-hombre · {hours(hm)} h-máquina</span></span>
-    </button>{canEdit && <div className="dx-group-panel-actions"><button type="button" onClick={() => openPanel('todas')}>Agregar tareas</button><button type="button" onClick={() => openPanel('actividad')}>Aplicar actividad</button></div>}</div>
+    </button>{canEdit && <div className="dx-group-panel-actions">
+      {tipoDiagnostico === 'fabricacion' && Selector && <Selector label="Actividad del trabajo" kind="tipo" value={selected(catalogs.tipos, mostCommonActivityId)} options={catalogs.tipos} disabled={!canEdit} placeholder="Elegir actividad..." clearable onSelect={item => onChooseActivity?.(familia, item)} onError={onError} />}
+      <button type="button" onClick={() => openPanel('todas')}>Agregar tareas</button><button type="button" onClick={() => openPanel('actividad')}>Aplicar actividad</button>
+    </div>}</div>
+    {recipeMessage && <div className="dx-panel-warnings" role="status" aria-live="polite">{recipeMessage}</div>}
     {open && <>
       <div className="dx-columns dx-band"><span /><span>MANO DE OBRA</span><span>MAQUINA</span><span /></div>
       <div className="dx-columns dx-labels"><span>Tarea</span><span>Cargo</span><span>Horas-hombre</span><span>Activo propio</span><span>Horas-máquina</span><span>Detalle</span></div>

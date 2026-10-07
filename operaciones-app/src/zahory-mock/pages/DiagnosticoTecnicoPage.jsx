@@ -5,6 +5,7 @@ import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
 import { DiagnosticoTrabajoGrupo } from './DiagnosticoTrabajoGrupo.jsx';
 import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.jsx';
+import { proponerLineasRecetaActividad } from './recetaActividad.js';
 import { DiagnosticoInformePanel } from './DiagnosticoInformePanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
@@ -337,7 +338,7 @@ export function CatalogSelector({ label, kind, value, options, disabled, placeho
   );
 }
 
-function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validationErrors, onChange, onSave, onDelete, onError }) {
+function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validationErrors, onChange, onSave, onDelete, onError, onActivitySelected }) {
   const selected = (options, id, kind) => options.find(option => option.id === id) || (id ? { id, nombre: 'No disponible' } : null);
   const patch = changes => onChange({ ...line, ...changes });
   const addMaterial = () => patch({
@@ -356,7 +357,7 @@ function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validat
       <div className="card-body" style={{ display: 'grid', gap: 14 }}>
         <div className="diagnostico-line-grid">
           <CatalogSelector label="Trabajo *" kind="familia" value={selected(catalogs.familias, line.familia_trabajo_id, 'familia')} options={catalogs.familias} disabled={!canEdit} placeholder="Buscar trabajo..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ familia_trabajo_id: item?.id || null })} onCreate={catalogs.crearFamilia} onError={onError} />
-          <CatalogSelector label="Actividad (opcional)" kind="tipo" value={selected(catalogs.tipos, line.actividad_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar actividad..." canCreate={canEdit && canCreateCatalog} clearable onSelect={item => patch({ actividad_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
+          <CatalogSelector label="Actividad (opcional)" kind="tipo" value={selected(catalogs.tipos, line.actividad_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar actividad..." canCreate={canEdit && canCreateCatalog} clearable onSelect={item => { patch({ actividad_id: item?.id || null }); onActivitySelected?.(line.familia_trabajo_id, item); }} onCreate={catalogs.crearTipo} onError={onError} />
           <CatalogSelector label="Tarea *" kind="tipo" value={selected(catalogs.tipos, line.tarea_id, 'tipo')} options={catalogs.tipos} disabled={!canEdit} placeholder="Buscar tarea sin componente..." canCreate={canEdit && canCreateCatalog} onSelect={item => patch({ tarea_id: item?.id || null })} onCreate={catalogs.crearTipo} onError={onError} />
           <CatalogSelector label="Cargo" kind="cargo" value={selected(catalogs.cargos, line.cargo_id, 'cargo')} options={catalogs.cargos} disabled={!canEdit} placeholder="Buscar cargo..." clearable onSelect={item => patch({ cargo_id: item?.id || null })} onError={onError} />
         </div>
@@ -417,6 +418,8 @@ export function DiagnosticoTecnicoPage() {
   const [informePanel, setInformePanel] = useState(false);
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
   const [plantillasActividad, setPlantillasActividad] = useState([]);
+  const [plantillasActividadLoaded, setPlantillasActividadLoaded] = useState(false);
+  const [recipeMessages, setRecipeMessages] = useState({});
   const [usoTareas, setUsoTareas] = useState({});
   const [plantillaLoadError, setPlantillaLoadError] = useState(false);
   const [usoLoadError, setUsoLoadError] = useState(false);
@@ -520,9 +523,11 @@ export function DiagnosticoTecnicoPage() {
     if (!selected || !access.ver || !empresaId) return () => { vigente = false; };
     setPlantillaLoadError(false);
     setUsoLoadError(false);
+    setPlantillasActividadLoaded(false);
+    setRecipeMessages({});
     setPlantillasActividad([]);
     setUsoTareas({});
-    listarPlantillasActividad(empresaId).then(rows => { if (vigente) setPlantillasActividad(rows); }).catch(() => { if (vigente) setPlantillaLoadError(true); });
+    listarPlantillasActividad(empresaId).then(rows => { if (vigente) { setPlantillasActividad(rows); setPlantillasActividadLoaded(true); } }).catch(() => { if (vigente) { setPlantillaLoadError(true); setPlantillasActividadLoaded(true); } });
     listarUsoTareasPorEmpresa(empresaId).then(rows => { if (vigente) setUsoTareas(rows); }).catch(() => { if (vigente) setUsoLoadError(true); });
     return () => { vigente = false; };
   }, [access.ver, empresaId, selected?.id]);
@@ -816,10 +821,11 @@ export function DiagnosticoTecnicoPage() {
     setHallazgosSaving(false);
     hallazgosSaveRef.current = null;
   };
-  const appendTaskLines = (family, taskRows, actividadId = null) => {
+  const appendTaskLines = (family, taskRows, actividadId = null, dedupeByActivity = false) => {
     if (!selected || !canEditLines) return;
     setSelected(current => {
-      const existing = new Set((current.lineas || []).filter(line => line.familia_trabajo_id === family.id).map(line => line.tarea_id));
+      const currentFamilyLines = (current.lineas || []).filter(line => line.familia_trabajo_id === family.id);
+      const existing = new Set(currentFamilyLines.filter(line => !dedupeByActivity || line.actividad_id === actividadId).map(line => line.tarea_id));
       const additions = taskRows.filter(row => !existing.has(row.tarea_id)).map((row, index) => ({
         ...EMPTY_LINE,
         id: null,
@@ -836,6 +842,21 @@ export function DiagnosticoTecnicoPage() {
       return additions.length ? { ...current, lineas: [...(current.lineas || []), ...additions] } : current;
     });
     setTaskPanel(null);
+  };
+  const applyRecipeActivity = (family, activity) => {
+    if (!selected || !canEditLines || selected.tipo !== 'fabricacion') return;
+    if (!plantillasActividadLoaded) return;
+    const actividadId = typeof activity === 'object' ? activity?.id : activity;
+    if (!actividadId) return;
+    const familyLines = (selected.lineas || []).filter(line => line.familia_trabajo_id === family.id);
+    const hasRecipe = plantillasActividad.some(row => row.actividad_id === actividadId && row.tarea_id);
+    if (!hasRecipe) {
+      setRecipeMessages(current => ({ ...current, [family.id]: 'Esta actividad no tiene receta; agrega las tareas manualmente.' }));
+      return;
+    }
+    const additions = proponerLineasRecetaActividad(selected.tipo, actividadId, plantillasActividad, familyLines);
+    setRecipeMessages(current => ({ ...current, [family.id]: additions.length ? `Se agregaron ${additions.length} tareas de la receta.` : 'La receta ya estaba aplicada.' }));
+    if (additions.length) appendTaskLines(family, additions, actividadId, true);
   };
   const detailDirty = selected
     ? (selected.lineas || []).some(line => line._dirty) || hallazgosDirty
@@ -972,7 +993,7 @@ export function DiagnosticoTecnicoPage() {
           <div className="dx-body">
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
-            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onOpenTaskPanel={setTaskPanel} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
+            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} tipoDiagnostico={selected.tipo} recipeMessage={recipeMessages[group.familia.id]} onChooseActivity={applyRecipeActivity} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onOpenTaskPanel={setTaskPanel} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
               if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; }
               patchLine(line, changes);
               const key = lineKey(line);
@@ -1001,7 +1022,7 @@ export function DiagnosticoTecnicoPage() {
             />
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
-          {taskPanel && <DiagnosticoAgregarTareasPanel familia={taskPanel.familia} tipos={catalogs.tipos} plantillas={plantillasActividad} uso={usoTareas} plantillaError={plantillaLoadError} usoError={usoLoadError} actividadId={taskPanel.actividadId} lineas={selected.lineas.filter(line => line.familia_trabajo_id === taskPanel.familia.id)} initialFocus={taskPanel.mode === 'actividad'} onClose={() => setTaskPanel(null)} onAdd={taskIds => appendTaskLines(taskPanel.familia, taskIds.map(tarea_id => ({ tarea_id })))} onApplyTemplate={(rows, actividadId) => appendTaskLines(taskPanel.familia, rows, actividadId)} />}
+          {taskPanel && <DiagnosticoAgregarTareasPanel familia={taskPanel.familia} tipos={catalogs.tipos} plantillas={plantillasActividad} plantillasLoaded={plantillasActividadLoaded} tipoDiagnostico={selected.tipo} uso={usoTareas} plantillaError={plantillaLoadError} usoError={usoLoadError} actividadId={taskPanel.actividadId} lineas={selected.lineas.filter(line => line.familia_trabajo_id === taskPanel.familia.id)} initialFocus={taskPanel.mode === 'actividad'} onClose={() => setTaskPanel(null)} onAdd={taskIds => appendTaskLines(taskPanel.familia, taskIds.map(tarea_id => ({ tarea_id })))} onApplyTemplate={(rows, actividadId) => selected.tipo === 'fabricacion' ? applyRecipeActivity(taskPanel.familia, actividadId) : appendTaskLines(taskPanel.familia, rows, actividadId)} />}
           {informePanel && <DiagnosticoInformePanel diagnostico={selected} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onClose={() => setInformePanel(false)} />}
         </div>}
       </ModalShell>}
