@@ -5,6 +5,7 @@ import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
 import { DiagnosticoTrabajoGrupo } from './DiagnosticoTrabajoGrupo.jsx';
 import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.jsx';
+import { DiagnosticoInformePanel } from './DiagnosticoInformePanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -14,6 +15,7 @@ import {
   guardarDiagnosticoLinea,
   listarActivosPropios,
   listarCargosEmpresa,
+  listarCatalogosHallazgos,
   listarDiagnosticosTecnicos,
   listarFamiliasTrabajo,
   listarPlantillasActividad,
@@ -26,6 +28,7 @@ import {
   sincronizarMaterialesLinea,
   usuarioPuedeDiagnostico,
 } from '../../services/diagnosticoTecnicoService.js';
+import { usuarioPuedeInforme } from '../../services/diagnosticoInformeService.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -407,10 +410,12 @@ export function DiagnosticoTecnicoPage() {
   const [referenceError, setReferenceError] = useState('');
   const [catalogError, setCatalogError] = useState('');
   const [notice, setNotice] = useState('');
-  const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [] });
+  const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [], hallazgos: { tipo_dano: [], causa_probable: [], unidad_medicion: [] } });
   const [extraFamilyIds, setExtraFamilyIds] = useState([]);
   const [familyToAdd, setFamilyToAdd] = useState('');
   const [taskPanel, setTaskPanel] = useState(null);
+  const [informePanel, setInformePanel] = useState(false);
+  const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
   const [plantillasActividad, setPlantillasActividad] = useState([]);
   const [usoTareas, setUsoTareas] = useState({});
   const [plantillaLoadError, setPlantillaLoadError] = useState(false);
@@ -473,13 +478,17 @@ export function DiagnosticoTecnicoPage() {
           setAccess({ loading: false, ver: false, crear: false, editar: false, aprobar: false, error: '' });
           return;
         }
-        const [crear, editar, aprobar] = await Promise.all([
+        const [crear, editar, aprobar, informeVer, informeEditar, informeAprobar] = await Promise.all([
           usuarioPuedeDiagnostico(empresaId, 'crear'),
           usuarioPuedeDiagnostico(empresaId, 'editar'),
           usuarioPuedeDiagnostico(empresaId, 'aprobar'),
+          usuarioPuedeInforme(empresaId, 'ver'),
+          usuarioPuedeInforme(empresaId, 'editar'),
+          usuarioPuedeInforme(empresaId, 'aprobar'),
         ]);
         if (!vigente) return;
         setAccess({ loading: false, ver: true, crear, editar, aprobar, error: '' });
+        setInformeAccess({ ver: informeVer, editar: informeEditar, aprobar: informeAprobar });
       } catch (permissionError) {
         if (vigente) setAccess({ loading: false, ver: false, crear: false, editar: false, aprobar: false, error: errorMessage(permissionError) });
       }
@@ -494,9 +503,12 @@ export function DiagnosticoTecnicoPage() {
     if (!selected || !access.ver || !empresaId) return () => { vigente = false; };
     setLoadingCatalogs(true);
     setCatalogError('');
-    Promise.all([listarFamiliasTrabajo(empresaId), listarTiposServicioInterno(empresaId), listarCargosEmpresa(empresaId), listarActivosPropios(empresaId)])
-      .then(([familias, tipos, cargos, activos]) => {
-        if (vigente) setCatalogs({ familias, tipos, cargos, activos });
+    Promise.all([listarFamiliasTrabajo(empresaId), listarTiposServicioInterno(empresaId), listarCargosEmpresa(empresaId), listarActivosPropios(empresaId), listarCatalogosHallazgos(empresaId)])
+      .then(([familias, tipos, cargos, activos, hallazgoRows]) => {
+        if (!vigente) return;
+        const hallazgos = { tipo_dano: [], causa_probable: [], unidad_medicion: [] };
+        hallazgoRows.forEach(row => { if (hallazgos[row.catalogo]) hallazgos[row.catalogo].push(row); });
+        setCatalogs({ familias, tipos, cargos, activos, hallazgos });
       })
       .catch(loadError => { if (vigente) setCatalogError(errorMessage(loadError)); })
       .finally(() => { if (vigente) setLoadingCatalogs(false); });
@@ -550,6 +562,7 @@ export function DiagnosticoTecnicoPage() {
   };
 
   const openExisting = async diagnostico => {
+    setInformePanel(false);
     const requestId = ++openRequestRef.current;
     setError('');
     setReferenceError('');
@@ -790,6 +803,7 @@ export function DiagnosticoTecnicoPage() {
     setSavingLine(null);
     setSlowSaveWarning('');
     setSelected(null);
+    setInformePanel(false);
     setTaskPanel(null);
     setForm(EMPTY_FORM);
     setSearch('');
@@ -950,6 +964,7 @@ export function DiagnosticoTecnicoPage() {
         </form>}
         {selected && <div className="dx-scope">
           {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} />}
+          {informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button></div>}
           <div className="dx-summary">
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
             {canEditLines && <div className="dx-add-work"><button type="button" onClick={() => setFamilyToAdd(value => value ? '' : '__choose__')}>Agregar trabajo</button>{familyToAdd && <select aria-label="Elegir familia de trabajo" value={familyToAdd === '__choose__' ? '' : familyToAdd} onChange={event => { const id = event.target.value; if (!id) return; setExtraFamilyIds(current => current.includes(id) ? current : [...current, id]); setFamilyToAdd(''); }}><option value="">Elegir trabajo...</option>{catalogs.familias.map(item => <option value={item.id} key={item.id}>{item.nombre}</option>)}</select>}</div>}
@@ -987,6 +1002,7 @@ export function DiagnosticoTecnicoPage() {
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
           {taskPanel && <DiagnosticoAgregarTareasPanel familia={taskPanel.familia} tipos={catalogs.tipos} plantillas={plantillasActividad} uso={usoTareas} plantillaError={plantillaLoadError} usoError={usoLoadError} actividadId={taskPanel.actividadId} lineas={selected.lineas.filter(line => line.familia_trabajo_id === taskPanel.familia.id)} initialFocus={taskPanel.mode === 'actividad'} onClose={() => setTaskPanel(null)} onAdd={taskIds => appendTaskLines(taskPanel.familia, taskIds.map(tarea_id => ({ tarea_id })))} onApplyTemplate={(rows, actividadId) => appendTaskLines(taskPanel.familia, rows, actividadId)} />}
+          {informePanel && <DiagnosticoInformePanel diagnostico={selected} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onClose={() => setInformePanel(false)} />}
         </div>}
       </ModalShell>}
     </main>
