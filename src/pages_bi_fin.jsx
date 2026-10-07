@@ -7,7 +7,7 @@ import { useApp } from './context.jsx';
 import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
-import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
+import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 
 const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
@@ -335,7 +335,7 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
   const {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
-    comprasGastos, cxp, cxpDistribucionesCeco, ots, usuarios, empresa, authUser,
+    comprasGastos, cxp, cxpDistribucionesCeco, ots, usuarios, empresa, authUser, tipoCambioHoy, tcUSDaPEN,
     centrosCosto, centrosBeneficio,
   } = useApp();
 
@@ -382,7 +382,10 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
   }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, efectivoCecos, presActivo]);
   const resultadosPartidas = resumenReal.porPartida;
   const resultadosSinPartida = resumenReal.sinPartida;
+  const hayMontosUSD = ['presupuestado', 'real', 'variacion'].some(clave => Number(resumenReal.totales[clave].USD || 0) !== 0);
+  const totalesConsolidados = crearTotalesConsolidadosReferencialesPEN(resumenReal.totales, tcUSDaPEN);
   const formatoMoneda = (monto, moneda = 'PEN') => `${normalizarMonedaPresupuesto(moneda) === 'USD' ? 'US$' : 'S/'} ${Number(monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  const formatoConsolidadoPEN = monto => `S/ ${Number(monto || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const lineasKpi = (montos, conSigno = false) => ['PEN', ...(Number(montos.USD || 0) !== 0 ? ['USD'] : [])].map(moneda => {
     const monto = Number(montos[moneda] || 0);
     return <div key={moneda}>{conSigno && monto > 0 ? '+' : ''}{formatoMoneda(monto, moneda)}</div>;
@@ -495,6 +498,15 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
             <div className="kpi-card"><div className="kpi-label">Variación neta</div><div className="kpi-value" style={{ fontSize: 20 }}>{lineasKpi(resumenReal.totales.variacion, true)}</div></div>
             <div className="kpi-card"><div className="kpi-label">Ejecución</div><div className="kpi-value" style={{ fontSize: 20 }}>{['PEN', ...(resumenReal.totales.presupuestado.USD || resumenReal.totales.real.USD ? ['USD'] : [])].map(moneda => <div key={moneda} style={{ color: ejecucionPorMoneda(moneda) > 100 ? 'var(--danger)' : ejecucionPorMoneda(moneda) > 80 ? 'var(--warning)' : 'var(--green)' }}>{ejecucionPorMoneda(moneda)}%{(resumenReal.totales.presupuestado.USD || resumenReal.totales.real.USD) ? ` (${moneda === 'USD' ? 'US$' : 'S/'})` : ''}</div>)}</div></div>
           </div>
+          {hayMontosUSD && (
+            <div className="card" style={{ marginBottom: 18, padding: '12px 16px', fontSize: 13 }}>
+              {totalesConsolidados ? <>
+                <strong>Total consolidado (referencial) S/</strong>: Presupuestado <strong>{formatoConsolidadoPEN(totalesConsolidados.presupuestado)}</strong> · Real <strong>{formatoConsolidadoPEN(totalesConsolidados.real)}</strong> · Variación <strong>{formatoConsolidadoPEN(totalesConsolidados.variacion)}</strong>
+                <span className="text-muted"> · TC US$1 = S/ {Number(tcUSDaPEN).toFixed(2)}</span>
+                {tipoCambioHoy?.desactualizado && <span className="text-muted"> · TC desactualizado</span>}
+              </> : <span className="text-muted">No hay tipo de cambio disponible para consolidar los montos en USD.</span>}
+            </div>
+          )}
 
           {/* ── Sub-tabs ──────────────────────────────────────────────── */}
           <div className="tab-bar" style={{ marginBottom: 14 }}>

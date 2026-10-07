@@ -16,7 +16,7 @@ import {
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
-import { crearResumenRealPresupuesto, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
+import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import {
@@ -11683,7 +11683,7 @@ function Presupuestos() {
   const {
     presupuestos, presupuestoPartidas, presupuestoAprobaciones,
     crearPresupuesto, enviarPresupuestoAAprobacion, procesarAprobacionPresupuesto,
-    comprasGastos, ots, cxp, cxpDistribucionesCeco, usuarios, empresa, authUser, addToast,
+    comprasGastos, ots, cxp, cxpDistribucionesCeco, usuarios, empresa, authUser, addToast, tipoCambioHoy, tcUSDaPEN,
     centrosCosto, centrosBeneficio, perfilSociedad, sociedadesIdsAlcance,
     sociedadActiva, sociedadesDisponibles,
   } = useApp();
@@ -11758,7 +11758,10 @@ function Presupuestos() {
   }), [partidas, comprasGastos, ots, filasRealCxp, empresaId, periodo, perfilSociedad, presActivo, centrosCosto, centrosBeneficio]);
   const resultadosPartidas = resumenReal.porPartida;
   const resultadosSinPartida = resumenReal.sinPartida;
+  const hayMontosUSD = ['presupuestado', 'real', 'variacion'].some(clave => Number(resumenReal.totales[clave].USD || 0) !== 0);
+  const totalesConsolidados = crearTotalesConsolidadosReferencialesPEN(resumenReal.totales, tcUSDaPEN);
   const formatoMoneda = (monto, moneda = 'PEN') => `${normalizarMonedaPresupuesto(moneda) === 'USD' ? 'US$' : 'S/'} ${Number(monto || 0).toLocaleString('es-PE', {minimumFractionDigits:0, maximumFractionDigits:0})}`;
+  const formatoConsolidadoPEN = monto => `S/ ${Number(monto || 0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
   const lineasKpi = (montos, conSigno = false) => ['PEN', ...(Number(montos.USD || 0) !== 0 ? ['USD'] : [])].map(moneda => {
     const monto = Number(montos[moneda] || 0);
     return <span key={moneda} style={{ display: 'block' }}>{conSigno && monto > 0 ? '+' : ''}{formatoMoneda(monto, moneda)}</span>;
@@ -11925,11 +11928,22 @@ function Presupuestos() {
                 </table>
               </div>
               {partidas.length > 0 && (
-                <div style={{padding:'14px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:32,justifyContent:'flex-end',fontSize:13}}>
-                  <span className="text-muted">Total presupuesto: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.presupuestado)}</strong></span>
-                  <span className="text-muted">Total ejecutado: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.real)}</strong></span>
-                  <span className="text-muted">Variación: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.variacion, true)}</strong></span>
-                </div>
+                <>
+                  <div style={{padding:'14px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:32,justifyContent:'flex-end',fontSize:13}}>
+                    <span className="text-muted">Total presupuesto: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.presupuestado)}</strong></span>
+                    <span className="text-muted">Total ejecutado: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.real)}</strong></span>
+                    <span className="text-muted">Variación: <strong style={{color:'var(--fg)'}}>{lineasKpi(resumenReal.totales.variacion, true)}</strong></span>
+                  </div>
+                  {hayMontosUSD && (
+                    <div style={{padding:'0 20px 14px',fontSize:13}}>
+                      {totalesConsolidados ? <>
+                        <strong>Total consolidado (referencial) S/</strong>: Presupuestado <strong>{formatoConsolidadoPEN(totalesConsolidados.presupuestado)}</strong> · Real <strong>{formatoConsolidadoPEN(totalesConsolidados.real)}</strong> · Variación <strong>{formatoConsolidadoPEN(totalesConsolidados.variacion)}</strong>
+                        <span className="text-muted"> · TC US$1 = S/ {Number(tcUSDaPEN).toFixed(2)}</span>
+                        {tipoCambioHoy?.desactualizado && <span className="text-muted"> · TC desactualizado</span>}
+                      </> : <span className="text-muted">No hay tipo de cambio disponible para consolidar los montos en USD.</span>}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

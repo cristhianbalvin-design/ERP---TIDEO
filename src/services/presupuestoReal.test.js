@@ -1,12 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crearResumenRealPresupuesto, normalizarCategoriaPresupuesto, otCompatibleConPresupuesto } from './presupuestoReal.js';
+import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarCategoriaPresupuesto, otCompatibleConPresupuesto } from './presupuestoReal.js';
 
 const empresaId = 'empresa-1';
 const partida = (categoria, moneda = 'PEN', monto_presupuestado = 100) => ({ id: `${categoria}-${moneda}`, categoria, moneda, monto_presupuestado });
 const compra = (categoria, moneda, monto, extra = {}) => ({ empresa_id: empresaId, fecha: '2026-05-15', categoria, moneda, monto, ...extra });
 const ot = (monto, extra = {}) => ({ empresa_id: empresaId, fecha_cierre: '2026-05-20', estado: 'cerrada', costo_real: monto, ...extra });
 const resumen = opciones => crearResumenRealPresupuesto({ empresaId, periodo: '2026-05', ...opciones });
+
+test('consolida PEN y USD con el tipo de cambio referencial y redondea a dos decimales', () => {
+  const consolidados = crearTotalesConsolidadosReferencialesPEN({
+    presupuestado: { PEN: 100.125, USD: 10.005 },
+    real: { PEN: 50.555, USD: 2.335 },
+    variacion: { PEN: -49.57, USD: -7.67 },
+  }, 3.678);
+
+  assert.deepEqual(consolidados, {
+    presupuestado: 136.92,
+    real: 59.14,
+    variacion: -77.78,
+  });
+});
+
+test('consolida solo PEN aunque no haya tipo de cambio si no existen montos USD', () => {
+  assert.deepEqual(crearTotalesConsolidadosReferencialesPEN({
+    presupuestado: { PEN: 100 },
+    real: { PEN: 80 },
+    variacion: { PEN: -20 },
+  }, null), {
+    presupuestado: 100,
+    real: 80,
+    variacion: -20,
+  });
+});
+
+test('no consolida cuando hay montos USD y falta tipo de cambio', () => {
+  assert.equal(crearTotalesConsolidadosReferencialesPEN({
+    presupuestado: { PEN: 100, USD: 10 },
+    real: { PEN: 80, USD: 0 },
+    variacion: { PEN: -20, USD: -10 },
+  }, null), null);
+});
 
 test('normaliza tildes, mayúsculas, espacios y Logística directa', () => {
   assert.equal(normalizarCategoriaPresupuesto('  LOGÍSTICA  '), 'logistica');
