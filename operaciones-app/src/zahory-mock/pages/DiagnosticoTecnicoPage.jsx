@@ -418,7 +418,7 @@ export function DiagnosticoTecnicoPage() {
   const [lineValidationErrors, setLineValidationErrors] = useState({});
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
   const [hallazgosDirty, setHallazgosDirty] = useState(false);
-  const [hallazgosDirtySummary, setHallazgosDirtySummary] = useState({ hallazgos: 0, tareas: 0 });
+  const [hallazgosDirtySummary, setHallazgosDirtySummary] = useState({ hallazgos: 0, tareas: 0, cambios: 0 });
   const [hallazgosSaving, setHallazgosSaving] = useState(false);
   const openRequestRef = useRef(0);
   const listRequestRef = useRef(0);
@@ -715,9 +715,28 @@ export function DiagnosticoTecnicoPage() {
   };
 
   const saveAllLines = async () => {
-    if (!selected || !canEditLines) return;
+    if (!selected || !canEditLines) return true;
     const dirtyLines = (selected.lineas || []).filter(line => line._dirty);
-    for (const line of dirtyLines) await saveLine(line);
+    let allSaved = true;
+    for (const line of dirtyLines) {
+      const saved = await saveLine(line);
+      if (!saved) allSaved = false;
+    }
+    return allSaved;
+  };
+
+  const saveAll = async () => {
+    if (!selected || !canEditLines || modalBusy) return;
+    setError('');
+    setNotice('');
+    const linesSaved = await saveAllLines();
+    if (!linesSaved) {
+      setError('Falló el guardado de tareas; los hallazgos quedaron pendientes. Corrige las tareas con error antes de guardar hallazgos.');
+      return;
+    }
+    if (!hallazgosDirty) return;
+    const result = await hallazgosSaveRef.current?.();
+    if (result && !result.ok) setError(`Se guardaron las tareas pero fallaron los hallazgos: ${result.error}`);
   };
 
   const deleteLine = async line => {
@@ -846,6 +865,7 @@ export function DiagnosticoTecnicoPage() {
   const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
   const dirtyLineCount = lineasActuales.filter(line => line._dirty).length;
+  const cambiosCount = dirtyLineCount + Number(hallazgosDirtySummary.cambios || 0);
 
   return (
     <main className="ops-page" style={{ padding: 24, width: '100%' }}>
@@ -909,8 +929,7 @@ export function DiagnosticoTecnicoPage() {
         onClose={closeDetail}
         footer={requestClose => <>
           <div style={{ flex: 1 }}>
-            {selected && dirtyLineCount > 0 && <div className="dx-dirty-count"><i />{dirtyLineCount} tarea{dirtyLineCount === 1 ? '' : 's'} con cambios sin guardar</div>}
-            {selected && hallazgosDirty && <div className="hallazgos-dirty-summary">{hallazgosDirtySummary.hallazgos} hallazgo{hallazgosDirtySummary.hallazgos === 1 ? '' : 's'} y {hallazgosDirtySummary.tareas} tarea{hallazgosDirtySummary.tareas === 1 ? '' : 's'} con cambios sin guardar</div>}
+            {selected && cambiosCount > 0 && <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div>}
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
             {error && <div className="alert alert-error" style={{ margin: 0 }}>{error}</div>}
             {referenceError && <div className="alert alert-error" style={{ margin: '8px 0 0' }}>No se pudo resolver la referencia: {referenceError}</div>}
@@ -918,8 +937,7 @@ export function DiagnosticoTecnicoPage() {
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
           <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
-          {selected && canEditLines && <button type="button" className="btn btn-primary dx-save" onClick={saveAllLines} disabled={!dirtyLineCount || Boolean(savingLine)}>{savingLine ? 'Guardando...' : 'Guardar cambios'}</button>}
-          {selected && hallazgosDirty && canEditLines && <button type="button" className="btn btn-primary" onClick={() => hallazgosSaveRef.current?.()} disabled={hallazgosSaving}>{hallazgosSaving ? 'Guardando hallazgos...' : 'Guardar hallazgos'}</button>}
+          {selected && canEditLines && <button type="button" className="btn btn-primary dx-save" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}>{modalBusy ? 'Guardando...' : 'Guardar todo'}</button>}
           {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >
@@ -955,6 +973,8 @@ export function DiagnosticoTecnicoPage() {
               tipos={catalogs.tipos}
               cargos={catalogs.cargos}
               activos={catalogs.activos}
+              extraFamilyIds={extraFamilyIds}
+              onExtraFamilyIdsChange={setExtraFamilyIds}
               canEdit={canEditLines}
               readOnly={isReadOnly}
               onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }}

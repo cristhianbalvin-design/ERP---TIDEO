@@ -183,12 +183,12 @@ describe('Diagnostico Tecnico - Etapa B', () => {
   it('T1: flujo exacto con repuesto vacio valida antes de guardar', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one'));
     await openDetailAndAddLine();
-    const saveButton = buttonByText(renderer, 'Guardar cambios');
+    const saveButton = buttonByText(renderer, 'Guardar todo');
     await act(async () => { saveButton.props.onClick(); await wait(20); });
     const dom = textOf(renderer.root);
     const error = 'Repuesto 1: La descripci\u00f3n es obligatoria.';
     console.log('T1_EMPTY_RESULT', JSON.stringify({ button: textOf(saveButton).trim(), service_calls: mocks.service.guardarDiagnosticoLinea.mock.calls.length, dom_error: dom.includes(error) ? error : null }));
-    expect(textOf(saveButton).trim()).toBe('Guardar cambios');
+    expect(textOf(saveButton).trim()).toBe('Guardar todo');
     expect(dom).toContain(error);
     expect(mocks.service.guardarDiagnosticoLinea).not.toHaveBeenCalled();
   });
@@ -198,10 +198,10 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await openDetailAndAddLine();
     fillMaterialDescription('Filtro hidraulico');
     await act(async () => { await wait(20); });
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(80); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(80); });
     const dom = textOf(renderer.root);
-    console.log('T1A_NORMAL_RESULT', JSON.stringify({ button: textOf(buttonByText(renderer, 'Guardar cambios')).trim(), saved_label: dom.includes('L\u00ednea guardada'), sync_calls: mocks.service.sincronizarMaterialesLinea.mock.calls.length }));
-    expect(textOf(buttonByText(renderer, 'Guardar cambios')).trim()).toBe('Guardar cambios');
+    console.log('T1A_NORMAL_RESULT', JSON.stringify({ button: textOf(buttonByText(renderer, 'Guardar todo')).trim(), saved_label: dom.includes('L\u00ednea guardada'), sync_calls: mocks.service.sincronizarMaterialesLinea.mock.calls.length }));
+    expect(textOf(buttonByText(renderer, 'Guardar todo')).trim()).toBe('Guardar todo');
     expect(mocks.service.sincronizarMaterialesLinea).toHaveBeenCalled();
   });
 
@@ -213,7 +213,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await openDetailAndAddLine();
     fillMaterialDescription('Filtro hidraulico');
     vi.useFakeTimers();
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
     await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
     const warning = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
     const button = buttonByText(renderer, 'Guardando...');
@@ -239,7 +239,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     mocks.service.sincronizarMaterialesLinea.mockReturnValue(syncPending.promise);
     await openDetailAndAddLine();
     fillMaterialDescription('Filtro hidraulico');
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await Promise.resolve(); await Promise.resolve(); });
     globalThis.window.confirm = vi.fn(() => true);
     await act(async () => { renderer.root.findAllByProps({ 'aria-label': 'Cerrar' })[0].props.onClick(); });
     expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(0);
@@ -285,7 +285,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     mocks.service.guardarDiagnosticoLinea.mockRejectedValue(new Error('error visible de prueba'));
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(20); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(20); });
     expect(textOf(renderer.root)).toContain('error visible de prueba');
   });
 
@@ -347,7 +347,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     });
     await openDetailAndAddLine();
     fillMaterialDescription('Filtro uno');
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(40); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(40); });
     globalThis.window.confirm = vi.fn(() => true);
     await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
     await act(async () => { renderer.root.findAllByType('tr')[2].props.onClick(); await wait(100); });
@@ -361,7 +361,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
       await wait(20);
     });
     fillMaterialDescription('Filtro dos');
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(40); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(40); });
     firstSync.resolve();
     await act(async () => { await wait(100); });
     const secondButton = buttonByText(renderer, 'Guardando...');
@@ -416,7 +416,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(renderer.root.findAllByType('textarea')).toHaveLength(0);
   });
 
-  it('DX3: Guardar cambios persiste todas las tareas sucias y reporta error parcial por fila', async () => {
+  it('DX3: Guardar todo persiste todas las tareas sucias y reporta error parcial por fila', async () => {
     mocks.service.listarTiposServicioInterno.mockResolvedValue([{ id: 'task-1', nombre: 'Tarea 1' }, { id: 'task-2', nombre: 'Tarea 2' }]);
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [
       { id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [], _dirty: true },
@@ -429,10 +429,84 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     mocks.service.obtenerDiagnosticoLinea.mockImplementation(async (_empresa, id) => ({ id, materiales: [] }));
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(100); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(2);
     expect(mocks.service.sincronizarMaterialesLinea).toHaveBeenCalledTimes(1);
     expect(textOf(renderer.root)).toContain('No se guardó: falló tarea 2');
+  });
+
+  it('F3: Guardar todo persiste primero líneas y luego hallazgos, y el contador suma ambos dirty states', async () => {
+    const saveOrder = [];
+    mocks.service.listarCatalogosHallazgos.mockResolvedValue([
+      { catalogo: 'tipo_dano', codigo: 'desgaste', etiqueta: 'Desgaste' },
+      { catalogo: 'causa_probable', codigo: 'desgaste_normal', etiqueta: 'Desgaste normal' },
+    ]);
+    mocks.service.guardarDiagnosticoLinea.mockImplementation(async (_empresa, _diagnostico, line) => { saveOrder.push('linea'); return { id: line.id || 'line-new' }; });
+    mocks.service.obtenerDiagnosticoLinea.mockImplementation(async (_empresa, id) => ({ id, materiales: [] }));
+    mocks.service.crearDiagnosticoHallazgo.mockImplementation(async () => { saveOrder.push('hallazgo'); return { id: 'hallazgo-new' }; });
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+    await addQuickTask();
+    await act(async () => { buttonContaining(renderer, '+ Agregar hallazgo').props.onClick(); await wait(0); });
+    await act(async () => { renderer.root.findByProps({ 'aria-label': 'Componente / parte' }).props.onChange({ target: { value: 'Vástago' } }); });
+    const selects = renderer.root.findAllByType('select');
+    const damage = selects.find(select => select.props['aria-label'] === 'Tipo de daño');
+    const cause = selects.find(select => select.props['aria-label'] === 'Causa probable');
+    await act(async () => { damage.props.onChange({ target: { value: 'desgaste' } }); cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
+    expect(saveOrder).toEqual(['linea', 'hallazgo']);
+    expect(textOf(renderer.root)).not.toContain('Guardar cambios');
+    expect(textOf(renderer.root)).not.toContain('Guardar hallazgos');
+  });
+
+  it('F3: si falla hallazgos después de guardar tareas, informa la fase y conserva hallazgos dirty', async () => {
+    mocks.service.listarCatalogosHallazgos.mockResolvedValue([
+      { catalogo: 'tipo_dano', codigo: 'desgaste', etiqueta: 'Desgaste' },
+      { catalogo: 'causa_probable', codigo: 'desgaste_normal', etiqueta: 'Desgaste normal' },
+    ]);
+    mocks.service.guardarDiagnosticoLinea.mockResolvedValue({ id: 'line-new' });
+    mocks.service.obtenerDiagnosticoLinea.mockResolvedValue({ id: 'line-new', materiales: [] });
+    mocks.service.crearDiagnosticoHallazgo.mockRejectedValue(new Error('error hallazgo simulado'));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+    await addQuickTask();
+    await act(async () => { buttonContaining(renderer, '+ Agregar hallazgo').props.onClick(); await wait(0); });
+    await act(async () => { renderer.root.findByProps({ 'aria-label': 'Componente / parte' }).props.onChange({ target: { value: 'Vástago' } }); });
+    const selects = renderer.root.findAllByType('select');
+    const damage = selects.find(select => select.props['aria-label'] === 'Tipo de daño');
+    const cause = selects.find(select => select.props['aria-label'] === 'Causa probable');
+    await act(async () => { damage.props.onChange({ target: { value: 'desgaste' } }); cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
+    expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
+    expect(textOf(renderer.root)).toContain('Se guardaron las tareas pero fallaron los hallazgos: No se pudieron guardar todos los cambios: error hallazgo simulado');
+    expect(textOf(renderer.root)).toContain('1 cambio sin guardar');
+    globalThis.window.confirm = vi.fn(() => false);
+    await act(async () => { buttonByText(renderer, 'Cerrar').props.onClick(); });
+    expect(globalThis.window.confirm).toHaveBeenCalledWith('Tienes cambios sin guardar');
+    expect(renderer.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
+  });
+
+  it('F3: si falla la fase de tareas no inicia el guardado de hallazgos', async () => {
+    mocks.service.listarCatalogosHallazgos.mockResolvedValue([
+      { catalogo: 'tipo_dano', codigo: 'desgaste', etiqueta: 'Desgaste' },
+      { catalogo: 'causa_probable', codigo: 'desgaste_normal', etiqueta: 'Desgaste normal' },
+    ]);
+    mocks.service.guardarDiagnosticoLinea.mockRejectedValue(new Error('error tarea simulado'));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+    await addQuickTask();
+    await act(async () => { buttonContaining(renderer, '+ Agregar hallazgo').props.onClick(); await wait(0); });
+    await act(async () => { renderer.root.findByProps({ 'aria-label': 'Componente / parte' }).props.onChange({ target: { value: 'Vástago' } }); });
+    const selects = renderer.root.findAllByType('select');
+    const damage = selects.find(select => select.props['aria-label'] === 'Tipo de daño');
+    const cause = selects.find(select => select.props['aria-label'] === 'Causa probable');
+    await act(async () => { damage.props.onChange({ target: { value: 'desgaste' } }); cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
+    expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
+    expect(mocks.service.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
+    expect(textOf(renderer.root)).toContain('Falló el guardado de tareas; los hallazgos quedaron pendientes.');
+    expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
   });
 
   it('DX4: los grupos muestran conteos y sumas de horas y se pueden colapsar y expandir', async () => {
@@ -472,7 +546,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
     expect(textOf(renderer.root)).toContain('Este diagnóstico está emitido y es de solo lectura.');
-    expect(buttonByText(renderer, 'Guardar cambios')).toBeFalsy();
+    expect(buttonByText(renderer, 'Guardar todo')).toBeFalsy();
     renderer.unmount();
     renderer = null;
 
@@ -481,18 +555,18 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
     expect(textOf(renderer.root)).toContain('No tienes permiso para editar diagnósticos.');
-    expect(buttonByText(renderer, 'Guardar cambios')).toBeFalsy();
+    expect(buttonByText(renderer, 'Guardar todo')).toBeFalsy();
   });
 
   it('DX7: el contador refleja las tareas con cambios sin guardar', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [{ id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', horas_mano_obra: 1, materiales: [] }]));
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(100); });
-    expect(textOf(renderer.root)).not.toContain('tarea con cambios sin guardar');
+    expect(textOf(renderer.root)).not.toContain('cambio sin guardar');
     const hours = renderer.root.findByProps({ 'aria-label': 'Horas-hombre de Tarea 1' });
     await act(async () => { hours.props.onChange({ target: { value: '2.5' } }); await wait(0); });
-    expect(textOf(renderer.root)).toContain('1 tarea con cambios sin guardar');
-    expect(buttonByText(renderer, 'Guardar cambios').props.disabled).toBe(false);
+    expect(textOf(renderer.root)).toContain('1 cambio sin guardar');
+    expect(buttonByText(renderer, 'Guardar todo').props.disabled).toBe(false);
   });
 
   it('R7: mountedRef se activa y se limpia con un useEffect explicito', async () => {
@@ -555,7 +629,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(textOf(renderer.root)).toContain('Trabajo 1');
     expect(textOf(renderer.root)).toContain('1 tareas');
     expect(textOf(renderer.root)).toContain('2.5 h');
-    expect(textOf(renderer.root)).toContain('1 tarea con cambios sin guardar');
+    expect(textOf(renderer.root)).toContain('1 cambio sin guardar');
   });
 
   it('R13: HM queda deshabilitada mientras no haya activo propio', async () => {
@@ -690,7 +764,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { checkbox.props.onChange(); await wait(0); });
     await act(async () => { buttonByText(renderer, 'Agregar 1 tareas').props.onClick(); await wait(0); });
     expect(renderer.root.findAll(node => node.props.className?.includes('dx-row is-dirty'))).toHaveLength(2);
-    await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(100); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].orden)).toEqual([8, 9]);
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.every(call => call[2]._dirty === true)).toBe(true);
   });
