@@ -18,6 +18,25 @@ const perteneceAlPeriodo = (fecha, periodo) => String(fecha || '').slice(0, peri
 const estaEnCeco = (registro, efectivoCecos) => efectivoCecos == null || efectivoCecos.includes(registro.centro_costo_id || registro.cecoId);
 const sumar = registros => registros.reduce((total, registro) => total + Number(registro.monto || 0), 0);
 const porMoneda = () => ({ PEN: 0, USD: 0 });
+const redondearADosDecimales = monto => Math.round((monto + Number.EPSILON) * 100) / 100;
+
+/** Consolida importes PEN y USD en PEN usando un TC referencial único. */
+export const crearTotalesConsolidadosReferencialesPEN = (totales = {}, tcUSDaPEN) => {
+  const hayMontosUSD = ['presupuestado', 'real', 'variacion'].some(clave =>
+    Number(totales?.[clave]?.USD || 0) !== 0
+  );
+  const tipoCambio = Number(tcUSDaPEN);
+
+  if (hayMontosUSD && (!Number.isFinite(tipoCambio) || tipoCambio <= 0)) return null;
+
+  return ['presupuestado', 'real', 'variacion'].reduce((consolidados, clave) => {
+    const montos = totales?.[clave] || {};
+    consolidados[clave] = redondearADosDecimales(
+      Number(montos.PEN || 0) + (hayMontosUSD ? Number(montos.USD || 0) * tipoCambio : 0)
+    );
+    return consolidados;
+  }, {});
+};
 
 /**
  * Prepara el real presupuestal por partida y moneda. Los registros del desglose
