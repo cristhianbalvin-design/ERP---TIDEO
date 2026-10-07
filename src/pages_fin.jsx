@@ -9604,7 +9604,7 @@ function CxP() {
       { wch: 38 }, { wch: 24 }, { wch: 30 }, { wch: 18 }, { wch: 16 }, { wch: 20 },
       { wch: 18 }, { wch: 36 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 10 },
       { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 24 },
-      { wch: 24 }, { wch: 48 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 18 },
+      { wch: 48 }, { wch: 24 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 18 },
       { wch: 22 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 },
       { wch: 24 },
     ];
@@ -10014,6 +10014,7 @@ function CxP() {
                         <label style={{fontSize:11}}>Categoría ER</label>
                         <select className="select" style={{fontSize:12}} value={fichaClasifCategoria} onChange={e => setFichaClasifCategoria(e.target.value)}>
                           <option value="">Automático</option>
+                          {fichaClasifCategoria && !erCatOpts.includes(fichaClasifCategoria) && <option value={fichaClasifCategoria}>{fichaClasifCategoria} (fuera de catálogo)</option>}
                           {erCatOpts.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </div>
