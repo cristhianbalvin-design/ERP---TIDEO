@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { actualizarOpciones, generarConclusionIA, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador, OPCIONES_INFORME_POR_DEFECTO } from '../../services/diagnosticoInformeService.js';
+import { actualizarOpciones, emitirInformeDiagnostico, generarConclusionIA, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador, OPCIONES_INFORME_POR_DEFECTO, usuarioPuedeInforme } from '../../services/diagnosticoInformeService.js';
 import { construirVistaInforme } from './informeSnapshot.js';
 import { InformeHoja } from './InformeHoja.jsx';
 import { listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
@@ -18,16 +18,28 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
   const [identidadEmpresa, setIdentidadEmpresa] = useState(null);
+  const [permisoAprobar, setPermisoAprobar] = useState(false);
   const [fotosPorHallazgo, setFotosPorHallazgo] = useState(() => new Map());
   const [errorFotos, setErrorFotos] = useState(false);
   const [generandoIA, setGenerandoIA] = useState(false);
   const [iaError, setIaError] = useState('');
   const [confirmarReemplazo, setConfirmarReemplazo] = useState(false);
+  const [confirmarEmision, setConfirmarEmision] = useState(false);
+  const [emisorNombre, setEmisorNombre] = useState('');
+  const [emisorCargo, setEmisorCargo] = useState('');
+  const [emitiendo, setEmitiendo] = useState(false);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setPermisoAprobar(false);
     if (!informe?.empresa_id) { setIdentidadEmpresa(null); return () => { active = false; }; }
-    obtenerIdentidadEmpresa(informe.empresa_id).then(value => { if (active) setIdentidadEmpresa(value); });
+    obtenerIdentidadEmpresa(informe.empresa_id).then(value => { if (active) {
+      setIdentidadEmpresa(value);
+      setEmisorNombre(current => current || value?.firmante || '');
+      setEmisorCargo(current => current || value?.cargo_firmante || '');
+    } });
+    usuarioPuedeInforme(informe.empresa_id, 'aprobar').then(value => { if (active) setPermisoAprobar(value); }).catch(() => { if (active) setPermisoAprobar(false); });
     return () => { active = false; };
   }, [informe?.empresa_id]);
 
@@ -89,6 +101,8 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
 
   const isEditable = Boolean(puedeEditar && borrador?.estado === 'borrador' && !seleccionVersion);
   const conclusionModificada = opciones.conclusion !== opcionesGuardadas.conclusion;
+  const conclusionSinConfirmar = Boolean(String(opciones.conclusion || '').trim()) && !opciones.conclusion_confirmada;
+  const opcionesPendientes = JSON.stringify(opciones) !== JSON.stringify(opcionesGuardadas);
   const effectiveSnapshot = useMemo(() => {
     if (seleccionVersion?.snapshot) return seleccionVersion.snapshot;
     return construirVistaInforme(diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo);
@@ -107,16 +121,40 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     finally { setGenerandoIA(false); }
   };
 
-  const guardar = async () => {
-    if (!isEditable || guardando) return;
+  const guardar = async ({ silencioso = false } = {}) => {
+    if (!isEditable || guardando) return false;
     setGuardando(true); setError(''); setAviso('');
     try {
       const saved = await actualizarOpciones(informe.id, opciones);
       const next = normalize(saved.opciones);
       setInforme(saved); setBorrador(saved); setOpcionesGuardadas(next); setOpciones(next);
-      setAviso('Borrador guardado.');
-    } catch (saveError) { setError(saveError.message || 'No se pudo guardar el borrador.'); }
+      if (!silencioso) setAviso('Borrador guardado.');
+      return true;
+    } catch (saveError) { setError(saveError.message || 'No se pudo guardar el borrador.'); return false; }
     finally { setGuardando(false); }
+  };
+
+  const emitir = async () => {
+    if (!isEditable || emitiendo || !String(emisorNombre || '').trim() || conclusionSinConfirmar) return;
+    setEmitiendo(true); setError(''); setAviso('');
+    try {
+      if (opcionesPendientes) {
+        const saved = await guardar({ silencioso: true });
+        if (!saved) return;
+      }
+      const issued = await emitirInformeDiagnostico({ informeId: informe.id, emisorNombre, emisorCargo });
+      const current = await obtenerInformeVigente(diagnostico.recepcion_id);
+      const selected = (current.emitidos || []).find(row => row.id === issued?.id) || issued;
+      setEmitidos(current.emitidos || [selected]);
+      setBorrador(current.borrador || null);
+      setInforme(selected);
+      setOpciones(normalize(selected?.opciones));
+      setOpcionesGuardadas(normalize(selected?.opciones));
+      setSeleccionVersion(selected);
+      setConfirmarEmision(false);
+      setAviso(`Informe emitido (versión ${selected?.version}).`);
+    } catch (issueError) { setError(issueError.message || 'No se pudo emitir el informe.'); }
+    finally { setEmitiendo(false); }
   };
 
   const confirmarConclusion = async event => {
@@ -137,6 +175,32 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
       setInforme(borrador);
       setOpciones(normalize(borrador?.opciones));
       setOpcionesGuardadas(normalize(borrador?.opciones));
+    }
+  };
+
+  const descargarPdf = async () => {
+    const snapshot = seleccionVersion?.estado === 'emitido' ? seleccionVersion.snapshot : null;
+    if (!snapshot || generandoPdf) return;
+    setGenerandoPdf(true); setError(''); setAviso('');
+    let objectUrl = null;
+    try {
+      const { generarPdfInforme } = await import('./InformePdf.jsx');
+      const { blob, warnings = [] } = await generarPdfInforme(snapshot);
+      objectUrl = URL.createObjectURL(blob);
+      const recepcion = String(snapshot.cabecera?.numero_recepcion || 'recepcion').replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-').trim() || 'recepcion';
+      const version = String(snapshot.version ?? seleccionVersion.version ?? '1').replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-');
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `Informe-diagnostico-${recepcion}-v${version}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      if (warnings.length) setAviso(`El PDF se generó sin algunas fotos: ${warnings.join(' ')}`);
+    } catch (pdfError) {
+      setError(pdfError?.message ? `No se pudo generar el PDF: ${pdfError.message}` : 'No se pudo generar el PDF.');
+    } finally {
+      if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      setGenerandoPdf(false);
     }
   };
 
@@ -166,6 +230,16 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           <label className="dx-inf-confirm"><input type="checkbox" checked={Boolean(opciones.conclusion_confirmada)} disabled={!isEditable || guardando || conclusionModificada} onChange={confirmarConclusion} /> Revisé y confirmo la conclusión</label>
           {Boolean(String(opciones.conclusion || '').trim()) && !opciones.conclusion_confirmada && <p className="dx-inf-unconfirmed">No podrá emitirse hasta confirmarla.</p>}
           {isEditable && <button type="button" className="dx-inf-save" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar borrador'}</button>}
+          {isEditable && permisoAprobar && <button type="button" className="dx-informe-emitir" onClick={() => {
+            setError(''); setAviso(''); setEmisorNombre(identidadEmpresa?.firmante || ''); setEmisorCargo(identidadEmpresa?.cargo_firmante || ''); setConfirmarEmision(true);
+          }} disabled={guardando || emitiendo || conclusionSinConfirmar}>{emitiendo ? 'Emitiendo…' : 'Emitir informe'}</button>}
+          {seleccionVersion?.estado === 'emitido' && seleccionVersion?.snapshot && <button type="button" className="dx-inf-save" onClick={descargarPdf} disabled={generandoPdf}>{generandoPdf ? 'Generando PDF…' : 'Descargar PDF'}</button>}
+          {confirmarEmision && isEditable && <section className="dx-informe-emitir-panel" aria-label="Confirmar emisión">
+            <label>Nombre del emisor<input value={emisorNombre} onChange={event => setEmisorNombre(event.target.value)} required maxLength={200} disabled={emitiendo} /></label>
+            <label>Cargo<input value={emisorCargo} onChange={event => setEmisorCargo(event.target.value)} maxLength={200} disabled={emitiendo} /></label>
+            <p>Al emitir, el informe queda congelado y no podrá editarse; para cambios se emite una nueva versión.</p>
+            <div className="dx-informe-emitir-actions"><button type="button" onClick={emitir} disabled={emitiendo || guardando || !String(emisorNombre || '').trim() || conclusionSinConfirmar}>{emitiendo ? 'Emitiendo…' : 'Confirmar emisión'}</button><button type="button" onClick={() => setConfirmarEmision(false)} disabled={emitiendo}>Cancelar</button></div>
+          </section>}
           {emitidos.length > 0 && <section className="dx-inf-versions"><h3>Versiones emitidas</h3>{borrador && <button type="button" className={!seleccionVersion ? 'is-selected' : ''} onClick={() => chooseVersion(null)}>Borrador actual</button>}{emitidos.map(row => <button key={row.id} type="button" className={seleccionVersion?.id === row.id ? 'is-selected' : ''} onClick={() => chooseVersion(row)}>Versión {row.version}{row.emitido_en ? ` · ${new Date(row.emitido_en).toLocaleDateString('es-PE')}` : ''}</button>)}</section>}
           {cambiosSinGuardar && <div className="dx-inf-warning" role="status">Hay cambios sin guardar en el diagnóstico.</div>}
           {error && <div className="dx-inf-error" role="alert">{error}</div>}{aviso && <div className="dx-inf-notice" role="status">{aviso}</div>}
