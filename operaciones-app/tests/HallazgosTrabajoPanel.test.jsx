@@ -32,15 +32,17 @@ const baseHallazgo = {
 };
 const textOf = node => node?.children?.map(child => typeof child === 'string' ? child : textOf(child)).join('') || '';
 
-const renderPanel = async hallazgos => {
+const renderPanel = async (hallazgos, options = {}) => {
   const callbacks = {};
   let renderer;
   await act(async () => {
     renderer = create(<HallazgosTrabajoPanel
       empresaId="empresa-prueba"
       diagnostico={{ id: 'diagnostico-1', hallazgos }}
-      lines={[line]}
-      familias={[{ id: 'family-1', nombre: 'Trabajo 1' }]}
+      lines={options.lines || [line]}
+      familias={options.familias || [{ id: 'family-1', nombre: 'Trabajo 1' }, { id: 'family-2', nombre: 'Trabajo 2' }]}
+      extraFamilyIds={options.extraFamilyIds || []}
+      onExtraFamilyIdsChange={options.onExtraFamilyIdsChange}
       tipos={[{ id: 'task-1', nombre: 'Tarea 1' }]}
       cargos={[{ id: 'cargo-1', nombre: 'Técnico' }]}
       canEdit
@@ -82,6 +84,8 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).not.toContain('Agregar fotos');
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
+    expect(text).not.toContain('Incluir en informe');
+    expect(text).not.toContain('Fotos');
   });
 
   it('permite agregar un hallazgo solo bajo un trabajo que ya tiene líneas', async () => {
@@ -90,6 +94,49 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => add.props.onClick());
     expect(renderer.root.findAllByType('input').some(input => input.props.value === '')).toBe(true);
     expect(textOf(renderer.root)).not.toContain('Aplicar una actividad completa');
+  });
+
+  it('crea un grupo sin líneas desde una familia existente y permite agregarle un hallazgo', async () => {
+    const setExtra = vi.fn();
+    const { renderer } = await renderPanel([], { lines: [], onExtraFamilyIdsChange: setExtra });
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    await act(async () => addFamily.props.onClick());
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    await act(async () => familySelect.props.onChange({ target: { value: 'family-2' } }));
+    expect(setExtra).toHaveBeenCalled();
+    expect(textOf(renderer.root)).toContain('Trabajo 2');
+    const addFinding = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar hallazgo'));
+    await act(async () => addFinding.props.onClick());
+    expect(textOf(renderer.root)).toContain('Nuevo hallazgo');
+  });
+
+  it('al elegir una familia que ya tiene grupo lo expande sin solicitar un grupo nuevo', async () => {
+    const setExtra = vi.fn();
+    const { renderer } = await renderPanel([], { onExtraFamilyIdsChange: setExtra });
+    const group = renderer.root.findByProps({ className: 'hallazgos-group-toggle' });
+    await act(async () => group.props.onClick());
+    expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(false);
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    await act(async () => addFamily.props.onClick());
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    await act(async () => familySelect.props.onChange({ target: { value: 'family-1' } }));
+    expect(setExtra).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(true);
+  });
+
+  it('muestra materiales de las tareas enlazadas en solo lectura', async () => {
+    const { renderer } = await renderPanel([{ ...baseHallazgo, lineas: [{ id: 'link-1', linea_id: 'line-1' }] }], {
+      lines: [{ ...line, materiales: [{ id: 'mat-1', descripcion: 'Filtro', cantidad: 2, unidad: 'und' }] }],
+    });
+    const text = textOf(renderer.root);
+    expect(text).toContain('Filtro · 2 und');
+    expect(text).not.toContain('+ Repuesto');
+  });
+
+  it('incluye mediciones y tareas sucias en el conteo dirty del panel', async () => {
+    const { renderer, callbacks } = await renderPanel([baseHallazgo]);
+    await act(async () => renderer.root.findAllByType('button').find(button => button.children.join('').includes('+ Medición')).props.onClick());
+    expect(callbacks.dirty).toBe(true);
   });
 
   it('guarda un hallazgo nuevo antes de sus mediciones y enlaces', async () => {
