@@ -54,6 +54,31 @@ const statusClass = estado => estado === 'emitido' ? 'badge green' : 'badge oran
 const materialKey = material => material.id || material._key;
 const lineKey = line => line._key || line.id;
 const normalizedText = value => String(value || '').trim().toLocaleLowerCase();
+const normalizeListText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+const formatListDate = value => {
+  if (!value) return { day: '—', time: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { day: '—', time: '' };
+  const today = new Date();
+  const yesterday = new Date(today);
+  today.setHours(0, 0, 0, 0);
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(0, 0, 0, 0);
+  const dateDay = new Date(date);
+  dateDay.setHours(0, 0, 0, 0);
+  const day = dateDay.getTime() === today.getTime()
+    ? 'Hoy'
+    : dateDay.getTime() === yesterday.getTime()
+      ? 'Ayer'
+      : (() => {
+        const parts = new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: 'numeric' }).formatToParts(date);
+        const weekday = parts.find(part => part.type === 'weekday')?.value.replace(/[.,]/g, '') || '';
+        const dateNumber = parts.find(part => part.type === 'day')?.value || '';
+        const month = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][date.getMonth()];
+        return `${weekday} ${dateNumber} ${month}`.replace(/^\p{L}/u, letter => letter.toLocaleUpperCase());
+      })();
+  return { day, time: new Intl.DateTimeFormat('es-PE', { hour: 'numeric', minute: '2-digit' }).format(date) };
+};
 const createName = value => String(value || '').trim().split(/\s+·\s+/)[0].trim();
 const eventIsInside = (event, root) => {
   if (!root) return false;
@@ -401,6 +426,7 @@ export function DiagnosticoTecnicoPage() {
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [search, setSearch] = useState('');
+  const [listQuery, setListQuery] = useState('');
   const [references, setReferences] = useState([]);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
@@ -901,6 +927,15 @@ export function DiagnosticoTecnicoPage() {
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
   const dirtyLineCount = lineasActuales.filter(line => line._dirty).length;
   const cambiosCount = dirtyLineCount + Number(hallazgosDirtySummary.cambios || 0);
+  const normalizedListQuery = normalizeListText(listQuery.trim());
+  const filteredDiagnosticos = diagnosticos.filter(row => !normalizedListQuery || normalizeListText([
+    row.referencia?.numero,
+    row.referencia?.cliente,
+    row.referencia?.activo,
+    typeLabel(row.tipo),
+  ].join(' ')).includes(normalizedListQuery));
+  const borradoresCount = diagnosticos.filter(row => row.estado !== 'emitido').length;
+  const emitidosCount = diagnosticos.length - borradoresCount;
 
   return (
     <main className="ops-page" style={{ padding: 24, width: '100%' }}>
@@ -925,27 +960,50 @@ export function DiagnosticoTecnicoPage() {
 
       {!modalOpen && !sesion.permiteEscritura && <div className="alert alert-warning" style={{ marginBottom: 12 }}>Selecciona una sociedad concreta en la barra superior para poder editar.</div>}
 
-      <div className="card" style={{ marginBottom: 18, width: '100%' }}>
-        <div className="card-header"><h2 style={{ margin: 0, fontSize: 17 }}>Diagnósticos</h2></div>
-        {loadingList ? <div className="card-body muted">Cargando diagnósticos...</div> : !diagnosticos.length ? (
-          <div className="card-body muted">No hay diagnósticos registrados.</div>
-        ) : (
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table className="table" style={{ width: '100%' }}><thead><tr><th>Tipo</th><th>Referencia</th><th>Estado</th><th>Actualizado</th></tr></thead>
-              <tbody>{diagnosticos.map(row => <tr key={row.id} onClick={() => openExisting(row)} style={{ cursor: 'pointer' }}>
-                <td>{typeLabel(row.tipo)}</td>
-                <td>
-                  <strong>{row.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción'} · {referenceLabel(row.referencia)}</strong>
-                  {row.referencia?.cliente && <span className="muted" style={{ display: 'block', marginTop: 3 }}>{row.referencia.cliente}</span>}
-                  {row.tipo === 'mantenimiento' && row.referencia?.activo && <span className="muted" style={{ display: 'block', marginTop: 3 }}>{row.referencia.activo}</span>}
-                </td>
-                <td><span className={statusClass(row.estado)}>{statusLabel(row.estado)}</span></td>
-                <td>{row.updated_at ? new Date(row.updated_at).toLocaleString('es-PE') : '—'}</td>
-              </tr>)}</tbody>
-            </table>
+      <section className="dx-list" aria-label="Listado de diagnósticos">
+        <div className="dx-list-summary" aria-label="Resumen de diagnósticos">
+          <div className="dx-list-chip"><b>{diagnosticos.length}</b><span>diagnósticos</span></div>
+          <div className="dx-list-chip"><b>{borradoresCount}</b><span>borradores</span></div>
+          <div className="dx-list-chip"><b>{emitidosCount}</b><span>emitidos</span></div>
+        </div>
+        <div className="dx-list-card">
+          <div className="dx-list-toolbar">
+            <h2>Diagnósticos</h2>
+            <span className="dx-list-count">{filteredDiagnosticos.length} {filteredDiagnosticos.length === 1 ? 'resultado' : 'resultados'}</span>
+            <label className="dx-list-search">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><circle cx="7" cy="7" r="5" /><path d="M11 11l3.5 3.5" /></svg>
+              <input value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Buscar por referencia, cliente o activo…" aria-label="Buscar diagnósticos" />
+            </label>
           </div>
-        )}
-      </div>
+          <div className="dx-list-head" aria-hidden="true"><span>Tipo</span><span>Referencia</span><span>Estado</span><span>Actualizado</span><span /></div>
+          {loadingList ? <div className="dx-list-empty">Cargando diagnósticos...</div> : !diagnosticos.length ? (
+            <div className="dx-list-empty">No hay diagnósticos registrados.</div>
+          ) : !filteredDiagnosticos.length ? (
+            <div className="dx-list-empty">No hay diagnósticos que coincidan con la búsqueda.</div>
+          ) : filteredDiagnosticos.map(row => {
+            const referenceType = row.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción';
+            const updated = formatListDate(row.updated_at);
+            return <div className="dx-list-row" key={row.id} role="button" tabIndex={0} onClick={() => openExisting(row)} onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openExisting(row);
+              }
+            }}>
+              <div className={`dx-list-type ${row.tipo === 'fabricacion' ? 'is-fabricacion' : 'is-mantenimiento'}`}>
+                <span className="dx-list-icon" aria-hidden="true">{row.tipo === 'fabricacion' ? <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16l6-6M12.5 3.5a3.5 3.5 0 004.4 4.4l-1.4 1.4-2.8-2.8 1.4-1.4M9 10l5 5 2-2-5-5" /></svg> : <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="10" r="3" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" /></svg>}</span>
+                <span>{typeLabel(row.tipo)}</span>
+              </div>
+              <div className="dx-list-reference">
+                <span className="dx-list-ref-line"><span>{referenceType} ·</span> <b>{referenceLabel(row.referencia)}</b></span>
+                {(row.referencia?.cliente || row.referencia?.activo) && <span className="dx-list-ref-sub">{[row.referencia?.cliente, row.referencia?.activo].filter(Boolean).join(' · ')}</span>}
+              </div>
+              <div className="dx-list-state"><span className={`dx-list-pill ${row.estado === 'emitido' ? 'is-emitido' : 'is-borrador'}`}><i />{statusLabel(row.estado)}</span></div>
+              <div className="dx-list-updated"><span>{updated.day}</span>{updated.time && <small>{updated.time}</small>}</div>
+              <svg className="dx-list-arrow" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3l5 5-5 5" /></svg>
+            </div>;
+          })}
+        </div>
+      </section>
 
       {(form.tipo || selected) && <ModalShell
         key={selected?.id || `nuevo-${form.tipo}`}
