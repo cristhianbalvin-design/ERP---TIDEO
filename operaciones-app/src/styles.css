@@ -98,6 +98,74 @@ body {
   letter-spacing: 0.1em;
   color: #fff;
 }
+.ops-module-search {
+  padding: 8px 4px 2px;
+  flex-shrink: 0;
+}
+.ops-module-search-input {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,.055);
+  color: rgba(255,255,255,.56);
+  transition: border-color .16s ease, background .16s ease;
+}
+.ops-module-search-input:focus-within {
+  border-color: rgba(0,188,212,.78);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+}
+.ops-module-search-input input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.ops-module-search-input input::placeholder { color: rgba(255,255,255,.43); }
+.ops-module-search-input button {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255,255,255,.58);
+  cursor: pointer;
+}
+.ops-module-search-input button:hover { background: rgba(255,255,255,.1); color: #fff; }
+.ops-search-results { display: grid; gap: 3px; padding: 8px 0 2px; }
+.ops-search-result {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255,255,255,.78);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.ops-search-result:hover, .ops-search-result.active { background: rgba(255,255,255,.1); color: #fff; }
+.ops-search-result > svg { flex: 0 0 auto; }
+.ops-search-result > span { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.ops-search-result strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.ops-search-result small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,.46); font-size: 10px; }
+.ops-search-empty { padding: 22px 10px; color: rgba(255,255,255,.55); text-align: center; font-size: 12px; line-height: 1.45; }
 .ops-product { padding: 20px 12px 7px; color: rgba(255,255,255,.42); font-size: 10px; font-weight: 700; letter-spacing: .15em; }
 .ops-nav { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 .ops-nav::-webkit-scrollbar { width: 6px; }
