@@ -4,8 +4,9 @@ const rows = catalog => Array.isArray(catalog) ? catalog : [];
 const etiqueta = (items, codigo) => rows(items).find(item => item.codigo === codigo || item.id === codigo)?.etiqueta || rows(items).find(item => item.codigo === codigo || item.id === codigo)?.nombre || codigo || null;
 const catalogOf = (catalogos, key) => catalogos?.[key] || [];
 
-export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}, cabecera = {}) {
+export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}, cabecera = {}, fotosPorHallazgo = {}) {
   const op = { ...DEFAULTS, ...opciones };
+  const fotosDe = hallazgoId => fotosPorHallazgo instanceof Map ? fotosPorHallazgo.get(hallazgoId) : fotosPorHallazgo?.[hallazgoId];
   const hallazgosOrigen = diagnostico?.hallazgos || diagnostico?.diagnostico_tecnico_hallazgos || [];
   const hallazgos = hallazgosOrigen.filter(item => item.incluir_en_informe === true && !(op.ocultar_conformes && item.condicion === 'conforme')).map(item => ({
     hallazgo_id: item.id || item.hallazgo_id || null,
@@ -24,6 +25,11 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
     atribuible_a_etiqueta: value(item.atribuible_a_etiqueta, etiqueta(catalogOf(catalogos, 'atribuibles'), item.atribuible_a), ({ desgaste_normal: 'Desgaste normal', operacion: 'Operación', defecto_fabrica: 'Defecto de fábrica', instalacion: 'Instalación' })[item.atribuible_a]),
     prioridad: item.prioridad_efectiva || item.prioridad_override || item.prioridad_calculada || item.prioridad || null,
     observacion: item.observacion || null,
+    fotos: (Array.isArray(fotosDe(item.id || item.hallazgo_id)) ? fotosDe(item.id || item.hallazgo_id) : [])
+      .filter(foto => foto.excluir_del_informe === false && foto.signedUrl)
+      .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      .slice(0, 3)
+      .map(foto => ({ url: foto.signedUrl, leyenda: foto.leyenda || null })),
   }));
   const ids = new Set(hallazgos.map(item => item.hallazgo_id));
   const medicionesOrigen = hallazgosOrigen.flatMap(h => (h.mediciones || []).map(m => ({ ...m, hallazgo_id: h.id || h.hallazgo_id })));

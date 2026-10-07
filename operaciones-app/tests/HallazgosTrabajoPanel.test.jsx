@@ -12,9 +12,19 @@ const mocks = vi.hoisted(() => ({
   eliminarDiagnosticoMedicion: vi.fn(),
   crearEnlaceDiagnosticoHallazgoLinea: vi.fn(),
   eliminarEnlaceDiagnosticoHallazgoLinea: vi.fn(),
+  listarFotosHallazgos: vi.fn(),
+  actualizarFotoHallazgo: vi.fn(),
+  borrarFotoHallazgo: vi.fn(),
+  subirFotoHallazgo: vi.fn(),
 }));
 
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks);
+vi.mock('../src/services/diagnosticoHallazgoFotosService.js', () => ({
+  listarFotosHallazgos: mocks.listarFotosHallazgos,
+  actualizarFotoHallazgo: mocks.actualizarFotoHallazgo,
+  borrarFotoHallazgo: mocks.borrarFotoHallazgo,
+  subirFotoHallazgo: mocks.subirFotoHallazgo,
+}));
 
 import { HallazgosTrabajoPanel } from '../src/zahory-mock/pages/HallazgosTrabajoPanel.jsx';
 
@@ -61,6 +71,8 @@ const renderPanel = async (hallazgos, options = {}) => {
 beforeEach(() => {
   Object.values(mocks).forEach(mock => mock.mockReset());
   mocks.listarCatalogosHallazgos.mockResolvedValue(catalogos);
+  mocks.listarFotosHallazgos.mockResolvedValue([]);
+  mocks.actualizarFotoHallazgo.mockImplementation(async values => values);
 });
 
 describe('HallazgosTrabajoPanel', () => {
@@ -81,11 +93,10 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).toContain('P4 · 0');
     expect(text).toContain('Mediciones');
     expect(text).toContain('Tareas relacionadas');
-    expect(text).not.toContain('Agregar fotos');
+    expect(text).toContain('Fotos');
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
     expect(text).not.toContain('Incluir en informe');
-    expect(text).not.toContain('Fotos');
   });
 
   it('permite agregar un hallazgo solo bajo un trabajo que ya tiene líneas', async () => {
@@ -203,5 +214,17 @@ describe('HallazgosTrabajoPanel', () => {
     expect(mocks.crearDiagnosticoMedicion).toHaveBeenCalled();
     expect(callbacks.error).toContain('Guardado parcial');
     expect(callbacks.error).not.toContain('unidad no pertenece a empresa_id');
+  });
+
+  it('carga fotos del hallazgo y persiste desde el control de inclusión del informe', async () => {
+    mocks.listarFotosHallazgos.mockResolvedValue([{ id: 'foto-1', hallazgo_id: 'hallazgo-1', signedUrl: 'https://signed/foto.jpg', ruta_storage: 'e/d/h/f.jpg', leyenda: 'Sello', excluir_del_informe: false }]);
+    const { renderer } = await renderPanel([baseHallazgo]);
+    expect(mocks.listarFotosHallazgos).toHaveBeenCalledWith('empresa-prueba', ['hallazgo-1']);
+    expect(renderer.root.findByProps({ src: 'https://signed/foto.jpg' }).props.alt).toBe('Sello');
+    const fotoLabel = renderer.root.findAll(node => node.type === 'label' && textOf(node).includes('Incluir en el informe')).at(-1);
+    const checkbox = fotoLabel.findByType('input');
+    await act(async () => { checkbox.props.onChange({ target: { checked: false } }); await Promise.resolve(); });
+    expect(mocks.actualizarFotoHallazgo).toHaveBeenCalledWith({ empresaId: 'empresa-prueba', id: 'foto-1', leyenda: 'Sello', excluir_del_informe: true });
+    renderer.unmount();
   });
 });

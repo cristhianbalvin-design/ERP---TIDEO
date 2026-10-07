@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { actualizarOpciones, generarConclusionIA, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador, OPCIONES_INFORME_POR_DEFECTO } from '../../services/diagnosticoInformeService.js';
 import { construirVistaInforme } from './informeSnapshot.js';
 import { InformeHoja } from './InformeHoja.jsx';
+import { listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
@@ -17,6 +18,8 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
   const [identidadEmpresa, setIdentidadEmpresa] = useState(null);
+  const [fotosPorHallazgo, setFotosPorHallazgo] = useState(() => new Map());
+  const [errorFotos, setErrorFotos] = useState(false);
   const [generandoIA, setGenerandoIA] = useState(false);
   const [iaError, setIaError] = useState('');
   const [confirmarReemplazo, setConfirmarReemplazo] = useState(false);
@@ -27,6 +30,31 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     obtenerIdentidadEmpresa(informe.empresa_id).then(value => { if (active) setIdentidadEmpresa(value); });
     return () => { active = false; };
   }, [informe?.empresa_id]);
+
+  const idsHallazgosIncluidos = useMemo(() => (diagnostico?.hallazgos || diagnostico?.diagnostico_tecnico_hallazgos || [])
+    .filter(item => item.incluir_en_informe === true && !(opciones.ocultar_conformes && item.condicion === 'conforme'))
+    .map(item => item.id || item.hallazgo_id)
+    .filter(Boolean), [diagnostico, opciones.ocultar_conformes]);
+  const idsHallazgosKey = idsHallazgosIncluidos.join('|');
+
+  useEffect(() => {
+    let active = true;
+    const ids = idsHallazgosKey ? idsHallazgosKey.split('|') : [];
+    setFotosPorHallazgo(new Map());
+    setErrorFotos(false);
+    if (!informe?.empresa_id || !ids.length) return () => { active = false; };
+    listarFotosHallazgos(informe.empresa_id, ids).then(fotos => {
+      if (!active) return;
+      const agrupadas = new Map();
+      fotos.forEach(foto => {
+        const grupo = agrupadas.get(foto.hallazgo_id) || [];
+        grupo.push(foto);
+        agrupadas.set(foto.hallazgo_id, grupo);
+      });
+      setFotosPorHallazgo(agrupadas);
+    }).catch(() => { if (active) { setFotosPorHallazgo(new Map()); setErrorFotos(true); } });
+    return () => { active = false; };
+  }, [informe?.empresa_id, idsHallazgosKey]);
 
   useEffect(() => {
     let active = true;
@@ -63,8 +91,8 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const conclusionModificada = opciones.conclusion !== opcionesGuardadas.conclusion;
   const effectiveSnapshot = useMemo(() => {
     if (seleccionVersion?.snapshot) return seleccionVersion.snapshot;
-    return construirVistaInforme(diagnostico, opciones, catalogos, cabecera);
-  }, [seleccionVersion, diagnostico, opciones, catalogos, cabecera]);
+    return construirVistaInforme(diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo);
+  }, [seleccionVersion, diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo]);
   const patch = (key, value) => { setSeleccionVersion(null); setOpciones(current => ({ ...current, [key]: value })); };
 
   const generarIA = async () => {
@@ -143,7 +171,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           {error && <div className="dx-inf-error" role="alert">{error}</div>}{aviso && <div className="dx-inf-notice" role="status">{aviso}</div>}
         </>}
       </aside>
-      <main className="dx-inf-preview"><div className="dx-inf-preview-scroll">{!cargando && informe && <InformeHoja snapshot={effectiveSnapshot} borrador={!seleccionVersion} identidadEmpresa={identidadEmpresa} />}</div></main>
+      <main className="dx-inf-preview"><div className="dx-inf-preview-scroll">{!cargando && informe && <>{errorFotos && <div className="dx-informe-foto-aviso" role="status">No se pudieron cargar las fotos.</div>}<InformeHoja snapshot={effectiveSnapshot} borrador={!seleccionVersion} identidadEmpresa={identidadEmpresa} /></>}</div></main>
     </div>
   </div>;
 }

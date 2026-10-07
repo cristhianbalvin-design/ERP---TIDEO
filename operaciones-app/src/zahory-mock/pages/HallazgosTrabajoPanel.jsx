@@ -10,6 +10,8 @@ import {
   eliminarEnlaceDiagnosticoHallazgoLinea,
   listarCatalogosHallazgos,
 } from '../../services/diagnosticoTecnicoService.js';
+import { listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
+import HallazgoFotos from './HallazgoFotos.jsx';
 
 const CATALOG_LABELS = {
   tipo_dano: 'Tipo de daño',
@@ -126,7 +128,7 @@ function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remov
   </section>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice }) {
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
@@ -138,6 +140,11 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [familyToAdd, setFamilyToAdd] = useState('');
   const [sessionFamilyIds, setSessionFamilyIds] = useState([]);
+  const [fotosPorHallazgo, setFotosPorHallazgo] = useState({});
+  const [fotosLoadError, setFotosLoadError] = useState('');
+  const fotosMapRef = useRef({});
+  const fotosChangeRef = useRef(onFotosChange);
+  fotosChangeRef.current = onFotosChange;
   const groupHeaderRefs = useRef(new Map());
   const pendingGroupFocus = useRef(null);
 
@@ -146,6 +153,30 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     setDeletedItems([]); setDeletedMediciones([]); setDeletedLineas([]);
     setExpandedKeys(new Set((diagnostico?.hallazgos || []).slice(0, 1).map(row => row.id).filter(Boolean)));
   }, [diagnostico?.id]);
+
+  const persistedHallazgoIds = items.map(item => item.id).filter(Boolean).sort().join('|');
+  useEffect(() => {
+    let active = true;
+    const ids = persistedHallazgoIds ? persistedHallazgoIds.split('|') : [];
+    if (!empresaId || !ids.length) {
+      fotosMapRef.current = {}; setFotosPorHallazgo({}); setFotosLoadError(''); fotosChangeRef.current?.({});
+      return undefined;
+    }
+    setFotosLoadError('');
+    listarFotosHallazgos(empresaId, ids).then(rows => {
+      if (!active) return;
+      const map = {};
+      ids.forEach(id => { map[id] = []; });
+      rows.forEach(row => { (map[row.hallazgo_id] ||= []).push(row); });
+      fotosMapRef.current = map; setFotosPorHallazgo(map); fotosChangeRef.current?.(map);
+    }).catch(error => { if (active) setFotosLoadError(errorMessage(error)); });
+    return () => { active = false; };
+  }, [empresaId, persistedHallazgoIds]);
+
+  const changeHallazgoFotos = (hallazgoId, fotos) => {
+    const next = { ...fotosMapRef.current, [hallazgoId]: fotos };
+    fotosMapRef.current = next; setFotosPorHallazgo(next); fotosChangeRef.current?.(next);
+  };
 
   useEffect(() => {
     let active = true;
@@ -317,6 +348,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
       <MeasurementTable item={item} catalogs={catalogs} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />
       <TaskLinks item={item} lines={lines} tipos={tipos} cargos={cargos} activos={activos} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={link => removeLink(item, link)} />
+      <HallazgoFotos empresaId={empresaId} diagnosticoId={diagnostico?.id} hallazgo={item} fotos={fotosPorHallazgo[item.id] || []} readOnly={readOnly} onFotosChange={fotos => changeHallazgoFotos(item.id, fotos)} />
       </>}
     </article>;
   };
@@ -324,6 +356,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   return <section className="hallazgos-panel" aria-label="Hallazgos del trabajo">
     <div className="hallazgos-summary"><div><span className="hallazgo-section-label">RESUMEN</span><h3>Hallazgos del trabajo</h3></div><div className="hallazgos-summary-metrics"><strong>{count} hallazgo{count === 1 ? '' : 's'}</strong>{PRIORITIES.map(priority => <span key={priority} className={`badge priority-${priority.toLowerCase()}`}>{priority} · {priorities[priority] || 0}</span>)}</div></div>
     {catalogError && <div className="alert alert-error">No se cargaron los catálogos de hallazgos: {catalogError}</div>}
+    {fotosLoadError && <div className="dx-foto-error" role="status">No se pudieron cargar las fotos de los hallazgos: {fotosLoadError}</div>}
     {groups.map(group => { const expanded = !collapsedGroups.has(group.id); return <section className="hallazgos-work-section" key={group.id}><div className="hallazgos-work-head"><button ref={node => { if (node) groupHeaderRefs.current.set(group.id, node); else groupHeaderRefs.current.delete(group.id); }} type="button" className="hallazgos-group-toggle" aria-expanded={expanded} onClick={() => setCollapsedGroups(current => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span><strong>{group.nombre}</strong><small>{group.items.length} hallazgos · {group.lines.length} tareas</small></span><span aria-hidden="true">{expanded ? '−' : '+'}</span></button>{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addHallazgo(group.id)}>+ Agregar hallazgo</button>}</div>{expanded && (group.items.length ? group.items.map(renderItem) : <p className="muted">Sin hallazgos para este trabajo.</p>)}</section>; })}
     {orphanItems.map(renderItem)}
     {canEdit && !readOnly && <div className="hallazgos-add-family">{familyToAdd ? <select autoFocus className="select" aria-label="Elegir familia existente" value="" onChange={event => { const id = event.target.value; if (!id) return; pendingGroupFocus.current = id; const existing = groups.find(group => group.id === id); if (existing) setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); else { setSessionFamilyIds(current => current.includes(id) ? current : [...current, id]); onExtraFamilyIdsChange?.(current => current.includes(id) ? current : [...current, id]); setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); } setFamilyToAdd(''); }}><option value="">Seleccionar familia existente...</option>{familias.map(familia => <option value={familia.id} key={familia.id}>{familia.nombre}</option>)}</select> : <button type="button" onClick={() => setFamilyToAdd('choose')} disabled={!familias.length}>+ Agregar trabajo / componente</button>}</div>}

@@ -43,6 +43,7 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
           <p>{dash(item.observacion)}</p>
           {measures.length > 0 && <div className="dx-inf-table-wrap"><table className="dx-inf-table"><thead><tr><th>Parámetro</th><th>Especificado</th><th>Medido</th><th>Resultado</th></tr></thead><tbody>{measures.map((measure, mi) => <tr key={`${measure.parametro}-${mi}`}><td>{dash(measure.parametro)}{measure.unidad ? ` (${measure.unidad})` : ''}</td><td>{measure.nominal !== null && measure.nominal !== undefined ? measure.nominal : `${dash(measure.minimo)} – ${dash(measure.maximo)}`}</td><td>{dash(measure.medido)}</td><td className={/fuera|no_conforme|fall/i.test(String(measure.resultado || measure.condicion_sugerida || '')) ? 'is-bad' : 'is-good'}>{dash(measure.resultado || measure.condicion_sugerida)}</td></tr>)}</tbody></table></div>}
           <div className="dx-inf-recommend"><strong>Recomendación</strong><span>{dash(item.accion_recomendada_etiqueta)}</span></div>
+          {item.fotos?.length > 0 && <div className="dx-informe-fotos">{item.fotos.slice(0, 3).map((foto, fotoIndex) => <figure className="dx-informe-foto" key={`${foto.url}-${fotoIndex}`}><img src={foto.url} alt={foto.leyenda || 'Foto del hallazgo'} />{foto.leyenda && <figcaption>{foto.leyenda}</figcaption>}</figure>)}</div>}
         </article>;
       })}
     </section>}
