@@ -35,4 +35,18 @@ describe('InformeHoja', () => {
     expect(getText(renderer.toJSON())).toContain('[Logo empresa]');
     renderer.unmount();
   });
+
+  it('renderiza las fotos del hallazgo con su leyenda como texto alternativo', () => {
+    const renderer = create(<InformeHoja snapshot={{ cabecera: {}, hallazgos: [{ hallazgo_id: 'h1', componente_parte: 'Bomba', fotos: [{ url: 'https://signed/f1', leyenda: 'Vista del sello' }, { url: 'https://signed/f2', leyenda: null }] }], mediciones: [], tareas_repuestos: [], resumen: {} }} />);
+    const images = renderer.root.findAllByType('img');
+    expect(images.map(image => image.props.src)).toEqual(['https://signed/f1', 'https://signed/f2']);
+    expect(images.map(image => image.props.alt)).toEqual(['Vista del sello', 'Foto del hallazgo']);
+    renderer.unmount();
+  });
+
+  it('no renderiza fotos cuando la lista está vacía', () => {
+    const renderer = create(<InformeHoja snapshot={{ cabecera: {}, hallazgos: [{ hallazgo_id: 'h1', componente_parte: 'Bomba', fotos: [] }], mediciones: [], tareas_repuestos: [], resumen: {} }} />);
+    expect(renderer.root.findAllByType('img')).toHaveLength(0);
+    renderer.unmount();
+  });
 });

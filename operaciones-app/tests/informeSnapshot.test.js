@@ -25,4 +25,26 @@ describe('construirVistaInforme', () => {
     expect(result.tareas_repuestos[0]).not.toHaveProperty('horas_mano_obra');
     expect(result.tareas_repuestos[0].tarea_nombre).toBe('Cambiar sello');
   });
+
+  it('incluye hasta tres fotos firmadas, ordenadas y no excluidas por hallazgo', () => {
+    const fotos = [
+      { orden: 4, signedUrl: 'url-4', excluir_del_informe: false, leyenda: 'Cuatro' },
+      { orden: 2, signedUrl: 'url-2', excluir_del_informe: false, leyenda: 'Dos' },
+      { orden: 1, signedUrl: 'url-1', excluir_del_informe: true, leyenda: 'Oculta' },
+      { orden: 3, signedUrl: 'url-3', excluir_del_informe: false },
+      { orden: 5, signedUrl: null, excluir_del_informe: false },
+      { orden: 6, signedUrl: 'url-6', excluir_del_informe: false },
+    ];
+    const result = construirVistaInforme(diagnostico, {}, {}, {}, { h1: fotos });
+    expect(result.hallazgos[0].fotos).toEqual([
+      { url: 'url-2', leyenda: 'Dos' },
+      { url: 'url-3', leyenda: null },
+      { url: 'url-4', leyenda: 'Cuatro' },
+    ]);
+  });
+
+  it('deja fotos vacías si no se pasa el parámetro o no hay fotos', () => {
+    expect(construirVistaInforme(diagnostico).hallazgos[0].fotos).toEqual([]);
+    expect(construirVistaInforme(diagnostico, {}, {}, {}, { h1: [] }).hallazgos[0].fotos).toEqual([]);
+  });
 });
