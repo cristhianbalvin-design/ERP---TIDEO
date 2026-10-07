@@ -68,6 +68,7 @@ import { SmartTextField } from './components/SmartTextField.jsx';
 import { listNavModules, listNavSections, useTenantNavLabels } from './services/navLabelsService.js';
 import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
+import { RecetasActividadPanel } from './components/RecetasActividadPanel.jsx';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -5527,6 +5528,7 @@ function Maestros() {
   const [showTiposDocumento, setShowTiposDocumento] = useState(false);
   const [showFamiliasServicio, setShowFamiliasServicio] = useState(false);
   const [showTrabajos, setShowTrabajos] = useState(false);
+  const [showRecetasActividad, setShowRecetasActividad] = useState(false);
   const [trabajosCount, setTrabajosCount] = useState(0);
   const [trabajos, setTrabajos] = useState([]);
   const [trabajosVersion, setTrabajosVersion] = useState(0);
@@ -5568,6 +5570,7 @@ function Maestros() {
     { id: 'mst_familias_servicio', tabla: 'Familias de servicio' },
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas' },
+    { id: 'mst_recetas_actividad', tabla: 'Recetas de actividad' },
     { id: 'mst_trabajos', tabla: 'Trabajos' },
     { id: 'mst_catalogo_servicios', tabla: 'Catálogo Servicios', permiso: 'servicios' },
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
@@ -7223,7 +7226,7 @@ function Maestros() {
               <div className="maestro-card-title">{m.tabla}</div>
               <div className="maestro-card-meta">{getMaestroMetaText(m.id)}</div>
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else if (m.id === 'mst_trabajos') { setShowTrabajos(true); } else { setSel(m); resetForm(); } }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else if (m.id === 'mst_trabajos') { setShowTrabajos(true); } else if (m.id === 'mst_recetas_actividad') { setShowRecetasActividad(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
@@ -7240,6 +7243,8 @@ function Maestros() {
 
       {sel?.id === 'mst_materiales' && <MaterialesMaestro onClose={() => setSel(null)} />}
       {showTrabajos && <TrabajosMaestro onClose={() => { setShowTrabajos(false); if (sel?.id === 'mst_trabajos') setSel(null); }} onChanged={registrarCambioTrabajos} onDescargarPlantilla={() => descargarPlantillaMaestro('mst_trabajos')} onImportar={async () => { try { await refrescarTrabajos(); setImportSummary(null); setImportRows([]); setImportStep(1); setSel({ id:'mst_trabajos', tabla:'Trabajos' }); setImportModal(true); } catch (err) { addNotificacion?.(`No se pudieron cargar los trabajos: ${err?.message || err}`, 'error'); } }} reloadKey={trabajosVersion} />}
+
+      {showRecetasActividad && <RecetasActividadPanel empresaId={empresa?.id} tiposServicio={tiposServicio} cargos={cargos} role={role} onClose={() => setShowRecetasActividad(false)} />}
 
       <div className="maestros-help">
         <div className="maestros-help-icon">{I.users}</div>

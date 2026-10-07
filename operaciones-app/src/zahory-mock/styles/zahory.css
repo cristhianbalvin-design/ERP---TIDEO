@@ -1641,7 +1641,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-group-toolbar { display:flex; align-items:stretch; justify-content:space-between; gap:12px; padding-right:12px; background:var(--dx-head); }
 .dx-group-toolbar .dx-group-head { flex:1; min-width:0; }
 .dx-group-panel-actions { display:flex; align-items:center; gap:8px; flex:none; }
-.dx-group-panel-actions button { min-height:34px; padding:0 12px; border:1px solid var(--dx-navy); border-radius:8px; background:#fff; color:var(--dx-navy); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-group-panel-actions > button { min-height:34px; padding:0 12px; border:1px solid var(--dx-navy); border-radius:8px; background:#fff; color:var(--dx-navy); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
 
 /* Informe al cliente · fase 4b */
 .dx-inf-open-row { display:flex; justify-content:flex-end; margin:0 0 12px; }
@@ -1745,7 +1745,7 @@ a { color: var(--cyan); text-decoration: none; }
   .dx-inf-sheet-footer { flex-direction:column; }
   .dx-inf-sheet-footer span { text-align:left; }
 }
-.dx-group-panel-actions button:first-child { background:var(--dx-navy); color:#fff; }
+.dx-group-panel-actions > button:first-of-type { background:var(--dx-navy); color:#fff; }
 .dx-panel-overlay { position:fixed; inset:0; z-index:2000; display:flex; justify-content:flex-end; background:rgba(15,27,48,.45); }
 .dx-panel { width:min(520px,100vw); height:100%; display:flex; flex-direction:column; overflow:hidden; background:#fff; color:#1F2937; box-shadow:-12px 0 32px #0F1B4826; font:14px/1.45 'DM Sans',sans-serif; }
 .dx-panel-header { flex:none; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding:24px 24px 18px; border-bottom:1px solid #E4E7EB; }

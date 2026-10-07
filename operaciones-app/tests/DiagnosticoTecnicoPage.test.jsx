@@ -774,6 +774,62 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.every(call => call[2]._dirty === true)).toBe(true);
   });
 
+  it('aplica automáticamente la receta al elegir actividad en fabricación y conserva las líneas existentes', async () => {
+    mocks.service.listarTiposServicioInterno.mockResolvedValue([
+      { id: 'activity-1', nombre: 'Actividad uno', codigo: 'A-1' },
+      { id: 'task-1', nombre: 'Tarea existente', codigo: 'T-1' },
+      { id: 'task-2', nombre: 'Tarea receta 2', codigo: 'T-2' },
+      { id: 'task-3', nombre: 'Tarea receta 3', codigo: 'T-3' },
+    ]);
+    mocks.service.listarPlantillasActividad.mockResolvedValue([
+      { actividad_id: 'activity-1', tarea_id: 'task-2', cargo_id: 'cargo-1', orden: 2 },
+      { actividad_id: 'activity-1', tarea_id: 'task-3', cargo_id: null, orden: 3 },
+    ]);
+    mocks.service.listarCargosEmpresa.mockResolvedValue([{ id: 'cargo-1', nombre: 'Soldador' }]);
+    const existing = {
+      id: 'line-existing', familia_trabajo_id: 'fam-1', actividad_id: null, tarea_id: 'task-1',
+      cargo_id: null, hallazgo: 'Trabajo manual', orden: 4, horas_mano_obra: 2, horas_maquina: 0, materiales: [],
+    };
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [existing]));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+
+    const activitySelector = renderer.root.findByProps({ 'aria-label': 'Actividad del trabajo' });
+    await act(async () => { activitySelector.props.onFocus(); activitySelector.props.onChange({ target: { value: 'Actividad uno' } }); await wait(0); });
+    const chooseActivity = buttonContaining(renderer, 'Actividad uno');
+    await act(async () => { chooseActivity.props.onClick(); await wait(0); });
+
+    expect(textOf(renderer.root)).toContain('Se agregaron 2 tareas de la receta.');
+    expect(renderer.root.findAll(node => node.props.className?.includes('dx-row is-dirty'))).toHaveLength(2);
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
+    expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].tarea_id)).toEqual(['task-2', 'task-3']);
+    expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].cargo_id)).toEqual(['cargo-1', null]);
+    expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].orden)).toEqual([5, 6]);
+  });
+
+  it('aplica la actividad del trabajo al abrir Aplicar actividad, sin pulsar Aplicar en el panel', async () => {
+    mocks.service.listarTiposServicioInterno.mockResolvedValue([
+      { id: 'activity-1', nombre: 'Actividad uno', codigo: 'A-1' },
+      { id: 'task-1', nombre: 'Tarea manual', codigo: 'T-1' },
+      { id: 'task-2', nombre: 'Tarea receta', codigo: 'T-2' },
+    ]);
+    mocks.service.listarPlantillasActividad.mockResolvedValue([
+      { actividad_id: 'activity-1', tarea_id: 'task-2', cargo_id: 'cargo-1', orden: 0 },
+    ]);
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [{
+      id: 'line-existing', familia_trabajo_id: 'fam-1', actividad_id: 'activity-1', tarea_id: 'task-1',
+      cargo_id: null, orden: 0, horas_mano_obra: 0, horas_maquina: 0, materiales: [],
+    }]));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[1].props.onClick(); await wait(120); });
+
+    await act(async () => { buttonByText(renderer, 'Aplicar actividad').props.onClick(); await wait(0); });
+
+    expect(textOf(renderer.root)).toContain('Se agregaron 1 tareas de la receta.');
+    expect(renderer.root.findAll(node => node.props.className?.includes('dx-row is-dirty'))).toHaveLength(1);
+    expect(buttonByText(renderer, 'Elegir actividad')).toBeFalsy();
+  });
+
   it('muestra Informe al cliente solo cuando existe permiso de lectura', async () => {
     mocks.informePermission.mockImplementation(async (_empresa, accion) => accion === 'ver');
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
