@@ -22,3 +22,6 @@ verify_jwt = false
 [functions.api-prospectos]
 enabled = true
 verify_jwt = false
+
+[functions.generar-conclusion-informe]
+verify_jwt = true

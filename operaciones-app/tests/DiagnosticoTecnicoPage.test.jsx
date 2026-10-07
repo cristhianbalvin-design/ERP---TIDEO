@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   session: { empresaId: 'empresa-prueba', usuario: { id: 'usuario-prueba' }, estado: 'listo', permiteEscritura: true, error: '' },
+  informePermission: vi.fn(),
   service: Object.fromEntries([
     'usuarioPuedeDiagnostico', 'listarDiagnosticosTecnicos', 'obtenerDiagnosticoTecnico', 'resolverReferenciasDiagnostico',
     'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarPlantillasActividad', 'listarUsoTareasPorEmpresa', 'listarCargosEmpresa',
@@ -20,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.session }));
 vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
+vi.mock('../src/services/diagnosticoInformeService.js', () => ({
+  usuarioPuedeInforme: mocks.informePermission,
+}));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
 
@@ -59,6 +63,7 @@ beforeEach(() => {
   mocks.session.empresaId = 'empresa-prueba';
   mocks.session.estado = 'listo';
   mocks.session.permiteEscritura = true;
+  mocks.informePermission.mockResolvedValue(true);
   const listeners = new Map();
   globalThis.window = {
     setTimeout,
@@ -767,5 +772,19 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.map(call => call[2].orden)).toEqual([8, 9]);
     expect(mocks.service.guardarDiagnosticoLinea.mock.calls.every(call => call[2]._dirty === true)).toBe(true);
+  });
+
+  it('muestra Informe al cliente solo cuando existe permiso de lectura', async () => {
+    mocks.informePermission.mockImplementation(async (_empresa, accion) => accion === 'ver');
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[2].props.onClick(); await wait(100); });
+    expect(buttonByText(renderer, 'Informe al cliente')).toBeTruthy();
+    renderer.unmount(); renderer = null;
+
+    mocks.informePermission.mockResolvedValue(false);
+    await renderPage();
+    await act(async () => { renderer.root.findAllByType('tr')[2].props.onClick(); await wait(100); });
+    expect(buttonByText(renderer, 'Informe al cliente')).toBeFalsy();
   });
 });
