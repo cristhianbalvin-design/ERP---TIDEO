@@ -1,6 +1,6 @@
 import { createHandler, TOOL_SPECS, type HandlerDeps, type SupabaseLike } from "./index.ts";
 
-const EMPRESA = "11111111-1111-4111-8111-111111111111";
+const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
 const uuid = "33333333-3333-4333-8333-333333333333";
 const env = (name: string) => ({ SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", OPENAI_API_KEY: "test", OPENAI_MODEL_ASISTENTE: "gpt-4o-mini" } as Record<string, string>)[name];
@@ -33,6 +33,47 @@ function setup(options: { user?: boolean; quota?: unknown; extraOrigins?: string
   });
   return { handler, request, calls, aiCalls };
 }
+
+Deno.test("empresa textual conservadora aceptada y valores invalidos dan 400", async () => {
+  const accepted = setup();
+  equal((await accepted.handler(accepted.request({ empresa_id: "emp20609996464", pregunta: "hola" }))).status, 200);
+  for (const empresa_id of ["empresa con espacios", "", "e".repeat(101)]) {
+    const x = setup();
+    equal((await x.handler(x.request({ empresa_id, pregunta: "hola" }))).status, 400);
+    equal(x.aiCalls.length, 0);
+  }
+});
+
+Deno.test("sociedad_id de solicitud conserva validacion UUID estricta", async () => {
+  const x = setup();
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: "sociedad-texto", pregunta: "hola" }))).status, 400);
+  equal(x.aiCalls.length, 0);
+});
+
+Deno.test("id textual de detalle se acepta y llega a la RPC", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1 ? completion({ role: "assistant", tool_calls: [{ id: "detail", type: "function", function: { name: "asistente_detalle_cuenta", arguments: JSON.stringify({ cuenta_id: "C-2026-001" }) } }] }) : completion({ role: "assistant", content: "Cuenta consultada." }) });
+  equal((await x.handler(x.request())).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_detalle_cuenta")!;
+  equal(rpc.args.p_cuenta_id, "C-2026-001");
+  equal(rpc.args.p_empresa_id, EMPRESA);
+});
+
+Deno.test("RPCs sin defaults completan todos sus parametros faltantes con null", async () => {
+  for (const [tool, expected] of [
+    ["asistente_consultar_stock", ["p_material_id", "p_almacen_id", "p_sociedad_id", "p_texto", "p_solo_con_stock", "p_limite"]],
+    ["asistente_buscar_guias_remision", ["p_sociedad_id", "p_texto", "p_estado", "p_desde", "p_hasta", "p_limite"]],
+    ["asistente_buscar_ordenes_venta", ["p_sociedad_id", "p_texto", "p_estado", "p_desde", "p_hasta", "p_limite"]],
+  ] as const) {
+    let n = 0;
+    const x = setup({ ai: async () => ++n === 1 ? completion({ role: "assistant", tool_calls: [{ id: tool, type: "function", function: { name: tool, arguments: "{}" } }] }) : completion({ role: "assistant", content: "Consulta completada." }) });
+    equal((await x.handler(x.request())).status, 200);
+    const rpc = x.calls.find(c => c.name === tool)!;
+    equal(rpc.args.p_empresa_id, EMPRESA);
+    for (const key of expected) equal(rpc.args[key], null);
+    equal(Object.keys(rpc.args).length, expected.length + 1);
+  }
+});
 
 Deno.test("caso feliz, cuota y RPC de lectura", async () => {
   const x = setup({ ai: async (_m, _t, model) => { equal(model, "gpt-4o-mini"); return completion({ role: "assistant", content: "Hay tres cuentas.", tool_calls: [{ id: "c1", type: "function", function: { name: "asistente_buscar_cuentas", arguments: JSON.stringify({ busqueda: "Tideo", limite: 10 }) } }] }); } });
