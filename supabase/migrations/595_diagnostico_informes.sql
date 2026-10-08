@@ -3,7 +3,7 @@
 -- Decisiones: requiere diagnostico_tecnico + informe_diagnostico en usuario_puede;
 -- un borrador por recepción; snapshot server-side por lista blanca; sin Storage;
 -- la conclusión IA se confirma por una persona antes de emitir; cuota IA 20/100.
--- NO COMMIT SIN REVISIÓN. Esta propuesta termina intencionalmente en ROLLBACK.
+-- NO COMMIT SIN REVISIÓN. Aplicada en producción con COMMIT.
 -- Supuestos verificados en repo: diagnosticos_tecnicos.id/diagnostico_id son
 -- text; recepciones_activos_cliente usa id, empresa_id, activo_id, numero,
 -- numero_caso y fecha_ingreso; activos usa codigo, nombre, placa_serie y
@@ -548,4 +548,4 @@ $tests$;
 -- 7) emisor vacío falla; UPDATE/DELETE de emitido fallan; una nueva emisión genera version=max+1;
 -- 8) cuota rechaza llamada 21 del usuario y 101 de empresa sin guardar texto diagnóstico/conclusión.
 
-ROLLBACK;
+COMMIT;
