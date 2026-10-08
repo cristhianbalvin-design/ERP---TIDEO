@@ -13,6 +13,11 @@ import {
   claveEquivalenciaMovimientoCuenta,
   monedasDifierenMovimientoCuenta,
   montoMovimientoEnCuenta,
+  movimientoPosteriorAlCorte,
+  movimientoTieneConversion,
+  mensajePosicionTotal,
+  periodoEmpiezaDespuesDelDiaSiguienteCorte,
+  validarSaldoInicial,
 } from './services/tesoreriaService.js';
 import { getTipoCambioPorFecha, convertirMonto as convertirMontoConTc } from './services/tipoCambioService.js';
 import { sumByCurrency } from './lib/currency.js';
@@ -62,6 +67,10 @@ import * as XLSX from 'xlsx';
 // Finanzas: CxC, Tesorería/Match, Estado de Resultados, Facturación
 const symOf = m => m === 'USD' ? 'US$' : 'S/';
 const moneyCurrency = (value, moneda = 'PEN') => money(value, symOf(moneda));
+const formatearFechaCorte = fecha => {
+  const [yyyy, mm, dd] = String(fecha || '').slice(0, 10).split('-');
+  return yyyy && mm && dd ? `${dd}/${mm}/${yyyy}` : '';
+};
 const moneyDCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
 const moneySpot = value => moneyD(value, 'S/');
 const moneySpotCurrency = (value, moneda = 'PEN') => moneyD(value, symOf(moneda));
@@ -2832,6 +2841,7 @@ function Tesoreria() {
   const [equivalenciasCuenta, setEquivalenciasCuenta] = useState({});
   const [editandoSaldoInicialId, setEditandoSaldoInicialId] = useState(null);
   const [saldoInicialDraft, setSaldoInicialDraft] = useState('');
+  const [saldoInicialFechaDraft, setSaldoInicialFechaDraft] = useState('');
   const [guardandoSaldoInicialId, setGuardandoSaldoInicialId] = useState(null);
   const [hoverCuentaSaldoId, setHoverCuentaSaldoId] = useState(null);
   const [resumenDesde, setResumenDesde] = useState(new Date().toISOString().slice(0,7) + '-01');
@@ -3291,25 +3301,27 @@ function Tesoreria() {
   const iniciarEdicionSaldoInicial = cuenta => {
     setEditandoSaldoInicialId(cuenta.id);
     setSaldoInicialDraft(String(Number(cuenta.saldo_inicial || 0)));
+    setSaldoInicialFechaDraft(String(cuenta.fecha_saldo_inicial || ''));
   };
 
   const cancelarEdicionSaldoInicial = () => {
     setEditandoSaldoInicialId(null);
     setSaldoInicialDraft('');
+    setSaldoInicialFechaDraft('');
   };
 
   const guardarSaldoInicialCuenta = async cuenta => {
     if (!cuenta?.id || guardandoSaldoInicialId) return;
-    const saldoInicial = Number(saldoInicialDraft || 0);
-    if (!Number.isFinite(saldoInicial)) {
-      alert('Ingrese un saldo inicial valido.');
+    const validacion = validarSaldoInicial({ monto: saldoInicialDraft, fecha: saldoInicialFechaDraft });
+    if (!validacion.ok) {
+      alert(validacion.error);
       return;
     }
     setGuardandoSaldoInicialId(cuenta.id);
     try {
       await actualizarCuentaBancaria?.(cuenta.id, {
-        saldo_inicial: saldoInicial,
-        fecha_saldo_inicial: cuenta.fecha_saldo_inicial || new Date().toISOString().slice(0, 10),
+        saldo_inicial: validacion.saldoInicial,
+        fecha_saldo_inicial: validacion.fechaSaldoInicial,
       });
       addNotificacion?.('Saldo inicial actualizado.');
       cancelarEdicionSaldoInicial();
@@ -3388,17 +3400,20 @@ function Tesoreria() {
       .slice().sort((a, b) => (a.fecha || '') < (b.fecha || '') ? -1 : 1);
 
     const cuentaObj = cuentasActivas.find(c => c.id === resumenCuenta);
+    const movsConCorte = movs.filter(m => {
+      const cuentaMov = cuentasActivas.find(c => c.id === m.cuenta_bancaria_id);
+      return !cuentaMov || movimientoPosteriorAlCorte(m, cuentaMov);
+    });
 
     if (cuentaObj) {
       const monedaCuenta = (cuentaObj.moneda || 'PEN').toUpperCase();
       let saldoAcum = Number(cuentaObj.saldo_inicial || 0);
-      return movs.map(m => {
-        const monedaMov = (m.moneda || 'PEN').toUpperCase();
-        const montoCuenta = monedaMov === monedaCuenta
-          ? Number(m.monto || 0)
-          : Number(m.monto_en_moneda_cuenta ?? equivalenciasCuenta[claveEquivalenciaMovimientoCuenta(m, cuentaObj)] ?? 0);
-        saldoAcum = m.tipo === 'ingreso' ? saldoAcum + montoCuenta : saldoAcum - montoCuenta;
-        return { ...m, saldoAcum, saldoAcumMoneda: monedaCuenta, montoCuenta };
+      return movsConCorte.map(m => {
+        const tieneConversion = movimientoTieneConversion(m, cuentaObj, equivalenciasCuenta);
+        const montoCuenta = tieneConversion ? montoMovimientoEnCuenta(m, cuentaObj, equivalenciasCuenta) : null;
+        if (tieneConversion && esIngresoMov(m)) saldoAcum += montoCuenta;
+        if (tieneConversion && esEgresoMov(m)) saldoAcum -= montoCuenta;
+        return { ...m, saldoAcum, saldoAcumMoneda: monedaCuenta, montoCuenta, saldoParcial: !tieneConversion };
       });
     }
 
@@ -3410,14 +3425,18 @@ function Tesoreria() {
         acumPorMoneda[mon] = (acumPorMoneda[mon] || 0) + Number(c.saldo_inicial || 0);
       });
     }
-    return movs.map(m => {
+    return movsConCorte.map(m => {
       const cuentaMov = cuentasActivas.find(c => c.id === m.cuenta_bancaria_id);
       const mon = cuentaMov ? (cuentaMov.moneda || 'PEN').toUpperCase() : (m.moneda || 'PEN').toUpperCase();
-      const monto = cuentaMov ? montoMovimientoEnCuenta(m, cuentaMov, equivalenciasCuenta) : Number(m.monto || 0);
-      acumPorMoneda[mon] = m.tipo === 'ingreso'
-        ? (acumPorMoneda[mon] || 0) + monto
-        : (acumPorMoneda[mon] || 0) - monto;
-      return { ...m, saldoAcum: acumPorMoneda[mon], saldoAcumMoneda: mon, montoCuenta: monto };
+      const tieneConversion = !cuentaMov || movimientoTieneConversion(m, cuentaMov, equivalenciasCuenta);
+      const monto = cuentaMov && !tieneConversion
+        ? null
+        : cuentaMov
+          ? montoMovimientoEnCuenta(m, cuentaMov, equivalenciasCuenta)
+          : Number(m.monto || 0);
+      if (tieneConversion && esIngresoMov(m)) acumPorMoneda[mon] = (acumPorMoneda[mon] || 0) + monto;
+      if (tieneConversion && esEgresoMov(m)) acumPorMoneda[mon] = (acumPorMoneda[mon] || 0) - monto;
+      return { ...m, saldoAcum: acumPorMoneda[mon], saldoAcumMoneda: mon, montoCuenta: monto, saldoParcial: cuentaMov && !tieneConversion };
     });
   }, [movimientosTesoreriaVista, resumenCuenta, resumenDesde, resumenHasta, cuentasActivas, equivalenciasCuenta]);
 
@@ -3514,10 +3533,15 @@ function Tesoreria() {
   const saldoFinalResumenDisplay = cuentaResumenActiva
     ? moneyCurrency(movResumen[movResumen.length - 1]?.saldoAcum ?? cuentaResumenActiva.saldo_inicial ?? 0, cuentaResumenActiva.moneda)
     : formatTotales(saldoDisponiblePorMoneda);
+  const periodoNoCubreTodoElCorte = cuentaResumenActiva && periodoEmpiezaDespuesDelDiaSiguienteCorte(
+    cuentaResumenActiva.fecha_saldo_inicial,
+    resumenDesde,
+  );
   const monedasCuentasActivas = [...new Set(cuentasActivas.map(c => String(c.moneda || 'PEN').trim().toUpperCase()))];
   const posicionTotalEntries = monedasCuentasActivas.length
     ? monedasCuentasActivas.map(moneda => [moneda, Number(saldoDisponiblePorMoneda[moneda] || 0)])
     : totalesEntries(saldoDisponiblePorMoneda);
+  const hayCuentaSinFechaCorte = saldoPorCuenta.some(cuenta => cuenta.sin_fecha_corte);
   const cobrosPeriodoEntries = totalesEntries(cobrosDelMes);
   const pagosCuentaEntries = totalesEntries(pagosPeriodoCuentaPorMoneda);
   const pagosOrigenEntries = Object.entries(pagosPeriodoOrigenPorMoneda).filter(([, value]) => Math.abs(Number(value || 0)) > 0.009);
@@ -3569,7 +3593,7 @@ function Tesoreria() {
           {posicionTotalEntries.slice(1).map(([moneda, value]) => (
             <div key={moneda} className="text-muted" style={{fontSize:12, marginTop:2}}>{moneyCurrency(value, moneda)}</div>
           ))}
-          <div className="text-muted" style={{fontSize:11, marginTop:8}}>Saldo acumulado real</div>
+          <div className="text-muted" style={{fontSize:11, marginTop:8}}>{mensajePosicionTotal(hayCuentaSinFechaCorte)}</div>
         </div>
         <div style={metricCardStyle}>
           <div className="kpi-label">Cobros - {periodoTesoreriaLabelCorto}</div>
@@ -3608,6 +3632,8 @@ function Tesoreria() {
           const editandoSaldoInicial = editandoSaldoInicialId === cb.id;
           const guardandoSaldoInicial = guardandoSaldoInicialId === cb.id;
           const tieneMovimientosCuenta = Number(cb.movimientos_asignados || 0) > 0;
+          const movimientosSinConversion = Number(cb.movimientos_sin_conversion?.cantidad || 0);
+          const movimientosExcluidosPorFecha = Number(cb.movimientos_excluidos_por_fecha || 0);
           const sinVincularCuenta = sinVincularPorCuenta[cb.id] ?? 0;
           return (
             <div key={cb.id} style={{...accountCardStyle, opacity: tieneMovimientosCuenta ? 1 : 0.6}}>
@@ -3615,6 +3641,21 @@ function Tesoreria() {
               <div style={{fontSize:13, fontWeight:500, marginTop:4}}>{cb.alias || cb.nombre}</div>
               {mostrarBadgeSociedadTesoreria && <div style={{marginTop:6}}><SociedadBadge sociedadId={cb.sociedad_id} /></div>}
               <div style={{fontSize:20, fontWeight:800, color: cb.saldo >= 0 ? 'var(--green)' : 'var(--danger)', marginTop:8}}>{moneyCurrency(cb.saldo, cb.moneda)}</div>
+              <div className="text-muted" style={{fontSize:11, marginTop:4}}>
+                {cb.sin_fecha_corte
+                  ? 'Sin fecha de corte: saldo no confiable'
+                  : `Saldo al corte del ${formatearFechaCorte(cb.fecha_corte)}`}
+              </div>
+              {movimientosSinConversion > 0 && (
+                <div style={{fontSize:11, color:'var(--orange)', marginTop:5}}>
+                  {movimientosSinConversion} {movimientosSinConversion === 1 ? 'movimiento' : 'movimientos'} en otra moneda sin conversión no están incluidos
+                </div>
+              )}
+              {!cb.sin_fecha_corte && movimientosExcluidosPorFecha > 0 && (
+                <div className="text-muted" style={{fontSize:11, marginTop:5}}>
+                  {movimientosExcluidosPorFecha} {movimientosExcluidosPorFecha === 1 ? 'movimiento' : 'movimientos'} con fecha anterior o igual al corte no están incluidos
+                </div>
+              )}
               {editandoSaldoInicial ? (
                 <div className="row" style={{gap:6, alignItems:'center', marginTop:6, flexWrap:'nowrap'}}>
                   <span className="text-muted" style={{fontSize:11}}>Saldo inicial:</span>
@@ -3632,13 +3673,22 @@ function Tesoreria() {
                     placeholder="0.00"
                     style={{fontSize:11, padding:'3px 6px', width:92}}
                   />
+                  <label className="text-muted" style={{fontSize:11, whiteSpace:'nowrap'}}>Saldo al cierre del día</label>
+                  <input
+                    className="input"
+                    type="date"
+                    aria-label="Saldo al cierre del día"
+                    value={saldoInicialFechaDraft}
+                    onChange={e => setSaldoInicialFechaDraft(e.target.value)}
+                    style={{fontSize:11, padding:'3px 6px', width:132}}
+                  />
                   <button className="icon-btn" style={{width:22, height:22}} title="Guardar saldo inicial" disabled={guardandoSaldoInicial} onClick={() => guardarSaldoInicialCuenta(cb)}>{I.check}</button>
                   <button className="icon-btn" style={{width:22, height:22}} title="Cancelar" disabled={guardandoSaldoInicial} onClick={cancelarEdicionSaldoInicial}>{I.x}</button>
                 </div>
               ) : (
                 <div className="text-muted" style={{fontSize:11, marginTop:6, display:'flex', alignItems:'center', gap:6}}>
                   <span>Saldo inicial: {moneyCurrency(saldoInicialCuenta, cb.moneda)}</span>
-                  <button className="icon-btn" style={{width:22, height:22}} title="Editar saldo inicial" onClick={() => iniciarEdicionSaldoInicial(cb)}>{I.edit}</button>
+                  <button className="icon-btn" style={{width:22, height:22, color:'var(--fg-muted)'}} title="Editar saldo inicial" onClick={() => iniciarEdicionSaldoInicial(cb)}>{I.edit}</button>
                 </div>
               )}
               <div style={{borderTop:'1px solid var(--border-subtle)', marginTop:10, paddingTop:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8}}>
@@ -3665,7 +3715,6 @@ function Tesoreria() {
           <div className="text-muted" style={{fontSize:11, marginTop:8}}>{sinCuentaTienePendientes ? 'Movimientos pendientes de match bancario' : 'Todos los movimientos vinculados'}</div>
         </div>
       </div>
-
       <div className="tabs mt-6">
         {[{id:'match',label:'Match Bancario'},{id:'resumen',label:'Flujo de caja'},{id:'extracto',label:'Extracto banco'}].map(t => (
           <div key={t.id} className={'tab '+(tab===t.id?'active':'')} onClick={()=>setTab(t.id)}>{t.label}</div>
@@ -3790,6 +3839,7 @@ function Tesoreria() {
               <input className="input" type="date" style={{fontSize:12, padding:'4px 8px'}} value={resumenHasta} onChange={e=>setResumenHasta(e.target.value)}/>
             </div>
             <div style={{marginLeft:'auto', fontSize:12, color:'var(--muted)'}}>
+              {periodoNoCubreTodoElCorte && <div style={{fontSize:11, marginBottom:4}}>El saldo acumulado parte del saldo inicial; el período seleccionado no cubre todo lo posterior al corte</div>}
               {movResumen.length} movimientos · Saldo final: <strong style={{color:'var(--cyan)'}}>{saldoFinalResumenDisplay}</strong>
             </div>
           </div>
