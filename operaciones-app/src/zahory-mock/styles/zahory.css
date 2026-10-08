@@ -1591,7 +1591,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-list-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-list-line); border-radius:10px; background:var(--dx-list-card); }
 .dx-list-chip b { color:var(--dx-list-navy); font:700 20px 'Sora',sans-serif; }
 .dx-list-chip span { color:var(--dx-list-gray); font-size:12px; }
-.dx-list-card { overflow:hidden; width:100%; border:1px solid var(--dx-list-line); border-radius:14px; background:var(--dx-list-card); box-shadow:0 1px 2px rgba(15,27,48,.04); }
+.dx-list-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-list-line); border-radius:14px; background:var(--dx-list-card); box-shadow:0 1px 2px rgba(15,27,48,.04); }
 .dx-list-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-list-line); }
 .dx-list-toolbar h2 { margin:0 auto 0 0; color:var(--dx-list-navy); font:700 16px/1.4 'Sora',sans-serif; }
 .dx-list-count { color:var(--dx-list-gray); font-size:12px; white-space:nowrap; }
@@ -1627,7 +1627,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-list-updated small { color:var(--dx-list-gray); font-size:12px; }
 .dx-list-arrow { color:#9AA3B2; transition:.12s; }
 .dx-list-empty { padding:48px 20px; color:var(--dx-list-gray); text-align:center; }
-@media (max-width:900px) {
+@container (max-width:760px) {
   .dx-list-head { display:none; }
   .dx-list-row { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"ref pill" "tipo when"; row-gap:8px; padding:14px 16px; }
   .dx-list-row > .dx-list-type { grid-area:tipo; }
