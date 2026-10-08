@@ -775,7 +775,10 @@ export function DiagnosticoTecnicoPage() {
     setNotice('');
     const linesSaved = await saveAllLines();
     if (!linesSaved) {
-      setError('Falló el guardado de tareas; los hallazgos quedaron pendientes. Corrige las tareas con error antes de guardar hallazgos.');
+      const hallazgosPendientes = hallazgosDirty || Number(hallazgosDirtySummary.cambios || 0) > 0;
+      setError(hallazgosPendientes
+        ? 'Falló el guardado de tareas; los hallazgos quedaron pendientes. Corrige las tareas con error antes de guardar hallazgos.'
+        : 'Falló el guardado de tareas. Corrige las tareas con error antes de volver a guardar.');
       return;
     }
     if (!hallazgosDirty) return;
@@ -1039,7 +1042,10 @@ export function DiagnosticoTecnicoPage() {
             {notice && <div className="alert alert-success" style={{ margin: '8px 0 0' }}>{notice}</div>}
           </div>
           <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
-          {selected && canEditLines && <button type="button" className="btn btn-primary dx-save" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}>{modalBusy ? 'Guardando...' : 'Guardar todo'}</button>}
+          {selected && canEditLines && <>
+            {!cambiosSinGuardar && !modalBusy && <span className="dx-save-status" role="status">Sin cambios por guardar</span>}
+            <button type="button" className="btn btn-primary dx-save" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy} title={!cambiosSinGuardar && !modalBusy ? 'No hay cambios por guardar' : undefined}>{modalBusy ? 'Guardando...' : 'Guardar todo'}</button>
+          </>}
           {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
         </>}
       >

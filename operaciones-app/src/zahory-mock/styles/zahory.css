@@ -1926,6 +1926,15 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-foto-error,.dx-foto-notice { margin:9px 0 0; padding:8px; border-radius:6px; font-size:12px; }
 .dx-foto-error { background:#FDF1F0; color:var(--dx-red); }
 .dx-foto-notice { background:var(--dx-amber); color:var(--dx-amber-fg); }
+.dx-save-status { color:var(--dx-ui-gray); font-size:12px; }
+.diagnostico-estado-contador.is-short { color:var(--dx-ui-amber-fg); }
+.diagnostico-estado-contador.is-valid { color:var(--dx-ui-green-fg); }
+.dx-scope .btn-primary:disabled,.dx-modal .btn-primary:disabled,.diagnostico-estado-dialog .btn-primary:disabled,.dx-modal .dx-save:disabled {
+  background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); box-shadow:none; cursor:not-allowed;
+}
+.dx-scope .btn-primary:disabled:hover,.dx-modal .btn-primary:disabled:hover,.diagnostico-estado-dialog .btn-primary:disabled:hover,.dx-modal .dx-save:disabled:hover {
+  background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); box-shadow:none;
+}
 @media (max-width:900px) {
   .dx-modal { max-height:calc(100vh - 16px) !important; }
   .dx-modal > .card-header,.dx-summary,.dx-body { padding-inline:16px; }

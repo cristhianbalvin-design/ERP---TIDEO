@@ -515,6 +515,36 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
   });
 
+  it('F3: si fallan las tareas sin hallazgos sucios, el error no menciona hallazgos pendientes', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('one', 'fabricacion', [
+      { id: 'line-1', familia_trabajo_id: 'fam-1', tarea_id: 'task-1', materiales: [], _dirty: true },
+    ]));
+    mocks.service.guardarDiagnosticoLinea.mockRejectedValue(new Error('error tarea simulado'));
+    await renderPage();
+    await act(async () => { listRows()[0].props.onClick(); await wait(100); });
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
+    expect(textOf(renderer.root)).toContain('Falló el guardado de tareas.');
+    expect(textOf(renderer.root)).not.toContain('hallazgos quedaron pendientes');
+  });
+
+  it('DX7: Guardar todo explica cuando no hay cambios y oculta el aviso al cambiar o guardar', async () => {
+    const save = deferred();
+    mocks.service.guardarDiagnosticoLinea.mockReturnValue(save.promise);
+    await renderPage();
+    await act(async () => { listRows()[0].props.onClick(); await wait(100); });
+    let saveButton = buttonByText(renderer, 'Guardar todo');
+    expect(saveButton.props.disabled).toBe(true);
+    expect(saveButton.props.title).toBe('No hay cambios por guardar');
+    expect(renderer.root.findByProps({ role: 'status' }).children.join('')).toBe('Sin cambios por guardar');
+    await addQuickTask();
+    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Sin cambios por guardar')).toHaveLength(0);
+    expect(buttonByText(renderer, 'Guardar todo').props.disabled).toBe(false);
+    await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(0); });
+    expect(buttonByText(renderer, 'Guardando...').props.disabled).toBe(true);
+    expect(renderer.root.findAll(node => node.props.role === 'status' && textOf(node) === 'Sin cambios por guardar')).toHaveLength(0);
+    await act(async () => { save.resolve({ id: 'line-new' }); await wait(100); });
+  });
+
   it('DX4: los grupos muestran conteos y sumas de horas y se pueden colapsar y expandir', async () => {
     mocks.service.listarFamiliasTrabajo.mockResolvedValue([{ id: 'fam-1', nombre: 'Trabajo 1' }, { id: 'fam-2', nombre: 'Trabajo 2' }]);
     mocks.service.listarTiposServicioInterno.mockResolvedValue([{ id: 'task-1', nombre: 'Tarea 1' }, { id: 'task-2', nombre: 'Tarea 2' }]);
