@@ -4,31 +4,27 @@ import { useApp } from './context.jsx';
 import { getActivosParaOS } from './services/activosService.js';
 import { BandejaRecepcionesActivosCliente } from './components/RecepcionesActivosCliente.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import './panel_produccion.css';
 
 const moneyValue = (value, moneda = 'PEN') => money(Number(value || 0), moneda === 'USD' ? '$' : 'S/');
 
 const ESTADOS_PRODUCCION = ['Evaluación', 'Cotización', 'Stand By', 'Proceso', 'Terminado', 'No Procede', 'Devolución', 'Entregado', 'Negociación'];
-const PRODUCTION_STYLE = {
-  'Evaluación': { background: '#cffafe', color: '#155e75', borderColor: '#67e8f9' },
-  'Cotización': { background: '#f3e8ff', color: '#6b21a8', borderColor: '#d8b4fe' },
-  'Stand By': { background: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' },
-  'Proceso': { background: '#dbeafe', color: '#1e40af', borderColor: '#93c5fd' },
-  'Terminado': { background: '#dcfce7', color: '#166534', borderColor: '#86efac' },
-  'No Procede': { background: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' },
-  'Devolución': { background: '#ffedd5', color: '#9a3412', borderColor: '#fdba74' },
-  'Entregado': { background: '#ccfbf1', color: '#0f766e', borderColor: '#5eead4' },
-  'Negociación': { background: '#ede9fe', color: '#5b21b6', borderColor: '#c4b5fd' },
-};
 const labelEstado = estado => String(estado || '—').replaceAll('_', ' ');
 // La etiqueta visible es "Descripción", pero el campo real de os_clientes es nombre.
 const descripcionOS = os => String(os?.nombre || '').trim();
-const tooltipTexto = (valor, vacio) => String(valor || '').trim() || vacio;
-const GRID_ICON_STYLE = {
-  descripcion: { background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: 6 },
-  observaciones: { background: '#f3e8ff', color: '#7e22ce', border: '1px solid #d8b4fe', borderRadius: 6 },
-  editar: { background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd', borderRadius: 6 },
-  eliminar: { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', borderRadius: 6 },
+const ESTADOS_CERRADOS = ['Terminado', 'Entregado', 'No Procede', 'Devolución'];
+const fechaLocal = () => {
+  const fecha = new Date();
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
 };
+const diaCalendario = valor => {
+  if (!valor) return null;
+  const [anio, mes, dia] = valor.slice(0, 10).split('-').map(Number);
+  return Number.isFinite(anio + mes + dia) ? Math.floor(Date.UTC(anio, mes - 1, dia) / 86400000) : null;
+};
+const fechaCorta = valor => valor ? `${valor.slice(8, 10)}/${valor.slice(5, 7)}` : '';
+const claseEstado = estado => ({ 'Evaluación': 'evaluacion', 'Cotización': 'cotizacion', 'Stand By': 'stand-by', 'Proceso': 'proceso', 'Terminado': 'terminado', 'No Procede': 'no-procede', 'Devolución': 'devolucion', 'Entregado': 'entregado', 'Negociación': 'negociacion' })[estado] || 'sin-definir';
+const iniciales = nombre => String(nombre || '').trim().split(/\s+/).map(parte => parte[0]).join('').slice(0, 2).toUpperCase() || '—';
 
 const emptyForm = (sociedadId = '') => ({
   cuenta_id: '', activo_id: '', cotizacion_id: '', sociedad_id: sociedadId,
@@ -49,6 +45,15 @@ function PanelProduccionOSCliente() {
   const [loadingActivos, setLoadingActivos] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [vendedorFiltro, setVendedorFiltro] = useState('todos');
+  const [soloAtrasadas, setSoloAtrasadas] = useState(false);
+  const [filtroEstado, setFiltroEstado] = useState('todos');
+  const [vista, setVista] = useState('lista');
+  const [filasAbiertas, setFilasAbiertas] = useState({});
+  const [drawerRecepciones, setDrawerRecepciones] = useState(false);
+  const [resumenRecepciones, setResumenRecepciones] = useState({ total: 0, pendientes: 0 });
+  const botonRecepcionesRef = React.useRef(null);
+  const abridorRecepcionesRef = React.useRef(null);
   const [assetSearch, setAssetSearch] = useState('');
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(() => emptyForm(sociedadActiva?.id || sociedadesDisponibles[0]?.id || ''));
@@ -99,16 +104,51 @@ function PanelProduccionOSCliente() {
       return { os, cuenta, cotizacion, activo, facturasOS, cxcOS };
     }), [osClientes, cuentas, cotizaciones, cotizacionesEspeciales, activos, facturas, cxc, empresaId]);
 
-  const visibleRows = rows.filter(({ os, cuenta, cotizacion, activo }) => {
-    const value = [os.numero, cuenta?.razon_social, cuenta?.nombre_comercial, cotizacion?.numero, activo?.codigo, activo?.nombre, activo?.modelo, activo?.marca, os.estado].filter(Boolean).join(' ').toLowerCase();
-    return value.includes(search.trim().toLowerCase());
-  });
+  const vendedores = useMemo(() => [...new Set(rows.map(({ os }) => os.responsable_comercial).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')), [rows]);
+  const baseRows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase('es');
+    const hoy = diaCalendario(fechaLocal());
+    return rows.map(row => {
+      const { os } = row;
+      const cerrado = ESTADOS_CERRADOS.includes(os.estado_produccion);
+      const finDia = diaCalendario(os.fecha_fin);
+      const atrasada = !cerrado && finDia !== null && finDia < hoy;
+      const inicioDia = diaCalendario(os.fecha_inicio || os.fecha_emision);
+      const avance = finDia === null || inicioDia === null ? null : Math.max(0.04, Math.min(1, (hoy - inicioDia) / Math.max(1, finDia - inicioDia)));
+      let plazo;
+      if (cerrado) plazo = { texto: os.fecha_cierre_real ? `Cerrada ${fechaCorta(os.fecha_cierre_real)}` : 'Cerrada', tono: 'green', avance: 1 };
+      else if (finDia === null) plazo = { texto: 'Sin fecha estimada', tono: 'gray', avance: null };
+      else {
+        const dias = finDia - hoy;
+        plazo = dias < 0 ? { texto: `Atrasada ${Math.abs(dias)} d`, tono: 'red', avance: 1 }
+          : dias === 0 ? { texto: 'Vence hoy', tono: 'amber', avance }
+            : dias <= 7 ? { texto: `Faltan ${dias} d`, tono: 'amber', avance }
+              : { texto: `En plazo · ${dias} d`, tono: 'green', avance };
+      }
+      const vendedor = os.responsable_comercial || '';
+      const texto = [os.numero, row.cotizacion?.numero, row.cuenta?.razon_social, row.cuenta?.nombre_comercial, row.activo?.codigo, row.activo?.nombre, row.activo?.modelo, row.activo?.marca, os.estado, os.estado_produccion, vendedor, os.nombre, os.observaciones].filter(Boolean).join(' ').toLocaleLowerCase('es');
+      return { ...row, cerrado, atrasada, plazo, texto };
+    }).filter(row => (!query || row.texto.includes(query))
+      && (vendedorFiltro === 'todos' || (vendedorFiltro === '__sin_asignar__' ? !row.os.responsable_comercial : row.os.responsable_comercial === vendedorFiltro))
+      && (!soloAtrasadas || row.atrasada));
+  }, [rows, search, vendedorFiltro, soloAtrasadas]);
+  const conteosEstado = useMemo(() => {
+    const conteos = { todos: baseRows.length, sin: baseRows.filter(({ os }) => !os.estado_produccion).length };
+    ESTADOS_PRODUCCION.forEach(estado => { conteos[estado] = baseRows.filter(({ os }) => os.estado_produccion === estado).length; });
+    return conteos;
+  }, [baseRows]);
+  const visibleRows = useMemo(() => baseRows.filter(({ os }) => filtroEstado === 'todos' || (filtroEstado === 'sin' ? !os.estado_produccion : os.estado_produccion === filtroEstado)), [baseRows, filtroEstado]);
+  const filasVista = vista === 'lista' ? visibleRows : baseRows;
   const kpis = useMemo(() => ({
     total: rows.length,
     enProceso: rows.filter(({ os }) => os.estado_produccion === 'Proceso').length,
     facturado: rows.reduce((total, { os }) => total + Number(os.monto_facturado || 0), 0),
     pendienteCobro: rows.reduce((total, { os }) => total + Math.max(0, Number(os.monto_facturado || 0) - Number(os.monto_cobrado || 0)), 0),
+    atrasadas: rows.filter(({ os }) => !ESTADOS_CERRADOS.includes(os.estado_produccion) && diaCalendario(os.fecha_fin) !== null && diaCalendario(os.fecha_fin) < diaCalendario(fechaLocal())).length,
+    cerradas: rows.filter(({ os }) => ESTADOS_CERRADOS.includes(os.estado_produccion)).length,
   }), [rows]);
+  const montoTotal = useMemo(() => rows.reduce((total, { os }) => total + Number(os.monto_aprobado || 0), 0), [rows]);
+  const porcentajeFacturado = montoTotal ? Math.round(kpis.facturado / montoTotal * 100) : 0;
   const activosFiltrados = activos.filter(a => [a.codigo, a.nombre, a.modelo, a.marca].filter(Boolean).join(' ').toLowerCase().includes(assetSearch.trim().toLowerCase()));
   const activoSeleccionado = activos.find(a => a.id === form.activo_id) || null;
   const cotizacionSeleccionada = cotizaciones.find(c => c.id === form.cotizacion_id) || null;
@@ -125,6 +165,14 @@ function PanelProduccionOSCliente() {
     }));
   };
   const cerrarModalOS = () => { setModal(null); setError(''); };
+  const abrirDrawerRecepciones = (origen = document.activeElement) => {
+    abridorRecepcionesRef.current = origen;
+    setDrawerRecepciones(true);
+  };
+  const cerrarDrawerRecepciones = () => {
+    setDrawerRecepciones(false);
+    (abridorRecepcionesRef.current || botonRecepcionesRef.current)?.focus();
+  };
   const abrirCrear = () => {
     setForm(emptyForm(sociedadPorDefecto)); setAssetSearch(''); setError(''); setModal('crear');
   };
@@ -170,30 +218,46 @@ function PanelProduccionOSCliente() {
 
   if (!empresaId) return <div className="p-4"><div className="alert alert-warning">Selecciona una empresa activa para consultar el Panel de Producción.</div></div>;
 
-  return <div className="page">
-    <div className="page-header"><div><div className="eyebrow">Seguimiento de producción</div><h1 className="page-title">Panel de Producción</h1><div className="page-sub">Seguimiento por OS Cliente · {rows.length} OS registradas</div></div><button className="btn btn-primary" onClick={abrirCrear}>{I.plus} Nueva OS Cliente</button></div>
-    <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
-      <div className="kpi-card"><div className="kpi-label">Total OS</div><div className="kpi-value">{kpis.total}</div><div className="kpi-icon cyan">{I.clipboard}</div></div>
-      <div className="kpi-card"><div className="kpi-label">En producción</div><div className="kpi-value">{kpis.enProceso}</div><div className="kpi-icon orange">{I.wrench}</div></div>
-      <div className="kpi-card"><div className="kpi-label">Monto facturado</div><div className="kpi-value" style={{ fontSize: 20 }}>{moneyValue(kpis.facturado, empresa?.moneda)}</div><div className="kpi-icon green">{I.receipt}</div></div>
-      <div className="kpi-card"><div className="kpi-label">Pendiente de cobro</div><div className="kpi-value" style={{ fontSize: 20 }}>{moneyValue(kpis.pendienteCobro, empresa?.moneda)}</div><div className="kpi-icon orange">{I.dollar}</div></div>
-    </div>
-    <BandejaRecepcionesActivosCliente />
-    <div className="card" style={{ marginBottom: 16 }}><div className="card-body row" style={{ gap: 12 }}><input className="input" style={{ maxWidth: 420 }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS, cliente, cotización o activo" /><span className="text-muted" style={{ alignSelf: 'center', fontSize: 12 }}>{loadingActivos ? 'Cargando activos…' : `${activos.length} activos disponibles`}</span></div></div>
+  return <div className="dx-prod">
+    <header className="dx-prod-top"><div><div className="dx-prod-eyebrow">Seguimiento de producción</div><h1 className="dx-prod-title">Panel de Producción</h1><p className="dx-prod-sub">Seguimiento por OS Cliente · {rows.length} OS registradas</p></div><div className="dx-prod-top-actions"><button ref={botonRecepcionesRef} type="button" className="dx-prod-btn" onClick={event => abrirDrawerRecepciones(event.currentTarget)}>Recepciones <span className="dx-prod-btn-count">{resumenRecepciones.total}</span></button><button type="button" className="dx-prod-btn dx-prod-primary" onClick={abrirCrear}>{I.plus} Nueva OS Cliente</button></div></header>
+    <section className="dx-prod-kpis" aria-label="Resumen de órdenes de servicio">
+      <article className="dx-prod-kpi"><div className="dx-prod-kpi-top">Total OS <span className="dx-prod-kpi-ico is-cyan">{I.clipboard}</span></div><strong className="dx-prod-kpi-value">{kpis.total}</strong><span className="dx-prod-kpi-note">{kpis.cerradas} cerradas · {kpis.total - kpis.cerradas} abiertas</span></article>
+      <article className="dx-prod-kpi"><div className="dx-prod-kpi-top">En producción <span className="dx-prod-kpi-ico is-violet">{I.wrench}</span></div><strong className="dx-prod-kpi-value">{kpis.enProceso}</strong><span className="dx-prod-kpi-note">Estado Proceso</span></article>
+      <button type="button" className={`dx-prod-kpi dx-prod-alert-kpi${soloAtrasadas ? ' is-on' : ''}`} aria-pressed={soloAtrasadas} onClick={() => setSoloAtrasadas(value => !value)}><div className="dx-prod-kpi-top">Atrasadas <span className="dx-prod-kpi-ico is-red">{I.alert}</span></div><strong className="dx-prod-kpi-value">{kpis.atrasadas}</strong><span className="dx-prod-kpi-note">Pulsa para filtrar</span></button>
+      <article className="dx-prod-kpi"><div className="dx-prod-kpi-top">Facturado <span className="dx-prod-kpi-ico is-green">{I.receipt}</span></div><strong className="dx-prod-kpi-value dx-prod-kpi-money">{moneyValue(kpis.facturado, empresa?.moneda)}</strong><span className="dx-prod-kpi-note">{porcentajeFacturado}% del monto de las OS</span></article>
+      <article className="dx-prod-kpi"><div className="dx-prod-kpi-top">Pendiente de cobro <span className="dx-prod-kpi-ico is-amber">{I.dollar}</span></div><strong className="dx-prod-kpi-value dx-prod-kpi-money">{moneyValue(kpis.pendienteCobro, empresa?.moneda)}</strong><span className="dx-prod-kpi-note">Facturado menos cobrado</span></article>
+    </section>
+    <BandejaRecepcionesActivosCliente drawerAbierto={drawerRecepciones} onAbrirDrawer={abrirDrawerRecepciones} onCerrarDrawer={cerrarDrawerRecepciones} onResumen={setResumenRecepciones} />
     {error && !modal && <div className="alert alert-danger" style={{ marginBottom: 16 }}>{error}</div>}
-    <div className="card"><div className="table-wrap"><table className="tbl" style={{ minWidth: 2380 }}><thead><tr><th>OS</th><th>N° cotización</th><th>Cliente</th><th>Código de activo</th><th>Equipo</th><th>Modelo</th><th>Fabricante</th><th>Descripción</th><th>Observaciones</th><th>Estado</th><th>Estado producción</th><th>Emisión</th><th>Inicio</th><th>Fecha Estimada de Cierre</th><th>Fecha Real de Cierre</th><th>Vendedor</th><th>Precio</th><th>Factura</th><th>Pagos</th><th /></tr></thead><tbody>
-      {visibleRows.map(({ os, cuenta, cotizacion, activo, facturasOS, cxcOS }) => <tr key={os.id}>
-        <td><strong>{os.numero}</strong></td><td>{cotizacion?.numero || '—'}</td><td>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</td><td className="mono">{activo?.codigo || '—'}</td><td>{activo?.nombre || '—'}</td><td>{activo?.modelo || '—'}</td><td>{activo?.marca || '—'}</td>
-        <td><button type="button" className="icon-btn" title={tooltipTexto(descripcionOS(os), 'Sin descripción en esta OS Cliente')} aria-label="Ver descripción de la OS Cliente" style={GRID_ICON_STYLE.descripcion}>{I.file}</button></td>
-        <td><button type="button" className="icon-btn" title={tooltipTexto(os.observaciones, 'Sin observaciones en esta OS Cliente')} aria-label="Ver observaciones de la OS Cliente" style={GRID_ICON_STYLE.observaciones}>{I.clipboard}</button></td>
-        <td><span className="badge badge-gray">{labelEstado(os.estado)}</span></td>
-        <td><select className="select badge" style={{ minWidth: 128, ...(os.estado_produccion ? PRODUCTION_STYLE[os.estado_produccion] : { background: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' }) }} value={os.estado_produccion || ''} onChange={e => actualizarInline(os, 'estado_produccion', e.target.value || null)}><option value="">Sin definir</option>{ESTADOS_PRODUCCION.map(estado => <option key={estado} value={estado}>{estado}</option>)}</select></td>
-        <td><input className="input" type="date" defaultValue={os.fecha_emision || ''} onBlur={e => actualizarInline(os, 'fecha_emision', e.target.value || null)} /></td><td><input className="input" type="date" defaultValue={os.fecha_inicio || ''} onBlur={e => actualizarInline(os, 'fecha_inicio', e.target.value || null)} /></td><td><input className="input" type="date" defaultValue={os.fecha_fin || ''} onBlur={e => actualizarInline(os, 'fecha_fin', e.target.value || null)} /></td><td><input className="input" type="date" defaultValue={os.fecha_cierre_real || ''} onBlur={e => actualizarInline(os, 'fecha_cierre_real', e.target.value || null)} /></td><td><input className="input" style={{ minWidth: 130 }} defaultValue={os.responsable_comercial || ''} onBlur={e => actualizarInline(os, 'responsable_comercial', e.target.value || null)} placeholder="Sin asignar" /></td><td style={{ minWidth: 170, whiteSpace: 'nowrap' }}>{os.cotizacion_id ? <span className="input" style={{ display: 'inline-block', minWidth: 160, fontWeight: 600 }}>{moneyValue(cotizacion?.total ?? os.monto_aprobado, cotizacion?.moneda || os.moneda)}</span> : <input className="input" style={{ minWidth: 160 }} type="number" min="0" defaultValue={os.monto_aprobado ?? 0} onBlur={e => actualizarInline(os, 'monto_aprobado', Number(e.target.value || 0))} />}</td>
-        <td title={`${facturasOS.length} factura(s) vinculada(s)`}>{moneyValue(os.monto_facturado, os.moneda)}<br /><span className="text-muted" style={{ fontSize: 11 }}>{facturasOS.length} doc.</span></td><td title={`${cxcOS.length} CxC vinculada(s)`}>{moneyValue(os.monto_cobrado, os.moneda)}<br /><span className="text-muted" style={{ fontSize: 11 }}>{cxcOS.length} CxC</span></td>
-        <td style={{ whiteSpace: 'nowrap' }}><button type="button" className="icon-btn" title="Editar OS Cliente" style={GRID_ICON_STYLE.editar} onClick={() => abrirEditar(os)}>{I.edit}</button><button type="button" className="icon-btn" title="Eliminar OS Cliente" style={GRID_ICON_STYLE.eliminar} onClick={() => eliminarFila({ os, facturasOS, cxcOS })}>{I.trash}</button></td>
-      </tr>)}
-      {!visibleRows.length && <tr><td colSpan="20" className="text-center text-muted" style={{ padding: 36 }}>No hay OS Cliente para mostrar.</td></tr>}
-    </tbody></table></div></div>
+    <section className="dx-prod-card">
+      <div className="dx-prod-bar"><div className="dx-prod-bar-title"><h2>Órdenes de servicio</h2><span className="dx-prod-count">{filasVista.length} {filasVista.length === 1 ? 'resultado' : 'resultados'}</span></div><label className="dx-prod-search"><span className="dx-prod-sr-only">Buscar órdenes</span><span aria-hidden="true">{I.search}</span><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS, cliente, cotización o activo" /></label><select className="dx-prod-select" aria-label="Filtrar por vendedor" value={vendedorFiltro} onChange={e => setVendedorFiltro(e.target.value)}><option value="todos">Todos los vendedores</option><option value="__sin_asignar__">Sin asignar</option>{vendedores.map(vendedor => <option key={vendedor} value={vendedor}>{vendedor}</option>)}</select><button type="button" className={`dx-prod-toggle${soloAtrasadas ? ' is-on' : ''}`} aria-pressed={soloAtrasadas} onClick={() => setSoloAtrasadas(value => !value)}>Solo atrasadas</button><div className="dx-prod-segment" aria-label="Vista de órdenes"><button type="button" className={vista === 'lista' ? 'is-on' : ''} aria-pressed={vista === 'lista'} onClick={() => setVista('lista')}>Lista</button><button type="button" className={vista === 'tablero' ? 'is-on' : ''} aria-pressed={vista === 'tablero'} onClick={() => setVista('tablero')}>Tablero</button></div><span className="dx-prod-subcount">{loadingActivos ? 'Cargando activos…' : `${activos.length} activos disponibles`}</span></div>
+      {vista === 'lista' && <nav className="dx-prod-flow" aria-label="Filtrar por estado de producción">{[['todos', 'Todas'], ['sin', 'Sin definir'], ...ESTADOS_PRODUCCION.map(estado => [estado, estado])].map(([valor, texto]) => <button type="button" key={valor} className={`dx-prod-chip dx-prod-state-${claseEstado(valor === 'sin' || valor === 'todos' ? '' : valor)}${filtroEstado === valor ? ' is-on' : ''}${conteosEstado[valor] === 0 && valor !== 'todos' ? ' is-zero' : ''}`} aria-pressed={filtroEstado === valor} onClick={() => setFiltroEstado(valor)}><i />{texto}<b>{conteosEstado[valor]}</b></button>)}</nav>}
+      {vista === 'lista' ? <div className="dx-prod-list"><div className="dx-prod-cols dx-prod-head"><span>OS</span><span>Cliente y equipo</span><span>Estado de producción</span><span>Plazo</span><span>Cobranza</span><span>Acciones</span></div>
+        {visibleRows.map(({ os, cuenta, cotizacion, activo, facturasOS, cxcOS, cerrado, atrasada, plazo }) => {
+          const abierta = Boolean(filasAbiertas[os.id]);
+          const monto = Number(os.cotizacion_id ? (cotizacion?.total ?? os.monto_aprobado) : os.monto_aprobado || 0);
+          const facturado = Number(os.monto_facturado || 0);
+          const cobrado = Number(os.monto_cobrado || 0);
+          const porcentajeFact = monto ? Math.min(100, facturado / monto * 100) : 0;
+          const porcentajeCob = monto ? Math.min(100, cobrado / monto * 100) : 0;
+          return <article key={os.id} className={`dx-prod-row${abierta ? ' is-open' : ''}${atrasada ? ' is-late' : ''}`}>
+            <div className="dx-prod-cols dx-prod-main">
+              <div className="dx-prod-os-cell"><button type="button" className="dx-prod-osbtn" aria-expanded={abierta} aria-label={`${abierta ? 'Ocultar' : 'Mostrar'} detalle de ${os.numero || 'OS'}`} onClick={() => setFilasAbiertas(current => ({ ...current, [os.id]: !current[os.id] }))}><span className="dx-prod-chevron">{I.chevRight}</span><span><strong>{os.numero || '—'}</strong><small>{cotizacion?.numero || 'Sin cotización'}</small></span></button></div>
+              <div className="dx-prod-client"><strong>{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong><div className="dx-prod-equipo"><code>{activo?.codigo || '—'}</code><span>{activo?.nombre || 'Activo no disponible'}</span></div><div className="dx-prod-seller"><span className="dx-prod-avatar">{iniciales(os.responsable_comercial)}</span>{os.responsable_comercial || 'Sin asignar'}</div></div>
+              <div className="dx-prod-state-cell"><span className={`dx-prod-select-pill dx-prod-state-${claseEstado(os.estado_produccion)}`}><i /><select aria-label={`Estado de producción de ${os.numero || 'OS'}`} value={os.estado_produccion || ''} onChange={e => actualizarInline(os, 'estado_produccion', e.target.value || null)}><option value="">Sin definir</option>{ESTADOS_PRODUCCION.map(estado => <option key={estado} value={estado}>{estado}</option>)}</select><span className="dx-prod-select-arrow">{I.chev}</span></span></div>
+              <div className="dx-prod-time"><span className={`dx-prod-pill is-${plazo.tono}`}><i />{plazo.texto}</span>{plazo.avance !== null && <div className={`dx-prod-track${atrasada ? ' is-red' : cerrado ? ' is-green' : ''}`}><i style={{ width: `${Math.round(plazo.avance * 100)}%` }} /></div>}<small>{os.fecha_emision ? `Emitida ${fechaCorta(os.fecha_emision)}` : 'Sin fecha de emisión'}{os.fecha_fin ? ` · Cierre est. ${fechaCorta(os.fecha_fin)}` : ''}</small></div>
+              <div className="dx-prod-money"><strong>{moneyValue(monto, cotizacion?.moneda || os.moneda || empresa?.moneda)}</strong><div className="dx-prod-track dx-prod-cash-track"><i className="is-invoiced" style={{ width: `${porcentajeFact}%` }} /><i className="is-paid" style={{ width: `${porcentajeCob}%` }} /></div><small>Fact. {moneyValue(facturado, os.moneda || empresa?.moneda)} · Cobr. {moneyValue(cobrado, os.moneda || empresa?.moneda)}</small>{facturado > cobrado && <small className="dx-prod-pending">Por cobrar {moneyValue(facturado - cobrado, os.moneda || empresa?.moneda)}</small>}</div>
+              <div className="dx-prod-actions"><button type="button" className="dx-prod-icon-btn" aria-label={`Editar OS ${os.numero || ''}`} title="Editar OS Cliente" onClick={() => abrirEditar(os)}>{I.edit}</button><button type="button" className="dx-prod-icon-btn is-danger" aria-label={`Eliminar OS ${os.numero || ''}`} title="Eliminar OS Cliente" onClick={() => eliminarFila({ os, facturasOS, cxcOS })}>{I.trash}</button></div>
+            </div>
+            {abierta && <div className="dx-prod-detail"><div className="dx-prod-detail-wide"><span>Descripción</span><p>{descripcionOS(os) || 'Sin descripción en esta OS Cliente'}</p></div><div className="dx-prod-detail-wide"><span>Observaciones</span><p>{os.observaciones || 'Sin observaciones en esta OS Cliente'}</p></div><div><span>Equipo</span><p>{[activo?.nombre, activo?.modelo, activo?.marca].filter(Boolean).join(' · ') || '—'}</p></div><div><span>Documentos</span><p>{facturasOS.length} factura(s) · {cxcOS.length} CxC vinculada(s)</p></div><div><span>Estado de la OS</span><p><span className="dx-prod-pill is-gray">{labelEstado(os.estado)}</span></p></div><label>Emisión<input type="date" defaultValue={os.fecha_emision || ''} onBlur={e => actualizarInline(os, 'fecha_emision', e.target.value || null)} /></label><label>Inicio<input type="date" defaultValue={os.fecha_inicio || ''} onBlur={e => actualizarInline(os, 'fecha_inicio', e.target.value || null)} /></label><label>Fecha estimada de cierre<input type="date" defaultValue={os.fecha_fin || ''} onBlur={e => actualizarInline(os, 'fecha_fin', e.target.value || null)} /></label><label>Fecha real de cierre<input type="date" defaultValue={os.fecha_cierre_real || ''} onBlur={e => actualizarInline(os, 'fecha_cierre_real', e.target.value || null)} /></label><label>Vendedor<input type="text" defaultValue={os.responsable_comercial || ''} onBlur={e => actualizarInline(os, 'responsable_comercial', e.target.value || null)} placeholder="Sin asignar" /></label><label>Precio{os.cotizacion_id ? <span className="dx-prod-fixed-value">{moneyValue(cotizacion?.total ?? os.monto_aprobado, cotizacion?.moneda || os.moneda || empresa?.moneda)}</span> : <input type="number" min="0" defaultValue={os.monto_aprobado ?? 0} onBlur={e => actualizarInline(os, 'monto_aprobado', Number(e.target.value || 0))} />}</label></div>}
+          </article>;
+        })}
+        {!visibleRows.length && <div className="dx-prod-empty"><strong>No hay OS que coincidan</strong><span>Prueba con otro texto o quita los filtros.</span><button type="button" className="dx-prod-btn dx-prod-btn-sm" onClick={() => { setSearch(''); setVendedorFiltro('todos'); setSoloAtrasadas(false); setFiltroEstado('todos'); }}>Quitar filtros</button></div>}
+      </div> : <div className="dx-prod-board">{[['sin', 'Sin definir'], ...ESTADOS_PRODUCCION.map(estado => [estado, estado])].map(([estado, label]) => {
+         const items = baseRows.filter(({ os }) => estado === 'sin' ? !os.estado_produccion : os.estado_produccion === estado);
+         return <section className={`dx-prod-board-col dx-prod-state-${claseEstado(estado === 'sin' ? '' : estado)}`} key={estado}><h3><i />{label}<b>{items.length}</b></h3><div className="dx-prod-board-items">{items.map(({ os, cuenta, cotizacion, activo, plazo }) => <article className="dx-prod-board-card" key={os.id}><div className="dx-prod-board-card-top"><strong>{os.numero || '—'}</strong><span className={`dx-prod-pill is-${plazo.tono}`}><i />{plazo.texto}</span></div><strong className="dx-prod-board-client">{cuenta?.razon_social || cuenta?.nombre_comercial || '—'}</strong><span className="dx-prod-board-equipo">{activo?.codigo || '—'} · {activo?.nombre || 'Activo no disponible'}</span><div className="dx-prod-board-foot"><span><i className="dx-prod-avatar">{iniciales(os.responsable_comercial)}</i>{os.responsable_comercial || 'Sin asignar'}</span><b>{moneyValue(os.cotizacion_id ? (cotizacion?.total ?? os.monto_aprobado) : os.monto_aprobado, cotizacion?.moneda || os.moneda || empresa?.moneda)}</b></div></article>)}{!items.length && <p className="dx-prod-none">Sin OS en este estado</p>}</div></section>;
+      })}</div>}
+    </section>
     {modal && <div className="modal-backdrop"><div className="modal" style={{ maxWidth: 860, width: 'calc(100vw - 32px)', maxHeight: '92vh', overflow: 'auto' }}><div className="modal-head"><div><h2>{modal === 'crear' ? 'Nueva OS Cliente' : 'Editar OS Cliente'}</h2><div className="text-muted" style={{ fontSize: 12 }}>El activo se busca libremente entre todos los activos de la empresa activa.</div></div><button className="icon-btn" onClick={cerrarModalOS}>{I.x}</button></div><form onSubmit={guardarOS}><div className="modal-body">{error && <div className="alert alert-danger" style={{ marginBottom: 14 }}>{error}</div>}<div className="grid-2" style={{ gap: 14 }}>
       <div className="input-group"><label>Cliente *</label><select className="select" value={form.cuenta_id} onChange={e => updateForm('cuenta_id', e.target.value)} required><option value="">Seleccionar</option>{cuentas.filter(c => c.empresa_id === empresaId).map(c => <option key={c.id} value={c.id}>{c.razon_social || c.nombre_comercial}</option>)}</select></div><div className="input-group"><label>Sociedad *</label><select className="select" value={form.sociedad_id} onChange={e => updateForm('sociedad_id', e.target.value)} required><option value="">Seleccionar</option>{sociedadesDisponibles.filter(s => s.activa !== false).map(s => <option key={s.id} value={s.id}>{s.razon_social || s.nombre || s.codigo}</option>)}</select></div><div className="input-group"><label>N° OS</label><input className="input" value={form.numero} placeholder={modal === 'crear' ? 'Se asigna al guardar' : ''} readOnly /></div><div className="input-group"><label>Cotización</label><select className="select" value={form.cotizacion_id} onChange={e => actualizarCotizacionForm(e.target.value)}><option value="">Sin cotización</option>{cotizaciones.filter(c => c.empresa_id === empresaId && c.estado === 'aprobada' && !c.os_cliente_id).map(c => <option key={c.id} value={c.id}>{c.numero}</option>)}</select></div><div className="input-group" style={{ gridColumn: '1/-1' }}><label>Descripción *</label><input className="input" value={form.nombre} onChange={e => updateForm('nombre', e.target.value)} required /></div>
       <div className="input-group" style={{ gridColumn: '1/-1' }}><label>Buscar activo (modo libre)</label><input className="input" value={assetSearch} onChange={e => setAssetSearch(e.target.value)} placeholder="Código, equipo, modelo o fabricante; no se filtra por cliente" /><div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 160, overflow: 'auto' }}>{activosFiltrados.slice(0, 12).map(a => <button type="button" key={a.id} onClick={() => updateForm('activo_id', a.id)} style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: a.id === form.activo_id ? 'var(--bg-subtle)' : 'transparent', padding: '9px 10px', cursor: 'pointer' }}><strong className="mono">{a.codigo}</strong> · {a.nombre}{a.modelo ? ` · ${a.modelo}` : ''}{a.marca ? ` · ${a.marca}` : ''}</button>)}{assetSearch && !activosFiltrados.length && <div className="text-muted" style={{ padding: 10 }}>No se encontró un activo para esta búsqueda. Regístralo desde Recepción de Activos.{form.cuenta_id && <button type="button" className="btn btn-secondary btn-sm" style={{ display: 'block', marginTop: 8 }} onClick={() => window.location.assign('/operaciones/#/recepcion-activos')}>Ir a Recepción de Activos</button>}</div>}</div>{activoSeleccionado && <div className="text-muted" style={{ marginTop: 6, fontSize: 12 }}>Seleccionado: <strong>{activoSeleccionado.codigo}</strong> · {activoSeleccionado.nombre}</div>}</div>
