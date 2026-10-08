@@ -106,3 +106,13 @@ Todo trabajo apunta a producción; no existe proyecto de desarrollo. El SQL se e
 
 ### Entorno
 Windows / PowerShell: usar `Select-String`, no `grep`. Los PDF llevan la marca TIDEO. Las pruebas de la herramienta se hacen en un worktree descartable, nunca en la carpeta principal.
+
+## 7. Sistema de diseño de pantallas (dx-ui)
+
+Toda pantalla nueva o rediseñada de `operaciones-app` sigue **`docs/diseno/SISTEMA_DISENO.md`**. Léelo completo antes de escribir una línea de JSX o CSS.
+
+- Se construye combinando las clases `dx-ui-*` y las variables `--dx-ui-*` de `operaciones-app/src/zahory-mock/styles/zahory.css` (sección "DX-UI base"). No se inventan colores, tipografías ni radios por pantalla.
+- Las reglas propias de una pantalla llevan el prefijo `dx-<pantalla>-` y solo definen columnas, áreas móviles y contenido específico.
+- El corte a tarjetas usa `@container (max-width:760px)` sobre `dx-ui-card`, nunca `@media`.
+- Si falta algo en la base, se agrega a la base compartida, no a la pantalla.
+- Referencia de código: el listado de `DiagnosticoTecnicoPage.jsx`. Primero un mock aprobado por Cristhian y después el código; verificación a 375, 800, 901, 1000, 1100 y 1280 px, claro y oscuro.

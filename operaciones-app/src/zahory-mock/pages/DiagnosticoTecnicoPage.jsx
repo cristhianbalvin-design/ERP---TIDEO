@@ -960,46 +960,46 @@ export function DiagnosticoTecnicoPage() {
 
       {!modalOpen && !sesion.permiteEscritura && <div className="alert alert-warning" style={{ marginBottom: 12 }}>Selecciona una sociedad concreta en la barra superior para poder editar.</div>}
 
-      <section className="dx-list" aria-label="Listado de diagnósticos">
-        <div className="dx-list-summary" aria-label="Resumen de diagnósticos">
-          <div className="dx-list-chip"><b>{diagnosticos.length}</b><span>diagnósticos</span></div>
-          <div className="dx-list-chip"><b>{borradoresCount}</b><span>borradores</span></div>
-          <div className="dx-list-chip"><b>{emitidosCount}</b><span>emitidos</span></div>
+      <section className="dx-ui dx-list" aria-label="Listado de diagnósticos">
+        <div className="dx-ui-summary" aria-label="Resumen de diagnósticos">
+          <div className="dx-ui-chip"><b>{diagnosticos.length}</b><span>diagnósticos</span></div>
+          <div className="dx-ui-chip"><b>{borradoresCount}</b><span>borradores</span></div>
+          <div className="dx-ui-chip"><b>{emitidosCount}</b><span>emitidos</span></div>
         </div>
-        <div className="dx-list-card">
-          <div className="dx-list-toolbar">
+        <div className="dx-ui-card">
+          <div className="dx-ui-toolbar">
             <h2>Diagnósticos</h2>
-            <span className="dx-list-count">{filteredDiagnosticos.length} {filteredDiagnosticos.length === 1 ? 'resultado' : 'resultados'}</span>
-            <label className="dx-list-search">
+            <span className="dx-ui-count">{filteredDiagnosticos.length} {filteredDiagnosticos.length === 1 ? 'resultado' : 'resultados'}</span>
+            <label className="dx-ui-search">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><circle cx="7" cy="7" r="5" /><path d="M11 11l3.5 3.5" /></svg>
               <input value={listQuery} onChange={event => setListQuery(event.target.value)} placeholder="Buscar por referencia, cliente o activo…" aria-label="Buscar diagnósticos" />
             </label>
           </div>
-          <div className="dx-list-head" aria-hidden="true"><span>Tipo</span><span>Referencia</span><span>Estado</span><span>Actualizado</span><span /></div>
-          {loadingList ? <div className="dx-list-empty">Cargando diagnósticos...</div> : !diagnosticos.length ? (
-            <div className="dx-list-empty">No hay diagnósticos registrados.</div>
+          <div className="dx-ui-head dx-list-cols" aria-hidden="true"><span>Tipo</span><span>Referencia</span><span>Estado</span><span>Actualizado</span><span /></div>
+          {loadingList ? <div className="dx-ui-empty">Cargando diagnósticos...</div> : !diagnosticos.length ? (
+            <div className="dx-ui-empty">No hay diagnósticos registrados.</div>
           ) : !filteredDiagnosticos.length ? (
-            <div className="dx-list-empty">No hay diagnósticos que coincidan con la búsqueda.</div>
+            <div className="dx-ui-empty">No hay diagnósticos que coincidan con la búsqueda.</div>
           ) : filteredDiagnosticos.map(row => {
             const referenceType = row.tipo === 'fabricacion' ? 'Oportunidad' : 'Recepción';
             const updated = formatListDate(row.updated_at);
-            return <div className="dx-list-row" key={row.id} role="button" tabIndex={0} onClick={() => openExisting(row)} onKeyDown={event => {
+            return <div className="dx-ui-row dx-list-cols dx-list-row" key={row.id} role="button" tabIndex={0} onClick={() => openExisting(row)} onKeyDown={event => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 openExisting(row);
               }
             }}>
-              <div className={`dx-list-type ${row.tipo === 'fabricacion' ? 'is-fabricacion' : 'is-mantenimiento'}`}>
-                <span className="dx-list-icon" aria-hidden="true">{row.tipo === 'fabricacion' ? <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16l6-6M12.5 3.5a3.5 3.5 0 004.4 4.4l-1.4 1.4-2.8-2.8 1.4-1.4M9 10l5 5 2-2-5-5" /></svg> : <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="10" r="3" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" /></svg>}</span>
+              <div className="dx-list-type">
+                <span className={`dx-ui-icon ${row.tipo === 'fabricacion' ? 'is-cyan' : 'is-violet'}`} aria-hidden="true">{row.tipo === 'fabricacion' ? <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 16l6-6M12.5 3.5a3.5 3.5 0 004.4 4.4l-1.4 1.4-2.8-2.8 1.4-1.4M9 10l5 5 2-2-5-5" /></svg> : <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="10" r="3" /><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" /></svg>}</span>
                 <span>{typeLabel(row.tipo)}</span>
               </div>
               <div className="dx-list-reference">
                 <span className="dx-list-ref-line"><span>{referenceType} ·</span> <b>{referenceLabel(row.referencia)}</b></span>
                 {(row.referencia?.cliente || row.referencia?.activo) && <span className="dx-list-ref-sub">{[row.referencia?.cliente, row.referencia?.activo].filter(Boolean).join(' · ')}</span>}
               </div>
-              <div className="dx-list-state"><span className={`dx-list-pill ${row.estado === 'emitido' ? 'is-emitido' : 'is-borrador'}`}><i />{statusLabel(row.estado)}</span></div>
+              <div className="dx-list-state"><span className={`dx-ui-pill ${row.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(row.estado)}</span></div>
               <div className="dx-list-updated"><span>{updated.day}</span>{updated.time && <small>{updated.time}</small>}</div>
-              <svg className="dx-list-arrow" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3l5 5-5 5" /></svg>
+              <svg className="dx-ui-arrow" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3l5 5-5 5" /></svg>
             </div>;
           })}
         </div>
