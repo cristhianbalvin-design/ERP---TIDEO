@@ -890,8 +890,17 @@ export function DiagnosticoTecnicoPage() {
   const modalBusy = saving || Boolean(savingLine) || hallazgosSaving;
   const cambiosSinGuardar = Boolean(selected && ((selected.lineas || []).some(line => line._dirty) || hallazgosDirty));
   const recargarEstadoDiagnostico = async resultado => {
-    if (resultado?.estado) setSelected(current => current?.id === selected.id ? { ...current, estado: resultado.estado } : current);
-    const refreshed = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, selected.id));
+    const diagnosticoId = selected?.id;
+    if (!diagnosticoId) return;
+    if (resultado?.estado) setSelected(current => current?.id === diagnosticoId ? { ...current, estado: resultado.estado } : current);
+    const refreshed = prepararDetalle(await obtenerDiagnosticoTecnico(empresaId, diagnosticoId));
+    setDiagnosticos(current => current.map(row => row.id === diagnosticoId
+      ? {
+          ...row,
+          estado: refreshed.estado,
+          ...(Object.prototype.hasOwnProperty.call(refreshed, 'emitido_en') ? { emitido_en: refreshed.emitido_en } : {}),
+        }
+      : row));
     setSelected(refreshed);
   };
   const modalOpen = Boolean(form.tipo || selected);
