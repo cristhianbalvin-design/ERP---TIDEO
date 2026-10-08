@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
+import './hoja_costeo_listado.css';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
@@ -4875,6 +4876,41 @@ function HojaCosteo() {
     return () => { activa = false; };
   }, [hojasCosteoActivas]);
 
+  const [filtroEstadoHC, setFiltroEstadoHC] = useState('todas');
+  const [filtroResponsableHC, setFiltroResponsableHC] = useState('todos');
+  const [busquedaHC, setBusquedaHC] = useState('');
+  const [soloPendientesHC, setSoloPendientesHC] = useState(false);
+  const pendientesCosteoHC = hc => cotizacionesHCVerificadas
+    && hc.estado === 'aprobada'
+    && !hc.cotizacion_id
+    && !hojasConCotizaciones.has(hc.id);
+  const filtrarListaHC = (hc, incluirEstado = true) => {
+    const opp = getOpp(hc.oportunidad_id);
+    const cliente = getCuentaNombre(hc.cuenta_id);
+    const responsable = hc.responsable_costeo || '';
+    const termino = busquedaHC.trim().toLowerCase();
+    if (incluirEstado && filtroEstadoHC !== 'todas' && estadoHC(hc.estado) !== filtroEstadoHC) return false;
+    if (filtroResponsableHC === '__sin' ? responsable : (filtroResponsableHC !== 'todos' && responsable !== filtroResponsableHC)) return false;
+    if (soloPendientesHC && !pendientesCosteoHC(hc)) return false;
+    if (termino && ![hc.numero, cliente, opp?.nombre || '', responsable].join(' ').toLowerCase().includes(termino)) return false;
+    return true;
+  };
+  const listaBaseHC = filteredHC.filter(hc => filtrarListaHC(hc, false));
+  const listaVisibleHC = filteredHC.filter(hc => filtrarListaHC(hc));
+  const cantidadEstadoHC = estado => listaBaseHC.filter(hc => estado === 'todas' || estadoHC(hc.estado) === estado).length;
+  const responsablesHC = [...new Set(hojasCosteoActivas.map(hc => hc.responsable_costeo).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const borradoresHC = hojasCosteoActivas.filter(hc => estadoHC(hc.estado) === 'borrador').length;
+  const revisionesHC = hojasCosteoActivas.filter(hc => estadoHC(hc.estado) === 'en_revision').length;
+  const aprobadasHC = hojasCosteoActivas.filter(hc => estadoHC(hc.estado) === 'aprobada').length;
+  const conCotizacionHC = hojasCosteoActivas.filter(hc => hc.cotizacion_id || hojasConCotizaciones.has(hc.id)).length;
+  const pendientesHC = hojasCosteoActivas.filter(pendientesCosteoHC).length;
+  const limpiarFiltrosHC = () => {
+    setFiltroEstadoHC('todas');
+    setFiltroResponsableHC('todos');
+    setBusquedaHC('');
+    setSoloPendientesHC(false);
+  };
+
   if (activeParams?.detail) {
     const hc = hojasCosteoActivas.find(h => h.id === activeParams.detail);
     if (!hc) return <div className="p-4">Hoja de Costeo no encontrada</div>;
@@ -4938,49 +4974,85 @@ function HojaCosteo() {
   }
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Hojas de Costeo</h1>
-          <div className="page-sub">{hojasCosteoActivas.length} documentos · documento interno previo a cotización</div>
-        </div>
+    <div className="dx-costeo">
+      <div className="dx-costeo-in">
+        <header className="dx-costeo-top">
+          <div>
+            <div className="dx-costeo-eyebrow">Comercial</div>
+            <h1 className="dx-costeo-title">Hojas de Costeo</h1>
+            <p className="dx-costeo-sub">{hojasCosteoActivas.length} documentos · documento interno previo a cotización</p>
+          </div>
+        </header>
+        <section className="dx-costeo-kpis" aria-label="Resumen de hojas de costeo">
+          <div className="dx-costeo-kpi">
+            <div className="dx-costeo-kpi-top"><span>Total hojas</span><span className="dx-costeo-ico is-cyan">{I.clipboard}</span></div>
+            <strong className="dx-costeo-kpi-val">{hojasCosteoActivas.length}</strong>
+            <span className="dx-costeo-kpi-note">{borradoresHC} en borrador · {aprobadasHC} aprobadas</span>
+          </div>
+          <div className="dx-costeo-kpi">
+            <div className="dx-costeo-kpi-top"><span>Borrador</span><span className="dx-costeo-ico is-gray">{I.edit}</span></div>
+            <strong className="dx-costeo-kpi-val">{borradoresHC}</strong>
+            <span className="dx-costeo-kpi-note">En preparación</span>
+          </div>
+          <div className="dx-costeo-kpi">
+            <div className="dx-costeo-kpi-top"><span>En revisión</span><span className="dx-costeo-ico is-violet">{I.clock}</span></div>
+            <strong className="dx-costeo-kpi-val">{revisionesHC}</strong>
+            <span className="dx-costeo-kpi-note">Esperando aprobación</span>
+          </div>
+          <div className="dx-costeo-kpi">
+            <div className="dx-costeo-kpi-top"><span>Aprobadas</span><span className="dx-costeo-ico is-green">{I.check}</span></div>
+            <strong className="dx-costeo-kpi-val">{aprobadasHC}</strong>
+            <span className="dx-costeo-kpi-note">{conCotizacionHC} con cotización</span>
+          </div>
+          <button type="button" className={`dx-costeo-kpi is-alert${soloPendientesHC ? ' is-on' : ''}`} aria-pressed={soloPendientesHC} aria-label="Filtrar hojas pendientes de cotizar" onClick={() => setSoloPendientesHC(valor => !valor)}>
+            <div className="dx-costeo-kpi-top"><span>Por cotizar</span><span className="dx-costeo-ico is-amber">{I.alert}</span></div>
+            <strong className="dx-costeo-kpi-val">{pendientesHC}</strong>
+            <span className="dx-costeo-kpi-note">Aprobadas sin cotización · pulsa para filtrar</span>
+          </button>
+        </section>
+        <section className="dx-costeo-card" aria-label="Listado de hojas de costeo">
+          <div className="dx-costeo-bar">
+            <h2 className="dx-costeo-bar-title">Documentos<span className="dx-costeo-count">{listaVisibleHC.length} de {hojasCosteoActivas.length}</span></h2>
+            <label className="dx-costeo-search"><span className="dx-costeo-search-ico">{I.search}</span><input type="search" value={busquedaHC} onChange={event => setBusquedaHC(event.target.value)} placeholder="Buscar número, cliente, oportunidad o responsable…" aria-label="Buscar hojas de costeo" /></label>
+            <select className="dx-costeo-select" value={filtroResponsableHC} onChange={event => setFiltroResponsableHC(event.target.value)} aria-label="Filtrar por responsable">
+              <option value="todos">Todos los responsables</option>
+              {responsablesHC.map(responsable => <option key={responsable} value={responsable}>{responsable}</option>)}
+              <option value="__sin">Sin responsable</option>
+            </select>
+            <button type="button" className={`dx-costeo-toggle${soloPendientesHC ? ' is-on' : ''}`} aria-pressed={soloPendientesHC} aria-label="Alternar filtro por cotizar" onClick={() => setSoloPendientesHC(valor => !valor)}>Por cotizar</button>
+          </div>
+          <div className="dx-costeo-chips" role="group" aria-label="Filtrar por estado">
+            {[['todas', 'Todas', 'var(--dx-costeo-navy)'], ['borrador', 'Borrador', '#9CA3AF'], ['en_revision', 'En revisión', 'var(--dx-costeo-amber-dot)'], ['aprobada', 'Aprobada', 'var(--dx-costeo-green-dot)']].map(([estado, etiqueta, punto]) => {
+              const cantidad = cantidadEstadoHC(estado);
+              return <button type="button" key={estado} className={`dx-costeo-chip${filtroEstadoHC === estado ? ' is-on' : ''}${cantidad === 0 && estado !== 'todas' ? ' is-zero' : ''}`} style={{'--dx-costeo-dot': punto}} aria-pressed={filtroEstadoHC === estado} onClick={() => setFiltroEstadoHC(estado)}><i aria-hidden="true" />{etiqueta}<b>{cantidad}</b></button>;
+            })}
+          </div>
+          <div className="dx-costeo-cols dx-costeo-head" role="row"><span>Hoja</span><span>Cliente y oportunidad</span><span>Estado</span><span>Precio sugerido</span><span>Responsable</span><span /></div>
+          {listaVisibleHC.map(hc => {
+            const opp = getOpp(hc.oportunidad_id);
+            const responsable = hc.responsable_costeo || '';
+            const costo = Number(hc.costo_total || 0);
+            const precio = Number(hc.precio_sugerido_total || 0);
+            const sinLineas = costo === 0 && precio === 0;
+            const initials = responsable ? responsable.trim().split(/\s+/).slice(0, 2).map(parte => parte[0]).join('').toUpperCase() : '—';
+            const etiquetaEstado = estadoHC(hc.estado) === 'en_revision' ? 'En revisión' : estadoHC(hc.estado) === 'aprobada' ? 'Aprobada' : 'Borrador';
+            const claseEstado = estadoHC(hc.estado) === 'aprobada' ? 'is-green' : estadoHC(hc.estado) === 'en_revision' ? 'is-amber' : 'is-gray';
+            const tieneCotizacion = Boolean(hc.cotizacion_id || hojasConCotizaciones.has(hc.id));
+            const pendiente = pendientesCosteoHC(hc);
+            const moneda = opp?.moneda || hc.moneda;
+            return <div key={hc.id} className="dx-costeo-cols dx-costeo-row" role="button" tabIndex={0} aria-label={`Abrir hoja ${hc.numero}, ${getCuentaNombre(hc.cuenta_id)}, ${etiquetaEstado}`} onClick={() => navigate('hoja_costeo', { detail: hc.id })} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); navigate('hoja_costeo', { detail: hc.id }); } }}>
+              <div className="dx-costeo-num"><span className="dx-costeo-mono">{hc.numero}</span>{mostrarBadgeSociedadHC && <SociedadBadge sociedadId={hc.sociedad_id} />}</div>
+              <div className="dx-costeo-client"><strong>{getCuentaNombre(hc.cuenta_id)}</strong><span>{opp?.nombre || 'Sin oportunidad'}</span></div>
+              <div className="dx-costeo-states"><span className={`dx-costeo-pill ${claseEstado}`}><i />{etiquetaEstado}</span>{tieneCotizacion && <span className="dx-costeo-pill is-cyan">Con cotización</span>}{pendiente && <span className="dx-costeo-pill is-amber">Pendiente de cotizar</span>}</div>
+              <div className={`dx-costeo-money${sinLineas ? ' is-empty' : ''}`}><strong>{sinLineas ? '—' : moneyCurrency(precio, moneda)}</strong><span>{sinLineas ? 'Sin líneas de costo' : `Costo ${moneyCurrency(costo, moneda)}`}</span></div>
+              <div className="dx-costeo-resp"><span className={`dx-costeo-avatar${responsable ? '' : ' is-none'}`}>{initials}</span><div className="dx-costeo-resp-text"><strong>{responsable || 'Sin responsable'}</strong><span>Margen obj. {hc.margen_objetivo_pct ?? 0}%</span></div></div>
+              <span className="dx-costeo-go" aria-hidden="true">{I.chevRight}</span>
+            </div>;
+          })}
+          {listaVisibleHC.length === 0 && <div className="dx-costeo-empty">{hojasCosteoActivas.length === 0 ? <><strong>Aún no hay hojas de costeo</strong><span>Créalas desde el Pipeline.</span></> : <><strong>Sin resultados</strong><span>Ninguna hoja coincide con los filtros actuales.</span><button type="button" className="dx-costeo-btn" onClick={limpiarFiltrosHC}>Limpiar filtros</button></>}</div>}
+        </section>
       </div>
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr><th>Número</th>{mostrarBadgeSociedadHC && <th>Sociedad</th>}<th>Oportunidad</th><th>Cliente</th><th>Costo Total</th><th>Precio Sugerido</th><th>Margen obj.</th><th>Responsable</th><th>Estado</th><th>Cotización</th></tr>
-            </thead>
-            <tbody>
-              {filteredHC.map(hc => {
-                const opp = getOpp(hc.oportunidad_id);
-                return (
-                  <tr key={hc.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => navigate('hoja_costeo', { detail: hc.id })}>
-                    <td className="mono" style={{fontWeight:600}}>{hc.numero}</td>
-                    {mostrarBadgeSociedadHC && <td><SociedadBadge sociedadId={hc.sociedad_id} /></td>}
-                    <td>{opp?.nombre || '—'}</td>
-                    <td><strong>{getCuentaNombre(hc.cuenta_id)}</strong></td>
-                    <td className="num">{moneyCurrency(hc.costo_total, opp?.moneda || hc.moneda)}</td>
-                    <td className="num" style={{fontWeight:600}}>{moneyCurrency(hc.precio_sugerido_total, opp?.moneda || hc.moneda)}</td>
-                    <td className="num">{hc.margen_objetivo_pct}%</td>
-                    <td className="text-muted">{hc.responsable_costeo || '—'}</td>
-                    <td><span className={'badge ' + badgeHC(hc.estado)}>{labelEstadoHC(hc.estado)}</span></td>
-                    <td>
-                      {hojasConCotizaciones.has(hc.id) || hc.cotizacion_id
-                        ? <span className="badge badge-cyan">Con cotización</span>
-                        : cotizacionesHCVerificadas && hc.estado === 'aprobada'
-                          ? <span className="badge badge-orange">Pendiente de cotizar</span>
-                          : null}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredHC.length === 0 && <tr><td colSpan={mostrarBadgeSociedadHC ? 9 : 8} style={{textAlign:'center', padding:40, color:'var(--fg-muted)'}}>{query ? 'Sin resultados para la búsqueda' : 'No hay hojas de costeo. Créalas desde el Pipeline.'}</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
