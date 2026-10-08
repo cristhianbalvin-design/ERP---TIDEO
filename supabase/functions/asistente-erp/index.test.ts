@@ -9,22 +9,26 @@ const equal = (a: unknown, b: unknown) => assert(a === b, `expected ${String(b)}
 const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const completion = (message: any, usage = { prompt_tokens: 12, completion_tokens: 7 }) => ({ response: jsonResponse({}), data: { choices: [{ message }], usage } });
 
-function setup(options: { user?: boolean; quota?: unknown; extraOrigins?: string; rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
+function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }>; quota?: unknown; extraOrigins?: string; now?: () => number; rpc?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; rpcAll?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }>; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const aiCalls: Array<Array<Record<string, unknown>>> = [];
   const supabase: SupabaseLike = {
-    auth: { getUser: async () => ({ data: { user: options.user === false ? null : { id: "user" } }, error: options.user === false ? new Error("invalid") : null }) },
-    rpc: async (name, args) => {
+    auth: { getUser: (token) => options.getUser ? options.getUser(token) : Promise.resolve({ data: { user: options.user === false ? null : { id: "user" } }, error: options.user === false ? new Error("invalid") : null }) },
+    rpc: (name, args) => {
       calls.push({ name, args });
-      if (name === "asistente_verificar_cuota") return { data: options.quota ?? { conteo: 2, limite: 50, puede_continuar: true }, error: null };
-      if (name === "asistente_registrar_historial") return { data: uuid, error: null };
-      return options.rpc ? await options.rpc(name, args) : { data: { filas: [], campos_omitidos_por_permiso: [] }, error: null };
+      if (options.rpcAll) return options.rpcAll(name, args);
+      if (name === "asistente_verificar_cuota") return Promise.resolve({ data: options.quota ?? { conteo: 2, limite: 50, puede_continuar: true }, error: null });
+      if (name === "asistente_registrar_historial") return Promise.resolve({ data: uuid, error: null });
+      const result = options.rpc ? options.rpc(name, args) : { data: { filas: [], campos_omitidos_por_permiso: [] }, error: null };
+      return typeof result === "object" && result !== null && "then" in result
+        ? result as PromiseLike<{ data: unknown; error: unknown | null }>
+        : Promise.resolve(result);
     },
   };
   const deps: HandlerDeps = {
     createSupabase: () => supabase,
     env: (name) => name === "ASISTENTE_ORIGENES_EXTRA" ? options.extraOrigins : env(name),
-    now: () => 1000,
+    now: options.now ?? (() => 1000),
     callOpenAI: async (...args) => { aiCalls.push(args[0]); return options.ai ? await options.ai(...args) : completion({ role: "assistant", content: "Consulta completada." }); },
   };
   const handler = createHandler(deps);
@@ -33,6 +37,11 @@ function setup(options: { user?: boolean; quota?: unknown; extraOrigins?: string
   });
   return { handler, request, calls, aiCalls };
 }
+
+const thenableWithoutCatch = <T>(value: T): PromiseLike<T> => {
+  const then: PromiseLike<T>["then"] = (resolve, reject) => Promise.resolve(value).then(resolve, reject);
+  return { then };
+};
 
 Deno.test("empresa textual conservadora aceptada y valores invalidos dan 400", async () => {
   const accepted = setup();
@@ -91,6 +100,55 @@ Deno.test("caso feliz, cuota y RPC de lectura", async () => {
   equal(rpc.args.p_busqueda, "Tideo");
   assert(!("busqueda" in rpc.args) && !("p_sociedad_id" in rpc.args));
   assert(x !== undefined);
+});
+
+Deno.test("RPC thenables sin catch completan cuota, herramienta y auditoria", async () => {
+  let n = 0;
+  const x = setup({
+    rpcAll: (name) => thenableWithoutCatch(name === "asistente_verificar_cuota"
+      ? { data: { conteo: 2, limite: 50, puede_continuar: true }, error: null }
+      : name === "asistente_registrar_historial"
+        ? { data: uuid, error: null }
+        : { data: { filas: [], campos_omitidos_por_permiso: [] }, error: null }),
+    ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "thenable", type: "function", function: { name: "asistente_buscar_cuentas", arguments: "{}" } }] })
+      : completion({ role: "assistant", content: "Consulta completada." }),
+  });
+  equal((await x.handler(x.request())).status, 200);
+  assert(x.calls.some(c => c.name === "asistente_verificar_cuota"));
+  assert(x.calls.some(c => c.name === "asistente_buscar_cuentas"));
+  assert(x.calls.some(c => c.name === "asistente_registrar_historial"));
+});
+
+Deno.test("RPC thenable rechazado devuelve error generico a la herramienta y conserva 200", async () => {
+  let n = 0;
+  let toolMessage = "";
+  const x = setup({
+    rpc: (name) => name === "asistente_buscar_cuentas"
+      ? ({ then: (_resolve: unknown, reject: (reason: unknown) => unknown) => reject(new Error("detalle confidencial")) } as any)
+      : { data: { filas: [] }, error: null },
+    ai: async (messages) => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "reject", type: "function", function: { name: "asistente_buscar_cuentas", arguments: "{}" } }] })
+      : (toolMessage = String(messages.at(-1)?.content), completion({ role: "assistant", content: "No se pudo consultar." })),
+  });
+  equal((await x.handler(x.request())).status, 200);
+  assert(toolMessage.includes("No se pudo consultar la información solicitada."));
+  assert(!toolMessage.includes("detalle confidencial"));
+});
+
+Deno.test("getUser que lanza sincronamente responde 401 con CORS permitido", async () => {
+  const x = setup({ getUser: (() => { throw new Error("detalle confidencial"); }) as (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }> });
+  const res = await x.handler(x.request());
+  equal(res.status, 401);
+  equal(res.headers.get("Access-Control-Allow-Origin"), "https://erp.tideo.tech");
+});
+
+Deno.test("excepcion inesperada tras validar payload responde 502 con CORS", async () => {
+  const x = setup({ now: () => { throw new Error("detalle confidencial"); } });
+  const res = await x.handler(x.request());
+  equal(res.status, 502);
+  equal((await res.json()).error, "El servicio no está disponible.");
+  equal(res.headers.get("Access-Control-Allow-Origin"), "https://erp.tideo.tech");
 });
 
 Deno.test("stock envía sociedad nula cuando la solicitud no especifica sociedad", async () => {

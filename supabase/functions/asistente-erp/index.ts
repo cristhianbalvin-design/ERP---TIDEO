@@ -63,8 +63,8 @@ const schemaFor = (spec: ToolSpec) => {
 export const OPENAI_TOOLS = TOOL_SPECS.map(schemaFor);
 
 export type SupabaseLike = {
-  auth: { getUser(token: string): Promise<{ data: { user: unknown | null }; error: unknown | null }> };
-  rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: unknown | null }>;
+  auth: { getUser(token: string): PromiseLike<{ data: { user: unknown | null }; error: unknown | null }> };
+  rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown | null }>;
 };
 type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => Promise<{ response: Response; data?: any }>;
 export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; env: (name: string) => string | undefined; now?: () => number };
@@ -93,6 +93,10 @@ const reply = (status: number, body: Record<string, unknown>, origin: string | n
 const errorReply = (status: number, message: string, origin: string | null, origins: Set<string>) => reply(status, { error: message }, origin, origins);
 const safeJson = (value: unknown) => (JSON.stringify(value) ?? "null").replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
+
+async function safely<T extends { data: unknown; error: unknown }>(operation: () => T | PromiseLike<T>): Promise<T | { data: null; error: true }> {
+  try { return await operation(); } catch { return { data: null, error: true }; }
+}
 
 function validatePayload(value: unknown): { ok: true; body: any } | { ok: false } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
@@ -161,13 +165,14 @@ export function createHandler(deps: HandlerDeps) {
     try { parsed = JSON.parse(raw); } catch { return errorReply(400, "La solicitud no es válida.", origin, origins); }
     const valid = validatePayload(parsed);
     if (!valid.ok) return errorReply(400, "Los datos de la solicitud no son válidos.", origin, origins);
+    try {
     const body = valid.body;
     const url = deps.env("SUPABASE_URL"), anon = deps.env("SUPABASE_ANON_KEY");
     const model = deps.env("OPENAI_MODEL_ASISTENTE") || "gpt-4o-mini";
     if (!url || !anon) return errorReply(502, "El servicio no está disponible.", origin, origins);
     let supabase: SupabaseLike;
     try { supabase = deps.createSupabase(token); } catch { return errorReply(502, "El servicio no está disponible.", origin, origins); }
-    const authResult = await supabase.auth.getUser(token).catch(() => ({ data: { user: null }, error: true }));
+    const authResult = await safely(() => supabase.auth.getUser(token));
     if (authResult.error || !authResult.data?.user) return errorReply(401, "Inicia sesión para continuar.", origin, origins);
     if (!deps.env("OPENAI_API_KEY")) return errorReply(502, "El servicio no está disponible.", origin, origins);
     const start = (deps.now ?? Date.now)();
@@ -180,16 +185,16 @@ export function createHandler(deps: HandlerDeps) {
       if (auditDone) return;
       auditDone = true;
       const c = body.contexto ?? {};
-      await supabase.rpc("asistente_registrar_historial", {
+      await safely(() => supabase.rpc("asistente_registrar_historial", {
         p_empresa_id: body.empresa_id, p_pregunta: body.pregunta, p_sociedad_id: body.sociedad_id ?? null,
         p_contexto_modulo: c.modulo ?? null, p_contexto_tipo: c.tipo ?? null, p_contexto_id: c.id ?? null,
         p_herramientas: [...new Set(toolsUsed)], p_resultado_resumen: summary,
         p_tokens_entrada: tokensIn || null, p_tokens_salida: tokensOut || null,
         p_duracion_ms: Math.max(0, (deps.now ?? Date.now)() - start), p_estado: estado,
         p_error_code: errorCode, p_modelo: model,
-      }).catch(() => ({ data: null, error: true }));
+      }));
     };
-    const quotaResult = await supabase.rpc("asistente_verificar_cuota", { p_empresa_id: body.empresa_id }).catch(() => ({ data: null, error: true }));
+    const quotaResult = await safely(() => supabase.rpc("asistente_verificar_cuota", { p_empresa_id: body.empresa_id }));
     if (quotaResult.error) return errorReply(403, "No tienes acceso a esta empresa.", origin, origins);
     const quota = normalizeQuota(quotaResult.data);
     quotaRemaining = quota.remaining;
@@ -248,7 +253,7 @@ export function createHandler(deps: HandlerDeps) {
           }
           toolsUsed.push(spec.name);
           const rpcArgs = { p_empresa_id: body.empresa_id, ...mapped };
-          const rpc = await supabase.rpc(spec.name, rpcArgs).catch(() => ({ data: null, error: true }));
+          const rpc = await safely(() => supabase.rpc(spec.name, rpcArgs));
           if (rpc.error) {
             rpcFailed = true;
             messages.push({ role: "tool", tool_call_id: call.id, content: safeJson({ error: "No se pudo consultar la información solicitada." }) });
@@ -264,6 +269,9 @@ export function createHandler(deps: HandlerDeps) {
       if ((error as Error)?.name === "AbortError") { await audit("error", "openai_timeout", null); return errorReply(504, "La IA tardó demasiado en responder.", origin, origins); }
       await audit("error", "openai_error", null);
       return errorReply(502, "La IA no está disponible en este momento.", origin, origins);
+    }
+    } catch {
+      return errorReply(502, "El servicio no está disponible.", origin, origins);
     }
   };
 }
