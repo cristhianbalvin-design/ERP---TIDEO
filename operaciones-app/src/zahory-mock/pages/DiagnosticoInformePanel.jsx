@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { actualizarOpciones, emitirInformeDiagnostico, generarConclusionIA, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador, OPCIONES_INFORME_POR_DEFECTO, usuarioPuedeInforme } from '../../services/diagnosticoInformeService.js';
 import { construirVistaInforme } from './informeSnapshot.js';
 import { InformeHoja } from './InformeHoja.jsx';
-import { listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
+import { firmarRutasFotosHallazgos, listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
@@ -20,6 +20,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const [identidadEmpresa, setIdentidadEmpresa] = useState(null);
   const [permisoAprobar, setPermisoAprobar] = useState(false);
   const [fotosPorHallazgo, setFotosPorHallazgo] = useState(() => new Map());
+  const [snapshotEmitidoVista, setSnapshotEmitidoVista] = useState(null);
   const [errorFotos, setErrorFotos] = useState(false);
   const [generandoIA, setGenerandoIA] = useState(false);
   const [iaError, setIaError] = useState('');
@@ -70,6 +71,38 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
 
   useEffect(() => {
     let active = true;
+    const snapshot = seleccionVersion?.estado === 'emitido' ? seleccionVersion.snapshot : null;
+    setSnapshotEmitidoVista(null);
+    if (!snapshot) return () => { active = false; };
+    setErrorFotos(false);
+    const hallazgos = snapshot.hallazgos || [];
+    const fotos = hallazgos.flatMap(hallazgo => hallazgo.fotos || []);
+    const rutas = [...new Set(fotos.map(foto => foto.ruta_storage).filter(Boolean))];
+    if (!rutas.length) return () => { active = false; };
+    firmarRutasFotosHallazgos(rutas).then(firmas => {
+      if (!active) return;
+      const snapshotVista = {
+        ...snapshot,
+        hallazgos: hallazgos.map(hallazgo => ({
+          ...hallazgo,
+          fotos: (hallazgo.fotos || []).map(foto => {
+            const url = firmas.get(foto.ruta_storage);
+            if (!url) throw new Error('No se pudo firmar una foto del informe.');
+            return { ...foto, url };
+          }),
+        })),
+      };
+      setSnapshotEmitidoVista(snapshotVista);
+    }).catch(() => {
+      if (!active) return;
+      setSnapshotEmitidoVista({ ...snapshot, hallazgos: hallazgos.map(hallazgo => ({ ...hallazgo, fotos: [] })) });
+      setErrorFotos(true);
+    });
+    return () => { active = false; };
+  }, [seleccionVersion]);
+
+  useEffect(() => {
+    let active = true;
     (async () => {
       try {
         const result = puedeEditar
@@ -104,9 +137,9 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const conclusionSinConfirmar = Boolean(String(opciones.conclusion || '').trim()) && !opciones.conclusion_confirmada;
   const opcionesPendientes = JSON.stringify(opciones) !== JSON.stringify(opcionesGuardadas);
   const effectiveSnapshot = useMemo(() => {
-    if (seleccionVersion?.snapshot) return seleccionVersion.snapshot;
+    if (seleccionVersion?.snapshot) return snapshotEmitidoVista || seleccionVersion.snapshot;
     return construirVistaInforme(diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo);
-  }, [seleccionVersion, diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo]);
+  }, [seleccionVersion, snapshotEmitidoVista, diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo]);
   const patch = (key, value) => { setSeleccionVersion(null); setOpciones(current => ({ ...current, [key]: value })); };
 
   const generarIA = async () => {

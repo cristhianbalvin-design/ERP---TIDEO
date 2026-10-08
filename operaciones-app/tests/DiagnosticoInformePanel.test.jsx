@@ -2,8 +2,10 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ obtenerOCrearBorrador: vi.fn(), obtenerInformeVigente: vi.fn(), actualizarOpciones: vi.fn(), generarConclusionIA: vi.fn(), obtenerIdentidadEmpresa: vi.fn(), usuarioPuedeInforme: vi.fn(), emitirInformeDiagnostico: vi.fn(), generarPdfInforme: vi.fn() }));
+const api = vi.hoisted(() => ({ obtenerOCrearBorrador: vi.fn(), obtenerInformeVigente: vi.fn(), actualizarOpciones: vi.fn(), generarConclusionIA: vi.fn(), obtenerIdentidadEmpresa: vi.fn(), usuarioPuedeInforme: vi.fn(), emitirInformeDiagnostico: vi.fn(), generarPdfInforme: vi.fn(), firmarRutasFotosHallazgos: vi.fn(), listarFotosHallazgos: vi.fn() }));
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({ ...api, OPCIONES_INFORME_POR_DEFECTO: { conclusion: '', conclusion_origen: 'manual', conclusion_confirmada: false, incluir_mediciones: false, mostrar_horas: false, ocultar_conformes: false } }));
+vi.mock('../src/services/diagnosticoHallazgoFotosService.js', () => ({ firmarRutasFotosHallazgos: (...args) => api.firmarRutasFotosHallazgos(...args), listarFotosHallazgos: (...args) => api.listarFotosHallazgos(...args) }));
+vi.mock('../src/zahory-mock/pages/InformeHoja.jsx', () => ({ InformeHoja: ({ snapshot }) => <div data-testid="informe-hoja">{JSON.stringify(snapshot)}</div> }));
 vi.mock('../src/zahory-mock/pages/InformePdf.jsx', () => ({ generarPdfInforme: (...args) => api.generarPdfInforme(...args) }));
 import { DiagnosticoInformePanel } from '../src/zahory-mock/pages/DiagnosticoInformePanel.jsx';
 
@@ -27,6 +29,8 @@ beforeEach(() => {
   api.usuarioPuedeInforme.mockResolvedValue(true);
   api.emitirInformeDiagnostico.mockResolvedValue({ id: 'v2', estado: 'emitido', version: 2, opciones: draft().opciones, snapshot: { version: 2, cabecera: {} } });
   api.generarPdfInforme.mockResolvedValue({ blob: new Blob(['pdf']), warnings: [] });
+  api.firmarRutasFotosHallazgos.mockImplementation(async rutas => new Map(rutas.map(ruta => [ruta, `https://signed/${ruta}`])));
+  api.listarFotosHallazgos.mockResolvedValue([]);
 });
 
 describe('DiagnosticoInformePanel', () => {
@@ -169,6 +173,41 @@ describe('DiagnosticoInformePanel', () => {
     globalThis.document = previousDocument;
     globalThis.URL = previousUrl;
     globalThis.window = previousWindow;
+    renderer.unmount(); renderer = null;
+  });
+
+  it('firma fotos emitidas solo para la vista y conserva intacto el snapshot original', async () => {
+    const snapshot = { version: 4, cabecera: {}, hallazgos: [{ id: 'h1', fotos: [{ ruta_storage: 'e/d/h/a.jpg', leyenda: 'Foto', orden: 1, ancho: 100, alto: 80 }] }] };
+    const emitted = { id: 'v4', estado: 'emitido', version: 4, opciones: draft().opciones, snapshot };
+    api.obtenerInformeVigente.mockResolvedValue({ borrador: null, emitidos: [emitted] });
+    await render({ puedeEditar: false });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const viewSnapshot = JSON.parse(text(renderer.root.findByProps({ 'data-testid': 'informe-hoja' })));
+    expect(api.firmarRutasFotosHallazgos).toHaveBeenCalledWith(['e/d/h/a.jpg']);
+    expect(viewSnapshot.hallazgos[0].fotos[0].url).toBe('https://signed/e/d/h/a.jpg');
+    expect(snapshot.hallazgos[0].fotos[0]).not.toHaveProperty('url');
+    expect(button('Descargar PDF')).toBeDefined();
+    renderer.unmount(); renderer = null;
+  });
+
+  it('muestra el aviso y continúa sin imágenes si falla la firma de una versión emitida', async () => {
+    const emitted = { id: 'v5', estado: 'emitido', version: 5, opciones: draft().opciones, snapshot: { version: 5, cabecera: {}, hallazgos: [{ id: 'h1', fotos: [{ ruta_storage: 'e/d/h/a.jpg' }] }] } };
+    api.obtenerInformeVigente.mockResolvedValue({ borrador: null, emitidos: [emitted] });
+    api.firmarRutasFotosHallazgos.mockRejectedValue(new Error('Storage unavailable'));
+    await render({ puedeEditar: false });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(renderer.root.findAll(node => node.props?.role === 'status').map(text).join(' ')).toContain('No se pudieron cargar las fotos.');
+    const failedSnapshot = JSON.parse(text(renderer.root.findByProps({ 'data-testid': 'informe-hoja' })));
+    expect(failedSnapshot.hallazgos[0].fotos).toEqual([]);
+    renderer.unmount(); renderer = null;
+  });
+
+  it('no solicita firmas para una versión emitida sin fotos', async () => {
+    const emitted = { id: 'v6', estado: 'emitido', version: 6, opciones: draft().opciones, snapshot: { version: 6, cabecera: {}, hallazgos: [{ id: 'h1', fotos: [] }] } };
+    api.obtenerInformeVigente.mockResolvedValue({ borrador: null, emitidos: [emitted] });
+    await render({ puedeEditar: false });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(api.firmarRutasFotosHallazgos).not.toHaveBeenCalled();
     renderer.unmount(); renderer = null;
   });
 });

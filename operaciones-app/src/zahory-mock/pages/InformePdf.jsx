@@ -10,7 +10,7 @@ const S = StyleSheet.create({
   sectionTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10, color: '#1a2b4a', marginTop: 13, marginBottom: 6, borderBottomWidth: 1, borderColor: '#e1e6ec', paddingBottom: 4 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, info: { width: '32%', borderWidth: 1, borderColor: '#e4eaf0', borderRadius: 3, padding: 7 }, label: { fontSize: 7, color: '#667085', marginBottom: 3 }, value: { fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
   summary: { flexDirection: 'row', gap: 6 }, summaryCard: { flexGrow: 1, borderWidth: 1, borderColor: '#e4eaf0', padding: 7, borderRadius: 3, alignItems: 'center' }, summaryLabel: { fontSize: 7, color: '#667085', marginBottom: 3 }, summaryNum: { fontFamily: 'Helvetica-Bold', fontSize: 12 },
-  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 9, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { marginBottom: 4, lineHeight: 1.35 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'row', gap: 8, marginTop: 7 }, photoBox: { width: '32%', alignItems: 'center' }, photo: { objectFit: 'contain', maxWidth: '100%' }, caption: { fontSize: 7, color: '#667085', marginTop: 3, textAlign: 'center' },
+  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 9, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { marginBottom: 1, lineHeight: 1.35 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'row', gap: 8, marginTop: 7 }, photoBox: { width: '32%', alignItems: 'center' }, photo: { objectFit: 'contain', maxWidth: '100%' }, caption: { fontSize: 7, color: '#667085', marginTop: 3, textAlign: 'center' },
   table: { marginTop: 5 }, tableHead: { flexDirection: 'row', backgroundColor: '#1a2b4a', padding: 5 }, tableHeadText: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7 }, tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#e6e9ee', padding: 5 }, tableCell: { fontSize: 7.5 }, task: { paddingVertical: 5, borderBottomWidth: 0.5, borderColor: '#e6e9ee' }, conclusion: { lineHeight: 1.45 }, signature: { marginTop: 20, width: 250, alignItems: 'center', alignSelf: 'center' }, signLine: { width: '85%', borderTopWidth: 1, borderColor: '#667085', marginBottom: 5 }, footer: { position: 'absolute', bottom: 20, left: 38, right: 38, borderTopWidth: 1, borderColor: '#d9e0e8', paddingTop: 5, textAlign: 'center', fontSize: 7, color: '#667085' },
 });
 
@@ -23,6 +23,10 @@ const dateLabel = value => {
   return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima' }).format(date);
 };
 const fmt = value => present(value) ? String(value) : '';
+const capitalize = value => {
+  const text = fmt(value);
+  return text ? `${text[0].toUpperCase()}${text.slice(1)}` : text;
+};
 const priorities = [['P1', 'Atención antes de operar'], ['P2', 'Atención prioritaria'], ['P3', 'Próximo mantenimiento'], ['P4', 'Monitorear'], ['conformes', 'Conformes']];
 const field = (label, value) => present(value) ? <View key={label} style={S.info}><Text style={S.label}>{label}</Text><Text style={S.value}>{fmt(value)}</Text></View> : null;
 
@@ -46,6 +50,13 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
   const mediciones = snapshot?.mediciones || [];
   const tareas = snapshot?.tareas_repuestos || [];
   const showLabor = tareas.some(t => present(t.cargo_nombre) || present(t.horas_mano_obra) || present(t.horas_maquina));
+  const groupedTaskCount = tareas.length <= 2 ? tareas.length : 1;
+  const renderTaskRow = (task, index) => <View key={`${task.tarea_nombre}-${index}`} style={S.tableRow}>
+    <Text style={[S.tableCell, { width: showLabor ? '31%' : '43%' }]}>{[task.actividad_nombre, task.tarea_nombre].filter(present).join(' · ')}</Text>
+    <Text style={[S.tableCell, { width: showLabor ? '24%' : '32%' }]}>{fmt(task.hallazgo)}</Text>
+    {showLabor ? <Text style={[S.tableCell, { width: '15%' }]}>{[task.cargo_nombre, present(task.horas_mano_obra) ? `${task.horas_mano_obra} h MO` : '', present(task.horas_maquina) ? `${task.horas_maquina} h máquina` : ''].filter(present).join('\n')}</Text> : null}
+    <Text style={[S.tableCell, { width: showLabor ? '30%' : '25%' }]}>{(task.materiales || []).map(m => [m.codigo, m.descripcion, present(m.cantidad) ? `${m.cantidad} ${m.unidad || ''}` : ''].filter(present).join(' · ')).join('\n')}</Text>
+  </View>;
   return <Document>
     <Page size="A4" style={S.page}>
       <View style={S.header}>
@@ -59,7 +70,7 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
         {field('Cliente', head.cliente_razon_social)}{field('N° de serie', head.numero_serie)}
         {field('Fecha de recepción', dateLabel(head.fecha_recepcion))}{field('N° de caso', head.numero_caso)}
         {field('Horómetro', head.horometro)}
-        {field('Tipo', head.tipo)}{field('Versión', snapshot?.version)}{field('Emitido el', dateLabel(snapshot?.emitido_en))}
+        {field('Tipo', capitalize(head.tipo))}{field('Versión', snapshot?.version)}{field('Emitido el', dateLabel(snapshot?.emitido_en))}
       </View>
       <Text style={S.sectionTitle}>Resumen por prioridad</Text>
       <View style={S.summary}>{priorities.map(([key, label]) => <View key={key} style={S.summaryCard}><Text style={S.summaryLabel}>{label}</Text><Text style={S.summaryNum}>{Number(resumen[key] || 0)}</Text></View>)}</View>
@@ -85,14 +96,13 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
         </View>;
       })}</> : null}
 
-      {tareas.length ? <><Text style={S.sectionTitle}>Tareas y repuestos</Text>
-        <View style={S.tableHead}><Text style={[S.tableHeadText, { width: showLabor ? '31%' : '43%' }]}>Actividad / tarea</Text><Text style={[S.tableHeadText, { width: showLabor ? '24%' : '32%' }]}>Hallazgo</Text>{showLabor ? <><Text style={[S.tableHeadText, { width: '15%' }]}>Cargo / horas</Text><Text style={[S.tableHeadText, { width: '30%' }]}>Repuestos</Text></> : <Text style={[S.tableHeadText, { width: '25%' }]}>Repuestos</Text>}</View>
-        {tareas.map((task, index) => <View key={`${task.tarea_nombre}-${index}`} style={S.tableRow}>
-          <Text style={[S.tableCell, { width: showLabor ? '31%' : '43%' }]}>{[task.actividad_nombre, task.tarea_nombre].filter(present).join(' · ')}</Text>
-          <Text style={[S.tableCell, { width: showLabor ? '24%' : '32%' }]}>{fmt(task.hallazgo)}</Text>
-          {showLabor ? <Text style={[S.tableCell, { width: '15%' }]}>{[task.cargo_nombre, present(task.horas_mano_obra) ? `${task.horas_mano_obra} h MO` : '', present(task.horas_maquina) ? `${task.horas_maquina} h máquina` : ''].filter(present).join('\n')}</Text> : null}
-          <Text style={[S.tableCell, { width: showLabor ? '30%' : '25%' }]}>{(task.materiales || []).map(m => [m.codigo, m.descripcion, present(m.cantidad) ? `${m.cantidad} ${m.unidad || ''}` : ''].filter(present).join(' · ')).join('\n')}</Text>
-        </View>)}
+      {tareas.length ? <>
+        <View wrap={false}>
+          <Text style={S.sectionTitle}>Tareas y repuestos</Text>
+          <View style={S.tableHead}><Text style={[S.tableHeadText, { width: showLabor ? '31%' : '43%' }]}>Actividad / tarea</Text><Text style={[S.tableHeadText, { width: showLabor ? '24%' : '32%' }]}>Hallazgo</Text>{showLabor ? <><Text style={[S.tableHeadText, { width: '15%' }]}>Cargo / horas</Text><Text style={[S.tableHeadText, { width: '30%' }]}>Repuestos</Text></> : <Text style={[S.tableHeadText, { width: '25%' }]}>Repuestos</Text>}</View>
+          {tareas.slice(0, groupedTaskCount).map(renderTaskRow)}
+        </View>
+        {tareas.slice(groupedTaskCount).map((task, index) => renderTaskRow(task, index + groupedTaskCount))}
       </> : null}
       {present(snapshot?.conclusion) ? <><Text style={S.sectionTitle}>Conclusión</Text><Text style={S.conclusion}>{snapshot.conclusion}</Text></> : null}
       {present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View style={S.signature}>

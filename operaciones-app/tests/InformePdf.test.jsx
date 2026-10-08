@@ -39,6 +39,13 @@ const textContents = node => {
   return [ ...(node.children || []).flatMap(textContents) ];
 };
 
+const findNode = (node, predicate) => {
+  if (!node) return null;
+  if (Array.isArray(node)) return node.map(child => findNode(child, predicate)).find(Boolean) || null;
+  if (predicate(node)) return node;
+  return (node.children || []).map(child => findNode(child, predicate)).find(Boolean) || null;
+};
+
 describe('InformePdf', () => {
   it('renderiza el snapshot completo con hallazgos, mediciones, tareas, fotos, emisor y pie', () => {
     const tree = create(<InformePdf snapshot={completeSnapshot} imagenes={{ logo: 'data:image/png;base64,logo', fotos: { 'foto-1': 'data:image/jpeg;base64,foto' } }} />).toJSON();
@@ -702,7 +709,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -722,7 +729,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -742,7 +749,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -762,7 +769,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -782,7 +789,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -802,7 +809,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -822,7 +829,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -842,7 +849,7 @@ describe('InformePdf', () => {
               style={
                 {
                   "lineHeight": 1.35,
-                  "marginBottom": 4,
+                  "marginBottom": 1,
                 }
               }
             >
@@ -1071,164 +1078,168 @@ describe('InformePdf', () => {
               </View>
             </View>
           </View>
-          <Text
-            style={
-              {
-                "borderBottomWidth": 1,
-                "borderColor": "#e1e6ec",
-                "color": "#1a2b4a",
-                "fontFamily": "Helvetica-Bold",
-                "fontSize": 10,
-                "marginBottom": 6,
-                "marginTop": 13,
-                "paddingBottom": 4,
-              }
-            }
-          >
-            Tareas y repuestos
-          </Text>
           <View
-            style={
-              {
-                "backgroundColor": "#1a2b4a",
-                "flexDirection": "row",
-                "padding": 5,
-              }
-            }
+            wrap={false}
           >
             <Text
               style={
-                [
-                  {
-                    "color": "#fff",
-                    "fontFamily": "Helvetica-Bold",
-                    "fontSize": 7,
-                  },
-                  {
-                    "width": "31%",
-                  },
-                ]
+                {
+                  "borderBottomWidth": 1,
+                  "borderColor": "#e1e6ec",
+                  "color": "#1a2b4a",
+                  "fontFamily": "Helvetica-Bold",
+                  "fontSize": 10,
+                  "marginBottom": 6,
+                  "marginTop": 13,
+                  "paddingBottom": 4,
+                }
               }
             >
-              Actividad / tarea
+              Tareas y repuestos
             </Text>
-            <Text
+            <View
               style={
-                [
-                  {
-                    "color": "#fff",
-                    "fontFamily": "Helvetica-Bold",
-                    "fontSize": 7,
-                  },
-                  {
-                    "width": "24%",
-                  },
-                ]
+                {
+                  "backgroundColor": "#1a2b4a",
+                  "flexDirection": "row",
+                  "padding": 5,
+                }
               }
             >
-              Hallazgo
-            </Text>
-            <Text
+              <Text
+                style={
+                  [
+                    {
+                      "color": "#fff",
+                      "fontFamily": "Helvetica-Bold",
+                      "fontSize": 7,
+                    },
+                    {
+                      "width": "31%",
+                    },
+                  ]
+                }
+              >
+                Actividad / tarea
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "color": "#fff",
+                      "fontFamily": "Helvetica-Bold",
+                      "fontSize": 7,
+                    },
+                    {
+                      "width": "24%",
+                    },
+                  ]
+                }
+              >
+                Hallazgo
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "color": "#fff",
+                      "fontFamily": "Helvetica-Bold",
+                      "fontSize": 7,
+                    },
+                    {
+                      "width": "15%",
+                    },
+                  ]
+                }
+              >
+                Cargo / horas
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "color": "#fff",
+                      "fontFamily": "Helvetica-Bold",
+                      "fontSize": 7,
+                    },
+                    {
+                      "width": "30%",
+                    },
+                  ]
+                }
+              >
+                Repuestos
+              </Text>
+            </View>
+            <View
               style={
-                [
-                  {
-                    "color": "#fff",
-                    "fontFamily": "Helvetica-Bold",
-                    "fontSize": 7,
-                  },
-                  {
-                    "width": "15%",
-                  },
-                ]
+                {
+                  "borderBottomWidth": 0.5,
+                  "borderColor": "#e6e9ee",
+                  "flexDirection": "row",
+                  "padding": 5,
+                }
               }
             >
-              Cargo / horas
-            </Text>
-            <Text
-              style={
-                [
-                  {
-                    "color": "#fff",
-                    "fontFamily": "Helvetica-Bold",
-                    "fontSize": 7,
-                  },
-                  {
-                    "width": "30%",
-                  },
-                ]
-              }
-            >
-              Repuestos
-            </Text>
-          </View>
-          <View
-            style={
-              {
-                "borderBottomWidth": 0.5,
-                "borderColor": "#e6e9ee",
-                "flexDirection": "row",
-                "padding": 5,
-              }
-            }
-          >
-            <Text
-              style={
-                [
-                  {
-                    "fontSize": 7.5,
-                  },
-                  {
-                    "width": "31%",
-                  },
-                ]
-              }
-            >
-              Reparación · Cambiar sello
-            </Text>
-            <Text
-              style={
-                [
-                  {
-                    "fontSize": 7.5,
-                  },
-                  {
-                    "width": "24%",
-                  },
-                ]
-              }
-            >
-              Bomba
-            </Text>
-            <Text
-              style={
-                [
-                  {
-                    "fontSize": 7.5,
-                  },
-                  {
-                    "width": "15%",
-                  },
-                ]
-              }
-            >
-              Técnico
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 7.5,
+                    },
+                    {
+                      "width": "31%",
+                    },
+                  ]
+                }
+              >
+                Reparación · Cambiar sello
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 7.5,
+                    },
+                    {
+                      "width": "24%",
+                    },
+                  ]
+                }
+              >
+                Bomba
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 7.5,
+                    },
+                    {
+                      "width": "15%",
+                    },
+                  ]
+                }
+              >
+                Técnico
       2 h MO
       1 h máquina
-            </Text>
-            <Text
-              style={
-                [
-                  {
-                    "fontSize": 7.5,
-                  },
-                  {
-                    "width": "30%",
-                  },
-                ]
-              }
-            >
-              SEL-1 · Sello · 1 und
-            </Text>
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontSize": 7.5,
+                    },
+                    {
+                      "width": "30%",
+                    },
+                  ]
+                }
+              >
+                SEL-1 · Sello · 1 und
+              </Text>
+            </View>
           </View>
           <Text
             style={
@@ -1688,5 +1699,21 @@ describe('InformePdf', () => {
     const rendered = textContents(tree).join(' ');
     expect(rendered).toContain('RAC-MIN');
     expect(rendered).not.toMatch(/null|undefined|Horómetro|Mediciones|Tareas y repuestos|costo|precio|tarifa/i);
+  });
+
+  it('mantiene el título, encabezado y primeras filas de tareas juntos', () => {
+    const tree = create(<InformePdf snapshot={completeSnapshot} />).toJSON();
+    const group = findNode(tree, node => node.type === 'View' && node.props?.wrap === false && textContents(node).includes('Tareas y repuestos'));
+    expect(group).not.toBeNull();
+    expect(textContents(group)).toContain('Actividad / tarea');
+    expect(textContents(group).some(text => text.includes('Cambiar sello'))).toBe(true);
+  });
+
+  it('capitaliza Tipo solo al renderizar el PDF', () => {
+    const snapshot = { ...completeSnapshot, cabecera: { ...completeSnapshot.cabecera, tipo: 'mantenimiento' } };
+    const tree = create(<InformePdf snapshot={snapshot} />).toJSON();
+    const tipo = findNode(tree, node => node.type === 'View' && node.children?.length === 2 && textContents(node).includes('Tipo'));
+    expect(textContents(tipo)).toEqual(['Tipo', 'Mantenimiento']);
+    expect(snapshot.cabecera.tipo).toBe('mantenimiento');
   });
 });
