@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context.jsx';
 import { getActivosParaOS } from '../services/activosService.js';
 import { SelectorTipoCotizacion } from './SelectorTipoCotizacion.jsx';
@@ -12,9 +12,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 const diasDesde = fecha => {
   if (!fecha) return '—';
-  const inicio = new Date(`${fecha}T00:00:00`);
-  if (Number.isNaN(inicio.getTime())) return '—';
-  return Math.max(0, Math.floor((Date.now() - inicio.getTime()) / 86400000));
+  const [anio, mes, dia] = fecha.slice(0, 10).split('-').map(Number);
+  if (!anio || !mes || !dia) return '—';
+  const ahora = new Date();
+  const hoy = Date.UTC(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+  return Math.max(0, Math.floor((hoy - Date.UTC(anio, mes - 1, dia)) / 86400000));
 };
 
 const ESTADO_CUSTODIA = {
@@ -30,7 +32,7 @@ const estadoCustodia = estado => ESTADO_CUSTODIA[estado] || {
   className: 'badge-gray',
 };
 
-export function BandejaRecepcionesActivosCliente() {
+export function BandejaRecepcionesActivosCliente({ drawerAbierto = false, onAbrirDrawer = () => {}, onCerrarDrawer = () => {}, onResumen = () => {} }) {
   const {
     empresa,
     crearHojaCosteo,
@@ -47,6 +49,11 @@ export function BandejaRecepcionesActivosCliente() {
   const [advertenciaHojaCosteo, setAdvertenciaHojaCosteo] = useState(null);
   const [modalDevolucion, setModalDevolucion] = useState(null);
   const [devolucion, setDevolucion] = useState({ fecha_devolucion: today(), guia_devolucion: '' });
+  const dialogRef = useRef(null);
+  const pendientesCotizar = useMemo(() => recepciones.filter(recepcion => recepcion.estado === 'pendiente_cotizar'), [recepciones]);
+
+  useEffect(() => { onResumen({ total: recepciones.length, pendientes: pendientesCotizar.length }); }, [recepciones.length, pendientesCotizar.length, onResumen]);
+  useEffect(() => { if (drawerAbierto) dialogRef.current?.focus(); }, [drawerAbierto]);
 
   const cargar = async () => {
     if (!empresaId) {
@@ -170,53 +177,16 @@ export function BandejaRecepcionesActivosCliente() {
   if (!empresaId) return null;
 
   return <>
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-body">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div>
-            <div className="eyebrow">Recepción de activos</div>
-            <h3 style={{ margin: 0 }}>Bandeja de activos de clientes</h3>
-            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
-              Consulta de ingresos y estado de custodia. Las nuevas recepciones se registran desde Operaciones.
-            </div>
-          </div>
-        </div>
-        <div className="alert alert-info" style={{ marginBottom: 14 }}>
-          Las recepciones de activos ahora se registran desde Operaciones. Ve a {'App de Operaciones → Taller & Operaciones → Recepción de Activos'} para registrar el ingreso de un activo de cliente.
-        </div>
-        {error && !errorRecepcionId && !selectorCotizacion && <div className="alert alert-danger" style={{ marginBottom: 12 }}>{error}</div>}
-        <div className="table-wrap">
-          <table className="tbl" style={{ minWidth: 980 }}>
-            <thead><tr><th>Recepción</th><th>Código</th><th>Activo</th><th>Estado de custodia</th><th>Ingreso</th><th>Días</th><th>Guía</th><th /></tr></thead>
-            <tbody>
-              {recepciones.map(recepcion => {
-                const activo = activosPorId.get(recepcion.activo_id);
-                const estado = estadoCustodia(recepcion.estado_custodia);
-                const puedeCotizar = recepcion.estado === 'pendiente_cotizar';
-                return <tr key={recepcion.id}>
-                  <td className="mono"><strong>{recepcion.numero || '—'}</strong>{errorRecepcionId === recepcion.id && <div className="alert alert-danger" style={{ marginTop: 8, marginBottom: 0, whiteSpace: 'normal', minWidth: 280 }}>{error}</div>}</td>
-                  <td className="mono">{activo?.codigo || '—'}</td>
-                  <td>{activo?.nombre || 'Activo no disponible'}{activo?.modelo ? ` · ${activo.modelo}` : ''}</td>
-                  <td><span className={`badge ${estado.className}`}>{estado.label}</span></td>
-                  <td>{recepcion.fecha_ingreso || '—'}{recepcion.hora_ingreso ? ` ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</td>
-                  <td>{diasDesde(recepcion.fecha_ingreso)}</td>
-                  <td>{recepcion.guia_ingreso || '—'}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {puedeCotizar
-                      ? <>
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirCotizacion(recepcion)} disabled={saving}>Cotizar</button>
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => abrirDevolucion(recepcion)} disabled={saving}>Devolver sin cotizar</button>
-                      </>
-                      : <span className="text-muted">Sin acción</span>}
-                  </td>
-                </tr>;
-              })}
-              {!recepciones.length && <tr><td colSpan="8" className="text-center text-muted" style={{ padding: 24 }}>{loading ? 'Cargando recepciones…' : 'No hay recepciones registradas.'}</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    {pendientesCotizar.length > 0 && <section className="dx-prod-strip" aria-label="Recepciones pendientes de cotizar"><span className="dx-prod-badge">{pendientesCotizar.length} por cotizar</span>{pendientesCotizar.slice(0, 2).map(recepcion => {
+      const activo = activosPorId.get(recepcion.activo_id);
+      return <div className="dx-prod-strip-item" key={recepcion.id}><div className="dx-prod-strip-text"><strong>{recepcion.numero || '—'} · {activo?.nombre || 'Activo no disponible'}</strong><span>{activo?.codigo || '—'} · {diasDesde(recepcion.fecha_ingreso)} días en custodia</span></div><button type="button" className="dx-prod-btn dx-prod-btn-sm" onClick={() => abrirCotizacion(recepcion)} disabled={saving}>Cotizar</button><button type="button" className="dx-prod-btn dx-prod-btn-sm dx-prod-ghost-danger" onClick={() => abrirDevolucion(recepcion)} disabled={saving}>Devolver sin cotizar</button></div>;
+    })}{pendientesCotizar.length > 2 && <span className="dx-prod-more">+{pendientesCotizar.length - 2} más</span>}<button type="button" className="dx-prod-linkbtn" onClick={event => onAbrirDrawer(event.currentTarget)}>Ver recepciones</button></section>}
+    {drawerAbierto && <><button type="button" className="dx-prod-scrim" aria-label="Cerrar recepciones" onClick={onCerrarDrawer} /><section className="dx-prod-drawer" role="dialog" aria-modal="true" aria-label="Recepciones de activos de clientes" tabIndex={-1} ref={dialogRef} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onCerrarDrawer(); } }}><header className="dx-prod-drawer-head"><div><h2>Recepciones</h2><p>{recepciones.length} ingresos · {pendientesCotizar.length} pendientes de cotizar</p></div><button type="button" className="dx-prod-icon-btn" aria-label="Cerrar recepciones" onClick={onCerrarDrawer}>×</button></header><div className="dx-prod-drawer-body"><div className="dx-prod-drawer-note">Las nuevas recepciones se registran desde Operaciones → Taller & Operaciones → Recepción de Activos.</div>{error && !errorRecepcionId && !selectorCotizacion && <div className="alert alert-danger">{error}</div>}{recepciones.map(recepcion => {
+      const activo = activosPorId.get(recepcion.activo_id);
+      const estado = estadoCustodia(recepcion.estado_custodia);
+      const puedeCotizar = recepcion.estado === 'pendiente_cotizar';
+      return <article className="dx-prod-rec-item" key={recepcion.id}><div className="dx-prod-rec-top"><strong className="dx-prod-mono">{recepcion.numero || '—'}</strong><span className={`dx-prod-custody dx-prod-custody-${estado.className.replace('badge-', '')}`}>{estado.label}</span></div><strong>{activo?.nombre || 'Activo no disponible'}</strong><div className="dx-prod-rec-meta"><span>Código: <b className="dx-prod-mono">{activo?.codigo || '—'}</b></span><span>Ingreso: {recepcion.fecha_ingreso || '—'}{recepcion.hora_ingreso ? ` ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</span><span>{diasDesde(recepcion.fecha_ingreso)} días</span><span>Guía: {recepcion.guia_ingreso || '—'}</span></div>{errorRecepcionId === recepcion.id && <div className="alert alert-danger">{error}</div>}{puedeCotizar ? <div className="dx-prod-rec-actions"><button type="button" className="dx-prod-btn dx-prod-btn-sm" onClick={() => abrirCotizacion(recepcion)} disabled={saving}>Cotizar</button><button type="button" className="dx-prod-btn dx-prod-btn-sm dx-prod-ghost-danger" onClick={() => abrirDevolucion(recepcion)} disabled={saving}>Devolver sin cotizar</button></div> : <span className="dx-prod-rec-noaction">Sin acción</span>}</article>;
+    })}{!recepciones.length && <div className="dx-prod-empty"><strong>{loading ? 'Cargando recepciones…' : 'No hay recepciones registradas.'}</strong></div>}</div></section></>}
 
     {modalDevolucion && <div className="modal-backdrop"><div className="modal" style={{ maxWidth: 520 }}>
       <div className="modal-head">
