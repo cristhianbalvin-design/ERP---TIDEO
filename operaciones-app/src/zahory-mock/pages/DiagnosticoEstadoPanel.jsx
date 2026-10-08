@@ -81,14 +81,14 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
               <label htmlFor="diagnostico-reapertura-motivo">Motivo de reapertura</label>
               <textarea id="diagnostico-reapertura-motivo" className="input" value={motivo} onChange={event => setMotivo(event.target.value)} rows={4} required autoFocus aria-describedby="diagnostico-reapertura-contador" />
             </div>
-            <div id="diagnostico-reapertura-contador" className="muted" aria-live="polite">{motivo.trim().length} caracteres (mínimo 10).</div>
+            <div id="diagnostico-reapertura-contador" className={`diagnostico-estado-contador ${corto ? 'is-short' : 'is-valid'}`} aria-live="polite">{motivo.trim().length} caracteres (mínimo 10).</div>
             {corto && <div className="alert alert-warning">Ingresa un motivo de al menos 10 caracteres, sin contar espacios al inicio o al final.</div>}
           </>}
           {error && <div className="alert alert-error" role="alert">{error}</div>}
         </div>
         <div className="card-body diagnostico-estado-dialog-actions">
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setDialogo('')}>Cancelar</button>
-          <button type="button" className="btn btn-primary" disabled={busy || (dialogo === 'emitir' && cambiosSinGuardar) || (dialogo === 'reabrir' && corto)} onClick={confirmar}>{busy ? 'Procesando...' : dialogo === 'emitir' ? 'Confirmar emisión' : 'Confirmar reapertura'}</button>
+          <button type="button" className="btn btn-primary" disabled={busy || (dialogo === 'emitir' && cambiosSinGuardar) || (dialogo === 'reabrir' && corto)} title={dialogo === 'reabrir' && corto ? 'Escribe al menos 10 caracteres' : undefined} onClick={confirmar}>{busy ? 'Procesando...' : dialogo === 'emitir' ? 'Confirmar emisión' : 'Confirmar reapertura'}</button>
         </div>
       </div>
     </div>}

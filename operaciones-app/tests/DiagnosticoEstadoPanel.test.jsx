@@ -67,9 +67,17 @@ describe('DiagnosticoEstadoPanel', () => {
     await act(async () => { button(renderer.root, 'Reabrir diagnóstico').props.onClick(); });
     const confirm = button(renderer.root, 'Confirmar reapertura');
     expect(confirm.props.disabled).toBe(true);
+    expect(confirm.props.title).toBe('Escribe al menos 10 caracteres');
+    const counter = renderer.root.findByProps({ id: 'diagnostico-reapertura-contador' });
+    expect(counter.props.className).toContain('is-short');
     const field = renderer.root.findByProps({ id: 'diagnostico-reapertura-motivo' });
+    await act(async () => { field.props.onChange({ target: { value: '  abcdefghi  ' } }); });
+    expect(renderer.root.findByProps({ id: 'diagnostico-reapertura-contador' }).props.className).toContain('is-short');
+    expect(button(renderer.root, 'Confirmar reapertura').props.disabled).toBe(true);
     await act(async () => { field.props.onChange({ target: { value: '  abcdefghij  ' } }); });
     expect(button(renderer.root, 'Confirmar reapertura').props.disabled).toBe(false);
+    expect(button(renderer.root, 'Confirmar reapertura').props.title).toBeUndefined();
+    expect(renderer.root.findByProps({ id: 'diagnostico-reapertura-contador' }).props.className).toContain('is-valid');
     await act(async () => { button(renderer.root, 'Confirmar reapertura').props.onClick(); await Promise.resolve(); });
     expect(service.reabrirDiagnosticoTecnico).toHaveBeenCalledWith('d1', 'abcdefghij');
   });
