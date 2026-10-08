@@ -67,12 +67,28 @@ export type SupabaseLike = {
 type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => Promise<{ response: Response; data?: any }>;
 export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; env: (name: string) => string | undefined; now?: () => number };
 
-const corsHeaders = (origin: string | null): Record<string, string> => ({
-  ...(origin === ALLOWED_ORIGIN ? { "Access-Control-Allow-Origin": ALLOWED_ORIGIN, "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS", "Vary": "Origin" } : {}),
+const allowedOrigins = (extra: string | undefined): Set<string> => {
+  const allowed = new Set([ALLOWED_ORIGIN]);
+  for (const entry of (extra ?? "").split(",")) {
+    const value = entry.trim();
+    if (!value || allowed.size >= 6) continue;
+    try {
+      const parsed = new URL(value);
+      const hostname = parsed.hostname;
+      const validHost = hostname.startsWith("[")
+        ? hostname.endsWith("]")
+        : hostname.length <= 253 && hostname.replace(/\.$/, "").split(".").every(label => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));
+      if (parsed.protocol === "https:" && !parsed.username && !parsed.password && validHost && parsed.origin === value) allowed.add(value);
+    } catch { /* Invalid entries are silently ignored. */ }
+  }
+  return allowed;
+};
+const corsHeaders = (origin: string | null, origins: Set<string>): Record<string, string> => ({
+  ...(origin !== null && origins.has(origin) ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS", "Vary": "Origin" } : {}),
   "Content-Type": "application/json; charset=utf-8",
 });
-const reply = (status: number, body: Record<string, unknown>, origin: string | null) => new Response(JSON.stringify(body), { status, headers: corsHeaders(origin) });
-const errorReply = (status: number, message: string, origin: string | null) => reply(status, { error: message }, origin);
+const reply = (status: number, body: Record<string, unknown>, origin: string | null, origins: Set<string>) => new Response(JSON.stringify(body), { status, headers: corsHeaders(origin, origins) });
+const errorReply = (status: number, message: string, origin: string | null, origins: Set<string>) => reply(status, { error: message }, origin, origins);
 const safeJson = (value: unknown) => (JSON.stringify(value) ?? "null").replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
 
@@ -128,27 +144,28 @@ function normalizeQuota(data: any): { allowed: boolean; remaining?: number } {
 export function createHandler(deps: HandlerDeps) {
   return async (req: Request): Promise<Response> => {
     const origin = req.headers.get("Origin");
-    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    if (req.method !== "POST") return errorReply(405, "Método no permitido.", origin);
+    const origins = allowedOrigins(deps.env("ASISTENTE_ORIGENES_EXTRA"));
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin, origins) });
+    if (req.method !== "POST") return errorReply(405, "Método no permitido.", origin, origins);
     const auth = req.headers.get("Authorization") ?? "";
     const token = auth.match(/^Bearer\s+([^\s]+)$/i)?.[1];
-    if (!token) return errorReply(401, "Inicia sesión para continuar.", origin);
+    if (!token) return errorReply(401, "Inicia sesión para continuar.", origin, origins);
     let raw: string;
-    try { raw = await req.text(); } catch { return errorReply(400, "La solicitud no es válida.", origin); }
-    if (utf8Bytes(raw) > MAX_BODY_BYTES) return errorReply(400, "La solicitud supera el tamaño permitido.", origin);
+    try { raw = await req.text(); } catch { return errorReply(400, "La solicitud no es válida.", origin, origins); }
+    if (utf8Bytes(raw) > MAX_BODY_BYTES) return errorReply(400, "La solicitud supera el tamaño permitido.", origin, origins);
     let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { return errorReply(400, "La solicitud no es válida.", origin); }
+    try { parsed = JSON.parse(raw); } catch { return errorReply(400, "La solicitud no es válida.", origin, origins); }
     const valid = validatePayload(parsed);
-    if (!valid.ok) return errorReply(400, "Los datos de la solicitud no son válidos.", origin);
+    if (!valid.ok) return errorReply(400, "Los datos de la solicitud no son válidos.", origin, origins);
     const body = valid.body;
     const url = deps.env("SUPABASE_URL"), anon = deps.env("SUPABASE_ANON_KEY");
     const model = deps.env("OPENAI_MODEL_ASISTENTE") || "gpt-4o-mini";
-    if (!url || !anon) return errorReply(502, "El servicio no está disponible.", origin);
+    if (!url || !anon) return errorReply(502, "El servicio no está disponible.", origin, origins);
     let supabase: SupabaseLike;
-    try { supabase = deps.createSupabase(token); } catch { return errorReply(502, "El servicio no está disponible.", origin); }
+    try { supabase = deps.createSupabase(token); } catch { return errorReply(502, "El servicio no está disponible.", origin, origins); }
     const authResult = await supabase.auth.getUser(token).catch(() => ({ data: { user: null }, error: true }));
-    if (authResult.error || !authResult.data?.user) return errorReply(401, "Inicia sesión para continuar.", origin);
-    if (!deps.env("OPENAI_API_KEY")) return errorReply(502, "El servicio no está disponible.", origin);
+    if (authResult.error || !authResult.data?.user) return errorReply(401, "Inicia sesión para continuar.", origin, origins);
+    if (!deps.env("OPENAI_API_KEY")) return errorReply(502, "El servicio no está disponible.", origin, origins);
     const start = (deps.now ?? Date.now)();
     const toolsUsed: string[] = [];
     let tokensIn = 0, tokensOut = 0;
@@ -169,12 +186,12 @@ export function createHandler(deps: HandlerDeps) {
       }).catch(() => ({ data: null, error: true }));
     };
     const quotaResult = await supabase.rpc("asistente_verificar_cuota", { p_empresa_id: body.empresa_id }).catch(() => ({ data: null, error: true }));
-    if (quotaResult.error) return errorReply(403, "No tienes acceso a esta empresa.", origin);
+    if (quotaResult.error) return errorReply(403, "No tienes acceso a esta empresa.", origin, origins);
     const quota = normalizeQuota(quotaResult.data);
     quotaRemaining = quota.remaining;
     if (!quota.allowed) {
       await audit("cuota_excedida", "cuota_excedida", null);
-      return reply(429, { error: "Se agotó tu cuota diaria de consultas.", ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}) }, origin);
+      return reply(429, { error: "Se agotó tu cuota diaria de consultas.", ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}) }, origin, origins);
     }
 
     const messages: Array<Record<string, unknown>> = [{ role: "system", content: SYSTEM_PROMPT }];
@@ -191,23 +208,23 @@ export function createHandler(deps: HandlerDeps) {
         let result: { response: Response; data?: any };
         try { result = await deps.callOpenAI(messages, finalRound ? [] : OPENAI_TOOLS, model, controller.signal); }
         finally { clearTimeout(timer); }
-        if (!result.response.ok || !result.data) { await audit("error", "openai_http", null); return errorReply(502, "La IA no está disponible en este momento.", origin); }
+        if (!result.response.ok || !result.data) { await audit("error", "openai_http", null); return errorReply(502, "La IA no está disponible en este momento.", origin, origins); }
         tokensIn += Number(result.data.usage?.prompt_tokens) || 0;
         tokensOut += Number(result.data.usage?.completion_tokens) || 0;
         const message = result.data.choices?.[0]?.message;
-        if (!message) { await audit("error", finalRound ? "max_rondas" : "openai_respuesta_invalida", null); return errorReply(502, finalRound ? "No se pudo completar la consulta." : "La IA devolvió una respuesta no válida.", origin); }
+        if (!message) { await audit("error", finalRound ? "max_rondas" : "openai_respuesta_invalida", null); return errorReply(502, finalRound ? "No se pudo completar la consulta." : "La IA devolvió una respuesta no válida.", origin, origins); }
         const calls = message.tool_calls ?? [];
         if (finalRound) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
-          if (calls.length || !answer) { await audit("error", "max_rondas", null); return errorReply(502, "No se pudo completar la consulta.", origin); }
+          if (calls.length || !answer) { await audit("error", "max_rondas", null); return errorReply(502, "No se pudo completar la consulta.", origin, origins); }
           await audit("completado", rpcFailed ? "rpc_error" : null, answer.slice(0, 1200));
-          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin);
+          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin, origins);
         }
         if (!calls.length) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
-          if (!answer) { await audit("error", "respuesta_vacia", null); return errorReply(502, "La IA devolvió una respuesta no válida.", origin); }
+          if (!answer) { await audit("error", "respuesta_vacia", null); return errorReply(502, "La IA devolvió una respuesta no válida.", origin, origins); }
           await audit("completado", rpcFailed ? "rpc_error" : null, answer.slice(0, 1200));
-          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin);
+          return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin, origins);
         }
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: calls });
         rounds++;
@@ -240,9 +257,9 @@ export function createHandler(deps: HandlerDeps) {
         }
       }
     } catch (error) {
-      if ((error as Error)?.name === "AbortError") { await audit("error", "openai_timeout", null); return errorReply(504, "La IA tardó demasiado en responder.", origin); }
+      if ((error as Error)?.name === "AbortError") { await audit("error", "openai_timeout", null); return errorReply(504, "La IA tardó demasiado en responder.", origin, origins); }
       await audit("error", "openai_error", null);
-      return errorReply(502, "La IA no está disponible en este momento.", origin);
+      return errorReply(502, "La IA no está disponible en este momento.", origin, origins);
     }
   };
 }

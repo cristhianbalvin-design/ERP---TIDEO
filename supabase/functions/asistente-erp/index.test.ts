@@ -9,7 +9,7 @@ const equal = (a: unknown, b: unknown) => assert(a === b, `expected ${String(b)}
 const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const completion = (message: any, usage = { prompt_tokens: 12, completion_tokens: 7 }) => ({ response: jsonResponse({}), data: { choices: [{ message }], usage } });
 
-function setup(options: { user?: boolean; quota?: unknown; rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
+function setup(options: { user?: boolean; quota?: unknown; extraOrigins?: string; rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const aiCalls: Array<Array<Record<string, unknown>>> = [];
   const supabase: SupabaseLike = {
@@ -23,7 +23,7 @@ function setup(options: { user?: boolean; quota?: unknown; rpc?: (name: string, 
   };
   const deps: HandlerDeps = {
     createSupabase: () => supabase,
-    env,
+    env: (name) => name === "ASISTENTE_ORIGENES_EXTRA" ? options.extraOrigins : env(name),
     now: () => 1000,
     callOpenAI: async (...args) => { aiCalls.push(args[0]); return options.ai ? await options.ai(...args) : completion({ role: "assistant", content: "Consulta completada." }); },
   };
@@ -147,6 +147,49 @@ Deno.test("otro Origin no recibe Access-Control-Allow-Origin", async () => {
   assert(!res.headers.has("Access-Control-Allow-Origin"));
   const options = await x.handler(new Request("https://edge.example", { method: "OPTIONS", headers: { Origin: "https://evil.example" } }));
   equal(options.status, 204); assert(!options.headers.has("Access-Control-Allow-Origin"));
+});
+
+Deno.test("origen extra configurado recibe CORS y uno no listado no", async () => {
+  const x = setup({ extraOrigins: " https://preview.example,https://staging.example " });
+  const allowed = await x.handler(x.request(undefined, { headers: { Origin: "https://preview.example" } }));
+  equal(allowed.headers.get("Access-Control-Allow-Origin"), "https://preview.example");
+  equal(allowed.headers.get("Vary"), "Origin");
+  const denied = await x.handler(x.request(undefined, { headers: { Origin: "https://other.example" } }));
+  assert(!denied.headers.has("Access-Control-Allow-Origin"));
+});
+
+Deno.test("orígenes extra inválidos se ignoran", async () => {
+  const x = setup({ extraOrigins: "https://*.preview.example,https://preview.example/path,http://preview.example,," });
+  for (const origin of ["https://*.preview.example", "https://preview.example/path", "http://preview.example", ""]) {
+    const res = await x.handler(x.request(undefined, { headers: { Origin: origin } }));
+    assert(!res.headers.has("Access-Control-Allow-Origin"), `unexpected CORS origin: ${origin}`);
+  }
+});
+
+Deno.test("sin secreto solo se permite el origen principal", async () => {
+  const x = setup();
+  const primary = await x.handler(x.request(undefined, { headers: { Origin: "https://erp.tideo.tech" } }));
+  equal(primary.headers.get("Access-Control-Allow-Origin"), "https://erp.tideo.tech");
+  const extra = await x.handler(x.request(undefined, { headers: { Origin: "https://preview.example" } }));
+  assert(!extra.headers.has("Access-Control-Allow-Origin"));
+});
+
+Deno.test("preflight desde origen extra permitido responde 204 con encabezados CORS", async () => {
+  const x = setup({ extraOrigins: "https://preview.example" });
+  const res = await x.handler(new Request("https://edge.example", { method: "OPTIONS", headers: { Origin: "https://preview.example" } }));
+  equal(res.status, 204);
+  equal(res.headers.get("Access-Control-Allow-Origin"), "https://preview.example");
+  equal(res.headers.get("Access-Control-Allow-Methods"), "POST, OPTIONS");
+  equal(res.headers.get("Access-Control-Allow-Headers"), "authorization, apikey, content-type, x-client-info");
+  equal(res.headers.get("Vary"), "Origin");
+});
+
+Deno.test("origen extra permitido no evita autenticación JWT", async () => {
+  const x = setup({ extraOrigins: "https://preview.example" });
+  const res = await x.handler(new Request("https://edge.example", { method: "POST", headers: { Origin: "https://preview.example", "Content-Type": "application/json" }, body: JSON.stringify({ empresa_id: EMPRESA, pregunta: "hola" }) }));
+  equal(res.status, 401);
+  equal(res.headers.get("Access-Control-Allow-Origin"), "https://preview.example");
+  equal(x.aiCalls.length, 0);
 });
 
 Deno.test("cuota agotada responde 429 y deja auditoría sin llamar OpenAI", async () => {
