@@ -1,5 +1,4 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
-import { calcularDiffRecetaActividad } from './recetasActividadDiff.js';
 
 const COLUMNAS_ACTIVIDAD = 'id,codigo,nombre,estado';
 const COLUMNAS_CARGO = 'id,codigo,nombre,estado';
@@ -44,21 +43,18 @@ export const recetasActividadService = {
   async guardarReceta(empresaId, actividadId, actuales, deseadas) {
     if (!empresaId || !actividadId) throw new Error('Selecciona una empresa y una actividad para guardar la receta.');
     const supabase = await getSupabaseClient();
-    const diff = calcularDiffRecetaActividad(actuales, deseadas);
-    if (diff.eliminar.length) {
-      const { error } = await supabase.from('plantillas_actividad').delete().eq('empresa_id', empresaId).eq('actividad_id', actividadId).in('tarea_id', diff.eliminar.map(fila => fila.tarea_id));
-      if (error) throw error;
-    }
-    for (const fila of diff.actualizar) {
-      const { error } = await supabase.from('plantillas_actividad').update({ cargo_id: fila.cargo_id, orden: fila.orden }).eq('empresa_id', empresaId).eq('actividad_id', actividadId).eq('tarea_id', fila.tarea_id);
-      if (error) throw error;
-    }
-    if (diff.insertar.length) {
-      const payload = diff.insertar.map(fila => ({ empresa_id: empresaId, actividad_id: actividadId, tarea_id: fila.tarea_id, cargo_id: fila.cargo_id, orden: fila.orden }));
-      const { error } = await supabase.from('plantillas_actividad').insert(payload);
-      if (error) throw error;
-    }
-    return diff;
+    const payload = (deseadas || []).map((fila, indice) => ({
+      tarea_id: fila.tarea_id,
+      cargo_id: fila.cargo_id || null,
+      orden: indice + 1,
+    }));
+    const { data, error } = await supabase.rpc('reemplazar_receta_actividad', {
+      p_empresa_id: empresaId,
+      p_actividad_id: actividadId,
+      p_filas: payload,
+    });
+    if (error) throw error;
+    return data;
   },
 };
 
