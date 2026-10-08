@@ -3,6 +3,7 @@ import { I, money, moneyD } from './icons.jsx';
 import * as XLSX from 'xlsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
 import { canUserSeeOwner, getAssignableUsers, getUserCategory, getUserHierarchyLevel } from './lib/hierarchy.js';
 import { porcentajeBaseComision, resolverVendedorComision } from './lib/comisiones.js';
 import { campanasService } from './services/campanasService.js';
@@ -844,6 +845,7 @@ function Leads() {
     .filter(l => !filterLeadDesde || (l.fecha_creacion || '') >= filterLeadDesde)
     .filter(l => !filterLeadHasta || (l.fecha_creacion || '') <= filterLeadHasta);
   const [sel, setSel] = useState(null);
+  useAsistenteContexto({ modulo: 'leads', tipo: 'lead', id: sel?.id, etiqueta: sel ? `Lead ${sel.nombre || sel.empresa_contacto || sel.id}` : '' });
   const [modalConvertir, setModalConvertir] = useState(null);
   const [convForm, setConvForm] = useState(null);
   const [modalConvertirDrag, setModalConvertirDrag] = useState(null);
@@ -4950,6 +4952,8 @@ function OSCliente() {
     const permitidas = new Set(modoVistaSociedadOSCliente.sociedadesIds);
     return osClientes.filter(os => os.sociedad_id && permitidas.has(os.sociedad_id));
   }, [osClientes, modoVistaSociedadOSCliente.sinFiltro, sociedadesIdsVistaOSKey]);
+  const osAbierta = activeParams?.detail ? osClientesAlcance.find(o => o.id === activeParams.detail) : null;
+  useAsistenteContexto({ modulo: 'os_cliente', tipo: 'os_cliente', id: osAbierta?.id, etiqueta: osAbierta ? `Orden de servicio ${osAbierta.numero || osAbierta.id}` : '' });
 
   const calcCostoRealLiveOS = (ot) => {
     const aprobados = (partes || []).filter(p => p.ot_id === ot.id && p.estado === 'aprobado');
