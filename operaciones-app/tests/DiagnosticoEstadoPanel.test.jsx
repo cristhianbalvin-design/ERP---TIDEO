@@ -27,6 +27,7 @@ describe('DiagnosticoEstadoPanel', () => {
   it('muestra botones solo a aprobadores con escritura y según el estado', async () => {
     await render();
     expect(button(renderer.root, 'Emitir diagnóstico')).toBeTruthy();
+    expect(renderer.root.findByProps({ className: 'diagnostico-estado-actions dx-action-bar' })).toBeTruthy();
     await act(async () => { renderer.unmount(); });
     await render({ puedeAprobar: false });
     expect(button(renderer.root, 'Emitir diagnóstico')).toBeFalsy();
@@ -36,6 +37,12 @@ describe('DiagnosticoEstadoPanel', () => {
     await act(async () => { renderer.unmount(); });
     await render({ diagnostico: { id: 'd1', estado: 'emitido' }, permiteEscritura: false });
     expect(button(renderer.root, 'Reabrir diagnóstico')).toBeFalsy();
+  });
+
+  it('coloca el botón opcional del informe en la misma barra de acciones', async () => {
+    await render({ diagnostico: { id: 'd1', estado: 'emitido' }, informeAction: <button type="button">Informe al cliente</button> });
+    const actions = renderer.root.findByProps({ className: 'diagnostico-estado-actions dx-action-bar' });
+    expect(actions.findAllByType('button').map(textOf)).toEqual(['Reabrir diagnóstico', 'Informe al cliente']);
   });
 
   it('bloquea emisión con cambios pendientes y explica por qué', async () => {

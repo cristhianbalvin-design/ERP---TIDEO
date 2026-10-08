@@ -87,6 +87,14 @@ export async function listarFotosHallazgos(empresaId, hallazgoIds) {
   return fotos.map(foto => ({ ...foto, signedUrl: urls.get(foto.ruta_storage) || null }));
 }
 
+export async function firmarRutasFotosHallazgos(rutas) {
+  const rutasUnicas = [...new Set((rutas || []).filter(Boolean))];
+  if (!rutasUnicas.length) return new Map();
+  const { data, error } = await getSupabaseClient().storage.from(BUCKET).createSignedUrls(rutasUnicas, 60 * 60);
+  if (error) throw getError(error);
+  return new Map((data || []).map(firma => [firma.path, firma.signedUrl]));
+}
+
 export async function subirFotoHallazgo({ empresaId, diagnosticoId, hallazgoId, archivo, leyenda = null }) {
   requireEmpresa(empresaId);
   if (!diagnosticoId) throw new Error('Falta el diagnóstico técnico.');

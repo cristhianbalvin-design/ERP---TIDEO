@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const supabase = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn() }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => supabase }));
-import { actualizarOpciones, generarConclusionIA, mensajeErrorDiagnosticoInforme, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador } from '../src/services/diagnosticoInformeService.js';
+import { actualizarOpciones, emitirInformeDiagnostico, generarConclusionIA, mensajeErrorDiagnosticoInforme, obtenerIdentidadEmpresa, obtenerInformeVigente, obtenerOCrearBorrador } from '../src/services/diagnosticoInformeService.js';
 
 beforeEach(() => { vi.clearAllMocks(); });
 
@@ -55,8 +55,33 @@ describe('diagnosticoInformeService', () => {
     chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain); chain.maybeSingle.mockResolvedValue({ data: { logo_url: '/logo.png', razon_social: 'Tideo', ruc: '201' }, error: null });
     supabase.from.mockReturnValue(chain);
     await expect(obtenerIdentidadEmpresa('e1')).resolves.toEqual({ logo_url: '/logo.png', razon_social: 'Tideo', ruc: '201' });
-    expect(chain.select).toHaveBeenCalledWith('logo_url,razon_social,ruc');
+    expect(chain.select).toHaveBeenCalledWith('logo_url,razon_social,ruc,firmante,cargo_firmante');
     chain.maybeSingle.mockResolvedValueOnce({ data: null, error: new Error('RLS') });
     await expect(obtenerIdentidadEmpresa('e1')).resolves.toBeNull();
+  });
+  it('emite mediante el RPC con los datos del firmante y valida el nombre antes de llamar', async () => {
+    const emitted = { id: 'inf-1', estado: 'emitido', version: 2 };
+    supabase.rpc.mockResolvedValueOnce({ data: emitted, error: null });
+    await expect(emitirInformeDiagnostico({ informeId: 'inf-1', emisorNombre: '  Ana Pérez  ', emisorCargo: '  Jefa técnica  ' })).resolves.toEqual(emitted);
+    expect(supabase.rpc).toHaveBeenCalledWith('emitir_informe_diagnostico', { p_id: 'inf-1', p_emisor_nombre: 'Ana Pérez', p_emisor_cargo: 'Jefa técnica' });
+    supabase.rpc.mockClear();
+    await expect(emitirInformeDiagnostico({ informeId: 'inf-1', emisorNombre: '   ', emisorCargo: 'Jefa' })).rejects.toThrow(/nombre del emisor es obligatorio/i);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('traduce el permiso al emitir y conserva el mensaje del servidor para 22023', async () => {
+    supabase.rpc.mockResolvedValueOnce({ data: null, error: { code: '42501', message: 'denied' } });
+    await expect(emitirInformeDiagnostico({ informeId: 'inf-1', emisorNombre: 'Ana' })).rejects.toThrow(/permiso para emitir/i);
+    supabase.rpc.mockResolvedValueOnce({ data: null, error: { code: '22023', message: 'La conclusión aún no está confirmada.' } });
+    await expect(emitirInformeDiagnostico({ informeId: 'inf-1', emisorNombre: 'Ana' })).rejects.toThrow('La conclusión aún no está confirmada.');
+  });
+
+  it('incluye los datos del firmante y cargo en la identidad de empresa', async () => {
+    const chain = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn() };
+    chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain);
+    chain.maybeSingle.mockResolvedValue({ data: { logo_url: null, razon_social: 'Tideo', ruc: '201', firmante: 'Ana Pérez', cargo_firmante: 'Jefa técnica' }, error: null });
+    supabase.from.mockReturnValue(chain);
+    await expect(obtenerIdentidadEmpresa('e1')).resolves.toEqual({ logo_url: null, razon_social: 'Tideo', ruc: '201', firmante: 'Ana Pérez', cargo_firmante: 'Jefa técnica' });
+    expect(chain.select).toHaveBeenCalledWith('logo_url,razon_social,ruc,firmante,cargo_firmante');
   });
 });

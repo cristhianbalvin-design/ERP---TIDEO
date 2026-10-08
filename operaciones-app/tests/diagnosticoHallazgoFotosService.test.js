@@ -7,7 +7,7 @@ const { supabase, table, storageBucket, randomUUID } = vi.hoisted(() => {
   return { supabase, table, storageBucket, randomUUID: vi.fn(() => 'uuid-1') };
 });
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => supabase }));
-import { actualizarFotoHallazgo, borrarFotoHallazgo, listarFotosHallazgos, subirFotoHallazgo } from '../src/services/diagnosticoHallazgoFotosService.js';
+import { actualizarFotoHallazgo, borrarFotoHallazgo, firmarRutasFotosHallazgos, listarFotosHallazgos, subirFotoHallazgo } from '../src/services/diagnosticoHallazgoFotosService.js';
 
 const img = () => ({ name: 'origen.png', type: 'image/png' });
 let createObjectURL, revokeObjectURL, oldImage, oldCreateElement, oldRandomUUID;
@@ -31,6 +31,20 @@ beforeEach(() => {
 });
 
 describe('diagnosticoHallazgoFotosService', () => {
+  it('firma rutas únicas del bucket privado por una hora', async () => {
+    storageBucket.createSignedUrls.mockResolvedValueOnce({ data: [
+      { path: 'e/d/h/a.jpg', signedUrl: 'https://signed/a' },
+      { path: 'e/d/h/b.jpg', signedUrl: 'https://signed/b' },
+    ], error: null });
+    await expect(firmarRutasFotosHallazgos(['e/d/h/a.jpg', 'e/d/h/a.jpg', 'e/d/h/b.jpg'])).resolves.toEqual(new Map([
+      ['e/d/h/a.jpg', 'https://signed/a'],
+      ['e/d/h/b.jpg', 'https://signed/b'],
+    ]));
+    expect(supabase.storage.from).toHaveBeenCalledWith('diagnostico-fotos');
+    expect(storageBucket.createSignedUrls).toHaveBeenCalledWith(['e/d/h/a.jpg', 'e/d/h/b.jpg'], 60 * 60);
+    await expect(firmarRutasFotosHallazgos([])).resolves.toEqual(new Map());
+  });
+
   it('rechaza sin hallazgo y al alcanzar tres fotos', async () => {
     await expect(subirFotoHallazgo({ empresaId: 'e', diagnosticoId: 'd', archivo: img() })).rejects.toThrow('Guarda el hallazgo antes de agregar fotos.');
     table.then.mockImplementationOnce(resolve => resolve({ count: 3, data: null, error: null }));

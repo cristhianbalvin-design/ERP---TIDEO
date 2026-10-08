@@ -1551,7 +1551,9 @@ a { color: var(--cyan); text-decoration: none; }
 }
 /* Panel de emisión y reapertura del diagnóstico técnico */
 .diagnostico-estado-panel { border-top: 1px solid var(--card-border); }
-.diagnostico-estado-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.diagnostico-estado-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.dx-action-bar > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dx-action-bar .btn { min-height: 40px; height: 40px; padding: 0 16px; }
 .diagnostico-estado-history { margin: 10px 0 0; padding-left: 22px; }
 .diagnostico-estado-history li { padding: 0 0 12px 4px; }
 .diagnostico-estado-dialog { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: rgba(15,23,42,.65); }
@@ -1729,6 +1731,7 @@ a { color: var(--cyan); text-decoration: none; }
 
 /* Informe al cliente · fase 4b */
 .dx-inf-open-row { display:flex; justify-content:flex-end; margin:0 0 12px; }
+.dx-inf-open-row .btn { min-height:40px; height:40px; padding:0 16px; }
 .dx-inf-overlay { position:fixed; inset:0; z-index:1500; background:#101827b8; color:#1F2937; font:14px/1.5 'DM Sans',sans-serif; }
 .dx-inf-layout { display:grid; grid-template-columns:minmax(310px,390px) minmax(0,1fr); width:100%; height:100%; }
 .dx-inf-controls { overflow:auto; padding:24px; background:#fff; box-shadow:8px 0 28px #10182726; }
@@ -1812,6 +1815,15 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-inf-versions h3 { margin:0; color:#1A2B4A; font:700 13px 'Sora',sans-serif; }
 .dx-inf-versions button { padding:8px 10px; border:1px solid #D1D5DB; border-radius:7px; background:#fff; color:#1F2937; text-align:left; cursor:pointer; }
 .dx-inf-versions button.is-selected { border-color:#1A2B4A; background:#F3F6FA; }
+.dx-informe-emitir { width:100%; min-height:40px; margin-top:8px; border:1px solid #1A2B4A; border-radius:8px; background:#fff; color:#1A2B4A; font:600 14px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-informe-emitir:disabled,.dx-informe-emitir-actions button:disabled { opacity:.55; cursor:wait; }
+.dx-informe-emitir-panel { display:grid; gap:10px; margin-top:12px; padding:14px; border:1px solid #D1D5DB; border-radius:9px; background:#F8FAFC; }
+.dx-informe-emitir-panel label { display:grid; gap:5px; color:#1F2937; font-size:12px; font-weight:600; }
+.dx-informe-emitir-panel input { width:100%; min-height:36px; padding:7px 9px; border:1px solid #CBD5E1; border-radius:6px; font:400 13px 'DM Sans',sans-serif; }
+.dx-informe-emitir-panel p { margin:0; color:#7C4A03; font-size:12px; line-height:1.5; }
+.dx-informe-emitir-actions { display:flex; gap:8px; }
+.dx-informe-emitir-actions button { flex:1; min-height:36px; border:0; border-radius:7px; background:#1A2B4A; color:#fff; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-informe-emitir-actions button + button { border:1px solid #CBD5E1; background:#fff; color:#1F2937; }
 .dx-inf-warning,.dx-inf-error,.dx-inf-notice,.dx-inf-empty { margin-top:12px; padding:10px; border-radius:7px; font-size:12px; }
 .dx-inf-warning { background:#FFF6E0; color:#5C3A00; }
 .dx-inf-error { background:#FDF1F0; color:#8F1D18; }
@@ -1889,6 +1901,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-modal .diagnostico-estado-panel { padding:0 28px; }
 .dx-modal .diagnostico-estado-panel .card-body { padding:6px 0 4px; }
 .dx-modal .diagnostico-estado-actions { justify-content:flex-end; align-items:center; margin:0; }
+.dx-modal .dx-action-bar { gap:10px; flex-wrap:wrap; }
 .dx-modal .diagnostico-estado-actions .muted { font-size:11px; }
 .diagnostico-estado-history-toggle { display:flex; align-items:center; gap:7px; padding:5px 0 8px; border:0; background:transparent; color:#6B7280; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
 .diagnostico-estado-history-toggle > span { width:12px; color:#1A2B4A; font-size:16px; }

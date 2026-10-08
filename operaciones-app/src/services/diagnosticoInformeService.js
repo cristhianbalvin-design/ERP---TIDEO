@@ -53,6 +53,20 @@ export async function actualizarOpciones(informeId, opciones) {
   return data;
 }
 
+export async function emitirInformeDiagnostico({ informeId, emisorNombre, emisorCargo }) {
+  if (!informeId) throw new Error('Falta el borrador del informe.');
+  if (!String(emisorNombre || '').trim()) throw new Error('El nombre del emisor es obligatorio.');
+  const { data, error } = await getSupabaseClient().rpc('emitir_informe_diagnostico', {
+    p_id: informeId,
+    p_emisor_nombre: String(emisorNombre).trim(),
+    p_emisor_cargo: String(emisorCargo || '').trim() || null,
+  });
+  if (error?.code === '42501') throw new Error('No tienes permiso para emitir este informe.');
+  if (error?.code === '22023') throw new Error(error.message || 'No se pudo emitir el informe.');
+  throwMapped(error);
+  return unwrap(data);
+}
+
 export async function generarConclusionIA(diagnosticoId) {
   try {
     const { data, error } = await getSupabaseClient().functions.invoke('generar-conclusion-informe', { body: { diagnostico_id: diagnosticoId } });
@@ -80,7 +94,7 @@ export async function generarConclusionIA(diagnosticoId) {
 export async function obtenerIdentidadEmpresa(empresaId) {
   if (!empresaId) return null;
   try {
-    const { data, error } = await getSupabaseClient().from('empresa_config').select('logo_url,razon_social,ruc').eq('empresa_id', empresaId).maybeSingle();
+    const { data, error } = await getSupabaseClient().from('empresa_config').select('logo_url,razon_social,ruc,firmante,cargo_firmante').eq('empresa_id', empresaId).maybeSingle();
     return error ? null : data;
   } catch { return null; }
 }

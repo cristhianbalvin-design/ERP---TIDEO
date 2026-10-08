@@ -836,6 +836,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { renderer.root.findAllByType('tr')[2].props.onClick(); await wait(100); });
     expect(buttonByText(renderer, 'Informe al cliente')).toBeTruthy();
+    const actionBar = renderer.root.findByProps({ className: 'diagnostico-estado-actions dx-action-bar' });
+    expect(actionBar.findAllByType('button').map(button => textOf(button).trim())).toEqual(['Emitir diagnóstico', 'Informe al cliente']);
+    expect(renderer.root.findAllByProps({ className: 'dx-inf-open-row' })).toHaveLength(0);
     renderer.unmount(); renderer = null;
 
     mocks.informePermission.mockResolvedValue(false);

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { emitirDiagnosticoTecnico, listarHistorialEstadosDiagnostico, reabrirDiagnosticoTecnico } from '../../services/diagnosticoTecnicoService.js';
 
-export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, cambiosSinGuardar, onCambioCompleto }) {
+export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, cambiosSinGuardar, onCambioCompleto, informeAction = null }) {
   const [historial, setHistorial] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState('');
@@ -52,12 +52,13 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
   const transicion = row => `${row.estado_anterior === 'borrador' ? 'Borrador' : 'Emitido'} → ${row.estado_nuevo === 'emitido' ? 'Emitido' : 'Borrador'}`;
 
   return <section className="diagnostico-estado-panel card-body">
-    {(visibleEmitir || visibleReabrir) && <div className="diagnostico-estado-actions">
+    {(visibleEmitir || visibleReabrir || informeAction) && <div className="diagnostico-estado-actions dx-action-bar">
       {visibleEmitir && <div>
         <button type="button" className="btn btn-primary" disabled={busy || cambiosSinGuardar} title={cambiosSinGuardar ? 'Guarda los cambios antes de emitir' : undefined} onClick={() => { setError(''); setDialogo('emitir'); }}>Emitir diagnóstico</button>
         {cambiosSinGuardar && <div className="muted" role="status">Guarda los cambios antes de emitir</div>}
       </div>}
       {visibleReabrir && <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setError(''); setMotivo(''); setDialogo('reabrir'); }}>Reabrir diagnóstico</button>}
+      {informeAction}
     </div>}
     {error && <div className="alert alert-error" role="alert">{error}</div>}
     {notice && <div className="alert alert-success" role="status">{notice}</div>}
