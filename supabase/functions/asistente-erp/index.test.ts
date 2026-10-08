@@ -466,3 +466,58 @@ Deno.test("timeout OpenAI responde 504 y registra el error", async () => {
     equal(audit.args.p_error_code, "openai_timeout");
   } finally { globalThis.setTimeout = oldSetTimeout; }
 });
+
+function stockSummaryCall(args: Record<string, unknown>) {
+  return { id: "stock", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify(args) } };
+}
+
+Deno.test("SYSTEM_PROMPT dirige el stock general al resumen y el detalle a consultar_stock", () => {
+  assert(SYSTEM_PROMPT.includes("usa asistente_resumen_stock sin pedir material ni almacén"));
+  assert(SYSTEM_PROMPT.includes("pásala en texto"));
+  assert(SYSTEM_PROMPT.includes("top_materiales (hasta 40, por valor)"));
+  assert(SYSTEM_PROMPT.includes("asistente_consultar_stock"));
+  assert(SYSTEM_PROMPT.includes("asistente_consultar_kardex"));
+});
+
+Deno.test("resumen de stock no exige parámetros y oculta sociedad_id al modelo", () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_resumen_stock") as any;
+  equal(JSON.stringify(tool.function.parameters.required), JSON.stringify([]));
+  assert(!("sociedad_id" in tool.function.parameters.properties));
+  equal(Object.keys(tool.function.parameters.properties).sort().join(","), "almacen_id,solo_con_stock,texto");
+});
+
+Deno.test("resumen de stock sin argumentos solo envía empresa y sociedad nula", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [stockSummaryCall({})] })
+    : completion({ role: "assistant", content: "Tienes 394 unidades." }) });
+  equal((await x.handler(x.request())).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_resumen_stock")!;
+  equal(rpc.args.p_empresa_id, EMPRESA);
+  equal(rpc.args.p_sociedad_id, null);
+  equal(Object.keys(rpc.args).sort().join(","), "p_empresa_id,p_sociedad_id");
+});
+
+Deno.test("resumen de stock mapea filtros y usa la sociedad del servidor", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [stockSummaryCall({ almacen_id: "alm_1", texto: "cable", solo_con_stock: false })] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "Stock de cables" }))).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_resumen_stock")!;
+  equal(rpc.args.p_almacen_id, "alm_1");
+  equal(rpc.args.p_texto, "cable");
+  equal(rpc.args.p_solo_con_stock, false);
+  equal(rpc.args.p_sociedad_id, SOCIEDAD);
+});
+
+Deno.test("resumen de stock rechaza sociedad_id del modelo y tipos inválidos sin RPC", async () => {
+  for (const args of [{ sociedad_id: SOCIEDAD }, { solo_con_stock: "si" }, { texto: "x".repeat(201) }]) {
+    let n = 0;
+    const x = setup({ ai: async (messages) => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [stockSummaryCall(args)] })
+      : (assert(String(messages.at(-1)?.content).includes("Parámetros de consulta no válidos")), completion({ role: "assistant", content: "Parámetros no válidos." })) });
+    equal((await x.handler(x.request())).status, 200);
+    assert(!x.calls.some(c => c.name === "asistente_resumen_stock"));
+  }
+});
