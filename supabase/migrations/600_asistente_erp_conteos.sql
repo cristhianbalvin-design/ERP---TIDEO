@@ -1,12 +1,5 @@
--- Ensayo en seco de 598_asistente_erp_conteos.sql; todo se revierte al final.
--- Este script NO deja cambios: termina en ROLLBACK.
--- Simula JWT y rol authenticated con el patrón empleado en los diagnósticos del asistente.
--- No contiene COMMIT ni aplica cambios persistentes.
-
-BEGIN;
-
--- 598_asistente_erp_conteos.sql
--- Conteos exactos para el asistente ERP. Reutiliza autorización, filtros y RLS de 597.
+-- 600_asistente_erp_conteos.sql
+-- Conteos exactos para el asistente ERP. Reutiliza autorización, filtros y RLS de 599.
 -- La función no devuelve filas ni datos personales y no aplica límite de resultados.
 
 CREATE OR REPLACE FUNCTION public.asistente_contar_registros(
@@ -37,7 +30,7 @@ BEGIN
     RAISE EXCEPTION 'Entidad no permitida para conteo: %', coalesce(p_entidad, 'NULL');
   END IF;
 
-  -- Cada llamada y módulo coincide con la RPC de búsqueda de 597.
+  -- Cada llamada y módulo coincide con la RPC de búsqueda de 599.
   CASE p_entidad
     WHEN 'cuentas' THEN PERFORM public.asistente_autorizar(p_empresa_id,'cuentas');
     WHEN 'leads' THEN PERFORM public.asistente_autorizar(p_empresa_id,'leads');
@@ -54,7 +47,7 @@ BEGIN
     WHEN 'ordenes_venta' THEN v_alcance:=public.asistente_autorizar(p_empresa_id,'remision',p_sociedad_id,true);
   END CASE;
 
-  -- Las búsquedas de 597 validan rangos de hasta 12 meses en estas entidades.
+  -- Las búsquedas de 599 validan rangos de hasta 12 meses en estas entidades.
   v_desde:=p_desde;
   v_hasta:=p_hasta;
   IF p_entidad IN ('leads','oportunidades','cotizaciones','solpe','procesos_compra',
@@ -184,119 +177,3 @@ REVOKE ALL ON FUNCTION public.asistente_contar_registros(text,text,uuid,text,dat
 GRANT EXECUTE ON FUNCTION public.asistente_contar_registros(text,text,uuid,text,date,date,text) TO authenticated;
 COMMENT ON FUNCTION public.asistente_contar_registros(text,text,uuid,text,date,date,text) IS
   'Devuelve conteos exactos de entidades ERP autorizadas, sin filas ni datos personales, con filtros compatibles con las búsquedas de la migración 597.';
-
-DO $$
-DECLARE
-  v_funcion regprocedure := to_regprocedure('public.asistente_contar_registros(text,text,uuid,text,date,date,text)');
-  v_usuario text;
-  v_empresa text;
-  v_empresa_ajena text;
-  v_entidad text;
-  v_modulo text;
-  v_resultado jsonb;
-  v_busqueda jsonb;
-  v_total numeric;
-  v_suma numeric;
-  v_error boolean;
-  v_entidades text[] := ARRAY[
-    'cuentas','leads','oportunidades','cotizaciones','proveedores','solpe',
-    'procesos_compra','ordenes_compra','recepciones','materiales','almacenes',
-    'guias_remision','ordenes_venta'
-  ];
-  v_modulos text[] := ARRAY[
-    'cuentas','leads','pipeline','cotizaciones','proveedores','solpe',
-    'cot_compras','ordenes_compra','recepciones','inventario','remision'
-  ];
-BEGIN
-  IF v_funcion IS NULL THEN RAISE EXCEPTION 'No existe asistente_contar_registros con la firma esperada'; END IF;
-  IF NOT has_function_privilege('authenticated',v_funcion,'EXECUTE') THEN
-    RAISE EXCEPTION 'authenticated no tiene EXECUTE sobre asistente_contar_registros';
-  END IF;
-  IF has_function_privilege('anon',v_funcion,'EXECUTE') OR EXISTS (
-    SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
-     WHERE p.oid=v_funcion AND a.grantee=0 AND a.privilege_type='EXECUTE'
-  ) THEN RAISE EXCEPTION 'La función concede EXECUTE a anon o PUBLIC'; END IF;
-  IF (SELECT prosecdef FROM pg_proc WHERE oid=v_funcion) THEN
-    RAISE EXCEPTION 'La función debe ser SECURITY INVOKER';
-  END IF;
-  IF (SELECT provolatile FROM pg_proc WHERE oid=v_funcion) <> 's' THEN
-    RAISE EXCEPTION 'La función debe ser STABLE';
-  END IF;
-
-  -- Selecciona una membresía activa que tenga lectura en todos los módulos del conjunto.
-  FOR v_usuario,v_empresa IN
-    SELECT ue.user_id::text,ue.empresa_id FROM public.usuarios_empresas ue WHERE ue.estado='activo'
-  LOOP
-    PERFORM set_config('request.jwt.claims',json_build_object('sub',v_usuario,'role','authenticated')::text,true);
-    EXECUTE 'SET LOCAL ROLE authenticated';
-    v_error:=false;
-    FOREACH v_modulo IN ARRAY v_modulos LOOP
-      IF NOT public.usuario_puede(v_empresa,v_modulo,'ver') THEN v_error:=true; EXIT; END IF;
-    END LOOP;
-    RESET ROLE;
-    EXIT WHEN NOT v_error;
-  END LOOP;
-  IF v_usuario IS NULL THEN
-    RAISE EXCEPTION 'No se puede ejecutar la validación: no se encontró usuario simulado con lectura en los 11 módulos requeridos';
-  END IF;
-
-  -- Se identifica una empresa sin membresía para comprobar el rechazo de tenant ajeno.
-  SELECT e.id INTO v_empresa_ajena FROM public.empresas e
-   WHERE e.id::text<>v_empresa AND NOT EXISTS (
-     SELECT 1 FROM public.usuarios_empresas ue WHERE ue.user_id::text=v_usuario
-       AND ue.empresa_id=e.id::text AND ue.estado='activo'
-   ) LIMIT 1;
-  IF v_empresa_ajena IS NULL THEN RAISE EXCEPTION 'No se encontró una empresa ajena para el ensayo'; END IF;
-
-  PERFORM set_config('request.jwt.claims',json_build_object('sub',v_usuario,'role','authenticated')::text,true);
-  EXECUTE 'SET LOCAL ROLE authenticated';
-
-  FOREACH v_entidad IN ARRAY v_entidades LOOP
-    v_resultado:=public.asistente_contar_registros(v_empresa,v_entidad);
-    IF v_resultado->>'entidad'<>v_entidad OR jsonb_typeof(v_resultado->'total')<>'number' THEN
-      RAISE EXCEPTION 'Respuesta inválida para entidad %: %',v_entidad,v_resultado;
-    END IF;
-    v_total:=(v_resultado->>'total')::numeric;
-    IF v_total<0 OR v_total<>trunc(v_total) THEN RAISE EXCEPTION 'Total no entero/no negativo para %',v_entidad; END IF;
-    IF NOT (v_resultado ? 'por_estado') THEN RAISE EXCEPTION 'Falta por_estado para entidad con estado: %',v_entidad; END IF;
-    SELECT coalesce(sum(value::numeric),0) INTO v_suma FROM jsonb_each_text(v_resultado->'por_estado');
-    IF v_suma<>v_total THEN RAISE EXCEPTION 'Suma por_estado distinta de total para %: % <> %',v_entidad,v_suma,v_total; END IF;
-  END LOOP;
-
-  -- Una entidad fuera de la lista blanca debe producir una excepción.
-  v_error:=false;
-  BEGIN
-    PERFORM public.asistente_contar_registros(v_empresa,'entidad_invalida');
-  EXCEPTION WHEN OTHERS THEN
-    v_error:=position('Entidad no permitida' IN SQLERRM)>0;
-  END;
-  IF NOT v_error THEN RAISE EXCEPTION 'No se rechazó claramente una entidad inválida'; END IF;
-
-  -- Una empresa ajena debe ser rechazada por el mismo autorizador de 597.
-  v_error:=false;
-  BEGIN
-    PERFORM public.asistente_contar_registros(v_empresa_ajena,'cuentas');
-  EXCEPTION WHEN OTHERS THEN
-    v_error:=position('Empresa no autorizada' IN SQLERRM)>0 OR position('Falta permiso de lectura' IN SQLERRM)>0;
-  END;
-  IF NOT v_error THEN RAISE EXCEPTION 'No se rechazó la empresa ajena'; END IF;
-
-  -- En cotizaciones y cuentas el total exacto debe cubrir las filas del buscador limitado a 100.
-  -- La clave 'filas' la devuelve asistente_formato_listado en 597_asistente_erp_lectura.sql:207.
-  v_resultado:=public.asistente_contar_registros(v_empresa,'cotizaciones');
-  v_busqueda:=public.asistente_buscar_cotizaciones(v_empresa,NULL,NULL,100,NULL,NULL,NULL);
-  IF (v_resultado->>'total')::numeric < jsonb_array_length(coalesce(v_busqueda->'filas','[]'::jsonb)) THEN
-    RAISE EXCEPTION 'Total de cotizaciones menor que filas de búsqueda';
-  END IF;
-  v_resultado:=public.asistente_contar_registros(v_empresa,'cuentas');
-  v_busqueda:=public.asistente_buscar_cuentas(v_empresa,NULL,100);
-  IF (v_resultado->>'total')::numeric < jsonb_array_length(coalesce(v_busqueda->'filas','[]'::jsonb)) THEN
-    RAISE EXCEPTION 'Total de cuentas menor que filas de búsqueda';
-  END IF;
-
-  RAISE NOTICE 'Ensayo 598 completado: 13 entidades, ACL, denegaciones y cotejos de límite 100 correctos';
-  RESET ROLE;
-END;
-$$;
-
-ROLLBACK;

@@ -1,4 +1,4 @@
--- 599: resumen de stock valorizado para el asistente (solo lectura, SECURITY INVOKER).
+-- 601: resumen de stock valorizado para el asistente (solo lectura, SECURITY INVOKER).
 -- Valoriza con materiales.costo_promedio solo si el usuario tiene ver_costos.
 CREATE OR REPLACE FUNCTION public.asistente_resumen_stock(
   p_empresa_id text,

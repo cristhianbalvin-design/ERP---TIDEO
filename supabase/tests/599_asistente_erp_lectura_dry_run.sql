@@ -1,5 +1,5 @@
--- ENSAYO de la migracion 597 (BEGIN..ROLLBACK): mismo contenido, revertido al final. No se aplica nada.
--- 597_asistente_erp_lectura.sql
+-- ENSAYO de la migracion 599 (BEGIN..ROLLBACK): mismo contenido, revertido al final. No se aplica nada.
+-- 599_asistente_erp_lectura.sql
 -- Asistente de IA del ERP: infraestructura de solo lectura.
 --   * public.asistente_historial: auditoria propia (cada usuario lee las suyas; solo administradores
 --     de empresa leen las de su empresa). Escritura unicamente via asistente_registrar_historial

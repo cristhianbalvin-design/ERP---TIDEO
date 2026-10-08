@@ -1,4 +1,4 @@
--- 597_asistente_erp_lectura.sql
+-- 599_asistente_erp_lectura.sql
 -- Asistente de IA del ERP: infraestructura de solo lectura.
 --   * public.asistente_historial: auditoria propia (cada usuario lee las suyas; solo administradores
 --     de empresa leen las de su empresa). Escritura unicamente via asistente_registrar_historial

@@ -18,7 +18,7 @@ type ToolSpec = { name: string; params: Param[]; nullFill?: boolean };
 
 const COUNT_ENTITIES = ["cuentas", "leads", "oportunidades", "cotizaciones", "proveedores", "solpe", "procesos_compra", "ordenes_compra", "recepciones", "materiales", "almacenes", "guias_remision", "ordenes_venta"] as const;
 
-// Parámetros cotejados con las firmas de 597_asistente_erp_lectura.sql.
+// Parámetros cotejados con las firmas de 599_asistente_erp_lectura.sql.
 export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_buscar_cuentas", params: [s("busqueda", 200, true), n("limite", true)] },
   { name: "asistente_detalle_cuenta", params: [id("cuenta_id")] },
