@@ -34,6 +34,7 @@ export function AsistenteErpPanel() {
   const [cuotaRestante, setCuotaRestante] = useState(null);
   const botonRef = useRef(null);
   const campoRef = useRef(null);
+  const panelRef = useRef(null);
   const ultimaConsulta = useRef(null);
   const habilitado = Boolean(authSession && empresa?.id);
   const sociedadId = sociedadActiva?.id && !['todas', 'all', '**todas**'].includes(String(sociedadActiva.id).toLowerCase()) ? sociedadActiva.id : undefined;
@@ -44,7 +45,28 @@ export function AsistenteErpPanel() {
   useEffect(() => { if (abierto) requestAnimationFrame(() => campoRef.current?.focus()); }, [abierto]);
   useEffect(() => {
     if (!abierto) return undefined;
-    const onKeyDown = event => { if (event.key === 'Escape') cerrar(); };
+    const onKeyDown = event => {
+      if (event.key === 'Escape') { cerrar(); return; }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const enfocables = [...panel.querySelectorAll('button:not(:disabled), textarea:not(:disabled), a[href]')]
+        .filter(elemento => elemento.getClientRects().length > 0 && window.getComputedStyle(elemento).visibility !== 'hidden');
+      if (!enfocables.length) return;
+      const primero = enfocables[0];
+      const ultimo = enfocables[enfocables.length - 1];
+      const activo = document.activeElement;
+      if (!panel.contains(activo)) {
+        event.preventDefault();
+        (event.shiftKey ? ultimo : primero).focus();
+      } else if (event.shiftKey && activo === primero) {
+        event.preventDefault();
+        ultimo.focus();
+      } else if (!event.shiftKey && activo === ultimo) {
+        event.preventDefault();
+        primero.focus();
+      }
+    };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [abierto]);
@@ -77,7 +99,7 @@ export function AsistenteErpPanel() {
     </button>
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
-      <section className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
+      <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
         <header className="dx-asis-head"><div className="dx-asis-ico" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/></svg></div>
           <div><div className="dx-asis-eyebrow">Asistente</div><h2 className="dx-asis-title" id="dx-asis-title">Pregunta a tu ERP</h2><div className="dx-asis-sub">Solo lectura · respeta tus permisos</div></div>
           <button className="dx-asis-x" type="button" aria-label="Cerrar asistente" onClick={cerrar}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
