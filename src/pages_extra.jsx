@@ -4,6 +4,7 @@ import { I, money, moneyD } from './icons.jsx';
 import './hoja_costeo_listado.css';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
 import { getAssignableUsers, canUserSeeOwner, canUserApproveOwner } from './lib/hierarchy.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 import { SmartTextField } from './components/SmartTextField.jsx';
@@ -383,6 +384,8 @@ function CotizacionesInner() {
     const permitidas = new Set(modoVistaSociedadCotizaciones.sociedadesIds);
     return cotizaciones.filter(cotizacion => cotizacion.sociedad_id && permitidas.has(cotizacion.sociedad_id));
   }, [cotizaciones, modoVistaSociedadCotizaciones.sinFiltro, sociedadesIdsVistaCotizacionesKey]);
+  const cotizacionAbierta = activeParams?.detail ? cotizacionesAlcance.find(c => c.id === activeParams.detail) : null;
+  useAsistenteContexto({ modulo: 'cotizaciones', tipo: 'cotizacion', id: cotizacionAbierta?.id, etiqueta: cotizacionAbierta ? `Cotización ${cotizacionAbierta.numero || cotizacionAbierta.codigo || cotizacionAbierta.id}` : '' });
   const [recepcionOrigen, setRecepcionOrigen] = useState(null);
   const [cargandoRecepcionOrigen, setCargandoRecepcionOrigen] = useState(false);
   const [errorRecepcionOrigen, setErrorRecepcionOrigen] = useState('');

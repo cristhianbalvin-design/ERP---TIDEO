@@ -9,6 +9,7 @@ import BarcodeScanner from './components/BarcodeScanner.jsx';
 import { I, money, moneyD } from './icons.jsx';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
+import { useAsistenteContexto } from './context/AsistenteErpContext.jsx';
 import { maestrosService } from './services/maestrosService.js';
 import { resolverFiltroSociedadesVista } from './services/sociedadesService.js';
 import { resolverSociedadDestino } from './services/sociedadDestinoService.js';
@@ -180,6 +181,7 @@ function Cuentas() {
       ? 'El DNI debe tener 8 digitos.'
       : 'El RUC debe tener 11 numeros y comenzar con 1 o 2.';
   const [sel, setSel] = useState(null);
+  useAsistenteContexto({ modulo: 'cuentas', tipo: 'cuenta', id: sel?.id, etiqueta: sel ? `Cuenta ${sel.razon_social || sel.nombre_comercial || sel.id}` : '' });
   const [condEdit, setCondEdit] = useState({});
   const [condEditing, setCondEditing] = useState(false);
   const [condSaving, setCondSaving] = useState(false);
@@ -5586,6 +5588,7 @@ function Proveedores() {
   const [panel, setPanel] = useState(false);
   const [editId, setEditId] = useState(null);
   const [sel, setSel] = useState(null);
+  useAsistenteContexto({ modulo: 'proveedores', tipo: 'proveedor', id: sel?.id, etiqueta: sel ? `Proveedor ${sel.nombre_comercial || sel.razon_social || sel.id}` : '' });
   const [detailTab, setDetailTab] = useState('resumen');
   const [cuentasBancariasProveedor, setCuentasBancariasProveedor] = useState([]);
   const [cuentaPanel, setCuentaPanel] = useState(false);
@@ -7410,6 +7413,7 @@ function OrdenesCompra() {
   const [origenFiltro, setOrigenFiltro] = useState('todos');
   const [panel, setPanel] = useState(false);
   const [sel, setSel] = useState(null);
+  useAsistenteContexto({ modulo: 'ordenes_compra', tipo: 'orden_compra', id: sel?.id, etiqueta: sel ? `Orden de compra ${sel.numero || sel.codigo || sel.id}` : '' });
   const [confirmando, setConfirmando] = useState(false);
   const [form, setForm] = useState(() => nuevaOCForm());
   const [editandoOC, setEditandoOC] = useState(null);
@@ -8958,6 +8962,7 @@ function Recepciones() {
   const filtroSociedadesRecepcionesKey = `${filtroSociedadesRecepciones.sinFiltro ? 'sin_filtro' : 'acotado'}:${filtroSociedadesRecepciones.sociedadesIds.join('|')}`;
   const [panel, setPanel] = useState(false);
   const [detalleRec, setDetalleRec] = useState(null);
+  useAsistenteContexto({ modulo: 'recepciones', tipo: 'recepcion', id: detalleRec?.id, etiqueta: detalleRec ? `Recepción ${detalleRec.numero || detalleRec.codigo || detalleRec.id}` : '' });
   const [completarRec, setCompletarRec] = useState(null);
   const [modalDevOpen, setModalDevOpen] = useState(false);
   const [origen, setOrigen] = useState('');
@@ -12267,6 +12272,7 @@ function SOLPE() {
   const [errCeco, setErrCeco] = useState(false);
   const [errItems, setErrItems] = useState(false);
   const [solpeSeleccionada, setSolpeSeleccionada] = useState(null);
+  useAsistenteContexto({ modulo: 'solpe', tipo: 'solpe', id: solpeSeleccionada?.id, etiqueta: solpeSeleccionada ? `SOLPE ${solpeSeleccionada.codigo || solpeSeleccionada.numero || solpeSeleccionada.id}` : '' });
   const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
   const [filtrosSOLPE, setFiltrosSOLPE] = useState({ estado: '', fechaDesde: '', fechaHasta: '', solicitante: '', ceco: '' });
 

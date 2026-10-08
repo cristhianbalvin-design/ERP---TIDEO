@@ -4,6 +4,8 @@ import { AuthGate } from './AuthGate.jsx';
 import { Sidebar, Header, SIDEBAR } from './shell.jsx';
 import { ApplicationWelcome } from './ApplicationWelcome.jsx';
 import { puedeVerPantalla, tieneAccesoTotal } from './access/roleAccess.js';
+import { AsistenteErpProvider } from './context/AsistenteErpContext.jsx';
+import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
 
 // ─── Lazy imports ─────────────────────────────────────────────────────────────
 // Cada archivo de páginas genera un chunk separado, cargado solo cuando el
@@ -430,6 +432,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin} onBrandClick={onShowApplicationWelcome}/>
       <div className="main-col">
         <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode} openSelectorSignal={openSelectorSignal}/>
+        <AsistenteErpPanel />
         {isSuperadmin && empresa?.es_plataforma && (
           <div style={{background:'#7c3aed', color:'#fff', padding:'8px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, fontSize:13}}>
             <span>⚠️ Estás operando en el contexto de plataforma. Para gestión interna de TIDEO usa el tenant empresa.</span>
@@ -523,9 +526,11 @@ export default function App() {
     <>
       <ErrorBoundary>
         <AppProvider>
-          <AuthGate>
-            <ApplicationEntry />
-          </AuthGate>
+          <AsistenteErpProvider>
+            <AuthGate>
+              <ApplicationEntry />
+            </AuthGate>
+          </AsistenteErpProvider>
         </AppProvider>
       </ErrorBoundary>
       <IOSInstallBanner />

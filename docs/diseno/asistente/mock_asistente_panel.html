@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock · Asistente ERP TIDEO</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+.dx-asis{--navy:#1A2B4A;--cy:#00ACC1;--cy-t:#0B4F5A;--cy-bg:#E0F7FA;--am:#8A4B00;--am-bg:#FFF3E0;--gr:#14633A;--gr-bg:#E3F6EA;--mut:#6B7280;--line:#E4E7EB;--line2:#EEF0F3;--field:#C9CFD8;--page:#F4F6F8;--head:#F8F9FA;--card:#fff;--txt:#1A2B4A;--bubble-me:#1A2B4A;--bubble-me-t:#fff;--err:#9B1C1C;--err-bg:#FDECEC;
+ font-family:'DM Sans',system-ui,sans-serif;color:var(--txt)}
+[data-theme=dark] .dx-asis{--navy:#E8EEF8;--cy:#26C6DA;--cy-t:#A5ECF5;--cy-bg:#0E3A44;--am:#FFC27A;--am-bg:#3A2A10;--gr:#8FE0B0;--gr-bg:#123A25;--mut:#9AA4B2;--line:#2A3447;--line2:#222B3B;--field:#3A465B;--page:#0F1624;--head:#18212F;--card:#141C2B;--txt:#E8EEF8;--bubble-me:#26C6DA;--bubble-me-t:#06222A;--err:#FFB4B4;--err-bg:#3A1717}
+*{box-sizing:border-box}body{margin:0;background:#E9ECF0;font-family:'DM Sans',sans-serif}
+[data-theme=dark] body{background:#0A0F1A}
+.bar{display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap;align-items:center;font:500 13px 'DM Sans'}
+.bar button{height:34px;border:1px solid #C9CFD8;background:#fff;border-radius:8px;padding:0 12px;font:inherit;cursor:pointer}
+.bar button.on{background:#1A2B4A;color:#fff;border-color:#1A2B4A}
+.stage{display:flex;gap:16px;padding:0 16px 24px;flex-wrap:wrap;align-items:flex-start}
+.col{width:420px;max-width:100%}
+.col h4{font:600 12px 'DM Sans';letter-spacing:.06em;text-transform:uppercase;color:#6B7280;margin:0 0 8px}
+.dx-asis-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;height:640px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 32px rgba(26,43,74,.14)}
+.dx-asis-head{padding:14px 16px;border-bottom:1px solid var(--line2);display:flex;align-items:flex-start;gap:12px;background:var(--head)}
+.dx-asis-ico{width:36px;height:36px;border-radius:10px;background:var(--cy-bg);color:var(--cy-t);display:grid;place-items:center;flex:none}
+.dx-asis-eyebrow{font:600 11px 'DM Sans';letter-spacing:.08em;text-transform:uppercase;color:var(--cy-t)}
+.dx-asis-title{font:600 17px 'Sora';margin:2px 0 0;color:var(--txt)}
+.dx-asis-sub{font-size:12.5px;color:var(--mut);margin-top:2px}
+.dx-asis-x{margin-left:auto;width:40px;height:40px;border-radius:10px;border:1px solid transparent;background:none;color:var(--mut);cursor:pointer;display:grid;place-items:center}
+.dx-asis-x:hover{background:var(--line2)}
+:is(.dx-asis-x,.dx-asis-chip,.dx-asis-sug,.dx-asis-send,.dx-asis-in):focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+.dx-asis-ctx{margin:12px 16px 0;padding:8px 10px;border-radius:10px;background:var(--cy-bg);color:var(--cy-t);font-size:12.5px;display:flex;gap:8px;align-items:center}
+.dx-asis-ctx b{font-weight:600}
+.dx-asis-body{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--page)}
+.dx-asis-hello h3{font:600 16px 'Sora';margin:0 0 4px}.dx-asis-hello p{margin:0 0 12px;color:var(--mut);font-size:13.5px;line-height:1.5}
+.dx-asis-sugs{display:flex;flex-direction:column;gap:8px}
+.dx-asis-sug{min-height:40px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:inherit;font-size:13.5px;color:var(--txt);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dx-asis-sug:hover{border-color:var(--cy)}
+.dx-asis-msg{max-width:88%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.5}
+.dx-asis-msg.me{align-self:flex-end;background:var(--bubble-me);color:var(--bubble-me-t);border-bottom-right-radius:4px}
+.dx-asis-msg.ai{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:4px}
+.dx-asis-msg ul{margin:6px 0 0;padding-left:18px}
+.dx-asis-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:500}
+.dx-asis-pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dx-asis-pill.am{background:var(--am-bg);color:var(--am)}.dx-asis-pill.gr{background:var(--gr-bg);color:var(--gr)}.dx-asis-pill.cy{background:var(--cy-bg);color:var(--cy-t)}
+.dx-asis-note{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--am-bg);color:var(--am);font-size:12.5px;line-height:1.45}
+.dx-asis-tools{align-self:flex-start;display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--mut)}
+.dx-asis-dots{display:inline-flex;gap:3px}.dx-asis-dots span{width:6px;height:6px;border-radius:50%;background:var(--cy);animation:dxb 1s infinite}
+.dx-asis-dots span:nth-child(2){animation-delay:.15s}.dx-asis-dots span:nth-child(3){animation-delay:.3s}
+@keyframes dxb{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.dx-asis-dots span{animation:none}}
+.dx-asis-err{align-self:stretch;background:var(--err-bg);color:var(--err);border-radius:10px;padding:10px 12px;font-size:13px}
+.dx-asis-foot{padding:12px 16px;border-top:1px solid var(--line2);background:var(--card)}
+.dx-asis-form{display:flex;gap:8px;align-items:flex-end}
+.dx-asis-in{flex:1;min-height:40px;max-height:120px;resize:none;border:1px solid var(--field);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;background:var(--card);color:var(--txt)}
+.dx-asis-send{width:40px;height:40px;border-radius:10px;border:0;background:var(--navy);color:var(--card);cursor:pointer;display:grid;place-items:center}
+[data-theme=dark] .dx-asis-send{color:#06222A}
+.dx-asis-send:disabled{opacity:.4;cursor:not-allowed}
+.dx-asis-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--mut);margin-top:6px}
+.dx-asis-legal{font-size:11.5px;color:var(--mut)}
+.dx-asis-fab{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;background:var(--navy);color:var(--card);border:0;font:600 13.5px 'DM Sans';cursor:pointer;box-shadow:0 6px 16px rgba(26,43,74,.25)}
+[data-theme=dark] .dx-asis-fab{color:#06222A}
+.dx-asis-quota{display:flex;gap:10px;align-items:center;background:var(--am-bg);color:var(--am);border-radius:10px;padding:12px;font-size:13.5px}
+.dx-asis.mobile .dx-asis-panel{height:640px;width:375px;border-radius:14px}
+</style></head><body>
+<div class="bar"><b style="font-family:Sora">Mock · Asistente ERP</b>
+<button id="t" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'':'dark';this.classList.toggle('on')">Modo oscuro</button>
+<span style="color:#6B7280">Estados: bienvenida con contexto · conversación con campos omitidos · consultando · cuota agotada · error · móvil</span></div>
+<div class="stage dx-asis">
+
+<div class="col"><h4>1 · Bienvenida desde una cotización</h4>
+<section class="dx-asis-panel" aria-label="Asistente del ERP">
+<header class="dx-asis-head"><div class="dx-asis-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></div>
+<div><div class="dx-asis-eyebrow">Asistente</div><h2 class="dx-asis-title">Pregunta a tu ERP</h2><div class="dx-asis-sub">Solo lectura · respeta tus permisos</div></div>
+<button class="dx-asis-x" aria-label="Cerrar asistente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+<div class="dx-asis-ctx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg><span>Viendo: <b>Cotización COT-2026-0142</b></span></div>
+<div class="dx-asis-body"><div class="dx-asis-hello"><h3>¿En qué te ayudo?</h3><p>Consulto cuentas, cotizaciones, compras, stock y guías de tu empresa. No puedo crear ni modificar datos.</p></div>
+<div class="dx-asis-sugs" role="list">
+<button class="dx-asis-sug">¿En qué estado está esta cotización? <span>›</span></button>
+<button class="dx-asis-sug">¿Hasta cuándo es vigente y cuál es el total? <span>›</span></button>
+<button class="dx-asis-sug">¿Qué otras cotizaciones tiene este cliente? <span>›</span></button></div></div>
+<div class="dx-asis-foot"><form class="dx-asis-form" onsubmit="return false"><label for="q1" style="position:absolute;left:-9999px">Tu pregunta</label><textarea id="q1" class="dx-asis-in" rows="1" placeholder="Escribe tu pregunta…" maxlength="1000"></textarea><button class="dx-asis-send" aria-label="Enviar pregunta"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
+<div class="dx-asis-meta"><span class="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span><span>38 de 50 hoy</span></div></div></section></div>
+
+<div class="col"><h4>2 · Conversación con campo omitido</h4>
+<section class="dx-asis-panel" aria-label="Asistente del ERP">
+<header class="dx-asis-head"><div class="dx-asis-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/></svg></div><div><div class="dx-asis-eyebrow">Asistente</div><h2 class="dx-asis-title">Pregunta a tu ERP</h2><div class="dx-asis-sub">Solo lectura · respeta tus permisos</div></div><button class="dx-asis-x" aria-label="Cerrar asistente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+<div class="dx-asis-body" aria-live="polite">
+<div class="dx-asis-msg me">¿Qué órdenes de compra están pendientes de recepción con el proveedor Ferrotec?</div>
+<div class="dx-asis-tools"><span class="dx-asis-pill cy"><i></i>Órdenes de compra</span><span class="dx-asis-pill cy"><i></i>Recepciones</span></div>
+<div class="dx-asis-msg ai">Encontré 2 órdenes con recepción pendiente:
+<ul><li><b>OC-0318</b> · emitida · entrega 14/10 <span class="dx-asis-pill am"><i></i>Parcial</span></li><li><b>OC-0325</b> · emitida · entrega 20/10 <span class="dx-asis-pill am"><i></i>Pendiente</span></li></ul>
+<div class="dx-asis-note">No puedo mostrarte los montos: tu rol no tiene el permiso «ver costos».</div></div>
+<div class="dx-asis-msg me">¿Y quién las aprobó?</div>
+<div class="dx-asis-tools"><span class="dx-asis-dots" aria-hidden="true"><span></span><span></span><span></span></span><span role="status">Consultando órdenes de compra…</span></div></div>
+<div class="dx-asis-foot"><form class="dx-asis-form" onsubmit="return false"><textarea class="dx-asis-in" rows="1" aria-label="Tu pregunta" placeholder="Escribe tu pregunta…"></textarea><button class="dx-asis-send" aria-label="Enviar pregunta" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form><div class="dx-asis-meta"><button style="background:none;border:0;color:var(--cy-t);font:inherit;cursor:pointer;padding:0">Nueva conversación</button><span>37 de 50 hoy</span></div></div></section></div>
+
+<div class="col"><h4>3 · Cuota agotada y error</h4>
+<section class="dx-asis-panel" aria-label="Asistente del ERP">
+<header class="dx-asis-head"><div class="dx-asis-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/></svg></div><div><div class="dx-asis-eyebrow">Asistente</div><h2 class="dx-asis-title">Pregunta a tu ERP</h2><div class="dx-asis-sub">Solo lectura · respeta tus permisos</div></div><button class="dx-asis-x" aria-label="Cerrar asistente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+<div class="dx-asis-body">
+<div class="dx-asis-msg me">Muéstrame el stock de cable 3x2.5</div>
+<div class="dx-asis-err" role="alert">No pude completar la consulta. Inténtalo de nuevo en un momento. <button style="margin-left:6px;background:none;border:0;color:inherit;text-decoration:underline;font:inherit;cursor:pointer">Reintentar</button></div>
+<div class="dx-asis-quota" role="status"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Llegaste al límite de <b>50 preguntas</b> de hoy. Se renueva mañana a las 00:00 (hora de Lima).</span></div></div>
+<div class="dx-asis-foot"><form class="dx-asis-form" onsubmit="return false"><textarea class="dx-asis-in" rows="1" aria-label="Tu pregunta" placeholder="Límite diario alcanzado" disabled></textarea><button class="dx-asis-send" aria-label="Enviar pregunta" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form><div class="dx-asis-meta"><span></span><span>50 de 50 hoy</span></div></div></section></div>
+
+<div class="col"><h4>Botón en la cabecera del ERP</h4>
+<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div><div class="dx-asis-eyebrow">Comercial</div><div style="font:600 17px Sora">Cotizaciones</div></div>
+<button class="dx-asis-fab" aria-expanded="false" aria-haspopup="dialog"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/></svg>Asistente</button></div>
+<p style="font:13px 'DM Sans';color:#6B7280;margin-top:12px;line-height:1.5">En móvil el panel ocupa casi toda la pantalla (92 vw), con el campo de pregunta fijo abajo. En escritorio es un cajón lateral de 420 px que no tapa la barra lateral. Esc cierra y devuelve el foco al botón. Atajo opcional: Ctrl+K.</p></div>
+</div></body></html>
