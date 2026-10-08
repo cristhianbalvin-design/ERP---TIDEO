@@ -3,15 +3,15 @@ import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/render
 import { prepararImagenesInforme } from '../../services/informePdfImagenes.js';
 
 const S = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 58 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#d9e0e8', paddingBottom: 10, marginBottom: 14 },
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 30 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#d9e0e8', paddingBottom: 10, marginBottom: 10 },
   logo: { width: 125, height: 48, objectFit: 'contain' }, company: { maxWidth: 300, textAlign: 'right' }, companyName: { fontFamily: 'Helvetica-Bold', fontSize: 11 }, muted: { fontSize: 8, color: '#667085', marginTop: 3 },
   title: { fontFamily: 'Helvetica-Bold', fontSize: 15, color: '#1a2b4a', textAlign: 'center', marginBottom: 5 }, titleMeta: { textAlign: 'center', fontSize: 8, color: '#667085', marginBottom: 13 },
-  sectionTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10, color: '#1a2b4a', marginTop: 13, marginBottom: 6, borderBottomWidth: 1, borderColor: '#e1e6ec', paddingBottom: 4 },
+  sectionTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10, color: '#1a2b4a', marginTop: 8, marginBottom: 3, borderBottomWidth: 1, borderColor: '#e1e6ec', paddingBottom: 4 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, info: { width: '32%', borderWidth: 1, borderColor: '#e4eaf0', borderRadius: 3, padding: 7 }, label: { fontSize: 7, color: '#667085', marginBottom: 3 }, value: { fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
   summary: { flexDirection: 'row', gap: 6 }, summaryCard: { flexGrow: 1, borderWidth: 1, borderColor: '#e4eaf0', padding: 7, borderRadius: 3, alignItems: 'center' }, summaryLabel: { fontSize: 7, color: '#667085', marginBottom: 3 }, summaryNum: { fontFamily: 'Helvetica-Bold', fontSize: 12 },
-  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 9, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { marginBottom: 1, lineHeight: 1.35 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'row', gap: 8, marginTop: 7 }, photoBox: { width: '32%', alignItems: 'center' }, photo: { objectFit: 'contain', maxWidth: '100%' }, caption: { fontSize: 7, color: '#667085', marginTop: 3, textAlign: 'center' },
-  table: { marginTop: 5 }, tableHead: { flexDirection: 'row', backgroundColor: '#1a2b4a', padding: 5 }, tableHeadText: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7 }, tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#e6e9ee', padding: 5 }, tableCell: { fontSize: 7.5 }, task: { paddingVertical: 5, borderBottomWidth: 0.5, borderColor: '#e6e9ee' }, conclusion: { lineHeight: 1.45 }, signature: { marginTop: 20, width: 250, alignItems: 'center', alignSelf: 'center' }, signLine: { width: '85%', borderTopWidth: 1, borderColor: '#667085', marginBottom: 5 }, footer: { position: 'absolute', bottom: 20, left: 38, right: 38, borderTopWidth: 1, borderColor: '#d9e0e8', paddingTop: 5, textAlign: 'center', fontSize: 7, color: '#667085' },
+  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 7, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { fontSize: 9, marginBottom: 0, lineHeight: 1.25 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'row', gap: 8, marginTop: 5 }, photoBox: { width: '32%', alignItems: 'center' }, photo: { objectFit: 'contain', maxWidth: '100%' }, caption: { fontSize: 7, color: '#667085', marginTop: 2, textAlign: 'center' },
+  table: { marginTop: 5 }, tableHead: { flexDirection: 'row', backgroundColor: '#1a2b4a', padding: 5 }, tableHeadText: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7 }, tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#e6e9ee', padding: 5 }, tableCell: { fontSize: 7.5 }, task: { paddingVertical: 5, borderBottomWidth: 0.5, borderColor: '#e6e9ee', lineHeight: 1.2 }, conclusion: { lineHeight: 1.45 }, signature: { marginTop: 8, width: 250, alignItems: 'center', alignSelf: 'center' }, signLine: { width: '85%', borderTopWidth: 1, borderColor: '#667085', marginBottom: 5 }, footer: { position: 'absolute', bottom: 20, left: 38, right: 38, borderTopWidth: 1, borderColor: '#d9e0e8', paddingTop: 5, textAlign: 'center', fontSize: 7, color: '#667085' },
 });
 
 const present = value => value !== null && value !== undefined && value !== '';
@@ -50,13 +50,21 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
   const mediciones = snapshot?.mediciones || [];
   const tareas = snapshot?.tareas_repuestos || [];
   const showLabor = tareas.some(t => present(t.cargo_nombre) || present(t.horas_mano_obra) || present(t.horas_maquina));
+  const showFinding = tareas.some(task => present(task.hallazgo));
+  const showParts = tareas.some(task => (task.materiales || []).length > 0);
+  const taskColumnWeights = { activity: showLabor ? 31 : 43, finding: showLabor ? 24 : 32, labor: 15, parts: showLabor ? 30 : 25 };
+  const visibleTaskColumns = [taskColumnWeights.activity, ...(showFinding ? [taskColumnWeights.finding] : []), ...(showLabor ? [taskColumnWeights.labor] : []), ...(showParts ? [taskColumnWeights.parts] : [])];
+  const taskColumnWidths = visibleTaskColumns.map(weight => `${weight / visibleTaskColumns.reduce((sum, value) => sum + value, 0) * 100}%`);
   const groupedTaskCount = tareas.length <= 2 ? tareas.length : 1;
-  const renderTaskRow = (task, index) => <View key={`${task.tarea_nombre}-${index}`} style={S.tableRow}>
-    <Text style={[S.tableCell, { width: showLabor ? '31%' : '43%' }]}>{[task.actividad_nombre, task.tarea_nombre].filter(present).join(' · ')}</Text>
-    <Text style={[S.tableCell, { width: showLabor ? '24%' : '32%' }]}>{fmt(task.hallazgo)}</Text>
-    {showLabor ? <Text style={[S.tableCell, { width: '15%' }]}>{[task.cargo_nombre, present(task.horas_mano_obra) ? `${task.horas_mano_obra} h MO` : '', present(task.horas_maquina) ? `${task.horas_maquina} h máquina` : ''].filter(present).join('\n')}</Text> : null}
-    <Text style={[S.tableCell, { width: showLabor ? '30%' : '25%' }]}>{(task.materiales || []).map(m => [m.codigo, m.descripcion, present(m.cantidad) ? `${m.cantidad} ${m.unidad || ''}` : ''].filter(present).join(' · ')).join('\n')}</Text>
-  </View>;
+  const renderTaskRow = (task, index) => {
+    let column = 0;
+    return <View key={`${task.tarea_nombre}-${index}`} style={S.tableRow}>
+      <Text style={[S.tableCell, { width: taskColumnWidths[column++] }]}>{[task.actividad_nombre, task.tarea_nombre].filter(present).join(' · ')}</Text>
+      {showFinding ? <Text style={[S.tableCell, { width: taskColumnWidths[column++] }]}>{fmt(task.hallazgo)}</Text> : null}
+      {showLabor ? <Text style={[S.tableCell, { width: taskColumnWidths[column++] }]}>{[task.cargo_nombre, present(task.horas_mano_obra) ? `${task.horas_mano_obra} h MO` : '', present(task.horas_maquina) ? `${task.horas_maquina} h máquina` : ''].filter(present).join('\n')}</Text> : null}
+      {showParts ? <Text style={[S.tableCell, { width: taskColumnWidths[column] }]}>{(task.materiales || []).map(m => [m.codigo, m.descripcion, present(m.cantidad) ? `${m.cantidad} ${m.unidad || ''}` : ''].filter(present).join(' · ')).join('\n')}</Text> : null}
+    </View>;
+  };
   return <Document>
     <Page size="A4" style={S.page}>
       <View style={S.header}>
@@ -75,16 +83,28 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       <Text style={S.sectionTitle}>Resumen por prioridad</Text>
       <View style={S.summary}>{priorities.map(([key, label]) => <View key={key} style={S.summaryCard}><Text style={S.summaryLabel}>{label}</Text><Text style={S.summaryNum}>{Number(resumen[key] || 0)}</Text></View>)}</View>
 
-      {findings.length ? <><Text style={S.sectionTitle}>Hallazgos</Text>{findings.map((item, index) => {
+      {findings.length ? <><Text style={S.sectionTitle} minPresenceAhead={40}>Hallazgos</Text>{findings.map((item, index) => {
         const measures = mediciones.filter(m => m.hallazgo_id === item.hallazgo_id);
         const relatedTasks = tareas.filter(task => task.hallazgo === item.hallazgo || task.hallazgo_id === item.hallazgo_id || (item.lineas || []).some(line => line.tarea_nombre && line.tarea_nombre === task.tarea_nombre));
         const photos = [...(item.fotos || [])].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0)).filter(photo => imagenes.fotos?.[photo.ruta_storage]).slice(0, 3);
-        return <View key={item.hallazgo_id || index} style={S.finding} wrap={false}>
+        const findingFields = [
+          ['Daño', item.tipo_dano_etiqueta], ['Causa probable', item.causa_probable_etiqueta], ['Condición', item.condicion_etiqueta],
+          ['Riesgo', item.riesgo_etiqueta], ['Acción recomendada', item.accion_recomendada_etiqueta], ['Atribuible a', item.atribuible_a_etiqueta], ['Observación', item.observacion],
+        ].filter(([, value]) => present(value));
+        const estimateLines = text => Math.max(1, Math.ceil(text.length / 100));
+        const estimatedTextLines = findingFields.reduce((count, [label, value]) => count + estimateLines(`${label}: ${fmt(value)}`), 0);
+        const relatedTaskNames = [...(item.lineas || []).map(line => line.tarea_nombre), ...relatedTasks.map(task => task.tarea_nombre)]
+          .filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ');
+        const relatedTaskLines = relatedTaskNames ? estimateLines(`Tareas relacionadas: ${relatedTaskNames}`) : 0;
+        const estimatedHeight = 32 + (estimatedTextLines + relatedTaskLines) * 12 + (measures.length ? 22 + measures.length * 24 : 0) + photos.reduce((height, photo) => {
+          const ratio = Number(photo.ancho) > 0 && Number(photo.alto) > 0 ? Number(photo.ancho) / Number(photo.alto) : 1.5;
+          const width = Math.min(145, Math.max(66, 95 * ratio));
+          const imageHeight = Math.min(96, width / ratio);
+          return height + imageHeight + (present(photo.leyenda) ? 16 : 0) + 5;
+        }, 0);
+        return <View key={item.hallazgo_id || index} style={S.finding} wrap={estimatedHeight <= 700 ? false : true}>
           <View style={S.findingHead}><Text style={S.findingTitle}>{fmt(item.componente_parte)}</Text><Text style={S.priority}>{fmt(item.prioridad)}</Text></View>
-          {[
-            ['Daño', item.tipo_dano_etiqueta], ['Causa probable', item.causa_probable_etiqueta], ['Condición', item.condicion_etiqueta],
-            ['Riesgo', item.riesgo_etiqueta], ['Acción recomendada', item.accion_recomendada_etiqueta], ['Atribuible a', item.atribuible_a_etiqueta], ['Observación', item.observacion],
-          ].filter(([, value]) => present(value)).map(([label, value]) => <Text key={label} style={S.line}><Text style={S.bold}>{label}: </Text>{fmt(value)}</Text>)}
+          {findingFields.map(([label, value]) => <Text key={label} style={S.line}><Text style={S.bold}>{label}: </Text>{fmt(value)}</Text>)}
           {(item.lineas || []).length || relatedTasks.length ? <Text style={S.line}><Text style={S.bold}>Tareas relacionadas: </Text>{[...(item.lineas || []).map(line => line.tarea_nombre), ...relatedTasks.map(task => task.tarea_nombre)].filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ')}</Text> : null}
           {measures.length ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Mediciones</Text><TablaMediciones mediciones={measures} /></> : null}
           {photos.length ? <View style={S.photos}>{photos.map((photo, pi) => {
@@ -99,17 +119,19 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       {tareas.length ? <>
         <View wrap={false}>
           <Text style={S.sectionTitle}>Tareas y repuestos</Text>
-          <View style={S.tableHead}><Text style={[S.tableHeadText, { width: showLabor ? '31%' : '43%' }]}>Actividad / tarea</Text><Text style={[S.tableHeadText, { width: showLabor ? '24%' : '32%' }]}>Hallazgo</Text>{showLabor ? <><Text style={[S.tableHeadText, { width: '15%' }]}>Cargo / horas</Text><Text style={[S.tableHeadText, { width: '30%' }]}>Repuestos</Text></> : <Text style={[S.tableHeadText, { width: '25%' }]}>Repuestos</Text>}</View>
+          <View style={S.tableHead}><Text style={[S.tableHeadText, { width: taskColumnWidths[0] }]}>Actividad / tarea</Text>{showFinding ? <Text style={[S.tableHeadText, { width: taskColumnWidths[showLabor ? 1 : 1] }]}>Hallazgo</Text> : null}{showLabor ? <Text style={[S.tableHeadText, { width: taskColumnWidths[showFinding ? 2 : 1] }]}>Cargo / horas</Text> : null}{showParts ? <Text style={[S.tableHeadText, { width: taskColumnWidths[1 + Number(showFinding) + Number(showLabor)] }]}>Repuestos</Text> : null}</View>
           {tareas.slice(0, groupedTaskCount).map(renderTaskRow)}
         </View>
         {tareas.slice(groupedTaskCount).map((task, index) => renderTaskRow(task, index + groupedTaskCount))}
       </> : null}
-      {present(snapshot?.conclusion) ? <><Text style={S.sectionTitle}>Conclusión</Text><Text style={S.conclusion}>{snapshot.conclusion}</Text></> : null}
-      {present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View style={S.signature}>
-        <View style={{ height: 26 }} /><View style={S.signLine} />
-        {present(snapshot?.emisor?.nombre) ? <Text style={S.bold}>{snapshot.emisor.nombre}</Text> : null}
-        {present(snapshot?.emisor?.cargo) ? <Text style={S.muted}>{snapshot.emisor.cargo}</Text> : null}
-        {present(snapshot?.emitido_en) ? <Text style={S.muted}>{dateLabel(snapshot.emitido_en)}</Text> : null}
+      {present(snapshot?.conclusion) || present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View wrap={false}>
+        {present(snapshot?.conclusion) ? <><Text style={S.sectionTitle}>Conclusión</Text><Text style={S.conclusion}>{snapshot.conclusion}</Text></> : null}
+        {present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View style={S.signature}>
+          <View style={{ height: 8 }} /><View style={S.signLine} />
+          {present(snapshot?.emisor?.nombre) ? <Text style={S.bold}>{snapshot.emisor.nombre}</Text> : null}
+          {present(snapshot?.emisor?.cargo) ? <Text style={S.muted}>{snapshot.emisor.cargo}</Text> : null}
+          {present(snapshot?.emitido_en) ? <Text style={S.muted}>{dateLabel(snapshot.emitido_en)}</Text> : null}
+        </View> : null}
       </View> : null}
       <Text style={S.footer} fixed render={({ pageNumber, totalPages }) => `Generado con TIDEO ERP · Este informe no contiene valores económicos · Página ${pageNumber} de ${totalPages}`} />
     </Page>

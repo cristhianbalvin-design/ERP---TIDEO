@@ -58,7 +58,7 @@ describe('InformePdf', () => {
               "color": "#172033",
               "fontFamily": "Helvetica",
               "fontSize": 9,
-              "paddingBottom": 58,
+              "paddingBottom": 30,
               "paddingHorizontal": 38,
               "paddingTop": 30,
             }
@@ -72,7 +72,7 @@ describe('InformePdf', () => {
                 "borderColor": "#d9e0e8",
                 "flexDirection": "row",
                 "justifyContent": "space-between",
-                "marginBottom": 14,
+                "marginBottom": 10,
                 "paddingBottom": 10,
               }
             }
@@ -460,8 +460,8 @@ describe('InformePdf', () => {
                 "color": "#1a2b4a",
                 "fontFamily": "Helvetica-Bold",
                 "fontSize": 10,
-                "marginBottom": 6,
-                "marginTop": 13,
+                "marginBottom": 3,
+                "marginTop": 8,
                 "paddingBottom": 4,
               }
             }
@@ -648,6 +648,7 @@ describe('InformePdf', () => {
             </View>
           </View>
           <Text
+            minPresenceAhead={40}
             style={
               {
                 "borderBottomWidth": 1,
@@ -655,8 +656,8 @@ describe('InformePdf', () => {
                 "color": "#1a2b4a",
                 "fontFamily": "Helvetica-Bold",
                 "fontSize": 10,
-                "marginBottom": 6,
-                "marginTop": 13,
+                "marginBottom": 3,
+                "marginTop": 8,
                 "paddingBottom": 4,
               }
             }
@@ -670,7 +671,7 @@ describe('InformePdf', () => {
                 "borderRadius": 4,
                 "borderWidth": 1,
                 "marginBottom": 8,
-                "padding": 9,
+                "padding": 7,
               }
             }
             wrap={false}
@@ -680,7 +681,7 @@ describe('InformePdf', () => {
                 {
                   "flexDirection": "row",
                   "justifyContent": "space-between",
-                  "marginBottom": 6,
+                  "marginBottom": 4,
                 }
               }
             >
@@ -708,8 +709,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -728,8 +730,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -748,8 +751,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -768,8 +772,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -788,8 +793,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -808,8 +814,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -828,8 +835,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -848,8 +856,9 @@ describe('InformePdf', () => {
             <Text
               style={
                 {
-                  "lineHeight": 1.35,
-                  "marginBottom": 1,
+                  "fontSize": 9,
+                  "lineHeight": 1.25,
+                  "marginBottom": 0,
                 }
               }
             >
@@ -1036,7 +1045,7 @@ describe('InformePdf', () => {
                 {
                   "flexDirection": "row",
                   "gap": 8,
-                  "marginTop": 7,
+                  "marginTop": 5,
                 }
               }
             >
@@ -1068,7 +1077,7 @@ describe('InformePdf', () => {
                     {
                       "color": "#667085",
                       "fontSize": 7,
-                      "marginTop": 3,
+                      "marginTop": 2,
                       "textAlign": "center",
                     }
                   }
@@ -1089,8 +1098,8 @@ describe('InformePdf', () => {
                   "color": "#1a2b4a",
                   "fontFamily": "Helvetica-Bold",
                   "fontSize": 10,
-                  "marginBottom": 6,
-                  "marginTop": 13,
+                  "marginBottom": 3,
+                  "marginTop": 8,
                   "paddingBottom": 4,
                 }
               }
@@ -1241,89 +1250,93 @@ describe('InformePdf', () => {
               </Text>
             </View>
           </View>
-          <Text
-            style={
-              {
-                "borderBottomWidth": 1,
-                "borderColor": "#e1e6ec",
-                "color": "#1a2b4a",
-                "fontFamily": "Helvetica-Bold",
-                "fontSize": 10,
-                "marginBottom": 6,
-                "marginTop": 13,
-                "paddingBottom": 4,
-              }
-            }
-          >
-            Conclusión
-          </Text>
-          <Text
-            style={
-              {
-                "lineHeight": 1.45,
-              }
-            }
-          >
-            Requiere reparación prioritaria.
-          </Text>
           <View
-            style={
-              {
-                "alignItems": "center",
-                "alignSelf": "center",
-                "marginTop": 20,
-                "width": 250,
-              }
-            }
+            wrap={false}
           >
-            <View
-              style={
-                {
-                  "height": 26,
-                }
-              }
-            />
-            <View
-              style={
-                {
-                  "borderColor": "#667085",
-                  "borderTopWidth": 1,
-                  "marginBottom": 5,
-                  "width": "85%",
-                }
-              }
-            />
             <Text
               style={
                 {
+                  "borderBottomWidth": 1,
+                  "borderColor": "#e1e6ec",
+                  "color": "#1a2b4a",
                   "fontFamily": "Helvetica-Bold",
+                  "fontSize": 10,
+                  "marginBottom": 3,
+                  "marginTop": 8,
+                  "paddingBottom": 4,
                 }
               }
             >
-              Ana Pérez
+              Conclusión
             </Text>
             <Text
               style={
                 {
-                  "color": "#667085",
-                  "fontSize": 8,
-                  "marginTop": 3,
+                  "lineHeight": 1.45,
                 }
               }
             >
-              Jefa técnica
+              Requiere reparación prioritaria.
             </Text>
-            <Text
+            <View
               style={
                 {
-                  "color": "#667085",
-                  "fontSize": 8,
-                  "marginTop": 3,
+                  "alignItems": "center",
+                  "alignSelf": "center",
+                  "marginTop": 8,
+                  "width": 250,
                 }
               }
             >
-              7/10/2026
-            </Text>
+              <View
+                style={
+                  {
+                    "height": 8,
+                  }
+                }
+              />
+              <View
+                style={
+                  {
+                    "borderColor": "#667085",
+                    "borderTopWidth": 1,
+                    "marginBottom": 5,
+                    "width": "85%",
+                  }
+                }
+              />
+              <Text
+                style={
+                  {
+                    "fontFamily": "Helvetica-Bold",
+                  }
+                }
+              >
+                Ana Pérez
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "#667085",
+                    "fontSize": 8,
+                    "marginTop": 3,
+                  }
+                }
+              >
+                Jefa técnica
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "#667085",
+                    "fontSize": 8,
+                    "marginTop": 3,
+                  }
+                }
+              >
+                7/10/2026
+              </Text>
+            </View>
           </View>
           <Text
             fixed={true}
@@ -1373,7 +1386,7 @@ describe('InformePdf', () => {
               "color": "#172033",
               "fontFamily": "Helvetica",
               "fontSize": 9,
-              "paddingBottom": 58,
+              "paddingBottom": 30,
               "paddingHorizontal": 38,
               "paddingTop": 30,
             }
@@ -1387,7 +1400,7 @@ describe('InformePdf', () => {
                 "borderColor": "#d9e0e8",
                 "flexDirection": "row",
                 "justifyContent": "space-between",
-                "marginBottom": 14,
+                "marginBottom": 10,
                 "paddingBottom": 10,
               }
             }
@@ -1488,8 +1501,8 @@ describe('InformePdf', () => {
                 "color": "#1a2b4a",
                 "fontFamily": "Helvetica-Bold",
                 "fontSize": 10,
-                "marginBottom": 6,
-                "marginTop": 13,
+                "marginBottom": 3,
+                "marginTop": 8,
                 "paddingBottom": 4,
               }
             }
@@ -1707,6 +1720,113 @@ describe('InformePdf', () => {
     expect(group).not.toBeNull();
     expect(textContents(group)).toContain('Actividad / tarea');
     expect(textContents(group).some(text => text.includes('Cambiar sello'))).toBe(true);
+  });
+
+  it('protege la tarjeta del hallazgo y compacta sus líneas', () => {
+    const tree = create(<InformePdf snapshot={completeSnapshot} imagenes={{ fotos: { 'foto-1': 'foto' } }} />).toJSON();
+    const finding = findNode(tree, node => node.type === 'View' && node.props?.wrap === false && textContents(node).includes('Vista frontal'));
+    expect(finding).not.toBeNull();
+    expect(finding.props.style).toEqual(expect.objectContaining({ padding: 7 }));
+    const line = findNode(finding, node => node.type === 'Text' && node.props?.style?.lineHeight === 1.25);
+    expect(line.props.style.fontSize).toBe(9);
+    expect(line.props.style.marginBottom).toBe(0);
+    expect(textContents(finding)).toContain('Vista frontal');
+    const tallSnapshot = { ...completeSnapshot, hallazgos: [{ ...completeSnapshot.hallazgos[0], observacion: 'Hallazgo extenso. '.repeat(400) }] };
+    const tallTree = create(<InformePdf snapshot={tallSnapshot} />).toJSON();
+    const tallFinding = findNode(tallTree, node => node.type === 'View' && node.props?.wrap === true && textContents(node).some(text => text.startsWith('Hallazgo extenso.')));
+    expect(tallFinding).not.toBeNull();
+
+    const photoKeys = ['foto-1', 'foto-2', 'foto-3'];
+    const findingId = completeSnapshot.hallazgos[0].hallazgo_id;
+    const photoMeasurements = Array.from({ length: 20 }, (_, index) => ({ parametro: `Medición ${index + 1}`, medido: 'OK' }));
+    const photoSnapshot = {
+      ...completeSnapshot,
+      mediciones: photoMeasurements.map(measurement => ({ ...measurement, hallazgo_id: findingId })),
+      hallazgos: [{ ...completeSnapshot.hallazgos[0], fotos: photoKeys.map((ruta_storage, orden) => ({ ruta_storage, orden, ancho: 1500, alto: 1000, leyenda: orden === 0 ? 'Vista frontal' : `Vista ${orden + 1}` })) }],
+    };
+    const photoTree = create(<InformePdf snapshot={photoSnapshot} imagenes={{ fotos: Object.fromEntries(photoKeys.map(key => [key, 'foto'])) }} />).toJSON();
+    const photoFinding = findNode(photoTree, node => node.type === 'View' && node.props?.wrap === true && textContents(node).includes('Vista frontal'));
+    expect(photoFinding).not.toBeNull();
+
+    const longRelatedTasks = Array.from({ length: 4 }, (_, index) => ({
+      hallazgo_id: findingId,
+      tarea_nombre: `Tarea relacionada ${index + 1}: ${'desmontar inspeccionar calibrar reemplazar '.repeat(24)}`,
+    }));
+    const longTasksSnapshot = {
+      ...completeSnapshot,
+      hallazgos: [{
+        ...completeSnapshot.hallazgos[0],
+        lineas: [],
+        fotos: photoKeys.map((ruta_storage, orden) => ({ ruta_storage, orden, ancho: 1500, alto: 1000, leyenda: orden === 0 ? 'Vista frontal' : `Vista ${orden + 1}` })),
+      }],
+      mediciones: [],
+      tareas_repuestos: longRelatedTasks,
+    };
+    const longTasksTree = create(<InformePdf snapshot={longTasksSnapshot} imagenes={{ fotos: Object.fromEntries(photoKeys.map(key => [key, 'foto'])) }} />).toJSON();
+    const longTasksFinding = findNode(longTasksTree, node => node.type === 'View' && node.props?.wrap === true && textContents(node).includes('Vista frontal'));
+    expect(findingId).toBe('h1');
+    expect(longTasksFinding).not.toBeNull();
+    expect(textContents(longTasksFinding).some(text => text.includes('Tarea relacionada 1'))).toBe(true);
+  });
+
+  it('mide la reducción del interlineado del hallazgo en puntos', () => {
+    const tree = create(<InformePdf snapshot={completeSnapshot} />).toJSON();
+    const finding = findNode(tree, node => node.type === 'View' && node.props?.wrap === false && textContents(node).includes('Bomba'));
+    const line = findNode(finding, node => node.type === 'Text' && node.props?.style?.lineHeight === 1.25);
+    const beforePt = line.props.style.fontSize * 1.35;
+    const afterPt = line.props.style.fontSize * line.props.style.lineHeight;
+    expect({ beforePt, afterPt, reductionPt: Number((afterPt - beforePt).toFixed(2)) }).toEqual({ beforePt: 12.15, afterPt: 11.25, reductionPt: -0.9 });
+  });
+
+  it('mantiene Hallazgos junto al primer hallazgo y agrupa Conclusión con texto y firma', () => {
+    const tree = create(<InformePdf snapshot={completeSnapshot} />).toJSON();
+    const headings = [];
+    const visit = node => {
+      if (!node) return;
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (node.type === 'Text' && textContents(node).join('') === 'Hallazgos') headings.push(node);
+      (node.children || []).forEach(visit);
+    };
+    visit(tree);
+    expect(headings).toHaveLength(1);
+    expect(headings[0].props.minPresenceAhead).toBeGreaterThanOrEqual(40);
+
+    const conclusionGroup = findNode(tree, node => node.type === 'View' && node.props?.wrap === false && textContents(node).includes('Conclusión'));
+    expect(conclusionGroup).not.toBeNull();
+    const conclusionTitle = conclusionGroup.children.findIndex(node => node.type === 'Text' && textContents(node).join('') === 'Conclusión');
+    expect(conclusionGroup.children[conclusionTitle + 1].type).toBe('Text');
+    expect(conclusionGroup.children[conclusionTitle + 1].props.style).toEqual(expect.objectContaining({ lineHeight: 1.45 }));
+    expect(conclusionGroup.children.some(node => node.type === 'View' && node.props.style?.width === 250)).toBe(true);
+  });
+
+  it('renderiza la fixture completa en una página PDF real', async () => {
+    const realRenderer = await vi.importActual('@react-pdf/renderer');
+    vi.doUnmock('@react-pdf/renderer');
+    vi.resetModules();
+    const { default: RealInformePdf } = await import('../src/zahory-mock/pages/InformePdf.jsx');
+    const buffer = await realRenderer.renderToBuffer(React.createElement(RealInformePdf, { snapshot: completeSnapshot }));
+    const pageCount = (buffer.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length;
+    console.log(`PDF_FIXTURE_PAGES=${pageCount}; LINE_STEP_BEFORE_PT=12.15; LINE_STEP_AFTER_PT=11.25; DELTA_PT=-0.90`);
+    expect(pageCount).toBe(1);
+  });
+
+  it('oculta Hallazgo y Repuestos cuando todas las filas están vacías y reasigna el ancho', () => {
+    const snapshot = { ...completeSnapshot, tareas_repuestos: [{ actividad_nombre: 'Inspección', tarea_nombre: 'Revisar equipo', hallazgo: '', materiales: [] }] };
+    const tree = create(<InformePdf snapshot={snapshot} />).toJSON();
+    const header = findNode(tree, node => node.type === 'View' && textContents(node).join('|') === 'Actividad / tarea');
+    const row = findNode(tree, node => node.type === 'View' && textContents(node).join('|') === 'Inspección · Revisar equipo');
+    expect(textContents(header)).toEqual(['Actividad / tarea']);
+    expect(header.children[0].props.style[1].width).toBe('100%');
+    expect(row.children).toHaveLength(1);
+    expect(row.children[0].props.style[1].width).toBe('100%');
+  });
+
+  it('mantiene Hallazgo y Repuestos cuando alguna tarea tiene datos y alinea sus anchos', () => {
+    const tree = create(<InformePdf snapshot={completeSnapshot} />).toJSON();
+    const header = findNode(tree, node => node.type === 'View' && textContents(node).join('|') === 'Actividad / tarea|Hallazgo|Cargo / horas|Repuestos');
+    const row = findNode(tree, node => node.type === 'View' && textContents(node).join('|').startsWith('Reparación · Cambiar sello|'));
+    expect(textContents(header)).toEqual(['Actividad / tarea', 'Hallazgo', 'Cargo / horas', 'Repuestos']);
+    expect(header.children.map(node => node.props.style[1].width)).toEqual(row.children.map(node => node.props.style[1].width));
   });
 
   it('capitaliza Tipo solo al renderizar el PDF', () => {

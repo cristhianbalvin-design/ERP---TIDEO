@@ -1551,7 +1551,9 @@ a { color: var(--cyan); text-decoration: none; }
 }
 /* Panel de emisión y reapertura del diagnóstico técnico */
 .diagnostico-estado-panel { border-top: 1px solid var(--card-border); }
-.diagnostico-estado-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.diagnostico-estado-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.dx-action-bar > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dx-action-bar .btn { min-height: 40px; height: 40px; padding: 0 16px; }
 .diagnostico-estado-history { margin: 10px 0 0; padding-left: 22px; }
 .diagnostico-estado-history li { padding: 0 0 12px 4px; }
 .diagnostico-estado-dialog { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: rgba(15,23,42,.65); }
@@ -1645,6 +1647,7 @@ a { color: var(--cyan); text-decoration: none; }
 
 /* Informe al cliente · fase 4b */
 .dx-inf-open-row { display:flex; justify-content:flex-end; margin:0 0 12px; }
+.dx-inf-open-row .btn { min-height:40px; height:40px; padding:0 16px; }
 .dx-inf-overlay { position:fixed; inset:0; z-index:1500; background:#101827b8; color:#1F2937; font:14px/1.5 'DM Sans',sans-serif; }
 .dx-inf-layout { display:grid; grid-template-columns:minmax(310px,390px) minmax(0,1fr); width:100%; height:100%; }
 .dx-inf-controls { overflow:auto; padding:24px; background:#fff; box-shadow:8px 0 28px #10182726; }
@@ -1814,6 +1817,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-modal .diagnostico-estado-panel { padding:0 28px; }
 .dx-modal .diagnostico-estado-panel .card-body { padding:6px 0 4px; }
 .dx-modal .diagnostico-estado-actions { justify-content:flex-end; align-items:center; margin:0; }
+.dx-modal .dx-action-bar { gap:10px; flex-wrap:wrap; }
 .dx-modal .diagnostico-estado-actions .muted { font-size:11px; }
 .diagnostico-estado-history-toggle { display:flex; align-items:center; gap:7px; padding:5px 0 8px; border:0; background:transparent; color:#6B7280; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
 .diagnostico-estado-history-toggle > span { width:12px; color:#1A2B4A; font-size:16px; }
