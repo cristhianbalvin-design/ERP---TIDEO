@@ -3,7 +3,7 @@
 -- tipos_servicio_interno.familia_id apunta a otro catálogo (Mecánico, Eléctrico...), por eso se agrega una columna propia.
 -- Una actividad sin trabajo (NULL) sigue apareciendo en todos los trabajos.
 -- Carga inicial por nombre dentro de cada empresa; lo que no coincide queda en NULL.
--- Ensayo: dejar ROLLBACK al final, revisar los SELECT de verificación y luego cambiar a COMMIT.
+-- Aplicada en producción el 2026-10-09 tras ensayo con ROLLBACK y revisión.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -151,4 +151,4 @@ SELECT p.oid::regprocedure AS firma, has_function_privilege('authenticated',p.oi
        has_function_privilege('anon',p.oid,'EXECUTE') AS anon_ejecuta
 FROM pg_proc p WHERE p.proname='buscar_o_crear_tipo_servicio_interno' AND p.pronamespace='public'::regnamespace;
 
-ROLLBACK;
+COMMIT;
