@@ -6,7 +6,7 @@ import { firmarRutasFotosHallazgos, listarFotosHallazgos } from '../../services/
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
-export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, cambiosSinGuardar = false, onClose }) {
+export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, cambiosSinGuardar = false, resumenPendiente = false, onResumenChange, onGuardarResumen, onClose }) {
   const [informe, setInforme] = useState(null);
   const [borrador, setBorrador] = useState(null);
   const [emitidos, setEmitidos] = useState([]);
@@ -133,8 +133,10 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   }, [diagnostico.recepcion_id, puedeEditar]);
 
   const isEditable = Boolean(puedeEditar && borrador?.estado === 'borrador' && !seleccionVersion);
-  const conclusionModificada = opciones.conclusion !== opcionesGuardadas.conclusion;
-  const conclusionSinConfirmar = Boolean(String(opciones.conclusion || '').trim()) && !opciones.conclusion_confirmada;
+  const esMantenimiento = diagnostico?.tipo === 'mantenimiento';
+  const textoConclusion = esMantenimiento ? (diagnostico?.resumen_diagnostico || '') : (opciones.conclusion || '');
+  const conclusionModificada = esMantenimiento ? resumenPendiente : opciones.conclusion !== opcionesGuardadas.conclusion;
+  const conclusionSinConfirmar = Boolean(String(textoConclusion).trim()) && (!opciones.conclusion_confirmada || conclusionModificada);
   const opcionesPendientes = JSON.stringify(opciones) !== JSON.stringify(opcionesGuardadas);
   const effectiveSnapshot = useMemo(() => {
     if (seleccionVersion?.snapshot) return snapshotEmitidoVista || seleccionVersion.snapshot;
@@ -147,9 +149,12 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     setGenerandoIA(true); setIaError(''); setConfirmarReemplazo(false);
     try {
       const result = await generarConclusionIA(diagnostico.id);
-      setOpciones(current => ({ ...current, conclusion: result.conclusion, conclusion_origen: 'ia', conclusion_confirmada: false }));
+      if (esMantenimiento) {
+        onResumenChange?.(result.conclusion, 'editado');
+        setOpciones(current => ({ ...current, conclusion_confirmada: false }));
+      } else setOpciones(current => ({ ...current, conclusion: result.conclusion, conclusion_origen: 'ia', conclusion_confirmada: false }));
       setSeleccionVersion(null);
-      setAviso('Conclusión generada. Revísala y guárdala para poder confirmarla.');
+      setAviso(esMantenimiento ? 'Redacción mejorada. Revísala y guarda el diagnóstico para poder confirmarlo.' : 'Conclusión generada. Revísala y guárdala para poder confirmarla.');
     } catch (generationError) { setIaError(generationError.message || 'No se pudo generar la conclusión.'); }
     finally { setGenerandoIA(false); }
   };
@@ -158,7 +163,9 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     if (!isEditable || guardando) return false;
     setGuardando(true); setError(''); setAviso('');
     try {
-      const saved = await actualizarOpciones(informe.id, opciones);
+      if (esMantenimiento && resumenPendiente && onGuardarResumen) await onGuardarResumen();
+      const opcionesAGuardar = esMantenimiento && resumenPendiente ? { ...opciones, conclusion_confirmada: false } : opciones;
+      const saved = await actualizarOpciones(informe.id, opcionesAGuardar);
       const next = normalize(saved.opciones);
       setInforme(saved); setBorrador(saved); setOpcionesGuardadas(next); setOpciones(next);
       if (!silencioso) setAviso('Borrador guardado.');
@@ -248,20 +255,21 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
             <label><input type="checkbox" checked={Boolean(opciones.mostrar_horas)} onChange={e => patch('mostrar_horas', e.target.checked)} /> Mostrar horas estimadas</label>
             <label><input type="checkbox" checked={Boolean(opciones.ocultar_conformes)} onChange={e => patch('ocultar_conformes', e.target.checked)} /> Ocultar hallazgos conformes</label>
           </fieldset>
-          <div className="dx-inf-conclusion-editor"><label htmlFor="dx-inf-conclusion">Conclusión</label><textarea id="dx-inf-conclusion" rows={5} maxLength={2000} value={opciones.conclusion || ''} disabled={!isEditable || guardando} onChange={e => {
+          <div className="dx-inf-conclusion-editor"><label htmlFor="dx-inf-conclusion">Conclusión</label><textarea id="dx-inf-conclusion" rows={5} maxLength={2000} value={textoConclusion} disabled={esMantenimiento || !isEditable || guardando} onChange={e => {
             const changed = e.target.value !== opcionesGuardadas.conclusion;
             patch('conclusion', e.target.value);
             if (changed && opciones.conclusion_confirmada) setOpciones(current => ({ ...current, conclusion_confirmada: false }));
             if (changed && opciones.conclusion_origen === 'ia') setOpciones(current => ({ ...current, conclusion_origen: 'ia_editada' }));
             else if (changed && opciones.conclusion_origen !== 'ia_editada') setOpciones(current => ({ ...current, conclusion_origen: 'manual' }));
-          }} /><div className="dx-inf-counter">{(opciones.conclusion || '').length}/2000</div>
+          }} /><div className="dx-inf-counter">{textoConclusion.length}/2000</div>
             {(opciones.conclusion_origen === 'ia' || opciones.conclusion_origen === 'ia_editada') && <small className="dx-inf-ai-label">Generado por IA, requiere revisión</small>}
-            {isEditable && <button type="button" className="dx-inf-ai-button" disabled={generandoIA || guardando} onClick={() => String(opciones.conclusion || '').trim() ? setConfirmarReemplazo(true) : generarIA()}>{generandoIA ? 'Generando…' : 'Generar conclusión con IA'}</button>}
+            {esMantenimiento && <small className="dx-inf-ai-label">Este texto se edita en el Diagnóstico</small>}
+            {isEditable && <button type="button" className="dx-inf-ai-button" disabled={generandoIA || guardando} onClick={() => String(textoConclusion).trim() ? setConfirmarReemplazo(true) : generarIA()}>{generandoIA ? 'Generando…' : esMantenimiento ? 'Mejorar redacción' : 'Generar conclusión con IA'}</button>}
             {confirmarReemplazo && <div className="dx-inf-ai-confirm" role="group" aria-label="Confirmar reemplazo de conclusión"><span>La conclusión actual se reemplazará. ¿Continuar?</span><button type="button" onClick={generarIA} disabled={generandoIA}>Sí, reemplazar</button><button type="button" onClick={() => setConfirmarReemplazo(false)}>Cancelar</button></div>}
             {iaError && <div className="dx-inf-error" role="alert">{iaError}</div>}
           </div>
           <label className="dx-inf-confirm"><input type="checkbox" checked={Boolean(opciones.conclusion_confirmada)} disabled={!isEditable || guardando || conclusionModificada} onChange={confirmarConclusion} /> Revisé y confirmo la conclusión</label>
-          {Boolean(String(opciones.conclusion || '').trim()) && !opciones.conclusion_confirmada && <p className="dx-inf-unconfirmed">No podrá emitirse hasta confirmarla.</p>}
+          {Boolean(String(textoConclusion).trim()) && !opciones.conclusion_confirmada && <p className="dx-inf-unconfirmed">No podrá emitirse hasta confirmarla.</p>}
           {isEditable && <button type="button" className="dx-inf-save" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar borrador'}</button>}
           {isEditable && permisoAprobar && <button type="button" className="dx-informe-emitir" onClick={() => {
             setError(''); setAviso(''); setEmisorNombre(identidadEmpresa?.firmante || ''); setEmisorCargo(identidadEmpresa?.cargo_firmante || ''); setConfirmarEmision(true);

@@ -97,8 +97,11 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
       diagnostico_id: diagnostico?.id || null, tipo: diagnostico?.tipo || null, estado_diagnostico: diagnostico?.estado || null,
     },
     hallazgos, mediciones, tareas_repuestos: tareas, resumen,
-    conclusion: String(op.conclusion || '').trim() || null,
-    conclusion_origen: op.conclusion_origen,
+    diagnostico_origen: diagnostico?.resumen_origen || 'auto',
+    conclusion: diagnostico?.tipo === 'mantenimiento'
+      ? (String(diagnostico?.resumen_diagnostico || '').trim() || null)
+      : (String(op.conclusion || '').trim() || null),
+    conclusion_origen: diagnostico?.tipo === 'mantenimiento' ? diagnostico?.resumen_origen || 'auto' : op.conclusion_origen,
     emisor: { nombre: head.emisor_nombre || null, cargo: head.emisor_cargo || null },
   };
 }

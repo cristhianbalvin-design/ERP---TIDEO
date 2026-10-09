@@ -1,6 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
-const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,elaborado_por,emitido_por,emitido_en,created_at,updated_at';
+const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at';
 const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,empresa_id,linea_id,material_id,descripcion,cantidad,unidad,orden,created_at';
 const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
@@ -178,6 +178,22 @@ export async function obtenerDiagnosticoTecnico(empresaId, diagnosticoId) {
       lineas: enlacesPorHallazgo.get(hallazgo.id) || [],
     })),
   };
+}
+
+export async function guardarResumenDiagnostico(empresaId, diagnosticoId, resumen, origen) {
+  requireEmpresa(empresaId);
+  requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  if (!['auto', 'editado'].includes(origen)) throw new Error('El origen del resumen no es válido.');
+  const { data, error } = await getSupabaseClient()
+    .from('diagnosticos_tecnicos')
+    .update({ resumen_diagnostico: resumen || null, resumen_origen: origen })
+    .eq('empresa_id', empresaId)
+    .eq('id', diagnosticoId)
+    .eq('estado', 'borrador')
+    .select('id,resumen_diagnostico,resumen_origen')
+    .single();
+  if (error) throw getError(error);
+  return data;
 }
 
 export async function listarCatalogosHallazgos(empresaId) {

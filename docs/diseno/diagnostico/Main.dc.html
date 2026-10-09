@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diagnóstico: líneas por trabajo</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit;cursor:pointer}
+input,textarea{font-family:inherit}
+</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 1060px; background: #5F6675; font-family: 'DM Sans', system-ui, sans-serif; color: #1F2937; overflow: hidden">
+  <div style="position: absolute; left: 60px; top: 24px; width: 1160px; height: 1012px; background: #FFFFFF; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(15,27,48,0.35)">
+
+    <!-- Encabezado -->
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 28px 14px 28px; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <h1 style="margin: 0; font-family: 'Sora', sans-serif; font-size: 22px; font-weight: 700; color: #1A2B4A">Fabricación · DESARROLLO CRM</h1>
+          <span style="background: #FFF3E0; color: #8A4B00; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px">Borrador</span>
+        </div>
+        <div style="font-size: 13px; color: #6B7280">Oportunidad: DESARROLLO CRM · Sociedad PRUEBA</div>
+      </div>
+      <button type="button" aria-label="Cerrar" style="width: 40px; height: 40px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; display: flex; align-items: center; justify-content: center">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Resumen -->
+    <div style="display: flex; align-items: center; gap: 10px; padding: 12px 28px; background: #F4F6F8; border-top: 1px solid #E4E7EB; border-bottom: 1px solid #E4E7EB; flex-wrap: wrap">
+      <div style="display: flex; align-items: baseline; gap: 6px; padding: 6px 14px; background: #fff; border: 1px solid #E4E7EB; border-radius: 8px"><b style="font-size: 18px; color: #1A2B4A">3</b><span style="font-size: 12px; color: #6B7280">trabajos</span></div>
+      <div style="display: flex; align-items: baseline; gap: 6px; padding: 6px 14px; background: #fff; border: 1px solid #E4E7EB; border-radius: 8px"><b style="font-size: 18px; color: #1A2B4A">13</b><span style="font-size: 12px; color: #6B7280">tareas</span></div>
+      <div style="display: flex; align-items: baseline; gap: 6px; padding: 6px 14px; background: #fff; border: 1px solid #E4E7EB; border-radius: 8px"><b style="font-size: 18px; color: #1A2B4A">36,5 h</b><span style="font-size: 12px; color: #6B7280">horas-hombre</span></div>
+      <div style="display: flex; align-items: baseline; gap: 6px; padding: 6px 14px; background: #fff; border: 1px solid #E4E7EB; border-radius: 8px"><b style="font-size: 18px; color: #1A2B4A">20,5 h</b><span style="font-size: 12px; color: #6B7280">horas-máquina</span></div>
+      <div style="flex: 1"></div>
+      <button type="button" style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 8px; border: 0; background: #1A2B4A; color: #fff; font-size: 14px; font-weight: 600">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+        Agregar trabajo
+      </button>
+    </div>
+
+    <!-- Cuerpo -->
+    <div style="flex: 1; min-height: 0; overflow: hidden; padding: 18px 28px; display: flex; flex-direction: column; gap: 14px">
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #E0F7FA; border-radius: 8px; font-size: 13px; color: #0B4F5A">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0B4F5A" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4M8 4.8v.2"/></svg>
+        <span>Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</span>
+      </div>
+
+      <!-- Trabajo 1 abierto -->
+      <section style="border: 1px solid #D5DAE1; border-radius: 12px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #F8F9FA; border-bottom: 1px solid #E4E7EB">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l4 4 4-4"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="font-family: 'Sora', sans-serif; font-weight: 700; font-size: 16px; color: #1A2B4A">Tapa</span>
+              <span style="font-size: 12px; color: #0B4F5A; background: #E0F7FA; padding: 2px 10px; border-radius: 999px; font-weight: 600">Actividad: Fabricación de tapa</span>
+            </div>
+            <span style="font-size: 12px; color: #6B7280">5 tareas · 13,0 h-hombre · 6,5 h-máquina</span>
+          </div>
+          <div style="flex: 1"></div>
+          <button type="button" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">Aplicar actividad</button>
+          <button type="button" style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M7 1v12M1 7h12"/></svg>
+            Agregar tareas
+          </button>
+        </div>
+
+        <!-- Cabecera de columnas -->
+        <div style="display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.5fr) 110px minmax(0, 1.7fr) 110px 84px; column-gap: 12px; padding: 10px 16px 0 16px; align-items: end">
+          <div></div>
+          <div style="grid-column: span 2; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #0B4F5A; border-bottom: 2px solid #00ACC1; padding-bottom: 4px">MANO DE OBRA</div>
+          <div style="grid-column: span 2; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: #5B3A8C; border-bottom: 2px solid #8E6BD1; padding-bottom: 4px">MÁQUINA</div>
+          <div></div>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.5fr) 110px minmax(0, 1.7fr) 110px 84px; column-gap: 12px; padding: 6px 16px 8px 16px; font-size: 12px; font-weight: 600; color: #6B7280">
+          <div>Tarea</div><div>Cargo</div><div style="text-align: right">Horas-hombre</div><div>Activo propio</div><div style="text-align: right">Horas-máquina</div><div style="text-align: center">Detalle</div>
+        </div>
+
+        <sc-for list="{{tareas}}" as="t" hint-placeholder-count="5">
+          <div style="display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(0, 1.5fr) 110px minmax(0, 1.7fr) 110px 84px; column-gap: 12px; padding: 8px 16px; align-items: center; border-top: 1px solid #EEF0F3; background: {{t.bg}}">
+            <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0">
+              <span style="font-size: 14px; font-weight: 600; color: #1A2B4A">{{t.nombre}}</span>
+              <span style="font-size: 11px; color: #6B7280">{{t.codigo}}</span>
+            </div>
+            <div style="height: 38px; box-sizing: border-box; border: 1px solid #C9CFD8; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; font-size: 13px; color: #1F2937; background: #fff">{{t.cargo}}</div>
+            <div style="display: flex; align-items: center; height: 38px; box-sizing: border-box; border: 1px solid #C9CFD8; border-radius: 8px; background: #fff; padding: 0 10px; gap: 4px">
+              <input aria-label="Horas-hombre de {{t.nombre}}" value="{{t.hh}}" style="flex: 1; min-width: 0; border: 0; outline: 0; text-align: right; font-size: 14px; font-weight: 600; color: #1A2B4A; background: transparent">
+              <span style="font-size: 12px; color: #6B7280">h</span>
+            </div>
+            <div style="height: 38px; box-sizing: border-box; border: 1px solid #C9CFD8; border-radius: 8px; padding: 0 10px; display: flex; align-items: center; font-size: 13px; color: {{t.activoColor}}; background: #fff">{{t.activo}}</div>
+            <div style="display: flex; align-items: center; height: 38px; box-sizing: border-box; border: 1px solid #C9CFD8; border-radius: 8px; background: {{t.hmBg}}; padding: 0 10px; gap: 4px">
+              <input aria-label="Horas-máquina de {{t.nombre}}" value="{{t.hm}}" disabled="{{t.hmOff}}" style="flex: 1; min-width: 0; border: 0; outline: 0; text-align: right; font-size: 14px; font-weight: 600; color: #1A2B4A; background: transparent">
+              <span style="font-size: 12px; color: #6B7280">h</span>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 6px">
+              <button type="button" aria-label="Notas y repuestos de {{t.nombre}}" style="height: 32px; min-width: 44px; padding: 0 8px; border-radius: 8px; border: 1px solid #C9CFD8; background: #fff; color: #1A2B4A; font-size: 12px; font-weight: 600">{{t.detalle}}</button>
+            </div>
+          </div>
+        </sc-for>
+
+        <!-- Detalle abierto de Soldadura -->
+        <div style="margin: 0 16px 10px 16px; padding: 12px 14px; background: #F8F9FA; border: 1px solid #E4E7EB; border-radius: 8px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="hallazgo" style="font-size: 12px; font-weight: 600; color: #6B7280">Hallazgo · Soldadura de unión</label>
+            <textarea id="hallazgo" rows="3" style="resize: none; border: 1px solid #C9CFD8; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #1F2937; background: #fff">Fisura en el cordón original; rebajar y aplicar relleno.</textarea>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 12px; font-weight: 600; color: #6B7280">Repuestos de esta tarea</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; border: 1px solid #C9CFD8; border-radius: 8px; background: #fff; font-size: 13px"><span>Electrodo 6011 3/32"</span><b>2 kg</b></div>
+            <button type="button" style="align-self: flex-start; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 12px; font-weight: 600">+ Agregar repuesto</button>
+          </div>
+        </div>
+
+        <!-- Añadir tarea rápida -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 10px 16px 14px 16px; border-top: 1px dashed #D5DAE1">
+          <div style="flex: 1; display: flex; align-items: center; gap: 8px; height: 40px; box-sizing: border-box; border: 1px solid #C9CFD8; border-radius: 8px; padding: 0 12px; background: #fff">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+            <input aria-label="Buscar y añadir una tarea" placeholder="Escribe para buscar y añadir una tarea (nombre o código)…" style="flex: 1; border: 0; outline: 0; font-size: 14px; background: transparent">
+          </div>
+          <span style="font-size: 12px; color: #6B7280">Enter añade la primera coincidencia</span>
+        </div>
+      </section>
+
+      <!-- Trabajo 2 colapsado -->
+      <section style="border: 1px solid #D5DAE1; border-radius: 12px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #F8F9FA">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l4 4-4 4"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="font-family: 'Sora', sans-serif; font-weight: 700; font-size: 16px; color: #1A2B4A">Camisa</span>
+              <span style="font-size: 12px; color: #0B4F5A; background: #E0F7FA; padding: 2px 10px; border-radius: 999px; font-weight: 600">Actividad: Fabricación de camisa</span>
+            </div>
+            <span style="font-size: 12px; color: #6B7280">6 tareas · 18,5 h-hombre · 12,0 h-máquina</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Trabajo 3 colapsado -->
+      <section style="border: 1px solid #D5DAE1; border-radius: 12px; overflow: hidden">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #F8F9FA">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l4 4-4 4"/></svg>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="font-family: 'Sora', sans-serif; font-weight: 700; font-size: 16px; color: #1A2B4A">Vástago</span>
+              <span style="font-size: 12px; color: #6B7280; background: #EEF0F3; padding: 2px 10px; border-radius: 999px; font-weight: 600">Sin actividad</span>
+            </div>
+            <span style="font-size: 12px; color: #6B7280">2 tareas · 5,0 h-hombre · 2,0 h-máquina</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Pie fijo -->
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-top: 1px solid #E4E7EB; background: #fff">
+      <span style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8A4B00"><span style="width: 8px; height: 8px; border-radius: 50%; background: #E08A00; display: inline-block"></span>2 tareas con cambios sin guardar</span>
+      <div style="flex: 1"></div>
+      <button type="button" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 14px; font-weight: 600">Cerrar</button>
+      <button type="button" style="height: 40px; padding: 0 20px; border-radius: 8px; border: 0; background: #1A2B4A; color: #fff; font-size: 14px; font-weight: 600">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const filas = [
+      { nombre: 'Torneado de desbaste', codigo: 'COD-014', cargo: 'Tornero', hh: '4,0', activo: 'TORNO-01 · Torno CNC', hm: '3,0', detalle: 'Notas', sin: false },
+      { nombre: 'Bruñido intermedio', codigo: 'COD-021', cargo: 'Operario de bruñido', hh: '2,5', activo: 'BRU-02 · Bruñidora', hm: '2,5', detalle: 'Notas', sin: true },
+      { nombre: 'Soldadura de unión', codigo: 'COD-033', cargo: 'Soldador', hh: '3,0', activo: 'Sin máquina', hm: '0', detalle: 'Repuestos 1', sin: false },
+      { nombre: 'Control dimensional', codigo: 'COD-040', cargo: 'Inspector de calidad', hh: '1,5', activo: 'Sin máquina', hm: '0', detalle: 'Notas', sin: false },
+      { nombre: 'Pintura y acabado', codigo: 'COD-052', cargo: 'Pintor', hh: '2,0', activo: 'CAB-01 · Cabina de pintura', hm: '1,0', detalle: 'Notas', sin: true }
+    ];
+    return {
+      tareas: filas.map(f => ({
+        ...f,
+        bg: f.sin ? '#FFFBF2' : '#FFFFFF',
+        activoColor: f.activo === 'Sin máquina' ? '#6B7280' : '#1F2937',
+        hmBg: f.activo === 'Sin máquina' ? '#F4F6F8' : '#FFFFFF',
+        hmOff: f.activo === 'Sin máquina'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

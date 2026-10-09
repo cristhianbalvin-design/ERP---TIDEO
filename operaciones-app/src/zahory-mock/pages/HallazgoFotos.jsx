@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { actualizarFotoHallazgo, borrarFotoHallazgo, listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnosticoHallazgoFotosService.js';
 
 const errorText = error => error?.message || 'No se pudo completar la operación.';
+const TIPOS_IMAGEN = ['image/jpeg', 'image/png', 'image/webp'];
 
-export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, fotos = [], readOnly = false, onFotosChange }) {
+export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, fotos = [], fotosPendientes = [], readOnly = false, onFotosChange, onFotosPendientesChange }) {
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
@@ -12,6 +13,7 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   const [leyendas, setLeyendas] = useState({});
   const [exclusiones, setExclusiones] = useState({});
   const publish = next => onFotosChange?.(next);
+  const total = fotos.length + fotosPendientes.length;
 
   const updateFoto = async (foto, changes) => {
     setError(''); setNotice(''); setBusyId(foto.id);
@@ -31,24 +33,49 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   const uploadFiles = async event => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
-    if (!hallazgo?.id || !files.length) return;
-    setError(''); setNotice(''); setUploading(true);
-    let next = fotos;
-    let didUpload = false;
-    try {
-      for (const file of files) {
-        if (next.length >= 3) break;
-        const foto = await subirFotoHallazgo({ empresaId, diagnosticoId, hallazgoId: hallazgo.id, archivo: file, leyenda: '' });
-        next = [...next, foto]; didUpload = true; publish(next);
+    if (!files.length) return;
+    setError(''); setNotice('');
+    let available = Math.max(0, 3 - total);
+    const accepted = [];
+    files.forEach(file => {
+      if (!TIPOS_IMAGEN.includes(file.type)) {
+        setError(`“${file.name}” no es una imagen JPEG, PNG o WEBP.`);
+      } else if (available <= 0) {
+        setError('Un hallazgo admite como máximo tres fotos.');
+      } else {
+        available -= 1;
+        accepted.push({ id: `foto-pendiente-${Date.now()}-${Math.random()}`, archivo: file, previewUrl: URL.createObjectURL(file), error: '' });
       }
-    } catch (cause) { setError(errorText(cause)); }
-    finally {
-      if (didUpload) {
-        try { publish(await listarFotosHallazgos(empresaId, [hallazgo.id])); }
-        catch (cause) { setError(errorText(cause)); }
+    });
+    if (!accepted.length) return;
+    if (hallazgo?.id) {
+      setUploading(true);
+      let next = fotos;
+      let didUpload = false;
+      try {
+        for (const pending of accepted) {
+          try {
+            const foto = await subirFotoHallazgo({ empresaId, diagnosticoId, hallazgoId: hallazgo.id, archivo: pending.archivo, leyenda: '' });
+            next = [...next, foto]; didUpload = true; publish(next);
+          } catch (cause) { setError(errorText(cause)); break; }
+        }
+      } finally {
+        accepted.forEach(pending => URL.revokeObjectURL(pending.previewUrl));
+        if (didUpload) {
+          try { publish(await listarFotosHallazgos(empresaId, [hallazgo.id])); }
+          catch (cause) { setError(errorText(cause)); }
+        }
+        setUploading(false);
       }
-      setUploading(false);
+      return;
     }
+    onFotosPendientesChange?.([...fotosPendientes, ...accepted]);
+  };
+
+  const removePending = pending => {
+    URL.revokeObjectURL(pending.previewUrl);
+    onFotosPendientesChange?.(fotosPendientes.filter(row => row.id !== pending.id));
+    setError('');
   };
 
   const removeFoto = async foto => {
@@ -62,12 +89,18 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   };
 
   return <section className="dx-foto-section" aria-label="Fotos del hallazgo">
-    <div className="dx-foto-head"><strong>Fotos</strong><span>{fotos.length} de 3</span></div>
-    {!hallazgo?.id && <p className="dx-foto-muted">Guarda el hallazgo para agregar fotos</p>}
-    {!readOnly && hallazgo?.id && <label className="dx-foto-upload">
+    <div className="dx-foto-head"><strong>Fotos</strong><span>{total} de 3</span></div>
+    {!readOnly && <label className="dx-foto-upload">
       <span>{uploading ? 'Subiendo fotos…' : 'Agregar fotos'}</span>
-      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || fotos.length >= 3} onChange={uploadFiles} />
+      <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onChange={uploadFiles} />
     </label>}
+    {fotosPendientes.length > 0 && <div className="dx-foto-grid">{fotosPendientes.map(pending => <article className="dx-foto-card dx-foto-card-pending" key={pending.id}>
+      <img src={pending.previewUrl} alt={`Vista previa: ${pending.archivo.name || 'foto del hallazgo'}`} />
+      <span className="dx-foto-pending-label" role="status">Pendiente de guardar</span>
+      <span className="dx-foto-filename">{pending.archivo.name}</span>
+      <div className="dx-foto-actions"><button type="button" onClick={() => removePending(pending)}>Quitar</button></div>
+      {pending.error && <p className="dx-foto-error" role="alert">No se pudo subir esta foto: {pending.error}</p>}
+    </article>)}</div>}
     {fotos.length > 0 && <div className="dx-foto-grid">{fotos.map(foto => {
       const busy = busyId === foto.id;
       return <article className="dx-foto-card" key={foto.id}>

@@ -10,7 +10,7 @@ import {
   eliminarEnlaceDiagnosticoHallazgoLinea,
   listarCatalogosHallazgos,
 } from '../../services/diagnosticoTecnicoService.js';
-import { listarFotosHallazgos } from '../../services/diagnosticoHallazgoFotosService.js';
+import { listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnosticoHallazgoFotosService.js';
 import HallazgoFotos from './HallazgoFotos.jsx';
 
 const CATALOG_LABELS = {
@@ -128,7 +128,7 @@ function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remov
   </section>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange }) {
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
@@ -141,18 +141,40 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const [familyToAdd, setFamilyToAdd] = useState('');
   const [sessionFamilyIds, setSessionFamilyIds] = useState([]);
   const [fotosPorHallazgo, setFotosPorHallazgo] = useState({});
+  const [fotosPendientes, setFotosPendientes] = useState([]);
+  const fotosPendientesRef = useRef([]);
   const [fotosLoadError, setFotosLoadError] = useState('');
   const fotosMapRef = useRef({});
   const fotosChangeRef = useRef(onFotosChange);
+  const itemsChangeRef = useRef(onItemsChange);
   fotosChangeRef.current = onFotosChange;
+  itemsChangeRef.current = onItemsChange;
   const groupHeaderRefs = useRef(new Map());
   const pendingGroupFocus = useRef(null);
+
+  const updatePendingFotos = next => {
+    const urlsToKeep = new Set(next.map(row => row.previewUrl));
+    fotosPendientesRef.current.forEach(row => { if (!urlsToKeep.has(row.previewUrl)) URL.revokeObjectURL(row.previewUrl); });
+    fotosPendientesRef.current = next;
+    setFotosPendientes(next);
+  };
+
+  const changePendingForHallazgo = (hallazgoKey, hallazgoFotos) => {
+    const next = [...fotosPendientesRef.current.filter(row => row.hallazgoKey !== hallazgoKey), ...hallazgoFotos.map(row => ({ ...row, hallazgoKey }))];
+    updatePendingFotos(next);
+  };
 
   useEffect(() => {
     setItems((diagnostico?.hallazgos || []).map(normalize));
     setDeletedItems([]); setDeletedMediciones([]); setDeletedLineas([]);
+    updatePendingFotos([]);
     setExpandedKeys(new Set((diagnostico?.hallazgos || []).slice(0, 1).map(row => row.id).filter(Boolean)));
   }, [diagnostico?.id]);
+
+  useEffect(() => () => {
+    fotosPendientesRef.current.forEach(row => URL.revokeObjectURL(row.previewUrl));
+    fotosPendientesRef.current = [];
+  }, []);
 
   const persistedHallazgoIds = items.map(item => item.id).filter(Boolean).sort().join('|');
   useEffect(() => {
@@ -190,12 +212,14 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     return () => { active = false; };
   }, [empresaId]);
 
-  const dirty = items.some(item => item._dirty || item.mediciones?.some(row => row._dirty) || item.lineas?.some(row => row._dirty)) || deletedItems.length > 0 || deletedMediciones.length > 0 || deletedLineas.length > 0;
+  const dirty = items.some(item => item._dirty || item.mediciones?.some(row => row._dirty) || item.lineas?.some(row => row._dirty)) || deletedItems.length > 0 || deletedMediciones.length > 0 || deletedLineas.length > 0 || fotosPendientes.length > 0;
+  useEffect(() => { itemsChangeRef.current?.(items); }, [items]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const dirtyHallazgos = items.filter(item => item._dirty).length + deletedItems.length;
   const dirtyTasks = items.flatMap(item => item.lineas || []).filter(link => link._dirty).length + deletedLineas.length;
-  const dirtyChanges = dirtyHallazgos + dirtyTasks + items.flatMap(item => item.mediciones || []).filter(row => row._dirty).length + deletedMediciones.length;
-  useEffect(() => { onDirtySummary?.({ hallazgos: dirtyHallazgos, tareas: dirtyTasks, cambios: dirtyChanges }); }, [dirtyHallazgos, dirtyTasks, dirtyChanges, onDirtySummary]);
+  const dirtyFotos = fotosPendientes.length;
+  const dirtyChanges = dirtyHallazgos + dirtyTasks + items.flatMap(item => item.mediciones || []).filter(row => row._dirty).length + deletedMediciones.length + dirtyFotos;
+  useEffect(() => { onDirtySummary?.({ hallazgos: dirtyHallazgos, tareas: dirtyTasks, fotos: dirtyFotos, cambios: dirtyChanges }); }, [dirtyHallazgos, dirtyTasks, dirtyFotos, dirtyChanges, onDirtySummary]);
   useEffect(() => { onSavingChange?.(saving); }, [saving, onSavingChange]);
 
   const updateItem = useCallback((item, changes) => setItems(current => current.map(row => keyFor(row) === keyFor(item) ? { ...row, ...changes, _dirty: true } : row)), []);
@@ -215,6 +239,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     setExpandedKeys(current => new Set([...current, keyFor(next)]));
   };
   const removeHallazgo = item => {
+    updatePendingFotos(fotosPendientesRef.current.filter(row => row.hallazgoKey !== keyFor(item)));
     setItems(current => current.filter(row => keyFor(row) !== keyFor(item)));
     if (item.id) setDeletedItems(current => [...current, item]);
   };
@@ -273,8 +298,43 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         }
       }
       for (const link of deletedLineas) await eliminarEnlaceDiagnosticoHallazgoLinea(empresaId, link.id);
+      const fotosConSubida = new Set();
+      let fotosFallidas = 0;
+      let primerErrorFoto = '';
+      for (const item of items) {
+        const current = persisted.get(keyFor(item)) || item;
+        if (!current.id) continue;
+        const pendientes = fotosPendientesRef.current.filter(row => row.hallazgoKey === keyFor(item));
+        for (const pending of pendientes) {
+          try {
+            await subirFotoHallazgo({ empresaId, diagnosticoId: diagnostico.id, hallazgoId: current.id, archivo: pending.archivo, leyenda: '' });
+            fotosConSubida.add(current.id);
+            updatePendingFotos(fotosPendientesRef.current.filter(row => row.id !== pending.id));
+          } catch (error) {
+            fotosFallidas += 1;
+            primerErrorFoto ||= errorMessage(error);
+            updatePendingFotos(fotosPendientesRef.current.map(row => row.id === pending.id ? { ...row, error: errorMessage(error) } : row));
+          }
+        }
+      }
+      if (fotosConSubida.size) {
+        try {
+          const photos = await listarFotosHallazgos(empresaId, [...fotosConSubida]);
+          const nextMap = { ...fotosMapRef.current };
+          fotosConSubida.forEach(id => { nextMap[id] = photos.filter(row => row.hallazgo_id === id); });
+          fotosMapRef.current = nextMap; setFotosPorHallazgo(nextMap); fotosChangeRef.current?.(nextMap);
+        } catch (error) {
+          onNotice?.(`Las fotos se subieron, pero no se pudo actualizar su vista previa: ${errorMessage(error)}`);
+        }
+      }
       setItems([...persisted.values()].map(normalize));
       setDeletedItems([]); setDeletedMediciones([]); setDeletedLineas([]);
+      if (fotosFallidas) {
+        const message = `${fotosFallidas === 1 ? 'No se pudo subir 1 foto' : `No se pudieron subir ${fotosFallidas} fotos`}${primerErrorFoto ? `: ${primerErrorFoto}` : '.'}`;
+        onNotice?.(`Hallazgos guardados; ${fotosFallidas} foto${fotosFallidas === 1 ? '' : 's'} quedó${fotosFallidas === 1 ? '' : 'aron'} pendiente${fotosFallidas === 1 ? '' : 's'}.`);
+        onError?.(message);
+        return { ok: false, error: message };
+      }
       if (invalidMediciones.length) {
         const firstInvalid = invalidMediciones[0];
       onError?.(`${firstInvalid.message} No se envió esa medición.`);
@@ -348,7 +408,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
       <MeasurementTable item={item} catalogs={catalogs} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />
       <TaskLinks item={item} lines={lines} tipos={tipos} cargos={cargos} activos={activos} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={link => removeLink(item, link)} />
-      <HallazgoFotos empresaId={empresaId} diagnosticoId={diagnostico?.id} hallazgo={item} fotos={fotosPorHallazgo[item.id] || []} readOnly={readOnly} onFotosChange={fotos => changeHallazgoFotos(item.id, fotos)} />
+      <HallazgoFotos empresaId={empresaId} diagnosticoId={diagnostico?.id} hallazgo={item} fotos={fotosPorHallazgo[item.id] || []} fotosPendientes={fotosPendientes.filter(row => row.hallazgoKey === keyFor(item))} readOnly={readOnly} onFotosChange={fotos => changeHallazgoFotos(item.id, fotos)} onFotosPendientesChange={fotos => changePendingForHallazgo(keyFor(item), fotos)} />
       </>}
     </article>;
   };

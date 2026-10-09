@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Diagnóstico: panel para agregar tareas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit;cursor:pointer}
+input{font-family:inherit}
+</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 1060px; background: #5F6675; font-family: 'DM Sans', system-ui, sans-serif; color: #1F2937; overflow: hidden">
+
+  <!-- Modal de fondo, atenuado -->
+  <div style="position: absolute; left: 60px; top: 24px; width: 1160px; height: 1012px; background: #FFFFFF; border-radius: 14px; overflow: hidden">
+    <div style="padding: 20px 28px 14px 28px; display: flex; align-items: center; gap: 12px">
+      <h1 style="margin: 0; font-family: 'Sora', sans-serif; font-size: 22px; font-weight: 700; color: #1A2B4A">Fabricación · DESARROLLO CRM</h1>
+      <span style="background: #FFF3E0; color: #8A4B00; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px">Borrador</span>
+    </div>
+    <div style="height: 58px; background: #F4F6F8; border-top: 1px solid #E4E7EB; border-bottom: 1px solid #E4E7EB"></div>
+    <div style="padding: 18px 28px">
+      <div style="border: 1px solid #D5DAE1; border-radius: 12px; height: 420px"></div>
+    </div>
+  </div>
+  <div style="position: absolute; inset: 0; background: rgba(15,27,48,0.45)"></div>
+
+  <!-- Panel lateral -->
+  <aside aria-label="Agregar tareas" style="position: absolute; right: 0; top: 0; width: 520px; height: 1060px; background: #fff; box-shadow: -16px 0 40px rgba(15,27,48,0.3); display: flex; flex-direction: column">
+
+    <div style="padding: 22px 24px 14px 24px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 style="margin: 0; font-family: 'Sora', sans-serif; font-size: 19px; font-weight: 700; color: #1A2B4A">Agregar tareas</h2>
+        <span style="font-size: 13px; color: #6B7280">Se añaden al trabajo <b style="color: #1A2B4A">Tapa</b></span>
+      </div>
+      <button type="button" aria-label="Cerrar panel" style="width: 40px; height: 40px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; display: flex; align-items: center; justify-content: center">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg>
+      </button>
+    </div>
+
+    <div style="padding: 0 24px 12px 24px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 8px; height: 44px; box-sizing: border-box; border: 2px solid #00ACC1; border-radius: 10px; padding: 0 12px; background: #fff">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0B4F5A" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+        <input aria-label="Buscar tarea" value="brun" style="flex: 1; border: 0; outline: 0; font-size: 15px; background: transparent">
+        <span style="font-size: 12px; color: #6B7280">nombre o código</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #1A2B4A; background: #1A2B4A; color: #fff; font-size: 13px; font-weight: 600">Todas</button>
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #C9CFD8; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">Más usadas</button>
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #C9CFD8; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">De la actividad</button>
+        <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #C9CFD8; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">Ya en el diagnóstico</button>
+      </div>
+    </div>
+
+    <!-- Plantillas -->
+    <div style="padding: 4px 24px 12px 24px; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: #6B7280">APLICAR UNA ACTIVIDAD COMPLETA</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid #C9CFD8; border-radius: 10px; background: #F8F9FA">
+        <div style="display: flex; flex-direction: column; gap: 2px"><b style="font-size: 14px; color: #1A2B4A">Fabricación de tapa</b><span style="font-size: 12px; color: #6B7280">7 tareas · sin horas, las ingresas tú</span></div>
+        <button type="button" style="height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 13px; font-weight: 600">Aplicar</button>
+      </div>
+    </div>
+
+    <!-- Resultados -->
+    <div style="flex: 1; min-height: 0; overflow: hidden; border-top: 1px solid #E4E7EB; display: flex; flex-direction: column">
+      <div style="padding: 10px 24px; font-size: 12px; color: #6B7280; background: #F8F9FA; border-bottom: 1px solid #E4E7EB">4 resultados para “brun” · 312 tareas en el catálogo</div>
+      <sc-for list="{{resultados}}" as="r" hint-placeholder-count="4">
+        <label style="display: flex; align-items: center; gap: 14px; padding: 12px 24px; border-bottom: 1px solid #EEF0F3; background: {{r.bg}}; cursor: pointer">
+          <input type="checkbox" checked="{{r.sel}}" aria-label="Seleccionar {{r.nombre}}" style="width: 20px; height: 20px; accent-color: #1A2B4A">
+          <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0">
+            <span style="font-size: 14px; font-weight: 600; color: #1A2B4A">{{r.nombre}}</span>
+            <span style="font-size: 12px; color: #6B7280">{{r.codigo}} · {{r.nota}}</span>
+          </div>
+        </label>
+      </sc-for>
+      <div style="padding: 14px 24px; font-size: 13px; color: #6B7280">Se muestran las primeras 20 coincidencias. Sigue escribiendo para acotar.</div>
+    </div>
+
+    <!-- Pie -->
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid #E4E7EB">
+      <span style="font-size: 14px; color: #1A2B4A"><b>2</b> seleccionadas</span>
+      <div style="flex: 1"></div>
+      <button type="button" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 1px solid #1A2B4A; background: #fff; color: #1A2B4A; font-size: 14px; font-weight: 600">Cancelar</button>
+      <button type="button" style="height: 40px; padding: 0 20px; border-radius: 8px; border: 0; background: #1A2B4A; color: #fff; font-size: 14px; font-weight: 600">Agregar 2 tareas</button>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      resultados: [
+        { nombre: 'Bruñido intermedio', codigo: 'COD-021', nota: 'Usada 38 veces', sel: true, bg: '#E0F7FA' },
+        { nombre: 'Bruñido final', codigo: 'COD-022', nota: 'Usada 21 veces', sel: true, bg: '#E0F7FA' },
+        { nombre: 'Bruñido de desbaste', codigo: 'COD-020', nota: 'Usada 9 veces', sel: false, bg: '#FFFFFF' },
+        { nombre: 'Verificación de bruñido', codigo: 'COD-023', nota: 'Usada 4 veces', sel: false, bg: '#FFFFFF' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
