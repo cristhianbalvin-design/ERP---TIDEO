@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 const AsistenteErpContext = createContext(null);
+const solicitarAperturaVacia = () => {};
 
 export function AsistenteErpProvider({ children }) {
   const [contexto, setContexto] = useState(null);
+  const [solicitudApertura, setSolicitudApertura] = useState(0);
   const publicarContexto = useCallback(value => setContexto(value?.tipo && value?.id ? value : null), []);
-  const value = useMemo(() => ({ contexto, publicarContexto }), [contexto, publicarContexto]);
+  const solicitarApertura = useCallback(() => setSolicitudApertura(nonce => nonce + 1), []);
+  const value = useMemo(() => ({ contexto, publicarContexto, solicitudApertura, solicitarApertura }), [contexto, publicarContexto, solicitudApertura, solicitarApertura]);
   return <AsistenteErpContext.Provider value={value}>{children}</AsistenteErpContext.Provider>;
 }
 
@@ -19,5 +22,5 @@ export function useAsistenteContexto(value) {
 }
 
 export function useAsistenteErp() {
-  return useContext(AsistenteErpContext) || { contexto: null };
+  return useContext(AsistenteErpContext) || { contexto: null, solicitudApertura: 0, solicitarApertura: solicitarAperturaVacia };
 }

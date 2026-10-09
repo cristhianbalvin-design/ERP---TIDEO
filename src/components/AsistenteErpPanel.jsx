@@ -41,9 +41,11 @@ function TextoSeguro({ texto }) {
     const lista = linea.match(/^\s*[-•]\s+(.+)$/);
     const cifra = linea.match(/^\s*(?:[-•]\s*)?(.+?):\s*((?:S\/|US\$)\s*-?\d[\d,]*(?:\.\d{1,2})?)\s*$/);
     const lineaSinEspacios = linea.trimStart();
+    const indiceNota = linea.indexOf('Ojo:');
     const nota = lineaSinEspacios.startsWith('Ojo:');
     const salto = index < lineas.length - 1 ? <br /> : null;
     if (nota) return <div key={index} className="dx-asis-note"><b>Ojo:</b>{lineaSinEspacios.slice(4)}</div>;
+    if (indiceNota > 0) return <React.Fragment key={index}>{linea.slice(0, indiceNota)}<div className="dx-asis-note"><b>Ojo:</b>{linea.slice(indiceNota + 4)}</div></React.Fragment>;
     if (cifra) {
       const total = /^total\b/i.test(cifra[1].trim());
       const negativo = /-\d/.test(cifra[2]);
@@ -56,7 +58,7 @@ function TextoSeguro({ texto }) {
 
 export function AsistenteErpPanel() {
   const { empresa, sociedadActiva, authSession, authUser } = useApp();
-  const { contexto } = useAsistenteErp();
+  const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
   const [pregunta, setPregunta] = useState('');
   const [mensajes, setMensajes] = useState([]);
@@ -67,6 +69,7 @@ export function AsistenteErpPanel() {
   const campoRef = useRef(null);
   const panelRef = useRef(null);
   const ultimaConsulta = useRef(null);
+  const solicitudInicial = useRef(solicitudApertura);
   const habilitado = Boolean(authSession && empresa?.id);
   const sociedadId = sociedadActiva?.id && !['todas', 'all', '**todas**'].includes(String(sociedadActiva.id).toLowerCase()) ? sociedadActiva.id : undefined;
   const sugerencias = sugerenciasPorTipo[contexto?.tipo] || sugerenciasPredeterminadas;
@@ -75,6 +78,12 @@ export function AsistenteErpPanel() {
   const agotada = error?.status === 429 || cuotaRestante === 0;
 
   useEffect(() => { if (abierto) requestAnimationFrame(() => campoRef.current?.focus()); }, [abierto]);
+  useEffect(() => {
+    if (solicitudApertura !== solicitudInicial.current) {
+      solicitudInicial.current = solicitudApertura;
+      setAbierto(true);
+    }
+  }, [solicitudApertura]);
   useEffect(() => {
     if (!abierto) return undefined;
     const onKeyDown = event => {
