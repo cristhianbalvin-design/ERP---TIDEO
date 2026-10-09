@@ -471,6 +471,13 @@ function stockSummaryCall(args: Record<string, unknown>) {
   return { id: "stock", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify(args) } };
 }
 
+Deno.test("SYSTEM_PROMPT distingue clientes y prospectos (tipo de cuenta) de leads y estado", () => {
+  assert(SYSTEM_PROMPT.includes("cliente y prospecto son el campo tipo, no el estado"));
+  assert(SYSTEM_PROMPT.includes("por_tipo"));
+  assert(SYSTEM_PROMPT.includes('busqueda "cliente" o "prospecto"'));
+  assert(SYSTEM_PROMPT.includes("Los leads son otro módulo"));
+});
+
 Deno.test("SYSTEM_PROMPT dirige el stock general al resumen y el detalle a consultar_stock", () => {
   assert(SYSTEM_PROMPT.includes("usa asistente_resumen_stock sin pedir material ni almacén"));
   assert(SYSTEM_PROMPT.includes("pásala en texto"));
