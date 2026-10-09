@@ -53,6 +53,7 @@ const renderPanel = async (hallazgos, options = {}) => {
       familias={options.familias || [{ id: 'family-1', nombre: 'Trabajo 1' }, { id: 'family-2', nombre: 'Trabajo 2' }]}
       extraFamilyIds={options.extraFamilyIds || []}
       onExtraFamilyIdsChange={options.onExtraFamilyIdsChange}
+      onCreateFamily={options.onCreateFamily}
       tipos={[{ id: 'task-1', nombre: 'Tarea 1' }]}
       cargos={[{ id: 'cargo-1', nombre: 'Técnico' }]}
       canEdit
@@ -110,9 +111,9 @@ describe('HallazgosTrabajoPanel', () => {
   it('crea un grupo sin líneas desde una familia existente y permite agregarle un hallazgo', async () => {
     const setExtra = vi.fn();
     const { renderer } = await renderPanel([], { lines: [], onExtraFamilyIdsChange: setExtra });
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
     await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => familySelect.props.onChange({ target: { value: 'family-2' } }));
     expect(setExtra).toHaveBeenCalled();
     expect(textOf(renderer.root)).toContain('Trabajo 2');
@@ -127,12 +128,25 @@ describe('HallazgosTrabajoPanel', () => {
     const group = renderer.root.findByProps({ className: 'hallazgos-group-toggle' });
     await act(async () => group.props.onClick());
     expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(false);
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
     await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => familySelect.props.onChange({ target: { value: 'family-1' } }));
     expect(setExtra).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(true);
+  });
+
+  it('permite crear un trabajo o componente y agrega un hallazgo bajo el nuevo grupo', async () => {
+    const onCreateFamily = vi.fn().mockResolvedValue({ id: 'family-new', nombre: 'Cilindro' });
+    const { renderer } = await renderPanel([], { lines: [], onCreateFamily });
+    const open = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
+    await act(async () => open.props.onClick());
+    const name = renderer.root.findByProps({ 'aria-label': 'Crear trabajo o componente' });
+    await act(async () => name.props.onChange({ target: { value: 'Cilindro' } }));
+    const form = renderer.root.findAllByType('form').find(node => node.props.onSubmit);
+    await act(async () => { form.props.onSubmit({ preventDefault() {} }); await Promise.resolve(); });
+    expect(onCreateFamily).toHaveBeenCalledWith('Cilindro');
+    expect(textOf(renderer.root)).toContain('Nuevo hallazgo');
   });
 
   it('muestra materiales de las tareas enlazadas en solo lectura', async () => {

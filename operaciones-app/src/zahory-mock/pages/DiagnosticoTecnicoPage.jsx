@@ -28,8 +28,7 @@ import {
   sincronizarMaterialesLinea,
   usuarioPuedeDiagnostico,
 } from '../../services/diagnosticoTecnicoService.js';
-import { usuarioPuedeInforme } from '../../services/diagnosticoInformeService.js';
-import { construirResumenDiagnostico } from '../../services/resumenDiagnostico.js';
+import { generarConclusionIA, usuarioPuedeInforme } from '../../services/diagnosticoInformeService.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -452,6 +451,8 @@ export function DiagnosticoTecnicoPage() {
   const [hallazgosDirtySummary, setHallazgosDirtySummary] = useState({ hallazgos: 0, tareas: 0, cambios: 0 });
   const [hallazgosSaving, setHallazgosSaving] = useState(false);
   const [confirmarRegenerarResumen, setConfirmarRegenerarResumen] = useState(false);
+  const [generandoResumenIA, setGenerandoResumenIA] = useState(false);
+  const [errorResumenIA, setErrorResumenIA] = useState('');
   const openRequestRef = useRef(0);
   const listRequestRef = useRef(0);
   const mountedRef = useRef(true);
@@ -876,11 +877,7 @@ export function DiagnosticoTecnicoPage() {
       return { ...current, lineas: [...(current.lineas || []), ...additions] };
     });
   };
-  const tiposResumen = catalogs.tipos;
-  const resumenAuto = selected?.tipo === 'mantenimiento'
-    ? construirResumenDiagnostico(selected.hallazgos || [], selected.lineas || [], tiposResumen, catalogs.hallazgos)
-    : '';
-  const resumenVisible = selected?.resumen_origen === 'editado' ? selected.resumen_diagnostico || '' : resumenAuto;
+  const resumenVisible = selected?.resumen_diagnostico || '';
   const summaryDirty = Boolean(selected?.tipo === 'mantenimiento' && (
     (selected.resumen_origen || 'auto') !== (selected._origenResumenGuardado || 'auto')
     || resumenVisible !== (selected._resumenGuardado || '')
@@ -911,7 +908,22 @@ export function DiagnosticoTecnicoPage() {
     const saved = await guardarResumenDiagnostico(empresaId, selected.id, resumenVisible, selected.resumen_origen || 'auto');
     setSelected(current => current?.id === selected.id ? { ...current, ...saved, _resumenGuardado: saved.resumen_diagnostico || '', _origenResumenGuardado: saved.resumen_origen } : current);
   };
-  const regenerarResumen = () => { cambiarResumen(resumenAuto, 'auto'); setConfirmarRegenerarResumen(false); };
+  const generarResumenIA = async () => {
+    if (!selected || !canEditLines || generandoResumenIA || !(selected.hallazgos || []).length) return;
+    setGenerandoResumenIA(true); setErrorResumenIA(''); setConfirmarRegenerarResumen(false);
+    try {
+      const linesSaved = await saveAllLines();
+      if (!linesSaved) throw new Error('No se pudieron guardar las tareas. Corrige los errores antes de generar el diagnóstico.');
+      if (hallazgosDirty) {
+        const result = await hallazgosSaveRef.current?.();
+        if (result && !result.ok) throw new Error(result.error || 'No se pudieron guardar los hallazgos.');
+      }
+      const result = await generarConclusionIA(selected.id);
+      cambiarResumen(result.conclusion, 'auto');
+    } catch (generationError) { setErrorResumenIA(generationError.message || 'No se pudo generar el diagnóstico.'); }
+    finally { setGenerandoResumenIA(false); }
+  };
+  const iniciarResumenManual = () => { cambiarResumen('', 'editado'); setErrorResumenIA(''); };
   const readOnlyReason = !sesion.permiteEscritura
     ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
     : !selected && !canCreate
@@ -1066,7 +1078,6 @@ export function DiagnosticoTecnicoPage() {
           {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button></div>}
           <div className="dx-summary">
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
-            {canEditLines && <div className="dx-cascada-add"><button type="button" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : selected.tipo === 'fabricacion' ? 'Agregar tareas' : 'Agregar trabajos'}</button></div>}
           </div>
           <div className={selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
@@ -1074,20 +1085,21 @@ export function DiagnosticoTecnicoPage() {
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
-                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
+                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
               </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-diagnostico-resumen-title">
                 <header className="dx-diagnostico-resumen-heading"><span>2</span><div><h3 id="dx-diagnostico-resumen-title">Diagn&#xF3;stico</h3><p>Resumen de los hallazgos y sus acciones recomendadas. Es el mismo texto del informe al cliente.</p></div></header>
-                <div className="dx-diagnostico-resumen-card">
-                  <textarea aria-label="Diagn&#xF3;stico" value={resumenVisible} disabled={!canEditLines} onChange={event => cambiarResumen(event.target.value)} />
-                  <div className="dx-diagnostico-resumen-meta"><div><strong className={selected.resumen_origen === 'editado' ? 'is-edited' : 'is-auto'}>{selected.resumen_origen === 'editado' ? 'Editado' : 'Generado de los hallazgos'}</strong><small>{selected.resumen_origen === 'editado' ? 'No se rearma solo. Puedes generarlo de nuevo.' : 'Se actualiza solo cuando cambian los hallazgos.'}</small></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-regenerate" onClick={() => selected.resumen_origen === 'editado' ? setConfirmarRegenerarResumen(true) : regenerarResumen()}>Generar de nuevo desde los hallazgos</button>}</div>
-                  {confirmarRegenerarResumen && <div className="dx-diagnostico-resumen-confirm" role="dialog" aria-modal="true" aria-label="Confirmar generaci&#xF3;n del diagn&#xF3;stico"><span>Se reemplazar&#xE1; el texto editado por un resumen de los hallazgos. &#xBF;Deseas continuar?</span><div><button type="button" onClick={regenerarResumen}>Generar de nuevo</button><button type="button" onClick={() => setConfirmarRegenerarResumen(false)}>Cancelar</button></div></div>}
-                  <div className="dx-diagnostico-resumen-report"><span aria-hidden="true">i</span> Este texto tambi&#xE9;n aparece en el Informe al cliente</div>
-                </div>
+                {resumenVisible || selected.resumen_origen === 'editado' ? <div className="dx-diagnostico-resumen-card">
+                  <textarea aria-label="Diagn&#xF3;stico" value={resumenVisible} disabled={!canEditLines || generandoResumenIA} onChange={event => cambiarResumen(event.target.value)} />
+                  <div className="dx-diagnostico-resumen-meta"><div><strong className={selected.resumen_origen === 'editado' ? 'is-edited' : 'is-auto'}>{selected.resumen_origen === 'editado' ? 'Editado' : 'Generado con IA'}</strong><small>{selected.resumen_origen === 'editado' ? 'Si generas de nuevo se reemplaza tu texto (se pide confirmación).' : 'Puedes editarlo. No cambia solo si cambian los hallazgos.'}</small></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-regenerate" onClick={() => selected.resumen_origen === 'editado' && resumenVisible.trim() ? setConfirmarRegenerarResumen(true) : generarResumenIA()} disabled={generandoResumenIA || !(selected.hallazgos || []).length} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar de nuevo con IA'}</button>}</div>
+                  {confirmarRegenerarResumen && <div className="dx-diagnostico-resumen-confirm" role="dialog" aria-modal="true" aria-label="Confirmar generación del diagnóstico"><span>Se reemplazará tu texto editado. ¿Deseas continuar?</span><div><button type="button" onClick={generarResumenIA}>Generar de nuevo</button><button type="button" onClick={() => setConfirmarRegenerarResumen(false)}>Cancelar</button></div></div>}
+                  {errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}
+                  <div className="dx-diagnostico-resumen-report"><span aria-hidden="true">✓</span> Este texto también aparece en el Informe al cliente</div>
+                </div> : <div className="dx-diagnostico-resumen-empty"><p>Aún no hay diagnóstico. La IA lo redacta a partir de los hallazgos y sus acciones recomendadas, y luego puedes editarlo.</p><div><button type="button" className="dx-diagnostico-resumen-primary" onClick={generarResumenIA} disabled={!canEditLines || generandoResumenIA || !(selected.hallazgos || []).length} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar conclusión IA'}</button><button type="button" className="dx-diagnostico-resumen-regenerate" onClick={iniciarResumenManual} disabled={!canEditLines}>Escribir yo mismo</button></div>{!(selected.hallazgos || []).length && <small>Registra al menos un hallazgo</small>}{errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}</div>}
               </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-realizar-title">
-                <header className="dx-diagnostico-resumen-heading"><span>3</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div></header>
+                <header className="dx-diagnostico-resumen-heading"><span>3</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajos'}</button>}</header>
                 <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
                 {taskPanel && <DiagnosticoAgregarTareasPanel familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
                 <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
@@ -1095,10 +1107,11 @@ export function DiagnosticoTecnicoPage() {
                 </div>
               </section>
             </> : <>
+              <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-fabricacion-title"><header className="dx-diagnostico-resumen-heading is-unumbered"><div><h3 id="dx-trabajos-fabricacion-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para este trabajo.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar tareas'}</button>}</header>
               {taskPanel && <DiagnosticoAgregarTareasPanel familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
               <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
                 {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <DiagnosticoLineasTabla lines={grupos.flatMap(group => group.lines)} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />}
-              </div>
+              </div></section>
             </>}
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>

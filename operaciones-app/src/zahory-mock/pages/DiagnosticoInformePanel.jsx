@@ -136,7 +136,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const esMantenimiento = diagnostico?.tipo === 'mantenimiento';
   const textoConclusion = esMantenimiento ? (diagnostico?.resumen_diagnostico || '') : (opciones.conclusion || '');
   const conclusionModificada = esMantenimiento ? resumenPendiente : opciones.conclusion !== opcionesGuardadas.conclusion;
-  const conclusionSinConfirmar = Boolean(String(textoConclusion).trim()) && (!opciones.conclusion_confirmada || conclusionModificada);
+  const conclusionSinConfirmar = !String(textoConclusion).trim() || !opciones.conclusion_confirmada || conclusionModificada;
   const opcionesPendientes = JSON.stringify(opciones) !== JSON.stringify(opcionesGuardadas);
   const effectiveSnapshot = useMemo(() => {
     if (seleccionVersion?.snapshot) return snapshotEmitidoVista || seleccionVersion.snapshot;
@@ -264,7 +264,8 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           }} /><div className="dx-inf-counter">{textoConclusion.length}/2000</div>
             {(opciones.conclusion_origen === 'ia' || opciones.conclusion_origen === 'ia_editada') && <small className="dx-inf-ai-label">Generado por IA, requiere revisión</small>}
             {esMantenimiento && <small className="dx-inf-ai-label">Este texto se edita en el Diagnóstico</small>}
-            {isEditable && <button type="button" className="dx-inf-ai-button" disabled={generandoIA || guardando} onClick={() => String(textoConclusion).trim() ? setConfirmarReemplazo(true) : generarIA()}>{generandoIA ? 'Generando…' : esMantenimiento ? 'Mejorar redacción' : 'Generar conclusión con IA'}</button>}
+            {esMantenimiento && !String(textoConclusion).trim() && <small className="dx-inf-missing-diagnosis" role="status">Primero redacta el diagn&#xF3;stico en la pantalla del diagn&#xF3;stico</small>}
+            {isEditable && !esMantenimiento && <button type="button" className="dx-inf-ai-button" disabled={generandoIA || guardando} onClick={() => String(textoConclusion).trim() ? setConfirmarReemplazo(true) : generarIA()}>{generandoIA ? 'Generando\u2026' : 'Generar conclusi\u00f3n con IA'}</button>}
             {confirmarReemplazo && <div className="dx-inf-ai-confirm" role="group" aria-label="Confirmar reemplazo de conclusión"><span>La conclusión actual se reemplazará. ¿Continuar?</span><button type="button" onClick={generarIA} disabled={generandoIA}>Sí, reemplazar</button><button type="button" onClick={() => setConfirmarReemplazo(false)}>Cancelar</button></div>}
             {iaError && <div className="dx-inf-error" role="alert">{iaError}</div>}
           </div>

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   session: { empresaId: 'empresa-prueba', usuario: { id: 'usuario-prueba' }, estado: 'listo', permiteEscritura: true, error: '' },
   informePermission: vi.fn(),
+  generateConclusion: vi.fn(),
   service: Object.fromEntries([
     'usuarioPuedeDiagnostico', 'listarDiagnosticosTecnicos', 'obtenerDiagnosticoTecnico', 'resolverReferenciasDiagnostico',
     'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarPlantillasActividad', 'listarUsoTareasPorEmpresa', 'listarCargosEmpresa',
@@ -23,6 +24,7 @@ vi.mock('../src/zahory-mock/components/shell.jsx', () => ({ Icon: () => null }))
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
+  generarConclusionIA: mocks.generateConclusion,
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
@@ -65,6 +67,7 @@ beforeEach(() => {
   mocks.session.estado = 'listo';
   mocks.session.permiteEscritura = true;
   mocks.informePermission.mockResolvedValue(true);
+  mocks.generateConclusion.mockResolvedValue({ ok: true, conclusion: 'El equipo requiere reparación.' });
   const listeners = new Map();
   globalThis.window = {
     setTimeout,
@@ -931,5 +934,22 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
     expect(buttonByText(renderer, 'Informe al cliente')).toBeFalsy();
+  });
+
+  it('genera el diagnóstico IA desde los hallazgos del estado actual y lo deja editable', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({
+      ...detail('two', 'mantenimiento'),
+      resumen_diagnostico: null,
+      resumen_origen: 'auto',
+      hallazgos: [{ id: 'h1', familia_trabajo_id: 'fam-1', componente_parte: 'Bomba', condicion: 'falla_funcional', riesgo: 'antes_de_operar', accion_recomendada: 'reparar', mediciones: [], lineas: [] }],
+    });
+    await renderPage();
+    await act(async () => { listRows()[1].props.onClick(); await wait(100); });
+    const generate = buttonByText(renderer, 'Generar conclusión IA');
+    expect(generate.props.disabled).toBe(false);
+    await act(async () => { generate.props.onClick(); await wait(0); });
+    expect(mocks.generateConclusion).toHaveBeenCalledWith('two');
+    expect(renderer.root.findByProps({ 'aria-label': 'Diagnóstico' }).props.value).toBe('El equipo requiere reparación.');
+    expect(textOf(renderer.root)).toContain('Generado con IA');
   });
 });

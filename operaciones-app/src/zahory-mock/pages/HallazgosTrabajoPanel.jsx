@@ -128,7 +128,7 @@ function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remov
   </section>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, canEdit, readOnly, onRegisterSave, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
@@ -139,6 +139,9 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const [expandedKeys, setExpandedKeys] = useState(() => new Set());
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [familyToAdd, setFamilyToAdd] = useState('');
+  const [newFamilyName, setNewFamilyName] = useState('');
+  const [creatingFamily, setCreatingFamily] = useState(false);
+  const [createFamilyError, setCreateFamilyError] = useState('');
   const [sessionFamilyIds, setSessionFamilyIds] = useState([]);
   const [fotosPorHallazgo, setFotosPorHallazgo] = useState({});
   const [fotosPendientes, setFotosPendientes] = useState([]);
@@ -231,12 +234,27 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     updateItem(item, { lineas: item.lineas.filter(row => row !== link) });
     if (link.id) setDeletedLineas(current => [...current, link]);
   };
-  const addHallazgo = familiaId => {
-    const family = familias.find(row => row.id === familiaId);
+  const addHallazgo = familyOrId => {
+    const family = typeof familyOrId === 'object' ? familyOrId : familias.find(row => row.id === familyOrId);
     if (!family || !canEdit || readOnly) return;
     const next = normalize({ familia_trabajo_id: family.id, componente_parte: '', condicion: 'conforme', riesgo: 'monitorear', matriz_version: 1, accion_recomendada: 'monitorear', atribuible_a: 'desgaste_normal', incluir_en_informe: true, mediciones: [], lineas: [], _dirty: true });
     setItems(current => [...current, next]);
     setExpandedKeys(current => new Set([...current, keyFor(next)]));
+  };
+  const createWork = async event => {
+    event.preventDefault();
+    const nombre = newFamilyName.trim();
+    if (!nombre || !onCreateFamily || creatingFamily) return;
+    setCreatingFamily(true); setCreateFamilyError('');
+    try {
+      const created = await onCreateFamily(nombre);
+      setSessionFamilyIds(current => current.includes(created.id) ? current : [...current, created.id]);
+      onExtraFamilyIdsChange?.(current => current.includes(created.id) ? current : [...current, created.id]);
+      setCollapsedGroups(current => { const next = new Set(current); next.delete(created.id); return next; });
+      setFamilyToAdd(''); setNewFamilyName('');
+      addHallazgo(created);
+    } catch (error) { setCreateFamilyError(error?.message || 'No se pudo crear el trabajo o componente.'); }
+    finally { setCreatingFamily(false); }
   };
   const removeHallazgo = item => {
     updatePendingFotos(fotosPendientesRef.current.filter(row => row.hallazgoKey !== keyFor(item)));
@@ -419,8 +437,14 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     {fotosLoadError && <div className="dx-foto-error" role="status">No se pudieron cargar las fotos de los hallazgos: {fotosLoadError}</div>}
     {groups.map(group => { const expanded = !collapsedGroups.has(group.id); return <section className="hallazgos-work-section" key={group.id}><div className="hallazgos-work-head"><button ref={node => { if (node) groupHeaderRefs.current.set(group.id, node); else groupHeaderRefs.current.delete(group.id); }} type="button" className="hallazgos-group-toggle" aria-expanded={expanded} onClick={() => setCollapsedGroups(current => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span><strong>{group.nombre}</strong><small>{group.items.length} hallazgos · {group.lines.length} tareas</small></span><span aria-hidden="true">{expanded ? '−' : '+'}</span></button>{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addHallazgo(group.id)}>+ Agregar hallazgo</button>}</div>{expanded && (group.items.length ? group.items.map(renderItem) : <p className="muted">Sin hallazgos para este trabajo.</p>)}</section>; })}
     {orphanItems.map(renderItem)}
-    {canEdit && !readOnly && <div className="hallazgos-add-family">{familyToAdd ? <select autoFocus className="select" aria-label="Elegir familia existente" value="" onChange={event => { const id = event.target.value; if (!id) return; pendingGroupFocus.current = id; const existing = groups.find(group => group.id === id); if (existing) setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); else { setSessionFamilyIds(current => current.includes(id) ? current : [...current, id]); onExtraFamilyIdsChange?.(current => current.includes(id) ? current : [...current, id]); setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); } setFamilyToAdd(''); }}><option value="">Seleccionar familia existente...</option>{familias.map(familia => <option value={familia.id} key={familia.id}>{familia.nombre}</option>)}</select> : <button type="button" onClick={() => setFamilyToAdd('choose')} disabled={!familias.length}>+ Agregar trabajo / componente</button>}</div>}
-    {!groups.length && !orphanItems.length && <div className="hallazgos-empty"><strong>No hay familias disponibles para agregar hallazgos.</strong><span>Selecciona una familia existente para comenzar.</span></div>}
+    {canEdit && !readOnly && <div className="hallazgos-add-family">
+      {familyToAdd ? <div className="hallazgos-add-work-options"><select autoFocus className="select" aria-label="Elegir trabajo o componente" value="" onChange={event => { const id = event.target.value; if (!id) return; pendingGroupFocus.current = id; const existing = groups.find(group => group.id === id); if (existing) setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); else { setSessionFamilyIds(current => current.includes(id) ? current : [...current, id]); onExtraFamilyIdsChange?.(current => current.includes(id) ? current : [...current, id]); setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); } setFamilyToAdd(''); }}><option value="">Elegir existente...</option>{familias.map(familia => <option value={familia.id} key={familia.id}>{familia.nombre}</option>)}</select>
+        <form onSubmit={createWork}><input className="input" aria-label="Crear trabajo o componente" value={newFamilyName} onChange={event => setNewFamilyName(event.target.value)} placeholder="Nombre del nuevo trabajo o componente" /><button type="submit" disabled={creatingFamily || !newFamilyName.trim() || !onCreateFamily}>{creatingFamily ? 'Creando\u2026' : '+ Crear trabajo o componente'}</button></form>
+        <button type="button" className="hallazgos-add-cancel" onClick={() => { setFamilyToAdd(''); setCreateFamilyError(''); }}>Cancelar</button>{createFamilyError && <span role="alert">{createFamilyError}</span>}
+      </div> : <button type="button" onClick={() => setFamilyToAdd('choose')}>+ Agregar trabajo o componente</button>}
+      <small>Cada hallazgo va dentro de un trabajo o componente. Si no est&#xE1; en la lista, lo creas ah&#xED; mismo.</small>
+    </div>}
+    {!groups.length && !orphanItems.length && <div className="hallazgos-empty"><strong>A&#xFA;n no hay hallazgos.</strong><span>Agrega un trabajo o componente para registrar hallazgos.</span></div>}
     {saving && <div className="hallazgos-saving">Guardando hallazgos, mediciones y tareas relacionadas…</div>}
   </section>;
 }

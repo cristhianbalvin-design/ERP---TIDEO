@@ -2112,3 +2112,53 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-agregar-inline-table-anchor:focus-visible { outline:2px solid var(--dx-cascada-cyan); outline-offset:3px; border-radius:8px; }
 @container (max-width:800px) { .dx-agregar-inline-head { padding:14px 16px; } .dx-agregar-inline-foot { align-items:stretch; } .dx-agregar-inline-foot > div { width:100%; } .dx-agregar-inline-foot > div button { flex:1; } }
 .dx-body-fabricacion .dx-cascada-lines-group .dx-detail > .dx-field { display:none; }
+
+/* Secciones del modal de Diagnóstico técnico (el CSS vive dentro del shadow root). */
+:host .dx-scope { --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-border:#C9CFD8; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; }
+:host .dx-diagnostico-resumen-section { min-width:0; width:100%; display:flex; flex-direction:column; gap:14px; }
+:host .dx-diagnostico-resumen-heading { min-width:0; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+:host .dx-diagnostico-resumen-heading > span { box-sizing:border-box; flex:none; width:24px; height:24px; display:grid; place-items:center; border-radius:50%; background:var(--dx-ui-cyan); color:#fff; font:700 12px/1 'DM Sans',sans-serif; }
+:host .dx-diagnostico-resumen-heading > div { min-width:0; flex:1 1 240px; }
+:host .dx-diagnostico-resumen-heading h3 { margin:0; color:var(--dx-ui-navy); font:700 17px/1.3 'Sora',sans-serif; }
+:host .dx-diagnostico-resumen-heading p { margin:3px 0 0; color:var(--dx-ui-gray); font:13px/1.45 'DM Sans',sans-serif; }
+:host .dx-diagnostico-resumen-add,:host .dx-diagnostico-resumen-primary { box-sizing:border-box; min-height:40px; padding:0 15px; border:1px solid var(--dx-ui-navy); border-radius:8px; background:var(--dx-ui-navy); color:#fff; font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
+:host .dx-diagnostico-resumen-add { flex:none; margin-left:auto; }
+:host .dx-diagnostico-resumen-add:disabled,:host .dx-diagnostico-resumen-primary:disabled { opacity:.55; cursor:wait; }
+:host .dx-diagnostico-resumen-card,:host .dx-diagnostico-resumen-empty { box-sizing:border-box; min-width:0; width:100%; padding:16px; border:1px solid var(--dx-ui-line); border-radius:12px; background:var(--dx-ui-card); color:var(--dx-ui-ink); }
+:host .dx-diagnostico-resumen-card { display:grid; gap:12px; }
+:host .dx-diagnostico-resumen-card textarea { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:160px; resize:vertical; padding:12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px/1.55 'DM Sans',sans-serif; }
+:host .dx-diagnostico-resumen-meta { min-width:0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+:host .dx-diagnostico-resumen-meta > div { min-width:0; display:grid; gap:4px; }
+:host .dx-diagnostico-resumen-meta strong { justify-self:start; padding:4px 9px; border-radius:999px; font-size:11px; }
+:host .dx-diagnostico-resumen-meta strong.is-auto { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+:host .dx-diagnostico-resumen-meta strong.is-edited { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+:host .dx-diagnostico-resumen-meta small { color:var(--dx-ui-gray); font-size:12px; line-height:1.4; }
+:host .dx-diagnostico-resumen-regenerate { min-height:36px; max-width:100%; padding:6px 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-navy); font:600 12px/1.3 'DM Sans',sans-serif; cursor:pointer; }
+:host .dx-diagnostico-resumen-regenerate:disabled { opacity:.55; cursor:wait; }
+:host .dx-diagnostico-resumen-report { display:flex; align-items:flex-start; gap:8px; padding:10px 12px; border-radius:8px; background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); font:600 12px/1.4 'DM Sans',sans-serif; }
+:host .dx-diagnostico-resumen-empty { display:grid; gap:14px; }
+:host .dx-diagnostico-resumen-empty p { max-width:760px; margin:0; color:var(--dx-ui-gray); font-size:13px; line-height:1.55; }
+:host .dx-diagnostico-resumen-empty > div { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
+:host .dx-diagnostico-resumen-empty > small { color:var(--dx-ui-gray); font-size:12px; }
+:host .dx-diagnostico-resumen-error { padding:10px 12px; border:1px solid var(--dx-ui-red-bg); border-radius:8px; background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); font-size:13px; }
+:host .dx-diagnostico-resumen-confirm { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:12px; border:1px solid var(--dx-ui-amber-fg); border-radius:8px; background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); font-size:13px; }
+:host .dx-diagnostico-resumen-confirm > div { display:flex; flex-wrap:wrap; gap:8px; }
+:host .dx-diagnostico-resumen-confirm button { min-height:34px; padding:0 11px; border:1px solid currentColor; border-radius:7px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:600 12px 'DM Sans',sans-serif; }
+:host .dx-inf-missing-diagnosis { color:#8A4B00; font-size:12px; }
+:host .dx-cascada-task-row { min-width:0; display:grid; grid-template-columns:minmax(0,1fr) 40px; align-items:center; gap:8px; margin:5px 0; padding:8px; border:1px solid var(--dx-cascada-line,var(--dx-ui-line)); border-radius:9px; background:var(--dx-cascada-card,var(--dx-ui-card)); }
+:host .dx-cascada-task-row .dx-cascada-fields { grid-column:1/-1; }
+:host .dx-cascada-task-row.is-selected { border-color:var(--dx-cascada-cyan); }
+:host .dx-cascada-task-remove { width:40px; height:40px; border:1px solid var(--dx-ui-line); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); font:22px/1 'DM Sans',sans-serif; cursor:pointer; }
+:host .dx-cascada-task-remove:hover { border-color:var(--dx-ui-red-fg); background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+:host .hallazgos-add-family { display:grid; gap:7px; }
+:host .hallazgos-add-family > small { color:var(--dx-ui-gray); font-size:12px; line-height:1.45; }
+:host .hallazgos-add-work-options { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+:host .hallazgos-add-work-options select,:host .hallazgos-add-work-options input { box-sizing:border-box; min-width:180px; min-height:38px; flex:1 1 220px; }
+:host .hallazgos-add-work-options form { min-width:0; flex:1 1 420px; display:flex; flex-wrap:wrap; gap:8px; }
+:host .hallazgos-add-work-options form button,:host .hallazgos-add-family > button { min-height:38px; padding:0 13px; border:1px dashed var(--dx-ui-cyan); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-cyan-fg); font:600 12px 'DM Sans',sans-serif; }
+:host .hallazgos-add-cancel { min-height:38px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-navy); }
+@container (max-width:700px) { .dx-diagnostico-resumen-heading { align-items:flex-start; } .dx-diagnostico-resumen-heading > div { flex-basis:calc(100% - 36px); } .dx-diagnostico-resumen-heading .dx-diagnostico-resumen-add { margin-left:36px; } .dx-diagnostico-resumen-card,.dx-diagnostico-resumen-empty { padding:12px; } .dx-diagnostico-resumen-meta { align-items:flex-start; } }
+:host([data-theme='dark']) .dx-scope { --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-border:#475569; --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC; --dx-ui-cyan-bg:#0A3038; --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-navy:#F8FAFC; --dx-cyan:#22D3EE; --dx-cyan-fg:#67E8F9; --dx-gray:#94A3B8; --dx-border:#475569; --dx-line:rgba(255,255,255,.1); --dx-bg:#020617; --dx-head:#0F172A; --dx-soft:#1B2638; --dx-amber:#3A2810; --dx-amber-fg:#FDBA74; --dx-red:#FCA5A5; background:#020617; color:#F8FAFC; }
+:host([data-theme='dark']) .dx-summary-chips > span { border-color:var(--dx-ui-line); background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+:host([data-theme='dark']) .dx-modal .diagnostico-modal-footer { border-color:var(--dx-ui-line); background:var(--dx-ui-card); }
+:host([data-theme='dark']) .dx-inf-missing-diagnosis { color:#FDBA74; }

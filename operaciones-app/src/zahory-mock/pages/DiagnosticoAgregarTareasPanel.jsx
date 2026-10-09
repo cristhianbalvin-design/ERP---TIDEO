@@ -12,6 +12,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const [createError, setCreateError] = useState('');
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState({});
+  const [removedRecipeTasks, setRemovedRecipeTasks] = useState({});
   const [soloActividad, setSoloActividad] = useState(false);
   const [soloLine, setSoloLine] = useState({ cargo_id: '', horas_mano_obra: 0, activo_id: '', horas_maquina: 0 });
   const searchRefs = [useRef(null), useRef(null), useRef(null)];
@@ -28,14 +29,14 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const recipe = useMemo(() => plantillas.filter(row => row.actividad_id === actividadId && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden)), [plantillas, actividadId]);
   const isFab = tipoDiagnostico === 'fabricacion';
   const lines = useMemo(() => {
-    if (isFab && recipe.length) return recipe.map((row, index) => ({
+    if (isFab && recipe.length) return recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map((row, index) => ({
       familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: row.tarea_id,
       cargo_id: selected[row.tarea_id]?.cargo_id ?? row.cargo_id ?? '', horas_mano_obra: selected[row.tarea_id]?.horas_mano_obra ?? row.horas ?? 0,
       activo_id: selected[row.tarea_id]?.activo_id ?? row.activo_id ?? '', horas_maquina: selected[row.tarea_id]?.horas_maquina ?? row.horas_maquina ?? 0,
       _key: `receta-${row.tarea_id}-${index}`, _receta: row,
     }));
     return Object.values(selected);
-  }, [isFab, recipe, familiaId, actividadId, selected]);
+  }, [isFab, recipe, familiaId, actividadId, selected, removedRecipeTasks]);
   const canAdd = Boolean(family && actividad && (soloActividad || lines.length));
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
     if (next[task.id]) delete next[task.id];
     else {
       const suggested = recipe.find(row => row.tarea_id === task.id);
-      next[task.id] = { familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: task.id, cargo_id: suggested?.cargo_id || '', horas_mano_obra: suggested?.horas ?? 0, activo_id: suggested?.activo_id || '', horas_maquina: suggested?.horas_maquina ?? 0, _key: `line-${task.id}` };
+      next[task.id] = { familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: task.id, cargo_id: suggested?.cargo_id || '', horas_mano_obra: suggested?.horas ?? 0, activo_id: suggested?.activo_id || '', horas_maquina: suggested?.horas_maquina ?? 0, _key: `line-${task.id}`, _new: Boolean(task._new) };
     }
     return next;
   });
@@ -74,7 +75,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
       } else {
         const item = await onCreateType(name, createStep === 2 ? 'actividad' : 'tarea', createStep === 2 ? familiaId : null);
         if (createStep === 2) setActividadId(item.id);
-        else toggleTask({ ...item, rol: 'tarea' });
+        else toggleTask({ ...item, rol: 'tarea', _new: true });
       }
       setCreateName(''); setCreateStep(0);
     } catch (error) { setCreateError(error?.message || 'No se pudo crear el registro.'); }
@@ -110,7 +111,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
     {!matching(rows, index, item => item.nombre).length && <div className="dx-cascada-empty">Sin coincidencias</div>}
   </div>;
 
-  const taskOptions = tasks.filter(item => !isFab || !recipe.length || recipe.some(row => row.tarea_id === item.id));
+  const taskOptions = tasks.filter(item => !isFab || !recipe.length || recipe.some(row => row.tarea_id === item.id) || Boolean(selected[item.id]));
   const suggested = new Set(recipe.map(row => row.tarea_id));
   const visibleTaskOptions = matching(taskOptions, 2, item => item.nombre);
   const suggestedTasks = visibleTaskOptions.filter(item => suggested.has(item.id));
@@ -145,10 +146,10 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
           {!actividad ? <div className="dx-cascada-empty">Primero elige una actividad.</div> : <>
             {!isFab && <label className="dx-cascada-solo"><input type="checkbox" checked={soloActividad} onChange={event => { setSoloActividad(event.target.checked); if (event.target.checked) setSelected({}); }} /><span>Costear solo la actividad<small>Sin tareas. El costo queda en la actividad.</small></span></label>}
             {soloActividad ? editFields(soloLine, 'solo') : <div className="dx-cascada-list dx-cascada-tasks" role="group" aria-label="Tareas disponibles">
-                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada: {recipe.length} tareas. Puedes ajustar horas, cargo y equipo para este trabajo. La receta original no cambia.</p>{recipe.map((row, index) => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines[index]; if (!line) return null; return <div className="dx-cascada-task" key={`${row.tarea_id}-${index}`}><strong>{task?.nombre || 'Tarea del catálogo'}</strong>{editFields(line, row.tarea_id, true)}</div>; })}</>
-                : <>{recipe.length > 0 && <p className="dx-cascada-note">Las tareas de receta aparecen como sugeridas.</p>}{suggestedTasks.length > 0 && <><h4 className="dx-cascada-task-group">Sugeridas</h4>{suggestedTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}<small>Sugerida por la receta</small></span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{catalogTasks.length > 0 && <><h4 className="dx-cascada-task-group">Catálogo</h4>{catalogTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}</span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{!taskOptions.length && <div className="dx-cascada-empty">No hay tareas en la receta.</div>}</>}
+                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada: {recipe.length} tareas. Puedes ajustar horas, cargo y equipo para este trabajo. La receta original no cambia.</p>{recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map(row => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines.find(item => item.tarea_id === row.tarea_id); if (!line) return null; return <div className="dx-cascada-task-row is-selected" key={row.tarea_id}><strong>{task?.nombre || 'Tarea del cat\u00e1logo'}</strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task?.nombre || 'tarea'} de esta lista`} title="Quitar de esta lista" onClick={() => setRemovedRecipeTasks(current => ({ ...current, [row.tarea_id]: true }))}>&times;</button>{editFields(line, row.tarea_id, true)}</div>; })}{catalogTasks.filter(task => selected[task.id]).map(task => <div className="dx-cascada-task-row is-selected" key={task.id}><strong>{task.nombre}<small>Nueva</small></strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>{editFields(selected[task.id], task.id)}</div>)}</>
+                : <>{recipe.length > 0 && <p className="dx-cascada-note">Las tareas de receta aparecen como sugeridas.</p>}{suggestedTasks.length > 0 && <><h4 className="dx-cascada-task-group">Sugeridas</h4>{suggestedTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className={`dx-cascada-task-row${line ? ' is-selected' : ''}`} key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0 && suggested.has(task.id)} onChange={() => toggleTask(task)} /><span>{task.nombre}<small>{line?._new ? 'Nueva' : 'Sugerida por la receta'}</small></span></label>{line && <button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>}{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{catalogTasks.length > 0 && <><h4 className="dx-cascada-task-group">Cat&#xE1;logo</h4>{catalogTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className={`dx-cascada-task-row${line ? ' is-selected' : ''}`} key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0 && suggested.has(task.id)} onChange={() => toggleTask(task)} /><span>{task.nombre}{line?._new && <small>Nueva</small>}</span></label>{line && <button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>}{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{!taskOptions.length && <div className="dx-cascada-empty">No hay tareas en la receta.</div>}</>}
               </div>}
-            {(!isFab || !recipe.length) && creationBox(3)}
+            {creationBox(3)}
           </>}
         </section>
       </div>
