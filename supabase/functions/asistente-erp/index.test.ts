@@ -165,6 +165,43 @@ Deno.test("RPCs sin defaults completan todos sus parametros faltantes con null",
   }
 });
 
+Deno.test("herramientas CxC/CxP: esquema, descripciones y mapeo de parametros", async () => {
+  for (const name of ["asistente_resumen_cxc", "asistente_buscar_cxc", "asistente_resumen_cxp", "asistente_buscar_cxp"]) {
+    const tool = OPENAI_TOOLS.find((t: any) => t.function.name === name) as any;
+    assert(tool, name);
+    assert(!("sociedad_id" in tool.function.parameters.properties));
+    equal(JSON.stringify(tool.function.parameters.required), "[]");
+  }
+  const buscar = OPENAI_TOOLS.find((t: any) => t.function.name === "asistente_buscar_cxc") as any;
+  equal(buscar.function.parameters.properties.solo_vencidas.type, "boolean");
+  const cuentas = OPENAI_TOOLS.find((t: any) => t.function.name === "asistente_buscar_cuentas") as any;
+  assert(cuentas.function.description.includes("NO son cuentas por cobrar"));
+  for (const tool of ["asistente_buscar_cxc", "asistente_buscar_cxp"]) {
+    let n = 0;
+    const x = setup({ ai: async () => ++n === 1 ? completion({ role: "assistant", tool_calls: [{ id: tool, type: "function", function: { name: tool, arguments: JSON.stringify({ texto: "Alfa", solo_vencidas: true, estado: "Por_Cobrar", limite: 5 }) } }] }) : completion({ role: "assistant", content: "Listo." }) });
+    equal((await x.handler(x.request())).status, 200);
+    const rpc = x.calls.find(c => c.name === tool)!;
+    equal(rpc.args.p_empresa_id, EMPRESA);
+    equal(rpc.args.p_texto, "Alfa");
+    equal(rpc.args.p_solo_vencidas, true);
+    equal(rpc.args.p_estado, "por_cobrar");
+    equal(rpc.args.p_limite, 5);
+  }
+  let m = 0;
+  const y = setup({ ai: async () => ++m === 1 ? completion({ role: "assistant", tool_calls: [{ id: "r", type: "function", function: { name: "asistente_resumen_cxc", arguments: "{}" } }] }) : completion({ role: "assistant", content: "Listo." }) });
+  equal((await y.handler(y.request())).status, 200);
+  const r = y.calls.find(c => c.name === "asistente_resumen_cxc")!;
+  equal(r.args.p_empresa_id, EMPRESA);
+  equal(r.args.p_sociedad_id, null);
+});
+
+Deno.test("prompt cubre temas sin herramienta y descripciones guian vencidas y prioridad", () => {
+  assert(SYSTEM_PROMPT.includes("Si ninguna herramienta cubre el tema"));
+  const d = (name: string) => (OPENAI_TOOLS.find((t: any) => t.function.name === name) as any).function.description as string;
+  assert(d("asistente_buscar_cxc").includes("solo_vencidas=true, nunca estado"));
+  assert(d("asistente_buscar_cxp").includes("texto=alta"));
+});
+
 Deno.test("caso feliz, cuota y RPC de lectura", async () => {
   const x = setup({ ai: async (_m, _t, model) => { equal(model, "gpt-4o-mini"); return completion({ role: "assistant", content: "Hay tres cuentas.", tool_calls: [{ id: "c1", type: "function", function: { name: "asistente_buscar_cuentas", arguments: JSON.stringify({ busqueda: "Tideo", limite: 10 }) } }] }); } });
   // Primera ronda llama herramienta; segunda entrega la respuesta final.
