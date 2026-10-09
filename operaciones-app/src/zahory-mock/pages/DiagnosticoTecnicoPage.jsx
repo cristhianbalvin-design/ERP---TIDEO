@@ -3,7 +3,7 @@ import { Icon } from '../components/shell.jsx';
 import { ModalShell } from '../components/ModalShell.jsx';
 import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
-import { DiagnosticoTrabajoGrupo } from './DiagnosticoTrabajoGrupo.jsx';
+import { DiagnosticoLineasTabla } from './DiagnosticoLineasTabla.jsx';
 import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.jsx';
 import { DiagnosticoInformePanel } from './DiagnosticoInformePanel.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
@@ -806,8 +806,8 @@ export function DiagnosticoTecnicoPage() {
     return created;
   };
 
-  const crearTipo = async (nombre, rol = null) => {
-    const created = await buscarOCrearTipoServicioInterno(empresaId, nombre, rol);
+  const crearTipo = async (nombre, rol = null, familiaTrabajoId = null) => {
+    const created = await buscarOCrearTipoServicioInterno(empresaId, nombre, rol, familiaTrabajoId);
     setCatalogs(current => ({ ...current, tipos: current.tipos.some(item => item.id === created.id) ? current.tipos : [...current.tipos, created] }));
     return created;
   };
@@ -1031,12 +1031,12 @@ export function DiagnosticoTecnicoPage() {
           <div className="dx-body">
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
-            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : grupos.map((group, index) => <DiagnosticoTrabajoGrupo key={group.familia.id} familia={group.familia} lines={group.lines} catalogs={catalogs} canEdit={canEditLines} initialOpen={index === 0 || extraFamilyIds.includes(group.familia.id)} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
+            {loadingCatalogs ? <div className="dx-empty">Cargando cat&#xE1;logos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los cat&#xE1;logos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">A&#xFA;n no hay trabajos</div> : <DiagnosticoLineasTabla lines={grupos.flatMap(group => group.lines)} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => {
               if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; }
               patchLine(line, changes);
               const key = lineKey(line);
               setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; });
-            }} onError={lineError => setError(errorMessage(lineError))} />)}
+            }} onError={lineError => setError(errorMessage(lineError))} />}
           </div>
           <div className="dx-hallazgos">
             <HallazgosTrabajoPanel

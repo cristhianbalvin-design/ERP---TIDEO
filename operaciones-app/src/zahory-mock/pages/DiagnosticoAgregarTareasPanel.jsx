@@ -19,7 +19,12 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const dialogRef = useRef(null);
   const family = familias.find(item => item.id === familiaId);
   const actividad = tipos.find(item => item.id === actividadId);
-  const activities = tipos.filter(item => item.rol === 'actividad');
+  const allActivities = tipos.filter(item => item.rol === 'actividad');
+  const activitiesFor = id => {
+    const linked = allActivities.filter(item => item.familia_trabajo_id === id);
+    return linked.length ? linked : allActivities.filter(item => !item.familia_trabajo_id);
+  };
+  const activities = activitiesFor(familiaId);
   const tasks = tipos.filter(item => item.rol === 'tarea' || item.rol == null);
   const recipe = useMemo(() => plantillas.filter(row => row.actividad_id === actividadId && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden)), [plantillas, actividadId]);
   const isFab = tipoDiagnostico === 'fabricacion';
@@ -75,7 +80,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
         const item = await onCreateFamily(name);
         setFamiliaId(item.id); setActividadId('');
       } else {
-        const item = await onCreateType(name, createStep === 2 ? 'actividad' : 'tarea');
+        const item = await onCreateType(name, createStep === 2 ? 'actividad' : 'tarea', createStep === 2 ? familiaId : null);
         if (createStep === 2) setActividadId(item.id);
         else toggleTask({ ...item, rol: 'tarea' });
       }
@@ -101,7 +106,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const creationBox = step => createStep !== step
     ? <div className="dx-cascada-create"><button type="button" onClick={() => { setCreateStep(step); setCreateName(''); setCreateError(''); }}>+ Crear {step === 1 ? 'trabajo o componente' : step === 2 ? 'actividad' : 'tarea'}</button></div>
     : <div className="dx-cascada-create"><form onSubmit={event => { event.preventDefault(); create(); }}><input autoFocus aria-label="Nombre" value={createName} onChange={event => setCreateName(event.target.value)} placeholder="Nombre" /><div><button className="dx-cascada-primary" disabled={busy || !createName.trim()}>{busy ? 'Creando…' : 'Crear'}</button><button type="button" onClick={() => setCreateStep(0)}>Cancelar</button></div>{createError && <span role="alert">{createError}</span>}</form></div>;
-  const result = (rows, index, label, id, meta) => <div className="dx-cascada-list" role="listbox" aria-label={label}>
+  const result = (rows, index, label, id, meta, tag) => <div className="dx-cascada-list" role="listbox" aria-label={label}>
     {matching(rows, index, item => item.nombre).map(item => <button type="button" role="option" aria-selected={id === item.id} key={item.id} className={`dx-cascada-row${id === item.id ? ' is-selected' : ''}`} onClick={() => {
       if (index === 0) { setFamiliaId(item.id); setActividadId(''); setSelected({}); setSoloActividad(false); }
       else {
@@ -109,7 +114,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
         const recipeRows = plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden));
         setSelected(isFab ? Object.fromEntries(recipeRows.map(row => [row.tarea_id, { familia_trabajo_id: familiaId, actividad_id: item.id, tarea_id: row.tarea_id, cargo_id: row.cargo_id || '', horas_mano_obra: row.horas ?? 0, activo_id: row.activo_id || '', horas_maquina: row.horas_maquina ?? 0, _key: row.tarea_id }])) : {});
       }
-    }}><span>{item.nombre}<small>{meta(item)}</small></span><b aria-hidden="true">›</b></button>)}
+    }}><span>{item.nombre}<small>{meta(item)}</small></span>{tag ? <em className={`dx-cascada-tag${tag(item) === 'Componente' ? ' is-component' : ''}`}>{tag(item)}</em> : <b aria-hidden="true">›</b>}</button>)}
     {!matching(rows, index, item => item.nombre).length && <div className="dx-cascada-empty">Sin coincidencias</div>}
   </div>;
 
@@ -135,13 +140,13 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
       <header className="dx-cascada-head"><div><h2 id="dx-cascada-title">Agregar al diagnóstico</h2><p>{isFab ? 'Elige el trabajo, la actividad y ajusta las tareas de la receta.' : 'Elige el trabajo, la actividad y las tareas que se realizarán.'}</p></div><span className={`dx-cascada-pill${isFab ? '' : ' is-maintenance'}`}>{isFab ? 'Fabricación' : 'Mantenimiento y reparación'}</span><button type="button" className="dx-cascada-close" aria-label="Cerrar" onClick={onClose}>×</button></header>
       <div className="dx-cascada-steps" aria-label="Pasos"><span className={family ? 'is-done' : 'is-current'}>1 · {family?.nombre || 'Trabajo o componente'}</span><span className={actividad ? 'is-done' : family ? 'is-current' : ''}>2 · {actividad?.nombre || 'Actividad'}</span><span className={actividad ? 'is-current' : ''}>3 · Tarea</span></div>
       <div className="dx-cascada-cols">
-        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3><input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
-        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Actividad</h3><input ref={searchRefs[1]} type="search" aria-label="Buscar actividad" placeholder="Buscar" disabled={!family} value={query[1]} onChange={event => setSearch(1, event.target.value)} /></div>{family ? result(activities, 1, 'Actividad', actividadId, item => `${plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).length} tareas en receta`) : <div className="dx-cascada-empty">Primero elige un trabajo o componente.</div>}{family && creationBox(2)}</section>
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3><input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => { const n = activitiesFor(item.id).length; return `${n} ${n === 1 ? 'actividad' : 'actividades'}`; }, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Actividad</h3><input ref={searchRefs[1]} type="search" aria-label="Buscar actividad" placeholder="Buscar" disabled={!family} value={query[1]} onChange={event => setSearch(1, event.target.value)} /></div>{family ? result(activities, 1, 'Actividad', actividadId, item => { const n = plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).length; return `${item.codigo ? `${item.codigo} · ` : ''}${n ? `${n} tareas en receta` : 'sin receta'}`; }) : <div className="dx-cascada-empty">Primero elige un trabajo o componente.</div>}{family && creationBox(2)}</section>
         <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Tarea</h3>{actividad && (!isFab || !recipe.length) && <input ref={searchRefs[2]} type="search" aria-label="Buscar tarea" placeholder="Buscar tarea" value={query[2]} onChange={event => setSearch(2, event.target.value)} />}</div>
           {!actividad ? <div className="dx-cascada-empty">Primero elige una actividad.</div> : <>
             {!isFab && <label className="dx-cascada-solo"><input type="checkbox" checked={soloActividad} onChange={event => { setSoloActividad(event.target.checked); if (event.target.checked) setSelected({}); }} /><span>Costear solo la actividad<small>Sin tareas. El costo queda en la actividad.</small></span></label>}
             {soloActividad ? editFields(soloLine, 'solo') : <div className="dx-cascada-list dx-cascada-tasks" role="group" aria-label="Tareas disponibles">
-                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada. Ajustes aplican solo a este diagnóstico.</p>{recipe.map((row, index) => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines[index]; if (!line) return null; return <div className="dx-cascada-task" key={`${row.tarea_id}-${index}`}><strong>{task?.nombre || 'Tarea del catálogo'}</strong>{editFields(line, row.tarea_id, true)}</div>; })}</>
+                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada: {recipe.length} tareas. Puedes ajustar horas, cargo y equipo para este trabajo. La receta original no cambia.</p>{recipe.map((row, index) => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines[index]; if (!line) return null; return <div className="dx-cascada-task" key={`${row.tarea_id}-${index}`}><strong>{task?.nombre || 'Tarea del catálogo'}</strong>{editFields(line, row.tarea_id, true)}</div>; })}</>
                 : <>{recipe.length > 0 && <p className="dx-cascada-note">Las tareas de receta aparecen como sugeridas.</p>}{suggestedTasks.length > 0 && <><h4 className="dx-cascada-task-group">Sugeridas</h4>{suggestedTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}<small>Sugerida por la receta</small></span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{catalogTasks.length > 0 && <><h4 className="dx-cascada-task-group">Catálogo</h4>{catalogTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}</span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{!taskOptions.length && <div className="dx-cascada-empty">No hay tareas en la receta.</div>}</>}
               </div>}
             {(!isFab || !recipe.length) && creationBox(3)}
