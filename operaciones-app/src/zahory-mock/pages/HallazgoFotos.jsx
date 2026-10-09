@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { actualizarFotoHallazgo, borrarFotoHallazgo, listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnosticoHallazgoFotosService.js';
 
 const errorText = error => error?.message || 'No se pudo completar la operación.';
@@ -12,8 +12,31 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   const [notice, setNotice] = useState('');
   const [leyendas, setLeyendas] = useState({});
   const [exclusiones, setExclusiones] = useState({});
+  const scrollBeforePicker = useRef(null);
   const publish = next => onFotosChange?.(next);
   const total = fotos.length + fotosPendientes.length;
+
+  const capturePickerScroll = event => {
+    const ancestors = [];
+    let node = event.currentTarget;
+    while (node) {
+      if (node.scrollHeight > node.clientHeight) ancestors.push([node, node.scrollTop]);
+      node = node.parentElement;
+    }
+    scrollBeforePicker.current = { windowY: window.scrollY, ancestors };
+  };
+  const restorePickerScroll = () => {
+    const snapshot = scrollBeforePicker.current;
+    if (!snapshot) return;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: snapshot.windowY, behavior: 'auto' });
+      snapshot.ancestors.forEach(([node, top]) => { if (node.isConnected) node.scrollTop = top; });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: snapshot.windowY, behavior: 'auto' });
+        snapshot.ancestors.forEach(([node, top]) => { if (node.isConnected) node.scrollTop = top; });
+      });
+    });
+  };
 
   const updateFoto = async (foto, changes) => {
     setError(''); setNotice(''); setBusyId(foto.id);
@@ -92,7 +115,7 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
     <div className="dx-foto-head"><strong>Fotos</strong><span>{total} de 3</span></div>
     {!readOnly && <label className="dx-foto-upload">
       <span>{uploading ? 'Subiendo fotos…' : 'Agregar fotos'}</span>
-      <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onChange={uploadFiles} />
+      <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={event => { restorePickerScroll(); uploadFiles(event); }} />
     </label>}
     {fotosPendientes.length > 0 && <div className="dx-foto-grid">{fotosPendientes.map(pending => <article className="dx-foto-card dx-foto-card-pending" key={pending.id}>
       <img src={pending.previewUrl} alt={`Vista previa: ${pending.archivo.name || 'foto del hallazgo'}`} />

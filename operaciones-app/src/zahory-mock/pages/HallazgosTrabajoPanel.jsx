@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Icon } from '../components/shell.jsx';
 import {
   actualizarDiagnosticoHallazgo,
   actualizarDiagnosticoMedicion,
@@ -106,6 +107,77 @@ function MeasurementTable({ item, catalogs, canEdit, update, remove }) {
       </tr>)}
     </tbody></table></div>}
   </section>;
+}
+
+function ObservationField({ item, disabled, onChange }) {
+  const textareaRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const [supported, setSupported] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [speechMessage, setSpeechMessage] = useState('');
+  useEffect(() => {
+    setSupported(Boolean(typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)));
+    return () => recognitionRef.current?.stop?.();
+  }, []);
+  const stop = () => {
+    recognitionRef.current?.stop?.();
+    setListening(false);
+  };
+  const toggleDictation = () => {
+    if (listening) { stop(); return; }
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) { setSupported(false); return; }
+    const recognition = new Recognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'es-PE';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    let insertAt = textareaRef.current?.selectionStart ?? String(item.observacion || '').length;
+    let triedFallback = false;
+    recognition.onstart = () => { setListening(true); setSpeechMessage(''); };
+    recognition.onresult = event => {
+      let finalText = '';
+      let interimText = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const phrase = event.results[index][0]?.transcript || '';
+        if (event.results[index].isFinal) finalText += phrase;
+        else interimText += phrase;
+      }
+      if (finalText) {
+        const current = textareaRef.current?.value ?? String(item.observacion || '');
+        const separator = insertAt > 0 && !/\s$/.test(current.slice(0, insertAt)) ? ' ' : '';
+        const next = `${current.slice(0, insertAt)}${separator}${finalText}${current.slice(insertAt)}`.slice(0, 1000);
+        insertAt = Math.min(next.length, insertAt + separator.length + finalText.length);
+        onChange(next);
+        requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(insertAt, insertAt); });
+      }
+      setSpeechMessage(interimText ? `Escuchando: ${interimText}` : '');
+    };
+    recognition.onerror = event => {
+      if (event.error === 'language-not-supported' && !triedFallback) {
+        triedFallback = true;
+        recognition.lang = 'es-ES';
+        try { recognition.start(); return; } catch { /* Se muestra el mensaje genérico abajo. */ }
+      }
+      const message = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+        ? 'Permiso de micrófono denegado. Habilita el micrófono en el navegador e inténtalo de nuevo.'
+        : 'No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.';
+      setSpeechMessage(message);
+      setListening(false);
+    };
+    recognition.onend = () => { setListening(false); recognitionRef.current = null; };
+    try { recognition.start(); }
+    catch { setListening(false); setSpeechMessage('No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.'); }
+  };
+  return <div className="field hallazgo-observation-field">
+    <label htmlFor={`hallazgo-observaciones-${item._key}`}>Observaciones</label>
+    <textarea ref={textareaRef} id={`hallazgo-observaciones-${item._key}`} className="input" rows={3} maxLength={1000} value={item.observacion || ''} disabled={disabled} onChange={event => onChange(event.target.value)} onBlur={stop} />
+    <div className="hallazgo-observation-tools">
+      {supported && <button type="button" className={`hallazgo-dictation-button${listening ? ' is-listening' : ''}`} aria-label="Dictar observaciones" aria-pressed={listening} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={toggleDictation}><Icon name="mic" size={16} />{listening ? 'Detener dictado' : 'Dictar'}</button>}
+      {!supported && <span className="hint">Tu navegador no admite dictado; usa el dictado del sistema (Windows: tecla Windows + H)</span>}
+      {speechMessage && <span role="status">{speechMessage}</span>}
+    </div>
+  </div>;
 }
 
 function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remove }) {
@@ -421,11 +493,10 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         {item.prioridad_override && <div className="field"><label>Motivo del override *</label><input className="input" value={item.prioridad_override_motivo || ''} disabled={!canEdit} onChange={event => updateItem(item, { prioridad_override_motivo: event.target.value })} /></div>}
         <ChoiceButtons label="Acción recomendada" value={item.accion_recomendada} options={ACTIONS} disabled={!canEdit} onChange={value => updateItem(item, { accion_recomendada: value })} />
         <ChoiceButtons label="Atribuible a" hint="para garantía y cargo" value={item.atribuible_a} options={ATTRIBUTIONS} disabled={!canEdit} onChange={value => updateItem(item, { atribuible_a: value })} />
-        <div className="field hallazgo-observation-field"><label>Observación técnica</label><textarea className="input" rows="3" value={item.observacion || ''} disabled={!canEdit} onChange={event => updateItem(item, { observacion: event.target.value })} /></div>
+        <ObservationField item={item} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
       </div>
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
       <MeasurementTable item={item} catalogs={catalogs} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />
-      <TaskLinks item={item} lines={lines} tipos={tipos} cargos={cargos} activos={activos} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={link => removeLink(item, link)} />
       <HallazgoFotos empresaId={empresaId} diagnosticoId={diagnostico?.id} hallazgo={item} fotos={fotosPorHallazgo[item.id] || []} fotosPendientes={fotosPendientes.filter(row => row.hallazgoKey === keyFor(item))} readOnly={readOnly} onFotosChange={fotos => changeHallazgoFotos(item.id, fotos)} onFotosPendientesChange={fotos => changePendingForHallazgo(keyFor(item), fotos)} />
       </>}
     </article>;

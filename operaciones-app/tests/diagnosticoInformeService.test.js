@@ -41,8 +41,8 @@ describe('diagnosticoInformeService', () => {
   });
 
   it('invoca la función con solo el id y traduce errores HTTP', async () => {
-    supabase.functions = { invoke: vi.fn().mockResolvedValue({ data: { ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4o-mini' }, error: null }) };
-    await expect(generarConclusionIA('diag-1')).resolves.toEqual({ ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4o-mini' });
+    supabase.functions = { invoke: vi.fn().mockResolvedValue({ data: { ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4.1-mini' }, error: null }) };
+    await expect(generarConclusionIA('diag-1')).resolves.toEqual({ ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4.1-mini' });
     expect(supabase.functions.invoke).toHaveBeenCalledWith('generar-conclusion-informe', { body: { diagnostico_id: 'diag-1' } });
     supabase.functions.invoke.mockResolvedValueOnce({ data: null, error: { context: { status: 429 } } });
     await expect(generarConclusionIA('diag-1')).rejects.toThrow(/cuota diaria/i);

@@ -6,7 +6,7 @@ import { firmarRutasFotosHallazgos, listarFotosHallazgos } from '../../services/
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
-export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, cambiosSinGuardar = false, resumenPendiente = false, onResumenChange, onGuardarResumen, onClose }) {
+export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, cambiosSinGuardar = false, resumenPendiente = false, onResumenChange, onGuardarResumen, onGuardarDiagnosticoPendiente, onClose }) {
   const [informe, setInforme] = useState(null);
   const [borrador, setBorrador] = useState(null);
   const [emitidos, setEmitidos] = useState([]);
@@ -138,6 +138,16 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   const conclusionModificada = esMantenimiento ? resumenPendiente : opciones.conclusion !== opcionesGuardadas.conclusion;
   const conclusionSinConfirmar = !String(textoConclusion).trim() || !opciones.conclusion_confirmada || conclusionModificada;
   const opcionesPendientes = JSON.stringify(opciones) !== JSON.stringify(opcionesGuardadas);
+  const motivoEmision = !String(textoConclusion).trim()
+    ? 'Falta redactar el diagnóstico'
+    : cambiosSinGuardar || conclusionModificada
+      ? 'Hay cambios sin guardar'
+      : diagnostico?.estado !== 'emitido'
+        ? 'Primero emite el diagnóstico'
+        : !opciones.conclusion_confirmada
+          ? 'Falta confirmar la conclusión'
+          : '';
+  const emisionBloqueada = Boolean(motivoEmision);
   const effectiveSnapshot = useMemo(() => {
     if (seleccionVersion?.snapshot) return snapshotEmitidoVista || seleccionVersion.snapshot;
     return construirVistaInforme(diagnostico, opciones, catalogos, cabecera, fotosPorHallazgo);
@@ -148,6 +158,8 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     if (!isEditable || generandoIA) return;
     setGenerandoIA(true); setIaError(''); setConfirmarReemplazo(false);
     try {
+      if (cambiosSinGuardar && onGuardarDiagnosticoPendiente) await onGuardarDiagnosticoPendiente();
+      await obtenerOCrearBorrador(diagnostico.recepcion_id);
       const result = await generarConclusionIA(diagnostico.id);
       if (esMantenimiento) {
         onResumenChange?.(result.conclusion, 'editado');
@@ -175,7 +187,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   };
 
   const emitir = async () => {
-    if (!isEditable || emitiendo || !String(emisorNombre || '').trim() || conclusionSinConfirmar) return;
+    if (!isEditable || emitiendo || !String(emisorNombre || '').trim() || emisionBloqueada) return;
     setEmitiendo(true); setError(''); setAviso('');
     try {
       if (opcionesPendientes) {
@@ -274,13 +286,14 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           {isEditable && <button type="button" className="dx-inf-save" onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar borrador'}</button>}
           {isEditable && permisoAprobar && <button type="button" className="dx-informe-emitir" onClick={() => {
             setError(''); setAviso(''); setEmisorNombre(identidadEmpresa?.firmante || ''); setEmisorCargo(identidadEmpresa?.cargo_firmante || ''); setConfirmarEmision(true);
-          }} disabled={guardando || emitiendo || conclusionSinConfirmar}>{emitiendo ? 'Emitiendo…' : 'Emitir informe'}</button>}
+          }} disabled={guardando || emitiendo || emisionBloqueada}>{emitiendo ? 'Emitiendo…' : 'Emitir informe'}</button>}
+          {isEditable && permisoAprobar && emisionBloqueada && <p className="dx-inf-emit-help" role="status">{motivoEmision}</p>}
           {seleccionVersion?.estado === 'emitido' && seleccionVersion?.snapshot && <button type="button" className="dx-inf-save" onClick={descargarPdf} disabled={generandoPdf}>{generandoPdf ? 'Generando PDF…' : 'Descargar PDF'}</button>}
           {confirmarEmision && isEditable && <section className="dx-informe-emitir-panel" aria-label="Confirmar emisión">
             <label>Nombre del emisor<input value={emisorNombre} onChange={event => setEmisorNombre(event.target.value)} required maxLength={200} disabled={emitiendo} /></label>
             <label>Cargo<input value={emisorCargo} onChange={event => setEmisorCargo(event.target.value)} maxLength={200} disabled={emitiendo} /></label>
             <p>Al emitir, el informe queda congelado y no podrá editarse; para cambios se emite una nueva versión.</p>
-            <div className="dx-informe-emitir-actions"><button type="button" onClick={emitir} disabled={emitiendo || guardando || !String(emisorNombre || '').trim() || conclusionSinConfirmar}>{emitiendo ? 'Emitiendo…' : 'Confirmar emisión'}</button><button type="button" onClick={() => setConfirmarEmision(false)} disabled={emitiendo}>Cancelar</button></div>
+            <div className="dx-informe-emitir-actions"><button type="button" onClick={emitir} disabled={emitiendo || guardando || !String(emisorNombre || '').trim() || emisionBloqueada}>{emitiendo ? 'Emitiendo…' : 'Confirmar emisión'}</button><button type="button" onClick={() => setConfirmarEmision(false)} disabled={emitiendo}>Cancelar</button></div>
           </section>}
           {emitidos.length > 0 && <section className="dx-inf-versions"><h3>Versiones emitidas</h3>{borrador && <button type="button" className={!seleccionVersion ? 'is-selected' : ''} onClick={() => chooseVersion(null)}>Borrador actual</button>}{emitidos.map(row => <button key={row.id} type="button" className={seleccionVersion?.id === row.id ? 'is-selected' : ''} onClick={() => chooseVersion(row)}>Versión {row.version}{row.emitido_en ? ` · ${new Date(row.emitido_en).toLocaleDateString('es-PE')}` : ''}</button>)}</section>}
           {cambiosSinGuardar && <div className="dx-inf-warning" role="status">Hay cambios sin guardar en el diagnóstico.</div>}

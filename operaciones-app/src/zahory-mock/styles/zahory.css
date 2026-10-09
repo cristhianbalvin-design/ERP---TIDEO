@@ -2162,3 +2162,11 @@ a { color: var(--cyan); text-decoration: none; }
 :host([data-theme='dark']) .dx-summary-chips > span { border-color:var(--dx-ui-line); background:var(--dx-ui-card); color:var(--dx-ui-gray); }
 :host([data-theme='dark']) .dx-modal .diagnostico-modal-footer { border-color:var(--dx-ui-line); background:var(--dx-ui-card); }
 :host([data-theme='dark']) .dx-inf-missing-diagnosis { color:#FDBA74; }
+:host .hallazgo-observation-field { grid-column:1 / -1; }
+:host .hallazgo-observation-field textarea { width:100%; min-height:90px; resize:vertical; }
+:host .hallazgo-observation-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; }
+:host .hallazgo-dictation-button { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:0 10px; border:1px solid var(--dx-ui-border); border-radius:7px; background:var(--dx-ui-card); color:var(--dx-ui-navy); font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
+:host .hallazgo-dictation-button.is-listening { border-color:var(--dx-ui-red-fg); color:var(--dx-ui-red-fg); }
+:host .hallazgo-observation-tools [role='status'] { color:var(--dx-ui-gray); font-size:12px; }
+:host .dx-inf-emit-help { margin:6px 0 12px; color:var(--dx-ui-gray); font-size:12px; }
+:host([data-theme='dark']) .hallazgo-dictation-button { border-color:#475569; background:#1E293B; color:#F8FAFC; }

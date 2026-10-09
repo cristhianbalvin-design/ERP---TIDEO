@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 const dash = value => value === null || value === undefined || value === '' ? '—' : value;
+const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
 const dateLabel = value => value ? new Date(value).toLocaleDateString('es-PE') : '—';
 const prioridadLabel = { P1: 'Requieren atención antes de operar', P2: 'Atención prioritaria', P3: 'Próximo mantenimiento', P4: 'Monitorear', conformes: 'Conformes' };
 const tones = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4', conformes: 'ok' };
@@ -24,8 +25,8 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
         <h2>{dash(head.activo_nombre)}{head.activo_codigo ? ` · ${head.activo_codigo}` : ''}</h2>
         <div className="dx-inf-meta-grid">
           <span>Cliente<strong>{dash(head.cliente_razon_social)}</strong></span>
-          <span>N° de serie<strong>{dash(head.numero_serie)}</strong></span>
-          <span>Horómetro<strong>{dash(head.horometro)}</strong></span>
+          {hasValue(head.numero_serie) && <span>N° de serie<strong>{dash(head.numero_serie)}</strong></span>}
+          {hasValue(head.horometro) && <span>Horómetro<strong>{dash(head.horometro)}</strong></span>}
           <span>Fecha<strong>{dateLabel(head.fecha_recepcion)}</strong></span>
         </div>
       </div>

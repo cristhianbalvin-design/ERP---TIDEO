@@ -365,7 +365,16 @@ export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
     p_ids: ids,
   });
   if (error) throw error;
-  return data || [];
+  const references = data || [];
+  if (tipo !== 'mantenimiento' || !references.length) return references;
+  const { data: receipts, error: receiptError } = await getSupabaseClient()
+    .from('recepciones_activos_cliente')
+    .select('id,fecha_ingreso')
+    .eq('empresa_id', empresaId)
+    .in('id', references.map(reference => reference.id));
+  if (receiptError) return references;
+  const dates = new Map((receipts || []).map(receipt => [receipt.id, receipt.fecha_ingreso]));
+  return references.map(reference => ({ ...reference, fecha_ingreso: dates.get(reference.id) || null }));
 }
 
 export async function listarFamiliasTrabajo(empresaId) {

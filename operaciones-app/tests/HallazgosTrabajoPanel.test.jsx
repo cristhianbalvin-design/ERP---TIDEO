@@ -93,7 +93,9 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).toContain('P3 · 0');
     expect(text).toContain('P4 · 0');
     expect(text).toContain('Mediciones');
-    expect(text).toContain('Tareas relacionadas');
+    expect(text).toContain('Observaciones');
+    expect(text).not.toContain('Tareas relacionadas');
+    expect(text).not.toContain('Sin tareas relacionadas');
     expect(text).toContain('Fotos');
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
@@ -239,6 +241,19 @@ describe('HallazgosTrabajoPanel', () => {
     const checkbox = fotoLabel.findByType('input');
     await act(async () => { checkbox.props.onChange({ target: { checked: false } }); await Promise.resolve(); });
     expect(mocks.actualizarFotoHallazgo).toHaveBeenCalledWith({ empresaId: 'empresa-prueba', id: 'foto-1', leyenda: 'Sello', excluir_del_informe: true });
+    renderer.unmount();
+  });
+
+  it('mantiene enlaces de tareas existentes al guardar observaciones sin mostrarlos en la UI', async () => {
+    const { renderer, callbacks } = await renderPanel([{ ...baseHallazgo, lineas: [{ id: 'link-1', linea_id: 'line-1' }] }]);
+    expect(textOf(renderer.root)).not.toContain('Tareas relacionadas');
+    const textarea = renderer.root.findAllByType('textarea').find(node => node.props.maxLength === 1000);
+    await act(async () => textarea.props.onChange({ target: { value: 'Vibración anormal' } }));
+    mocks.actualizarDiagnosticoHallazgo.mockResolvedValue({ id: 'hallazgo-1', observacion: 'Vibración anormal' });
+    await act(async () => { await callbacks.save(); });
+    expect(mocks.actualizarDiagnosticoHallazgo).toHaveBeenCalledWith('empresa-prueba', 'diagnostico-1', expect.objectContaining({ observacion: 'Vibración anormal' }));
+    expect(mocks.crearEnlaceDiagnosticoHallazgoLinea).not.toHaveBeenCalled();
+    expect(mocks.eliminarEnlaceDiagnosticoHallazgoLinea).not.toHaveBeenCalled();
     renderer.unmount();
   });
 });

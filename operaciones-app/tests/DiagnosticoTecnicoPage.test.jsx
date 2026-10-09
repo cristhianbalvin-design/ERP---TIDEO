@@ -25,6 +25,7 @@ vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
   generarConclusionIA: mocks.generateConclusion,
+  obtenerOCrearBorrador: vi.fn(),
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';

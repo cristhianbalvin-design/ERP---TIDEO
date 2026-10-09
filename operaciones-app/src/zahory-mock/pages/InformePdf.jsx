@@ -75,9 +75,9 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       <Text style={S.titleMeta}>Recepción {fmt(head.numero_recepcion)}</Text>
       <View style={S.infoGrid}>
         {field('Activo', [head.activo_nombre, head.activo_codigo].filter(present).join(' · '))}
-        {field('Cliente', head.cliente_razon_social)}{field('N° de serie', head.numero_serie)}
+        {field('Cliente', head.cliente_razon_social)}{present(head.numero_serie) && String(head.numero_serie).trim() ? field('N° de serie', head.numero_serie) : null}
         {field('Fecha de recepción', dateLabel(head.fecha_recepcion))}{field('N° de caso', head.numero_caso)}
-        {field('Horómetro', head.horometro)}
+        {present(head.horometro) && String(head.horometro).trim() ? field('Horómetro', head.horometro) : null}
         {field('Tipo', capitalize(head.tipo))}{field('Versión', snapshot?.version)}{field('Emitido el', dateLabel(snapshot?.emitido_en))}
       </View>
       <Text style={S.sectionTitle}>Resumen por prioridad</Text>
