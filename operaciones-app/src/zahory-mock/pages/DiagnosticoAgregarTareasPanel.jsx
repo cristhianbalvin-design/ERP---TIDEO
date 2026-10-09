@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const num = value => Number(value) || 0;
 
-export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], onClose, onAdd, onCreateFamily, onCreateType }) {
+export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
   const [familiaId, setFamiliaId] = useState('');
   const [actividadId, setActividadId] = useState('');
   const [query, setQuery] = useState(['', '', '']);
@@ -14,9 +14,8 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const [selected, setSelected] = useState({});
   const [soloActividad, setSoloActividad] = useState(false);
   const [soloLine, setSoloLine] = useState({ cargo_id: '', horas_mano_obra: 0, activo_id: '', horas_maquina: 0 });
-  const [addNotice, setAddNotice] = useState('');
   const searchRefs = [useRef(null), useRef(null), useRef(null)];
-  const dialogRef = useRef(null);
+  const titleId = useId();
   const family = familias.find(item => item.id === familiaId);
   const actividad = tipos.find(item => item.id === actividadId);
   const allActivities = tipos.filter(item => item.rol === 'actividad');
@@ -40,19 +39,12 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const canAdd = Boolean(family && actividad && (soloActividad || lines.length));
 
   useEffect(() => {
-    dialogRef.current?.focus();
-    const keydown = event => {
-      if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
-    };
-    window.addEventListener('keydown', keydown);
-    return () => window.removeEventListener('keydown', keydown);
-  }, [onClose]);
+    onSelectionChange?.(Boolean(familiaId || actividadId || Object.keys(selected).length || soloActividad));
+  }, [familiaId, actividadId, selected, soloActividad, onSelectionChange]);
 
   useEffect(() => {
-    if (!addNotice) return undefined;
-    const timeout = window.setTimeout(() => setAddNotice(''), 1800);
-    return () => window.clearTimeout(timeout);
-  }, [addNotice]);
+    searchRefs[0].current?.focus();
+  }, []);
 
   const setSearch = (index, value) => setQuery(current => current.map((item, i) => i === index ? value : item));
   const matching = (rows, index, label) => rows.filter(row => normalize(`${label(row)} ${row.codigo || ''}`).includes(normalize(query[index])));
@@ -130,14 +122,21 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
     const isDuplicate = row => lineas.some(existing => existing.familia_trabajo_id === familiaId && existing.actividad_id === actividadId && existing.tarea_id === row.tarea_id);
     const additions = prepared.filter(row => !isDuplicate(row));
     const duplicateCount = prepared.length - additions.length;
-    if (duplicateCount) setAddNotice(`Se omitieron ${duplicateCount} tarea${duplicateCount === 1 ? '' : 's'} ya agregada${duplicateCount === 1 ? '' : 's'} para este trabajo y actividad.`);
-    if (additions.length) onAdd(additions);
-    if (!duplicateCount) onClose();
+    onAdd(additions, duplicateCount);
+    onClose();
   };
 
-  return <div className="dx-cascada-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="dx-cascada-panel" role="dialog" aria-modal="true" aria-labelledby="dx-cascada-title" tabIndex="-1" ref={dialogRef}>
-      <header className="dx-cascada-head"><div><h2 id="dx-cascada-title">Agregar al diagnóstico</h2><p>{isFab ? 'Elige el trabajo, la actividad y ajusta las tareas de la receta.' : 'Elige el trabajo, la actividad y las tareas que se realizarán.'}</p></div><span className={`dx-cascada-pill${isFab ? '' : ' is-maintenance'}`}>{isFab ? 'Fabricación' : 'Mantenimiento y reparación'}</span><button type="button" className="dx-cascada-close" aria-label="Cerrar" onClick={onClose}>×</button></header>
+  const title = isFab ? 'Agregar tareas' : 'Agregar trabajos';
+  const handleKeyDown = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    }
+  };
+
+  return <section className="dx-agregar-inline-panel dx-cascada-panel" role="region" aria-labelledby={titleId} onKeyDown={handleKeyDown}>
+    <header className="dx-agregar-inline-head dx-cascada-head"><div><h2 id={titleId}>{title}</h2><p>Elige el trabajo, la actividad y ajusta las tareas de la receta.</p></div></header>
       <div className="dx-cascada-steps" role="group" aria-label="Pasos"><div className={`dx-cascada-step${family ? ' is-done' : ' is-current'}`} aria-current={!family ? 'step' : undefined}><b aria-hidden="true">{family ? '✓' : '1'}</b><span>{family?.nombre || 'Trabajo o componente'}</span></div><div className={`dx-cascada-step${actividad ? ' is-done' : family ? ' is-current' : ''}`} aria-current={family && !actividad ? 'step' : undefined}><b aria-hidden="true">{actividad ? '✓' : '2'}</b><span>{actividad?.nombre || 'Actividad'}</span></div><div className={`dx-cascada-step${actividad ? ' is-current' : ''}`} aria-current={actividad ? 'step' : undefined}><b aria-hidden="true">3</b><span>Tarea</span></div></div>
       <div className="dx-cascada-cols">
         <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3><input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => { const n = activitiesFor(item.id).length; return `${n} ${n === 1 ? 'actividad' : 'actividades'}`; }, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
@@ -153,8 +152,6 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
           </>}
         </section>
       </div>
-      {addNotice && <p className="dx-cascada-notice" role="status">{addNotice}</p>}
-      <footer className="dx-cascada-foot"><span>{!family ? 'Elige un trabajo o componente para empezar' : !actividad ? 'Falta elegir la actividad' : soloActividad ? 'Costo en la actividad' : `${lines.length} tareas · ${lines.reduce((sum, row) => sum + num(row.horas_mano_obra), 0).toLocaleString('es-PE')} h-hombre`}</span><div><button type="button" onClick={() => { setFamiliaId(''); setActividadId(''); setSelected({}); setSoloActividad(false); setQuery(['', '', '']); }}>Limpiar</button><button type="button" className="dx-cascada-primary" disabled={!canAdd} onClick={add}>Agregar al diagnóstico</button></div></footer>
-    </section>
-  </div>;
+      <footer className="dx-agregar-inline-foot dx-cascada-foot"><span role="status">{!family ? 'Elige un trabajo o componente para empezar' : !actividad ? 'Falta elegir la actividad' : soloActividad ? 'Costear solo la actividad' : `${lines.length} tareas · ${lines.reduce((sum, row) => sum + num(row.horas_mano_obra), 0).toLocaleString('es-PE')} h-hombre`}</span><div><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="dx-cascada-primary" disabled={!canAdd} onClick={add}>Agregar a la lista</button></div></footer>
+    </section>;
 }

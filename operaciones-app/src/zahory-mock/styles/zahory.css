@@ -2097,3 +2097,18 @@ a { color: var(--cyan); text-decoration: none; }
 [data-theme='dark'] .dx-foto-section { --dx-navy:#F8FAFC; --dx-gray:#94A3B8; --dx-border:#475569; --dx-line:rgba(255,255,255,.1); --dx-bg:#020617; --dx-head:#0F172A; --dx-amber:#3A2810; --dx-amber-fg:#FDBA74; background:var(--dx-bg); color:var(--dx-navy); }
 [data-theme='dark'] .dx-foto-legend input,[data-theme='dark'] .dx-foto-actions button { border-color:var(--dx-border); background:var(--dx-head); color:var(--dx-navy); }
 [data-theme='dark'] .dx-foto-pending-label { background:var(--dx-amber); color:var(--dx-amber-fg); }
+
+
+/* Panel en línea de tareas/trabajos del diagnóstico. */
+.dx-agregar-inline-panel { width:100%; max-width:none; max-height:none; min-width:0; margin:0 0 14px; overflow:visible; border-color:var(--dx-cascada-cyan); border-radius:12px; box-shadow:none; }
+.dx-agregar-inline-head { border-bottom-color:var(--dx-cascada-line); background:var(--dx-cascada-cyan-bg); }
+.dx-agregar-inline-head h2 { color:var(--dx-cascada-cyan-ink); }
+.dx-agregar-inline-head p { margin-right:0; }
+.dx-agregar-inline-panel .dx-cascada-cols { min-height:0; }
+.dx-agregar-inline-foot { border-radius:0 0 12px 12px; }
+.dx-agregar-inline-foot [role='status'] { min-width:0; }
+.dx-agregar-inline-foot > div { flex-wrap:wrap; justify-content:flex-end; }
+.dx-agregar-inline-table-anchor { min-width:0; scroll-margin:16px; outline:none; }
+.dx-agregar-inline-table-anchor:focus-visible { outline:2px solid var(--dx-cascada-cyan); outline-offset:3px; border-radius:8px; }
+@container (max-width:800px) { .dx-agregar-inline-head { padding:14px 16px; } .dx-agregar-inline-foot { align-items:stretch; } .dx-agregar-inline-foot > div { width:100%; } .dx-agregar-inline-foot > div button { flex:1; } }
+.dx-body-fabricacion .dx-cascada-lines-group .dx-detail > .dx-field { display:none; }
