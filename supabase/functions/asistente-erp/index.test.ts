@@ -202,6 +202,32 @@ Deno.test("prompt cubre temas sin herramienta y descripciones guian vencidas y p
   assert(d("asistente_buscar_cxp").includes("texto=alta"));
 });
 
+Deno.test("herramientas de caja chica y tesoreria: esquema y mapeo de parametros", async () => {
+  for (const name of ["asistente_resumen_caja_chica", "asistente_buscar_caja_chica", "asistente_resumen_tesoreria", "asistente_buscar_movimientos_tesoreria"]) {
+    const tool = OPENAI_TOOLS.find((x: any) => x.function.name === name) as any;
+    assert(tool, name);
+    assert(!("sociedad_id" in tool.function.parameters.properties));
+    equal(JSON.stringify(tool.function.parameters.required), "[]");
+  }
+  const mov = OPENAI_TOOLS.find((x: any) => x.function.name === "asistente_buscar_movimientos_tesoreria") as any;
+  equal(JSON.stringify(mov.function.parameters.properties.tipo.enum), JSON.stringify(["ingreso", "egreso"]));
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1 ? completion({ role: "assistant", tool_calls: [{ id: "m", type: "function", function: { name: "asistente_buscar_movimientos_tesoreria", arguments: JSON.stringify({ tipo: "egreso", desde: "2026-10-01", hasta: "2026-10-31", texto: "Interbank", limite: 5 }) } }] }) : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request())).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_buscar_movimientos_tesoreria")!;
+  equal(rpc.args.p_empresa_id, EMPRESA);
+  equal(rpc.args.p_tipo, "egreso");
+  equal(rpc.args.p_desde, "2026-10-01");
+  equal(rpc.args.p_hasta, "2026-10-31");
+  equal(rpc.args.p_texto, "Interbank");
+  equal(rpc.args.p_limite, 5);
+  equal(rpc.args.p_sociedad_id, null);
+  let k = 0;
+  const y = setup({ ai: async () => ++k === 1 ? completion({ role: "assistant", tool_calls: [{ id: "c", type: "function", function: { name: "asistente_buscar_caja_chica", arguments: JSON.stringify({ tipo: "egreso" }) } }] }) : completion({ role: "assistant", content: "Listo." }) });
+  equal((await y.handler(y.request())).status, 200);
+  assert(!y.calls.some(c => c.name === "asistente_buscar_caja_chica"));
+});
+
 Deno.test("caso feliz, cuota y RPC de lectura", async () => {
   const x = setup({ ai: async (_m, _t, model) => { equal(model, "gpt-4o-mini"); return completion({ role: "assistant", content: "Hay tres cuentas.", tool_calls: [{ id: "c1", type: "function", function: { name: "asistente_buscar_cuentas", arguments: JSON.stringify({ busqueda: "Tideo", limite: 10 }) } }] }); } });
   // Primera ronda llama herramienta; segunda entrega la respuesta final.
