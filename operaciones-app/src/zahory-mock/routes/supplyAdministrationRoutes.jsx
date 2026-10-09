@@ -11,6 +11,7 @@ import { ProyectosTarifasPage } from '../pages/ProyectosTarifasPage.jsx';
 import { ConfiguracionPage } from '../pages/ConfiguracionPage.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
+import { RecepcionOCPage } from '../pages/RecepcionOCPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
   'solicitudes', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas',
@@ -34,7 +35,7 @@ export function renderSupplyAdministrationRoute(route, context) {
     case 'compras-cotizaciones': return <><AdministrativeAppLinkPage title="Cotizaciones Compra" adminRoute="cot_compras" /><PlaceholderPage title="Cotizaciones Compra" /></>;
     case 'compras-oc': return <><AdministrativeAppLinkPage title="Órdenes de Compra" adminRoute="ordenes_compra" /><PlaceholderPage title="Órdenes de Compra" /></>;
     case 'compras-importaciones': return <PlaceholderPage title="Compras e Importaciones" />;
-    case 'compras-recepciones': return <><AdministrativeAppLinkPage title="Recepciones" adminRoute="recepciones" /><PlaceholderPage title="Recepciones" /></>;
+    case 'compras-recepciones': return <RecepcionOCPage />;
 
     case 'consolidado': return <ConsolidadoPage />;
     case 'finanzas-cxc': return <><AdministrativeAppLinkPage title="Cuentas por Cobrar" adminRoute="cxc" /><PlaceholderPage title="Cuentas por Cobrar" /></>;

@@ -136,14 +136,18 @@ body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
 /* Reglas propias: Ubicaciones (dx-ubi-) */
 .dx-ubi-wh{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
 .dx-ubi-cols { --dx-ui-cols:minmax(0,1fr) 110px 110px 120px 20px; }
-.dx-ubi-name{display:flex;align-items:center;gap:10px;min-width:0;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap}
+.dx-ubi-name{padding-left:calc(var(--n,0)*22px);display:flex;align-items:center;gap:10px;min-width:0;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap}
 .dx-ubi-name small{color:var(--dx-ui-gray);font-weight:500}
 .dx-ubi-name em{font-style:normal;overflow:hidden;text-overflow:ellipsis}
 .dx-ubi-ind{flex:none}
 .dx-ubi-num{font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-ubi-mob{display:none}
+.dx-ubi-mob small{font:12px 'DM Sans',system-ui,sans-serif;color:var(--dx-ui-gray)}
 @container (max-width:760px){
   .dx-ubi-cols { --dx-ui-cols:minmax(0,1fr) auto; }
-  .dx-ubi-cols > :nth-child(3), .dx-ubi-cols > :nth-child(4){display:none}
+  .dx-ubi-cols > :nth-child(2), .dx-ubi-cols > :nth-child(3), .dx-ubi-cols > :nth-child(4){display:none}
+  .dx-ubi-name{padding-left:calc(var(--n,0)*10px)}
+  .dx-ubi-cols > .dx-ubi-mob{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
   .dx-ubi-cols > .dx-ui-arrow{display:none}
 }
 .theme-toggle{position:fixed;right:14px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
@@ -188,16 +192,16 @@ const ALMACENES = [
   {id:'ALM-002', nombre:'Almacén Taller'}
 ];
 const UBICACIONES = [
-  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-001', nivel:0, tipo:'General', items:128, ocup:null, general:true},
-  {cod:'Z-A', nombre:'Zona A · Lubricantes y filtros', alm:'ALM-001', nivel:0, tipo:'Zona', items:64, ocup:72},
-  {cod:'Z-A-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:38, ocup:80},
-  {cod:'Z-A-R01-P01', nombre:'Posición 01', alm:'ALM-001', nivel:2, tipo:'Posición', items:12, ocup:60},
-  {cod:'Z-A-R01-P02', nombre:'Posición 02', alm:'ALM-001', nivel:2, tipo:'Posición', items:26, ocup:95},
-  {cod:'Z-A-R02', nombre:'Rack 02', alm:'ALM-001', nivel:1, tipo:'Rack', items:26, ocup:55},
-  {cod:'Z-B', nombre:'Zona B · Rodamientos y sellos', alm:'ALM-001', nivel:0, tipo:'Zona', items:41, ocup:48},
-  {cod:'Z-B-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:41, ocup:48},
-  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-002', nivel:0, tipo:'General', items:35, ocup:null, general:true},
-  {cod:'T-01', nombre:'Estante de herramientas', alm:'ALM-002', nivel:0, tipo:'Rack', items:22, ocup:63}
+  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-001', nivel:0, tipo:'General', items:128, und:1940, general:true},
+  {cod:'Z-A', nombre:'Zona A · Lubricantes y filtros', alm:'ALM-001', nivel:0, tipo:'Zona', items:64, und:2310},
+  {cod:'Z-A-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:38, und:1480},
+  {cod:'Z-A-R01-P01', nombre:'Posición 01', alm:'ALM-001', nivel:2, tipo:'Posición', items:12, und:420},
+  {cod:'Z-A-R01-P02', nombre:'Posición 02', alm:'ALM-001', nivel:2, tipo:'Posición', items:26, und:1060},
+  {cod:'Z-A-R02', nombre:'Rack 02', alm:'ALM-001', nivel:1, tipo:'Rack', items:26, und:830},
+  {cod:'Z-B', nombre:'Zona B · Rodamientos y sellos', alm:'ALM-001', nivel:0, tipo:'Zona', items:41, und:980},
+  {cod:'Z-B-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:41, und:980},
+  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-002', nivel:0, tipo:'General', items:35, und:410, general:true},
+  {cod:'T-01', nombre:'Estante de herramientas', alm:'ALM-002', nivel:0, tipo:'Rack', items:22, und:265}
 ];
 const OCS = [
   {id:'OC-26-0412', prov:'Proveedor Industrial Andino S.A.C.', fecha:'06 oct 2026', estado:'Parcial', pct:50, alm:'ALM-001', lines:[
@@ -331,23 +335,24 @@ function renderUbi(){
   const f = UBICACIONES.filter(u=>u.alm===whSel && (u.cod+u.nombre).toLowerCase().includes(q.toLowerCase()));
   const rows = f.map(u=>`
     <div class="dx-ui-row dx-ubi-cols" role="button" tabindex="0" aria-label="Abrir ${u.nombre}">
-      <div class="dx-ubi-name" style="padding-left:${u.nivel*22}px"><span class="dx-ui-icon ${u.general?'is-violet':'is-cyan'} dx-ubi-ind">${ICON_PIN}</span><em>${u.nombre}</em><small>${u.cod}</small></div>
+      <div class="dx-ubi-name" style="--n:${u.nivel}"><span class="dx-ui-icon ${u.general?'is-violet':'is-cyan'} dx-ubi-ind">${ICON_PIN}</span><em>${u.nombre}</em><small>${u.cod}</small></div>
       <span>${u.general?'<span class="dx-ui-pill is-gray"><i></i>General</span>':'<span class="dx-ui-pill is-cyan"><i></i>'+u.tipo+'</span>'}</span>
-      <span class="dx-ubi-num">${u.items} <small style="color:var(--dx-ui-gray);font:12px 'DM Sans',system-ui,sans-serif">ítems</small></span>
-      <span>${u.ocup===null?'<span style="color:var(--dx-ui-gray);font-size:12px">sin capacidad</span>':'<div class="dx-rec-prog"><span>'+u.ocup+'% ocupación</span><div class="dx-rec-bar"><i style="width:'+u.ocup+'%"></i></div></div>'}</span>
+      <span class="dx-ubi-num">${u.items.toLocaleString('es-PE')}</span>
+      <span class="dx-ubi-num">${u.und.toLocaleString('es-PE')} <small style="color:var(--dx-ui-gray);font:12px 'DM Sans',system-ui,sans-serif">und</small></span>
+      <span class="dx-ubi-mob"><span class="dx-ubi-num">${u.und.toLocaleString('es-PE')} und</span><small>${u.items.toLocaleString('es-PE')} materiales</small></span>
       ${ICON_ARROW}
     </div>`).join('');
   $('#view').innerHTML=`
     <div class="dx-ui-summary">
       <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).length}</b><span>Ubicaciones</span></div>
-      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).reduce((s,u)=>s+(u.nivel===0?u.items:0),0)}</b><span>Ítems almacenados</span></div>
+      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).reduce((s,u)=>s+(u.nivel===0?u.items:0),0)}</b><span>Materiales almacenados</span></div>
       <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel&&u.general)[0].items}</b><span>Sin ubicar (en General)</span></div>
     </div>
     <div class="dx-ui-card">
       <div class="dx-ui-toolbar"><h2>Mapa del almacén</h2><span class="dx-ui-count">${f.length} resultado(s)</span>
         <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${q}" placeholder="Buscar ubicación" aria-label="Buscar ubicación"></label></div>
       <div class="dx-ubi-wh" role="tablist">${ALMACENES.map(a=>`<button class="dx-ui-tab ${a.id===whSel?'on':''}" role="tab" data-wh="${a.id}">${a.nombre}</button>`).join('')}</div>
-      <div class="dx-ui-head dx-ubi-cols" aria-hidden="true"><span>Ubicación</span><span>Tipo</span><span>Contenido</span><span>Ocupación</span><span></span></div>
+      <div class="dx-ui-head dx-ubi-cols" aria-hidden="true"><span>Ubicación</span><span>Tipo</span><span>Materiales</span><span>Unidades</span><span></span></div>
       ${rows || '<div class="dx-ui-empty">Sin coincidencias para tu búsqueda.</div>'}
     </div>`;
   document.querySelectorAll('[data-wh]').forEach(b=>b.onclick=()=>{whSel=b.dataset.wh;renderUbi();});
