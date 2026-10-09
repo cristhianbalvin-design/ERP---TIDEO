@@ -1,6 +1,7 @@
--- 611: Asignar el rol actividad o tarea al crear tipos de servicio interno.
+-- 613: Asignar el rol actividad o tarea al crear tipos de servicio interno.
 -- La firma de tres argumentos conserva las llamadas de dos argumentos mediante DEFAULT NULL.
 -- Los permisos, validación de tenant y búsqueda existentes se mantienen.
+-- Numeración: 611 y 612 pertenecen a la línea del asistente; esta migración se registró primero como 611 y se renumeró a 613.
 -- Aplicada en producción el 2026-10-09 tras ensayo con ROLLBACK y revisión.
 
 BEGIN;
