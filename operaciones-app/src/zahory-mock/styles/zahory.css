@@ -2058,3 +2058,24 @@ a { color: var(--cyan); text-decoration: none; }
   .dx-cascada-list { max-height:260px; }
   .dx-cascada-head,.dx-cascada-foot { padding-right:16px; padding-left:16px; }
 }
+
+/* Ubicaciones de almacén */
+.dx-ubicaciones .dx-ubicaciones-alert { margin-bottom:12px; padding:12px 16px; border:1px solid var(--dx-ui-line); border-radius:8px; background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ubicaciones .dx-ubicaciones-almacenes { display:flex; gap:8px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ubicaciones .dx-ui-tab:focus-visible { outline:2px solid var(--dx-ui-cyan); outline-offset:2px; }
+.dx-ubicaciones .dx-ubicaciones-cols { --dx-ui-cols:minmax(0,1fr) 110px 110px 120px; }
+.dx-ubicaciones .dx-ubicaciones-cols.dx-ui-row { cursor:default; }
+.dx-ubicaciones .dx-ubicaciones-cols.dx-ui-row:hover { background:transparent; }
+.dx-ubicaciones .dx-ubicaciones-nombre { display:flex; min-width:0; align-items:center; gap:10px; padding-left:calc(var(--dx-ubicaciones-nivel,0)*22px); overflow:hidden; color:var(--dx-ui-navy); font-weight:600; white-space:nowrap; }
+.dx-ubicaciones .dx-ubicaciones-nombre em { overflow:hidden; font-style:normal; text-overflow:ellipsis; }
+.dx-ubicaciones .dx-ubicaciones-nombre small { flex:none; color:var(--dx-ui-gray); font-weight:500; }
+.dx-ubicaciones .dx-ubicaciones-num { color:var(--dx-ui-navy); font:600 14px 'Sora',sans-serif; }
+.dx-ubicaciones .dx-ubicaciones-num small { color:var(--dx-ui-gray); font:12px 'DM Sans',system-ui,sans-serif; }
+.dx-ubicaciones .dx-ubicaciones-movil { display:none; }
+@container (max-width:760px) {
+  .dx-ubicaciones .dx-ubicaciones-cols { --dx-ui-cols:minmax(0,1fr) auto; }
+  .dx-ubicaciones .dx-ubicaciones-cols > :nth-child(2),.dx-ubicaciones .dx-ubicaciones-cols > :nth-child(3),.dx-ubicaciones .dx-ubicaciones-cols > :nth-child(4) { display:none; }
+  .dx-ubicaciones .dx-ubicaciones-nombre { padding-left:calc(var(--dx-ubicaciones-nivel,0)*10px); }
+  .dx-ubicaciones .dx-ubicaciones-movil { display:flex; flex-direction:column; align-items:flex-end; gap:2px; color:var(--dx-ui-navy); font-size:13px; white-space:nowrap; }
+  .dx-ubicaciones .dx-ubicaciones-movil small { color:var(--dx-ui-gray); font-size:12px; }
+}
