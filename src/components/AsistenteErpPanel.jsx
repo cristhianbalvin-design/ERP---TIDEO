@@ -25,6 +25,7 @@ function IconoAria({ size = 20 }) {
 function etiquetaHerramienta(tool) {
   const nombre = String(tool || '').toLowerCase().replace(/^asistente_/, '');
   const grupos = [
+    [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
     [['cxp'], 'Revisé Cuentas por pagar'], [['cuenta'], 'Revisé Cuentas comerciales'], [['lead'], 'Revisé Leads'],
     [['oportunidad', 'pipeline'], 'Revisé Oportunidades'], [['cotizacion', 'os_cliente'], 'Revisé Cotizaciones'],

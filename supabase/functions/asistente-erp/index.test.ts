@@ -1,4 +1,4 @@
-import { createHandler, OPENAI_TOOLS, SYSTEM_PROMPT, TOOL_SPECS, type HandlerDeps, type SupabaseLike } from "./index.ts";
+import { createHandler, OPENAI_TOOLS, SYSTEM_PROMPT, TOOL_SPECS, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -622,4 +622,63 @@ Deno.test("SYSTEM_PROMPT define a Aria: voz cercana, sin Markdown, detalle y tot
   assert(SYSTEM_PROMPT.includes("lista cada una y luego el total por moneda"));
   assert(SYSTEM_PROMPT.includes('empiece con "Ojo:"'));
   assert(SYSTEM_PROMPT.includes("No escribas ni modifiques datos"));
+});
+
+
+Deno.test("herramienta Gastos publica filtros, tipos y origen fijo", () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_buscar_gastos") as any;
+  assert(tool);
+  const props = tool.function.parameters.properties;
+  equal(props.monto.type, "number");
+  equal(props.monto_min.type, "number");
+  equal(props.monto_max.type, "number");
+  equal(JSON.stringify(props.origen.enum), JSON.stringify(["campo", "backoffice"]));
+  assert(!("sociedad_id" in props));
+});
+
+Deno.test("monto valida valores decimales finitos y rango", () => {
+  const gastos = TOOL_SPECS.find(tool => tool.name === "asistente_buscar_gastos")!;
+  for (const value of [800, 800.5]) assert(validateArgs(gastos, { monto: value }) !== null);
+  for (const value of ["800", NaN, Infinity, -1, 1e13]) equal(validateArgs(gastos, { monto: value }), null);
+});
+
+Deno.test("las seis busquedas financieras exponen monto exacto y limites", () => {
+  const names = ["asistente_buscar_cxp", "asistente_buscar_cxc", "asistente_buscar_ordenes_compra", "asistente_buscar_caja_chica", "asistente_buscar_movimientos_tesoreria", "asistente_buscar_cotizaciones"];
+  for (const name of names) {
+    const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === name) as any;
+    for (const key of ["monto", "monto_min", "monto_max"]) equal(tool.function.parameters.properties[key].type, "number");
+  }
+});
+
+Deno.test("Gastos mapea importes y fija sociedad desde el servidor", async () => {
+  let n = 0;
+  const args = { texto: "factura", monto: 800, monto_min: 700, monto_max: 900, moneda: "PEN", estado_pago: "PENDIENTE", origen: "campo", ceco: "ADM", proveedor: "Proveedor", desde: "2026-01-01", hasta: "2026-12-31", limite: 12 };
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "g", type: "function", function: { name: "asistente_buscar_gastos", arguments: JSON.stringify(args) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "gastos" }))).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_buscar_gastos")!;
+  equal(rpc.args.p_monto, 800); equal(rpc.args.p_monto_min, 700); equal(rpc.args.p_monto_max, 900);
+  equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_texto, "factura"); equal(rpc.args.p_origen, "campo"); equal(rpc.args.p_estado_pago, "pendiente");
+});
+
+Deno.test("las seis RPC financieras mapean los tres filtros nuevos", async () => {
+  const names = ["asistente_buscar_cxp", "asistente_buscar_cxc", "asistente_buscar_ordenes_compra", "asistente_buscar_caja_chica", "asistente_buscar_movimientos_tesoreria", "asistente_buscar_cotizaciones"];
+  for (const name of names) {
+    let n = 0;
+    const x = setup({ ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "m", type: "function", function: { name, arguments: JSON.stringify({ monto: 800, monto_min: 700, monto_max: 900 }) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+    equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "importe" }))).status, 200);
+    const rpc = x.calls.find(c => c.name === name)!;
+    equal(rpc.args.p_monto, 800); equal(rpc.args.p_monto_min, 700); equal(rpc.args.p_monto_max, 900); equal(rpc.args.p_sociedad_id, SOCIEDAD);
+  }
+});
+
+Deno.test("SYSTEM_PROMPT dirige importes y facturas de compra", () => {
+  assert(SYSTEM_PROMPT.includes("mencionan un material") && SYSTEM_PROMPT.includes("en texto"));
+  assert(SYSTEM_PROMPT.includes("asistente_buscar_gastos"));
+  assert(SYSTEM_PROMPT.includes("prueba asistente_buscar_cxp y asistente_buscar_ordenes_compra"));
+  assert(SYSTEM_PROMPT.includes("Factura de compra"));
+  assert(SYSTEM_PROMPT.includes("UNA l\u00ednea por cuenta") && SYSTEM_PROMPT.includes("Total:"));
 });
