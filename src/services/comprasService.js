@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { registrarEntradaDesdeRecepcion, getStockCompleto, registrarSalidaDevolucion, anularMovimiento, ajustarValorizacionOcPendiente, listarEntradasOcPendientesValorizacion } from './inventarioService.js';
+import { repartirStock } from './stockUbicaciones.js';
 
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const ESTADOS_COMPLETADOS = new Set(['cerrada', 'recibida_total', 'aprobada']);
@@ -780,35 +781,40 @@ export const devolucionesService = {
     const kardexIds = [];
     for (const linea of lineas) {
       if (!linea.material_id) continue;
-      // Auto-resolver almacen si no fue guardado en la línea
-      let almacenId = linea.almacen_id;
-      if (!almacenId) {
-        let stockQuery = supabase.from('stock')
-          .select('almacen_id, disponible')
-          .eq('empresa_id', empresaId)
-          .eq('material_id', linea.material_id)
-          .gte('disponible', linea.cantidad_devuelta);
-        stockQuery = dev.sociedad_id
-          ? stockQuery.eq('sociedad_id', dev.sociedad_id)
-          : stockQuery.is('sociedad_id', null);
-        const { data: stockRows } = await stockQuery.limit(1);
-        almacenId = stockRows?.[0]?.almacen_id;
+      let stockQuery = supabase.from('stock')
+        .select('id, almacen_id, ubicacion_id, disponible, vencimiento')
+        .eq('empresa_id', empresaId)
+        .eq('material_id', linea.material_id);
+      if (linea.almacen_id) stockQuery = stockQuery.eq('almacen_id', linea.almacen_id);
+      if (linea.lote != null) stockQuery = stockQuery.eq('lote', linea.lote);
+      if (linea.serie != null) stockQuery = stockQuery.eq('serie', linea.serie);
+      if (linea.ubicacion_id) stockQuery = stockQuery.eq('ubicacion_id', linea.ubicacion_id);
+      stockQuery = dev.sociedad_id
+        ? stockQuery.eq('sociedad_id', dev.sociedad_id)
+        : stockQuery.is('sociedad_id', null);
+      const { data: stockRows, error: stockError } = await stockQuery;
+      if (stockError) throw stockError;
+      const { asignaciones, faltante } = repartirStock(stockRows || [], Number(linea.cantidad_devuelta), linea.ubicacion_id || null);
+      if (!linea.almacen_id && faltante > 0) continue;
+      if (!asignaciones.length && !linea.almacen_id) continue;
+      if (faltante > 0) throw new Error(`Stock insuficiente para devolver ${linea.material_id}. Faltante: ${faltante}`);
+      for (const { fila, cantidad } of asignaciones) {
+        const res = await registrarSalidaDevolucion(empresaId, {
+          material_id: linea.material_id,
+          almacen_id: fila.almacen_id,
+          ubicacion_id: linea.ubicacion_id || fila.ubicacion_id || null,
+          cantidad,
+          lote: linea.lote || null,
+          serie: linea.serie || null,
+          referencia_tipo: 'devolucion_proveedor',
+          referencia_id: devolucionId,
+          nro_documento: dev.numero_devolucion,
+          proveedor_id: dev.proveedor_id,
+          sociedad_id: dev.sociedad_id || null,
+          observacion: `Devolución ${dev.numero_devolucion}`,
+        }, usuarioId);
+        kardexIds.push(res.kardex_id);
       }
-      if (!almacenId) continue;
-      const res = await registrarSalidaDevolucion(empresaId, {
-        material_id: linea.material_id,
-        almacen_id: almacenId,
-        cantidad: Number(linea.cantidad_devuelta),
-        lote: linea.lote || null,
-        serie: linea.serie || null,
-        referencia_tipo: 'devolucion_proveedor',
-        referencia_id: devolucionId,
-        nro_documento: dev.numero_devolucion,
-        proveedor_id: dev.proveedor_id,
-        sociedad_id: dev.sociedad_id || null,
-        observacion: `Devolución ${dev.numero_devolucion}`,
-      }, usuarioId);
-      kardexIds.push(res.kardex_id);
     }
 
     const { data: updated, error: upErr } = await supabase

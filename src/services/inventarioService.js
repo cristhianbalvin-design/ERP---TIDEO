@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 import { getTipoCambioPorFecha } from './tipoCambioService.js';
+import { repartirStock, repartirLiberacionReserva } from './stockUbicaciones.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -115,6 +116,7 @@ export async function registrarMovimiento(empresaId, {
   precio_unitario_real = null,
   recepcion_id = null,
   sociedad_id = null,
+  ubicacion_id = null,
 }, { skipCostoPromedio = false } = {}) {
   const supabase = await getSupabaseClient();
   if (!empresaId || !material_id || !almacen_id || !cantidad || cantidad <= 0) {
@@ -168,6 +170,7 @@ export async function registrarMovimiento(empresaId, {
     p_precio_unitario_provisional: precio_unitario_provisional !== null && precio_unitario_provisional !== undefined ? Number(precio_unitario_provisional) || 0 : null,
     p_precio_unitario_real: precio_unitario_real !== null && precio_unitario_real !== undefined ? Number(precio_unitario_real) || 0 : null,
     p_recepcion_id: recepcion_id,
+    p_ubicacion_id: ubicacion_id || null,
     p_skip_costo_promedio: skipCostoPromedio,
   });
   if (error) {
@@ -194,7 +197,7 @@ export async function registrarEntrada(empresaId, form, usuarioId) {
   const supabase = await getSupabaseClient();
   const {
     material_id, almacen_id, almacen_codigo, cantidad, costo_unitario = 0,
-    costo_unitario_usd = 0, moneda = 'PEN', motivo = 'saldo_inicial',
+    costo_unitario_usd = 0, moneda = 'PEN', motivo = 'saldo_inicial', ubicacion_id = null,
     lote, serie, vencimiento, proveedor_id, nro_documento, observacion, sociedad_id = null,
   } = form;
 
@@ -224,6 +227,7 @@ export async function registrarEntrada(empresaId, form, usuarioId) {
     referencia_tipo: motivo, referencia_id: null, observacion: observacion || null,
     usuario_id: usuarioId,
     sociedad_id,
+    ubicacion_id,
   });
 }
 
@@ -245,6 +249,7 @@ export async function registrarSalidaDevolucion(empresaId, form, usuarioId) {
     observacion: form.observacion || null,
     usuario_id: usuarioId,
     sociedad_id: form.sociedad_id || null,
+    ubicacion_id: form.ubicacion_id || null,
   });
 }
 
@@ -252,7 +257,7 @@ export async function registrarSalidaDevolucion(empresaId, form, usuarioId) {
 // motivos: 'consumo_ot' | 'despacho' | 'merma' | 'devolucion_proveedor'
 export async function registrarSalida(empresaId, form, usuarioId) {
   const { material_id, almacen_id, cantidad, motivo = 'consumo_ot',
-    referencia_tipo, referencia_id, lote, serie, observacion, sociedad_id = null } = form;
+    referencia_tipo, referencia_id, lote, serie, observacion, sociedad_id = null, ubicacion_id = null } = form;
   if (!material_id) throw new Error('Material requerido');
   if (!cantidad || Number(cantidad) <= 0) throw new Error('Cantidad debe ser mayor a cero');
   return registrarMovimiento(empresaId, {
@@ -260,13 +265,15 @@ export async function registrarSalida(empresaId, form, usuarioId) {
     cantidad: Number(cantidad), lote: lote || null, serie: serie || null,
     referencia_tipo, referencia_id, observacion, usuario_id: usuarioId,
     sociedad_id,
+    ubicacion_id,
   });
 }
 
 // ─── Transferencia entre almacenes ────────────────────────────────────────────
 export async function registrarTransferencia(empresaId, form, usuarioId) {
   const { material_id, almacen_origen_id, almacen_destino_id, cantidad, lote, serie, observacion,
-    sociedad_origen_id = null, sociedad_destino_id = null, tipo_origen = 'traslado_interno' } = form;
+    sociedad_origen_id = null, sociedad_destino_id = null, tipo_origen = 'traslado_interno',
+    ubicacion_origen_id = null, ubicacion_destino_id = null } = form;
   if (!material_id) throw new Error('Material requerido');
   if (!almacen_origen_id || !almacen_destino_id) throw new Error('Almacén origen y destino requeridos');
   if (almacen_origen_id === almacen_destino_id) throw new Error('Origen y destino no pueden ser el mismo almacén');
@@ -287,6 +294,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
     costo_unitario: costoPromedio, lote: lote || null, serie: serie || null,
     referencia_tipo: 'transferencia', observacion, usuario_id: usuarioId,
     sociedad_id: sociedad_origen_id,
+    ubicacion_id: ubicacion_origen_id,
   }, { skipCostoPromedio: true });
 
   // Entrada al destino (conserva costo y lote/serie del origen)
@@ -297,6 +305,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
     referencia_tipo: 'transferencia', referencia_id: salida.kardex_id,
     observacion, usuario_id: usuarioId,
     sociedad_id: sociedad_destino_id || sociedad_origen_id,
+    ubicacion_id: ubicacion_destino_id,
   }, { skipCostoPromedio: true });
 
   return { salida, entrada };
@@ -305,7 +314,7 @@ export async function registrarTransferencia(empresaId, form, usuarioId) {
 // ─── Ajuste de inventario ─────────────────────────────────────────────────────
 // delta positivo = ajuste positivo; delta negativo = ajuste negativo (merma/pérdida)
 export async function registrarAjuste(empresaId, form, usuarioId) {
-  const { material_id, almacen_id, cantidad_teorica, cantidad_fisica, motivo = 'ajuste_conteo', observacion, lote, serie, referencia_tipo = 'ajuste', referencia_id = null, sociedad_id = null } = form;
+  const { material_id, almacen_id, cantidad_teorica, cantidad_fisica, motivo = 'ajuste_conteo', observacion, lote, serie, referencia_tipo = 'ajuste', referencia_id = null, sociedad_id = null, ubicacion_id = null } = form;
   const supabase = await getSupabaseClient();
 
   if (!material_id) throw new Error('Material requerido');
@@ -327,12 +336,13 @@ export async function registrarAjuste(empresaId, form, usuarioId) {
     referencia_tipo, referencia_id, observacion,
     usuario_id: usuarioId,
     sociedad_id,
+    ubicacion_id,
   });
 }
 
 // ─── Reserva de stock ─────────────────────────────────────────────────────────
 // Reduce disponible sin tocar físico. El consumo posterior convierte la reserva en salida.
-export async function reservarStock(empresaId, material_id, almacen_id, cantidad, otId, sociedadId = null) {
+export async function reservarStock(empresaId, material_id, almacen_id, cantidad, otId, sociedadId = null, ubicacionId = null) {
   const supabase = await getSupabaseClient();
   const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
     supabase, empresaId, sociedadId, 'La sociedad de la reserva de stock es obligatoria.',
@@ -340,24 +350,30 @@ export async function reservarStock(empresaId, material_id, almacen_id, cantidad
   let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
     .is('lote', null).is('serie', null);
+  if (ubicacionId) query = query.eq('ubicacion_id', ubicacionId);
   query = sociedadOperacionId ? query.eq('sociedad_id', sociedadOperacionId) : query.is('sociedad_id', null);
-  const { data: stockRow } = await query.maybeSingle();
+  const { data: stockRows } = await query;
 
-  if (!stockRow) throw new Error('No hay stock de este material en el almacén indicado');
-  if (Number(stockRow.disponible) < cantidad) {
-    throw new Error(`Stock insuficiente para reservar. Disponible: ${stockRow.disponible}`);
+  if (!stockRows?.length) throw new Error('No hay stock de este material en el almacén indicado');
+  const totalDisponible = stockRows.reduce((total, fila) => total + Number(fila.disponible || 0), 0);
+  if (totalDisponible < cantidad) {
+    const disponibleMensaje = stockRows.length === 1 ? stockRows[0].disponible : totalDisponible;
+    throw new Error(`Stock insuficiente para reservar. Disponible: ${disponibleMensaje}`);
   }
-
-  const { error } = await supabase.from('stock').update({
-    disponible: Number(stockRow.disponible) - cantidad,
-    reservado: Number(stockRow.reservado) + cantidad,
-    updated_at: new Date().toISOString(),
-  }).eq('id', stockRow.id);
-  if (error) throw error;
+  const { asignaciones } = repartirStock(stockRows, cantidad, ubicacionId);
+  for (const { fila, cantidad: asignada } of asignaciones) {
+    // El contador reservado es agregado por fila, no identifica una reserva individual.
+    const { error } = await supabase.from('stock').update({
+      disponible: Number(fila.disponible) - asignada,
+      reservado: Number(fila.reservado) + asignada,
+      updated_at: new Date().toISOString(),
+    }).eq('id', fila.id);
+    if (error) throw error;
+  }
   return true;
 }
 
-export async function liberarReserva(empresaId, material_id, almacen_id, cantidad, sociedadId = null) {
+export async function liberarReserva(empresaId, material_id, almacen_id, cantidad, sociedadId = null, ubicacionId = null) {
   const supabase = await getSupabaseClient();
   const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
     supabase, empresaId, sociedadId, 'La sociedad de la reserva de stock es obligatoria.',
@@ -365,16 +381,19 @@ export async function liberarReserva(empresaId, material_id, almacen_id, cantida
   let query = supabase.from('stock').select('*')
     .eq('empresa_id', empresaId).eq('material_id', material_id).eq('almacen_id', almacen_id)
     .is('lote', null).is('serie', null);
+  if (ubicacionId) query = query.eq('ubicacion_id', ubicacionId);
   query = sociedadOperacionId ? query.eq('sociedad_id', sociedadOperacionId) : query.is('sociedad_id', null);
-  const { data: stockRow } = await query.maybeSingle();
-  if (!stockRow) return;
-  const liberado = Math.min(cantidad, Number(stockRow.reservado));
-  const { error } = await supabase.from('stock').update({
-    disponible: Number(stockRow.disponible) + liberado,
-    reservado: Number(stockRow.reservado) - liberado,
-    updated_at: new Date().toISOString(),
-  }).eq('id', stockRow.id);
-  if (error) throw error;
+  const { data: stockRows } = await query;
+  if (!stockRows?.length) return;
+  const { asignaciones } = repartirLiberacionReserva(stockRows, cantidad, ubicacionId);
+  for (const { fila, cantidad: liberado } of asignaciones) {
+    const { error } = await supabase.from('stock').update({
+      disponible: Number(fila.disponible) + liberado,
+      reservado: Number(fila.reservado) - liberado,
+      updated_at: new Date().toISOString(),
+    }).eq('id', fila.id);
+    if (error) throw error;
+  }
 }
 
 // ─── Anular movimiento ────────────────────────────────────────────────────────
@@ -403,6 +422,7 @@ export async function anularMovimiento(kardexId, motivo, usuarioId) {
     observacion: `Anulación de ${kardexId}: ${motivo}`,
     usuario_id: usuarioId,
     sociedad_id: kdx.sociedad_id || null,
+    ubicacion_id: kdx.ubicacion_id || null,
   });
 }
 
@@ -418,11 +438,16 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
 
   // Cargar stock teórico actual
   let q = supabase.from('stock')
-    .select('material_id, almacen_id, fisico, lote, serie, vencimiento, materiales(id, codigo, descripcion, unidad, familia, tipo_control), almacenes(id, codigo, nombre)')
+    .select('material_id, almacen_id, ubicacion_id, fisico, lote, serie, vencimiento, materiales(id, codigo, descripcion, unidad, familia, tipo_control), almacenes(id, codigo, nombre)')
     .eq('empresa_id', empresaId);
   if (almacen_id) q = q.eq('almacen_id', almacen_id);
   q = sociedadOperacionId ? q.eq('sociedad_id', sociedadOperacionId) : q.is('sociedad_id', null);
   const { data: stocks } = await q;
+  const ubicacionIds = [...new Set((stocks || []).map(s => s.ubicacion_id).filter(Boolean))];
+  const ubicacionesResult = ubicacionIds.length
+    ? await supabase.from('ubicaciones').select('id, codigo, nombre').in('id', ubicacionIds)
+    : { data: [] };
+  const ubicacionesPorId = new Map((ubicacionesResult.data || []).map(u => [u.id, u]));
 
   const items = (stocks || []).map(s => ({
     material_id: s.material_id,
@@ -432,6 +457,9 @@ export async function iniciarConteo(empresaId, { nombre, tipo = 'total', almacen
     categoria: s.materiales?.familia || 'General',
     unidad: s.materiales?.unidad || 'und',
     almacen: s.almacenes?.nombre || s.almacenes?.codigo || s.almacen_id,
+    ubicacion_id: s.ubicacion_id || null,
+    ubicacion_codigo: ubicacionesPorId.get(s.ubicacion_id)?.codigo || null,
+    ubicacion_nombre: ubicacionesPorId.get(s.ubicacion_id)?.nombre || null,
     tipo_control: s.materiales?.tipo_control || 'sin_control',
     teorico: Number(s.fisico ?? 0),
     fisico: null,
@@ -524,6 +552,7 @@ export async function cerrarConteo(empresaId, conteoId, itemsContados, usuarioId
           referencia_tipo: 'conteo_fisico',
           referencia_id: conteoId,
           sociedad_id: conteo.sociedad_id || null,
+          ubicacion_id: item.ubicacion_id || null,
         }, usuarioId);
         resultados.push({ ...item, ajuste: res });
       } catch (_) {
@@ -770,12 +799,21 @@ export async function getStockCompleto(empresaId, filtroSociedades = null) {
     data = full.data;
   }
 
+  const ubicacionIds = [...new Set((data || []).map(row => row.ubicacion_id).filter(Boolean))];
+  const ubicacionesResult = ubicacionIds.length
+    ? await supabase.from('ubicaciones').select('id, codigo, nombre').in('id', ubicacionIds)
+    : { data: [] };
+  const ubicacionesPorId = new Map((ubicacionesResult.data || []).map(u => [u.id, u]));
+
   return (data || []).map(row => ({
     id: row.id,
     empresa_id: row.empresa_id,
     sociedad_id: row.sociedad_id,
     material_id: row.material_id,
     almacen_id: row.almacen_id,
+    ubicacion_id: row.ubicacion_id || null,
+    ubicacion_codigo: ubicacionesPorId.get(row.ubicacion_id)?.codigo || null,
+    ubicacion_nombre: ubicacionesPorId.get(row.ubicacion_id)?.nombre || null,
     sku: row.materiales?.codigo || row.material_id,
     nombre: row.materiales?.descripcion || row.material_id,
     categoria: row.materiales?.familia || 'General',
@@ -1043,36 +1081,38 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
         .select('costo_promedio').eq('id', item.material_id).maybeSingle();
       const costoPromedio = Number(mat?.costo_promedio ?? 0);
 
-      let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id')
+      let stockQ = supabase.from('stock').select('id, disponible, fisico, reservado, almacen_id, ubicacion_id, vencimiento')
         .eq('empresa_id', empresaId).eq('material_id', item.material_id);
       stockQ = sociedadOperacionId ? stockQ.eq('sociedad_id', sociedadOperacionId) : stockQ.is('sociedad_id', null);
+      if (item.almacen_id) stockQ = stockQ.eq('almacen_id', item.almacen_id);
       if (item.lote != null) stockQ = stockQ.eq('lote', item.lote);
       if (item.serie != null) stockQ = stockQ.eq('serie', item.serie);
       const { data: stocks } = await stockQ;
       if (!stocks?.length) continue;
 
-      const stock = stocks[0];
-      const cantidadADescontar = Math.min(Number(item.cantidad), Number(stock.disponible));
-
-      if (cantidadADescontar <= 0) continue;
-
-      await registrarMovimiento(empresaId, {
-        tipo: 'salida',
-        motivo: 'consumo_ot',
-        material_id: item.material_id,
-        almacen_id: item.almacen_id || stock.almacen_id || null,
-        cantidad: cantidadADescontar,
-        costo_unitario: costoPromedio,
-        moneda: 'PEN',
-        lote: item.lote || null,
-        serie: item.serie || null,
-        vencimiento: item.vencimiento || null,
-        referencia_tipo: 'ot',
-        referencia_id: otId,
-        observacion: `Consumo OT ${otId}`,
-        usuario_id: usuarioId || null,
-        sociedad_id: sociedadOperacionId,
-      });
+      const cantidadSolicitada = Math.max(0, Number(item.cantidad) || 0);
+      const disponibleTotal = stocks.reduce((total, fila) => total + Number(fila.disponible || 0), 0);
+      const { asignaciones } = repartirStock(stocks, Math.min(cantidadSolicitada, disponibleTotal));
+      for (const { fila, cantidad } of asignaciones) {
+        await registrarMovimiento(empresaId, {
+          tipo: 'salida',
+          motivo: 'consumo_ot',
+          material_id: item.material_id,
+          almacen_id: fila.almacen_id,
+          ubicacion_id: fila.ubicacion_id || null,
+          cantidad,
+          costo_unitario: costoPromedio,
+          moneda: 'PEN',
+          lote: item.lote || null,
+          serie: item.serie || null,
+          vencimiento: fila.vencimiento || item.vencimiento || null,
+          referencia_tipo: 'ot',
+          referencia_id: otId,
+          observacion: `Consumo OT ${otId}`,
+          usuario_id: usuarioId || null,
+          sociedad_id: sociedadOperacionId,
+        });
+      }
     } catch (_) {
       console.error('registrarConsumoOT item:', item.material_id, _.message);
     }
