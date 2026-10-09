@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock Almacén WMS — Fase 1 (Recepción de OC + Ubicaciones)</title>
+<style>
+/* Variables copiadas de zahory.css, sección DX-UI base */
+.dx-ui{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',system-ui,sans-serif;
+}
+[data-theme='dark'] .dx-ui{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
+[data-theme='dark'] body{background:#020617}
+.mock-shell{display:flex;min-height:100vh}
+.mock-side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.mock-side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.mock-side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.mock-side span.on{background:rgba(255,255,255,.12);color:#fff}
+.mock-side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.mock-main{flex:1;min-width:0;padding:24px 28px}
+@media (max-width:900px){.mock-side{display:none}.mock-main{padding:16px}}
+
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-card);border-color:var(--dx-ui-navy)}
+[data-theme='dark'] .dx-btn.primary{color:#0F172A}
+.dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-btn[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);cursor:not-allowed}
+
+.dx-ui-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dx-ui-tab{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ui-tab.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+
+/* Base compartida (copia de zahory.css) */
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); margin-bottom:16px; }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+
+/* Reglas propias: Recepción de OC (dx-rec-) */
+.dx-rec-cols { --dx-ui-cols:150px minmax(0,1fr) 130px 120px 130px 20px; }
+.dx-rec-main{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dx-rec-main b{color:var(--dx-ui-navy);font-weight:600}
+.dx-rec-main small{display:block;color:var(--dx-ui-gray);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.dx-rec-oc{display:flex;align-items:center;gap:10px;min-width:0;color:var(--dx-ui-navy);font-weight:600}
+.dx-rec-prog{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--dx-ui-gray)}
+.dx-rec-bar{height:6px;border-radius:999px;background:var(--dx-ui-line)}
+.dx-rec-bar i{display:block;height:100%;border-radius:999px;background:var(--dx-ui-cyan)}
+@container (max-width:760px){
+  .dx-rec-cols { --dx-ui-cols:minmax(0,1fr) auto; }
+  .dx-rec-cols > :nth-child(3), .dx-rec-cols > :nth-child(4){display:none}
+  .dx-rec-cols > .dx-ui-arrow{display:none}
+}
+.dx-rec-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;color:var(--dx-ui-cyan-fg);font-weight:600;cursor:pointer;background:none;border:0;padding:0;font-family:inherit;font-size:14px}
+.dx-rec-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:16px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-rec-meta div small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-rec-meta div span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@container (max-width:760px){.dx-rec-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dx-rec-line-cols { --dx-ui-cols:minmax(0,1fr) 84px 84px 120px 210px 36px; cursor:default; }
+.dx-rec-line-cols.dx-ui-row{cursor:default}
+.dx-rec-line-cols.dx-ui-row:hover{background:transparent}
+.dx-rec-line-cols .num{display:block;font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy);text-align:right}
+@container (max-width:760px){.dx-rec-line-cols .num{text-align:left}.dx-rec-line-cols .dx-rec-obs{grid-column:1 / -1;justify-self:end}}
+.dx-rec-field{width:100%;height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-rec-field:focus{outline:0;border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-rec-field.is-bad{border-color:var(--dx-ui-red-dot)}
+.dx-rec-lbl{display:none;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-rec-obs{height:36px;width:36px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);cursor:pointer;font-size:16px}
+.dx-rec-obs.on{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);border-color:var(--dx-ui-amber-dot)}
+@container (max-width:760px){
+  .dx-rec-line-cols { --dx-ui-cols:1fr 1fr; }
+  .dx-rec-line-cols > :first-child{grid-column:1 / -1}
+  .dx-rec-lbl{display:block}
+}
+.dx-rec-3v{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;border-top:1px solid var(--dx-ui-line);background:var(--dx-ui-head)}
+.dx-rec-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 20px;border-top:1px solid var(--dx-ui-line)}
+.dx-rec-foot .msg{margin-right:auto;color:var(--dx-ui-gray);font-size:13px}
+.dx-rec-note{padding:12px 20px;border-top:1px solid var(--dx-ui-line);background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:13px}
+
+/* Reglas propias: Ubicaciones (dx-ubi-) */
+.dx-ubi-wh{display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ubi-cols { --dx-ui-cols:minmax(0,1fr) 110px 110px 120px 20px; }
+.dx-ubi-name{display:flex;align-items:center;gap:10px;min-width:0;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap}
+.dx-ubi-name small{color:var(--dx-ui-gray);font-weight:500}
+.dx-ubi-name em{font-style:normal;overflow:hidden;text-overflow:ellipsis}
+.dx-ubi-ind{flex:none}
+.dx-ubi-num{font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+@container (max-width:760px){
+  .dx-ubi-cols { --dx-ui-cols:minmax(0,1fr) auto; }
+  .dx-ubi-cols > :nth-child(3), .dx-ubi-cols > :nth-child(4){display:none}
+  .dx-ubi-cols > .dx-ui-arrow{display:none}
+}
+.theme-toggle{position:fixed;right:14px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+</style>
+</head>
+<body>
+<div class="mock-shell">
+  <aside class="mock-side">
+    <b>TIDEO · Operaciones</b>
+    <small>ALMACÉN</small>
+    <span>Inventario &amp; Kardex</span>
+    <span>Entradas &amp; Salidas</span>
+    <span class="on" id="navRec">Recepciones</span>
+    <span id="navUbi">Ubicaciones</span>
+    <span>Reserva de Repuestos</span>
+    <span>Stock Mínimos &amp; Alertas</span>
+  </aside>
+  <main class="mock-main">
+    <section class="dx-ui dx-almacen" id="root">
+      <div class="dx-ui-head-page">
+        <div>
+          <div class="dx-ui-eyebrow">Almacén · WMS</div>
+          <h1 class="dx-ui-title" id="pageTitle">Recepciones de compra</h1>
+          <p class="dx-ui-sub" id="pageSub">Registra el ingreso físico de las órdenes de compra a su ubicación.</p>
+        </div>
+        <div class="dx-ui-actions" id="pageActions"></div>
+      </div>
+      <div class="dx-ui-tabs" role="tablist">
+        <button class="dx-ui-tab on" role="tab" data-view="rec">Recepción de OC</button>
+        <button class="dx-ui-tab" role="tab" data-view="ubi">Ubicaciones</button>
+      </div>
+      <div id="view"></div>
+    </section>
+  </main>
+</div>
+<button class="theme-toggle" id="themeBtn" aria-label="Cambiar tema claro u oscuro">Modo oscuro</button>
+
+<script>
+/* Datos ilustrativos y genéricos (sin clientes reales) */
+const ALMACENES = [
+  {id:'ALM-001', nombre:'Almacén Central'},
+  {id:'ALM-002', nombre:'Almacén Taller'}
+];
+const UBICACIONES = [
+  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-001', nivel:0, tipo:'General', items:128, ocup:null, general:true},
+  {cod:'Z-A', nombre:'Zona A · Lubricantes y filtros', alm:'ALM-001', nivel:0, tipo:'Zona', items:64, ocup:72},
+  {cod:'Z-A-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:38, ocup:80},
+  {cod:'Z-A-R01-P01', nombre:'Posición 01', alm:'ALM-001', nivel:2, tipo:'Posición', items:12, ocup:60},
+  {cod:'Z-A-R01-P02', nombre:'Posición 02', alm:'ALM-001', nivel:2, tipo:'Posición', items:26, ocup:95},
+  {cod:'Z-A-R02', nombre:'Rack 02', alm:'ALM-001', nivel:1, tipo:'Rack', items:26, ocup:55},
+  {cod:'Z-B', nombre:'Zona B · Rodamientos y sellos', alm:'ALM-001', nivel:0, tipo:'Zona', items:41, ocup:48},
+  {cod:'Z-B-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:41, ocup:48},
+  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-002', nivel:0, tipo:'General', items:35, ocup:null, general:true},
+  {cod:'T-01', nombre:'Estante de herramientas', alm:'ALM-002', nivel:0, tipo:'Rack', items:22, ocup:63}
+];
+const OCS = [
+  {id:'OC-26-0412', prov:'Proveedor Industrial Andino S.A.C.', fecha:'06 oct 2026', estado:'Parcial', pct:50, alm:'ALM-001', lines:[
+    {mat:'Filtro de aceite hidráulico HF-220', cod:'MAT-001245', ped:12, rec:6, ubi:'Z-A-R01-P01'},
+    {mat:'Rodamiento rígido 6205-2RS', cod:'MAT-000873', ped:20, rec:20, ubi:'Z-B-R01'},
+    {mat:'Sello de aceite 35x52x7', cod:'MAT-002318', ped:10, rec:0, ubi:'Z-B-R01'}
+  ]},
+  {id:'OC-26-0418', prov:'Distribuidora Técnica del Sur E.I.R.L.', fecha:'08 oct 2026', estado:'Pendiente', pct:0, alm:'ALM-001', lines:[
+    {mat:'Aceite hidráulico ISO 68 (balde 20 L)', cod:'MAT-000112', ped:8, rec:0, ubi:'Z-A-R02'},
+    {mat:'Grasa EP2 cartucho 400 g', cod:'MAT-000455', ped:48, rec:0, ubi:'Z-A-R02'}
+  ]},
+  {id:'OC-26-0421', prov:'Herramientas y Repuestos Norte S.A.', fecha:'09 oct 2026', estado:'Pendiente', pct:0, alm:'ALM-002', lines:[
+    {mat:'Llave de impacto 3/4" neumática', cod:'MAT-004120', ped:2, rec:0, ubi:'T-01'}
+  ]}
+];
+const ICON_BOX = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+const ICON_PIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+const ICON_ARROW = '<svg class="dx-ui-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+const ICON_SEARCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+
+let view = 'rec', ocSel = null, q = '', whSel = 'ALM-001', obs = {}, recQty = {}, recUbi = {}, confirmada = {};
+const $ = s => document.querySelector(s);
+const pillEstado = e => e==='Pendiente' ? '<span class="dx-ui-pill is-amber"><i></i>Pendiente</span>'
+  : e==='Parcial' ? '<span class="dx-ui-pill is-cyan"><i></i>Parcial</span>'
+  : '<span class="dx-ui-pill is-green"><i></i>'+e+'</span>';
+const ubiOptions = (alm, sel) => UBICACIONES.filter(u=>u.alm===alm).map(u=>
+  `<option value="${u.cod}" ${u.cod===sel?'selected':''}>${u.cod==='GEN'?'General (sin asignar)':u.cod+' · '+u.nombre}</option>`).join('');
+
+function render(){
+  document.querySelectorAll('.dx-ui-tab').forEach(t=>t.classList.toggle('on', t.dataset.view===view));
+  $('#navRec').classList.toggle('on', view==='rec'); $('#navUbi').classList.toggle('on', view==='ubi');
+  if(view==='ubi'){ renderUbi(); return; }
+  if(ocSel) renderDetalle(); else renderLista();
+}
+
+function renderLista(){
+  $('#pageTitle').textContent='Recepciones de compra';
+  $('#pageSub').textContent='Registra el ingreso físico de las órdenes de compra a su ubicación.';
+  $('#pageActions').innerHTML='';
+  const f = OCS.filter(o=>(o.id+o.prov).toLowerCase().includes(q.toLowerCase()));
+  const rows = f.map(o=>`
+    <div class="dx-ui-row dx-rec-cols" role="button" tabindex="0" data-oc="${o.id}" aria-label="Abrir ${o.id}">
+      <div class="dx-rec-oc"><span class="dx-ui-icon is-cyan">${ICON_BOX}</span>${o.id}</div>
+      <span class="dx-rec-main"><b>${o.prov}</b><small>${o.lines.length} línea(s) · destino ${ALMACENES.find(a=>a.id===o.alm).nombre}</small></span>
+      <div class="dx-rec-prog"><span>${o.pct}% recibido</span><div class="dx-rec-bar"><i style="width:${o.pct}%"></i></div></div>
+      <span>${pillEstado(o.estado)}</span>
+      <span style="color:var(--dx-ui-gray);font-size:13px">${o.fecha}</span>
+      ${ICON_ARROW}
+    </div>`).join('');
+  $('#view').innerHTML=`
+    <div class="dx-ui-summary">
+      <div class="dx-ui-chip"><b>3</b><span>OC por recibir</span></div>
+      <div class="dx-ui-chip"><b>1</b><span>Recepción parcial</span></div>
+      <div class="dx-ui-chip"><b>0</b><span>Observadas</span></div>
+    </div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>Órdenes de compra</h2><span class="dx-ui-count">${f.length} resultado(s)</span>
+        <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${q}" placeholder="Buscar por OC o proveedor" aria-label="Buscar orden de compra"></label></div>
+      <div class="dx-ui-head dx-rec-cols" aria-hidden="true"><span>OC</span><span>Proveedor</span><span>Avance</span><span>Estado</span><span>Emisión</span><span></span></div>
+      ${rows || '<div class="dx-ui-empty">Sin coincidencias para tu búsqueda.</div>'}
+    </div>`;
+  const inp=$('#q'); inp.addEventListener('input',e=>{q=e.target.value; const p=e.target.selectionStart; renderLista(); const n=$('#q'); n.focus(); n.setSelectionRange(p,p);});
+  document.querySelectorAll('[data-oc]').forEach(r=>{
+    const open=()=>{ocSel=r.dataset.oc; render();};
+    r.addEventListener('click',open);
+    r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  });
+}
+
+function renderDetalle(){
+  const o = OCS.find(x=>x.id===ocSel);
+  $('#pageTitle').textContent='Recepción '+o.id;
+  $('#pageSub').textContent='Confirma cantidades y asigna la ubicación de cada línea.';
+  $('#pageActions').innerHTML='';
+  const done = confirmada[o.id];
+  const rowsHtml = o.lines.map((l,i)=>{
+    const k=o.id+'-'+i, pend=l.ped-l.rec;
+    if(recQty[k]===undefined) recQty[k]=pend;
+    if(recUbi[k]===undefined) recUbi[k]=l.ubi;
+    const bad = recQty[k]<0 || recQty[k]>pend;
+    return `<div class="dx-ui-row dx-rec-line-cols">
+      <span class="dx-rec-main"><b>${l.mat}</b><small>${l.cod}</small></span>
+      <span><span class="dx-rec-lbl">Pedido</span><span class="num">${l.ped}</span></span>
+      <span><span class="dx-rec-lbl">Pendiente</span><span class="num">${pend}</span></span>
+      <span><span class="dx-rec-lbl">A recibir</span><input class="dx-rec-field ${bad?'is-bad':''}" type="number" min="0" max="${pend}" value="${recQty[k]}" data-q="${k}" aria-label="Cantidad a recibir de ${l.mat}" ${done||pend===0?'disabled':''}></span>
+      <span><span class="dx-rec-lbl">Ubicación destino</span><select class="dx-rec-field" data-u="${k}" aria-label="Ubicación destino de ${l.mat}" ${done||pend===0?'disabled':''}>${ubiOptions(o.alm, recUbi[k])}</select></span>
+      <button class="dx-rec-obs ${obs[k]?'on':''}" data-o="${k}" aria-label="Marcar observación en ${l.mat}" title="Observar línea" ${done?'disabled':''}>!</button>
+    </div>`;
+  }).join('');
+  const nObs = Object.keys(obs).filter(k=>k.startsWith(o.id)&&obs[k]).length;
+  const algunaMala = o.lines.some((l,i)=>{const v=recQty[o.id+'-'+i];return v<0||v>l.ped-l.rec;});
+  const totalRec = o.lines.reduce((s,l,i)=>s+(+recQty[o.id+'-'+i]||0),0);
+  const estadoFinal = nObs>0 ? '<span class="dx-ui-pill is-amber"><i></i>Quedará observada</span>' : '<span class="dx-ui-pill is-green"><i></i>Quedará conforme</span>';
+  $('#view').innerHTML=`
+    <button class="dx-rec-back" id="back">← Volver a recepciones</button>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>${o.id} · ${o.prov}</h2><span>${done?'<span class="dx-ui-pill is-green"><i></i>Recepción registrada</span>':pillEstado(o.estado)}</span></div>
+      <div class="dx-rec-meta">
+        <div><small>Almacén destino</small><span>${ALMACENES.find(a=>a.id===o.alm).nombre}</span></div>
+        <div><small>Emisión</small><span>${o.fecha}</span></div>
+        <div><small>Avance</small><span>${o.pct}% recibido</span></div>
+        <div><small>Guía del proveedor</small><span>— sin registrar</span></div>
+      </div>
+      <div class="dx-ui-head dx-rec-line-cols" aria-hidden="true"><span>Material</span><span style="text-align:right">Pedido</span><span style="text-align:right">Pend.</span><span>A recibir</span><span>Ubicación destino</span><span></span></div>
+      ${rowsHtml}
+      <div class="dx-rec-3v">
+        <span class="dx-ui-pill is-green"><i></i>Cantidades ≤ pendiente</span>
+        <span class="dx-ui-pill ${algunaMala?'is-red':'is-green'}"><i></i>${algunaMala?'Cantidad fuera de rango':'Validación 3 vías de cantidad OK'}</span>
+        <span class="dx-ui-pill is-gray"><i></i>Factura: se completa después en Administración</span>
+      </div>
+      <div class="dx-rec-note">Esta pantalla registra solo el ingreso <b>físico</b> (stock y kardex). La factura y la cuenta por pagar se completan desde Administración con "Completar factura".</div>
+      <div class="dx-rec-foot">
+        <span class="msg">${done?'Ingreso registrado en kardex.':`Total a recibir: <b>${totalRec}</b> unidad(es) · ${nObs} línea(s) observada(s)`}</span>
+        ${done?'':estadoFinal}
+        <button class="dx-btn" id="cancel">Cancelar</button>
+        <button class="dx-btn primary" id="ok" ${done||algunaMala||totalRec===0?'disabled':''}>Registrar recepción</button>
+      </div>
+    </div>`;
+  $('#back').onclick=()=>{ocSel=null;render();};
+  $('#cancel').onclick=()=>{ocSel=null;render();};
+  const ok=$('#ok'); if(ok) ok.onclick=()=>{confirmada[o.id]=true;render();};
+  document.querySelectorAll('[data-q]').forEach(i=>i.addEventListener('input',e=>{recQty[e.target.dataset.q]=+e.target.value; const p=e.target.dataset.q; renderDetalle(); const n=document.querySelector('[data-q="'+p+'"]'); if(n){n.focus();}}));
+  document.querySelectorAll('[data-u]').forEach(s=>s.addEventListener('change',e=>{recUbi[e.target.dataset.u]=e.target.value;}));
+  document.querySelectorAll('[data-o]').forEach(b=>b.addEventListener('click',e=>{const k=e.currentTarget.dataset.o;obs[k]=!obs[k];renderDetalle();}));
+}
+
+function renderUbi(){
+  $('#pageTitle').textContent='Ubicaciones';
+  $('#pageSub').textContent='Zonas, racks y posiciones de cada almacén. Todo el stock vive en una ubicación.';
+  $('#pageActions').innerHTML='<button class="dx-btn primary" aria-label="Nueva ubicación">+ Nueva ubicación</button>';
+  const f = UBICACIONES.filter(u=>u.alm===whSel && (u.cod+u.nombre).toLowerCase().includes(q.toLowerCase()));
+  const rows = f.map(u=>`
+    <div class="dx-ui-row dx-ubi-cols" role="button" tabindex="0" aria-label="Abrir ${u.nombre}">
+      <div class="dx-ubi-name" style="padding-left:${u.nivel*22}px"><span class="dx-ui-icon ${u.general?'is-violet':'is-cyan'} dx-ubi-ind">${ICON_PIN}</span><em>${u.nombre}</em><small>${u.cod}</small></div>
+      <span>${u.general?'<span class="dx-ui-pill is-gray"><i></i>General</span>':'<span class="dx-ui-pill is-cyan"><i></i>'+u.tipo+'</span>'}</span>
+      <span class="dx-ubi-num">${u.items} <small style="color:var(--dx-ui-gray);font:12px 'DM Sans',system-ui,sans-serif">ítems</small></span>
+      <span>${u.ocup===null?'<span style="color:var(--dx-ui-gray);font-size:12px">sin capacidad</span>':'<div class="dx-rec-prog"><span>'+u.ocup+'% ocupación</span><div class="dx-rec-bar"><i style="width:'+u.ocup+'%"></i></div></div>'}</span>
+      ${ICON_ARROW}
+    </div>`).join('');
+  $('#view').innerHTML=`
+    <div class="dx-ui-summary">
+      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).length}</b><span>Ubicaciones</span></div>
+      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).reduce((s,u)=>s+(u.nivel===0?u.items:0),0)}</b><span>Ítems almacenados</span></div>
+      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel&&u.general)[0].items}</b><span>Sin ubicar (en General)</span></div>
+    </div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>Mapa del almacén</h2><span class="dx-ui-count">${f.length} resultado(s)</span>
+        <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${q}" placeholder="Buscar ubicación" aria-label="Buscar ubicación"></label></div>
+      <div class="dx-ubi-wh" role="tablist">${ALMACENES.map(a=>`<button class="dx-ui-tab ${a.id===whSel?'on':''}" role="tab" data-wh="${a.id}">${a.nombre}</button>`).join('')}</div>
+      <div class="dx-ui-head dx-ubi-cols" aria-hidden="true"><span>Ubicación</span><span>Tipo</span><span>Contenido</span><span>Ocupación</span><span></span></div>
+      ${rows || '<div class="dx-ui-empty">Sin coincidencias para tu búsqueda.</div>'}
+    </div>`;
+  document.querySelectorAll('[data-wh]').forEach(b=>b.onclick=()=>{whSel=b.dataset.wh;renderUbi();});
+  const inp=$('#q'); inp.addEventListener('input',e=>{q=e.target.value; const p=e.target.selectionStart; renderUbi(); const n=$('#q'); n.focus(); n.setSelectionRange(p,p);});
+}
+
+document.querySelectorAll('.dx-ui-tabs .dx-ui-tab').forEach(t=>t.addEventListener('click',()=>{view=t.dataset.view; ocSel=null; q=''; render();}));
+$('#themeBtn').onclick=()=>{
+  const d=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme', d?'light':'dark');
+  $('#themeBtn').textContent = d?'Modo oscuro':'Modo claro';
+};
+render();
+</script>
+</body>
+</html>
