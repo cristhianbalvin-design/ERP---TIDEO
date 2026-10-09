@@ -1,4 +1,4 @@
--- 616_asistente_erp_gastos_monto.sql
+﻿-- 616_asistente_erp_gastos_monto.sql
 -- Búsqueda de Compras/Gastos y filtros por importe para las consultas de Aria.
 -- Cambios: nueva asistente_buscar_gastos; monto exacto/rango en CxP, CxC,
 -- Órdenes de compra, caja chica, tesorería y cotizaciones; acceso financiero protegido.
@@ -302,4 +302,4 @@ GRANT EXECUTE ON FUNCTION public.asistente_buscar_gastos(text,uuid,text,numeric,
 -- WHERE n.nspname='public' AND p.proname IN ('asistente_buscar_gastos','asistente_buscar_cxp','asistente_buscar_cxc','asistente_buscar_ordenes_compra','asistente_buscar_caja_chica','asistente_buscar_movimientos_tesoreria','asistente_buscar_cotizaciones','asistente_monto_coincide') ORDER BY p.proname;
 -- SELECT proname,count(*) AS sobrecargas FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('asistente_buscar_gastos','asistente_buscar_cxp','asistente_buscar_cxc','asistente_buscar_ordenes_compra','asistente_buscar_caja_chica','asistente_buscar_movimientos_tesoreria','asistente_buscar_cotizaciones') GROUP BY proname HAVING count(*)>1;
 -- cambiar ROLLBACK por COMMIT tras revisión.
-ROLLBACK;
+COMMIT;
