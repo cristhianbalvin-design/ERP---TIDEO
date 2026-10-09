@@ -498,6 +498,7 @@ Deno.test("el estado se normaliza a minúscula salvo en materiales", async () =>
 
 Deno.test("SYSTEM_PROMPT pide cliente y de qué trata al listar", () => {
   assert(SYSTEM_PROMPT.includes("Al listar, di cliente y de qué trata."));
+  assert(SYSTEM_PROMPT.includes("por_origen separa estándar y especial"));
 });
 
 Deno.test("SYSTEM_PROMPT dirige el stock general al resumen y el detalle a consultar_stock", () => {
