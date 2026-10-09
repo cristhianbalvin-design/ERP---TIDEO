@@ -478,6 +478,28 @@ Deno.test("SYSTEM_PROMPT distingue clientes y prospectos (tipo de cuenta) de lea
   assert(SYSTEM_PROMPT.includes("Los leads son otro módulo"));
 });
 
+Deno.test("el estado se normaliza a minúscula salvo en materiales", async () => {
+  const casos: Array<[string, Record<string, unknown>, string, string]> = [
+    ["asistente_buscar_cotizaciones", { estado: "Enviada" }, "p_estado", "enviada"],
+    ["asistente_contar_registros", { entidad: "cotizaciones", estado: "Aprobada" }, "p_estado", "aprobada"],
+    ["asistente_buscar_leads", { estado: "Nuevo" }, "p_estado", "nuevo"],
+    ["asistente_buscar_materiales", { estado: "Activo" }, "p_estado", "Activo"],
+    ["asistente_contar_registros", { entidad: "materiales", estado: "Activo" }, "p_estado", "Activo"],
+  ];
+  for (const [name, args, key, esperado] of casos) {
+    let n = 0;
+    const x = setup({ ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "e", type: "function", function: { name, arguments: JSON.stringify(args) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+    equal((await x.handler(x.request())).status, 200);
+    equal(x.calls.find(c => c.name === name)!.args[key], esperado);
+  }
+});
+
+Deno.test("SYSTEM_PROMPT pide cliente y de qué trata al listar", () => {
+  assert(SYSTEM_PROMPT.includes("Al listar, di cliente y de qué trata."));
+});
+
 Deno.test("SYSTEM_PROMPT dirige el stock general al resumen y el detalle a consultar_stock", () => {
   assert(SYSTEM_PROMPT.includes("usa asistente_resumen_stock sin pedir material ni almacén"));
   assert(SYSTEM_PROMPT.includes("pásala en texto"));
