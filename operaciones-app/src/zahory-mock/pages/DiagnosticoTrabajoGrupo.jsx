@@ -43,7 +43,7 @@ export function DiagnosticoTrabajoGrupo({ familia, lines, catalogs, canEdit, onC
       <div className="dx-columns dx-band"><span /><span>MANO DE OBRA</span><span>MAQUINA</span><span /></div>
       <div className="dx-columns dx-labels"><span>Tarea</span><span>Cargo</span><span>Horas-hombre</span><span>Activo propio</span><span>Horas-máquina</span><span>Detalle</span></div>
       {lines.map(line => {
-        const tarea = selected(catalogs.tipos, line.tarea_id);
+        const tarea = selected(catalogs.tipos, line.tarea_id) || { nombre: `Costo de ${selected(catalogs.tipos, line.actividad_id)?.nombre || 'actividad'}` };
         const key = lineId(line);
         const detailOpen = Boolean(expanded[key]);
         const materials = line.materiales || [];

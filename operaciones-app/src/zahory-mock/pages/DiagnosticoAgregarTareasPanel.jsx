@@ -1,111 +1,155 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-const MAX_RESULTS = 20;
-const normalize = value => String(value || '').trim().toLocaleLowerCase();
+const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+const num = value => Number(value) || 0;
 
-export function DiagnosticoAgregarTareasPanel({ familia, tipos, plantillas, uso, plantillaError, usoError, actividadId, lineas, tipoDiagnostico, plantillasLoaded = true, initialFocus = false, onClose, onAdd, onApplyTemplate }) {
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('todas');
-  const [selected, setSelected] = useState([]);
-  const searchRef = useRef(null);
-  const templatesRef = useRef(null);
-  const initialRecipeApplied = useRef(false);
-  const selectedIds = useMemo(() => new Set(lineas.map(line => line.tarea_id)), [lineas]);
-  const activityTemplate = plantillas.filter(row => row.actividad_id === actividadId);
-  const activityIds = new Set(plantillas.map(row => row.actividad_id));
-  const templates = useMemo(() => {
-    const grouped = new Map();
-    plantillas.forEach(row => {
-      const group = grouped.get(row.actividad_id) || { actividad_id: row.actividad_id, tareas: [] };
-      group.tareas.push(row);
-      grouped.set(row.actividad_id, group);
-    });
-    return [...grouped.values()]
-      .filter(group => group.tareas.length && tipos.some(tipo => tipo.id === group.actividad_id))
-      .map(group => ({ ...group, nombre: tipos.find(tipo => tipo.id === group.actividad_id)?.nombre || 'Actividad' }));
-  }, [plantillas, tipos]);
-  const allTasks = tipos.filter(tipo => !activityIds.has(tipo.id));
-  const filtered = allTasks.filter(tipo => {
-    const textMatches = !normalize(query) || normalize(`${tipo.nombre} ${tipo.codigo}`).includes(normalize(query));
-    if (!textMatches) return false;
-    if (filter === 'usadas') return Number(uso[tipo.id] || 0) > 0;
-    if (filter === 'actividad') return activityTemplate.some(row => row.tarea_id === tipo.id);
-    if (filter === 'ya') return selectedIds.has(tipo.id);
-    return true;
-  }).sort((a, b) => filter === 'usadas'
-    ? (Number(uso[b.id] || 0) - Number(uso[a.id] || 0)) || a.nombre.localeCompare(b.nombre, 'es')
-    : a.nombre.localeCompare(b.nombre, 'es'));
-  const visible = filtered.slice(0, MAX_RESULTS);
-  const selectedTasks = selected.filter(id => !selectedIds.has(id));
+export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], onClose, onAdd, onCreateFamily, onCreateType }) {
+  const [familiaId, setFamiliaId] = useState('');
+  const [actividadId, setActividadId] = useState('');
+  const [query, setQuery] = useState(['', '', '']);
+  const [createStep, setCreateStep] = useState(0);
+  const [createName, setCreateName] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState({});
+  const [soloActividad, setSoloActividad] = useState(false);
+  const [soloLine, setSoloLine] = useState({ cargo_id: '', horas_mano_obra: 0, activo_id: '', horas_maquina: 0 });
+  const [addNotice, setAddNotice] = useState('');
+  const searchRefs = [useRef(null), useRef(null), useRef(null)];
+  const dialogRef = useRef(null);
+  const family = familias.find(item => item.id === familiaId);
+  const actividad = tipos.find(item => item.id === actividadId);
+  const activities = tipos.filter(item => item.rol === 'actividad');
+  const tasks = tipos.filter(item => item.rol === 'tarea' || item.rol == null);
+  const recipe = useMemo(() => plantillas.filter(row => row.actividad_id === actividadId && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden)), [plantillas, actividadId]);
+  const isFab = tipoDiagnostico === 'fabricacion';
+  const lines = useMemo(() => {
+    if (isFab && recipe.length) return recipe.map((row, index) => ({
+      familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: row.tarea_id,
+      cargo_id: selected[row.tarea_id]?.cargo_id ?? row.cargo_id ?? '', horas_mano_obra: selected[row.tarea_id]?.horas_mano_obra ?? row.horas ?? 0,
+      activo_id: selected[row.tarea_id]?.activo_id ?? row.activo_id ?? '', horas_maquina: selected[row.tarea_id]?.horas_maquina ?? row.horas_maquina ?? 0,
+      _key: `receta-${row.tarea_id}-${index}`, _receta: row,
+    }));
+    return Object.values(selected);
+  }, [isFab, recipe, familiaId, actividadId, selected]);
+  const canAdd = Boolean(family && actividad && (soloActividad || lines.length));
 
   useEffect(() => {
-    if (initialFocus) {
-      templatesRef.current?.focus?.();
-      templatesRef.current?.scrollIntoView?.({ block: 'start' });
-    } else searchRef.current?.focus?.();
-  }, [initialFocus]);
-
-  useEffect(() => {
-    if (!initialFocus || tipoDiagnostico !== 'fabricacion' || !actividadId || !plantillasLoaded || initialRecipeApplied.current) return;
-    initialRecipeApplied.current = true;
-    onApplyTemplate(plantillas.filter(row => row.actividad_id === actividadId), actividadId);
-  }, [initialFocus, tipoDiagnostico, actividadId, plantillasLoaded, plantillas, onApplyTemplate]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const handleKeyDown = event => {
+    dialogRef.current?.focus();
+    const keydown = event => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
   }, [onClose]);
 
-  const toggle = id => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
-  const applyTemplate = template => {
-    const rows = tipoDiagnostico === 'fabricacion' ? template.tareas : template.tareas.filter(row => !selectedIds.has(row.tarea_id));
-    if (tipoDiagnostico === 'fabricacion' || rows.length) onApplyTemplate(rows, template.actividad_id);
+  useEffect(() => {
+    if (!addNotice) return undefined;
+    const timeout = window.setTimeout(() => setAddNotice(''), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [addNotice]);
+
+  const setSearch = (index, value) => setQuery(current => current.map((item, i) => i === index ? value : item));
+  const matching = (rows, index, label) => rows.filter(row => normalize(`${label(row)} ${row.codigo || ''}`).includes(normalize(query[index])));
+  const updateLine = (key, patch) => {
+    const changes = { ...patch, ...(patch.activo_id === '' ? { horas_maquina: 0 } : {}) };
+    if (key === 'solo') setSoloLine(current => ({ ...current, ...changes }));
+    else setSelected(current => ({ ...current, [key]: { ...current[key], ...changes } }));
+  };
+  const toggleTask = task => setSelected(current => {
+    const next = { ...current };
+    if (next[task.id]) delete next[task.id];
+    else {
+      const suggested = recipe.find(row => row.tarea_id === task.id);
+      next[task.id] = { familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: task.id, cargo_id: suggested?.cargo_id || '', horas_mano_obra: suggested?.horas ?? 0, activo_id: suggested?.activo_id || '', horas_maquina: suggested?.horas_maquina ?? 0, _key: `line-${task.id}` };
+    }
+    return next;
+  });
+
+  const create = async () => {
+    const name = createName.trim();
+    if (!name) return;
+    setBusy(true); setCreateError('');
+    try {
+      if (createStep === 1) {
+        const item = await onCreateFamily(name);
+        setFamiliaId(item.id); setActividadId('');
+      } else {
+        const item = await onCreateType(name, createStep === 2 ? 'actividad' : 'tarea');
+        if (createStep === 2) setActividadId(item.id);
+        else toggleTask({ ...item, rol: 'tarea' });
+      }
+      setCreateName(''); setCreateStep(0);
+    } catch (error) { setCreateError(error?.message || 'No se pudo crear el registro.'); }
+    finally { setBusy(false); }
   };
 
-  return <div className="dx-panel-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="dx-panel" role="dialog" aria-modal="true" aria-labelledby="dx-panel-title" aria-describedby="dx-panel-subtitle">
-      <header className="dx-panel-header">
-        <div><h2 id="dx-panel-title">Agregar tareas</h2><p id="dx-panel-subtitle">Se añaden al trabajo {familia.nombre}</p></div>
-        <button type="button" aria-label="Cerrar" className="dx-panel-close" onClick={onClose}>×</button>
-      </header>
-      {(plantillaError || usoError) && <div className="dx-panel-warnings" role="status">{plantillaError && <span>No se pudieron cargar plantillas</span>}{usoError && <span>No se pudieron cargar uso</span>}</div>}
-      <main className="dx-panel-content">
-        <section className="dx-panel-template-section" ref={templatesRef} tabIndex="-1">
-          <h3>APLICAR UNA ACTIVIDAD COMPLETA</h3>
-          {!templates.length ? <p className="dx-panel-muted">No hay actividades con tareas.</p> : templates.map(template => <article className="dx-panel-template" key={template.actividad_id}>
-            <div><strong>{template.nombre}</strong><span>{template.tareas.length} tareas</span><small>sin horas, las ingresas tú</small></div>
-            <button type="button" onClick={() => applyTemplate(template)}>{tipoDiagnostico === 'fabricacion' ? 'Elegir actividad' : 'Aplicar'}</button>
-          </article>)}
+  const editFields = (line, key, showDeviation = false) => {
+    const ref = line._receta;
+    const changed = ref && (line.cargo_id !== (ref.cargo_id || '') || num(line.horas_mano_obra) !== num(ref.horas) || line.activo_id !== (ref.activo_id || '') || num(line.horas_maquina) !== num(ref.horas_maquina));
+    return <>
+      <div className="dx-cascada-fields">
+        <label>Cargo<select aria-label="Cargo" value={line.cargo_id || ''} onChange={event => updateLine(key, { cargo_id: event.target.value })}><option value="">Sin cargo</option>{cargos.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
+        <label>H-H<input aria-label="Horas-hombre" type="number" min="0" step="0.25" value={line.horas_mano_obra ?? 0} onChange={event => updateLine(key, { horas_mano_obra: event.target.value })} /></label>
+        <label>Equipo<select aria-label="Equipo" value={line.activo_id || ''} onChange={event => updateLine(key, { activo_id: event.target.value, ...(!event.target.value ? { horas_maquina: 0 } : {}) })}><option value="">Sin equipo</option>{activos.map(item => <option key={item.id} value={item.id}>{item.codigo} · {item.nombre}</option>)}</select></label>
+        <label>H-equipo<input aria-label="Horas de equipo" type="number" min="0" step="0.25" value={line.horas_maquina ?? 0} disabled={!line.activo_id} onChange={event => updateLine(key, { horas_maquina: event.target.value })} /></label>
+      </div>
+      {showDeviation && <span className={`dx-cascada-dev ${changed ? 'is-changed' : 'is-same'}`}>{changed ? 'Valores ajustados respecto a la receta' : 'Igual a la receta'}</span>}
+    </>;
+  };
+
+  const creationBox = step => createStep !== step
+    ? <div className="dx-cascada-create"><button type="button" onClick={() => { setCreateStep(step); setCreateName(''); setCreateError(''); }}>+ Crear {step === 1 ? 'trabajo o componente' : step === 2 ? 'actividad' : 'tarea'}</button></div>
+    : <div className="dx-cascada-create"><form onSubmit={event => { event.preventDefault(); create(); }}><input autoFocus aria-label="Nombre" value={createName} onChange={event => setCreateName(event.target.value)} placeholder="Nombre" /><div><button className="dx-cascada-primary" disabled={busy || !createName.trim()}>{busy ? 'Creando…' : 'Crear'}</button><button type="button" onClick={() => setCreateStep(0)}>Cancelar</button></div>{createError && <span role="alert">{createError}</span>}</form></div>;
+  const result = (rows, index, label, id, meta) => <div className="dx-cascada-list" role="listbox" aria-label={label}>
+    {matching(rows, index, item => item.nombre).map(item => <button type="button" role="option" aria-selected={id === item.id} key={item.id} className={`dx-cascada-row${id === item.id ? ' is-selected' : ''}`} onClick={() => {
+      if (index === 0) { setFamiliaId(item.id); setActividadId(''); setSelected({}); setSoloActividad(false); }
+      else {
+        setActividadId(item.id); setSoloActividad(false); setQuery(current => current.map((q, i) => i === 2 ? '' : q));
+        const recipeRows = plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden));
+        setSelected(isFab ? Object.fromEntries(recipeRows.map(row => [row.tarea_id, { familia_trabajo_id: familiaId, actividad_id: item.id, tarea_id: row.tarea_id, cargo_id: row.cargo_id || '', horas_mano_obra: row.horas ?? 0, activo_id: row.activo_id || '', horas_maquina: row.horas_maquina ?? 0, _key: row.tarea_id }])) : {});
+      }
+    }}><span>{item.nombre}<small>{meta(item)}</small></span><b aria-hidden="true">›</b></button>)}
+    {!matching(rows, index, item => item.nombre).length && <div className="dx-cascada-empty">Sin coincidencias</div>}
+  </div>;
+
+  const taskOptions = tasks.filter(item => !isFab || !recipe.length || recipe.some(row => row.tarea_id === item.id));
+  const suggested = new Set(recipe.map(row => row.tarea_id));
+  const visibleTaskOptions = matching(taskOptions, 2, item => item.nombre);
+  const suggestedTasks = visibleTaskOptions.filter(item => suggested.has(item.id));
+  const catalogTasks = visibleTaskOptions.filter(item => !suggested.has(item.id));
+  const add = () => {
+    const prepared = soloActividad
+      ? [{ familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: null, ...soloLine }]
+      : lines.map(line => ({ ...line, familia_trabajo_id: familiaId, actividad_id: actividadId, horas_mano_obra: num(line.horas_mano_obra), horas_maquina: line.activo_id ? num(line.horas_maquina) : 0, _key: undefined, _receta: undefined }));
+    const isDuplicate = row => lineas.some(existing => existing.familia_trabajo_id === familiaId && existing.actividad_id === actividadId && existing.tarea_id === row.tarea_id);
+    const additions = prepared.filter(row => !isDuplicate(row));
+    const duplicateCount = prepared.length - additions.length;
+    if (duplicateCount) setAddNotice(`Se omitieron ${duplicateCount} tarea${duplicateCount === 1 ? '' : 's'} ya agregada${duplicateCount === 1 ? '' : 's'} para este trabajo y actividad.`);
+    if (additions.length) onAdd(additions);
+    if (!duplicateCount) onClose();
+  };
+
+  return <div className="dx-cascada-overlay" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="dx-cascada-panel" role="dialog" aria-modal="true" aria-labelledby="dx-cascada-title" tabIndex="-1" ref={dialogRef}>
+      <header className="dx-cascada-head"><div><h2 id="dx-cascada-title">Agregar al diagnóstico</h2><p>{isFab ? 'Elige el trabajo, la actividad y ajusta las tareas de la receta.' : 'Elige el trabajo, la actividad y las tareas que se realizarán.'}</p></div><span className={`dx-cascada-pill${isFab ? '' : ' is-maintenance'}`}>{isFab ? 'Fabricación' : 'Mantenimiento y reparación'}</span><button type="button" className="dx-cascada-close" aria-label="Cerrar" onClick={onClose}>×</button></header>
+      <div className="dx-cascada-steps" aria-label="Pasos"><span className={family ? 'is-done' : 'is-current'}>1 · {family?.nombre || 'Trabajo o componente'}</span><span className={actividad ? 'is-done' : family ? 'is-current' : ''}>2 · {actividad?.nombre || 'Actividad'}</span><span className={actividad ? 'is-current' : ''}>3 · Tarea</span></div>
+      <div className="dx-cascada-cols">
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3><input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Actividad</h3><input ref={searchRefs[1]} type="search" aria-label="Buscar actividad" placeholder="Buscar" disabled={!family} value={query[1]} onChange={event => setSearch(1, event.target.value)} /></div>{family ? result(activities, 1, 'Actividad', actividadId, item => `${plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).length} tareas en receta`) : <div className="dx-cascada-empty">Primero elige un trabajo o componente.</div>}{family && creationBox(2)}</section>
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Tarea</h3>{actividad && (!isFab || !recipe.length) && <input ref={searchRefs[2]} type="search" aria-label="Buscar tarea" placeholder="Buscar tarea" value={query[2]} onChange={event => setSearch(2, event.target.value)} />}</div>
+          {!actividad ? <div className="dx-cascada-empty">Primero elige una actividad.</div> : <>
+            {!isFab && <label className="dx-cascada-solo"><input type="checkbox" checked={soloActividad} onChange={event => { setSoloActividad(event.target.checked); if (event.target.checked) setSelected({}); }} /><span>Costear solo la actividad<small>Sin tareas. El costo queda en la actividad.</small></span></label>}
+            {soloActividad ? editFields(soloLine, 'solo') : <div className="dx-cascada-list dx-cascada-tasks" role="group" aria-label="Tareas disponibles">
+                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada. Ajustes aplican solo a este diagnóstico.</p>{recipe.map((row, index) => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines[index]; if (!line) return null; return <div className="dx-cascada-task" key={`${row.tarea_id}-${index}`}><strong>{task?.nombre || 'Tarea del catálogo'}</strong>{editFields(line, row.tarea_id, true)}</div>; })}</>
+                : <>{recipe.length > 0 && <p className="dx-cascada-note">Las tareas de receta aparecen como sugeridas.</p>}{suggestedTasks.length > 0 && <><h4 className="dx-cascada-task-group">Sugeridas</h4>{suggestedTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}<small>Sugerida por la receta</small></span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{catalogTasks.length > 0 && <><h4 className="dx-cascada-task-group">Catálogo</h4>{catalogTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className="dx-cascada-task" key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0} onChange={() => toggleTask(task)} /><span>{task.nombre}</span></label>{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{!taskOptions.length && <div className="dx-cascada-empty">No hay tareas en la receta.</div>}</>}
+              </div>}
+            {(!isFab || !recipe.length) && creationBox(3)}
+          </>}
         </section>
-        <section className="dx-panel-catalog">
-          <h3>TAREAS DEL CATÁLOGO</h3>
-          <label className="dx-panel-search-label" htmlFor="dx-panel-search">Buscar tareas</label>
-          <input id="dx-panel-search" ref={searchRef} className="dx-panel-search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por nombre o código" />
-          <div className="dx-panel-pills" role="group" aria-label="Filtrar tareas">
-            <button type="button" className={filter === 'todas' ? 'is-active' : ''} onClick={() => setFilter('todas')}>Todas</button>
-            <button type="button" className={filter === 'usadas' ? 'is-active' : ''} onClick={() => setFilter('usadas')}>Más usadas</button>
-            <button type="button" className={filter === 'actividad' ? 'is-active' : ''} disabled={!actividadId} onClick={() => setFilter('actividad')}>De la actividad</button>
-            <button type="button" className={filter === 'ya' ? 'is-active' : ''} onClick={() => setFilter('ya')}>Ya en el diagnóstico</button>
-          </div>
-          <div className="dx-panel-results" aria-live="polite">
-            {!visible.length ? <div className="dx-panel-empty">Sin coincidencias</div> : visible.map(tipo => {
-              const already = selectedIds.has(tipo.id);
-              const checked = already || selected.includes(tipo.id);
-              return <label className={`dx-panel-row${checked && !already ? ' is-selected' : ''}${already ? ' is-existing' : ''}`} key={tipo.id}>
-                <input type="checkbox" checked={checked} disabled={already} onChange={() => toggle(tipo.id)} aria-label={already ? `${tipo.nombre}, Ya agregada` : tipo.nombre} />
-                <span className="dx-panel-task-name">{tipo.nombre}<small>{tipo.codigo || '—'}</small></span>
-                <span className="dx-panel-usage">{already ? 'Ya agregada' : Number(uso[tipo.id] || 0) ? `Usada ${uso[tipo.id]} veces` : 'Sin uso previo'}</span>
-              </label>;
-            })}
-          </div>
-          {filtered.length > MAX_RESULTS && <p className="dx-panel-limit">Mostrando las primeras 20 de {filtered.length}, sigue escribiendo</p>}
-        </section>
-      </main>
-      <footer className="dx-panel-footer"><span>{selectedTasks.length} seleccionadas</span><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="dx-panel-add" disabled={!selectedTasks.length} onClick={() => onAdd(selectedTasks)}>Agregar {selectedTasks.length} tareas</button></footer>
+      </div>
+      {addNotice && <p className="dx-cascada-notice" role="status">{addNotice}</p>}
+      <footer className="dx-cascada-foot"><span>{!family ? 'Elige un trabajo o componente para empezar' : !actividad ? 'Falta elegir la actividad' : soloActividad ? 'Costo en la actividad' : `${lines.length} tareas · ${lines.reduce((sum, row) => sum + num(row.horas_mano_obra), 0).toLocaleString('es-PE')} h-hombre`}</span><div><button type="button" onClick={() => { setFamiliaId(''); setActividadId(''); setSelected({}); setSoloActividad(false); setQuery(['', '', '']); }}>Limpiar</button><button type="button" className="dx-cascada-primary" disabled={!canAdd} onClick={add}>Agregar al diagnóstico</button></div></footer>
     </section>
   </div>;
 }
