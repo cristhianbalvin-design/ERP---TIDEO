@@ -820,8 +820,8 @@ export function DiagnosticoTecnicoPage() {
     return created;
   };
 
-  const crearTipo = async nombre => {
-    const created = await buscarOCrearTipoServicioInterno(empresaId, nombre);
+  const crearTipo = async (nombre, rol = null) => {
+    const created = await buscarOCrearTipoServicioInterno(empresaId, nombre, rol);
     setCatalogs(current => ({ ...current, tipos: current.tipos.some(item => item.id === created.id) ? current.tipos : [...current.tipos, created] }));
     return created;
   };
@@ -871,6 +871,22 @@ export function DiagnosticoTecnicoPage() {
       return additions.length ? { ...current, lineas: [...(current.lineas || []), ...additions] } : current;
     });
     setTaskPanel(null);
+  };
+  const appendCascadeLines = rows => {
+    if (!selected || !canEditLines) return;
+    setSelected(current => {
+      const additions = rows.map((row, index) => ({
+        ...EMPTY_LINE,
+        ...row,
+        id: null,
+        _key: `line-${Date.now()}-${Math.random()}-${index}`,
+        orden: Math.max(-1, ...(current.lineas || []).map(line => Number(line.orden) || 0)) + 1 + index,
+        materiales: [],
+        _materialesIniciales: [],
+        _dirty: true,
+      }));
+      return { ...current, lineas: [...(current.lineas || []), ...additions] };
+    });
   };
   const applyRecipeActivity = (family, activity) => {
     if (!selected || !canEditLines || selected.tipo !== 'fabricacion') return;
@@ -1095,7 +1111,7 @@ export function DiagnosticoTecnicoPage() {
             />
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
-          {taskPanel && <DiagnosticoAgregarTareasPanel familia={taskPanel.familia} tipos={catalogs.tipos} plantillas={plantillasActividad} plantillasLoaded={plantillasActividadLoaded} tipoDiagnostico={selected.tipo} uso={usoTareas} plantillaError={plantillaLoadError} usoError={usoLoadError} actividadId={taskPanel.actividadId} lineas={selected.lineas.filter(line => line.familia_trabajo_id === taskPanel.familia.id)} initialFocus={taskPanel.mode === 'actividad'} onClose={() => setTaskPanel(null)} onAdd={taskIds => appendTaskLines(taskPanel.familia, taskIds.map(tarea_id => ({ tarea_id })))} onApplyTemplate={(rows, actividadId) => selected.tipo === 'fabricacion' ? applyRecipeActivity(taskPanel.familia, actividadId) : appendTaskLines(taskPanel.familia, rows, actividadId)} />}
+          {taskPanel && <DiagnosticoAgregarTareasPanel familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={() => setTaskPanel(null)} onAdd={appendCascadeLines} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
           {informePanel && <DiagnosticoInformePanel diagnostico={selected} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onClose={() => setInformePanel(false)} />}
         </div>}
       </ModalShell>}

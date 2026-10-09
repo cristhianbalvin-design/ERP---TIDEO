@@ -4,7 +4,7 @@ const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,acti
 const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,created_at,updated_at';
 const MATERIAL_COLUMNS = 'id,empresa_id,linea_id,material_id,descripcion,cantidad,unidad,orden,created_at';
 const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
-const TIPO_SERVICIO_COLUMNS = 'id,empresa_id,codigo,nombre,clasificacion,estado';
+const TIPO_SERVICIO_COLUMNS = 'id,empresa_id,codigo,nombre,clasificacion,estado,rol';
 const CARGO_COLUMNS = 'id,codigo,nombre,tipo,estado';
 const ACTIVO_COLUMNS = 'id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id';
 const HALLAZGO_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,componente_parte,tipo_dano_codigo,causa_probable_codigo,condicion,riesgo,matriz_version,prioridad_calculada,prioridad_override,prioridad_override_motivo,prioridad_efectiva,accion_recomendada,atribuible_a,observacion,incluir_en_informe,created_by,created_at,updated_at';
@@ -380,7 +380,7 @@ export async function listarPlantillasActividad(empresaId) {
   requireEmpresa(empresaId);
   const { data, error } = await getSupabaseClient()
     .from('plantillas_actividad')
-    .select('actividad_id,tarea_id,cargo_id,orden')
+    .select('actividad_id,tarea_id,cargo_id,orden,horas,activo_id,horas_maquina')
     .eq('empresa_id', empresaId)
     .order('actividad_id')
     .order('orden');
@@ -447,11 +447,12 @@ export async function buscarOCrearFamiliaTrabajo(empresaId, nombre) {
   return projectRpcRow(data, FAMILIA_COLUMNS);
 }
 
-export async function buscarOCrearTipoServicioInterno(empresaId, nombre) {
+export async function buscarOCrearTipoServicioInterno(empresaId, nombre, rol = null) {
   requireEmpresa(empresaId);
   const { data, error } = await getSupabaseClient().rpc('buscar_o_crear_tipo_servicio_interno', {
     p_empresa_id: empresaId,
     p_nombre: nombre,
+    p_rol: rol,
   });
   if (error) throw error;
   return projectRpcRow(data, TIPO_SERVICIO_COLUMNS);
@@ -484,7 +485,7 @@ const linePayload = (empresaId, diagnosticoId, linea) => ({
   diagnostico_id: diagnosticoId,
   familia_trabajo_id: linea.familia_trabajo_id,
   actividad_id: linea.actividad_id || null,
-  tarea_id: linea.tarea_id,
+  tarea_id: linea.tarea_id || null,
   hallazgo: linea.hallazgo || null,
   cargo_id: linea.cargo_id || null,
   horas_mano_obra: Number(linea.horas_mano_obra) || 0,
@@ -507,7 +508,7 @@ export async function guardarDiagnosticoLinea(empresaId, diagnosticoId, linea) {
   requireEmpresa(empresaId);
   requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
   requireId(linea?.familia_trabajo_id, 'Selecciona un trabajo.');
-  requireId(linea?.tarea_id, 'Selecciona o crea una tarea.');
+  if (!linea?.actividad_id && !linea?.tarea_id) throw new Error('Selecciona una actividad o una tarea.');
   const supabase = getSupabaseClient();
   const payload = linePayload(empresaId, diagnosticoId, linea);
   let query = supabase.from('diagnostico_tecnico_lineas');
