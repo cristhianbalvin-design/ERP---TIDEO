@@ -29,7 +29,7 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
 export function mensajeErrorAsistente(status) {
   if (status === 400) return 'No pude procesar la pregunta. Revísala e inténtalo de nuevo.';
   if (status === 401 || status === 403) return 'No tienes acceso para realizar esta consulta.';
-  if (status === 429) return 'Llegaste al límite de 50 preguntas de hoy. Se renueva mañana a las 00:00 (hora de Lima).';
+  if (status === 429) return 'Llegaste al límite de preguntas de hoy. Se renueva mañana a las 00:00 (hora de Lima).';
   if (status === 502 || status === 504) return 'El asistente no está disponible en este momento. Inténtalo de nuevo.';
   return 'No pude completar la consulta. Inténtalo de nuevo en un momento.';
 }
