@@ -3,6 +3,8 @@ import { useApp } from '../context.jsx';
 import { useAsistenteErp } from '../context/AsistenteErpContext.jsx';
 import { consultarAsistenteErp, mensajeErrorAsistente } from '../services/asistenteErpService.js';
 
+const LIMITE_DIARIO = 30;
+
 const sugerenciasPorTipo = {
   cotizacion: ['¿En qué estado está esta cotización?', '¿Hasta cuándo es vigente y cuál es el total?', '¿Qué otras cotizaciones tiene este cliente?'],
   orden_compra: ['¿En qué estado está esta orden de compra?', '¿Qué falta recibir de esta orden?', '¿Quién aprobó esta orden?'],
@@ -124,9 +126,10 @@ export function AsistenteErpPanel() {
 
   if (!habilitado) return null;
   return <div className="dx-asis">
-    <button ref={botonRef} className="dx-asis-fab" type="button" aria-expanded={abierto} aria-haspopup="dialog" onClick={() => setAbierto(true)}>
-      <IconoAria size={18} />Aria
+    <button ref={botonRef} className="dx-asis-fab" type="button" aria-label="Abrir Aria, asistente de OPERA" aria-expanded={abierto} aria-haspopup="dialog" tabIndex={abierto ? -1 : 0} onClick={() => setAbierto(true)}>
+      <IconoAria size={26} />
     </button>
+    <span className="dx-asis-hint" aria-hidden="true">Pregúntale a Aria</span>
     {abierto && <>
       <button className="dx-asis-backdrop" aria-label="Cerrar asistente" onClick={cerrar} />
       <section ref={panelRef} className="dx-asis-panel" role="dialog" aria-modal="true" aria-labelledby="dx-asis-title">
@@ -143,11 +146,11 @@ export function AsistenteErpPanel() {
           </React.Fragment>)}
           {consultando && <div className="dx-asis-tools"><span className="dx-asis-dots" aria-hidden="true"><span/><span/><span/></span><span role="status">Aria está revisando…</span></div>}
           {error && <div className="dx-asis-err" role="alert">{error.mensaje}{error.status !== 429 && <button type="button" onClick={() => ultimaConsulta.current && enviar(ultimaConsulta.current.contenido, true)}>Reintentar</button>}</div>}
-          {agotada && <div className="dx-asis-quota" role="status"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Hoy ya conversamos mucho: llegaste al límite de 50 preguntas. Mañana a las 00:00 (hora de Lima) volvemos a empezar.</span></div>}
+          {agotada && <div className="dx-asis-quota" role="status"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Hoy ya conversamos mucho: llegaste al límite de {LIMITE_DIARIO} preguntas. Mañana a las 00:00 (hora de Lima) volvemos a empezar.</span></div>}
         </div>
         <footer className="dx-asis-foot"><form className="dx-asis-form" onSubmit={enviarForm}><label className="dx-asis-label" htmlFor="dx-asis-question">Tu pregunta</label><textarea id="dx-asis-question" ref={campoRef} className="dx-asis-in" rows="1" placeholder={agotada ? 'Límite diario alcanzado' : 'Pregúntale a Aria…'} maxLength="1000" value={pregunta} disabled={agotada || consultando} onChange={event => setPregunta(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); enviar(); } }} />
           <button className="dx-asis-send" type="submit" aria-label="Enviar pregunta" disabled={!pregunta.trim() || agotada || consultando}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></form>
-          <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{cuotaRestante !== null && <span>{Math.max(0, 50 - cuotaRestante)} de 50 hoy</span>}</div>
+          <div className="dx-asis-meta">{mensajes.length ? <button type="button" onClick={nuevaConversacion}>Nueva conversación</button> : <span className="dx-asis-legal">Las respuestas pueden contener errores. Verifica antes de decidir.</span>}{cuotaRestante !== null && <span>{Math.max(0, LIMITE_DIARIO - cuotaRestante)} de {LIMITE_DIARIO} hoy</span>}</div>
         </footer>
       </section>
     </>}
