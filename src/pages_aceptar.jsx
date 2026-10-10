@@ -25,7 +25,7 @@ export function PaginaAceptacion({ token, tipo = 'estandar' }) {
 
   const esEspecial = tipo === 'especial';
   const rpcConsulta = esEspecial ? 'get_cotizacion_especial_publica' : 'get_cotizacion_publica';
-  const rpcAceptacion = esEspecial ? 'registrar_aceptacion_cotizacion_especial' : 'registrar_aceptacion_cotizacion';
+  const rpcAceptacion = 'registrar_aceptacion_cotizacion_especial';
 
   useEffect(() => {
     sb.rpc(rpcConsulta, { p_token: token })
@@ -49,22 +49,34 @@ export function PaginaAceptacion({ token, tipo = 'estandar' }) {
     let ip = 'desconocida';
     try { const r = await fetch('https://api.ipify.org?format=json'); ip = (await r.json()).ip; } catch (_) {}
 
-    // 1. Registrar aceptación en BD
-    const { data: rpc, error: rpcErr } = await sb.rpc(rpcAceptacion, {
-      p_token: token, p_nombre: nombre.trim(), p_dni: dni.trim(), p_ip: ip,
-    });
-    if (rpcErr || !rpc?.ok) {
-      setError(rpc?.error === 'ya_aceptada' ? 'Esta cotización ya fue aceptada.' : 'Error al registrar la aceptación. Intenta de nuevo.');
-      setPhase('ready');
-      return;
+    if (esEspecial) {
+      const { data: rpc, error: rpcErr } = await sb.rpc(rpcAceptacion, {
+        p_token: token, p_nombre: nombre.trim(), p_dni: dni.trim(), p_ip: ip,
+      });
+      if (rpcErr || !rpc?.ok) {
+        setError(rpc?.error === 'ya_aceptada' ? 'Esta cotización ya fue aceptada.' : 'Error al registrar la aceptación. Intenta de nuevo.');
+        setPhase('ready');
+        return;
+      }
+    } else {
+      let response;
+      let result;
+      try {
+        response = await fetch(import.meta.env.VITE_SUPABASE_URL + '/functions/v1/aceptar-cotizacion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+          body: JSON.stringify({ token, nombre: nombre.trim(), dni: dni.trim(), ip }),
+        });
+        result = await response.json();
+      } catch (_) {}
+      if (!response?.ok || !result?.ok) {
+        setError(result?.error === 'ya_aceptada'
+          ? 'Esta cotización ya fue aceptada.'
+          : 'Error al registrar la aceptación. Intenta de nuevo.');
+        setPhase('ready');
+        return;
+      }
     }
-
-    // 2. Notificación por email (fire & forget)
-    if (!esEspecial) fetch(import.meta.env.VITE_SUPABASE_URL + '/functions/v1/aceptar-cotizacion', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
-      body: JSON.stringify({ token, nombre: nombre.trim(), dni: dni.trim(), ip }),
-    }).catch(() => {});
 
     setPhase('done');
   };
