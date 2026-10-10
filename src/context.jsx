@@ -4257,6 +4257,7 @@ export function AppProvider({ children }) {
         if (!mu.material_id || !Number(mu.cantidad)) return;
         const existente = itemsADescontar.find(i =>
           i.material_id === mu.material_id &&
+          (i.almacen_id || null) === (mu.almacen_id || null) &&
           i.lote === (mu.lote || null) &&
           i.serie === (mu.serie || null)
         );
@@ -4282,16 +4283,37 @@ export function AppProvider({ children }) {
     });
 
     if (itemsADescontar.length > 0) {
-      setInventario(prev => prev.map(i => {
-        const desc = itemsADescontar.find(d =>
-          d.material_id === i.material_id &&
-          d.lote === (i.lote || null) &&
-          d.serie === (i.serie || null) &&
-          (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
-        );
-        if (desc) return { ...i, stock_actual: Math.max(0, i.stock_actual - desc.cantidad) };
-        return i;
-      }));
+      setInventario(prev => {
+        const asignadoPorId = new Map();
+        for (const desc of itemsADescontar) {
+          let restante = Number(desc.cantidad) || 0;
+          const candidatas = prev.filter(i =>
+            i.material_id === desc.material_id &&
+            (!desc.almacen_id || i.almacen_id === desc.almacen_id) &&
+            (desc.lote == null || i.lote === desc.lote) &&
+            (desc.serie == null || i.serie === desc.serie) &&
+            (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
+          ).slice().sort((a, b) => {
+            const fechaA = a.vencimiento ? Date.parse(a.vencimiento) : Infinity;
+            const fechaB = b.vencimiento ? Date.parse(b.vencimiento) : Infinity;
+            const av = Number.isFinite(fechaA) ? fechaA : Infinity;
+            const bv = Number.isFinite(fechaB) ? fechaB : Infinity;
+            return av - bv || Number(b.disponible ?? b.stock_actual ?? 0) - Number(a.disponible ?? a.stock_actual ?? 0) || String(a.id).localeCompare(String(b.id));
+          });
+          for (const fila of candidatas) {
+            if (restante <= 0) break;
+            const disponible = Math.max(0, Number(fila.disponible ?? fila.stock_actual ?? 0));
+            const asignado = Math.min(restante, disponible);
+            if (asignado > 0) asignadoPorId.set(fila.id, (asignadoPorId.get(fila.id) || 0) + asignado);
+            restante -= asignado;
+          }
+        }
+        return prev.map(i => {
+          const desc = asignadoPorId.get(i.id) || 0;
+          if (!desc) return i;
+          return { ...i, disponible: Math.max(0, Number(i.disponible ?? i.stock_actual ?? 0) - desc), stock_actual: Math.max(0, Number(i.stock_actual ?? i.disponible ?? 0) - desc) };
+        });
+      });
       if (isSupabaseConfigured()) {
         getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
           .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))

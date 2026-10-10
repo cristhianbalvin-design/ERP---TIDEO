@@ -4267,15 +4267,17 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
   const [scannerOpen, setScannerOpen] = useState(false);
   const inputRefs = useRef(new Map());
 
-  const invMap = new Map(inventario.map(i => [`${i.material_id}::${i.almacen_id}::${i.lote || ''}::${i.serie || ''}`, i]));
+  const invMap = new Map(inventario.map(i => [`${i.material_id}::${i.almacen_id}::${i.ubicacion_id || ''}::${i.lote || ''}::${i.serie || ''}`, i]));
   const conteoSel = conteos.find(c => c.id === selectedId) || conteos.find(c => c.estado !== 'cerrado') || conteos[0] || null;
 
   useEffect(() => {
     if (!conteoSel) { setSelectedId(''); setItems([]); return; }
     if (selectedId !== conteoSel.id) setSelectedId(conteoSel.id);
     setItems((conteoSel.items || []).map(it => {
-      const inv = invMap.get(`${it.material_id}::${it.almacen_id}::${it.lote || ''}::${it.serie || ''}`) || {};
-      return { ...it, sku: it.sku || inv.sku, nombre: it.nombre || inv.nombre, categoria: it.categoria || inv.categoria, unidad: it.unidad || inv.unidad, almacen: it.almacen || inv.almacen, tipo_control: it.tipo_control || inv.tipo_control || 'sin_control', vencimiento: it.vencimiento || inv.vencimiento || null, codigo_barras: it.codigo_barras || inv.codigo_barras || null };
+      const inv = invMap.get(`${it.material_id}::${it.almacen_id}::${it.ubicacion_id || ''}::${it.lote || ''}::${it.serie || ''}`)
+        || (!it.ubicacion_id ? inventario.find(i => i.material_id === it.material_id && i.almacen_id === it.almacen_id && (i.lote || '') === (it.lote || '') && (i.serie || '') === (it.serie || '')) : null)
+        || {};
+      return { ...it, sku: it.sku || inv.sku, nombre: it.nombre || inv.nombre, categoria: it.categoria || inv.categoria, unidad: it.unidad || inv.unidad, almacen: it.almacen || inv.almacen, ubicacion_codigo: it.ubicacion_codigo || inv.ubicacion_codigo || null, tipo_control: it.tipo_control || inv.tipo_control || 'sin_control', vencimiento: it.vencimiento || inv.vencimiento || null, codigo_barras: it.codigo_barras || inv.codigo_barras || null };
     }));
   }, [conteoSel?.id, conteos.length, inventario.length]);
 
@@ -4388,10 +4390,10 @@ function ConteoFisicoTab({ inventario, almacenes, conteos, iniciarConteoCtx, gua
                       const fisicoNum = it.fisico === '' || it.fisico == null ? null : Number(it.fisico);
                       const dif = fisicoNum == null ? null : fisicoNum - Number(it.teorico || 0);
                       return (
-                        <tr key={`${it.material_id}-${it.almacen_id}-${it.lote || ''}-${it.serie || ''}-${idx}`}>
+                        <tr key={`${it.material_id}-${it.almacen_id}-${it.ubicacion_id || ''}-${it.lote || ''}-${it.serie || ''}-${idx}`}>
                           <td className="mono" style={{fontWeight:700}}>{it.sku || it.material_id}</td>
                           <td><strong>{it.nombre || it.material_id}</strong><div className="text-muted" style={{fontSize:11}}>{it.categoria || 'General'} · {it.unidad || 'und'}{it.vencimiento ? ` · Vence ${fmtDateShort(it.vencimiento)}` : ''}</div></td>
-                          <td className="text-muted">{it.almacen || it.almacen_id}</td>
+                          <td className="text-muted">{it.almacen || it.almacen_id}{it.ubicacion_codigo ? <div className="text-muted" style={{fontSize:11}}>Ubicación {it.ubicacion_codigo}</div> : null}</td>
                           <td className="mono" style={{fontSize:11}}>{it.serie ? `Serie ${it.serie}` : it.lote ? `Lote ${it.lote}` : '—'}</td>
                           <td className="num">{qtyText(it.teorico)}</td>
                           <td className="num" style={{minWidth:110}}>

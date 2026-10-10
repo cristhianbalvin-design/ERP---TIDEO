@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { registrarMovimiento, anularMovimiento } from './inventarioService.js';
+import { repartirStock } from './stockUbicaciones.js';
 import { obtenerEstadoMultisociedad, validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 
 const mkId = (prefix) => {
@@ -382,25 +383,56 @@ export async function confirmarEntrega(guiaId, usuarioId) {
   if (guia.almacen_origen_id && guia.lineas?.length) {
     for (const linea of guia.lineas) {
       if (!linea.material_id) continue;
+      let stockQuery = supabase.from('stock')
+        .select('id, disponible, almacen_id, ubicacion_id, vencimiento')
+        .eq('empresa_id', guia.empresa_id)
+        .eq('material_id', linea.material_id)
+        .eq('almacen_id', guia.almacen_origen_id);
+      stockQuery = guia.sociedad_origen_id
+        ? stockQuery.eq('sociedad_id', guia.sociedad_origen_id)
+        : stockQuery.is('sociedad_id', null);
+      if (linea.lote != null) stockQuery = stockQuery.eq('lote', linea.lote);
+      if (linea.serie != null) stockQuery = stockQuery.eq('serie', linea.serie);
+      let stockRows;
       try {
-        const res = await registrarMovimiento(guia.empresa_id, {
-          tipo: 'salida',
-          motivo: guia.tipo_origen === 'traslado_interno' ? 'transferencia_guia' : 'despacho_guia',
-          material_id: linea.material_id,
-          almacen_id: guia.almacen_origen_id,
-          cantidad: Number(linea.cantidad),
-          lote: linea.lote || null,
-          serie: linea.serie || null,
-          referencia_tipo: 'guia_remision',
-          referencia_id: guiaId,
-          nro_documento: guia.numero_completo,
-          observacion: `Despacho guía ${guia.numero_completo}`,
-          usuario_id: usuarioId,
-          sociedad_id: guia.sociedad_origen_id || null,
-        });
-        kardexIds.push(res.kardex_id);
+        const { data, error: stockError } = await stockQuery;
+        if (stockError) {
+          console.error(`confirmarEntrega: error registrando salida para ${linea.material_id}:`, stockError.message);
+          continue;
+        }
+        stockRows = data;
       } catch (err) {
         console.error(`confirmarEntrega: error registrando salida para ${linea.material_id}:`, err.message);
+        continue;
+      }
+      const { asignaciones, faltante } = repartirStock(stockRows || [], Number(linea.cantidad), linea.ubicacion_id || null);
+      if (faltante > 0) {
+        console.error(`confirmarEntrega: error registrando salida para ${linea.material_id}:`, `Stock insuficiente para despachar ${linea.material_id}. Faltante: ${faltante}`);
+        continue;
+      }
+      for (const { fila, cantidad } of asignaciones) {
+        try {
+          const res = await registrarMovimiento(guia.empresa_id, {
+            tipo: 'salida',
+            motivo: guia.tipo_origen === 'traslado_interno' ? 'transferencia_guia' : 'despacho_guia',
+            material_id: linea.material_id,
+            almacen_id: fila.almacen_id,
+            ubicacion_id: fila.ubicacion_id || null,
+            cantidad,
+            lote: linea.lote || null,
+            serie: linea.serie || null,
+            referencia_tipo: 'guia_remision',
+            referencia_id: guiaId,
+            nro_documento: guia.numero_completo,
+            observacion: `Despacho guía ${guia.numero_completo}`,
+            usuario_id: usuarioId,
+            sociedad_id: guia.sociedad_origen_id || null,
+          });
+          kardexIds.push(res.kardex_id);
+        } catch (err) {
+          console.error(`confirmarEntrega: error registrando salida para ${linea.material_id}:`, err.message);
+          break;
+        }
       }
     }
   }
