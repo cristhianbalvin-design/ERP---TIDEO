@@ -7,6 +7,21 @@ test('resuelve una medida base sin marcarla como personalizada', () => {
   assert.deepEqual(resolverMedidaComponente(medida), { ...medida, personalizado: false });
 });
 
+test('mantiene una cota ausente como campo vacío editable y no como texto null', () => {
+  const medida = { id: 'axm', nombre: 'Espesor (juego axial)', cota: null, desde: 'Vista lateral' };
+  const resuelta = resolverMedidaComponente(medida);
+  assert.equal(resuelta.cota, '');
+  assert.notEqual(resuelta.cota, 'null');
+  assert.equal(resuelta.personalizado, false);
+});
+
+test('conserva una cota anulada en un override y la considera un cambio', () => {
+  const medida = { id: 'dint', nombre: 'Interior', cota: 'dint' };
+  const resuelta = resolverMedidaComponente(medida, { cota: null });
+  assert.equal(resuelta.cota, '');
+  assert.equal(resuelta.personalizado, true);
+});
+
 test('aplica solo los campos editados y mantiene los campos base restantes', () => {
   const medida = { id: 'dint', nombre: 'Diámetro interior', cota: 'dint', desde: 'Tres puntos', referencia: 'H8' };
   const resuelta = resolverMedidaComponente(medida, { nombre: 'Diámetro útil' });

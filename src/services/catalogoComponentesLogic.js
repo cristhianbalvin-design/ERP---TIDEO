@@ -5,10 +5,12 @@ export function resolverMedidaComponente(medida, override = null) {
   const cambios = override || {};
   const valores = Object.fromEntries(CAMPOS_OVERRIDE_COMPONENTE.map(campo => [
     campo,
-    cambios[campo] ?? base[campo] ?? '',
+    Object.prototype.hasOwnProperty.call(cambios, campo)
+      ? cambios[campo] ?? ''
+      : base[campo] ?? '',
   ]));
   const personalizado = Boolean(override) && CAMPOS_OVERRIDE_COMPONENTE.some(campo => (
-    (override[campo] ?? base[campo] ?? '') !== (base[campo] ?? '')
+    valores[campo] !== (base[campo] ?? '')
   ));
   return { ...base, ...valores, personalizado };
 }

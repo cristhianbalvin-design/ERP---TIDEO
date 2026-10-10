@@ -31,8 +31,8 @@ export function sanitizarSvgCatalogo(svg, zonaActiva = '') {
   return new XMLSerializer().serializeToString(root);
 }
 
-function EditableField({ value, onChange, disabled, label, multiline = false }) {
-  const props = { value: value ?? '', disabled, 'aria-label': label, onChange: evento => onChange(evento.target.value) };
+function EditableField({ value, onChange, disabled, label, multiline = false, placeholder }) {
+  const props = { value: value ?? '', disabled, placeholder, 'aria-label': label, onChange: evento => onChange(evento.target.value) };
   return multiline
     ? <textarea {...props} rows="2" />
     : <input {...props} />;
@@ -121,7 +121,7 @@ export default function CatalogoComponentesPanel({ empresaId, sociedadId, puedeE
           {zonaSeleccionada ? <section className="cc-measures"><div className="cc-measures-heading"><div><h3>{zonaSeleccionada.nombre}</h3><p>Medidas y referencias típicas</p></div></div>
             {(zonaSeleccionada.medidas || []).map(base => { const medida = medidas.find(item => item.id === base.id) || base; const personalizado = Boolean(base.personalizado || borradores[base.id]); return <article className="cc-measure" key={base.id}>
               <div className="cc-measure-top"><strong>{base.nombre}</strong>{personalizado ? <span className="cc-pill is-custom">Personalizado</span> : <span className="cc-pill">Base</span>}</div>
-              <div className="cc-fields"><label>Nombre<EditableField label="Nombre de medida" value={medida.nombre} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'nombre', v)} /></label><label>Cota<EditableField label="Cota" value={medida.cota} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'cota', v)} /></label><label>Dónde se mide<EditableField label="Dónde se mide" multiline value={medida.desde} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'desde', v)} /></label><label>Referencia típica<EditableField label="Referencia típica" multiline value={medida.referencia} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'referencia', v)} /></label></div>
+              <div className="cc-fields"><label>Nombre<EditableField label="Nombre de medida" value={medida.nombre} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'nombre', v)} /></label><label>Cota<EditableField label="Cota" value={medida.cota} placeholder={medida.cota == null || medida.cota === '' ? 'Sin cota en el dibujo' : undefined} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'cota', v)} /></label><label>Dónde se mide<EditableField label="Dónde se mide" multiline value={medida.desde} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'desde', v)} /></label><label>Referencia típica<EditableField label="Referencia típica" multiline value={medida.referencia} disabled={!puedeEditar} onChange={v => actualizarBorrador(base.id, 'referencia', v)} /></label></div>
               {puedeEditar && <div className="cc-measure-actions">{personalizado && <button type="button" className="cc-link" disabled={guardando === base.id} onClick={() => restablecer(base)}>Restablecer a base</button>}<button type="button" className="cc-save" disabled={!borradores[base.id] || guardando === base.id} onClick={() => guardar(medida)}>{guardando === base.id ? 'Guardando…' : 'Guardar'}</button></div>}
             </article>; })}
           </section> : <div className="cc-prompt">Elige una zona para ver sus medidas.</div>}

@@ -19,7 +19,7 @@ export const catalogoComponentesService = {
     p_zona_id: zonaId,
     p_medida_id: medidaId,
     p_nombre: medida.nombre,
-    p_cota: medida.cota,
+    p_cota: typeof medida.cota === 'string' && medida.cota.trim() === '' ? null : medida.cota ?? null,
     p_desde: medida.desde,
     p_referencia: medida.referencia,
   }),
