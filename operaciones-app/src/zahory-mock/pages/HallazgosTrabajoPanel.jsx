@@ -201,7 +201,7 @@ function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remov
   </section>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
@@ -229,6 +229,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const itemCardRefs = useRef(new Map());
   const pendingGroupFocus = useRef(null);
   const [pendingDeleteKey, setPendingDeleteKey] = useState(null);
+  const [pendingDeleteFamilyId, setPendingDeleteFamilyId] = useState(null);
 
   const updatePendingFotos = next => {
     const urlsToKeep = new Set(next.map(row => row.previewUrl));
@@ -335,6 +336,13 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     updatePendingFotos(fotosPendientesRef.current.filter(row => row.hallazgoKey !== keyFor(item)));
     setItems(current => current.filter(row => keyFor(row) !== keyFor(item)));
     if (item.id) setDeletedItems(current => [...current, item]);
+  };
+  const removeEmptyFamily = group => {
+    onRemoveFamilyLines?.(group.id);
+    setSessionFamilyIds(current => current.filter(id => id !== group.id));
+    onExtraFamilyIdsChange?.(current => current.filter(id => id !== group.id));
+    setCollapsedGroups(current => { const next = new Set(current); next.delete(group.id); return next; });
+    setPendingDeleteFamilyId(null);
   };
 
   const goToIncomplete = useCallback(() => {
@@ -539,7 +547,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     {incompleteHallazgos.length > 0 && <div className="hallazgos-incomplete-notice" role="status"><span>Hay {incompleteHallazgos.length} hallazgo{incompleteHallazgos.length === 1 ? '' : 's'} incompleto{incompleteHallazgos.length === 1 ? '' : 's'}. Complétalos o elimínalos.</span><button type="button" onClick={goToIncomplete}>Ir al hallazgo</button></div>}
     {catalogError && <div className="alert alert-error">No se cargaron los catálogos de hallazgos: {catalogError}</div>}
     {fotosLoadError && <div className="dx-foto-error" role="status">No se pudieron cargar las fotos de los hallazgos: {fotosLoadError}</div>}
-    {groups.map(group => { const expanded = !collapsedGroups.has(group.id); return <section className="hallazgos-work-section" key={group.id}><div className="hallazgos-work-head"><button ref={node => { if (node) groupHeaderRefs.current.set(group.id, node); else groupHeaderRefs.current.delete(group.id); }} type="button" className="hallazgos-group-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Contraer' : 'Expandir'} ${group.nombre}`} onClick={() => setCollapsedGroups(current => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span><strong>{group.nombre}</strong><small>{group.items.length} hallazgos · {group.lines.length} tareas</small></span><svg className={`hallazgos-group-chevron${expanded ? ' is-expanded' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addHallazgo(group.id)}>+ Agregar hallazgo</button>}</div>{expanded && (group.items.length ? group.items.map(renderItem) : <p className="muted">Sin hallazgos para este trabajo.</p>)}</section>; })}
+    {groups.map(group => { const expanded = !collapsedGroups.has(group.id); return <section className="hallazgos-work-section" key={group.id}><div className="hallazgos-work-head"><button ref={node => { if (node) groupHeaderRefs.current.set(group.id, node); else groupHeaderRefs.current.delete(group.id); }} type="button" className="hallazgos-group-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Contraer' : 'Expandir'} ${group.nombre}`} onClick={() => setCollapsedGroups(current => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span><strong>{group.nombre}</strong><small>{group.items.length} hallazgos · {group.lines.length} tareas</small></span><svg className={`hallazgos-group-chevron${expanded ? ' is-expanded' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button><div className="hallazgos-work-actions">{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addHallazgo(group.id)}>+ Agregar hallazgo</button>}{canEdit && group.items.length === 0 && <button type="button" className="hallazgo-delete-button" aria-label={`Quitar trabajo ${group.nombre}`} title="Quitar trabajo" onClick={() => setPendingDeleteFamilyId(group.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3" /></svg></button>}</div></div>{pendingDeleteFamilyId === group.id && group.items.length === 0 && <div className="hallazgo-delete-confirm" role="alertdialog" aria-label={`Confirmar quitar trabajo ${group.nombre}`}><span>Se quitarán las {group.lines.length} tareas de este trabajo de la lista. Los cambios se guardan al presionar Guardar todo. Nada se borra de la base de datos hasta entonces.</span><div><button type="button" className="hallazgo-delete-confirm-action" onClick={() => removeEmptyFamily(group)}>Quitar trabajo</button><button type="button" onClick={() => setPendingDeleteFamilyId(null)}>Cancelar</button></div></div>}{expanded && (group.items.length ? group.items.map(renderItem) : <p className="muted">Sin hallazgos para este trabajo.</p>)}</section>; })}
     {orphanItems.map(renderItem)}
     {canEdit && !readOnly && <div className="hallazgos-add-family">
       {familyToAdd ? <div className="hallazgos-add-work-options"><select autoFocus className="select" aria-label="Elegir trabajo o componente" value="" onChange={event => { const id = event.target.value; if (!id) return; pendingGroupFocus.current = id; const existing = groups.find(group => group.id === id); if (existing) setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); else { setSessionFamilyIds(current => current.includes(id) ? current : [...current, id]); onExtraFamilyIdsChange?.(current => current.includes(id) ? current : [...current, id]); setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); } setFamilyToAdd(''); }}><option value="">Elegir existente...</option>{familias.map(familia => <option value={familia.id} key={familia.id}>{familia.nombre}</option>)}</select>

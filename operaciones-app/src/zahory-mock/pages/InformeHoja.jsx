@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { agruparFotosEnFilas } from '../../services/informeFotosFilas.js';
 
 const dash = value => value === null || value === undefined || value === '' ? '—' : value;
 const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -9,8 +10,10 @@ const tones = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4', conformes: 'ok' };
 export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null }) {
   const [logoFallido, setLogoFallido] = useState(false);
   const [firmaFallida, setFirmaFallida] = useState(false);
+  const [dimensionesFotos, setDimensionesFotos] = useState({});
   useEffect(() => { setLogoFallido(false); }, [identidadEmpresa?.logo_url]);
   useEffect(() => { setFirmaFallida(false); }, [identidadEmpresa?.firma_url]);
+  useEffect(() => { setDimensionesFotos({}); }, [snapshot]);
   const data = snapshot || {};
   const head = data.cabecera || {};
   const resumen = data.resumen || {};
@@ -46,7 +49,18 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
           <p>{dash(item.observacion)}</p>
           {measures.length > 0 && <div className="dx-inf-table-wrap"><table className="dx-inf-table"><thead><tr><th>Parámetro</th><th>Especificado</th><th>Medido</th><th>Resultado</th></tr></thead><tbody>{measures.map((measure, mi) => <tr key={`${measure.parametro}-${mi}`}><td>{dash(measure.parametro)}{measure.unidad ? ` (${measure.unidad})` : ''}</td><td>{measure.nominal !== null && measure.nominal !== undefined ? measure.nominal : `${dash(measure.minimo)} – ${dash(measure.maximo)}`}</td><td>{dash(measure.medido)}</td><td className={/fuera|no_conforme|fall/i.test(String(measure.resultado || measure.condicion_sugerida || '')) ? 'is-bad' : 'is-good'}>{dash(measure.resultado || measure.condicion_sugerida)}</td></tr>)}</tbody></table></div>}
           <div className="dx-inf-recommend"><strong>Recomendación</strong><span>{dash(item.accion_recomendada_etiqueta)}</span></div>
-          {item.fotos?.length > 0 && <div className="dx-informe-fotos">{item.fotos.slice(0, 3).map((foto, fotoIndex) => <figure className="dx-informe-foto" key={`${foto.url}-${fotoIndex}`}><img src={foto.url} alt={foto.leyenda || 'Foto del hallazgo'} />{foto.leyenda && <figcaption>{foto.leyenda}</figcaption>}</figure>)}</div>}
+          {item.fotos?.length > 0 && <div className="dx-informe-fotos">{(() => {
+            const fotos = item.fotos.map((foto, fotoIndex) => {
+              const key = `${item.hallazgo_id || index}:${foto.url}:${fotoIndex}`;
+              return { foto, fotoIndex, key, ...(dimensionesFotos[key] || { width: foto.ancho, height: foto.alto }) };
+            });
+            return agruparFotosEnFilas(fotos).map((fila, filaIndex) => <div className={`dx-informe-fila dx-informe-fila-${fila.orientacion}`} key={`${item.hallazgo_id || index}-fila-${filaIndex}`}>
+              {fila.fotos.map(({ foto, fotoIndex, key }) => <figure className="dx-informe-foto" key={key}><img src={foto.url} alt={foto.leyenda || 'Foto del hallazgo'} onLoad={event => {
+                const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+                if (width && height) setDimensionesFotos(current => current[key]?.width === width && current[key]?.height === height ? current : { ...current, [key]: { width, height } });
+              }} />{foto.leyenda && <figcaption>{foto.leyenda}</figcaption>}</figure>)}
+            </div>);
+          })()}</div>}
         </article>;
       })}
     </section>}

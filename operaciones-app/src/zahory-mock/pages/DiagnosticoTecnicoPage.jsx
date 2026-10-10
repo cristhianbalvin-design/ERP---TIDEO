@@ -449,6 +449,7 @@ export function DiagnosticoTecnicoPage() {
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
   const [plantillasActividad, setPlantillasActividad] = useState([]);
   const [lineValidationErrors, setLineValidationErrors] = useState({});
+  const [pendingLineDeletes, setPendingLineDeletes] = useState([]);
   const [slowSaveWarning, setSlowSaveWarning] = useState('');
   const [hallazgosDirty, setHallazgosDirty] = useState(false);
   const [hallazgosDirtySummary, setHallazgosDirtySummary] = useState({ hallazgos: 0, tareas: 0, cambios: 0 });
@@ -578,6 +579,7 @@ export function DiagnosticoTecnicoPage() {
   const openNew = tipo => {
     openRequestRef.current += 1;
     setSelected(null);
+    setPendingLineDeletes([]);
     setForm({ ...EMPTY_FORM, tipo });
     setSearch('');
     setReferenceError('');
@@ -614,6 +616,7 @@ export function DiagnosticoTecnicoPage() {
       }
       if (requestId !== openRequestRef.current) return;
       setSelected(detail);
+      setPendingLineDeletes([]);
       setForm({ tipo: detail.tipo, referencia: reference });
       setSearch('');
     } catch (loadError) {
@@ -756,7 +759,7 @@ export function DiagnosticoTecnicoPage() {
     }
   };
 
-  const saveAllLines = async () => {
+  const saveAllLines = async ({ includeDeletes = false } = {}) => {
     if (!selected || !canEditLines) return true;
     const dirtyLines = (selected.lineas || []).filter(line => line._dirty);
     let allSaved = true;
@@ -764,14 +767,35 @@ export function DiagnosticoTecnicoPage() {
       const saved = await saveLine(line);
       if (!saved) allSaved = false;
     }
+    if (allSaved && includeDeletes) {
+      for (const line of pendingLineDeletes) {
+        try {
+          await eliminarDiagnosticoLinea(empresaId, selected.id, line.id);
+          setPendingLineDeletes(current => current.filter(item => lineKey(item) !== lineKey(line)));
+        } catch (deleteError) {
+          allSaved = false;
+          setError(errorMessage(deleteError));
+          break;
+        }
+      }
+    }
     return allSaved;
+  };
+
+  const queueFamilyLineDeletes = familyId => {
+    if (!selected || !canEditLines) return;
+    const removed = (selected.lineas || []).filter(line => line.familia_trabajo_id === familyId);
+    setPendingLineDeletes(current => [...current, ...removed.filter(line => line.id && !current.some(item => lineKey(item) === lineKey(line)))]);
+    setSelected(current => current?.id === selected.id
+      ? { ...current, lineas: (current.lineas || []).filter(line => line.familia_trabajo_id !== familyId) }
+      : current);
   };
 
   const saveAll = async () => {
     if (!selected || !canEditLines || modalBusy) return;
     setError('');
     setNotice('');
-    const linesSaved = await saveAllLines();
+    const linesSaved = await saveAllLines({ includeDeletes: true });
     if (!linesSaved) {
       const hallazgosPendientes = selected.tipo === 'mantenimiento' && (hallazgosDirty || Number(hallazgosDirtySummary.cambios || 0) > 0);
       setError(hallazgosPendientes
@@ -846,6 +870,7 @@ export function DiagnosticoTecnicoPage() {
     setSavingLine(null);
     setSlowSaveWarning('');
     setSelected(null);
+    setPendingLineDeletes([]);
     setInformePanel(false);
     setTaskPanel(false);
     setTaskPanelHasSelection(false);
@@ -888,10 +913,10 @@ export function DiagnosticoTecnicoPage() {
     || resumenVisible !== (selected._resumenGuardado || '')
   ));
   const detailDirty = selected
-    ? (selected.lineas || []).some(line => line._dirty) || (selected.tipo === 'mantenimiento' && hallazgosDirty) || summaryDirty
+    ? (selected.lineas || []).some(line => line._dirty) || pendingLineDeletes.length > 0 || (selected.tipo === 'mantenimiento' && hallazgosDirty) || summaryDirty
     : Boolean(form.referencia);
   const modalBusy = saving || Boolean(savingLine) || (selected?.tipo === 'mantenimiento' && hallazgosSaving);
-  const cambiosSinGuardar = Boolean(selected && ((selected.lineas || []).some(line => line._dirty) || (selected.tipo === 'mantenimiento' && hallazgosDirty) || summaryDirty));
+  const cambiosSinGuardar = Boolean(selected && ((selected.lineas || []).some(line => line._dirty) || pendingLineDeletes.length > 0 || (selected.tipo === 'mantenimiento' && hallazgosDirty) || summaryDirty));
   const recargarEstadoDiagnostico = async resultado => {
     const diagnosticoId = selected?.id;
     if (!diagnosticoId) return;
@@ -966,7 +991,7 @@ export function DiagnosticoTecnicoPage() {
   const grupos = [...gruposMap.values()];
   const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
-  const dirtyLineCount = lineasActuales.filter(line => line._dirty).length;
+  const dirtyLineCount = lineasActuales.filter(line => line._dirty).length + pendingLineDeletes.length;
   const cambiosCount = dirtyLineCount + (selected?.tipo === 'mantenimiento' ? Number(hallazgosDirtySummary.cambios || 0) : 0) + Number(summaryDirty);
   const normalizedListQuery = normalizeListText(listQuery.trim());
   const filteredDiagnosticos = diagnosticos.filter(row => !normalizedListQuery || normalizeListText([
@@ -1097,7 +1122,7 @@ export function DiagnosticoTecnicoPage() {
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
-                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
+                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
               </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-diagnostico-resumen-title">
