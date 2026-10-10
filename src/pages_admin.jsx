@@ -10,6 +10,8 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import { TiposGastoAdmin } from './components/NuevoEgreso.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
 import { CatalogoDocumentosCondiciones } from './components/CatalogoDocumentosCondiciones.jsx';
+import CatalogoComponentesPanel from './components/CatalogoComponentesPanel.jsx';
+import './components/CatalogoComponentesPanel.css';
 import {
   actualizarSociedad,
   crearSociedad,
@@ -5528,6 +5530,7 @@ function Maestros() {
   const [showTiposDocumento, setShowTiposDocumento] = useState(false);
   const [showFamiliasServicio, setShowFamiliasServicio] = useState(false);
   const [showTrabajos, setShowTrabajos] = useState(false);
+  const [showCatalogoComponentes, setShowCatalogoComponentes] = useState(false);
   const [showRecetasActividad, setShowRecetasActividad] = useState(false);
   const [trabajosCount, setTrabajosCount] = useState(0);
   const [trabajos, setTrabajos] = useState([]);
@@ -5571,6 +5574,7 @@ function Maestros() {
     { id: 'mst_impuestos', tabla: 'Monedas, impuestos y unidades' },
     { id: 'mst_tipos_servicio', tabla: 'Catálogo de Actividades Operativas' },
     { id: 'mst_recetas_actividad', tabla: 'Recetas de actividad' },
+    { id: 'mst_catalogo_componentes', tabla: 'Catálogo de componentes', permiso: 'maestros' },
     { id: 'mst_trabajos', tabla: 'Trabajos' },
     { id: 'mst_catalogo_servicios', tabla: 'Catálogo Servicios', permiso: 'servicios' },
     { id: 'mst_fabricantes', tabla: 'Fabricantes' },
@@ -6552,6 +6556,7 @@ function Maestros() {
   );
 
   const getMaestroMetaText = (mId) => {
+    if (mId === 'mst_catalogo_componentes') return '7 dibujos técnicos · Personalización por sociedad';
     const emptyEl = <span style={{color: 'var(--orange)'}}>Aún no se ha cargado nada</span>;
     if (mId === 'mst_ceco_cebe') {
       const c = (centrosCosto||[]).length;
@@ -7226,7 +7231,7 @@ function Maestros() {
               <div className="maestro-card-title">{m.tabla}</div>
               <div className="maestro-card-meta">{getMaestroMetaText(m.id)}</div>
             </div>
-            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else if (m.id === 'mst_trabajos') { setShowTrabajos(true); } else if (m.id === 'mst_recetas_actividad') { setShowRecetasActividad(true); } else { setSel(m); resetForm(); } }}>
+            <button className="btn btn-secondary btn-sm maestro-card-action" onClick={() => { if (m.id === 'mst_catalogo_componentes') { setShowCatalogoComponentes(true); } else if (m.id === 'mst_ceco_cebe') { setShowCecoCebe(true); } else if (m.id === 'mst_requisitos_cargo') { setShowRequisitos(true); } else if (m.id === 'mst_tipos_documento') { setShowTiposDocumento(true); } else if (m.id === 'mst_familias_servicio') { setShowFamiliasServicio(true); } else if (m.id === 'mst_trabajos') { setShowTrabajos(true); } else if (m.id === 'mst_recetas_actividad') { setShowRecetasActividad(true); } else { setSel(m); resetForm(); } }}>
               Gestionar {I.chevRight}
             </button>
           </div>
@@ -7234,6 +7239,13 @@ function Maestros() {
       </div>
 
       {showCecoCebe && <CecoCebePanel onClose={() => setShowCecoCebe(false)} />}
+
+      {showCatalogoComponentes && <CatalogoComponentesPanel
+        empresaId={empresa?.id}
+        sociedadId={modoVistaSociedadMaestros.sociedadIdEscritura || sociedadActiva?.id || sociedadActiva || null}
+        puedeEditar={Boolean(role?.permisos?.todo || role?.permisos?.editar === true || role?.permisos?.editar?.includes?.('maestros'))}
+        onClose={() => setShowCatalogoComponentes(false)}
+      />}
 
       {showRequisitos && <RequisitosPorCargo onClose={() => setShowRequisitos(false)} onGoToTiposDoc={() => { setShowRequisitos(false); setShowTiposDocumento(true); }} />}
 

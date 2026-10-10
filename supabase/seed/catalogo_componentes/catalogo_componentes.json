@@ -1,0 +1,579 @@
+[
+ {
+  "id": "cil",
+  "nombre": "Cilindro hidráulico",
+  "descripcion": "Camisa, vástago, pistón y tapas",
+  "orden": 1,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Cilindro hidráulico\"><path class=\"cl\" d=\"M70 150H735\"/>\n   <rect class=\"part alt\" data-z=\"tapaT\" x=\"108\" y=\"100\" width=\"44\" height=\"100\" rx=\"3\"/><path class=\"part alt\" data-z=\"tapaT\" d=\"M108 118H70a8 8 0 0 0-8 8v48a8 8 0 0 0 8 8h38Z\"/><circle cx=\"84\" cy=\"150\" r=\"20\" class=\"cav\"/>\n   <rect class=\"part \" data-z=\"camisa\" x=\"152\" y=\"100\" width=\"410\" height=\"100\" rx=\"0\"/><rect class=\"cav\" x=\"152\" y=\"112\" width=\"410\" height=\"76\"/>\n   <rect class=\"part alt\" data-z=\"piston\" x=\"326\" y=\"114\" width=\"40\" height=\"72\" rx=\"2\"/><path class=\"thin\" d=\"M336 114v72M346 114v72M356 114v72\" opacity=\".6\"/>\n   <rect class=\"part \" data-z=\"vastago\" x=\"366\" y=\"132\" width=\"360\" height=\"36\" rx=\"2\"/><path class=\"thin\" d=\"M700 132v36M708 132v36M716 132v36\" opacity=\".6\"/>\n   <rect class=\"part alt\" data-z=\"tapaD\" x=\"562\" y=\"100\" width=\"46\" height=\"100\" rx=\"3\"/>\n   <text class=\"lbl\" x=\"470\" y=\"86\" text-anchor=\"middle\">Camisa</text><text class=\"lbl\" x=\"130\" y=\"224\" text-anchor=\"middle\">Tapa trasera</text><text class=\"lbl\" x=\"585\" y=\"224\" text-anchor=\"middle\">Tapa delantera</text><text class=\"lbl\" x=\"690\" y=\"122\" text-anchor=\"middle\">Vástago</text><g class=\"dims\"><g class=\"\" data-cota=\"dint\"><line class=\"lead\" x1=\"215\" y1=\"112\" x2=\"215\" y2=\"31\"/><line class=\"dimline\" x1=\"215\" y1=\"112\" x2=\"215\" y2=\"188\"/><path class=\"dimline\" d=\"M211 119L215 112L219 119M211 181L215 188L219 181\"/><rect class=\"dimbg\" x=\"191.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"215\" y=\"26\" text-anchor=\"middle\">Ø INT</text></g><g class=\"\" data-cota=\"dpis\"><line class=\"lead\" x1=\"345\" y1=\"114\" x2=\"345\" y2=\"31\"/><line class=\"dimline\" x1=\"345\" y1=\"114\" x2=\"345\" y2=\"186\"/><path class=\"dimline\" d=\"M341 121L345 114L349 121M341 179L345 186L349 179\"/><rect class=\"dimbg\" x=\"310.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"345\" y=\"26\" text-anchor=\"middle\">Ø PISTÓN</text></g><g class=\"\" data-cota=\"dvas\"><line class=\"lead\" x1=\"650\" y1=\"132\" x2=\"650\" y2=\"31\"/><line class=\"dimline\" x1=\"650\" y1=\"132\" x2=\"650\" y2=\"168\"/><path class=\"dimline\" d=\"M646 139L650 132L654 139M646 161L650 168L654 161\"/><rect class=\"dimbg\" x=\"619.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"650\" y=\"26\" text-anchor=\"middle\">Ø VÁST.</text></g><g class=\"\" data-cota=\"lvas\"><line class=\"lead\" x1=\"535\" y1=\"238\" x2=\"535\" y2=\"271\"/><line class=\"dimline\" x1=\"345\" y1=\"238\" x2=\"725\" y2=\"238\"/><path class=\"dimline\" d=\"M352 234L345 238L352 242M718 234L725 238L718 242M345 232V244M725 232V244\"/><rect class=\"dimbg\" x=\"493\" y=\"272\" width=\"84\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"535\" y=\"284\" text-anchor=\"middle\">LONG. ÚTIL</text></g><g class=\"\" data-cota=\"dbuj\"><line class=\"lead\" x1=\"585\" y1=\"132\" x2=\"585\" y2=\"31\"/><line class=\"dimline\" x1=\"585\" y1=\"132\" x2=\"585\" y2=\"168\"/><path class=\"dimline\" d=\"M581 139L585 132L589 139M581 161L585 168L589 161\"/><rect class=\"dimbg\" x=\"557.8\" y=\"14\" width=\"54.400000000000006\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"585\" y=\"26\" text-anchor=\"middle\">Ø BUJE</text></g><g class=\"\" data-cota=\"hor\"><line class=\"lead\" x1=\"84\" y1=\"130\" x2=\"84\" y2=\"31\"/><line class=\"dimline\" x1=\"84\" y1=\"130\" x2=\"84\" y2=\"170\"/><path class=\"dimline\" d=\"M80 137L84 130L88 137M80 163L84 170L88 163\"/><rect class=\"dimbg\" x=\"60.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"84\" y=\"26\" text-anchor=\"middle\">Ø OJO</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "camisa",
+    "nombre": "Camisa",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dint",
+      "nombre": "Ø interior",
+      "cota": "dint",
+      "desde": "Medido en 3 puntos a lo largo de la carrera",
+      "referencia": "Tubo bruñido típico clase H8 (en Ø50: +0,039/0). Rugosidad Ra 0,2 a 0,6 µm.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "vastago",
+    "nombre": "Vástago",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "dvas",
+      "nombre": "Ø vástago",
+      "cota": "dvas",
+      "desde": "Medido en la zona de sello",
+      "referencia": "Superficie cromada Ra 0,1 a 0,3 µm. El diámetro y su tolerancia salen del plano.",
+      "orden": 1
+     },
+     {
+      "id": "lvas",
+      "nombre": "Longitud útil",
+      "cota": "lvas",
+      "desde": "Del extremo roscado al pistón",
+      "referencia": "Según plano.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "piston",
+    "nombre": "Pistón y émbolo",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "dpis",
+      "nombre": "Ø exterior",
+      "cota": "dpis",
+      "desde": "Medido en el diámetro de las bandas guía",
+      "referencia": "Sin valor general: depende del sello y la guía del plano.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "tapaD",
+    "nombre": "Tapa delantera",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "dbuj",
+      "nombre": "Ø buje guía",
+      "cota": "dbuj",
+      "desde": "Medido en el buje guía",
+      "referencia": "Juego buje–vástago típico de ajuste H8/f7.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "tapaT",
+    "nombre": "Tapa trasera",
+    "orden": 5,
+    "medidas": [
+     {
+      "id": "hor",
+      "nombre": "Ø ojo de horquilla",
+      "cota": "hor",
+      "desde": "Medido en el ojo de la horquilla",
+      "referencia": "Según plano del pivote.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "eje",
+  "nombre": "Eje con muñones",
+  "descripcion": "Muñones, cuerpo y chavetero",
+  "orden": 2,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Eje con muñones\"><path class=\"cl\" d=\"M30 150H735\"/>\n   <rect class=\"part \" data-z=\"muñonA\" x=\"60\" y=\"120\" width=\"160\" height=\"60\" rx=\"2\"/><path class=\"thin\" d=\"M70 120v60M210 120v60\" opacity=\".5\"/>\n   <rect class=\"part alt\" data-z=\"cuerpo\" x=\"220\" y=\"105\" width=\"320\" height=\"90\" rx=\"2\"/><rect class=\"part \" data-z=\"muñonB\" x=\"540\" y=\"120\" width=\"160\" height=\"60\" rx=\"2\"/><path class=\"thin\" d=\"M550 120v60M690 120v60\" opacity=\".5\"/>\n   <rect class=\"part \" data-z=\"chavetero\" x=\"70\" y=\"96\" width=\"88\" height=\"24\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"140\" y=\"212\" text-anchor=\"middle\">Muñón A</text><text class=\"lbl\" x=\"380\" y=\"222\" text-anchor=\"middle\">Cuerpo central</text><text class=\"lbl\" x=\"620\" y=\"212\" text-anchor=\"middle\">Muñón B</text><text class=\"lbl\" x=\"138\" y=\"90\" text-anchor=\"middle\">Chavetero</text><g class=\"dims\"><g class=\"\" data-cota=\"dma\"><line class=\"lead\" x1=\"190\" y1=\"120\" x2=\"190\" y2=\"31\"/><line class=\"dimline\" x1=\"190\" y1=\"120\" x2=\"190\" y2=\"180\"/><path class=\"dimline\" d=\"M186 127L190 120L194 127M186 173L190 180L194 173\"/><rect class=\"dimbg\" x=\"173.9\" y=\"14\" width=\"32.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"190\" y=\"26\" text-anchor=\"middle\">Ø A</text></g><g class=\"\" data-cota=\"dcu\"><line class=\"lead\" x1=\"380\" y1=\"105\" x2=\"380\" y2=\"31\"/><line class=\"dimline\" x1=\"380\" y1=\"105\" x2=\"380\" y2=\"195\"/><path class=\"dimline\" d=\"M376 112L380 105L384 112M376 188L380 195L384 188\"/><rect class=\"dimbg\" x=\"345.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"26\" text-anchor=\"middle\">Ø CUERPO</text></g><g class=\"\" data-cota=\"dmb\"><line class=\"lead\" x1=\"620\" y1=\"120\" x2=\"620\" y2=\"31\"/><line class=\"dimline\" x1=\"620\" y1=\"120\" x2=\"620\" y2=\"180\"/><path class=\"dimline\" d=\"M616 127L620 120L624 127M616 173L620 180L624 173\"/><rect class=\"dimbg\" x=\"603.9\" y=\"14\" width=\"32.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"620\" y=\"26\" text-anchor=\"middle\">Ø B</text></g><g class=\"\" data-cota=\"ach\"><line class=\"lead\" x1=\"79\" y1=\"84\" x2=\"56\" y2=\"31\"/><line class=\"dimline\" x1=\"70\" y1=\"84\" x2=\"88\" y2=\"84\"/><path class=\"dimline\" d=\"M77 80L70 84L77 88M81 80L88 84L81 88M70 78V90M88 78V90\"/><rect class=\"dimbg\" x=\"32.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"56\" y=\"26\" text-anchor=\"middle\">ANCHO</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "muñonA",
+    "nombre": "Muñón A (lado acople)",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dma",
+      "nombre": "Ø muñón A",
+      "cota": "dma",
+      "desde": "Medido en 2 planos a 90°",
+      "referencia": "Asiento de rodamiento típico k5 o m5; lo fija el catálogo del rodamiento. Medir ovalidad y conicidad.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "cuerpo",
+    "nombre": "Cuerpo central",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "dcu",
+      "nombre": "Ø cuerpo",
+      "cota": "dcu",
+      "desde": "Medido al centro del cuerpo",
+      "referencia": "Según plano.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "muñonB",
+    "nombre": "Muñón B (lado libre)",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "dmb",
+      "nombre": "Ø muñón B",
+      "cota": "dmb",
+      "desde": "Medido en 2 planos a 90°",
+      "referencia": "Igual criterio que el muñón A.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "chavetero",
+    "nombre": "Chavetero",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "ach",
+      "nombre": "Ancho de chavetero",
+      "cota": "ach",
+      "desde": "Medido en la boca del chavetero",
+      "referencia": "Ancho según norma de la chaveta usada.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "bomba",
+  "nombre": "Bomba de engranajes",
+  "descripcion": "Carcasa, engranajes y eje",
+  "orden": 3,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Bomba de engranajes\"><rect class=\"part \" data-z=\"carcasa\" x=\"210\" y=\"60\" width=\"340\" height=\"180\" rx=\"10\"/><path class=\"cav\" d=\"M380 114A60 60 0 1 0 380 186A60 60 0 1 0 380 114Z\" style=\"pointer-events:none\"/>\n   <rect class=\"thin\" x=\"172\" y=\"132\" width=\"38\" height=\"36\"/><rect class=\"thin\" x=\"550\" y=\"132\" width=\"38\" height=\"36\"/>\n   <path class=\"part alt\" data-z=\"engM\" d=\"M376.0 150.0L383.8 154.4L382.9 160.8L374.1 162.7L370.1 172.0L374.7 179.7L370.6 184.8L362.1 182.1L354.0 188.1L354.1 197.1L348.1 199.5L342.0 192.8L332.0 194.0L327.6 201.8L321.2 200.9L319.3 192.1L310.0 188.1L302.3 192.7L297.2 188.6L299.9 180.1L293.9 172.0L284.9 172.1L282.5 166.1L289.2 160.0L288.0 150.0L280.2 145.6L281.1 139.2L289.9 137.3L293.9 128.0L289.3 120.3L293.4 115.2L301.9 117.9L310.0 111.9L309.9 102.9L315.9 100.5L322.0 107.2L332.0 106.0L336.4 98.2L342.8 99.1L344.7 107.9L354.0 111.9L361.7 107.3L366.8 111.4L364.1 119.9L370.1 128.0L379.1 127.9L381.5 133.9L374.8 140.0Z\"/><path class=\"part alt\" data-z=\"engC\" d=\"M470.5 161.4L476.9 167.6L474.3 173.6L465.4 173.2L459.1 181.1L461.6 189.7L456.3 193.6L448.8 188.8L439.4 192.5L437.2 201.2L430.7 201.9L426.6 194.0L416.6 192.5L410.4 198.9L404.4 196.3L404.8 187.4L396.9 181.1L388.3 183.6L384.4 178.3L389.2 170.8L385.5 161.4L376.8 159.2L376.1 152.7L384.0 148.6L385.5 138.6L379.1 132.4L381.7 126.4L390.6 126.8L396.9 118.9L394.4 110.3L399.7 106.4L407.2 111.2L416.6 107.5L418.8 98.8L425.3 98.1L429.4 106.0L439.4 107.5L445.6 101.1L451.6 103.7L451.2 112.6L459.1 118.9L467.7 116.4L471.6 121.7L466.8 129.2L470.5 138.6L479.2 140.8L479.9 147.3L472.0 151.4Z\"/>\n   <circle class=\"part\" data-z=\"eje\" cx=\"332\" cy=\"150\" r=\"14\"/><path class=\"thin\" d=\"M326 137h12\" stroke-width=\"2\"/><circle class=\"thin\" cx=\"428\" cy=\"150\" r=\"12\"/>\n   <text class=\"lbl\" x=\"191\" y=\"124\" text-anchor=\"middle\">Entrada</text><text class=\"lbl\" x=\"569\" y=\"124\" text-anchor=\"middle\">Salida</text><g class=\"dims\"><g class=\"\" data-cota=\"dcam\"><line class=\"lead\" x1=\"332\" y1=\"226\" x2=\"332\" y2=\"271\"/><line class=\"dimline\" x1=\"272\" y1=\"226\" x2=\"392\" y2=\"226\"/><path class=\"dimline\" d=\"M279 222L272 226L279 230M385 222L392 226L385 230M272 220V232M392 220V232\"/><rect class=\"dimbg\" x=\"297.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"332\" y=\"284\" text-anchor=\"middle\">Ø CÁMARA</text></g><g class=\"\" data-cota=\"hpun\"><line class=\"lead\" x1=\"332\" y1=\"94\" x2=\"332\" y2=\"31\"/><circle class=\"dimdot\" cx=\"332\" cy=\"94\" r=\"3.2\"/><rect class=\"dimbg\" x=\"301.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"332\" y=\"26\" text-anchor=\"middle\">HOLGURA</text></g><g class=\"\" data-cota=\"dem\"><line class=\"lead\" x1=\"296\" y1=\"114\" x2=\"225\" y2=\"31\"/><circle class=\"dimdot\" cx=\"296\" cy=\"114\" r=\"3.2\"/><rect class=\"dimbg\" x=\"175.6\" y=\"14\" width=\"98.80000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"225\" y=\"26\" text-anchor=\"middle\">Ø EXT MOTRIZ</text></g><g class=\"\" data-cota=\"dec\"><line class=\"lead\" x1=\"464\" y1=\"114\" x2=\"510\" y2=\"31\"/><circle class=\"dimdot\" cx=\"464\" cy=\"114\" r=\"3.2\"/><rect class=\"dimbg\" x=\"449.5\" y=\"14\" width=\"121\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"510\" y=\"26\" text-anchor=\"middle\">Ø EXT CONDUCIDO</text></g><g class=\"\" data-cota=\"deje\"><line class=\"lead\" x1=\"318\" y1=\"150\" x2=\"85.5\" y2=\"150\"/><circle class=\"dimdot\" cx=\"318\" cy=\"150\" r=\"3.2\"/><rect class=\"dimbg\" x=\"38.5\" y=\"142\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"62\" y=\"154\" text-anchor=\"middle\">Ø EJE</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "carcasa",
+    "nombre": "Carcasa (cámara)",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dcam",
+      "nombre": "Ø cámara de engranajes",
+      "cota": "dcam",
+      "desde": "Medido en la cámara, en 2 planos",
+      "referencia": "Holgura punta de diente a cámara: nueva ≈ 0,13 a 0,18 mm; con 0,25 a 0,38 mm la bomba rinde cerca de 30 a 40 %.",
+      "orden": 1
+     },
+     {
+      "id": "hpun",
+      "nombre": "Holgura punta–cámara",
+      "cota": "hpun",
+      "desde": "Entre la punta del diente y la pared de la cámara",
+      "referencia": "Nueva ≈ 0,13 a 0,18 mm. Desde 0,25 mm hay pérdida clara de caudal.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "engM",
+    "nombre": "Engranaje motriz",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "dem",
+      "nombre": "Ø exterior",
+      "cota": "dem",
+      "desde": "Medido sobre las puntas de los dientes",
+      "referencia": "Según plano de la bomba.",
+      "orden": 1
+     },
+     {
+      "id": "axm",
+      "nombre": "Espesor (juego axial)",
+      "cota": null,
+      "desde": "Se mide en la vista lateral: cara del engranaje contra la brida",
+      "referencia": "Nuevo: cara a ras de la brida (hasta +0,03 mm). 0,13 a 0,18 mm por debajo ya baja el rendimiento.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "engC",
+    "nombre": "Engranaje conducido",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "dec",
+      "nombre": "Ø exterior",
+      "cota": "dec",
+      "desde": "Medido sobre las puntas de los dientes",
+      "referencia": "Según plano de la bomba.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "eje",
+    "nombre": "Eje motriz",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "deje",
+      "nombre": "Ø eje en cojinete",
+      "cota": "deje",
+      "desde": "Medido en la zona del cojinete, 2 planos",
+      "referencia": "Holgura eje–cojinete: nueva ≈ 0,05 a 0,08 mm; más holgura es desgaste. El cojinete suele ovalarse.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "reductor",
+  "nombre": "Reductor de engranajes",
+  "descripcion": "Carcasa, ejes, piñón, corona y rodamientos",
+  "orden": 4,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Reductor de engranajes\"><rect class=\"part \" data-z=\"carcasa\" x=\"150\" y=\"70\" width=\"410\" height=\"192\" rx=\"4\"/><rect class=\"cav\" x=\"172\" y=\"88\" width=\"366\" height=\"156\"/>\n   <rect class=\"part alt\" data-z=\"ejeE\" x=\"70\" y=\"108\" width=\"350\" height=\"24\" rx=\"2\"/><rect class=\"part alt\" data-z=\"ejeS\" x=\"172\" y=\"182\" width=\"548\" height=\"24\" rx=\"2\"/>\n   <rect class=\"part \" data-z=\"pinon\" x=\"300\" y=\"98\" width=\"60\" height=\"44\" rx=\"2\"/><path class=\"thin\" d=\"M312 98v44M324 98v44M336 98v44M348 98v44\" opacity=\".6\"/>\n   <rect class=\"part \" data-z=\"corona\" x=\"290\" y=\"142\" width=\"80\" height=\"104\" rx=\"2\"/><path class=\"thin\" d=\"M302 142v104M314 142v104M326 142v104M338 142v104M350 142v104\" opacity=\".6\"/>\n   <rect class=\"part alt\" data-z=\"rodam\" x=\"176\" y=\"168\" width=\"32\" height=\"52\" rx=\"2\"/><rect class=\"part alt\" data-z=\"rodam\" x=\"500\" y=\"168\" width=\"32\" height=\"52\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"235\" y=\"58\" text-anchor=\"middle\">Carcasa</text><text class=\"lbl\" x=\"62\" y=\"98\" text-anchor=\"middle\">Entrada</text><text class=\"lbl\" x=\"660\" y=\"172\" text-anchor=\"middle\">Salida</text><g class=\"dims\"><g class=\"\" data-cota=\"dalo\"><line class=\"lead\" x1=\"185\" y1=\"222\" x2=\"150\" y2=\"271\"/><line class=\"dimline\" x1=\"185\" y1=\"166\" x2=\"185\" y2=\"222\"/><path class=\"dimline\" d=\"M181 173L185 166L189 173M181 215L185 222L189 215\"/><rect class=\"dimbg\" x=\"119.1\" y=\"272\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"150\" y=\"284\" text-anchor=\"middle\">Ø ALOJ.</text></g><g class=\"\" data-cota=\"dee\"><line class=\"lead\" x1=\"100\" y1=\"108\" x2=\"135\" y2=\"31\"/><line class=\"dimline\" x1=\"100\" y1=\"108\" x2=\"100\" y2=\"132\"/><path class=\"dimline\" d=\"M96 115L100 108L104 115M96 125L100 132L104 125\"/><rect class=\"dimbg\" x=\"104.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"135\" y=\"26\" text-anchor=\"middle\">Ø EJE E</text></g><g class=\"\" data-cota=\"jfl\"><line class=\"lead\" x1=\"362\" y1=\"142\" x2=\"430\" y2=\"31\"/><circle class=\"dimdot\" cx=\"362\" cy=\"142\" r=\"3.2\"/><rect class=\"dimbg\" x=\"376.9\" y=\"14\" width=\"106.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"430\" y=\"26\" text-anchor=\"middle\">JUEGO FLANCOS</text></g><g class=\"\" data-cota=\"dpi\"><line class=\"lead\" x1=\"330\" y1=\"98\" x2=\"320\" y2=\"31\"/><circle class=\"dimdot\" cx=\"330\" cy=\"98\" r=\"3.2\"/><rect class=\"dimbg\" x=\"289.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"320\" y=\"26\" text-anchor=\"middle\">Ø PIÑÓN</text></g><g class=\"\" data-cota=\"dco\"><line class=\"lead\" x1=\"368\" y1=\"232\" x2=\"385\" y2=\"271\"/><circle class=\"dimdot\" cx=\"368\" cy=\"232\" r=\"3.2\"/><rect class=\"dimbg\" x=\"350.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"385\" y=\"284\" text-anchor=\"middle\">Ø CORONA</text></g><g class=\"\" data-cota=\"des\"><line class=\"lead\" x1=\"650\" y1=\"206\" x2=\"650\" y2=\"271\"/><line class=\"dimline\" x1=\"650\" y1=\"182\" x2=\"650\" y2=\"206\"/><path class=\"dimline\" d=\"M646 189L650 182L654 189M646 199L650 206L654 199\"/><rect class=\"dimbg\" x=\"619.1\" y=\"272\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"650\" y=\"284\" text-anchor=\"middle\">Ø EJE S</text></g><g class=\"\" data-cota=\"das\"><line class=\"lead\" x1=\"228\" y1=\"206\" x2=\"245\" y2=\"271\"/><line class=\"dimline\" x1=\"228\" y1=\"182\" x2=\"228\" y2=\"206\"/><path class=\"dimline\" d=\"M224 189L228 182L232 189M224 199L228 206L232 199\"/><rect class=\"dimbg\" x=\"206.7\" y=\"272\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"245\" y=\"284\" text-anchor=\"middle\">Ø ASIENTO</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "carcasa",
+    "nombre": "Carcasa",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dalo",
+      "nombre": "Ø alojamiento de rodamiento",
+      "cota": "dalo",
+      "desde": "Medido en el alojamiento, 2 planos",
+      "referencia": "Tolerancia típica H7 o la que indique el catálogo del rodamiento.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "ejeE",
+    "nombre": "Eje de entrada",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "dee",
+      "nombre": "Ø eje de entrada",
+      "cota": "dee",
+      "desde": "Medido en el asiento del rodamiento",
+      "referencia": "Asiento típico k5 o m5 según el rodamiento.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "pinon",
+    "nombre": "Piñón",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "jfl",
+      "nombre": "Juego entre flancos",
+      "cota": "jfl",
+      "desde": "Con el eje de entrada bloqueado, reloj comparador en el flanco",
+      "referencia": "Medir en 3 posiciones a 120°. Si crece cerca de 2,5 veces sobre su valor base, hay desgaste de flanco. El valor máximo lo da el fabricante.",
+      "orden": 1
+     },
+     {
+      "id": "dpi",
+      "nombre": "Ø exterior del piñón",
+      "cota": "dpi",
+      "desde": "Medido sobre las puntas",
+      "referencia": "Según plano.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "corona",
+    "nombre": "Corona",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "dco",
+      "nombre": "Ø exterior de la corona",
+      "cota": "dco",
+      "desde": "Medido sobre las puntas",
+      "referencia": "Según plano. Revisar picaduras y desgaste del flanco.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "ejeS",
+    "nombre": "Eje de salida",
+    "orden": 5,
+    "medidas": [
+     {
+      "id": "des",
+      "nombre": "Ø eje de salida",
+      "cota": "des",
+      "desde": "Medido fuera de la carcasa, donde asienta el sello",
+      "referencia": "Marca de sello profunda indica reemplazo o recuperación.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "rodam",
+    "nombre": "Rodamientos de salida",
+    "orden": 6,
+    "medidas": [
+     {
+      "id": "das",
+      "nombre": "Ø asiento del rodamiento",
+      "cota": "das",
+      "desde": "Medido en el asiento sobre el eje",
+      "referencia": "Asiento típico k5 o m5; si gira en el eje, está desgastado.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "buje",
+  "nombre": "Buje y casquillo",
+  "descripcion": "Alojamiento, buje y eje",
+  "orden": 5,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Buje y casquillo\"><path class=\"cl\" d=\"M330 150H735\"/>\n   <rect class=\"part \" data-z=\"aloj\" x=\"400\" y=\"70\" width=\"260\" height=\"42\" rx=\"0\"/><rect class=\"part \" data-z=\"aloj\" x=\"400\" y=\"188\" width=\"260\" height=\"42\" rx=\"0\"/>\n   <rect class=\"part alt\" data-z=\"buje\" x=\"420\" y=\"112\" width=\"220\" height=\"18\" rx=\"1\"/><rect class=\"part alt\" data-z=\"buje\" x=\"420\" y=\"170\" width=\"220\" height=\"18\" rx=\"1\"/>\n   <rect class=\"part \" data-z=\"eje\" x=\"330\" y=\"134\" width=\"400\" height=\"32\" rx=\"1\"/>\n   <text class=\"lbl\" x=\"350\" y=\"92\" text-anchor=\"middle\">Alojamiento</text><text class=\"lbl\" x=\"378\" y=\"124\" text-anchor=\"middle\">Buje</text><text class=\"lbl\" x=\"352\" y=\"184\" text-anchor=\"middle\">Eje</text><g class=\"dims\"><g class=\"\" data-cota=\"dib\"><line class=\"lead\" x1=\"450\" y1=\"130\" x2=\"450\" y2=\"31\"/><line class=\"dimline\" x1=\"450\" y1=\"130\" x2=\"450\" y2=\"170\"/><path class=\"dimline\" d=\"M446 137L450 130L454 137M446 163L450 170L454 163\"/><rect class=\"dimbg\" x=\"426.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"450\" y=\"26\" text-anchor=\"middle\">Ø INT</text></g><g class=\"\" data-cota=\"deb\"><line class=\"lead\" x1=\"530\" y1=\"112\" x2=\"530\" y2=\"31\"/><line class=\"dimline\" x1=\"530\" y1=\"112\" x2=\"530\" y2=\"188\"/><path class=\"dimline\" d=\"M526 119L530 112L534 119M526 181L530 188L534 181\"/><rect class=\"dimbg\" x=\"506.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"26\" text-anchor=\"middle\">Ø EXT</text></g><g class=\"\" data-cota=\"dal\"><line class=\"lead\" x1=\"610\" y1=\"112\" x2=\"610\" y2=\"31\"/><line class=\"dimline\" x1=\"610\" y1=\"112\" x2=\"610\" y2=\"188\"/><path class=\"dimline\" d=\"M606 119L610 112L614 119M606 181L610 188L614 181\"/><rect class=\"dimbg\" x=\"579.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"610\" y=\"26\" text-anchor=\"middle\">Ø ALOJ.</text></g><g class=\"\" data-cota=\"dej\"><line class=\"lead\" x1=\"700\" y1=\"134\" x2=\"700\" y2=\"31\"/><line class=\"dimline\" x1=\"700\" y1=\"134\" x2=\"700\" y2=\"166\"/><path class=\"dimline\" d=\"M696 141L700 134L704 141M696 159L700 166L704 159\"/><rect class=\"dimbg\" x=\"676.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"700\" y=\"26\" text-anchor=\"middle\">Ø EJE</text></g><g class=\"\" data-cota=\"lb\"><line class=\"lead\" x1=\"530\" y1=\"252\" x2=\"530\" y2=\"271\"/><line class=\"dimline\" x1=\"420\" y1=\"252\" x2=\"640\" y2=\"252\"/><path class=\"dimline\" d=\"M427 248L420 252L427 256M633 248L640 252L633 256M420 246V258M640 246V258\"/><rect class=\"dimbg\" x=\"495.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"284\" text-anchor=\"middle\">LONGITUD</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "aloj",
+    "nombre": "Alojamiento",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dal",
+      "nombre": "Ø alojamiento",
+      "cota": "dal",
+      "desde": "Medido en el alojamiento, 2 planos",
+      "referencia": "Tolerancia típica H7. Rugosidad del alojamiento Ra ≤ 3,2 µm.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "buje",
+    "nombre": "Buje",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "dib",
+      "nombre": "Ø interior",
+      "cota": "dib",
+      "desde": "Medido con el buje ya montado",
+      "referencia": "Tras el montaje a presión queda H7 (H8 si el Ø supera 50 mm).",
+      "orden": 1
+     },
+     {
+      "id": "deb",
+      "nombre": "Ø exterior",
+      "cota": "deb",
+      "desde": "Medido antes de montar",
+      "referencia": "Montaje a presión típico H7/p6 (interferencia ligera).",
+      "orden": 2
+     },
+     {
+      "id": "lb",
+      "nombre": "Longitud",
+      "cota": "lb",
+      "desde": "De cara a cara del buje",
+      "referencia": "Según plano.",
+      "orden": 3
+     }
+    ]
+   },
+   {
+    "id": "eje",
+    "nombre": "Eje",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "dej",
+      "nombre": "Ø eje",
+      "cota": "dej",
+      "desde": "Medido en la zona del buje, 2 planos",
+      "referencia": "Eje típico f7, rugosidad Ra ≤ 0,6 µm. Juego de trabajo H7/f7 o H8/f7.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "piston",
+  "nombre": "Pistón con aros",
+  "descripcion": "Cuerpo, ranura de sello, bandas guía y agujero",
+  "orden": 6,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Pistón con aros\"><path class=\"cl\" d=\"M250 150H510\"/>\n   <rect class=\"part alt\" data-z=\"cuerpo\" x=\"280\" y=\"70\" width=\"200\" height=\"160\" rx=\"3\"/><rect class=\"cav\" x=\"280\" y=\"125\" width=\"200\" height=\"50\"/>\n   <rect class=\"part \" data-z=\"ranura\" x=\"360\" y=\"70\" width=\"40\" height=\"20\" rx=\"0\"/><rect class=\"part \" data-z=\"ranura\" x=\"360\" y=\"210\" width=\"40\" height=\"20\" rx=\"0\"/>\n   <rect class=\"part \" data-z=\"guia\" x=\"290\" y=\"70\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"440\" y=\"70\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"290\" y=\"221\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"440\" y=\"221\" width=\"30\" height=\"9\" rx=\"0\"/>\n   <path class=\"thin\" d=\"M280 125h200M280 175h200\" stroke-dasharray=\"3 3\"/>\n   <rect class=\"part hole\" data-z=\"agujero\" x=\"280\" y=\"125\" width=\"200\" height=\"50\" rx=\"0\"/>\n   <text class=\"lbl\" x=\"380\" y=\"108\" text-anchor=\"middle\">Cuerpo</text><text class=\"lbl\" x=\"380\" y=\"206\" text-anchor=\"middle\">Ranura</text><text class=\"lbl\" x=\"160\" y=\"134\" text-anchor=\"middle\">Eje del vástago</text><g class=\"dims\"><g class=\"\" data-cota=\"dpx\"><line class=\"lead\" x1=\"510\" y1=\"70\" x2=\"565\" y2=\"31\"/><line class=\"dimline\" x1=\"510\" y1=\"70\" x2=\"510\" y2=\"230\"/><path class=\"dimline\" d=\"M506 77L510 70L514 77M506 223L510 230L514 223\"/><rect class=\"dimbg\" x=\"530.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"565\" y=\"26\" text-anchor=\"middle\">Ø PISTÓN</text></g><g class=\"\" data-cota=\"lpx\"><line class=\"lead\" x1=\"380\" y1=\"262\" x2=\"380\" y2=\"271\"/><line class=\"dimline\" x1=\"280\" y1=\"262\" x2=\"480\" y2=\"262\"/><path class=\"dimline\" d=\"M287 258L280 262L287 266M473 258L480 262L473 266M280 256V268M480 256V268\"/><rect class=\"dimbg\" x=\"345.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"284\" text-anchor=\"middle\">LONGITUD</text></g><g class=\"\" data-cota=\"arn\"><line class=\"lead\" x1=\"380\" y1=\"50\" x2=\"380\" y2=\"31\"/><line class=\"dimline\" x1=\"360\" y1=\"50\" x2=\"400\" y2=\"50\"/><path class=\"dimline\" d=\"M367 46L360 50L367 54M393 46L400 50L393 54M360 44V56M400 44V56\"/><rect class=\"dimbg\" x=\"330.6\" y=\"14\" width=\"98.80000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"26\" text-anchor=\"middle\">ANCHO RANURA</text></g><g class=\"\" data-cota=\"dfr\"><line class=\"lead\" x1=\"380\" y1=\"90\" x2=\"475\" y2=\"31\"/><circle class=\"dimdot\" cx=\"380\" cy=\"90\" r=\"3.2\"/><rect class=\"dimbg\" x=\"444.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"475\" y=\"26\" text-anchor=\"middle\">Ø FONDO</text></g><g class=\"\" data-cota=\"agu\"><line class=\"lead\" x1=\"305\" y1=\"50\" x2=\"240\" y2=\"31\"/><line class=\"dimline\" x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\"/><path class=\"dimline\" d=\"M297 46L290 50L297 54M313 46L320 50L313 54M290 44V56M320 44V56\"/><rect class=\"dimbg\" x=\"198\" y=\"14\" width=\"84\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"240\" y=\"26\" text-anchor=\"middle\">ANCHO GUÍA</text></g><g class=\"\" data-cota=\"dag\"><line class=\"lead\" x1=\"300\" y1=\"150\" x2=\"138.3\" y2=\"150\"/><line class=\"dimline\" x1=\"300\" y1=\"125\" x2=\"300\" y2=\"175\"/><path class=\"dimline\" d=\"M296 132L300 125L304 132M296 168L300 175L304 168\"/><rect class=\"dimbg\" x=\"61.699999999999996\" y=\"142\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"100\" y=\"154\" text-anchor=\"middle\">Ø AGUJERO</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "cuerpo",
+    "nombre": "Cuerpo del pistón",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "dpx",
+      "nombre": "Ø exterior",
+      "cota": "dpx",
+      "desde": "Medido sobre el cuerpo, 2 planos",
+      "referencia": "Sin valor general: depende del sello y la guía del plano.",
+      "orden": 1
+     },
+     {
+      "id": "lpx",
+      "nombre": "Longitud total",
+      "cota": "lpx",
+      "desde": "De cara a cara del pistón",
+      "referencia": "Según plano.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "ranura",
+    "nombre": "Ranura del sello",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "arn",
+      "nombre": "Ancho de ranura",
+      "cota": "arn",
+      "desde": "Medido en la ranura central",
+      "referencia": "Según el perfil de sello. Ranura ensanchada deja pasar aceite.",
+      "orden": 1
+     },
+     {
+      "id": "dfr",
+      "nombre": "Ø fondo de ranura",
+      "cota": "dfr",
+      "desde": "Medido en el fondo de la ranura",
+      "referencia": "Según el perfil de sello.",
+      "orden": 2
+     }
+    ]
+   },
+   {
+    "id": "guia",
+    "nombre": "Banda guía",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "agu",
+      "nombre": "Ancho de banda guía",
+      "cota": "agu",
+      "desde": "Medido en la banda guía",
+      "referencia": "Si la banda está desgastada, el pistón roza la camisa.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "agujero",
+    "nombre": "Agujero del vástago",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "dag",
+      "nombre": "Ø agujero",
+      "cota": "dag",
+      "desde": "Medido en el cubo del pistón",
+      "referencia": "Según plano. Revisar la rosca y el asiento.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "horq",
+  "nombre": "Horquilla de vástago",
+  "descripcion": "Cuerpo, orejas, perno y rosca",
+  "orden": 7,
+  "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Horquilla de vástago\"><path class=\"cl\" d=\"M40 150H570\"/>\n   <rect class=\"part alt\" data-z=\"rosca\" x=\"60\" y=\"124\" width=\"240\" height=\"52\" rx=\"2\"/><path class=\"thin\" d=\"M80 124l8 52M100 124l8 52M120 124l8 52M140 124l8 52M160 124l8 52M180 124l8 52M200 124l8 52M220 124l8 52\" opacity=\".5\"/>\n   <rect class=\"part \" data-z=\"cuerpo\" x=\"300\" y=\"90\" width=\"80\" height=\"120\" rx=\"2\"/>\n   <rect class=\"part alt\" data-z=\"orejas\" x=\"380\" y=\"90\" width=\"160\" height=\"42\" rx=\"2\"/><rect class=\"part alt\" data-z=\"orejas\" x=\"380\" y=\"168\" width=\"160\" height=\"42\" rx=\"2\"/>\n   <rect class=\"part \" data-z=\"perno\" x=\"470\" y=\"76\" width=\"30\" height=\"148\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"180\" y=\"108\" text-anchor=\"middle\">Rosca</text><text class=\"lbl\" x=\"340\" y=\"78\" text-anchor=\"middle\">Cuerpo</text><text class=\"lbl\" x=\"540\" y=\"236\" text-anchor=\"start\">Orejas</text><g class=\"dims\"><g class=\"\" data-cota=\"drs\"><line class=\"lead\" x1=\"120\" y1=\"124\" x2=\"120\" y2=\"31\"/><line class=\"dimline\" x1=\"120\" y1=\"124\" x2=\"120\" y2=\"176\"/><path class=\"dimline\" d=\"M116 131L120 124L124 131M116 169L120 176L124 169\"/><rect class=\"dimbg\" x=\"89.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"120\" y=\"26\" text-anchor=\"middle\">Ø ROSCA</text></g><g class=\"\" data-cota=\"abe\"><line class=\"lead\" x1=\"430\" y1=\"132\" x2=\"430\" y2=\"31\"/><line class=\"dimline\" x1=\"430\" y1=\"132\" x2=\"430\" y2=\"168\"/><path class=\"dimline\" d=\"M426 139L430 132L434 139M426 161L430 168L434 161\"/><rect class=\"dimbg\" x=\"395.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"430\" y=\"26\" text-anchor=\"middle\">ABERTURA</text></g><g class=\"\" data-cota=\"dao\"><line class=\"lead\" x1=\"485\" y1=\"238\" x2=\"485\" y2=\"271\"/><line class=\"dimline\" x1=\"464\" y1=\"238\" x2=\"506\" y2=\"238\"/><path class=\"dimline\" d=\"M471 234L464 238L471 242M499 234L506 238L499 242M464 232V244M506 232V244\"/><rect class=\"dimbg\" x=\"446.7\" y=\"272\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"485\" y=\"284\" text-anchor=\"middle\">Ø AGUJERO</text></g><g class=\"\" data-cota=\"dpe\"><line class=\"lead\" x1=\"485\" y1=\"64\" x2=\"530\" y2=\"31\"/><line class=\"dimline\" x1=\"470\" y1=\"64\" x2=\"500\" y2=\"64\"/><path class=\"dimline\" d=\"M477 60L470 64L477 68M493 60L500 64L493 68M470 58V70M500 58V70\"/><rect class=\"dimbg\" x=\"499.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"26\" text-anchor=\"middle\">Ø PERNO</text></g></g></svg>",
+  "zonas": [
+   {
+    "id": "rosca",
+    "nombre": "Rosca del vástago",
+    "orden": 1,
+    "medidas": [
+     {
+      "id": "drs",
+      "nombre": "Ø exterior de rosca",
+      "cota": "drs",
+      "desde": "Medido en la parte sana de la rosca",
+      "referencia": "Según plano. Revisar hilos aplastados o corridos.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "cuerpo",
+    "nombre": "Cuerpo de la horquilla",
+    "orden": 2,
+    "medidas": [
+     {
+      "id": "abe",
+      "nombre": "Abertura entre orejas",
+      "cota": "abe",
+      "desde": "Medido entre las caras internas de las orejas",
+      "referencia": "Según plano del pivote.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "orejas",
+    "nombre": "Orejas (agujero)",
+    "orden": 3,
+    "medidas": [
+     {
+      "id": "dao",
+      "nombre": "Ø agujero de oreja",
+      "cota": "dao",
+      "desde": "Medido en ambas orejas",
+      "referencia": "Ajuste de pivote típico H8/f7; H11/c11 si hay mucha suciedad.",
+      "orden": 1
+     }
+    ]
+   },
+   {
+    "id": "perno",
+    "nombre": "Perno",
+    "orden": 4,
+    "medidas": [
+     {
+      "id": "dpe",
+      "nombre": "Ø perno",
+      "cota": "dpe",
+      "desde": "Medido en la zona de las orejas",
+      "referencia": "Perno típico f7 o f8. Juego alto produce golpeteo.",
+      "orden": 1
+     }
+    ]
+   }
+  ]
+ }
+]
