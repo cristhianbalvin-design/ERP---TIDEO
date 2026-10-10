@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { rpc, from, queryCalls, tableData } = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), queryCalls: [], tableData: {} }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc, from }) }));
-import { cargarRecepcionesOC, registrarRecepcionOC } from '../src/services/recepcionOCService.js';
+import { cargarRecepcionesOC, cargarUbicacionesAlmacen, registrarRecepcionOC } from '../src/services/recepcionOCService.js';
 
 describe('registrarRecepcionOC', () => {
   beforeEach(() => {
@@ -12,10 +12,10 @@ describe('registrarRecepcionOC', () => {
       const query = { table, filters: [] };
       queryCalls.push(query);
       const builder = {
-        select: () => builder,
+        select: columns => { query.columns = columns; return builder; },
         eq: (column, value) => { query.filters.push(['eq', column, value]); return builder; },
         in: (column, values) => { query.filters.push(['in', column, [...values]]); return builder; },
-        order: () => builder,
+        order: (column, options) => { query.order = [column, options]; return builder; },
         then: (resolve, reject) => Promise.resolve({ data: tableData[table] || [], error: null }).then(resolve, reject),
       };
       return builder;
@@ -50,5 +50,15 @@ describe('registrarRecepcionOC', () => {
     tableData.ordenes_compra = [];
     await cargarRecepcionesOC({ empresaId: 'e1', sociedadId: 's1' });
     expect(queryCalls.some(query => query.table === 'recepciones')).toBe(false);
+  });
+
+  it('carga destinos activos con el uso y almacén filtrados', async () => {
+    tableData.ubicaciones = [{ id: 'u1', uso: 'cuarentena' }];
+    const resultado = await cargarUbicacionesAlmacen('e1', 'a1');
+    const llamada = queryCalls.find(query => query.table === 'ubicaciones');
+    expect(llamada.filters).toEqual([['eq', 'empresa_id', 'e1'], ['eq', 'almacen_id', 'a1'], ['eq', 'activo', true]]);
+    expect(llamada.columns).toContain('uso');
+    expect(resultado).toEqual(tableData.ubicaciones);
+    expect(llamada).toBeTruthy();
   });
 });

@@ -12,9 +12,10 @@ import { ConfiguracionPage } from '../pages/ConfiguracionPage.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 import { RecepcionOCPage } from '../pages/RecepcionOCPage.jsx';
+import { UbicacionesPage } from '../pages/UbicacionesPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
-  'solicitudes', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas',
+  'solicitudes', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas', 'almacen-ubicaciones',
   'compras-proveedores', 'compras-cotizaciones', 'compras-oc',
   'compras-importaciones', 'compras-recepciones',
   'consolidado', 'finanzas-cxc', 'finanzas-cxp', 'finanzas-tesoreria',
@@ -31,6 +32,7 @@ export function renderSupplyAdministrationRoute(route, context) {
     case 'almacen-reservas': return <PlaceholderPage title="Reserva de Repuestos" subtitle="Reserva de ítems de stock vinculados a una OT específica. Bloquea el ítem hasta consumo o liberación." />;
     case 'almacen-movimientos': return <><AdministrativeAppLinkPage title="Entradas y Salidas" adminRoute="inventario" /><PlaceholderPage title="Entradas & Salidas" /></>;
     case 'almacen-alertas': return <><AdministrativeAppLinkPage title="Stock Mínimos y Alertas" adminRoute="inventario" /><PlaceholderPage title="Stock Mínimos & Alertas" /></>;
+    case 'almacen-ubicaciones': return <UbicacionesPage />;
     case 'compras-proveedores': return <><AdministrativeAppLinkPage title="Proveedores" adminRoute="proveedores" /><PlaceholderPage title="Proveedores" /></>;
     case 'compras-cotizaciones': return <><AdministrativeAppLinkPage title="Cotizaciones Compra" adminRoute="cot_compras" /><PlaceholderPage title="Cotizaciones Compra" /></>;
     case 'compras-oc': return <><AdministrativeAppLinkPage title="Órdenes de Compra" adminRoute="ordenes_compra" /><PlaceholderPage title="Órdenes de Compra" /></>;

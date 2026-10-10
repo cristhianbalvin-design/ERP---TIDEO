@@ -48,6 +48,7 @@ export function armarPayloadRecepcion(oc, lineas, cantidades, ubicaciones) {
 export function lineaHabilitada(linea) { return Boolean(linea?.material_id) && Number(linea?.pendiente) > 0; }
 
 export function ordenarUbicacionesPorJerarquia(ubicaciones = []) {
+  ubicaciones = ubicaciones.filter(item => item.activo !== false);
   const porId = new Map(ubicaciones.map(item => [item.id, item]));
   const hijos = new Map();
   ubicaciones.forEach(item => {
@@ -66,4 +67,12 @@ export function ordenarUbicacionesPorJerarquia(ubicaciones = []) {
   });
   visitar(null, 0, new Set());
   return salida;
+}
+
+export function textoUbicacionDestino(ubicacion) {
+  const base = ubicacion.es_general ? 'General' : `${ubicacion.codigo} · ${ubicacion.nombre}`;
+  const uso = ubicacion.uso || 'almacenaje';
+  if (uso === 'almacenaje') return base;
+  const nombres = { recepcion: 'recepción', cuarentena: 'cuarentena u observados', despacho: 'despacho', merma: 'merma o baja' };
+  return `${base} (${nombres[uso] || uso})`;
 }

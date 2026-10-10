@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { armarPayloadRecepcion, componerObservacion, lineaHabilitada, ordenarUbicacionesPorJerarquia, pendientePorLinea, validarCantidades } from './recepcionOCLogic.js';
+import { armarPayloadRecepcion, componerObservacion, lineaHabilitada, ordenarUbicacionesPorJerarquia, pendientePorLinea, textoUbicacionDestino, validarCantidades } from './recepcionOCLogic.js';
 import { cargarRecepcionesOC, cargarUbicacionesAlmacen, registrarRecepcionOC } from '../../services/recepcionOCService.js';
 
 const mensaje = error => error?.message || 'No se pudo cargar la información.';
@@ -144,7 +144,7 @@ export function RecepcionOCPage() {
             <span className="dx-recepcion-main"><b>{linea.descripcion || 'Línea sin descripción'}</b><small>{linea.codigo || linea.material_id || '—'}</small>{!linea.material_id && <em>Sin material del catálogo: se recibe desde Administración</em>}</span>
             <span><span className="dx-recepcion-label">Pedido</span><span className="dx-recepcion-num">{Number(linea.cantidad) || 0} {linea.unidad || ''}</span></span><span><span className="dx-recepcion-label">Pendiente</span><span className="dx-recepcion-num">{linea.pendiente}</span></span>
             <span><span className="dx-recepcion-label">A recibir</span><input aria-label={`Cantidad a recibir de ${linea.descripcion || 'línea'}`} className={`dx-recepcion-field${bad ? ' is-bad' : ''}`} type="number" min="0" max={linea.pendiente} step="any" value={quantity} disabled={!enabled} onChange={e => setCantidades(actual => ({ ...actual, [linea.idx]: e.target.value }))} /></span>
-            <span><span className="dx-recepcion-label">Ubicación destino</span><select aria-label={`Ubicación destino de ${linea.descripcion || 'línea'}`} className="dx-recepcion-field" value={ubicacionesPorLinea[linea.idx] || ''} disabled={!enabled || cargandoUbicaciones || !almacenId} onChange={e => setUbicacionesPorLinea(actual => ({ ...actual, [linea.idx]: e.target.value }))}><option value="">General (sin asignar)</option>{ubicaciones.map(item => <option key={item.id} value={item.id}>{'　'.repeat(item.nivel)}{item.es_general ? 'General' : `${item.codigo} · ${item.nombre}`}</option>)}</select></span>
+            <span><span className="dx-recepcion-label">Ubicación destino</span><select aria-label={`Ubicación destino de ${linea.descripcion || 'línea'}`} className="dx-recepcion-field" value={ubicacionesPorLinea[linea.idx] || ''} disabled={!enabled || cargandoUbicaciones || !almacenId} onChange={e => setUbicacionesPorLinea(actual => ({ ...actual, [linea.idx]: e.target.value }))}><option value="">General (sin asignar)</option>{ubicaciones.map(item => <option key={item.id} value={item.id}>{'　'.repeat(item.nivel)}{textoUbicacionDestino(item)}</option>)}</select></span>
             <button type="button" aria-label={`Marcar observación en ${linea.descripcion || 'línea'}`} title="Observar línea" className={`dx-recepcion-obs${observadas[linea.idx] ? ' on' : ''}`} disabled={!enabled} onClick={() => setObservadas(actual => ({ ...actual, [linea.idx]: !actual[linea.idx] }))}>!</button>
           </div>;
         })}

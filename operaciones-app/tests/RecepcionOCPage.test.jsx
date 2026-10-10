@@ -30,7 +30,7 @@ describe('RecepcionOCPage', () => {
   it('renderiza la lista y abre el detalle desde una fila accesible', async () => {
     const root = await renderPage();
     expect(root.root.findAllByProps({ role: 'button' })[0].props['aria-label']).toBe('Abrir OC-1');
-    await act(async () => root.root.findAllByProps({ role: 'button' })[0].props.onClick());
+    await act(async () => { root.root.findAllByProps({ role: 'button' })[0].props.onClick(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
     expect(root.root.findByType('h1').children.join('')).toContain('Recepción OC-1');
   });
   it('deshabilita registrar si la cantidad supera el pendiente y si el total es cero', async () => {
@@ -97,6 +97,22 @@ describe('RecepcionOCPage', () => {
     await act(async () => root.root.findByProps({ 'aria-label': 'Marcar observación en Filtro genérico' }).props.onClick());
     await act(async () => root.root.findAllByType('button').find(button => button.children.join('') === 'Registrar recepción').props.onClick());
     expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ observaciones: 'Líneas observadas: Filtro genérico' }));
+  });
+
+  it('muestra destinos activos, anota su uso y conserva tipos directos de zona', async () => {
+    mocks.cargarUbicaciones.mockResolvedValue([
+      { id: 'pos', codigo: 'P-1', nombre: 'Posición zona', tipo: 'posicion', padre_id: 'z', activo: true, uso: 'cuarentena' },
+      { id: 'off', codigo: 'OFF', nombre: 'Inactiva', tipo: 'piso', padre_id: 'z', activo: false },
+      { id: 'z', codigo: 'Z-1', nombre: 'Zona', tipo: 'zona', activo: true },
+      { id: 'piso', codigo: 'F-1', nombre: 'Piso', tipo: 'piso', padre_id: 'z', activo: true },
+    ]);
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByProps({ role: 'button' })[0].props.onClick(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    const selector = root.root.findByProps({ 'aria-label': 'Ubicación destino de Filtro genérico' });
+    const opciones = selector.findAllByType('option');
+    expect(opciones.map(option => option.children.join('').trimStart())).toContain('P-1 · Posición zona (cuarentena u observados)');
+    expect(opciones.map(option => option.children.join('')).some(label => label.includes('Inactiva'))).toBe(false);
+    expect(opciones.map(option => option.children.join('').trimStart())).toContain('F-1 · Piso');
   });
 
   it('muestra el error de registro en role alert y conserva abierto el detalle', async () => {
