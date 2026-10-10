@@ -25,6 +25,7 @@ function IconoAria({ size = 20 }) {
 function etiquetaHerramienta(tool) {
   const nombre = String(tool || '').toLowerCase().replace(/^asistente_/, '');
   const grupos = [
+    [['consultar_manual'], 'Consulté el manual'],
     [['gasto'], 'Revisé Gastos'],
     [['tesoreria'], 'Revisé Tesorería'], [['caja_chica'], 'Revisé Caja chica'], [['cxc'], 'Revisé Cuentas por cobrar'],
     [['cxp'], 'Revisé Cuentas por pagar'], [['cuenta'], 'Revisé Cuentas comerciales'], [['lead'], 'Revisé Leads'],
@@ -57,7 +58,7 @@ function TextoSeguro({ texto }) {
   });
 }
 
-export function AsistenteErpPanel() {
+export function AsistenteErpPanel({ pantallaActiva }) {
   const { empresa, sociedadActiva, authSession, authUser } = useApp();
   const { contexto, solicitudApertura } = useAsistenteErp();
   const [abierto, setAbierto] = useState(false);
@@ -124,7 +125,7 @@ export function AsistenteErpPanel() {
     if (!reintento) { setMensajes(base); setPregunta(''); }
     setError(null); setConsultando(true);
     try {
-      const data = await consultarAsistenteErp({ empresaId: empresa.id, sociedadId, pregunta: contenido, historial, contexto });
+      const data = await consultarAsistenteErp({ empresaId: empresa.id, sociedadId, pregunta: contenido, historial, contexto: { ...contexto, pantalla: pantallaActiva } });
       setMensajes(prev => [...prev, { role: 'assistant', content: String(data?.respuesta || '') , herramientas: Array.isArray(data?.herramientas_usadas) ? data.herramientas_usadas : [] }]);
       if (Number.isFinite(data?.cuota_restante)) setCuotaRestante(data.cuota_restante);
     } catch (cause) {

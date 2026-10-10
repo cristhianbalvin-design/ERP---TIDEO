@@ -31,7 +31,7 @@ Deno.test("esquema de conteo publica las 13 entidades exactas y requiere entidad
 const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const completion = (message: any, usage = { prompt_tokens: 12, completion_tokens: 7 }) => ({ response: jsonResponse({}), data: { choices: [{ message }], usage } });
 
-function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }>; quota?: unknown; extraOrigins?: string; now?: () => number; rpc?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; rpcAll?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }>; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
+function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }>; quota?: unknown; extraOrigins?: string; model?: string | null; now?: () => number; rpc?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; rpcAll?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }>; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const aiCalls: Array<Array<Record<string, unknown>>> = [];
   const supabase: SupabaseLike = {
@@ -49,7 +49,7 @@ function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLi
   };
   const deps: HandlerDeps = {
     createSupabase: () => supabase,
-    env: (name) => name === "ASISTENTE_ORIGENES_EXTRA" ? options.extraOrigins : env(name),
+    env: (name) => name === "ASISTENTE_ORIGENES_EXTRA" ? options.extraOrigins : name === "OPENAI_MODEL_ASISTENTE" && options.model === null ? undefined : name === "OPENAI_MODEL_ASISTENTE" && options.model ? options.model : env(name),
     now: options.now ?? (() => 1000),
     callOpenAI: async (...args) => { aiCalls.push(args[0]); return options.ai ? await options.ai(...args) : completion({ role: "assistant", content: "Consulta completada." }); },
   };
@@ -681,4 +681,43 @@ Deno.test("SYSTEM_PROMPT dirige importes y facturas de compra", () => {
   assert(SYSTEM_PROMPT.includes("prueba asistente_buscar_cxp y asistente_buscar_ordenes_compra"));
   assert(SYSTEM_PROMPT.includes('"factura de compra" = documento por pagar o gasto con comprobante'));
   assert(SYSTEM_PROMPT.includes("una línea por cuenta") && SYSTEM_PROMPT.includes("Total:"));
+});
+
+Deno.test("manual ofrece herramienta con guía contextual y solo lectura", () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_consultar_manual") as any;
+  assert(tool);
+  assert(tool.function.description.includes("Usa la pantalla del contexto"));
+  assert(tool.function.description.includes("Nunca la uses para consultar datos"));
+  equal(JSON.stringify(tool.function.parameters.required), "[]");
+  equal(tool.function.parameters.properties.pantalla.type, "string");
+  equal(tool.function.parameters.properties.texto.maxLength, 300);
+});
+
+Deno.test("manual mapea texto, pantalla, límite y empresa a su RPC", async () => {
+  let n = 0;
+  const x = setup({ ai: async (messages) => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "manual", type: "function", function: { name: "asistente_consultar_manual", arguments: JSON.stringify({ texto: "cómo conciliar", pantalla: "tesoreria", limite: 4 }) } }] })
+    : completion({ role: "assistant", content: "Te explico el flujo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cómo uso esto?", contexto: { pantalla: "tesoreria" } }))).status, 200);
+  const rpc = x.calls.find(c => c.name === "asistente_consultar_manual")!;
+  equal(rpc.args.p_empresa_id, EMPRESA);
+  equal(rpc.args.p_texto, "cómo conciliar");
+  equal(rpc.args.p_pantalla, "tesoreria");
+  equal(rpc.args.p_limite, 4);
+  assert(String(x.aiCalls[0].find(message => message.role === "user")?.content).includes('"pantalla":"tesoreria"'));
+});
+
+Deno.test("contexto de pantalla admite hasta 100 caracteres y rechaza valores largos", async () => {
+  const valid = setup();
+  equal((await valid.handler(valid.request({ empresa_id: EMPRESA, pregunta: "¿Qué veo aquí?", contexto: { pantalla: "t".repeat(100) } }))).status, 200);
+  const invalid = setup();
+  equal((await invalid.handler(invalid.request({ empresa_id: EMPRESA, pregunta: "¿Qué veo aquí?", contexto: { pantalla: "t".repeat(101) } }))).status, 400);
+  equal(invalid.aiCalls.length, 0);
+});
+
+Deno.test("modelo predeterminado es gpt-4.1-mini y el ajuste de entorno se conserva", async () => {
+  const defaultModel = setup({ model: null, ai: async (_messages, _tools, model) => { equal(model, "gpt-4.1-mini"); return completion({ role: "assistant", content: "Listo." }); } });
+  equal((await defaultModel.handler(defaultModel.request())).status, 200);
+  const configuredModel = setup({ model: "modelo-configurado", ai: async (_messages, _tools, model) => { equal(model, "modelo-configurado"); return completion({ role: "assistant", content: "Listo." }); } });
+  equal((await configuredModel.handler(configuredModel.request())).status, 200);
 });

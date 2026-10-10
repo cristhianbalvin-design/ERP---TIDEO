@@ -1,0 +1,10 @@
+clave: compras_gastos
+tipo: pantalla
+pantalla: compras_gastos
+titulo: Compras / Gastos
+resumen: Registra y consulta compras y gastos con sus documentos de sustento.
+fuentes: src/pages_ops.jsx,src/data.js
+revision: dd85e0e
+paso: 1 | pantalla=compras_gastos | permiso=ninguno | Revisa los gastos y compras registrados, y usa los filtros para localizar un documento o proveedor.
+paso: 2 | pantalla=compras_gastos | permiso=caja:editar | Para editar un registro, ábrelo y guarda los cambios permitidos en el formulario. En esta pantalla la edición efectiva exige el permiso de edición de Caja.
+paso: 3 | pantalla=compras_gastos | permiso=ninguno | Registra una compra o gasto con sus datos y adjunta el sustento correspondiente.

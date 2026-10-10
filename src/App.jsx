@@ -432,7 +432,7 @@ function MainLayout({ onShowApplicationWelcome }) {
       <Sidebar active={active} onNav={(p) => navigate(p)} role={role} isSuperadmin={isSuperadmin} onBrandClick={onShowApplicationWelcome}/>
       <div className="main-col">
         <Header active={active} empresa={empresa} setEmpresa={setEmpresa} role={role} roleKey={roleKey} setRoleKey={setRoleKey} dark={dark} setDark={setDark} setMobileMode={setMobileMode} openSelectorSignal={openSelectorSignal}/>
-        <AsistenteErpPanel />
+        <AsistenteErpPanel pantallaActiva={active} />
         {isSuperadmin && empresa?.es_plataforma && (
           <div style={{background:'#7c3aed', color:'#fff', padding:'8px 20px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, fontSize:13}}>
             <span>⚠️ Estás operando en el contexto de plataforma. Para gestión interna de TIDEO usa el tenant empresa.</span>
