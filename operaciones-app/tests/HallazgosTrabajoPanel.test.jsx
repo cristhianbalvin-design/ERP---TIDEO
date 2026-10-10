@@ -189,7 +189,7 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar hallazgo')).props.onClick());
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
-    expect(callbacks.error).toContain('Completa componente');
+    expect(callbacks.error).toContain('Hay 1 hallazgo incompleto. Complétalos o elimínalos.');
   });
 
   it('valida el parámetro de cada medición y no envía la medición incompleta', async () => {

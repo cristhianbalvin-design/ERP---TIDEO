@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   session: { empresaId: 'empresa-prueba', usuario: { id: 'usuario-prueba' }, estado: 'listo', permiteEscritura: true, error: '' },
   informePermission: vi.fn(),
   generateConclusion: vi.fn(),
+  getDraft: vi.fn(),
   service: Object.fromEntries([
     'usuarioPuedeDiagnostico', 'listarDiagnosticosTecnicos', 'obtenerDiagnosticoTecnico', 'resolverReferenciasDiagnostico',
     'listarReferenciasDiagnostico', 'listarFamiliasTrabajo', 'listarTiposServicioInterno', 'listarPlantillasActividad', 'listarUsoTareasPorEmpresa', 'listarCargosEmpresa',
@@ -25,7 +26,7 @@ vi.mock('../src/services/diagnosticoTecnicoService.js', () => mocks.service);
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
   generarConclusionIA: mocks.generateConclusion,
-  obtenerOCrearBorrador: vi.fn(),
+  obtenerOCrearBorrador: mocks.getDraft,
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
@@ -69,6 +70,7 @@ beforeEach(() => {
   mocks.session.permiteEscritura = true;
   mocks.informePermission.mockResolvedValue(true);
   mocks.generateConclusion.mockResolvedValue({ ok: true, conclusion: 'El equipo requiere reparación.' });
+  mocks.getDraft.mockResolvedValue({ id: 'informe-two', estado: 'borrador', diagnostico_id: 'two' });
   const listeners = new Map();
   globalThis.window = {
     setTimeout,
@@ -950,7 +952,22 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(generate.props.disabled).toBe(false);
     await act(async () => { generate.props.onClick(); await wait(0); });
     expect(mocks.generateConclusion).toHaveBeenCalledWith('two');
+    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two');
     expect(renderer.root.findByProps({ 'aria-label': 'Diagnóstico' }).props.value).toBe('El equipo requiere reparación.');
     expect(textOf(renderer.root)).toContain('Generado con IA');
+  });
+
+  it('no invoca la IA y explica cuando el borrador pertenece a otro diagnóstico', async () => {
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({
+      ...detail('two', 'mantenimiento'),
+      hallazgos: [{ id: 'h1', familia_trabajo_id: 'fam-1', componente_parte: 'Bomba', condicion: 'falla_funcional', riesgo: 'antes_de_operar', accion_recomendada: 'reparar', mediciones: [], lineas: [] }],
+    });
+    mocks.getDraft.mockResolvedValue({ id: 'informe-one', estado: 'borrador', diagnostico_id: 'one' });
+    await renderPage();
+    await act(async () => { listRows()[1].props.onClick(); await wait(100); });
+    await act(async () => { buttonByText(renderer, 'Generar conclusión IA').props.onClick(); await wait(0); });
+    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two');
+    expect(mocks.generateConclusion).not.toHaveBeenCalled();
+    expect(textOf(renderer.root)).toContain('La recepción ya tiene un borrador asociado a otro diagnóstico. No se generó la conclusión con IA.');
   });
 });
