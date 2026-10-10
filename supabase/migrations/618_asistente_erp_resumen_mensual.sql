@@ -1,4 +1,4 @@
-﻿BEGIN;
+BEGIN;
 
 CREATE OR REPLACE FUNCTION public.asistente_resumen_mensual(
  p_empresa_id text,p_sociedad_id uuid,p_entidad text,p_desde date DEFAULT NULL,p_hasta date DEFAULT NULL,p_moneda text DEFAULT NULL)
