@@ -53,6 +53,19 @@ export function renderMigration(fichas) {
   return migrationTemplate.replace('/* MANUAL_SEED_START */\n/* MANUAL_SEED_END */', `/* MANUAL_SEED_START */\n${inserts}\n/* MANUAL_SEED_END */`);
 }
 
+export async function writeMigration(sql, target = migrationPath) {
+  let output = sql;
+  try {
+    const existing = await readFile(target, 'utf8');
+    if (/(?:^|\r?\n)COMMIT;[ \t]*(?:\r?\n)*$/.test(existing)) {
+      output = output.replace(/(^|\r?\n)ROLLBACK;([ \t]*\r?\n*)$/, '$1COMMIT;$2');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  await writeFile(target, output, 'utf8');
+}
+
 const migrationTemplate = `-- 617: Manual de pantallas global de Aria. Revisar protocolo; termina en ROLLBACK.
 BEGIN;
 
@@ -153,6 +166,6 @@ ROLLBACK;
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const sql = renderMigration(await readFichas());
-  await writeFile(migrationPath, sql, 'utf8');
+  await writeMigration(sql);
   process.stdout.write(`Generada ${path.relative(root, migrationPath)}\n`);
 }

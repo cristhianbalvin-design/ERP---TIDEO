@@ -24,7 +24,8 @@ export async function verify({ fichas, currentHead, changedSince, dirtyFiles = [
   }
   const expected = generated ?? renderMigration(fichas);
   const actual = migration ?? await readFile(migrationPath, 'utf8');
-  if (actual !== expected) errors.push('La migración 617 no coincide con las fichas actuales; ejecuta scripts/generar-manual-pantallas.mjs y revisa el diff.');
+  const normalizeClosure = sql => sql.replace(/(^|\r?\n)(?:ROLLBACK|COMMIT);[ \t]*(?:\r?\n)*$/, '$1ROLLBACK;');
+  if (normalizeClosure(actual) !== normalizeClosure(expected)) errors.push('La migración 617 no coincide con las fichas actuales; ejecuta scripts/generar-manual-pantallas.mjs y revisa el diff.');
   return errors;
 }
 

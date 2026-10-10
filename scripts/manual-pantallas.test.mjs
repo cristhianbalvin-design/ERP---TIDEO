@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFicha, renderMigration } from './generar-manual-pantallas.mjs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { parseFicha, renderMigration, writeMigration } from './generar-manual-pantallas.mjs';
 import { verify } from './verificar-manual-pantallas.mjs';
 
 const ficha = `clave: caja
@@ -49,4 +52,41 @@ test('verificación pasa si fuentes no cambiaron y el seed coincide', async () =
     fichas: [parsed], currentHead: 'head', changedSince: () => [], dirtyFiles: [], migration: 'ok', generated: 'ok', resolveRevision: x => x, isAncestor: () => {},
   });
   assert.deepEqual(errors, []);
+});
+
+const verifyMigration = migration => {
+  const parsed = parseFicha(ficha);
+  return verify({
+    fichas: [parsed], currentHead: 'head', changedSince: () => [], dirtyFiles: [],
+    migration, generated: renderMigration([parsed]), resolveRevision: x => x, isAncestor: () => {},
+  });
+};
+
+test('verificación acepta ROLLBACK como cierre final', async () => {
+  assert.deepEqual(await verifyMigration(renderMigration([parseFicha(ficha)])), []);
+});
+
+test('verificación acepta COMMIT como cierre final', async () => {
+  const generated = renderMigration([parseFicha(ficha)]);
+  assert.deepEqual(await verifyMigration(generated.replace(/ROLLBACK;\r?\n?$/, 'COMMIT;')), []);
+});
+
+test('verificación detecta diferencias fuera del cierre, incluida la siembra', async () => {
+  const generated = renderMigration([parseFicha(ficha)]);
+  const changed = generated.replace('Caja Chica', 'Caja Alterada');
+  const errors = await verifyMigration(changed);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /no coincide/);
+});
+
+test('el generador conserva COMMIT en un archivo existente', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'manual-pantallas-'));
+  const target = path.join(dir, '617.sql');
+  try {
+    await writeFile(target, 'BEGIN;\nCOMMIT;\n', 'utf8');
+    await writeMigration('BEGIN;\nROLLBACK;\n', target);
+    assert.equal(await readFile(target, 'utf8'), 'BEGIN;\nCOMMIT;\n');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

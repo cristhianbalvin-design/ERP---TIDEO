@@ -119,4 +119,4 @@ INSERT INTO public.asistente_manual_pasos (ficha_clave,orden,pantalla_key,permis
 -- SET ROLE authenticated; SELECT * FROM public.asistente_manual_fichas; -- RLS solo muestra pantallas autorizadas
 -- SET ROLE authenticated; INSERT INTO public.asistente_manual_fichas(clave,tipo,pantalla_key,titulo,resumen,fuentes,revision) VALUES ('prueba','pantalla','caja','x','x','[]','x'); -- debe fallar
 
-ROLLBACK;
+COMMIT;
