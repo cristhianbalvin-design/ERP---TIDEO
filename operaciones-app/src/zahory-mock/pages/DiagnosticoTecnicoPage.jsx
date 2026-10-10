@@ -11,6 +11,7 @@ import {
   buscarOCrearFamiliaTrabajo,
   buscarOCrearTipoServicioInterno,
   crearDiagnosticoTecnico,
+  emitirDiagnosticoTecnico,
   eliminarDiagnosticoLinea,
   guardarDiagnosticoLinea,
   listarActivosPropios,
@@ -900,6 +901,7 @@ export function DiagnosticoTecnicoPage() {
         }
       : row));
     setSelected(refreshed);
+    return refreshed;
   };
   const modalOpen = Boolean(form.tipo || selected);
   const cambiarResumen = (value, origen = 'editado') => setSelected(current => ({ ...current, resumen_diagnostico: value, resumen_origen: origen }));
@@ -1115,12 +1117,16 @@ export function DiagnosticoTecnicoPage() {
             </>}
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
-          {informePanel && <DiagnosticoInformePanel diagnostico={{ ...selected, resumen_diagnostico: resumenVisible }} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} resumenPendiente={summaryDirty} onResumenChange={(value, origen) => cambiarResumen(value, origen)} onGuardarResumen={guardarResumenParaInforme} onGuardarDiagnosticoPendiente={async () => {
+          {informePanel && <DiagnosticoInformePanel diagnostico={{ ...selected, resumen_diagnostico: resumenVisible }} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} puedeEmitirDiagnostico={access.aprobar && Boolean(sesion.permiteEscritura)} firmaUrl={sesion.sociedadActiva?.firma_url || null} onEmitirDiagnostico={async () => {
+            const resultado = await emitirDiagnosticoTecnico(selected.id);
+            try { await recargarEstadoDiagnostico(resultado); } catch { /* La emisión ya terminó; se vuelve a cargar al completar el flujo. */ }
+            return resultado;
+          }} onRecargarDiagnostico={() => recargarEstadoDiagnostico()} cambiosSinGuardar={cambiosSinGuardar} resumenPendiente={summaryDirty} onResumenChange={(value, origen) => cambiarResumen(value, origen)} onGuardarResumen={guardarResumenParaInforme} onGuardarDiagnosticoPendiente={async () => {
             const linesSaved = await saveAllLines();
             if (!linesSaved) throw new Error('No se pudieron guardar las tareas. Corrige los errores antes de generar la conclusión.');
             if (hallazgosDirty) {
               const result = await hallazgosSaveRef.current?.();
-              if (result && !result.ok) throw new Error(result.error || 'No se pudieron guardar los hallazgos.');
+              if (!result?.ok) throw new Error(result?.error || 'No se pudieron guardar los hallazgos.');
             }
             if (summaryDirty) await guardarResumenParaInforme();
           }} onClose={() => setInformePanel(false)} />}

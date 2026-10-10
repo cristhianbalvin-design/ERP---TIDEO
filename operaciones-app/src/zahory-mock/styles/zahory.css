@@ -1825,6 +1825,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-informe-emitir-actions { display:flex; gap:8px; }
 .dx-informe-emitir-actions button { flex:1; min-height:36px; border:0; border-radius:7px; background:#1A2B4A; color:#fff; font:600 12px 'DM Sans',sans-serif; cursor:pointer; }
 .dx-informe-emitir-actions button + button { border:1px solid #CBD5E1; background:#fff; color:#1F2937; }
+.dx-inf-persona-selector{position:relative}.dx-inf-persona-selector ul{position:absolute;z-index:20;top:100%;left:0;right:0;max-height:220px;overflow:auto;margin:4px 0 0;padding:4px;list-style:none;border:1px solid #CBD5E1;border-radius:7px;background:#fff;box-shadow:0 8px 20px #0f172a1a}.dx-inf-persona-selector li button{display:grid;width:100%;grid-template-columns:1fr auto;gap:2px 8px;padding:8px;border:0;border-radius:5px;background:#fff;text-align:left;cursor:pointer}.dx-inf-persona-selector li button:hover,.dx-inf-persona-selector li[aria-selected="true"] button{background:#EFF6FF}.dx-inf-persona-selector li button span{color:#64748B;font-size:11px}.dx-inf-persona-selector li button small{grid-row:1 / span 2;grid-column:2;color:#15803D;font-size:10px;align-self:center}.dx-inf-emisor-firma{display:flex;align-items:center;gap:10px;color:#15803D;font-size:11px}.dx-inf-emisor-firma img{max-width:120px;height:42px;object-fit:contain;background:#fff;border:1px solid #E2E8F0;border-radius:5px}
 .dx-inf-warning,.dx-inf-error,.dx-inf-notice,.dx-inf-empty { margin-top:12px; padding:10px; border-radius:7px; font-size:12px; }
 .dx-inf-warning { background:#FFF6E0; color:#5C3A00; }
 .dx-inf-error { background:#FDF1F0; color:#8F1D18; }
@@ -2170,3 +2171,5 @@ a { color: var(--cyan); text-decoration: none; }
 :host .hallazgo-observation-tools [role='status'] { color:var(--dx-ui-gray); font-size:12px; }
 :host .dx-inf-emit-help { margin:6px 0 12px; color:var(--dx-ui-gray); font-size:12px; }
 :host([data-theme='dark']) .hallazgo-dictation-button { border-color:#475569; background:#1E293B; color:#F8FAFC; }
+
+.dx-inf-signature{display:flex;flex-direction:column;align-items:center;margin:8px auto 4px;text-align:center;min-height:54px}.dx-inf-signature img{max-width:150px;height:44px;object-fit:contain}.dx-inf-signature strong{font-weight:700}.dx-inf-signature span{font-size:.9em}

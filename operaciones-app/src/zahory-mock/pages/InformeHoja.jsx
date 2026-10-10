@@ -8,7 +8,9 @@ const tones = { P1: 'p1', P2: 'p2', P3: 'p3', P4: 'p4', conformes: 'ok' };
 
 export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null }) {
   const [logoFallido, setLogoFallido] = useState(false);
+  const [firmaFallida, setFirmaFallida] = useState(false);
   useEffect(() => { setLogoFallido(false); }, [identidadEmpresa?.logo_url]);
+  useEffect(() => { setFirmaFallida(false); }, [identidadEmpresa?.firma_url]);
   const data = snapshot || {};
   const head = data.cabecera || {};
   const resumen = data.resumen || {};
@@ -50,6 +52,9 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
     </section>}
     {tareas.length > 0 && tareasConHoras && <section className="dx-inf-section"><h2>Trabajos propuestos</h2>{tareas.map((task, index) => <article className="dx-inf-task" key={task.linea_id || index}><div className="dx-inf-task-title"><strong>{dash(task.tarea_nombre || task.familia_trabajo_nombre)}</strong><span>{dash(task.cargo_nombre)}</span><b>{task.horas_mano_obra === null || task.horas_mano_obra === undefined ? '—' : `${task.horas_mano_obra} h`}</b></div>{task.hallazgo && <p>{task.hallazgo}</p>}{task.materiales?.length > 0 && <ul>{task.materiales.map((material, mi) => <li key={material.material_id || mi}>{dash(material.descripcion)} · {dash(material.cantidad)} {dash(material.unidad)}</li>)}</ul>}</article>)}</section>}
     <section className="dx-inf-section dx-inf-conclusion"><h2>Conclusión</h2><p>{dash(data.conclusion)}</p></section>
-    <footer className="dx-inf-sheet-footer">{borrador ? 'Vista previa · Borrador' : `Versión ${dash(data.version)} · Emitido por ${dash(data.emisor?.nombre)}, ${dash(data.emisor?.cargo)}`}<span>Este informe no contiene valores económicos · Página 1 de 1</span></footer>
+    <footer className="dx-inf-sheet-footer">
+      <div className="dx-inf-signature">{(data.emisor?.firma_url || identidadEmpresa?.firma_url) && !firmaFallida && <img src={data.emisor?.firma_url || identidadEmpresa?.firma_url} alt="Firma" onError={() => setFirmaFallida(true)} />}<strong>{dash(data.emisor?.nombre || identidadEmpresa?.firmante)}</strong><span>{dash(data.emisor?.cargo || identidadEmpresa?.cargo_firmante)}</span></div>
+      <div>{borrador ? 'Vista previa \u00b7 Borrador' : `Versi\u00f3n ${dash(data.version)} \u00b7 Emitido por ${dash(data.emisor?.nombre)}, ${dash(data.emisor?.cargo)}`}<span>Este informe no contiene valores econ\u00f3micos \u00b7 P\u00e1gina 1 de 1</span></div>
+    </footer>
   </article>;
 }

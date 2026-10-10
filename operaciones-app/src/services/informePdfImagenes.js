@@ -49,5 +49,9 @@ export async function prepararImagenesInforme(snapshot) {
   if (snapshot?.empresa?.logo_url) {
     try { logo = await descargarComoDataUri(snapshot.empresa.logo_url); } catch { logo = null; }
   }
-  return { logo, fotos, warnings };
+  let firma = null;
+  if (snapshot?.emisor?.firma_url) {
+    try { firma = await descargarComoDataUri(snapshot.emisor.firma_url); } catch { firma = null; }
+  }
+  return { logo, firma, fotos, warnings };
 }
