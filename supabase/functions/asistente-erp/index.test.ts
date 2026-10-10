@@ -1,4 +1,4 @@
-import { createHandler, OPENAI_TOOLS, SYSTEM_PROMPT, TOOL_SPECS, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
+import { createHandler, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -720,4 +720,84 @@ Deno.test("modelo predeterminado es gpt-4.1-mini y el ajuste de entorno se conse
   equal((await defaultModel.handler(defaultModel.request())).status, 200);
   const configuredModel = setup({ model: "modelo-configurado", ai: async (_messages, _tools, model) => { equal(model, "modelo-configurado"); return completion({ role: "assistant", content: "Listo." }); } });
   equal((await configuredModel.handler(configuredModel.request())).status, 200);
+});
+
+Deno.test("resumen mensual valida entidad, límites de meses y rangos explícitos", () => {
+  const spec = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!;
+  equal(validateArgs(spec, { entidad: "desconocida" }), null);
+  equal(validateArgs(spec, { entidad: "gastos", ultimos_meses: 0 }), null);
+  equal(validateArgs(spec, { entidad: "gastos", ultimos_meses: 37 }), null);
+  equal(validateArgs(spec, { entidad: "gastos", desde: "2023-01-01", hasta: "2026-02-01" }), null);
+  equal(validateArgs(spec, { entidad: "gastos", desde: "2026-01-01" }), null);
+  assert(validateArgs(spec, { entidad: "gastos", ultimos_meses: 36 }) !== null);
+});
+
+Deno.test("periodos relativos calculan primer día mensual con cruce de año y fin de mes", () => {
+  equal(JSON.stringify(relativeDateRange("2026-01-31", 6)), JSON.stringify({ desde: "2025-08-01", hasta: "2026-01-31" }));
+  equal(JSON.stringify(relativeDateRange("2026-03-31", 6)), JSON.stringify({ desde: "2025-10-01", hasta: "2026-03-31" }));
+  equal(JSON.stringify(relativeDateRange("2026-10-09", 1, "mes_anterior")), JSON.stringify({ desde: "2026-09-01", hasta: "2026-09-30" }));
+  equal(JSON.stringify(relativeDateRange("2026-01-31", 1, "trimestre_actual")), JSON.stringify({ desde: "2026-01-01", hasta: "2026-01-31" }));
+});
+
+Deno.test("gastos traduce ultimos_meses y conserva fechas explícitas con prioridad", async () => {
+  for (const [args, esperado] of [
+    [{ ultimos_meses: 6 }, { desde: "2025-08-01", hasta: "2026-01-31" }],
+    [{ ultimos_meses: 6, desde: "2025-12-10", hasta: "2026-01-15" }, { desde: "2025-12-10", hasta: "2026-01-15" }],
+  ] as Array<[Record<string, unknown>, Record<string, unknown>]>) {
+    let n = 0;
+    const x = setup({ now: () => Date.parse("2026-02-01T04:30:00Z"), ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "g", type: "function", function: { name: "asistente_buscar_gastos", arguments: JSON.stringify(args) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+    equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "gastos" }))).status, 200);
+    const rpc = x.calls.find(call => call.name === "asistente_buscar_gastos")!;
+    equal(rpc.args.p_desde, esperado.desde); equal(rpc.args.p_hasta, esperado.hasta);
+    assert(!("p_ultimos_meses" in rpc.args) && !("p_periodo" in rpc.args));
+  }
+});
+
+Deno.test("resumen mensual fija empresa y sociedad del servidor y mapea el rango", async () => {
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-10-09T12:00:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "r", type: "function", function: { name: "asistente_resumen_mensual", arguments: JSON.stringify({ entidad: "gastos", periodo: "ultimos_meses", ultimos_meses: 6, desde: "2026-04-02", hasta: "2026-10-09", moneda: "PEN" }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "promedio mensual" }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_resumen_mensual")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD);
+  equal(rpc.args.p_entidad, "gastos"); equal(rpc.args.p_desde, "2026-04-02"); equal(rpc.args.p_hasta, "2026-10-09"); equal(rpc.args.p_moneda, "PEN");
+  assert(!("p_periodo" in rpc.args) && !("p_ultimos_meses" in rpc.args));
+});
+
+Deno.test("resumen mensual convierte ultimos_meses a fechas usando hoy en Lima", async () => {
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-02-01T04:30:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "r", type: "function", function: { name: "asistente_resumen_mensual", arguments: JSON.stringify({ entidad: "gastos", periodo: "ultimos_meses", ultimos_meses: 6 }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "promedio mensual" }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_resumen_mensual")!;
+  equal(rpc.args.p_desde, "2025-08-01"); equal(rpc.args.p_hasta, "2026-01-31");
+});
+
+Deno.test("la fecha Lima se inyecta como contexto de sistema y el prompt permanece bajo el límite", async () => {
+  const x = setup({ now: () => Date.parse("2026-10-09T04:30:00Z") });
+  equal((await x.handler(x.request())).status, 200);
+  const context = x.aiCalls[0].find(message => message.role === "system" && String(message.content).includes("Fecha de hoy"));
+  assert(context); assert(String(context!.content).includes("2026-10-08"));
+  assert(SYSTEM_PROMPT.length < 3200);
+});
+
+Deno.test("la herramienta de resumen mensual declara parámetros y la respuesta conserva el tope de bytes", async () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_resumen_mensual") as any;
+  assert(tool);
+  equal(JSON.stringify(tool.function.parameters.properties.entidad.enum), JSON.stringify(["gastos", "ordenes_compra", "cxp", "caja_chica"]));
+  assert(!("sociedad_id" in tool.function.parameters.properties));
+  assert(tool.function.description.includes("MES DE VENCIMIENTO") && tool.function.description.includes("no es un histórico de compras"));
+  assert(tool.function.description.includes("órdenes de compra agrupa por fecha de emisión"));
+  let n = 0; let toolContent = "";
+  const x = setup({ rpc: () => ({ data: { contenido: "x".repeat(20_000) }, error: null }), ai: async messages => {
+    if (++n === 1) return completion({ role: "assistant", tool_calls: [{ id: "r", type: "function", function: { name: "asistente_resumen_mensual", arguments: JSON.stringify({ entidad: "gastos" }) } }] });
+    toolContent = String(messages.at(-1)?.content); return completion({ role: "assistant", content: "Listo." });
+  } });
+  equal((await x.handler(x.request())).status, 200);
+  assert(new TextEncoder().encode(toolContent.slice("<datos>".length, -"</datos>".length)).length <= 12_040);
+  assert(toolContent.includes("resultado truncado"));
 });
