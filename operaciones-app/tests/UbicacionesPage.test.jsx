@@ -4,12 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'e1', sociedadId: 's1', estado: 'listo', permiteEscritura: false },
-  cargar: vi.fn(), rpc: vi.fn(),
+  cargar: vi.fn(), cargarMateriales: vi.fn(), crear: vi.fn(), actualizar: vi.fn(), cambiarEstado: vi.fn(), rpc: vi.fn(),
 }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc: mocks.rpc }) }));
-vi.mock('../src/services/ubicacionesService.js', () => ({ cargarMapaUbicaciones: mocks.cargar }));
+vi.mock('../src/services/ubicacionesService.js', () => ({ cargarMapaUbicaciones: mocks.cargar, cargarMaterialesPorIds: mocks.cargarMateriales, crearUbicacion: mocks.crear, actualizarUbicacion: mocks.actualizar, cambiarEstadoUbicacion: mocks.cambiarEstado }));
 import { UbicacionesPage } from '../src/zahory-mock/pages/UbicacionesPage.jsx';
+import { UbicacionPanel } from '../src/zahory-mock/pages/UbicacionPanel.jsx';
 
 const datos = {
   almacenes: [{ id: 'a1', nombre: 'Almacén Norte' }, { id: 'a2', nombre: 'Almacén Sur' }, { id: 'a3', nombre: 'Almacén Este' }],
@@ -36,6 +37,8 @@ describe('UbicacionesPage', () => {
   beforeEach(() => {
     mocks.sesion = { empresaId: 'e1', sociedadId: 's1', estado: 'listo', permiteEscritura: false };
     mocks.cargar.mockReset().mockResolvedValue(datos);
+    mocks.cargarMateriales.mockReset().mockResolvedValue([]);
+    mocks.crear.mockReset().mockResolvedValue({}); mocks.actualizar.mockReset().mockResolvedValue({}); mocks.cambiarEstado.mockReset().mockResolvedValue({});
     mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
   });
 
@@ -45,7 +48,8 @@ describe('UbicacionesPage', () => {
     expect(root.root.findByType('h1').children.join('')).toBe('Ubicaciones');
     expect(root.root.findAllByProps({ role: 'tab' })[0].props['aria-selected']).toBe(true);
     expect(root.root.findAllByType('div').filter(node => node.props.className === 'dx-ui-row dx-ubicaciones-cols')).toHaveLength(3);
-    expect(root.root.findAllByProps({ role: 'button' })).toHaveLength(0);
+    expect(root.root.findAllByProps({ role: 'button' })).toHaveLength(3);
+    expect(root.root.findAllByProps({ role: 'button' })[0].props['aria-label']).toBe('Abrir General');
   });
 
   it('muestra permisos cargando hasta resolver el RPC', async () => {
@@ -94,6 +98,33 @@ describe('UbicacionesPage', () => {
     expect(root.root.findAllByType('div').filter(node => node.props.className === 'dx-ui-row dx-ubicaciones-cols')).toHaveLength(0);
   });
 
+  it('combina uso e inactivas, abre detalle accesible y conserva filtros al volver', async () => {
+    const conInactiva = { ...datos, ubicaciones: [...datos.ubicaciones, { id: 'off', almacen_id: 'a1', codigo: 'OFF', nombre: 'Piso revisión', tipo: 'piso', uso: 'cuarentena', activo: false }] };
+    mocks.cargar.mockResolvedValue(conInactiva);
+    const root = await renderPage();
+    const filtro = root.root.findByProps({ 'aria-label': 'Filtrar por uso' });
+    await act(async () => filtro.props.onChange({ target: { value: 'cuarentena' } }));
+    expect(root.root.findAllByProps({ role: 'button' })).toHaveLength(0);
+    const interruptor = root.root.findByProps({ role: 'switch' });
+    expect(interruptor.props['aria-checked']).toBe(false);
+    await act(async () => interruptor.props.onClick());
+    const filas = root.root.findAllByProps({ role: 'button' });
+    expect(filas).toHaveLength(1);
+    await act(async () => filas[0].props.onClick());
+    expect(root.root.findAll(node => node.children?.join('').includes('Stock almacenado directamente aquí'))).toHaveLength(1);
+    const volver = root.root.findAllByType('button').find(button => button.children.join('').includes('Volver a ubicaciones'));
+    await act(async () => volver.props.onClick());
+    expect(root.root.findByProps({ 'aria-label': 'Filtrar por uso' }).props.value).toBe('cuarentena');
+    expect(root.root.findByProps({ role: 'switch' }).props['aria-checked']).toBe(true);
+  });
+
+  it('solo ofrece alta cuando inventario/crear y la sesión permiten escribir', async () => {
+    mocks.sesion = { empresaId: 'e1', sociedadId: 's1', estado: 'listo', permiteEscritura: true };
+    mocks.rpc.mockImplementation((_name, args) => Promise.resolve({ data: args.target_accion !== 'crear', error: null }));
+    const root = await renderPage();
+    expect(root.root.findAllByType('button').some(button => button.children.join('').includes('Nueva ubicación'))).toBe(false);
+  });
+
   it('muestra error de lectura con alerta y permite reintentar', async () => {
     mocks.cargar.mockRejectedValueOnce(new Error('Fallo de lectura'));
     const root = await renderPage();
@@ -110,5 +141,89 @@ describe('UbicacionesPage', () => {
     mocks.rpc.mockResolvedValue({ data: false, error: null });
     const sinPermiso = await renderPage();
     expect(sinPermiso.root.findAll(node => node.children?.join('').includes('No tienes permiso para ver ubicaciones.'))).toHaveLength(1);
+  });
+
+  it('después de guardar no repite usuario_puede ni muestra carga de permisos, conserva el foco en Editar', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    const raiz = await renderPage();
+    await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Zona uno' }).props.onClick());
+    const control = { isConnected: true, focus: vi.fn() };
+    vi.stubGlobal('document', { activeElement: control, contains: vi.fn(() => true) });
+    try {
+      await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('') === 'Editar').props.onClick());
+      const totalRpc = mocks.rpc.mock.calls.length;
+      await act(async () => raiz.root.findByType(UbicacionPanel).props.onSave({ modo: 'editar', id: 'z1', codigo: 'Z-1', nombre: 'Zona uno', uso: 'almacenaje' }));
+      await act(async () => new Promise(resolve => globalThis.setTimeout(resolve, 5)));
+      expect(mocks.rpc).toHaveBeenCalledTimes(totalRpc);
+      expect(raiz.root.findAll(node => node.children?.join('').includes('Cargando permisos de inventario'))).toHaveLength(0);
+      expect(raiz.root.findByType('h1').children.join('')).toBe('Zona uno');
+      expect(control.focus).toHaveBeenCalledTimes(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('deja abierto el diálogo y muestra el error de la base al fallar DESACTIVAR', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    mocks.cargar.mockResolvedValue({ ...datos, stock: [] });
+    mocks.cambiarEstado.mockRejectedValueOnce(new Error('No se puede desactivar una ubicación que tiene stock.'));
+    const raiz = await renderPage();
+    await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Zona uno' }).props.onClick());
+    await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('') === 'Desactivar').props.onClick());
+    const dialogo = raiz.root.findByProps({ role: 'alertdialog' });
+    await act(async () => dialogo.findAllByType('button').find(button => button.children.join('') === 'Desactivar').props.onClick());
+    expect(raiz.root.findByProps({ role: 'alert' }).children.join('')).toBe('No se puede desactivar una ubicación que tiene stock.');
+    expect(raiz.root.findByProps({ role: 'alertdialog' })).toBeTruthy();
+    expect(raiz.root.findByType('h1').children.join('')).toBe('Zona uno');
+  });
+
+  it('muestra el error de REACTIVAR en una alerta del detalle', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    const inactiva = { id: 'off', almacen_id: 'a1', codigo: 'OFF', nombre: 'Piso revisión', tipo: 'piso', activo: false };
+    mocks.cargar.mockResolvedValue({ ...datos, stock: [], ubicaciones: [...datos.ubicaciones, inactiva] });
+    mocks.cambiarEstado.mockRejectedValueOnce(new Error('Fallo al reactivar desde la base'));
+    const raiz = await renderPage();
+    await act(async () => raiz.root.findByProps({ role: 'switch' }).props.onClick());
+    await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Piso revisión' }).props.onClick());
+    await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('') === 'Reactivar').props.onClick());
+    expect(raiz.root.findByProps({ role: 'alert' }).children.join('')).toBe('Fallo al reactivar desde la base');
+    expect(raiz.root.findByType('h1').children.join('')).toBe('Piso revisión');
+  });
+
+  it('limpia el aviso al volver al mapa', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    const raiz = await renderPage();
+    await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Zona uno' }).props.onClick());
+    await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('') === 'Editar').props.onClick());
+    await act(async () => raiz.root.findByType(UbicacionPanel).props.onSave({ modo: 'editar', id: 'z1', codigo: 'Z-1', nombre: 'Zona uno', uso: 'almacenaje' }));
+    expect(raiz.root.findByProps({ role: 'status' }).children.join('')).toBe('Cambios guardados.');
+    await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('').includes('Volver a ubicaciones')).props.onClick());
+    expect(raiz.root.findAllByProps({ role: 'status' })).toHaveLength(0);
+  });
+
+  it('limpia el aviso automáticamente a los seis segundos con temporizadores simulados', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    vi.useFakeTimers();
+    try {
+      const raiz = await renderPage();
+      await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Zona uno' }).props.onClick());
+      await act(async () => raiz.root.findAllByType('button').find(button => button.children.join('') === 'Editar').props.onClick());
+      await act(async () => raiz.root.findByType(UbicacionPanel).props.onSave({ modo: 'editar', id: 'z1', codigo: 'Z-1', nombre: 'Zona uno', uso: 'almacenaje' }));
+      expect(raiz.root.findByProps({ role: 'status' })).toBeTruthy();
+      await act(async () => { vi.advanceTimersByTime(5999); });
+      expect(raiz.root.findAllByProps({ role: 'status' })).toHaveLength(1);
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(raiz.root.findAllByProps({ role: 'status' })).toHaveLength(0);
+      raiz.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('renderiza Editar y Desactivar en el encabezado, fuera de la tarjeta', async () => {
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    mocks.cargar.mockResolvedValue({ ...datos, stock: [] });
+    const raiz = await renderPage();
+    await act(async () => raiz.root.findByProps({ 'aria-label': 'Abrir Zona uno' }).props.onClick());
+    const encabezado = raiz.root.findAllByType('header').find(header => header.props.className.includes('dx-ui-head-page'));
+    const tarjeta = raiz.root.findAll(node => node.props.className === 'dx-ui-card')[0];
+    expect(encabezado.findAllByType('button').map(button => button.children.join(''))).toEqual(['Editar', 'Desactivar']);
+    expect(tarjeta.findAllByType('button').some(button => ['Editar', 'Desactivar', 'Reactivar'].includes(button.children.join('')))).toBe(false);
   });
 });

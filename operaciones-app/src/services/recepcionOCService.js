@@ -42,8 +42,8 @@ export async function cargarRecepcionesOC({ empresaId, sociedadId, vistaConsolid
 
 export async function cargarUbicacionesAlmacen(empresaId, almacenId) {
   const { data, error } = await getSupabaseClient().from('ubicaciones')
-    .select('id,empresa_id,almacen_id,codigo,nombre,tipo,padre_id,es_general,activo')
-    .eq('empresa_id', empresaId).eq('almacen_id', almacenId).eq('activo', true);
+    .select('id,empresa_id,almacen_id,codigo,nombre,tipo,padre_id,es_general,activo,uso')
+    .eq('empresa_id', empresaId).eq('almacen_id', almacenId).eq('activo', true).order('codigo');
   if (error) throw error;
   return data || [];
 }
