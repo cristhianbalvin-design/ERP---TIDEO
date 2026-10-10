@@ -11,6 +11,26 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const EMPRESA_ID_RE = /^[A-Za-z0-9._-]{1,100}$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const limaToday = (timestamp: number): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Lima", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find(item => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
+export function relativeDateRange(today: string, months: number, period = "ultimos_meses"): { desde: string; hasta: string } {
+  const [year, month, day] = today.split("-").map(Number);
+  const current = new Date(Date.UTC(year, month - 1, 1));
+  let start = current;
+  let end = today;
+  if (period === "mes_anterior") { start = new Date(Date.UTC(year, month - 2, 1)); end = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10); }
+  else if (period === "trimestre_actual") start = new Date(Date.UTC(year, Math.floor((month - 1) / 3) * 3, 1));
+  else if (period === "anio_actual") start = new Date(Date.UTC(year, 0, 1));
+  else if (period === "ultimos_meses") start = new Date(Date.UTC(year, month - months, 1));
+  return { desde: start.toISOString().slice(0, 10), hasta: end };
+}
+function rangeWithin36Months(desde: string, hasta: string): boolean {
+  const [dy, dm] = desde.split("-").map(Number), [hy, hm] = hasta.split("-").map(Number);
+  return hasta >= desde && (hy * 12 + hm - dy * 12 - dm) < 36;
+}
 
 type Kind = "string" | "id" | "uuid" | "date" | "integer" | "number" | "boolean" | "enum";
 type Param = { name: string; kind: Kind; optional?: boolean; max?: number; values?: readonly string[] };
@@ -36,7 +56,8 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_detalle_solpe", params: [id("solpe_id")] },
   { name: "asistente_buscar_procesos_compra", params: [s("texto", 200, true), s("estado", 80, true), d("desde", true), d("hasta", true), n("limite", true)] },
   { name: "asistente_buscar_ordenes_compra", desc: "Busca órdenes de compra; monto admite importe exacto o rango y requiere permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), id("proveedor_id", true), d("desde", true), d("hasta", true), n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
-  { name: "asistente_buscar_gastos", desc: "Busca gastos y compras registrados en Compras/Gastos (facturas, boletas, egresos directos); monto = importe exacto, monto_min/monto_max = rango; moneda PEN (soles) o USD (dólares); origen campo o backoffice; devuelve total filtrado por moneda.", params: [s("texto", 200, true), m("monto", true), m("monto_min", true), m("monto_max", true), e("moneda", ["PEN", "USD"], true), s("estado_pago", 80, true), e("origen", ["campo", "backoffice"], true), s("ceco", 100, true), s("proveedor", 200, true), d("desde", true), d("hasta", true), n("limite", true), society()] },
+  { name: "asistente_buscar_gastos", desc: "Busca gastos y compras registrados en Compras/Gastos (facturas, boletas, egresos directos); monto = importe exacto, monto_min/monto_max = rango; ultimos_meses admite 1–36 y se usa solo si no envías desde/hasta; moneda PEN (soles) o USD (dólares); origen campo o backoffice; devuelve total filtrado por moneda.", params: [s("texto", 200, true), m("monto", true), m("monto_min", true), m("monto_max", true), e("moneda", ["PEN", "USD"], true), s("estado_pago", 80, true), e("origen", ["campo", "backoffice"], true), s("ceco", 100, true), s("proveedor", 200, true), d("desde", true), d("hasta", true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, n("limite", true), society()] },
+  { name: "asistente_resumen_mensual", desc: "Resume por mes y moneda gastos, órdenes de compra, CxP o caja chica, con totales y promedios; úsala para totales, promedios, consultas 'por mes' y para saber de qué meses hay datos. Para CxP agrupa por MES DE VENCIMIENTO y solo incluye documentos abiertos con saldo; no es un histórico de compras. Para órdenes de compra agrupa por fecha de emisión. Al responder, indica cuántos meses tuvieron datos y cuáles meses no tuvieron datos. No la uses para buscar un registro concreto; para eso usa la búsqueda de la entidad. Admite periodo o ultimos_meses (1–36), o desde y hasta explícitos (máximo 36 meses; si se indican fechas, estas prevalecen). Si no se indica rango, usa los últimos 6 meses. moneda es opcional (PEN o USD).", params: [e("entidad", ["gastos", "ordenes_compra", "cxp", "caja_chica"]), society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true), e("moneda", ["PEN", "USD"], true)] },
   { name: "asistente_consultar_manual", desc: "Consulta el manual cuando pregunten cómo usar una pantalla, por un proceso o qué pueden hacer aquí. Usa la pantalla del contexto si existe. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
@@ -72,7 +93,7 @@ const schemaFor = (spec: ToolSpec) => {
   for (const p of spec.params) {
     if (p.name === "sociedad_id") continue; // La sociedad la fija el servidor.
     const type = p.kind === "integer" ? "integer" : p.kind === "number" ? "number" : p.kind === "boolean" ? "boolean" : "string";
-    properties[p.name] = { type, ...(p.kind === "enum" ? { enum: p.values } : {}), ...(p.kind === "number" ? { minimum: 0, maximum: p.max } : p.max && p.kind === "string" ? { maxLength: p.max } : {}), ...(p.kind === "uuid" ? { format: "uuid" } : {}), ...(p.kind === "date" ? { format: "date" } : {}) };
+    properties[p.name] = { type, ...(p.kind === "enum" ? { enum: p.values } : {}), ...(p.kind === "number" ? { minimum: 0, maximum: p.max } : p.kind === "integer" ? { minimum: 1, maximum: p.max ?? 100 } : p.max && p.kind === "string" ? { maxLength: p.max } : {}), ...(p.kind === "uuid" ? { format: "uuid" } : {}), ...(p.kind === "date" ? { format: "date" } : {}) };
   }
   return { type: "function", function: { name: spec.name, description: spec.desc ?? `Consulta de solo lectura: ${spec.name.replace("asistente_", "").replaceAll("_", " ")}.`, parameters: { type: "object", properties, required: spec.params.filter(p => !p.optional && p.name !== "sociedad_id").map(p => p.name), additionalProperties: false } } };
 };
@@ -160,6 +181,11 @@ export function validateArgs(spec: ToolSpec, args: unknown, sociedadId?: string)
     const keepCase = spec.name === "asistente_buscar_materiales" || (spec.name === "asistente_contar_registros" && input.entidad === "materiales");
     mapped[`p_${p.name}`] = (p.name === "estado" || (spec.name === "asistente_buscar_gastos" && p.name === "estado_pago")) && typeof value === "string" && !keepCase ? value.toLowerCase() : value;
   }
+  if (spec.name === "asistente_resumen_mensual") {
+    const hasDesde = input.desde !== undefined && input.desde !== null;
+    const hasHasta = input.hasta !== undefined && input.hasta !== null;
+    if (hasDesde !== hasHasta || (hasDesde && !rangeWithin36Months(String(input.desde), String(input.hasta)))) return null;
+  }
   return mapped;
 }
 
@@ -227,7 +253,11 @@ export function createHandler(deps: HandlerDeps) {
       return reply(429, { error: "Se agotó tu cuota diaria de consultas.", ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}) }, origin, origins);
     }
 
-    const messages: Array<Record<string, unknown>> = [{ role: "system", content: SYSTEM_PROMPT }];
+    const today = limaToday((deps.now ?? Date.now)());
+    const messages: Array<Record<string, unknown>> = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: `Fecha de hoy en America/Lima: ${today}. Resuelve los periodos relativos desde esta fecha.` },
+    ];
     for (const m of body.historial ?? []) messages.push({ role: m.role, content: m.content });
     const contextText = body.contexto ? `\nContexto de pantalla: ${safeJson(body.contexto)}` : "";
     messages.push({ role: "user", content: `${body.pregunta}${contextText}` });
@@ -274,6 +304,22 @@ export function createHandler(deps: HandlerDeps) {
           if (!mapped) {
             messages.push({ role: "tool", tool_call_id: call.id, content: safeJson({ error: "Parámetros de consulta no válidos." }) });
             continue;
+          }
+          const toolArgs = args as Record<string, unknown>;
+          if (spec.name === "asistente_buscar_gastos") {
+            delete mapped.p_ultimos_meses;
+            if (typeof toolArgs.ultimos_meses === "number" && toolArgs.desde == null && toolArgs.hasta == null) {
+              const range = relativeDateRange(today, toolArgs.ultimos_meses);
+              Object.assign(mapped, { p_desde: range.desde, p_hasta: range.hasta });
+            }
+          } else if (spec.name === "asistente_resumen_mensual") {
+            const hasExplicitRange = toolArgs.desde != null && toolArgs.hasta != null;
+            const period = typeof toolArgs.periodo === "string" ? toolArgs.periodo : "ultimos_meses";
+            const months = Number.isInteger(toolArgs.ultimos_meses) ? toolArgs.ultimos_meses as number : period === "ultimos_meses" ? 6 : 1;
+            const range = hasExplicitRange ? { desde: toolArgs.desde as string, hasta: toolArgs.hasta as string } : relativeDateRange(today, months, period);
+            Object.assign(mapped, { p_desde: range.desde, p_hasta: range.hasta });
+            delete mapped.p_periodo;
+            delete mapped.p_ultimos_meses;
           }
           toolsUsed.push(spec.name);
           const rpcArgs = { p_empresa_id: body.empresa_id, ...mapped };
