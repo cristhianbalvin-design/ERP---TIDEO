@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
 
 const BUCKET = "reclutamiento-cv";
 const TICKET_TTL_MS = 15 * 60 * 1000;
@@ -29,7 +30,7 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const serviceRoleKey = getSupabaseServiceRoleKey();
     if (!supabaseUrl || !serviceRoleKey) {
       console.error("crear-upload-cv-publico: faltan secretos de Supabase");
       return jsonResponse({ error: "Servicio temporalmente no disponible" }, 503);

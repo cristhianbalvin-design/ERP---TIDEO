@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAnonKey } from "../_shared/supabaseKeys.ts";
 
 const ALLOWED_ORIGIN = "https://erp.tideo.tech";
 const MAX_BODY_BYTES = 32_000;
@@ -213,7 +214,7 @@ export function createHandler(deps: HandlerDeps) {
     if (!valid.ok) return errorReply(400, "Los datos de la solicitud no son válidos.", origin, origins);
     try {
     const body = valid.body;
-    const url = deps.env("SUPABASE_URL"), anon = deps.env("SUPABASE_ANON_KEY");
+    const url = deps.env("SUPABASE_URL"), anon = getSupabaseAnonKey(deps.env);
     const model = deps.env("OPENAI_MODEL_ASISTENTE") || "gpt-4.1-mini";
     if (!url || !anon) return errorReply(502, "El servicio no está disponible.", origin, origins);
     let supabase: SupabaseLike;
@@ -347,7 +348,7 @@ export function createHandler(deps: HandlerDeps) {
 }
 
 const handler = createHandler({
-  createSupabase: (token) => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+  createSupabase: (token) => createClient(Deno.env.get("SUPABASE_URL")!, getSupabaseAnonKey(), {
     global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false },
   }) as unknown as SupabaseLike,
   env: (name) => Deno.env.get(name),

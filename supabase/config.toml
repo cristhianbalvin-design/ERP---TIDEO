@@ -26,6 +26,10 @@ verify_jwt = false
 [functions.generar-conclusion-informe]
 verify_jwt = true
 
+[functions.aceptar-cotizacion]
+enabled = true
+verify_jwt = false
+
 [functions.asistente-erp]
 enabled = true
 verify_jwt = true

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { assertRoleAssignment } from "../_shared/rolePermissions.ts";
 import { resolveEffectiveSocietyScope } from "../_shared/sociedadScope.ts";
+import { getSupabaseAnonKey, getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -108,8 +109,8 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse({ success: false, error: "Metodo no permitido." }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const anonKey = getSupabaseAnonKey();
+  const serviceRoleKey = getSupabaseServiceRoleKey();
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse({ success: false, error: "Faltan variables de Supabase en la Edge Function." }, 500);
   }

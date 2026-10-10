@@ -7,6 +7,8 @@
 - Crear usuarios reales en Auth para reemplazar UUID demo.
 - Validar RLS con al menos dos usuarios de tenants distintos.
 - Definir variables `.env.local` sin commitearlas.
+- Configurar `ERP_SECRET_KEY` y `ERP_PUBLISHABLE_KEY` como secretos de Edge Functions; durante la transición, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_ANON_KEY` sirven de respaldo si falta la nueva.
+- Los secretos propios no pueden comenzar con `SUPABASE_`; usar nombres propios con prefijo `ERP_`.
 
 ## Variables Frontend
 

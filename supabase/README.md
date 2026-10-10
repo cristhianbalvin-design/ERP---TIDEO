@@ -47,6 +47,10 @@ VITE_SUPABASE_ANON_KEY=...
 
 No usar `service_role` en el frontend. Esa llave solo debe usarse en backend, scripts privados o entornos controlados.
 
+## Llaves De Edge Functions
+
+Configurar los secretos `ERP_SECRET_KEY` (clave de privilegio total) y `ERP_PUBLISHABLE_KEY` (clave pública) para las Edge Functions. Durante la transición, si falta el secreto nuevo correspondiente, las funciones usan `SUPABASE_SERVICE_ROLE_KEY` o `SUPABASE_ANON_KEY` como respaldo. Los secretos propios deben tener prefijo `ERP_`; Supabase no permite que secretos propios comiencen por `SUPABASE_`.
+
 ## Notas De Seguridad
 
 - Todas las tablas transaccionales tienen `empresa_id`.

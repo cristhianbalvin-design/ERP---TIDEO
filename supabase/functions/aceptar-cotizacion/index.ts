@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -19,7 +20,7 @@ serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      getSupabaseServiceRoleKey(),
     );
 
     // Registrar aceptación vía RPC (actualiza cotizacion + oportunidad)
@@ -35,6 +36,7 @@ serve(async (req) => {
       );
     }
 
+    try {
     // Cargar configuración de empresa para el email
     const { data: cfg } = await supabase
       .from("empresa_config")
@@ -81,6 +83,10 @@ serve(async (req) => {
           `,
         }),
       });
+    }
+
+    } catch (err) {
+      console.error("Error al enviar notificación de aceptación:", String(err));
     }
 
     return new Response(JSON.stringify({ ok: true }), {

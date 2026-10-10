@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { construirPayloadWhitelist, esIdDiagnosticoValido, sanearConclusion } from './conclusion.ts';
+import { getSupabaseAnonKey } from '../_shared/supabaseKeys.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +25,7 @@ serve(async req => {
   if (!esIdDiagnosticoValido(diagnosticoId)) return fail(400, 'El identificador del diagnóstico no es válido.');
 
   const url = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const anonKey = getSupabaseAnonKey();
   const openAiKey = Deno.env.get('OPENAI_API_KEY');
   if (!url || !anonKey || !openAiKey) return fail(502, 'El servicio de IA no está disponible.');
   const supabase = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false } });
