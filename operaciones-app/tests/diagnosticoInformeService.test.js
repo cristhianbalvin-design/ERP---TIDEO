@@ -12,6 +12,9 @@ describe('diagnosticoInformeService', () => {
     supabase.rpc.mockResolvedValueOnce({ data: row, error: null });
     await expect(obtenerOCrearBorrador('rac-1')).resolves.toEqual(row);
     expect(supabase.rpc).toHaveBeenCalledWith('obtener_o_crear_borrador_informe', { p_recepcion_id: 'rac-1' });
+    supabase.rpc.mockResolvedValueOnce({ data: row, error: null });
+    await expect(obtenerOCrearBorrador('rac-1', 'diag-1')).resolves.toEqual(row);
+    expect(supabase.rpc).toHaveBeenLastCalledWith('obtener_o_crear_borrador_informe', { p_recepcion_id: 'rac-1', p_diagnostico_id: 'diag-1' });
     expect(mensajeErrorDiagnosticoInforme({ code: '42501' })).toMatch(/permiso/i);
     expect(mensajeErrorDiagnosticoInforme({ code: 'P0002' })).toMatch(/diagnóstico/i);
   });

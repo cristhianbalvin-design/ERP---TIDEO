@@ -36,7 +36,7 @@ beforeEach(() => {
 describe('DiagnosticoInformePanel', () => {
   it('solo crea borrador con edición, y usuario con ver consulta existente sin poder editar', async () => {
     await render();
-    expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1');
+    expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1', 'd1');
     renderer.unmount(); renderer = null;
     await render({ puedeEditar: false });
     expect(api.obtenerInformeVigente).toHaveBeenCalledWith('r1');

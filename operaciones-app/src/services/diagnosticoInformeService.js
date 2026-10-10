@@ -31,9 +31,11 @@ export async function usuarioPuedeInforme(empresaId, accion) {
   return Boolean(data);
 }
 
-export async function obtenerOCrearBorrador(recepcionId) {
+export async function obtenerOCrearBorrador(recepcionId, diagnosticoId = null) {
   if (!recepcionId) throw new Error('Falta la recepción del informe.');
-  const { data, error } = await getSupabaseClient().rpc('obtener_o_crear_borrador_informe', { p_recepcion_id: recepcionId });
+  const params = { p_recepcion_id: recepcionId };
+  if (diagnosticoId) params.p_diagnostico_id = diagnosticoId;
+  const { data, error } = await getSupabaseClient().rpc('obtener_o_crear_borrador_informe', params);
   throwMapped(error);
   return unwrap(data);
 }

@@ -952,7 +952,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(generate.props.disabled).toBe(false);
     await act(async () => { generate.props.onClick(); await wait(0); });
     expect(mocks.generateConclusion).toHaveBeenCalledWith('two');
-    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two');
+    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two', 'two');
     expect(renderer.root.findByProps({ 'aria-label': 'Diagnóstico' }).props.value).toBe('El equipo requiere reparación.');
     expect(textOf(renderer.root)).toContain('Generado con IA');
   });
@@ -966,7 +966,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await renderPage();
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
     await act(async () => { buttonByText(renderer, 'Generar conclusión IA').props.onClick(); await wait(0); });
-    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two');
+    expect(mocks.getDraft).toHaveBeenCalledWith('rac-two', 'two');
     expect(mocks.generateConclusion).not.toHaveBeenCalled();
     expect(textOf(renderer.root)).toContain('La recepción ya tiene un borrador asociado a otro diagnóstico. No se generó la conclusión con IA.');
   });

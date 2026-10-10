@@ -161,7 +161,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     (async () => {
       try {
         const result = puedeEditar
-          ? await Promise.all([obtenerOCrearBorrador(diagnostico.recepcion_id), obtenerInformeVigente(diagnostico.recepcion_id)])
+          ? await Promise.all([obtenerOCrearBorrador(diagnostico.recepcion_id, diagnostico.id), obtenerInformeVigente(diagnostico.recepcion_id)])
           : await obtenerInformeVigente(diagnostico.recepcion_id);
         if (!active) return;
         if (puedeEditar) {
@@ -214,7 +214,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
     setGenerandoIA(true); setIaError(''); setConfirmarReemplazo(false);
     try {
       if (cambiosSinGuardar && onGuardarDiagnosticoPendiente) await onGuardarDiagnosticoPendiente();
-      await obtenerOCrearBorrador(diagnostico.recepcion_id);
+      await obtenerOCrearBorrador(diagnostico.recepcion_id, diagnostico.id);
       const result = await generarConclusionIA(diagnostico.id);
       if (esMantenimiento) {
         onResumenChange?.(result.conclusion, 'editado');

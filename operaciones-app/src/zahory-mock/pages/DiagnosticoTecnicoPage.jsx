@@ -928,7 +928,7 @@ export function DiagnosticoTecnicoPage() {
         const result = await hallazgosSaveRef.current?.();
         if (result && !result.ok) throw new Error(result.error || 'No se pudieron guardar los hallazgos.');
       }
-      const borrador = await obtenerOCrearBorrador(selected.recepcion_id);
+      const borrador = await obtenerOCrearBorrador(selected.recepcion_id, selected.id);
       validarBorradorDiagnostico(borrador, selected.id);
       const result = await generarConclusionIA(selected.id);
       cambiarResumen(result.conclusion, 'auto');
