@@ -1,24 +1,38 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 export function ModalShell({ open, title, subtitle, status, width = 1040, dirty = false, busy = false, onClose, children, footer, variant, titleClassName = '', subtitleClassName = '', statusClassName = '', closeClassName = '' }) {
+  const [confirmType, setConfirmType] = useState(null);
+  const confirmSafeButtonRef = useRef(null);
+  const confirmId = useId();
   const requestClose = useCallback(() => {
-    if (busy) {
-      if (typeof window.confirm === 'function' && !window.confirm('Hay un guardado en curso. Si cierras, puede completarse igualmente; verifica la lista al volver.')) return;
-      onClose();
+    if (busy || dirty) {
+      setConfirmType(busy ? 'busy' : 'dirty');
       return;
     }
-    if (dirty && typeof window.confirm === 'function' && !window.confirm('Tienes cambios sin guardar')) return;
     onClose();
   }, [busy, dirty, onClose]);
 
   useEffect(() => {
+    if (!open) setConfirmType(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (confirmType) confirmSafeButtonRef.current?.focus();
+  }, [confirmType]);
+
+  useEffect(() => {
     if (!open || typeof window === 'undefined' || !window.addEventListener) return undefined;
     const handleKeyDown = event => {
-      if (event.key === 'Escape') requestClose();
+      if (event.key === 'Escape') {
+        if (confirmType) {
+          event.preventDefault();
+          setConfirmType(null);
+        } else requestClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, requestClose]);
+  }, [open, confirmType, requestClose]);
 
   if (!open) return null;
 
@@ -45,6 +59,28 @@ export function ModalShell({ open, title, subtitle, status, width = 1040, dirty 
         {children}
         {footer && <div className="card-body diagnostico-modal-footer">{typeof footer === 'function' ? footer(requestClose) : footer}</div>}
       </div>
+      {confirmType && (
+        <div className="ops-modal-confirm-backdrop">
+          <section className="ops-modal-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby={`${confirmId}-title`} aria-describedby={`${confirmId}-description`}>
+            <h2 className="ops-modal-confirm-title" id={`${confirmId}-title`}>
+              {confirmType === 'busy' ? 'Hay un guardado en curso' : 'Tienes cambios sin guardar'}
+            </h2>
+            <p className="ops-modal-confirm-description" id={`${confirmId}-description`}>
+              {confirmType === 'busy'
+                ? 'Hay un guardado en curso. Si cierras, puede completarse igualmente; verifica la lista al volver.'
+                : 'Si cierras ahora se perderán.'}
+            </p>
+            <div className="ops-modal-confirm-actions">
+              <button type="button" className="ops-modal-confirm-safe" ref={confirmSafeButtonRef} onClick={() => setConfirmType(null)}>
+                {confirmType === 'busy' ? 'Seguir aquí' : 'Seguir editando'}
+              </button>
+              <button type="button" className="ops-modal-confirm-close" onClick={() => { setConfirmType(null); onClose(); }}>
+                {confirmType === 'busy' ? 'Cerrar igual' : 'Cerrar sin guardar'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

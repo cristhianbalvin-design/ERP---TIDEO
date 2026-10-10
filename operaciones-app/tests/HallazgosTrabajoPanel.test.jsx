@@ -53,6 +53,7 @@ const renderPanel = async (hallazgos, options = {}) => {
       familias={options.familias || [{ id: 'family-1', nombre: 'Trabajo 1' }, { id: 'family-2', nombre: 'Trabajo 2' }]}
       extraFamilyIds={options.extraFamilyIds || []}
       onExtraFamilyIdsChange={options.onExtraFamilyIdsChange}
+      onCreateFamily={options.onCreateFamily}
       tipos={[{ id: 'task-1', nombre: 'Tarea 1' }]}
       cargos={[{ id: 'cargo-1', nombre: 'Técnico' }]}
       canEdit
@@ -92,7 +93,9 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).toContain('P3 · 0');
     expect(text).toContain('P4 · 0');
     expect(text).toContain('Mediciones');
-    expect(text).toContain('Tareas relacionadas');
+    expect(text).toContain('Observaciones');
+    expect(text).not.toContain('Tareas relacionadas');
+    expect(text).not.toContain('Sin tareas relacionadas');
     expect(text).toContain('Fotos');
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
@@ -110,9 +113,9 @@ describe('HallazgosTrabajoPanel', () => {
   it('crea un grupo sin líneas desde una familia existente y permite agregarle un hallazgo', async () => {
     const setExtra = vi.fn();
     const { renderer } = await renderPanel([], { lines: [], onExtraFamilyIdsChange: setExtra });
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
     await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => familySelect.props.onChange({ target: { value: 'family-2' } }));
     expect(setExtra).toHaveBeenCalled();
     expect(textOf(renderer.root)).toContain('Trabajo 2');
@@ -127,12 +130,25 @@ describe('HallazgosTrabajoPanel', () => {
     const group = renderer.root.findByProps({ className: 'hallazgos-group-toggle' });
     await act(async () => group.props.onClick());
     expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(false);
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo / componente'));
+    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
     await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir familia existente' });
+    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => familySelect.props.onChange({ target: { value: 'family-1' } }));
     expect(setExtra).not.toHaveBeenCalled();
     expect(renderer.root.findByProps({ className: 'hallazgos-group-toggle' }).props['aria-expanded']).toBe(true);
+  });
+
+  it('permite crear un trabajo o componente y agrega un hallazgo bajo el nuevo grupo', async () => {
+    const onCreateFamily = vi.fn().mockResolvedValue({ id: 'family-new', nombre: 'Cilindro' });
+    const { renderer } = await renderPanel([], { lines: [], onCreateFamily });
+    const open = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
+    await act(async () => open.props.onClick());
+    const name = renderer.root.findByProps({ 'aria-label': 'Crear trabajo o componente' });
+    await act(async () => name.props.onChange({ target: { value: 'Cilindro' } }));
+    const form = renderer.root.findAllByType('form').find(node => node.props.onSubmit);
+    await act(async () => { form.props.onSubmit({ preventDefault() {} }); await Promise.resolve(); });
+    expect(onCreateFamily).toHaveBeenCalledWith('Cilindro');
+    expect(textOf(renderer.root)).toContain('Nuevo hallazgo');
   });
 
   it('muestra materiales de las tareas enlazadas en solo lectura', async () => {
@@ -173,7 +189,7 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar hallazgo')).props.onClick());
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
-    expect(callbacks.error).toContain('Completa componente');
+    expect(callbacks.error).toContain('Hay 1 hallazgo incompleto. Complétalos o elimínalos.');
   });
 
   it('valida el parámetro de cada medición y no envía la medición incompleta', async () => {
@@ -225,6 +241,19 @@ describe('HallazgosTrabajoPanel', () => {
     const checkbox = fotoLabel.findByType('input');
     await act(async () => { checkbox.props.onChange({ target: { checked: false } }); await Promise.resolve(); });
     expect(mocks.actualizarFotoHallazgo).toHaveBeenCalledWith({ empresaId: 'empresa-prueba', id: 'foto-1', leyenda: 'Sello', excluir_del_informe: true });
+    renderer.unmount();
+  });
+
+  it('mantiene enlaces de tareas existentes al guardar observaciones sin mostrarlos en la UI', async () => {
+    const { renderer, callbacks } = await renderPanel([{ ...baseHallazgo, lineas: [{ id: 'link-1', linea_id: 'line-1' }] }]);
+    expect(textOf(renderer.root)).not.toContain('Tareas relacionadas');
+    const textarea = renderer.root.findAllByType('textarea').find(node => node.props.maxLength === 1000);
+    await act(async () => textarea.props.onChange({ target: { value: 'Vibración anormal' } }));
+    mocks.actualizarDiagnosticoHallazgo.mockResolvedValue({ id: 'hallazgo-1', observacion: 'Vibración anormal' });
+    await act(async () => { await callbacks.save(); });
+    expect(mocks.actualizarDiagnosticoHallazgo).toHaveBeenCalledWith('empresa-prueba', 'diagnostico-1', expect.objectContaining({ observacion: 'Vibración anormal' }));
+    expect(mocks.crearEnlaceDiagnosticoHallazgoLinea).not.toHaveBeenCalled();
+    expect(mocks.eliminarEnlaceDiagnosticoHallazgoLinea).not.toHaveBeenCalled();
     renderer.unmount();
   });
 });

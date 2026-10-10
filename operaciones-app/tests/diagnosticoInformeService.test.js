@@ -12,6 +12,9 @@ describe('diagnosticoInformeService', () => {
     supabase.rpc.mockResolvedValueOnce({ data: row, error: null });
     await expect(obtenerOCrearBorrador('rac-1')).resolves.toEqual(row);
     expect(supabase.rpc).toHaveBeenCalledWith('obtener_o_crear_borrador_informe', { p_recepcion_id: 'rac-1' });
+    supabase.rpc.mockResolvedValueOnce({ data: row, error: null });
+    await expect(obtenerOCrearBorrador('rac-1', 'diag-1')).resolves.toEqual(row);
+    expect(supabase.rpc).toHaveBeenLastCalledWith('obtener_o_crear_borrador_informe', { p_recepcion_id: 'rac-1', p_diagnostico_id: 'diag-1' });
     expect(mensajeErrorDiagnosticoInforme({ code: '42501' })).toMatch(/permiso/i);
     expect(mensajeErrorDiagnosticoInforme({ code: 'P0002' })).toMatch(/diagnóstico/i);
   });
@@ -41,8 +44,8 @@ describe('diagnosticoInformeService', () => {
   });
 
   it('invoca la función con solo el id y traduce errores HTTP', async () => {
-    supabase.functions = { invoke: vi.fn().mockResolvedValue({ data: { ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4o-mini' }, error: null }) };
-    await expect(generarConclusionIA('diag-1')).resolves.toEqual({ ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4o-mini' });
+    supabase.functions = { invoke: vi.fn().mockResolvedValue({ data: { ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4.1-mini' }, error: null }) };
+    await expect(generarConclusionIA('diag-1')).resolves.toEqual({ ok: true, conclusion: 'Revisar bomba', modelo: 'gpt-4.1-mini' });
     expect(supabase.functions.invoke).toHaveBeenCalledWith('generar-conclusion-informe', { body: { diagnostico_id: 'diag-1' } });
     supabase.functions.invoke.mockResolvedValueOnce({ data: null, error: { context: { status: 429 } } });
     await expect(generarConclusionIA('diag-1')).rejects.toThrow(/cuota diaria/i);

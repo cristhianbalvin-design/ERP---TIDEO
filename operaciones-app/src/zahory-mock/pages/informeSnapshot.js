@@ -91,14 +91,17 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
     emitido_en: null,
     cabecera: {
       recepcion_id: value(head.recepcion_id, diagnostico?.recepcion_id), numero_recepcion: value(head.numero_recepcion, head.numero, head.numero_rac), numero_caso: head.numero_caso ?? null,
-      fecha_recepcion: value(head.fecha_recepcion, head.fecha_ingreso, head.fecha), activo_id: value(head.activo_id, activo.id, diagnostico?.activo_id),
+      fecha_recepcion: value(head.fecha_recepcion, head.fecha_ingreso, head.fecha, diagnostico?.created_at), activo_id: value(head.activo_id, activo.id, diagnostico?.activo_id),
       activo_codigo: value(head.activo_codigo, activo.codigo), activo_nombre: value(head.activo_nombre, activo.nombre), numero_serie: value(head.numero_serie, activo.placa_serie, activo.numero_serie),
       horometro: head.horometro ?? null, cliente_id: value(head.cliente_id, cliente.id), cliente_razon_social: value(head.cliente_razon_social, head.cliente_nombre, cliente.razon_social, cliente.nombre),
       diagnostico_id: diagnostico?.id || null, tipo: diagnostico?.tipo || null, estado_diagnostico: diagnostico?.estado || null,
     },
     hallazgos, mediciones, tareas_repuestos: tareas, resumen,
-    conclusion: String(op.conclusion || '').trim() || null,
-    conclusion_origen: op.conclusion_origen,
+    diagnostico_origen: diagnostico?.resumen_origen || 'auto',
+    conclusion: diagnostico?.tipo === 'mantenimiento'
+      ? (String(diagnostico?.resumen_diagnostico || '').trim() || null)
+      : (String(op.conclusion || '').trim() || null),
+    conclusion_origen: diagnostico?.tipo === 'mantenimiento' ? diagnostico?.resumen_origen || 'auto' : op.conclusion_origen,
     emisor: { nombre: head.emisor_nombre || null, cargo: head.emisor_cargo || null },
   };
 }

@@ -72,7 +72,7 @@ serve(async req => {
   }
   const safeMaterials = materials.map(item => ({ ...item, descripcion: String(item.descripcion || '').trim() || materialNames.get(item.material_id) || '' }));
   const payload = construirPayloadWhitelist(hallazgos, normalizedLines, safeMaterials, valoresResult.data || []);
-  const model = Deno.env.get('OPENAI_MODEL_CONCLUSION') || 'gpt-4o-mini';
+  const model = Deno.env.get('OPENAI_MODEL_CONCLUSION') || 'gpt-4.1-mini';
   const inputEstimate = Math.ceil((SYSTEM_PROMPT.length + JSON.stringify(payload).length) / 4);
   const { data: quotaData, error: quotaError } = await supabase.rpc('consumir_cuota_ia_informe', {
     p_empresa_id: empresaId, p_limite_usuario: 20, p_limite_empresa: 100,
