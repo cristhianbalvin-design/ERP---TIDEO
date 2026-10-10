@@ -679,6 +679,6 @@ Deno.test("SYSTEM_PROMPT dirige importes y facturas de compra", () => {
   assert(SYSTEM_PROMPT.includes("mencionan un material") && SYSTEM_PROMPT.includes("en texto"));
   assert(SYSTEM_PROMPT.includes("asistente_buscar_gastos"));
   assert(SYSTEM_PROMPT.includes("prueba asistente_buscar_cxp y asistente_buscar_ordenes_compra"));
-  assert(SYSTEM_PROMPT.includes("Factura de compra"));
-  assert(SYSTEM_PROMPT.includes("UNA l\u00ednea por cuenta") && SYSTEM_PROMPT.includes("Total:"));
+  assert(SYSTEM_PROMPT.includes('"factura de compra" = documento por pagar o gasto con comprobante'));
+  assert(SYSTEM_PROMPT.includes("una línea por cuenta") && SYSTEM_PROMPT.includes("Total:"));
 });
