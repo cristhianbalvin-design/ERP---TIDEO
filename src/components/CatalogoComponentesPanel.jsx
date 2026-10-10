@@ -38,7 +38,7 @@ function EditableField({ value, onChange, disabled, label, multiline = false, pl
     : <input {...props} />;
 }
 
-export default function CatalogoComponentesPanel({ empresaId, sociedadId, puedeEditar, onClose }) {
+export default function CatalogoComponentesPanel({ empresaId, sociedadId, requiereSociedad = false, puedeEditar, onClose }) {
   const [componentes, setComponentes] = useState([]);
   const [seleccionId, setSeleccionId] = useState('');
   const [zonaId, setZonaId] = useState('');
@@ -47,8 +47,15 @@ export default function CatalogoComponentesPanel({ empresaId, sociedadId, puedeE
   const [guardando, setGuardando] = useState('');
   const [aviso, setAviso] = useState('');
   const [error, setError] = useState('');
+  const requiereSeleccionSociedad = requiereSociedad && !sociedadId;
 
   const recargar = useCallback(async () => {
+    if (requiereSeleccionSociedad) {
+      setComponentes([]);
+      setError('');
+      setCargando(false);
+      return;
+    }
     setCargando(true);
     try {
       const data = await catalogoComponentesService.listar(empresaId, sociedadId);
@@ -61,7 +68,7 @@ export default function CatalogoComponentesPanel({ empresaId, sociedadId, puedeE
     } finally {
       setCargando(false);
     }
-  }, [empresaId, sociedadId]);
+  }, [empresaId, sociedadId, requiereSeleccionSociedad]);
 
   useEffect(() => { recargar(); }, [recargar]);
   const seleccionado = componentes.find(item => item.id === seleccionId);
@@ -110,7 +117,7 @@ export default function CatalogoComponentesPanel({ empresaId, sociedadId, puedeE
     <section className="cc-panel" role="dialog" aria-modal="true" aria-labelledby="cc-titulo">
       <header className="cc-header"><div><div className="cc-eyebrow">MAESTROS · REFERENCIA TÉCNICA</div><h2 id="cc-titulo">Catálogo de componentes</h2><p>Dibujos base con medidas que puedes personalizar para esta sociedad.</p></div><button type="button" className="cc-close" aria-label="Cerrar catálogo" onClick={onClose}>×</button></header>
       {error && <div className="cc-message is-error" role="alert">{error}</div>}{aviso && <div className="cc-message" role="status">{aviso}</div>}
-      {cargando ? <div className="cc-loading">Cargando catálogo…</div> : <div className="cc-layout">
+      {requiereSeleccionSociedad ? <div className="cc-prompt">Selecciona una sociedad activa para ver y personalizar el catálogo.</div> : cargando ? <div className="cc-loading">Cargando catálogo…</div> : <div className="cc-layout">
         <aside className="cc-list" aria-label="Componentes">{componentes.map(componente => <div className={`cc-component${seleccionId === componente.id ? ' is-selected' : ''}`} key={componente.id}>
           <button type="button" className="cc-component-select" onClick={() => { setSeleccionId(componente.id); setZonaId(''); }}><strong>{componente.nombre}</strong><span>{componente.descripcion}</span></button>
           <button type="button" role="switch" aria-checked={Boolean(componente.activo)} aria-label={`${componente.activo ? 'Desactivar' : 'Activar'} ${componente.nombre}`} disabled={!puedeEditar || guardando === `estado:${componente.id}`} onClick={() => cambiarEstado(componente)} className={`cc-switch${componente.activo ? ' is-on' : ''}`}><i /></button>

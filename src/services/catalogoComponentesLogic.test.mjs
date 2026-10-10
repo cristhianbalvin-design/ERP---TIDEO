@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolverCatalogoComponentes, resolverMedidaComponente } from './catalogoComponentesLogic.js';
+import { catalogoComponentesService, validarSociedadIdCatalogo } from './catalogoComponentesService.js';
 
 test('resuelve una medida base sin marcarla como personalizada', () => {
   const medida = { id: 'dint', nombre: 'Diámetro interior', cota: 'dint', desde: 'Tres puntos', referencia: 'H8' };
@@ -39,4 +40,16 @@ test('resuelve overrides por medida sin alterar las zonas ni las demás medidas'
   assert.equal(catalogo[0].zonas[0].medidas[0].cota, 'd-int');
   assert.equal(catalogo[0].zonas[0].medidas[0].personalizado, true);
   assert.equal(catalogo[0].zonas[0].medidas[1].personalizado, false);
+});
+
+test('permite null o UUID y rechaza el sentinel consolidado con un mensaje claro', () => {
+  assert.doesNotThrow(() => validarSociedadIdCatalogo(null));
+  assert.doesNotThrow(() => validarSociedadIdCatalogo('123e4567-e89b-12d3-a456-426614174000'));
+  assert.throws(() => validarSociedadIdCatalogo('**todas**'), /Selecciona una sociedad concreta/);
+});
+
+test('rechaza sociedadId inválido antes de intentar llamar al RPC', async () => {
+  await assert.rejects(catalogoComponentesService.listar('empresa', '**todas**'), /sociedad concreta/);
+  await assert.rejects(catalogoComponentesService.listar('empresa', { id: '123e4567-e89b-12d3-a456-426614174000' }), /UUID válido o null/);
+  await assert.rejects(catalogoComponentesService.guardarOverride('empresa', 'no-es-uuid', 'componente', 'zona', 'medida', {}), /UUID válido o null/);
 });

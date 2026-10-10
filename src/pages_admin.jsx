@@ -5518,6 +5518,11 @@ function Maestros() {
     sociedadesIdsAlcance,
     sociedadesDisponibles,
   });
+  const sociedadIdCatalogoComponentes = modoVistaSociedadMaestros.permiteEscritura
+    && typeof modoVistaSociedadMaestros.sociedadIdEscritura === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(modoVistaSociedadMaestros.sociedadIdEscritura)
+    ? modoVistaSociedadMaestros.sociedadIdEscritura
+    : null;
   const centrosCostoEscrituraMaestros = (centrosCosto || []).filter(c => (
     !modoVistaSociedadMaestros.sociedadIdEscritura
     || c.sociedad_id === modoVistaSociedadMaestros.sociedadIdEscritura
@@ -7242,7 +7247,8 @@ function Maestros() {
 
       {showCatalogoComponentes && <CatalogoComponentesPanel
         empresaId={empresa?.id}
-        sociedadId={modoVistaSociedadMaestros.sociedadIdEscritura || sociedadActiva?.id || sociedadActiva || null}
+        sociedadId={sociedadIdCatalogoComponentes}
+        requiereSociedad={Boolean(empresa?.multisociedad_habilitado)}
         puedeEditar={Boolean(role?.permisos?.todo || role?.permisos?.editar === true || role?.permisos?.editar?.includes?.('maestros'))}
         onClose={() => setShowCatalogoComponentes(false)}
       />}
