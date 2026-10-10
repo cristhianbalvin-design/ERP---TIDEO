@@ -27,3 +27,5 @@ supabase/.temp/
 /verificar_462_en_frio.sql
 /dry_run_*.sql
 /[0-9][0-9][0-9]_commit_real.sql
+# Respaldos locales con datos de negocio: no versionar
+/backups/
