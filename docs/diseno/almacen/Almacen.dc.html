@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mock Almacén WMS — Fase 1 (Recepción de OC + Ubicaciones)</title>
+<title>Mock Almacén WMS — Fase 1 (Recepción de OC + Ubicaciones, alta/edición)</title>
 <style>
 /* Variables copiadas de zahory.css, sección DX-UI base */
 .dx-ui{
@@ -150,6 +150,53 @@ body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
   .dx-ubi-cols > .dx-ubi-mob{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
   .dx-ubi-cols > .dx-ui-arrow{display:none}
 }
+/* B2b: alta, edición, desactivación y detalle (dx-ubi-) */
+.dx-btn.danger{color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot);background:var(--dx-ui-card)}
+.dx-btn.danger[disabled]{color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);background:var(--dx-ui-gray-bg)}
+.dx-btn:not(.primary):not(.danger):hover{background:var(--dx-ui-hover)}
+.dx-ubi-cols.is-off{opacity:.62}
+.dx-ubi-switch{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ubi-switch.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+.dx-ubi-switch[disabled]{opacity:.5;cursor:not-allowed}
+.dx-ubi-switch:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ubi-usofil{width:auto;height:36px;min-width:170px;border-radius:999px;font-size:13px}
+.dx-ubi-toast{margin-bottom:12px;padding:10px 16px;border-radius:10px;background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg);font-weight:600;font-size:13px}
+.dx-ubi-det-cols{--dx-ui-cols:minmax(0,1fr) 120px 110px;cursor:default}
+.dx-ubi-det-cols.dx-ui-row{cursor:default}
+.dx-ubi-det-cols.dx-ui-row:hover{background:transparent}
+.dx-ubi-subhead{padding:12px 20px;border-top:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ubi-sub{display:flex;align-items:center;gap:12px;min-height:56px}
+.dx-ubi-sub .dx-ubi-name{flex:1;padding-left:0}
+.dx-ubi-overlay{position:fixed;inset:0;z-index:20;background:rgba(15,27,48,.45)}
+.dx-ubi-panel{position:fixed;top:0;right:0;bottom:0;z-index:21;display:flex;flex-direction:column;width:min(440px,100vw);background:var(--dx-ui-card);box-shadow:-8px 0 30px rgba(15,27,48,.25);color:var(--dx-ui-ink)}
+.dx-ubi-panel header,.dx-ubi-panel footer{display:flex;align-items:center;gap:10px;padding:16px 20px}
+.dx-ubi-panel header{border-bottom:1px solid var(--dx-ui-line)}
+.dx-ubi-panel header h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-ubi-panel footer{justify-content:flex-end;border-top:1px solid var(--dx-ui-line)}
+.dx-ubi-x{width:36px;height:36px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font-size:20px;cursor:pointer}
+.dx-ubi-x:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ubi-body{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+.dx-ubi-f label{display:block;margin-bottom:6px;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ubi-f small{display:block;margin-top:6px;color:var(--dx-ui-gray);font-size:12px}
+.dx-ubi-f small.bad{color:var(--dx-ui-red-fg)}
+.dx-ubi-ro{padding:10px 12px;border-radius:8px;background:var(--dx-ui-gray-bg);color:var(--dx-ui-navy);font-weight:600}
+.dx-ubi-seg{display:flex;gap:6px}
+.dx-ubi-seg button{flex:1;height:40px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ubi-seg button.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:var(--dx-ui-cyan)}
+.dx-ubi-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ubi-path{padding:12px 14px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ubi-path small{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ubi-path span{font-weight:600}
+.dx-ubi-alert{padding:12px 14px;border-radius:10px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);font-size:13px}
+.dx-ubi-confirm{position:fixed;z-index:22;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 32px));padding:22px;border-radius:14px;background:var(--dx-ui-card);box-shadow:0 12px 40px rgba(15,27,48,.35);color:var(--dx-ui-ink)}
+.dx-ubi-confirm h2{margin:0 0 8px;color:var(--dx-ui-navy);font:700 17px 'Sora',sans-serif}
+.dx-ubi-confirm p{margin:0 0 18px;color:var(--dx-ui-gray)}
+.dx-ubi-confirm-f{display:flex;gap:10px;justify-content:flex-end}
+@container (max-width:760px){
+  .dx-ubi-det-cols{--dx-ui-cols:minmax(0,1fr) auto}
+  .dx-ubi-det-cols > :nth-child(2){display:none}
+}
+
 .theme-toggle{position:fixed;right:14px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 </style>
 </head>
@@ -192,17 +239,42 @@ const ALMACENES = [
   {id:'ALM-002', nombre:'Almacén Taller'}
 ];
 const UBICACIONES = [
-  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-001', nivel:0, tipo:'General', items:128, und:1940, general:true},
-  {cod:'Z-A', nombre:'Zona A · Lubricantes y filtros', alm:'ALM-001', nivel:0, tipo:'Zona', items:64, und:2310},
-  {cod:'Z-A-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:38, und:1480},
-  {cod:'Z-A-R01-P01', nombre:'Posición 01', alm:'ALM-001', nivel:2, tipo:'Posición', items:12, und:420},
-  {cod:'Z-A-R01-P02', nombre:'Posición 02', alm:'ALM-001', nivel:2, tipo:'Posición', items:26, und:1060},
-  {cod:'Z-A-R02', nombre:'Rack 02', alm:'ALM-001', nivel:1, tipo:'Rack', items:26, und:830},
-  {cod:'Z-B', nombre:'Zona B · Rodamientos y sellos', alm:'ALM-001', nivel:0, tipo:'Zona', items:41, und:980},
-  {cod:'Z-B-R01', nombre:'Rack 01', alm:'ALM-001', nivel:1, tipo:'Rack', items:41, und:980},
-  {cod:'GEN', nombre:'Ubicación general', alm:'ALM-002', nivel:0, tipo:'General', items:35, und:410, general:true},
-  {cod:'T-01', nombre:'Estante de herramientas', alm:'ALM-002', nivel:0, tipo:'Rack', items:22, und:265}
+  {id:'u1', cod:'GEN', nombre:'Ubicación general', alm:'ALM-001', padre:null, tipo:'General', items:128, und:1940, general:true, activo:true,
+    stock:[{mat:'Filtro de aire cabina CA-118', cod:'MAT-001390', lote:'—', fis:40},{mat:'Correa trapezoidal B-52', cod:'MAT-000931', lote:'L-0925', fis:25},{mat:'Pernos grado 8 1/2" x 2"', cod:'MAT-003377', lote:'—', fis:1875}]},
+  {id:'u2', cod:'Z-A', nombre:'Zona A · Lubricantes y filtros', alm:'ALM-001', padre:null, tipo:'Zona', items:64, und:2310, activo:true, stock:[]},
+  {id:'u3', cod:'Z-A-R01', nombre:'Rack 01', alm:'ALM-001', padre:'u2', tipo:'Rack', items:38, und:1480, activo:true, stock:[]},
+  {id:'u4', cod:'Z-A-R01-P01', nombre:'Posición 01', alm:'ALM-001', padre:'u3', tipo:'Posición', items:12, und:420, activo:true,
+    stock:[{mat:'Filtro de aceite hidráulico HF-220', cod:'MAT-001245', lote:'L-1001', fis:6},{mat:'Aceite hidráulico ISO 68 (balde 20 L)', cod:'MAT-000112', lote:'L-0920', fis:414}]},
+  {id:'u5', cod:'Z-A-R01-P02', nombre:'Posición 02', alm:'ALM-001', padre:'u3', tipo:'Posición', items:26, und:1060, activo:true,
+    stock:[{mat:'Grasa EP2 cartucho 400 g', cod:'MAT-000455', lote:'L-0911', fis:1060}]},
+  {id:'u6', cod:'Z-A-R02', nombre:'Rack 02', alm:'ALM-001', padre:'u2', tipo:'Rack', items:26, und:830, activo:true, stock:[]},
+  {id:'u7', cod:'Z-B', nombre:'Zona B · Rodamientos y sellos', alm:'ALM-001', padre:null, tipo:'Zona', items:41, und:980, activo:true, stock:[]},
+  {id:'u8', cod:'Z-B-R01', nombre:'Rack 01', alm:'ALM-001', padre:'u7', tipo:'Rack', items:41, und:980, activo:true,
+    stock:[{mat:'Rodamiento rígido 6205-2RS', cod:'MAT-000873', lote:'—', fis:620},{mat:'Sello de aceite 35x52x7', cod:'MAT-002318', lote:'—', fis:360}]},
+  {id:'u9', cod:'Z-C', nombre:'Zona C · Antigua (en desuso)', alm:'ALM-001', padre:null, tipo:'Zona', items:0, und:0, activo:false, stock:[]},
+  {id:'u12', cod:'Z-A-PISO', nombre:'Piso · bultos grandes', alm:'ALM-001', padre:'u2', tipo:'Piso', items:3, und:18, activo:true,
+    stock:[{mat:'Tambor lubricante 200 L', cod:'MAT-000099', lote:'L-0930', fis:18}]},
+  {id:'u13', cod:'Z-B-P01', nombre:'Posición 01 (sin rack)', alm:'ALM-001', padre:'u7', tipo:'Posición', items:4, und:75, activo:true,
+    stock:[{mat:'Anillo de retención 40 mm', cod:'MAT-001877', lote:'—', fis:75}]},
+  {id:'u14', cod:'REC', nombre:'Zona de recepción', alm:'ALM-001', padre:null, tipo:'Zona', uso:'recepcion', items:0, und:0, activo:true, stock:[]},
+  {id:'u15', cod:'CUA', nombre:'Cuarentena · en revisión', alm:'ALM-001', padre:null, tipo:'Zona', uso:'cuarentena', items:2, und:14, activo:true,
+    stock:[{mat:'Filtro de aceite hidráulico HF-220', cod:'MAT-001245', lote:'L-0888', fis:14}]},
+  {id:'u10', cod:'GEN', nombre:'Ubicación general', alm:'ALM-002', padre:null, tipo:'General', items:35, und:410, general:true, activo:true,
+    stock:[{mat:'Llave de impacto 3/4" neumática', cod:'MAT-004120', lote:'—', fis:410}]},
+  {id:'u11', cod:'T-01', nombre:'Estante de herramientas', alm:'ALM-002', padre:null, tipo:'Rack', items:22, und:265, activo:true, stock:[]}
 ];
+const USOS = {almacenaje:'Almacenaje', recepcion:'Recepción', cuarentena:'Cuarentena u observados', despacho:'Despacho', merma:'Merma o baja'};
+const usoDe = u => u.uso || 'almacenaje';
+const pillUso = u => usoDe(u)==='almacenaje' ? '' : '<span class="dx-ui-pill '+(usoDe(u)==='cuarentena'||usoDe(u)==='merma'?'is-amber':'is-cyan')+'"><i></i>'+USOS[usoDe(u)]+'</span>';
+const nivelDe = u => { let n=0, p=u.padre; while(p){ n++; p=UBICACIONES.find(x=>x.id===p).padre; } return n; };
+const hijosActivos = id => UBICACIONES.filter(x=>x.padre===id && x.activo);
+const stockPropio = u => u.stock.reduce((t,l)=>t+l.fis,0);
+// Reglas de los triggers de base de datos + una regla de la pantalla (sub-ubicaciones)
+const motivoNoDesactivar = u =>
+  u.general ? 'La ubicación general no se puede desactivar.'
+  : stockPropio(u)>0 ? 'Tiene stock: no se puede desactivar mientras conserve existencias.'
+  : hijosActivos(u.id).length ? 'Tiene sub-ubicaciones activas: desactívalas primero.'
+  : '';
 const OCS = [
   {id:'OC-26-0412', prov:'Proveedor Industrial Andino S.A.C.', fecha:'06 oct 2026', estado:'Parcial', pct:50, alm:'ALM-001', lines:[
     {mat:'Filtro de aceite hidráulico HF-220', cod:'MAT-001245', ped:12, rec:6, ubi:'Z-A-R01-P01'},
@@ -222,13 +294,14 @@ const ICON_PIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const ICON_ARROW = '<svg class="dx-ui-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
 const ICON_SEARCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
 
+let usoFil = '', ubiSel = null, panel = null, confirmDes = null, verInactivas = false, toast = '';
 let view = 'rec', ocSel = null, q = '', whSel = 'ALM-001', obs = {}, recQty = {}, recUbi = {}, confirmada = {};
 const $ = s => document.querySelector(s);
 const pillEstado = e => e==='Pendiente' ? '<span class="dx-ui-pill is-amber"><i></i>Pendiente</span>'
   : e==='Parcial' ? '<span class="dx-ui-pill is-cyan"><i></i>Parcial</span>'
   : '<span class="dx-ui-pill is-green"><i></i>'+e+'</span>';
-const ubiOptions = (alm, sel) => UBICACIONES.filter(u=>u.alm===alm).map(u=>
-  `<option value="${u.cod}" ${u.cod===sel?'selected':''}>${u.cod==='GEN'?'General (sin asignar)':u.cod+' · '+u.nombre}</option>`).join('');
+const ubiOptions = (alm, sel) => UBICACIONES.filter(u=>u.alm===alm && u.activo).map(u=>
+  `<option value="${u.cod}" ${u.cod===sel?'selected':''}>${u.cod==='GEN'?'General (sin asignar)':u.cod+' · '+u.nombre+(u.uso&&u.uso!=='almacenaje'?' ('+USOS[u.uso].toLowerCase()+')':'')}</option>`).join('');
 
 function render(){
   document.querySelectorAll('.dx-ui-tab').forEach(t=>t.classList.toggle('on', t.dataset.view===view));
@@ -329,37 +402,190 @@ function renderDetalle(){
 }
 
 function renderUbi(){
+  if(ubiSel){ renderUbiDetalle(); return; }
   $('#pageTitle').textContent='Ubicaciones';
   $('#pageSub').textContent='Zonas, racks y posiciones de cada almacén. Todo el stock vive en una ubicación.';
-  $('#pageActions').innerHTML='<button class="dx-btn primary" aria-label="Nueva ubicación">+ Nueva ubicación</button>';
-  const f = UBICACIONES.filter(u=>u.alm===whSel && (u.cod+u.nombre).toLowerCase().includes(q.toLowerCase()));
+  $('#pageActions').innerHTML='<button class="dx-btn primary" id="nueva" aria-label="Nueva ubicación">+ Nueva ubicación</button>';
+  $('#nueva').onclick=()=>abrirPanel({modo:'nuevo', alm:whSel, tipo:'Zona', padre:null, uso:'almacenaje', cod:'', nombre:'', err:{}});
+  const delAlm = UBICACIONES.filter(u=>u.alm===whSel);
+  const visibles = delAlm.filter(u=>verInactivas || u.activo);
+  const coin = visibles.filter(u=>(u.cod+u.nombre).toLowerCase().includes(q.toLowerCase()) && (!usoFil || usoDe(u)===usoFil));
+  const keep = new Set(coin.map(u=>u.id));
+  coin.forEach(u=>{ let p=u.padre; while(p){ keep.add(p); p=UBICACIONES.find(x=>x.id===p).padre; } });
+  const f = (q||usoFil) ? visibles.filter(u=>keep.has(u.id)) : visibles;
+  const nInact = delAlm.filter(u=>!u.activo).length;
   const rows = f.map(u=>`
-    <div class="dx-ui-row dx-ubi-cols" role="button" tabindex="0" aria-label="Abrir ${u.nombre}">
-      <div class="dx-ubi-name" style="--n:${u.nivel}"><span class="dx-ui-icon ${u.general?'is-violet':'is-cyan'} dx-ubi-ind">${ICON_PIN}</span><em>${u.nombre}</em><small>${u.cod}</small></div>
-      <span>${u.general?'<span class="dx-ui-pill is-gray"><i></i>General</span>':'<span class="dx-ui-pill is-cyan"><i></i>'+u.tipo+'</span>'}</span>
+    <div class="dx-ui-row dx-ubi-cols ${u.activo?'':'is-off'}" role="button" tabindex="0" data-ubi="${u.id}" aria-label="Abrir ${u.nombre}">
+      <div class="dx-ubi-name" style="--n:${nivelDe(u)}"><span class="dx-ui-icon ${u.general?'is-violet':'is-cyan'} dx-ubi-ind">${ICON_PIN}</span><em>${u.nombre}</em><small>${u.cod}</small></div>
+      <span>${u.general?'<span class="dx-ui-pill is-gray"><i></i>General</span>':u.activo?'<span class="dx-ui-pill is-cyan"><i></i>'+u.tipo+'</span>':'<span class="dx-ui-pill is-gray"><i></i>Inactiva</span>'}${u.activo?pillUso(u):''}</span>
       <span class="dx-ubi-num">${u.items.toLocaleString('es-PE')}</span>
       <span class="dx-ubi-num">${u.und.toLocaleString('es-PE')} <small style="color:var(--dx-ui-gray);font:12px 'DM Sans',system-ui,sans-serif">und</small></span>
       <span class="dx-ubi-mob"><span class="dx-ubi-num">${u.und.toLocaleString('es-PE')} und</span><small>${u.items.toLocaleString('es-PE')} materiales</small></span>
       ${ICON_ARROW}
     </div>`).join('');
   $('#view').innerHTML=`
+    ${toast?`<div class="dx-ubi-toast" role="status">${toast}</div>`:''}
     <div class="dx-ui-summary">
-      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).length}</b><span>Ubicaciones</span></div>
-      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel).reduce((s,u)=>s+(u.nivel===0?u.items:0),0)}</b><span>Materiales almacenados</span></div>
-      <div class="dx-ui-chip"><b>${UBICACIONES.filter(u=>u.alm===whSel&&u.general)[0].items}</b><span>Sin ubicar (en General)</span></div>
+      <div class="dx-ui-chip"><b>${delAlm.filter(u=>u.activo).length}</b><span>Ubicaciones</span></div>
+      <div class="dx-ui-chip"><b>${delAlm.reduce((s,u)=>s+(!u.padre?u.items:0),0)}</b><span>Materiales almacenados</span></div>
+      <div class="dx-ui-chip"><b>${delAlm.filter(u=>u.general)[0].items}</b><span>Sin ubicar (en General)</span></div>
     </div>
     <div class="dx-ui-card">
       <div class="dx-ui-toolbar"><h2>Mapa del almacén</h2><span class="dx-ui-count">${f.length} resultado(s)</span>
+        <select class="dx-rec-field dx-ubi-usofil" id="usofil" aria-label="Filtrar por uso"><option value="">Todos los usos</option>${Object.keys(USOS).map(k=>`<option value="${k}" ${usoFil===k?'selected':''}>${USOS[k]}</option>`).join('')}</select>
+        <button class="dx-ubi-switch ${verInactivas?'on':''}" id="inact" role="switch" aria-checked="${verInactivas}" ${nInact?'':'disabled'}>Mostrar inactivas${nInact?' ('+nInact+')':''}</button>
         <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${q}" placeholder="Buscar ubicación" aria-label="Buscar ubicación"></label></div>
-      <div class="dx-ubi-wh" role="tablist">${ALMACENES.map(a=>`<button class="dx-ui-tab ${a.id===whSel?'on':''}" role="tab" data-wh="${a.id}">${a.nombre}</button>`).join('')}</div>
+      <div class="dx-ubi-wh" role="tablist">${ALMACENES.map(a=>`<button class="dx-ui-tab ${a.id===whSel?'on':''}" role="tab" aria-selected="${a.id===whSel}" data-wh="${a.id}">${a.nombre}</button>`).join('')}</div>
       <div class="dx-ui-head dx-ubi-cols" aria-hidden="true"><span>Ubicación</span><span>Tipo</span><span>Materiales</span><span>Unidades</span><span></span></div>
       ${rows || '<div class="dx-ui-empty">Sin coincidencias para tu búsqueda.</div>'}
     </div>`;
+  toast='';
   document.querySelectorAll('[data-wh]').forEach(b=>b.onclick=()=>{whSel=b.dataset.wh;renderUbi();});
+  $('#usofil').onchange=e=>{usoFil=e.target.value;renderUbi();};
+  $('#inact').onclick=()=>{verInactivas=!verInactivas;renderUbi();};
+  document.querySelectorAll('[data-ubi]').forEach(r=>{
+    const open=()=>{ubiSel=r.dataset.ubi; render();};
+    r.addEventListener('click',open);
+    r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  });
   const inp=$('#q'); inp.addEventListener('input',e=>{q=e.target.value; const p=e.target.selectionStart; renderUbi(); const n=$('#q'); n.focus(); n.setSelectionRange(p,p);});
 }
 
-document.querySelectorAll('.dx-ui-tabs .dx-ui-tab').forEach(t=>t.addEventListener('click',()=>{view=t.dataset.view; ocSel=null; q=''; render();}));
+function renderUbiDetalle(){
+  const u = UBICACIONES.find(x=>x.id===ubiSel);
+  const padre = u.padre ? UBICACIONES.find(x=>x.id===u.padre) : null;
+  const alm = ALMACENES.find(a=>a.id===u.alm).nombre;
+  const hijos = UBICACIONES.filter(x=>x.padre===u.id);
+  const motivo = u.activo ? motivoNoDesactivar(u) : '';
+  $('#pageTitle').textContent=u.nombre;
+  $('#pageSub').textContent=alm+' · '+u.cod;
+  $('#pageActions').innerHTML=
+    (u.general?'':'<button class="dx-btn" id="editar">Editar</button>')+
+    (u.general?'':(u.activo
+      ?`<button class="dx-btn danger" id="desact" ${motivo?'disabled aria-describedby="why"':''}>Desactivar</button>`
+      :'<button class="dx-btn primary" id="react">Reactivar</button>'));
+  const stockRows = u.stock.map(l=>`
+    <div class="dx-ui-row dx-ubi-det-cols">
+      <span class="dx-rec-main"><b>${l.mat}</b><small>${l.cod}</small></span>
+      <span style="color:var(--dx-ui-gray)">${l.lote}</span>
+      <span class="dx-ubi-num" style="text-align:right">${l.fis.toLocaleString('es-PE')}</span>
+    </div>`).join('');
+  const hijosHtml = hijos.length ? `
+    <div class="dx-ubi-subhead">Contiene ${hijos.length} sub-ubicación(es)</div>
+    ${hijos.map(h=>`<div class="dx-ui-row dx-ubi-sub" role="button" tabindex="0" data-ubi="${h.id}" aria-label="Abrir ${h.nombre}"><span class="dx-ubi-name"><span class="dx-ui-icon is-cyan dx-ubi-ind">${ICON_PIN}</span><em>${h.nombre}</em><small>${h.cod}</small></span>${h.activo?'':'<span class="dx-ui-pill is-gray"><i></i>Inactiva</span>'}${ICON_ARROW}</div>`).join('')}` : '';
+  $('#view').innerHTML=`
+    <button class="dx-rec-back" id="back">← Volver a ubicaciones</button>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>${u.cod} · ${u.nombre}</h2>
+        ${u.general?'<span class="dx-ui-pill is-gray"><i></i>General</span>':''}${pillUso(u)}
+        ${u.activo?'<span class="dx-ui-pill is-green"><i></i>Activa</span>':'<span class="dx-ui-pill is-gray"><i></i>Inactiva</span>'}</div>
+      <div class="dx-rec-meta">
+        <div><small>Tipo</small><span>${u.tipo}</span></div>
+        <div><small>Ubicada en</small><span>${padre?padre.nombre:alm}</span></div>
+        <div><small>Materiales (total)</small><span>${u.items.toLocaleString('es-PE')}</span></div>
+        <div><small>Unidades (total)</small><span>${u.und.toLocaleString('es-PE')}</span></div>
+      </div>
+      ${(motivo || u.general) ? `<div class="dx-rec-note" id="why">${u.general?'La ubicación general existe en todos los almacenes: recibe el stock sin ubicar. No se edita ni se desactiva.':motivo}</div>`:''}
+      ${!u.activo?'<div class="dx-rec-note">Inactiva: no aparece al elegir destino en Recepciones. Reactívala para volver a usarla.</div>':''}
+      <div class="dx-ubi-subhead">Stock almacenado directamente aquí</div>
+      ${u.stock.length?`<div class="dx-ui-head dx-ubi-det-cols" aria-hidden="true"><span>Material</span><span>Lote</span><span style="text-align:right">Físico</span></div>${stockRows}`
+        :'<div class="dx-ui-empty">Esta ubicación no guarda stock directamente.</div>'}
+      ${hijosHtml}
+    </div>`;
+  $('#back').onclick=()=>{ubiSel=null;render();};
+  document.querySelectorAll('[data-ubi]').forEach(r=>{
+    const open=()=>{ubiSel=r.dataset.ubi; render();};
+    r.addEventListener('click',open);
+    r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+  });
+  const ed=$('#editar'); if(ed) ed.onclick=()=>abrirPanel({modo:'editar', id:u.id, alm:u.alm, tipo:u.tipo, padre:u.padre, uso:usoDe(u), cod:u.cod, nombre:u.nombre, err:{}});
+  const de=$('#desact'); if(de && !motivo) de.onclick=()=>{confirmDes=u.id; renderConfirm();};
+  const re=$('#react'); if(re) re.onclick=()=>{u.activo=true; toast='«'+u.nombre+'» se reactivó.'; renderUbiDetalle();};
+}
+
+/* Panel lateral: alta y edición */
+function opcionesPadre(p){
+  const opt = x=>`<option value="${x.id}" ${x.id===p.padre?'selected':''}>${x.cod} · ${x.nombre}</option>`;
+  const del = t=>UBICACIONES.filter(x=>x.alm===p.alm && x.tipo===t && x.activo);
+  if(p.tipo==='Posición') return `<optgroup label="Racks">${del('Rack').map(opt).join('')}</optgroup><optgroup label="Zonas (posición sin rack)">${del('Zona').map(opt).join('')}</optgroup>`;
+  return del('Zona').map(opt).join('');
+}
+function abrirPanel(p){ panel=p; renderPanel(); setTimeout(()=>{const f=document.querySelector('#pnl [autofocus],#pnl input,#pnl select'); if(f) f.focus();},0); }
+function cerrarPanel(){ panel=null; const h=document.getElementById('pnlHost'); if(h) h.remove(); }
+function validarPanel(p){
+  const err={};
+  if(p.modo==='nuevo' && p.tipo!=='Zona' && !p.padre) err.padre = p.tipo==='Posición'?'Elige el rack o la zona donde está la posición.':'Elige la zona a la que pertenece el '+p.tipo.toLowerCase()+'.';
+  if(!p.cod.trim()) err.cod='El código es obligatorio.';
+  else if(UBICACIONES.some(x=>x.alm===p.alm && x.id!==p.id && x.cod.toLowerCase()===p.cod.trim().toLowerCase())) err.cod='Ya existe una ubicación con ese código en este almacén.';
+  if(!p.nombre.trim()) err.nombre='El nombre es obligatorio.';
+  return err;
+}
+function renderPanel(){
+  const p=panel; if(!p) return;
+  let h=document.getElementById('pnlHost'); if(!h){ h=document.createElement('div'); h.id='pnlHost'; h.className='dx-ui dx-almacen'; document.getElementById('root').appendChild(h); }
+  const almNom=ALMACENES.find(a=>a.id===p.alm).nombre;
+  const nuevo=p.modo==='nuevo';
+  const padreObj=p.padre?UBICACIONES.find(x=>x.id===p.padre):null;
+  const ruta=[almNom].concat(padreObj?[padreObj.nombre]:[],[p.nombre||'…']).join(' › ');
+  h.innerHTML=`<div class="dx-ubi-overlay" id="ov"></div>
+  <aside class="dx-ubi-panel" id="pnl" role="dialog" aria-modal="true" aria-labelledby="pnlT">
+    <header><h2 id="pnlT">${nuevo?'Nueva ubicación':'Editar ubicación'}</h2><button class="dx-ubi-x" id="pnlX" aria-label="Cerrar">×</button></header>
+    <div class="dx-ubi-body">
+      ${p.err.server?`<div class="dx-ubi-alert" role="alert">${p.err.server}</div>`:''}
+      <div class="dx-ubi-f"><label>Almacén</label><div class="dx-ubi-ro">${almNom}</div></div>
+      <div class="dx-ubi-f"><label id="lt">Tipo</label>
+        ${nuevo?`<div class="dx-ubi-seg" role="radiogroup" aria-labelledby="lt">${['Zona','Rack','Posición','Piso'].map(t=>`<button type="button" role="radio" aria-checked="${p.tipo===t}" class="${p.tipo===t?'on':''}" data-t="${t}">${t}</button>`).join('')}</div>
+        <small>Zona › rack › posición. Una posición también puede ir directo en una zona, y un piso es un área en el suelo dentro de una zona.</small>`
+        :`<div class="dx-ubi-ro">${p.tipo}</div><small>El tipo y la ubicación padre no se cambian una vez creada.</small>`}</div>
+      ${nuevo&&p.tipo!=='Zona'?`<div class="dx-ubi-f"><label for="fp">${p.tipo==='Posición'?'Rack o zona donde está':'Zona a la que pertenece'}</label>
+        <select id="fp" class="dx-rec-field ${p.err.padre?'is-bad':''}"><option value="">Selecciona…</option>${opcionesPadre(p)}</select>
+        ${p.err.padre?`<small class="bad">${p.err.padre}</small>`:''}</div>`
+        :(!nuevo&&padreObj?`<div class="dx-ubi-f"><label>Ubicada en</label><div class="dx-ubi-ro">${padreObj.nombre}</div></div>`:'')}
+      <div class="dx-ubi-f"><label for="fu">Uso</label>
+        <select id="fu" class="dx-rec-field">${Object.keys(USOS).map(k=>`<option value="${k}" ${p.uso===k?'selected':''}>${USOS[k]}</option>`).join('')}</select>
+        <small>Ayuda a ordenar y filtrar el mapa. Por ahora no cambia la disponibilidad del stock.</small></div>
+      <div class="dx-ubi-f"><label for="fc">Código</label>
+        <input id="fc" class="dx-rec-field ${p.err.cod?'is-bad':''}" value="${p.cod}" maxlength="30" placeholder="Ej. Z-A-R03" aria-describedby="fcH">
+        <small id="fcH" class="${p.err.cod?'bad':''}">${p.err.cod||'Único dentro del almacén. Es lo que se ve en etiquetas y reportes.'}</small></div>
+      <div class="dx-ubi-f"><label for="fn">Nombre</label>
+        <input id="fn" class="dx-rec-field ${p.err.nombre?'is-bad':''}" value="${p.nombre}" maxlength="80" placeholder="Ej. Rack 03">
+        ${p.err.nombre?`<small class="bad">${p.err.nombre}</small>`:''}</div>
+      ${nuevo?`<div class="dx-ubi-path"><small>Se creará en</small><span>${ruta}</span></div>`:''}
+    </div>
+    <footer><button class="dx-btn" id="pnlC">Cancelar</button><button class="dx-btn primary" id="pnlS">${nuevo?'Crear ubicación':'Guardar cambios'}</button></footer>
+  </aside>`;
+  const sync=()=>{ const g=id=>document.getElementById(id); if(g('fc')) p.cod=g('fc').value; if(g('fn')) p.nombre=g('fn').value; if(g('fp')) p.padre=g('fp').value||null; if(g('fu')) p.uso=g('fu').value; };
+  const keep=id=>{ const n=document.getElementById(id); if(n){ n.focus(); const l=n.value.length; if(n.setSelectionRange) n.setSelectionRange(l,l);} };
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sync(); p.tipo=b.dataset.t; p.padre=null; p.err={}; renderPanel();});
+  ['fc','fn'].forEach(id=>{const n=document.getElementById(id); if(n) n.addEventListener('input',()=>{sync(); const pv=document.querySelector('.dx-ubi-path span'); if(pv){const po=p.padre?UBICACIONES.find(x=>x.id===p.padre):null; pv.textContent=[almNom].concat(po?[po.nombre]:[],[p.nombre||'…']).join(' › ');}});});
+  const fp=document.getElementById('fp'); if(fp) fp.onchange=()=>{sync(); renderPanel();};
+  document.getElementById('pnlX').onclick=cerrarPanel; document.getElementById('pnlC').onclick=cerrarPanel; document.getElementById('ov').onclick=cerrarPanel;
+  document.getElementById('pnl').addEventListener('keydown',e=>{if(e.key==='Escape') cerrarPanel();});
+  document.getElementById('pnlS').onclick=()=>{
+    sync(); p.err=validarPanel(p);
+    if(Object.keys(p.err).length){ renderPanel(); const first=p.err.padre?'fp':p.err.cod?'fc':'fn'; keep(first); return; }
+    if(nuevo){ const id='u'+(UBICACIONES.length+1); UBICACIONES.push({id, cod:p.cod.trim(), nombre:p.nombre.trim(), alm:p.alm, padre:p.padre, tipo:p.tipo, uso:p.uso, items:0, und:0, activo:true, stock:[]}); toast='Se creó «'+p.nombre.trim()+'» (sin stock todavía).'; }
+    else { const u=UBICACIONES.find(x=>x.id===p.id); u.cod=p.cod.trim(); u.nombre=p.nombre.trim(); u.uso=p.uso; toast='Cambios guardados.'; }
+    cerrarPanel(); render();
+  };
+}
+function renderConfirm(){
+  const u=UBICACIONES.find(x=>x.id===confirmDes); if(!u) return;
+  let h=document.getElementById('cfHost'); if(!h){ h=document.createElement('div'); h.id='cfHost'; h.className='dx-ui dx-almacen'; document.getElementById('root').appendChild(h); }
+  h.innerHTML=`<div class="dx-ubi-overlay" id="cfOv"></div>
+  <div class="dx-ubi-confirm" role="alertdialog" aria-modal="true" aria-labelledby="cfT" aria-describedby="cfD">
+    <h2 id="cfT">¿Desactivar «${u.nombre}»?</h2>
+    <p id="cfD">Dejará de aparecer como destino en Recepciones. El historial y el kardex no cambian, y podrás reactivarla cuando quieras.</p>
+    <div class="dx-ubi-confirm-f"><button class="dx-btn" id="cfN">Cancelar</button><button class="dx-btn danger" id="cfY">Desactivar</button></div>
+  </div>`;
+  const close=()=>{confirmDes=null; h.remove();};
+  document.getElementById('cfN').onclick=close; document.getElementById('cfOv').onclick=close;
+  document.getElementById('cfY').onclick=()=>{u.activo=false; toast='«'+u.nombre+'» se desactivó.'; close(); renderUbiDetalle();};
+  document.getElementById('cfN').focus();
+  h.addEventListener('keydown',e=>{if(e.key==='Escape') close();});
+}
+
+document.querySelectorAll('.dx-ui-tabs .dx-ui-tab').forEach(t=>t.addEventListener('click',()=>{view=t.dataset.view; ocSel=null; ubiSel=null; q=''; render();}));
 $('#themeBtn').onclick=()=>{
   const d=document.documentElement.getAttribute('data-theme')==='dark';
   document.documentElement.setAttribute('data-theme', d?'light':'dark');

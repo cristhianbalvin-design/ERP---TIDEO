@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armarPayloadRecepcion, cantidadRecibidaPorItemOc, componerObservacion, ordenarUbicacionesPorJerarquia, pendientePorLinea, validarCantidades } from '../src/zahory-mock/pages/recepcionOCLogic.js';
+import { armarPayloadRecepcion, cantidadRecibidaPorItemOc, componerObservacion, ordenarUbicacionesPorJerarquia, pendientePorLinea, textoUbicacionDestino, validarCantidades } from '../src/zahory-mock/pages/recepcionOCLogic.js';
 
 describe('recepcionOCLogic', () => {
   it('calcula pendientes con item_id y fallback histórico por material o descripción', () => {
@@ -56,5 +56,17 @@ describe('recepcionOCLogic', () => {
       { id: 'g', codigo: 'GEN', es_general: true, padre_id: null, activo: true },
     ]);
     expect(resultado.map(item => [item.id, item.nivel])).toEqual([['g', 0], ['r', 0], ['p', 1]]);
+  });
+
+  it('ordena posiciones directas de zona y pisos, omite inactivas y anota usos no almacenables', () => {
+    const resultado = ordenarUbicacionesPorJerarquia([
+      { id: 'piso', codigo: 'PISO', tipo: 'piso', padre_id: 'z', activo: true },
+      { id: 'pos', codigo: 'POS', tipo: 'posicion', padre_id: 'z', activo: true, uso: 'cuarentena' },
+      { id: 'off', codigo: 'OFF', padre_id: 'z', activo: false },
+      { id: 'z', codigo: 'Z', tipo: 'zona', activo: true },
+    ]);
+    expect(resultado.map(item => [item.id, item.nivel])).toEqual([['z', 0], ['piso', 1], ['pos', 1]]);
+    expect(textoUbicacionDestino({ codigo: 'Q-1', nombre: 'Zona', uso: 'cuarentena' })).toBe('Q-1 · Zona (cuarentena u observados)');
+    expect(textoUbicacionDestino({ codigo: 'Z-1', nombre: 'Zona', uso: 'almacenaje' })).toBe('Z-1 · Zona');
   });
 });
