@@ -1,0 +1,10 @@
+clave: tesoreria
+tipo: pantalla
+pantalla: tesoreria
+titulo: Tesorería y match bancario
+resumen: Consulta saldos y movimientos bancarios, y relaciona movimientos con operaciones registradas.
+fuentes: src/pages_fin.jsx,src/services/tesoreriaService.js
+revision: dd85e0e
+paso: 1 | pantalla=tesoreria | permiso=ninguno | Revisa las cuentas bancarias y sus saldos por moneda. El resumen también muestra ingresos y egresos del mes.
+paso: 2 | pantalla=tesoreria | permiso=ninguno | Abre los movimientos para revisar ingresos, egresos y referencias. Usa los filtros disponibles para acotar la lista.
+paso: 3 | pantalla=tesoreria | permiso=ninguno | Enlaza un movimiento bancario con el registro correspondiente mediante la conciliación. Verifica la cuenta, fecha e importe antes de guardar.

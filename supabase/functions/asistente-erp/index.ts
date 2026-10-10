@@ -37,6 +37,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_buscar_procesos_compra", params: [s("texto", 200, true), s("estado", 80, true), d("desde", true), d("hasta", true), n("limite", true)] },
   { name: "asistente_buscar_ordenes_compra", desc: "Busca órdenes de compra; monto admite importe exacto o rango y requiere permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), id("proveedor_id", true), d("desde", true), d("hasta", true), n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
   { name: "asistente_buscar_gastos", desc: "Busca gastos y compras registrados en Compras/Gastos (facturas, boletas, egresos directos); monto = importe exacto, monto_min/monto_max = rango; moneda PEN (soles) o USD (dólares); origen campo o backoffice; devuelve total filtrado por moneda.", params: [s("texto", 200, true), m("monto", true), m("monto_min", true), m("monto_max", true), e("moneda", ["PEN", "USD"], true), s("estado_pago", 80, true), e("origen", ["campo", "backoffice"], true), s("ceco", 100, true), s("proveedor", 200, true), d("desde", true), d("hasta", true), n("limite", true), society()] },
+  { name: "asistente_consultar_manual", desc: "Consulta el manual cuando pregunten cómo usar una pantalla, por un proceso o qué pueden hacer aquí. Usa la pantalla del contexto si existe. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
   { name: "asistente_buscar_materiales", params: [s("texto", 200, true), s("familia", 100, true), s("estado", 80, true), n("limite", true)] },
@@ -121,7 +122,7 @@ function validatePayload(value: unknown): { ok: true; body: any } | { ok: false 
   if (typeof b.pregunta !== "string" || !b.pregunta.trim() || b.pregunta.length > 1000) return { ok: false };
   if (b.historial !== undefined && (!Array.isArray(b.historial) || b.historial.length > 10 || b.historial.some((m: any) => !m || typeof m !== "object" || Array.isArray(m) || Object.keys(m).some(k => !["role", "content"].includes(k)) || !["user", "assistant"].includes(m.role) || typeof m.content !== "string" || m.content.length > 2000))) return { ok: false };
   if (b.contexto !== undefined) {
-    if (!b.contexto || typeof b.contexto !== "object" || Array.isArray(b.contexto) || Object.keys(b.contexto).some(k => !["modulo", "tipo", "id"].includes(k))) return { ok: false };
+    if (!b.contexto || typeof b.contexto !== "object" || Array.isArray(b.contexto) || Object.keys(b.contexto).some(k => !["modulo", "tipo", "id", "pantalla"].includes(k))) return { ok: false };
     const c = b.contexto as Record<string, unknown>;
     if (Object.entries(c).some(([k, v]) => v !== undefined && (typeof v !== "string" || v.length > (k === "id" ? 200 : 100)))) return { ok: false };
   }
@@ -187,7 +188,7 @@ export function createHandler(deps: HandlerDeps) {
     try {
     const body = valid.body;
     const url = deps.env("SUPABASE_URL"), anon = deps.env("SUPABASE_ANON_KEY");
-    const model = deps.env("OPENAI_MODEL_ASISTENTE") || "gpt-4o-mini";
+    const model = deps.env("OPENAI_MODEL_ASISTENTE") || "gpt-4.1-mini";
     if (!url || !anon) return errorReply(502, "El servicio no está disponible.", origin, origins);
     let supabase: SupabaseLike;
     try { supabase = deps.createSupabase(token); } catch { return errorReply(502, "El servicio no está disponible.", origin, origins); }

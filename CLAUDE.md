@@ -116,3 +116,7 @@ Toda pantalla nueva o rediseñada de `operaciones-app` sigue **`docs/diseno/SIST
 - El corte a tarjetas usa `@container (max-width:760px)` sobre `dx-ui-card`, nunca `@media`.
 - Si falta algo en la base, se agrega a la base compartida, no a la pantalla.
 - Referencia de código: el listado de `DiagnosticoTecnicoPage.jsx`. Primero un mock aprobado por Cristhian y después el código; verificación a 375, 800, 901, 1000, 1100 y 1280 px, claro y oscuro.
+
+## 8. Manual de pantallas de Aria
+
+Cuando se modifique una pantalla del piloto (Tesorería, Caja Chica o Compras / Gastos), revisa y actualiza la ficha correspondiente en `docs/manual-pantallas/` en el mismo cambio. Actualiza `revision` al commit que contiene la revisión, y ejecuta `node scripts/verificar-manual-pantallas.mjs` antes de cerrar el PR. Si cambian las fichas, regenera y revisa la migración con `node scripts/generar-manual-pantallas.mjs`.

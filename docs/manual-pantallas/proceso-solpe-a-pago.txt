@@ -1,0 +1,13 @@
+clave: proceso_solpe_pago
+tipo: proceso
+pantalla: ninguna
+titulo: De la SOLPE al pago conciliado
+resumen: Sigue una compra desde la solicitud interna hasta su pago y conciliación bancaria.
+fuentes: src/pages_ops.jsx,src/pages_fin.jsx,src/data.js
+revision: dd85e0e
+pantalla_recorrido: solpe,ordenes_compra,recepciones,cxp,tesoreria
+paso: 1 | pantalla=solpe | permiso=ninguno | Registra o revisa la solicitud de compra y su estado. La solicitud inicia el recorrido de compra.
+paso: 2 | pantalla=ordenes_compra | permiso=ninguno | Continúa con la orden de compra vinculada a la solicitud. Revisa sus datos y el estado de atención.
+paso: 3 | pantalla=recepciones | permiso=ninguno | Registra o consulta la recepción de los bienes o servicios de la orden.
+paso: 4 | pantalla=cxp | permiso=ninguno | Revisa el documento por pagar asociado y su vencimiento antes de programar el pago.
+paso: 5 | pantalla=tesoreria | permiso=ninguno | Registra el movimiento de pago y relaciónalo con el movimiento bancario correspondiente.

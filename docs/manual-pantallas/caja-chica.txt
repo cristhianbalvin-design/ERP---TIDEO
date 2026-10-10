@@ -1,0 +1,12 @@
+clave: caja
+tipo: pantalla
+pantalla: caja
+titulo: Caja Chica
+resumen: Administra fondos, egresos, rendiciones, reposiciones y arqueos de caja chica.
+fuentes: src/pages_fin.jsx,src/services/cajaChicaService.js
+revision: dd85e0e
+paso: 1 | pantalla=caja | permiso=caja:crear | Crea un fondo indicando su responsable, importe y origen. Revisa los datos antes de confirmar.
+paso: 2 | pantalla=caja | permiso=ninguno | Registra un egreso desde el fondo correspondiente e ingresa el concepto y su sustento.
+paso: 3 | pantalla=caja | permiso=ninguno | Presenta la rendición del fondo indicando el periodo y el importe solicitado. La solicitud queda disponible para revisión.
+paso: 4 | pantalla=caja | permiso=caja:aprobar | Revisa una rendición y registra el importe aprobado para continuar con la reposición.
+paso: 5 | pantalla=caja | permiso=ninguno | Registra el arqueo con el efectivo contado y los comprobantes pendientes. Luego revisa las diferencias antes de cerrar el fondo.

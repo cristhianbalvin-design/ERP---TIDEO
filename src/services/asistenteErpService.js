@@ -1,5 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
+const PANTALLAS_MANUAL = new Set(['tesoreria', 'caja', 'compras_gastos']);
+
 export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, historial, contexto }) {
   const supabase = await getSupabaseClient();
   const body = {
@@ -11,10 +13,9 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
     })),
   };
   if (sociedadId) body.sociedad_id = sociedadId;
-  if (contexto?.tipo && contexto?.id) body.contexto = {
-    modulo: contexto.modulo,
-    tipo: contexto.tipo,
-    id: contexto.id,
+  if ((contexto?.tipo && contexto?.id) || PANTALLAS_MANUAL.has(contexto?.pantalla)) body.contexto = {
+    ...(contexto?.tipo && contexto?.id ? { modulo: contexto.modulo, tipo: contexto.tipo, id: contexto.id } : {}),
+    ...(PANTALLAS_MANUAL.has(contexto?.pantalla) ? { pantalla: contexto.pantalla } : {}),
   };
   const { data, error } = await supabase.functions.invoke('asistente-erp', { body });
   if (error) {
