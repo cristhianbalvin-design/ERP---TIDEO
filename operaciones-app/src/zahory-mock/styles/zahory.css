@@ -1652,8 +1652,10 @@ a { color: var(--cyan); text-decoration: none; }
 }
 /* Recepciones de compra: estilos propios, dentro del shadow root de Operaciones. */
 .dx-recepcion { --dx-recepcion-gap:14px; }
-.dx-recepcion .dx-recepcion-cols { --dx-ui-cols:150px minmax(0,1fr) 130px 120px 130px 20px; }
+.dx-ui.dx-recepcion,.dx-ui.dx-ubicaciones { padding:24px 28px 60px; }
+.dx-recepcion .dx-recepcion-cols { --dx-ui-cols:220px minmax(0,1fr) 130px 120px 130px 20px; }
 .dx-recepcion .dx-recepcion-oc { display:flex; align-items:center; gap:10px; min-width:0; color:var(--dx-ui-navy); font-weight:600; }
+.dx-recepcion .dx-recepcion-cols > :first-child { white-space:nowrap; }
 .dx-recepcion .dx-recepcion-main { display:block; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .dx-recepcion .dx-recepcion-main b { color:var(--dx-ui-navy); font-weight:600; }
 .dx-recepcion .dx-recepcion-main small { display:block; color:var(--dx-ui-gray); font-size:12px; overflow:hidden; text-overflow:ellipsis; }
@@ -1687,8 +1689,14 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-recepcion .dx-recepcion-success { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
 .dx-recepcion .dx-recepcion-readonly { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
 @container (max-width:760px) {
-  .dx-recepcion .dx-recepcion-cols { --dx-ui-cols:minmax(0,1fr) auto; }
-  .dx-recepcion .dx-recepcion-cols > :nth-child(3),.dx-recepcion .dx-recepcion-cols > :nth-child(4),.dx-recepcion .dx-recepcion-arrow { display:none; }
+  .dx-recepcion .dx-recepcion-cols { --dx-ui-cols:minmax(0,1fr) auto; grid-template-areas:"oc estado" "proveedor emision"; }
+  .dx-recepcion .dx-recepcion-oc { gap:6px; font-size:12px; }
+  .dx-recepcion .dx-recepcion-oc .dx-ui-icon { width:28px; height:28px; }
+  .dx-recepcion .dx-recepcion-cols > :nth-child(1) { grid-area:oc; }
+  .dx-recepcion .dx-recepcion-cols > :nth-child(2) { grid-area:proveedor; }
+  .dx-recepcion .dx-recepcion-cols > :nth-child(3),.dx-recepcion .dx-recepcion-arrow { display:none; }
+  .dx-recepcion .dx-recepcion-cols > :nth-child(4) { grid-area:estado; }
+  .dx-recepcion .dx-recepcion-cols > :nth-child(5) { grid-area:emision; white-space:nowrap; }
   .dx-recepcion .dx-recepcion-meta { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dx-recepcion .dx-recepcion-line-cols { --dx-ui-cols:1fr 1fr; }
   .dx-recepcion .dx-recepcion-line-cols > :first-child { grid-column:1 / -1; }
