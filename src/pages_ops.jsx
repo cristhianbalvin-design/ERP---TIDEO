@@ -82,6 +82,7 @@ import { NuevaCuentaModal } from './components/NuevaCuentaModal.jsx';
 import { RutasPanel } from './components/RutasPanel.jsx';
 import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
+import './compras_gastos.css';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -26407,6 +26408,9 @@ export function ComprasGastos() {
   const [filtroEstadoPago, setFiltroEstadoPago] = useState('');
   const [filtroComprobante, setFiltroComprobante] = useState('');
   const [filtroMes, setFiltroMes] = useState('');
+  const [busquedaComprasGastos, setBusquedaComprasGastos] = useState('');
+  const [fechaExactaComprasGastos, setFechaExactaComprasGastos] = useState('');
+  const [filtroMonedaComprasGastos, setFiltroMonedaComprasGastos] = useState('');
   const [panel, setPanel] = useState(false);
   const [panelNuevoEgreso, setPanelNuevoEgreso] = useState(false);
   const [form, setForm] = useState(CG_FORM_INIT);
@@ -26618,167 +26622,154 @@ export function ComprasGastos() {
     setPanelNuevoEgreso(true);
   };
 
-  const rows = (comprasGastos || []).filter(g => {
-    if (tab === 'campo' && g.origen_registro !== 'campo') return false;
-    if (tab === 'backoffice' && g.origen_registro !== 'backoffice') return false;
-    if (tab === 'pendientes' && g.estado !== 'pendiente_revision') return false;
+  const normalizarBusquedaGasto = valor => String(valor ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const mesesBusquedaGastos = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const mesesCortosBusquedaGastos = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const indiceBusquedaComprasGastos = useMemo(() => (comprasGastos || []).map(g => {
+    const fecha = String(g.fecha || '');
+    const fechaDia = fecha.slice(8, 10);
+    const mes = Number(fecha.slice(5, 7)) - 1;
+    const anio = fecha.slice(0, 4);
+    const numero = String(g.num_comprobante || g.factura_numero || '');
+    const comprobante = datosComprobante(g);
+    const centro = (centrosCosto || []).find(item => item.id === g.centro_costo_id);
+    const vinculoReact = vinculadoAGasto(g);
+    const vinculo = typeof vinculoReact === 'string'
+      ? vinculoReact
+      : React.Children.toArray(vinculoReact?.props?.children).join(' ');
+    const monto = Number(g.monto) || 0;
+    const moneda = String(g.moneda || 'PEN').trim().toUpperCase();
+    const montoMiles = monto.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fechaTexto = [
+      fecha, `${fechaDia}/${fecha.slice(5, 7)}/${anio}`,
+      mesesCortosBusquedaGastos[mes] && `${mesesCortosBusquedaGastos[mes]} ${anio}`,
+      mesesBusquedaGastos[mes] && `${mesesBusquedaGastos[mes]} ${anio}`,
+      mesesCortosBusquedaGastos[mes], mesesBusquedaGastos[mes],
+      mesesCortosBusquedaGastos[mes] && `${fechaDia} ${mesesCortosBusquedaGastos[mes]}`,
+    ].filter(Boolean).join(' ');
+    const campos = {
+      concepto: [g.concepto, g.descripcion].filter(Boolean).join(' '),
+      ceco: [centro?.nombre, centro?.codigo, centro?.code].filter(Boolean).join(' '),
+      categoria: g.categoria,
+      proveedor: g.proveedor_referencia || g.proveedor,
+      vinculo,
+      comprobante: [numero || comprobante.numero, g.tipo_comprobante || comprobante.tipo].filter(Boolean).join(' '),
+      monto: [String(g.monto ?? ''), monto.toFixed(2), montoMiles, `${symOf(moneda)} ${montoMiles}`].join(' '),
+      fecha: fechaTexto,
+      ruc: g.ruc_proveedor,
+      metodo: g.metodo_pago,
+      pago: g.estado_pago,
+      origen: g.origen_registro,
+      responsable: g.responsable,
+      ot: g.ot_vinc_id ? otCodigo(g.ot_vinc_id) : '',
+    };
+    return { gasto: g, campos: Object.fromEntries(Object.entries(campos).map(([key, value]) => [key, normalizarBusquedaGasto(value)])), comprobante };
+  }), [comprasGastos, centrosCosto, cxpPorId, ordenesCompra, otsPorId, personalPorId, periodosNominaPorId, gastoIdsCajaChica, adjuntosPorGasto]);
+  const terminosBusquedaGastos = normalizarBusquedaGasto(busquedaComprasGastos).split(/\s+/).filter(Boolean);
+  const filasIndexadasComprasGastos = indiceBusquedaComprasGastos.map(item => {
+    const coincidencias = Object.fromEntries(Object.entries(item.campos).map(([key, value]) => [key, terminosBusquedaGastos.some(termino => value.includes(termino))]));
+    return { ...item, coincidencias, coincideBusqueda: terminosBusquedaGastos.every(termino => Object.values(item.campos).some(value => value.includes(termino))) };
+  });
+  const pasaFiltrosComprasGastos = (item, tabActual = tab, ignorarMoneda = false) => {
+    const g = item.gasto;
+    if (tabActual === 'campo' && g.origen_registro !== 'campo') return false;
+    if (tabActual === 'backoffice' && g.origen_registro !== 'backoffice') return false;
+    if (tabActual === 'pendientes' && g.estado !== 'pendiente_revision') return false;
     if (filtroCeco && g.centro_costo_id !== filtroCeco) return false;
     if (filtroEstadoPago && g.estado_pago !== filtroEstadoPago) return false;
     if (filtroComprobante === 'con' && !tieneComprobante(g)) return false;
     if (filtroComprobante === 'sin' && tieneComprobante(g)) return false;
-    if (filtroMes && tab !== 'pendientes' && mesMostrar(g.fecha) !== filtroMes) return false;
+    if (filtroMes && tabActual !== 'pendientes' && mesMostrar(g.fecha) !== filtroMes) return false;
+    if (fechaExactaComprasGastos && String(g.fecha || '').slice(0, 10) !== fechaExactaComprasGastos) return false;
+    if (terminosBusquedaGastos.length && !item.coincideBusqueda) return false;
+    if (!ignorarMoneda && filtroMonedaComprasGastos && String(g.moneda || 'PEN').trim().toUpperCase() !== filtroMonedaComprasGastos) return false;
     return true;
-  });
-
-  const totalMontoPorMoneda = rows.reduce((acc, g) => {
+  };
+  const filasFiltradasComprasGastos = filasIndexadasComprasGastos.filter(item => pasaFiltrosComprasGastos(item));
+  const totalMontoPorMoneda = filasFiltradasComprasGastos.reduce((acc, { gasto: g }) => {
     const moneda = String(g.moneda || 'PEN').trim().toUpperCase();
-    return { ...acc, [moneda]: (acc[moneda] || 0) + (Number(g.monto) || 0) };
+    acc[moneda] = (acc[moneda] || 0) + (Number(g.monto) || 0);
+    return acc;
   }, {});
-  const totalMontoDisplay = Object.entries(totalMontoPorMoneda)
-    .filter(([, value]) => Math.abs(Number(value || 0)) > 0.009)
-    .map(([moneda, value]) => moneyCurrency(value, moneda))
-    .join(' · ') || moneyCurrency(0, empresa?.moneda || 'PEN');
+  const monedasEnResultado = Object.keys(totalMontoPorMoneda);
+  const montoMixto = !filtroMonedaComprasGastos && monedasEnResultado.length > 1;
+  const monedaUnicaResultado = filtroMonedaComprasGastos || monedasEnResultado[0] || 'PEN';
+  const montoFiltrado = (totalMontoPorMoneda[monedaUnicaResultado] || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const contarFilasPestana = pestana => filasIndexadasComprasGastos.filter(item => pasaFiltrosComprasGastos(item, pestana)).length;
+  const contarMoneda = moneda => filasIndexadasComprasGastos.filter(item => pasaFiltrosComprasGastos(item, tab, true) && (!moneda || String(item.gasto.moneda || 'PEN').trim().toUpperCase() === moneda)).length;
+  const limpiarFiltrosComprasGastos = () => {
+    setBusquedaComprasGastos(''); setFechaExactaComprasGastos(''); setFiltroMonedaComprasGastos('');
+    setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); setFiltroComprobante('');
+  };
   const pendientesRevision = (comprasGastos || []).filter(g => g.estado === 'pendiente_revision').length;
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Compras / Gastos</h1>
-          <div className="page-sub">Registro de gastos directos — campo y backoffice</div>
-        </div>
-        <button className="btn btn-primary" onClick={abrirNuevoEgreso}>{I.plus} Nuevo egreso</button>
-      </div>
+      <section className="dx-gastos">
+        <div className="dx-gastos-in">
+          <header className="dx-gastos-top">
+            <div><div className="dx-gastos-eyebrow">Compras</div><h1 className="dx-gastos-title">Compras / Gastos</h1><p className="dx-gastos-sub">Registro de gastos directos — campo y backoffice</p></div>
+            <button type="button" className="dx-gastos-btn is-primary" onClick={abrirNuevoEgreso}>{I.plus} Nuevo egreso</button>
+          </header>
 
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Total registros</div><div className="kpi-value">{(comprasGastos || []).length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Monto filtrado</div><div className="kpi-value" style={{fontSize:18}}>{totalMontoDisplay}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Desde campo</div><div className="kpi-value">{(comprasGastos || []).filter(g => g.origen_registro === 'campo').length}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Pendientes revisión</div><div className="kpi-value" style={{color: pendientesRevision > 0 ? 'var(--orange)' : undefined}}>{pendientesRevision}</div></div>
-      </div>
+          <section className="dx-gastos-kpis" aria-label="Resumen de gastos">
+            <div className="dx-gastos-kpi"><div className="dx-gastos-kpi-top"><span>Total registros</span><span className="dx-gastos-ico is-cyan">{I.receipt}</span></div><strong className="dx-gastos-kpi-val">{(comprasGastos || []).length}</strong><span className="dx-gastos-kpi-note">En la sociedad activa</span></div>
+            <div className="dx-gastos-kpi"><div className="dx-gastos-kpi-top"><span>Monto filtrado</span><span className="dx-gastos-ico is-violet">{I.dollar}</span></div>
+              {montoMixto ? <><div className="dx-gastos-split">{Object.entries(totalMontoPorMoneda).map(([moneda, valor]) => <button type="button" className="dx-gastos-cur" key={moneda} onClick={() => setFiltroMonedaComprasGastos(moneda)}><span>{symOf(moneda)}</span><strong>{Math.round(valor).toLocaleString('en-US')}</strong></button>)}</div><span className="dx-gastos-kpi-note">Hay dos monedas: elige una para filtrar</span></>
+                : <><strong className="dx-gastos-kpi-val">{moneyD(totalMontoPorMoneda[monedaUnicaResultado] || 0, symOf(monedaUnicaResultado))}</strong><span className="dx-gastos-kpi-note">{filasFiltradasComprasGastos.length} {filasFiltradasComprasGastos.length === 1 ? 'registro' : 'registros'} en {monedaUnicaResultado === 'USD' ? 'dólares' : 'soles'}</span></>}
+            </div>
+            <div className="dx-gastos-kpi"><div className="dx-gastos-kpi-top"><span>Desde campo</span><span className="dx-gastos-ico is-green">{I.camera}</span></div><strong className="dx-gastos-kpi-val">{(comprasGastos || []).filter(g => g.origen_registro === 'campo').length}</strong><span className="dx-gastos-kpi-note">Registrados por compradores</span></div>
+            <button type="button" className="dx-gastos-kpi is-alert" onClick={() => setTab('pendientes')}><div className="dx-gastos-kpi-top"><span>Pendientes revisión</span><span className="dx-gastos-ico is-amber">{I.alert}</span></div><strong className="dx-gastos-kpi-val">{pendientesRevision}</strong><span className="dx-gastos-kpi-note">Pulsa para revisarlos</span></button>
+          </section>
 
-      <div className="tabs">
-        {[['todos','Todos'],['campo','Campo'],['backoffice','Backoffice'],['pendientes','Pendientes revisión']].map(([k,l]) => (
-          <div key={k} className={'tab ' + (tab === k ? 'active' : '')} onClick={() => setTab(k)}>{l}{k === 'pendientes' && pendientesRevision > 0 ? ` (${pendientesRevision})` : ''}</div>
-        ))}
-      </div>
+          <section className="dx-gastos-card" aria-label="Listado de gastos">
+            <div className="dx-gastos-tabs" role="group" aria-label="Filtrar por origen">
+              {[['todos','Todos'],['campo','Campo'],['backoffice','Backoffice'],['pendientes','Pendientes revisión']].map(([key, label]) => <button type="button" key={key} className={`dx-gastos-tab${tab === key ? ' is-on' : ''}${key === 'pendientes' ? ' is-alert' : ''}`} aria-pressed={tab === key} onClick={() => setTab(key)}>{label}<b>{contarFilasPestana(key)}</b></button>)}
+            </div>
 
-      <div className="card" style={{marginBottom:12}}>
-        <div className="card-head" style={{flexWrap:'nowrap', justifyContent:'flex-start', gap:10}}>
-          <div style={{fontWeight:600, fontSize:13, flexShrink:0}}>Filtros</div>
-          <select className="select" style={{width:150, flexShrink:0, fontSize:13}} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
-            <option value="">Todos los meses</option>
-            {mesesDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select className="select" style={{width:170, flexShrink:0, fontSize:13}} value={filtroCeco} onChange={e => setFiltroCeco(e.target.value)}>
-            <option value="">Todos los CECO</option>
-            {cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-          <select className="select" style={{width:150, flexShrink:0, fontSize:13}} value={filtroEstadoPago} onChange={e => setFiltroEstadoPago(e.target.value)}>
-            <option value="">Todo estado pago</option>
-            <option value="pagado">Pagado</option>
-            <option value="pendiente">Pendiente</option>
-          </select>
-          <select className="select" style={{width:170, flexShrink:0, fontSize:13}} value={filtroComprobante} onChange={e => setFiltroComprobante(e.target.value)}>
-            <option value="">Todo comprobante</option>
-            <option value="con">Con comprobante</option>
-            <option value="sin">Sin comprobante</option>
-          </select>
-          {(filtroMes || filtroCeco || filtroEstadoPago || filtroComprobante) && (
-            <button className="btn btn-ghost" style={{fontSize:12, flexShrink:0, marginLeft:'auto'}} onClick={() => { setFiltroMes(''); setFiltroCeco(''); setFiltroEstadoPago(''); setFiltroComprobante(''); }}>Limpiar filtros</button>
-          )}
-        </div>
-      </div>
+            <div className="dx-gastos-find">
+              <div className="dx-gastos-field is-grow"><label htmlFor="dx-gastos-query">Buscar en todos los campos</label><div className="dx-gastos-box">{I.search}<input id="dx-gastos-query" type="search" value={busquedaComprasGastos} onChange={e => setBusquedaComprasGastos(e.target.value)} placeholder="Concepto, proveedor, RUC, CECO, comprobante, monto…"/>{busquedaComprasGastos && <button type="button" className="dx-gastos-x" aria-label="Borrar búsqueda" onClick={() => setBusquedaComprasGastos('')}>{I.x}</button>}</div></div>
+              <div className="dx-gastos-field"><label htmlFor="dx-gastos-date">Fecha exacta</label><div className="dx-gastos-box is-date">{I.calendar}<input id="dx-gastos-date" type="date" value={fechaExactaComprasGastos} onChange={e => setFechaExactaComprasGastos(e.target.value)}/>{fechaExactaComprasGastos && <button type="button" className="dx-gastos-x" aria-label="Quitar fecha" onClick={() => setFechaExactaComprasGastos('')}>{I.x}</button>}</div></div>
+            </div>
+            <p className="dx-gastos-hint">Escribe varias palabras y deben cumplirse todas (<kbd>taller 1000</kbd>). Ignora tildes y mayúsculas. También encuentra montos, RUC, comprobantes y fechas como <kbd>02/10/2026</kbd> u <kbd>oct 2026</kbd>.</p>
 
-      <div className="card">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Concepto</th>
-                <th>CECO</th>
-                <th>Categoría</th>
-                <th>Monto</th>
-                <th>Estado pago</th>
-                <th>Origen</th>
-                <th>Vinculado a</th>
-                <th>Comprobante</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length ? rows.map(g => {
+            <div className="dx-gastos-filters"><span className="dx-gastos-lead">FILTROS</span>
+              <div className="dx-gastos-seg" role="group" aria-label="Moneda">{[['','Todas'],['PEN','S/'],['USD','US$']].map(([moneda, label]) => <button type="button" key={moneda || 'todas'} className={`dx-gastos-seg-b${filtroMonedaComprasGastos === moneda ? ' is-on' : ''}`} aria-pressed={filtroMonedaComprasGastos === moneda} onClick={() => setFiltroMonedaComprasGastos(moneda)}>{label}<b>{contarMoneda(moneda)}</b></button>)}</div>
+              <select className="dx-gastos-select" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} aria-label="Filtrar por mes"><option value="">Todos los meses</option>{mesesDisponibles.map(m => <option key={m} value={m}>{m}</option>)}</select>
+              <select className="dx-gastos-select" value={filtroCeco} onChange={e => setFiltroCeco(e.target.value)} aria-label="Filtrar por centro de costo"><option value="">Todos los CECO</option>{cecosActivos.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+              <select className="dx-gastos-select" value={filtroEstadoPago} onChange={e => setFiltroEstadoPago(e.target.value)} aria-label="Filtrar por estado de pago"><option value="">Todo estado pago</option><option value="pagado">Pagado</option><option value="pendiente">Pendiente</option></select>
+              <select className="dx-gastos-select" value={filtroComprobante} onChange={e => setFiltroComprobante(e.target.value)} aria-label="Filtrar por comprobante"><option value="">Todo comprobante</option><option value="con">Con comprobante</option><option value="sin">Sin comprobante</option></select>
+              {(busquedaComprasGastos || fechaExactaComprasGastos || filtroMonedaComprasGastos || filtroMes || filtroCeco || filtroEstadoPago || filtroComprobante) && <button type="button" className="dx-gastos-link" onClick={limpiarFiltrosComprasGastos}>Limpiar filtros</button>}
+              <span className="dx-gastos-count">Mostrando <b>{filasFiltradasComprasGastos.length}</b> de {(comprasGastos || []).length} registros</span>
+            </div>
+
+            <div role="table" aria-label="Gastos">
+              <div role="row" className="dx-gastos-cols dx-gastos-th"><span role="columnheader">Fecha</span><span role="columnheader">Concepto</span><span role="columnheader">CECO · Categoría</span><span role="columnheader" className="is-n">Monto</span><span role="columnheader">Estado pago</span><span role="columnheader">Origen · Vinculado</span><span role="columnheader">Comprobante</span><span role="columnheader">Acciones</span></div>
+              {filasFiltradasComprasGastos.length ? filasFiltradasComprasGastos.map(({ gasto: g, campos, coincidencias: hit, comprobante }) => {
                 const esCampo = g.origen_registro === 'campo';
                 const esPendRev = g.estado === 'pendiente_revision';
-                return (
-                  <tr key={g.id} style={esPendRev ? {background:'color-mix(in srgb, var(--orange) 5%, transparent)'} : undefined}>
-                    <td className="text-muted" style={{whiteSpace:'nowrap'}}>{g.fecha}</td>
-                    <td>
-                      <div style={{fontWeight:600}}>{g.descripcion || g.concepto || '—'}</div>
-                      {g.responsable && <div style={{fontSize:11, color:'var(--fg-muted)'}}>{g.responsable}</div>}
-                      {g.ot_vinc_id && <div style={{fontSize:11, color:'var(--fg-muted)'}}>OT: {otCodigo(g.ot_vinc_id)}</div>}
-                    </td>
-                    <td style={{fontSize:12}}>{cecoNombre(g.centro_costo_id)}</td>
-                    <td style={{fontSize:12}}>{g.categoria || '—'}</td>
-                    <td className="num"><strong>{moneyD(g.monto, symOf(g.moneda || 'PEN'))}</strong></td>
-                    <td>
-                      <span className={'badge ' + (g.estado_pago === 'pagado' ? 'badge-green' : 'badge-orange')}>
-                        {g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente'}
-                      </span>
-                    </td>
-                    <td>
-                      {esCampo
-                        ? <span className="badge badge-cyan" style={{gap:4}}>{I.camera} Campo</span>
-                        : <span className="badge badge-gray">Backoffice</span>
-                      }
-                    </td>
-                    <td style={{fontSize:12, whiteSpace:'nowrap'}}>{vinculadoAGasto(g)}</td>
-                    <td style={{textAlign:'center'}}>
-                      {(() => {
-                        const comprobante = datosComprobante(g);
-                        if (!comprobante.numero && !comprobante.archivo) return <span className="text-muted">—</span>;
-                        const etiqueta = [comprobante.tipo, comprobante.numero].filter(Boolean).join(' ') || comprobante.nombreArchivo || 'Comprobante adjunto';
-                        return (
-                          <div style={{display:'inline-flex', alignItems:'center', gap:5, maxWidth:180}} title={etiqueta}>
-                            <span style={{color:'var(--green)', whiteSpace:'nowrap'}}>{I.receipt}</span>
-                            <span style={{fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{etiqueta}</span>
-                            {comprobante.archivo && <button type="button" className="icon-btn" onClick={() => abrirComprobante(comprobante)} title="Abrir comprobante" style={{color:'var(--cyan)', lineHeight:1, padding:0}}>{I.file}</button>}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td>
-                      {(() => {
-                        const bloqueoEdicion = motivoBloqueoEdicion(g);
-                        const puedeEditar = puedeEditarGastos && !bloqueoEdicion;
-                        return (
-                          <button
-                            className="btn btn-ghost"
-                            style={{fontSize:12, padding:'2px 10px'}}
-                            disabled={!puedeEditar}
-                            title={bloqueoEdicion || (!puedeEditarGastos ? 'No tiene permiso para editar egresos.' : 'Editar egreso')}
-                            onClick={() => abrirEdicionGasto(g)}
-                          >
-                            {I.edit} Editar
-                          </button>
-                        );
-                      })()}
-                      {esCampo && esPendRev && (
-                        <button className="btn btn-ghost" style={{fontSize:12, padding:'2px 10px'}} onClick={() => setSelCampo(g)}>
-                          {I.check} Revisar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              }) : (
-                <tr><td colSpan="10" className="text-center text-muted" style={{padding:32}}>No hay registros para los filtros seleccionados.</td></tr>
-              )}
-            </tbody>
-          </table>
+                const nombreCeco = cecoNombre(g.centro_costo_id);
+                const vinculo = vinculadoAGasto(g);
+                const mostrarChipsNoVisibles = terminosBusquedaGastos.length > 0 && !Object.entries(hit).some(([key, value]) => value && !['ruc', 'metodo'].includes(key));
+                const etiquetaComprobante = [comprobante.tipo, comprobante.numero].filter(Boolean).join(' ') || comprobante.nombreArchivo || 'Comprobante adjunto';
+                const bloqueoEdicion = motivoBloqueoEdicion(g);
+                const puedeEditar = puedeEditarGastos && !bloqueoEdicion;
+                const c = (campo, texto) => <span className={`dx-gastos-t${hit[campo] ? ' is-hit' : ''}`}>{texto}</span>;
+                return <div role="row" key={g.id} className={`dx-gastos-cols dx-gastos-row${esPendRev ? ' is-pending' : ''}`}>
+                  <div role="cell" className="is-date"><span className="dx-gastos-lbl">Fecha</span><span className={`dx-gastos-date dx-gastos-t${hit.fecha ? ' is-hit' : ''}`}>{g.fecha}</span></div>
+                  <div role="cell" className="dx-gastos-concept is-concept"><strong>{c('concepto', g.descripcion || g.concepto || '—')}</strong>{g.proveedor_referencia || g.proveedor ? <span>Proveedor: {c('proveedor', g.proveedor_referencia || g.proveedor)}</span> : null}{g.responsable && <span>{c('responsable', g.responsable)}</span>}{g.ot_vinc_id && <span>{c('ot', `OT: ${otCodigo(g.ot_vinc_id)}`)}</span>}{mostrarChipsNoVisibles && <div className="dx-gastos-chips">{hit.ruc && g.ruc_proveedor && <span className="dx-gastos-chip"><em>Coincide en RUC:</em> {g.ruc_proveedor}</span>}{hit.metodo && g.metodo_pago && <span className="dx-gastos-chip"><em>Coincide en método de pago:</em> {g.metodo_pago}</span>}</div>}</div>
+                  <div role="cell" className="dx-gastos-ceco"><span className="dx-gastos-lbl">CECO · Categoría</span><strong>{c('ceco', nombreCeco)}</strong><span>{g.categoria ? c('categoria', g.categoria) : '—'}</span></div>
+                  <div role="cell" className="dx-gastos-money"><span className="dx-gastos-lbl">Monto</span><strong className={`dx-gastos-t${hit.monto ? ' is-hit' : ''}`}>{moneyD(g.monto, symOf(g.moneda || 'PEN'))}</strong></div>
+                  <div role="cell" className="is-estado"><span className="dx-gastos-lbl">Estado pago</span><span className={`dx-gastos-pill ${g.estado_pago === 'pagado' ? 'is-green' : 'is-amber'}`}><i/>{c('pago', g.estado_pago === 'pagado' ? 'Pagado' : 'Pendiente')}</span></div>
+                  <div role="cell" className="dx-gastos-orig"><span className="dx-gastos-lbl">Origen · Vinculado</span><span className={`dx-gastos-pill ${esCampo ? 'is-cyan' : 'is-gray'}`}>{c('origen', esCampo ? 'Campo' : 'Backoffice')}</span><span className={`dx-gastos-link-value${hit.vinculo ? ' dx-gastos-t is-hit' : ''}`}>{vinculo}</span></div>
+                  <div role="cell" className={`dx-gastos-comp${!comprobante.numero && !comprobante.archivo ? ' is-none' : ''}`}><span className="dx-gastos-lbl">Comprobante</span>{comprobante.numero || comprobante.archivo ? <><span className={`dx-gastos-mono dx-gastos-t${hit.comprobante ? ' is-hit' : ''}`}>{comprobante.numero || comprobante.nombreArchivo || 'Adjunto'}</span>{comprobante.tipo && <span>{comprobante.tipo}</span>}{comprobante.archivo && <button type="button" onClick={() => abrirComprobante(comprobante)} title="Abrir comprobante" aria-label={`Abrir comprobante ${etiquetaComprobante}`}>{I.file} Abrir</button>}</> : <span>Sin comprobante</span>}</div>
+                  <div role="cell" className="dx-gastos-acts">{esCampo && esPendRev && <button type="button" className="dx-gastos-btn is-sm is-amber" onClick={() => setSelCampo(g)}>Revisar</button>}<button type="button" className="dx-gastos-btn is-sm" disabled={!puedeEditar} title={bloqueoEdicion || (!puedeEditarGastos ? 'No tiene permiso para editar egresos.' : 'Editar egreso')} onClick={() => abrirEdicionGasto(g)}>{I.edit} Editar</button></div>
+                </div>;
+              }) : <div className="dx-gastos-empty"><strong>Sin resultados</strong><span>Ningún gasto coincide con la búsqueda y los filtros actuales.</span><button type="button" className="dx-gastos-btn" onClick={limpiarFiltrosComprasGastos}>Limpiar filtros</button></div>}
+            </div>
+          </section>
         </div>
-      </div>
+      </section>
 
       {panelNuevoEgreso && (
         <NuevoEgreso

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Informe de diagnóstico al cliente</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 1780px; background: #5F6675; font-family: 'DM Sans', system-ui, sans-serif; color: #1F2937; overflow: hidden">
+
+  <!-- Barra de Comercial -->
+  <div style="position: absolute; left: 60px; top: 24px; width: 300px; display: flex; flex-direction: column; gap: 12px">
+    <div style="background: #fff; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <b style="font-family: 'Sora', sans-serif; font-size: 16px; color: #1A2B4A">Informe al cliente</b>
+      <span style="font-size: 13px; color: #6B7280">Lo emite Comercial. Solo lectura sobre el diagnóstico. Sin precios.</span>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+        <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="checked" style="width: 18px; height: 18px; accent-color: #1A2B4A"> Incluir fotos marcadas</label>
+        <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="checked" style="width: 18px; height: 18px; accent-color: #1A2B4A"> Incluir mediciones</label>
+        <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" style="width: 18px; height: 18px; accent-color: #1A2B4A"> Mostrar horas estimadas</label>
+        <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="checked" style="width: 18px; height: 18px; accent-color: #1A2B4A"> Ocultar hallazgos conformes</label>
+      </div>
+      <button type="button" style="height: 44px; border-radius: 8px; border: 0; background: #1A2B4A; color: #fff; font-size: 14px; font-weight: 600">Emitir informe</button>
+      <span style="font-size: 12px; color: #6B7280">Al emitir se guarda una copia inmutable con fecha y versión.</span>
+    </div>
+  </div>
+
+  <!-- Hoja del informe -->
+  <div style="position: absolute; left: 400px; top: 24px; width: 820px; height: 1732px; background: #fff; border-radius: 4px; padding: 48px 56px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1A2B4A; padding-bottom: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #6B7280">INFORME DE DIAGNÓSTICO TÉCNICO</span>
+        <b style="font-family: 'Sora', sans-serif; font-size: 26px; color: #1A2B4A">Cilindro hidráulico</b>
+        <span style="font-size: 14px; color: #4B5563">[Cliente] · serie [N°] · horómetro [h] · [fecha]</span>
+      </div>
+      <div style="width: 120px; height: 56px; background: #E3E7EC; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #4B5563; border-radius: 6px">[Logo empresa]</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <b style="font-family: 'Sora', sans-serif; font-size: 16px; color: #1A2B4A">Resumen</b>
+      <div style="display: flex; gap: 12px">
+        <div style="flex: 1; border-radius: 10px; background: #FDF1F0; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 26px; color: #B3261E; font-family: 'Sora', sans-serif">1</b><span style="font-size: 13px; color: #5E0F0A">Atender antes de operar (P1)</span></div>
+        <div style="flex: 1; border-radius: 10px; background: #FFF6E0; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 26px; color: #5C3A00; font-family: 'Sora', sans-serif">1</b><span style="font-size: 13px; color: #5C3A00">Próximo mantenimiento (P3)</span></div>
+        <div style="flex: 1; border-radius: 10px; background: #EAF6EE; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 26px; color: #0F4D26; font-family: 'Sora', sans-serif">1</b><span style="font-size: 13px; color: #0F4D26">Conformes</span></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; border: 1px solid #D5DAE1; border-radius: 10px; padding: 16px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="background: #B3261E; color: #fff; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px">P1 · Fuera de tolerancia</span>
+        <b style="font-size: 16px; color: #1A2B4A">Vástago: rayado con cromo desprendido</b>
+      </div>
+      <div style="display: flex; gap: 10px">
+        <div style="flex: 1; height: 150px; background: #E3E7EC; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #4B5563">[Foto 1 · Vista general]</div>
+        <div style="flex: 1; height: 150px; background: #E3E7EC; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #4B5563">[Foto 2 · Detalle]</div>
+      </div>
+      <span style="font-size: 14px; color: #1F2937; line-height: 1.5">Rayado longitudinal de 12 cm en zona de sellos; el cromo se levanta en el borde. Causa probable: contaminación.</span>
+      <div style="border: 1px solid #E4E7EB; border-radius: 8px; overflow: hidden; font-size: 13px">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; padding: 6px 10px; background: #F4F6F8; font-weight: 700; color: #6B7280"><span>Medición</span><span>Especificado</span><span>Medido</span><span>Resultado</span></div>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; padding: 6px 10px; border-top: 1px solid #E4E7EB"><span>Ø exterior del vástago</span><span>79.95–80.00 mm</span><span><b>79.82 mm</b></span><span style="color: #B3261E; font-weight: 700">Fuera de límite</span></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; font-size: 14px"><b style="color: #1A2B4A">Recomendación:</b> reparar (rectificado y bruñido) y cambiar sellos.</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px; border: 1px solid #D5DAE1; border-radius: 10px; padding: 14px 16px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="background: #FFE4A8; color: #5C3A00; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px">P3 · Desgaste aceptable</span>
+        <b style="font-size: 15px; color: #1A2B4A">Émbolo: fuga leve en sello</b>
+      </div>
+      <span style="font-size: 14px; color: #4B5563">Recomendación: cambiar sello en el próximo mantenimiento.</span>
+    </div>
+
+    <div style="margin-top: auto; border-top: 1px solid #E4E7EB; padding-top: 12px; display: flex; justify-content: space-between; font-size: 12px; color: #6B7280">
+      <span>Informe v1 · emitido por [Comercial] · sin valores económicos</span>
+      <span>Página 1 de 2</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1780}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

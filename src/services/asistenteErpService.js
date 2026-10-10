@@ -1,5 +1,7 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
 
+const PANTALLAS_MANUAL = new Set(['tesoreria', 'caja', 'compras_gastos']);
+
 export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, historial, contexto }) {
   const supabase = await getSupabaseClient();
   const body = {
@@ -11,10 +13,9 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
     })),
   };
   if (sociedadId) body.sociedad_id = sociedadId;
-  if (contexto?.tipo && contexto?.id) body.contexto = {
-    modulo: contexto.modulo,
-    tipo: contexto.tipo,
-    id: contexto.id,
+  if ((contexto?.tipo && contexto?.id) || PANTALLAS_MANUAL.has(contexto?.pantalla)) body.contexto = {
+    ...(contexto?.tipo && contexto?.id ? { modulo: contexto.modulo, tipo: contexto.tipo, id: contexto.id } : {}),
+    ...(PANTALLAS_MANUAL.has(contexto?.pantalla) ? { pantalla: contexto.pantalla } : {}),
   };
   const { data, error } = await supabase.functions.invoke('asistente-erp', { body });
   if (error) {
@@ -29,7 +30,7 @@ export async function consultarAsistenteErp({ empresaId, sociedadId, pregunta, h
 export function mensajeErrorAsistente(status) {
   if (status === 400) return 'No pude procesar la pregunta. Revísala e inténtalo de nuevo.';
   if (status === 401 || status === 403) return 'No tienes acceso para realizar esta consulta.';
-  if (status === 429) return 'Llegaste al límite de 50 preguntas de hoy. Se renueva mañana a las 00:00 (hora de Lima).';
+  if (status === 429) return 'Llegaste al límite de preguntas de hoy. Se renueva mañana a las 00:00 (hora de Lima).';
   if (status === 502 || status === 504) return 'El asistente no está disponible en este momento. Inténtalo de nuevo.';
   return 'No pude completar la consulta. Inténtalo de nuevo en un momento.';
 }

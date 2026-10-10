@@ -47,4 +47,13 @@ describe('construirVistaInforme', () => {
     expect(construirVistaInforme(diagnostico).hallazgos[0].fotos).toEqual([]);
     expect(construirVistaInforme(diagnostico, {}, {}, {}, { h1: [] }).hallazgos[0].fotos).toEqual([]);
   });
+
+  it('usa la fecha de ingreso y cae a created_at; conserva serie y horómetro como opcionales', () => {
+    const withReceptionDate = construirVistaInforme({ ...diagnostico, created_at: '2026-09-01T10:00:00Z' }, {}, {}, { fecha_ingreso: '2026-08-15' });
+    expect(withReceptionDate.cabecera.fecha_recepcion).toBe('2026-08-15');
+    expect(withReceptionDate.cabecera.numero_serie).toBeNull();
+    expect(withReceptionDate.cabecera.horometro).toBeNull();
+    const fallback = construirVistaInforme({ ...diagnostico, created_at: '2026-09-01T10:00:00Z' });
+    expect(fallback.cabecera.fecha_recepcion).toBe('2026-09-01T10:00:00Z');
+  });
 });

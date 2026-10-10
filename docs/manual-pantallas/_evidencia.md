@@ -1,0 +1,13 @@
+﻿# Evidencia de las fichas
+
+El acceso `ver` para fichas de pantalla se aplica con `asistente_autorizar` en `supabase/migrations/599_asistente_erp_lectura.sql:147-158`. La ficha `tesoreria` se apoya en `src/pages_fin.jsx:2813`, `src/pages_fin.jsx:3193` y `src/pages_fin.jsx:3264-3275`; los accesos de servicio están en `src/services/tesoreriaService.js`. El permiso de acción para conciliar no se confirmó: paso sin permiso de acción verificado.
+
+`caja-chica`: `src/pages_fin.jsx:7147-7156` define `perm`, `puedeCrear`, `puedeAprobar`, `puedeEditar`, `puedeEliminar` y `puedeGestionar`. Crear fondo está guardado con `puedeCrear` en `src/pages_fin.jsx:7571`; aprobar/rechazar rendición con `puedeAprobar` en `src/pages_fin.jsx:7746-7750`. Por eso esos pasos declaran `caja:crear` y `caja:aprobar`. El botón de egreso no tiene guarda (`src/pages_fin.jsx:7572`); solicitar rendición también depende de que el usuario sea responsable o tenga `puedeCrear` (`src/pages_fin.jsx:7463-7512`); el aporte usa edición, anulación o creación (`src/pages_fin.jsx:7147-7156,7357`); arqueo/cierre usa `puedeGestionar`, que combina edición o anulación (`src/pages_fin.jsx:7156,7738`). No hay una única acción efectiva que se pueda declarar para esos pasos.
+
+`compras-gastos`: catálogo `src/data.js:1038`; pantalla en `src/pages_ops.jsx:26391`; edición efectiva usa `role.permisos.editar` o incluye `caja` en `src/pages_ops.jsx:26605-26611`. El paso de edición declara `caja:editar`, no `compras_gastos:editar`. La acción de creación no tiene permiso claro en el código revisado y queda sin permiso específico.
+
+`proceso-solpe-a-pago`: las claves coinciden con el catálogo efectivo: SOLPE `solpe` en `src/data.js:1031`, órdenes de compra `ordenes_compra` en `src/data.js:1035`, recepciones `recepciones` en `src/data.js:1037` y CxP `cxp` en `src/data.js:1057`. `usuario_puede` compara `permisos_roles.pantalla` con la clave recibida en `supabase/migrations/018_backend_crm_comercial_hardening.sql:9-36`. Las RPC legadas de SOLPE, órdenes y recepciones usan estas mismas claves en `supabase/migrations/599_asistente_erp_lectura.sql:478-645`; la clave efectiva a usar es la del catálogo de permisos.
+
+`proceso-caja-chica`: ciclo y permisos en `src/pages_fin.jsx:7147-7156,7463-7512,7571-7572,7738,7746-7750`; cierre está en `supabase/migrations/585_caja_chica_cierre_atomico.sql`.
+
+Permisos de acción no verificados: conciliar en Tesorería; egreso, solicitar rendición, aporte y arqueo/cierre en Caja Chica; crear compra o gasto en Compras/Gastos. Los pasos correspondientes solo exigen `ver` de su pantalla. La creación de fondo y la aprobación/rechazo de rendición sí declaran `caja:crear` y `caja:aprobar`; edición de Compras/Gastos declara el permiso efectivo `caja:editar`.

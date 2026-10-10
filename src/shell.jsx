@@ -7,6 +7,11 @@ import { useApp } from './context.jsx';
 import { useTenantNavLabels } from './services/navLabelsService.js';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 import { puedeVerPantalla } from './access/roleAccess.js';
+import { useAsistenteErp } from './context/AsistenteErpContext.jsx';
+
+function IconoAria({ size = 20 }) {
+  return <svg width={size} height={size} viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2" /></svg>;
+}
 
 
 const SIDEBAR = [
@@ -99,10 +104,8 @@ const SIDEBAR = [
     { key: 'cs_fidelizacion', label: 'Fidelizacion y NPS', icon: I.sparkles },
     { key: 'bi_cs', label: 'BI Customer Success', icon: I.trend },
   ]},
-  { section: 'Inteligencia Artificial', items: [
-    { key: 'ia_comercial', label: 'IA Comercial', icon: I.sparkles },
-    { key: 'ia_operativa', label: 'IA Operativa', icon: I.sparkles },
-    { key: 'ia_financiera', label: 'IA Financiera', icon: I.sparkles },
+  { section: 'Aria', standalone: true, items: [
+    { key: 'aria', action: 'openAria', label: 'Aria', icon: <IconoAria size={20} /> },
   ]},
   { section: 'Campo Movil', items: [
     { key: 'campo', label: 'Vistas de Campo', icon: I.mobile },
@@ -120,6 +123,7 @@ const SIDEBAR = [
 if (import.meta.env.DEV) {
   const pantallasRegistradas = new Set(MOCK.pantallasPermisos.map(p => p.key));
   const faltantes = SIDEBAR.flatMap(g => g.items)
+    .filter(it => !it.action)
     .map(it => it.key)
     .filter(key => key !== 'mi_portal' && !pantallasRegistradas.has(key));
   if (faltantes.length) {
@@ -140,7 +144,6 @@ const SECTION_ICONS = {
   Compras: I.cart,
   Administracion: I.bank,
   'Customer Success': I.target,
-  'Inteligencia Artificial': I.sparkles,
   'Campo Movil': I.mobile,
   Configuracion: I.settings,
 };
@@ -371,6 +374,7 @@ function buildSidebarBadges(app) {
 
 export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const app = useApp();
+  const { solicitarApertura } = useAsistenteErp();
   const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
@@ -388,12 +392,14 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const visibleGroups = useMemo(() => SIDEBAR.map(group => {
     if (group.plataforma && !isSuperadmin) return null;
     const visibleItems = group.items
-      .filter(it => it.requiereVerCostos
+      .filter(it => it.action === 'openAria'
+        ? Boolean(app.authUser && app.empresa?.id)
+        : it.requiereVerCostos
         ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
       .map(it => {
-        const navKey = NAV_MODULE_KEYS[it.key] || it.key;
-        return { ...it, navKey, label: getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
+        const navKey = it.action ? it.key : (NAV_MODULE_KEYS[it.key] || it.key);
+        return { ...it, navKey, label: it.action ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
       });
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
@@ -405,7 +411,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
       items: visibleItems,
       active: visibleItems.some(it => it.key === active),
     };
-  }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel]);
+  }).filter(Boolean), [active, role, badges, isSuperadmin, getLabel, getSectionLabel, app.authUser, app.empresa?.id]);
   const resultadosBusqueda = useMemo(() => {
     const consulta = normalizarBusqueda(busquedaModulo);
     if (!consulta) return [];
@@ -473,6 +479,15 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     setBusquedaModulo('');
     onNav(key);
   };
+  const handleItem = item => {
+    if (item.action === 'openAria') {
+      setFlyoutKey(null);
+      setBusquedaModulo('');
+      solicitarApertura();
+      return;
+    }
+    handleNav(item.key);
+  };
   const toggleFlyout = (event, key) => {
     if (flyoutKey === key) {
       setFlyoutKey(null);
@@ -530,7 +545,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                 type="button"
                 key={item.key}
                 className={'sidebar-search-result ' + (active === item.key ? 'active' : '')}
-                onClick={() => handleNav(item.key)}
+                onClick={() => handleItem(item)}
               >
                 {item.icon}
                 <span><strong>{item.label}</strong><small>{item.seccion}</small></span>
@@ -543,7 +558,40 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
           const isOpen = openSections.has(group.key);
           return (
             <div key={group.key} className="sidebar-group">
-              {effectiveCollapsed ? (
+              {group.standalone && effectiveCollapsed ? (
+                <>
+                  <button
+                    type="button"
+                    className="sidebar-area-btn"
+                    onClick={event => toggleFlyout(event, group.key)}
+                    title={group.items[0].label}
+                    aria-label={group.items[0].label}
+                  >{group.items[0].icon}</button>
+                  {flyoutKey === group.key && (
+                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
+                      <div className="sidebar-flyout-title">{group.items[0].label}</div>
+                      {group.items.map(it => <button type="button" key={it.key} className="sidebar-flyout-item" onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
+                    </div>
+                  )}
+                </>
+              ) : group.standalone ? (
+                <div
+                  className="sidebar-item"
+                  onClick={() => handleItem(group.items[0])}
+                  style={{padding:'8px 10px', fontSize:12, borderRadius:8}}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleItem(group.items[0]);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Preguntar a Aria"
+                >
+                  {group.items[0].icon}<span style={{fontWeight:500}}>{group.items[0].label}</span>
+                </div>
+              ) : effectiveCollapsed ? (
                 <>
                   <button
                     type="button"
@@ -563,7 +611,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                           type="button"
                           key={it.key}
                           className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')}
-                          onClick={() => handleNav(it.key)}
+                          onClick={() => handleItem(it)}
                         >
                           {it.icon}
                           <span>{it.label}</span>
@@ -585,7 +633,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                     <span className="sidebar-section-chev">{isOpen ? I.chev : I.chevRight}</span>
                   </button>
                   {isOpen && group.items.map(it => (
-                    <div key={it.key} className={'sidebar-item ' + (active === it.key ? 'active' : '')} onClick={() => handleNav(it.key)} style={{padding:'8px 10px', fontSize:12, borderRadius:8}}>
+                    <div key={it.key} className={'sidebar-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)} style={{padding:'8px 10px', fontSize:12, borderRadius:8}}>
                       {it.icon}
                       <span style={{fontWeight:500}}>{it.label}</span>
                       {it.badge && <span className="sidebar-item-badge" style={{fontSize:9, padding:'1px 5px'}}>{it.badge}</span>}
@@ -698,6 +746,7 @@ export function SociedadSelector({ perfilSociedad, sociedadActiva, sociedadesDis
 }
 
 export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey, dark, setDark, setMobileMode, openSelectorSignal }) {
+  const { solicitarApertura } = useAsistenteErp();
   const {
     notificaciones, markNotificacionesRead, navigate, dataMode, authUser,
     todasMembresias, seleccionarEmpresa, signOut, tipoCambioHoy,
@@ -862,6 +911,8 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
           isMobile={isCompactHeader}
         />
       )}
+
+      <button type="button" className="icon-btn" onClick={solicitarApertura} aria-label="Preguntar a Aria" title="Preguntar a Aria"><IconoAria size={18} /></button>
 
       {/* Separador — oculto en móvil */}
       {!isCompactHeader && <div style={{width:1, height:24, background:'rgba(255,255,255,0.15)', margin:'0 4px'}}/>}

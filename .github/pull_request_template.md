@@ -1,0 +1,1 @@
+- [ ] Si cambiaron pantallas del piloto de Aria, actualicé sus fichas y ejecuté `node scripts/verificar-manual-pantallas.mjs`.

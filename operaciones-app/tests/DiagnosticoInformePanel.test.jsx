@@ -24,7 +24,7 @@ beforeEach(() => {
   api.obtenerOCrearBorrador.mockResolvedValue(draft());
   api.obtenerInformeVigente.mockResolvedValue({ borrador: draft(), emitidos: [] });
   api.actualizarOpciones.mockImplementation(async (_id, opciones) => ({ id: 'inf-1', estado: 'borrador', opciones: { ...opciones } }));
-  api.generarConclusionIA.mockResolvedValue({ ok: true, conclusion: 'La bomba requiere revisión.', modelo: 'gpt-4o-mini' });
+  api.generarConclusionIA.mockResolvedValue({ ok: true, conclusion: 'La bomba requiere revisión.', modelo: 'gpt-4.1-mini' });
   api.obtenerIdentidadEmpresa.mockResolvedValue(null);
   api.usuarioPuedeInforme.mockResolvedValue(true);
   api.emitirInformeDiagnostico.mockResolvedValue({ id: 'v2', estado: 'emitido', version: 2, opciones: draft().opciones, snapshot: { version: 2, cabecera: {} } });
@@ -36,7 +36,7 @@ beforeEach(() => {
 describe('DiagnosticoInformePanel', () => {
   it('solo crea borrador con edición, y usuario con ver consulta existente sin poder editar', async () => {
     await render();
-    expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1');
+    expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1', 'd1');
     renderer.unmount(); renderer = null;
     await render({ puedeEditar: false });
     expect(api.obtenerInformeVigente).toHaveBeenCalledWith('r1');
@@ -75,6 +75,7 @@ describe('DiagnosticoInformePanel', () => {
     await render();
     await act(async () => { button('Generar conclusión con IA').props.onClick(); await Promise.resolve(); });
     expect(api.generarConclusionIA).toHaveBeenCalledWith('d1');
+    expect(api.obtenerOCrearBorrador).toHaveBeenCalledTimes(2);
     expect(renderer.root.findByProps({ id: 'dx-inf-conclusion' }).props.value).toBe('La bomba requiere revisión.');
     expect(renderer.root.findAllByType('small').some(node => text(node).includes('Generado por IA, requiere revisión'))).toBe(true);
     expect(api.actualizarOpciones).not.toHaveBeenCalled();
@@ -87,6 +88,7 @@ describe('DiagnosticoInformePanel', () => {
     api.obtenerOCrearBorrador.mockResolvedValue(draft({ conclusion: 'Pendiente', conclusion_confirmada: false }));
     await render();
     expect(button('Emitir informe').props.disabled).toBe(true);
+    expect(renderer.root.findAll(node => node.props?.role === 'status').some(node => text(node).includes('Falta confirmar la conclusión'))).toBe(true);
     renderer.unmount(); renderer = null;
     api.usuarioPuedeInforme.mockResolvedValue(false);
     await render();

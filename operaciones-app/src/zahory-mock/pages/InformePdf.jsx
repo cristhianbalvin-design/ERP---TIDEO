@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import { prepararImagenesInforme } from '../../services/informePdfImagenes.js';
+import { agruparFotosEnFilas } from '../../services/informeFotosFilas.js';
 
 const S = StyleSheet.create({
   page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 30 },
@@ -10,8 +11,8 @@ const S = StyleSheet.create({
   sectionTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10, color: '#1a2b4a', marginTop: 8, marginBottom: 3, borderBottomWidth: 1, borderColor: '#e1e6ec', paddingBottom: 4 },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, info: { width: '32%', borderWidth: 1, borderColor: '#e4eaf0', borderRadius: 3, padding: 7 }, label: { fontSize: 7, color: '#667085', marginBottom: 3 }, value: { fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
   summary: { flexDirection: 'row', gap: 6 }, summaryCard: { flexGrow: 1, borderWidth: 1, borderColor: '#e4eaf0', padding: 7, borderRadius: 3, alignItems: 'center' }, summaryLabel: { fontSize: 7, color: '#667085', marginBottom: 3 }, summaryNum: { fontFamily: 'Helvetica-Bold', fontSize: 12 },
-  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 7, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { fontSize: 9, marginBottom: 0, lineHeight: 1.25 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'row', gap: 8, marginTop: 5 }, photoBox: { width: '32%', alignItems: 'center' }, photo: { objectFit: 'contain', maxWidth: '100%' }, caption: { fontSize: 7, color: '#667085', marginTop: 2, textAlign: 'center' },
-  table: { marginTop: 5 }, tableHead: { flexDirection: 'row', backgroundColor: '#1a2b4a', padding: 5 }, tableHeadText: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7 }, tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#e6e9ee', padding: 5 }, tableCell: { fontSize: 7.5 }, task: { paddingVertical: 5, borderBottomWidth: 0.5, borderColor: '#e6e9ee', lineHeight: 1.2 }, conclusion: { lineHeight: 1.45 }, signature: { marginTop: 8, width: 250, alignItems: 'center', alignSelf: 'center' }, signLine: { width: '85%', borderTopWidth: 1, borderColor: '#667085', marginBottom: 5 }, footer: { position: 'absolute', bottom: 20, left: 38, right: 38, borderTopWidth: 1, borderColor: '#d9e0e8', paddingTop: 5, textAlign: 'center', fontSize: 7, color: '#667085' },
+  finding: { borderWidth: 1, borderColor: '#dfe5ec', borderRadius: 4, padding: 7, marginBottom: 8 }, findingHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }, findingTitle: { fontFamily: 'Helvetica-Bold', fontSize: 10 }, priority: { fontFamily: 'Helvetica-Bold', color: '#1a2b4a' }, line: { fontSize: 9, marginBottom: 0, lineHeight: 1.25 }, bold: { fontFamily: 'Helvetica-Bold' }, photos: { flexDirection: 'column', gap: 6, marginTop: 5 }, photoRow: { flexDirection: 'row', gap: 6, width: '100%' }, photoBox: { flexGrow: 1, flexBasis: 0, alignItems: 'stretch' }, photo: { objectFit: 'contain', width: '100%', borderRadius: 4 }, caption: { fontSize: 7, color: '#667085', marginTop: 2, textAlign: 'center' },
+  table: { marginTop: 5 }, tableHead: { flexDirection: 'row', backgroundColor: '#1a2b4a', padding: 5 }, tableHeadText: { color: '#fff', fontFamily: 'Helvetica-Bold', fontSize: 7 }, tableRow: { flexDirection: 'row', borderBottomWidth: 0.5, borderColor: '#e6e9ee', padding: 5 }, tableCell: { fontSize: 7.5 }, task: { paddingVertical: 5, borderBottomWidth: 0.5, borderColor: '#e6e9ee', lineHeight: 1.2 }, conclusion: { lineHeight: 1.45 }, signature: { marginTop: 8, width: 250, alignItems: 'center', alignSelf: 'center' }, signatureImage: { width: 110, height: 42, objectFit: 'contain', marginBottom: 2 }, signLine: { width: '85%', borderTopWidth: 1, borderColor: '#667085', marginBottom: 5 }, footer: { position: 'absolute', bottom: 20, left: 38, right: 38, borderTopWidth: 1, borderColor: '#d9e0e8', paddingTop: 5, textAlign: 'center', fontSize: 7, color: '#667085' },
 });
 
 const present = value => value !== null && value !== undefined && value !== '';
@@ -75,9 +76,9 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       <Text style={S.titleMeta}>Recepción {fmt(head.numero_recepcion)}</Text>
       <View style={S.infoGrid}>
         {field('Activo', [head.activo_nombre, head.activo_codigo].filter(present).join(' · '))}
-        {field('Cliente', head.cliente_razon_social)}{field('N° de serie', head.numero_serie)}
+        {field('Cliente', head.cliente_razon_social)}{present(head.numero_serie) && String(head.numero_serie).trim() ? field('N° de serie', head.numero_serie) : null}
         {field('Fecha de recepción', dateLabel(head.fecha_recepcion))}{field('N° de caso', head.numero_caso)}
-        {field('Horómetro', head.horometro)}
+        {present(head.horometro) && String(head.horometro).trim() ? field('Horómetro', head.horometro) : null}
         {field('Tipo', capitalize(head.tipo))}{field('Versión', snapshot?.version)}{field('Emitido el', dateLabel(snapshot?.emitido_en))}
       </View>
       <Text style={S.sectionTitle}>Resumen por prioridad</Text>
@@ -86,7 +87,13 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       {findings.length ? <><Text style={S.sectionTitle} minPresenceAhead={40}>Hallazgos</Text>{findings.map((item, index) => {
         const measures = mediciones.filter(m => m.hallazgo_id === item.hallazgo_id);
         const relatedTasks = tareas.filter(task => task.hallazgo === item.hallazgo || task.hallazgo_id === item.hallazgo_id || (item.lineas || []).some(line => line.tarea_nombre && line.tarea_nombre === task.tarea_nombre));
-        const photos = [...(item.fotos || [])].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0)).filter(photo => imagenes.fotos?.[photo.ruta_storage]).slice(0, 3);
+        const photos = [...(item.fotos || [])].sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0))
+          .filter(photo => imagenes.fotos?.[photo.ruta_storage])
+          .map(photo => ({ ...photo, ...(imagenes.dimensionesFotos?.[photo.ruta_storage] || {}), uri: imagenes.fotos[photo.ruta_storage] }));
+        const photoRows = agruparFotosEnFilas(photos.map(photo => ({ ...photo,
+          width: Number(photo.width || photo.ancho) > 0 ? Number(photo.width || photo.ancho) : 1500,
+          height: Number(photo.height || photo.alto) > 0 ? Number(photo.height || photo.alto) : 1000,
+        })));
         const findingFields = [
           ['Daño', item.tipo_dano_etiqueta], ['Causa probable', item.causa_probable_etiqueta], ['Condición', item.condicion_etiqueta],
           ['Riesgo', item.riesgo_etiqueta], ['Acción recomendada', item.accion_recomendada_etiqueta], ['Atribuible a', item.atribuible_a_etiqueta], ['Observación', item.observacion],
@@ -96,23 +103,21 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
         const relatedTaskNames = [...(item.lineas || []).map(line => line.tarea_nombre), ...relatedTasks.map(task => task.tarea_nombre)]
           .filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ');
         const relatedTaskLines = relatedTaskNames ? estimateLines(`Tareas relacionadas: ${relatedTaskNames}`) : 0;
-        const estimatedHeight = 32 + (estimatedTextLines + relatedTaskLines) * 12 + (measures.length ? 22 + measures.length * 24 : 0) + photos.reduce((height, photo) => {
-          const ratio = Number(photo.ancho) > 0 && Number(photo.alto) > 0 ? Number(photo.ancho) / Number(photo.alto) : 1.5;
-          const width = Math.min(145, Math.max(66, 95 * ratio));
-          const imageHeight = Math.min(96, width / ratio);
-          return height + imageHeight + (present(photo.leyenda) ? 16 : 0) + 5;
+        const estimatedHeight = 32 + (estimatedTextLines + relatedTaskLines) * 12 + (measures.length ? 22 + measures.length * 24 : 0) + photoRows.reduce((height, row) => {
+          const imageHeight = row.orientacion === 'horizontal' ? 112 : 145;
+          return height + imageHeight + (row.fotos.some(photo => present(photo.leyenda)) ? 16 : 0) + 5;
         }, 0);
         return <View key={item.hallazgo_id || index} style={S.finding} wrap={estimatedHeight <= 700 ? false : true}>
           <View style={S.findingHead}><Text style={S.findingTitle}>{fmt(item.componente_parte)}</Text><Text style={S.priority}>{fmt(item.prioridad)}</Text></View>
           {findingFields.map(([label, value]) => <Text key={label} style={S.line}><Text style={S.bold}>{label}: </Text>{fmt(value)}</Text>)}
           {(item.lineas || []).length || relatedTasks.length ? <Text style={S.line}><Text style={S.bold}>Tareas relacionadas: </Text>{[...(item.lineas || []).map(line => line.tarea_nombre), ...relatedTasks.map(task => task.tarea_nombre)].filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ')}</Text> : null}
           {measures.length ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Mediciones</Text><TablaMediciones mediciones={measures} /></> : null}
-          {photos.length ? <View style={S.photos}>{photos.map((photo, pi) => {
-            const ratio = Number(photo.ancho) > 0 && Number(photo.alto) > 0 ? Number(photo.ancho) / Number(photo.alto) : 1.5;
-            const width = Math.min(145, Math.max(66, 95 * ratio));
-            const height = Math.min(96, width / ratio);
-            return <View style={S.photoBox} key={`${photo.ruta_storage}-${pi}`}><Image src={imagenes.fotos[photo.ruta_storage]} style={[S.photo, { width, height }]} />{present(photo.leyenda) ? <Text style={S.caption}>{photo.leyenda}</Text> : null}</View>;
-          })}</View> : null}
+          {photoRows.length ? <View style={S.photos}>{photoRows.map((row, ri) => <View style={S.photoRow} wrap={false} key={`fila-${ri}`}>
+            {row.fotos.map((photo, pi) => <View style={S.photoBox} key={`${photo.ruta_storage}-${pi}`}>
+              <Image src={photo.uri} style={[S.photo, { height: row.orientacion === 'horizontal' ? 112 : 145 }]} />
+              {present(photo.leyenda) ? <Text style={S.caption}>{photo.leyenda}</Text> : null}
+            </View>)}
+          </View>)}</View> : null}
         </View>;
       })}</> : null}
 
@@ -127,9 +132,10 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
       {present(snapshot?.conclusion) || present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View wrap={false}>
         {present(snapshot?.conclusion) ? <><Text style={S.sectionTitle}>Conclusión</Text><Text style={S.conclusion}>{snapshot.conclusion}</Text></> : null}
         {present(snapshot?.emisor?.nombre) || present(snapshot?.emisor?.cargo) ? <View style={S.signature}>
-          <View style={{ height: 8 }} /><View style={S.signLine} />
+          {imagenes.firma ? <Image src={imagenes.firma} style={S.signatureImage} /> : <View style={{ height: 8 }} />}<View style={S.signLine} />
           {present(snapshot?.emisor?.nombre) ? <Text style={S.bold}>{snapshot.emisor.nombre}</Text> : null}
           {present(snapshot?.emisor?.cargo) ? <Text style={S.muted}>{snapshot.emisor.cargo}</Text> : null}
+          {present(snapshot?.emisor?.nombre) ? <Text style={S.muted}>Emitido por {snapshot.emisor.nombre}{present(snapshot?.emisor?.cargo) ? `, ${snapshot.emisor.cargo}` : ''}</Text> : null}
           {present(snapshot?.emitido_en) ? <Text style={S.muted}>{dateLabel(snapshot.emitido_en)}</Text> : null}
         </View> : null}
       </View> : null}
