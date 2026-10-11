@@ -828,13 +828,45 @@ Deno.test("guarda no se activa después de usar una herramienta", async () => {
   equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
 });
 
-Deno.test("guarda no se activa tras una llamada inválida aunque la respuesta mencione error de consulta", async () => {
+Deno.test("llamada inválida informa parámetros permitidos sin sociedad_id", async () => {
+  let toolMessage = "";
+  let n = 0;
+  const x = setup({ ai: async (messages) => {
+    if (messages.some(message => message.role === "tool")) toolMessage = String(messages.at(-1)?.content);
+    return ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_cxp", arguments: JSON.stringify({ sociedad_id: uuid }) } }] })
+      : completion({ role: "assistant", content: "Parámetros no válidos." });
+  } });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Cuánto debo pagar" }));
+  assert(toolMessage.includes("Parámetros de consulta no válidos."), toolMessage);
+  assert(toolMessage.includes("texto"), toolMessage);
+  assert(!toolMessage.includes("sociedad_id"), toolMessage);
+});
+
+Deno.test("guarda reintenta tras una llamada inválida si la respuesta menciona error de consulta", async () => {
   let n = 0;
   const x = setup({ ai: async () => ++n === 1
     ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify({ solo_con_stock: "si" }) } }] })
-    : completion({ role: "assistant", content: "Parámetros no válidos. No pude consultar." }) });
+    : n === 2
+    ? completion({ role: "assistant", content: "No pude consultar los datos." })
+    : n === 3
+    ? completion({ role: "assistant", tool_calls: [{ id: "valid", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Consulté el total pendiente." }) });
   const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Stock" }))).json();
-  equal(result.respuesta, "Parámetros no válidos. No pude consultar.");
+  equal(result.respuesta, "Consulté el total pendiente.");
+  equal(x.aiCalls.length, 4); equal(x.aiToolChoices[0], undefined); equal(x.aiToolChoices[1], undefined); equal(x.aiToolChoices[2], "required"); equal(x.aiToolChoices[3], undefined);
+  assert(!x.calls.some(call => call.name === "asistente_resumen_stock"));
+  const cxpCall = x.calls.find(call => call.name === "asistente_resumen_cxp");
+  assert(cxpCall); equal(cxpCall!.args.p_sociedad_id, null);
+});
+
+Deno.test("guarda no se activa tras una llamada inválida si no afirma error de consulta", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify({ solo_con_stock: "si" }) } }] })
+    : completion({ role: "assistant", content: "Parámetros no válidos." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Stock" }))).json();
+  equal(result.respuesta, "Parámetros no válidos.");
   equal(x.aiCalls.length, 2); equal(x.aiToolChoices[1], undefined);
   assert(!x.calls.some(call => call.name === "asistente_resumen_stock"));
   equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);

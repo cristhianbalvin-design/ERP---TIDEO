@@ -302,7 +302,8 @@ export function createHandler(deps: HandlerDeps) {
         if (!calls.length) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
           if (!answer) { await audit("error", "respuesta_vacia", null); return errorReply(502, "La IA devolvió una respuesta no válida.", origin, origins); }
-          if (!finalRound && !guardActivated && !toolCallsAttempted && toolsUsed.length === 0 && hasGuardTrigger(answer, body.pregunta, (body.historial ?? []).map((item: { content: string }) => item.content))) {
+          const rejectedToolQueryError = toolCallsAttempted && toolsUsed.length === 0 && QUERY_ERROR_RE.test(answer);
+          if (!finalRound && !guardActivated && toolsUsed.length === 0 && (rejectedToolQueryError || (!toolCallsAttempted && hasGuardTrigger(answer, body.pregunta, (body.historial ?? []).map((item: { content: string }) => item.content))))) {
             guardActivated = true;
             retryToolChoice = "required";
             messages.push({ role: "system", content: "Antes de responder, consulta una herramienta pertinente. No des cifras ni afirmes errores de consulta sin consultar primero." });
@@ -329,7 +330,9 @@ export function createHandler(deps: HandlerDeps) {
           try { args = JSON.parse(call.function.arguments ?? "{}"); } catch { args = null; }
           const mapped = validateArgs(spec, args, body.sociedad_id);
           if (!mapped) {
-            messages.push({ role: "tool", tool_call_id: call.id, content: safeJson({ error: "Parámetros de consulta no válidos." }) });
+            const allowedParams = spec.params.filter(param => param.name !== "sociedad_id").map(param => param.name);
+            const allowedText = allowedParams.length ? allowedParams.join(", ") : "ninguno";
+            messages.push({ role: "tool", tool_call_id: call.id, content: safeJson({ error: `Parámetros de consulta no válidos. Parámetros permitidos: ${allowedText}. Reintenta la misma herramienta usando solo esos parámetros.` }) });
             continue;
           }
           const toolArgs = args as Record<string, unknown>;
