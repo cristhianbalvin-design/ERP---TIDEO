@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { construirSvgInforme, medirBboxZonas, rasterizarSvgAPng } from '../zahory-mock/pages/dibujoHallazgoLogic.js';
 
 export async function blobADataUri(blob) {
   return new Promise((resolve, reject) => {
@@ -31,6 +32,17 @@ export async function prepararImagenesInforme(snapshot) {
   const warnings = [];
   const fotos = {};
   const dimensionesFotos = {};
+  const dibujos = {};
+  await Promise.all((snapshot?.hallazgos || []).filter(hallazgo => hallazgo?.dibujo?.svg).map(async hallazgo => {
+    try {
+      const dibujo = hallazgo.dibujo;
+      const bboxPorZona = medirBboxZonas(dibujo.svg);
+      const svg = construirSvgInforme({ svg: dibujo.svg, zonasMarcadas: dibujo.zonas || [], bboxPorZona, cotasMedidas: dibujo.medidas || [] });
+      dibujos[hallazgo.hallazgo_id] = await rasterizarSvgAPng(svg, { ancho: 1200 });
+    } catch {
+      warnings.push('No se pudo preparar el dibujo de un hallazgo.');
+    }
+  }));
   const rutas = [...new Set((snapshot?.hallazgos || [])
     .flatMap(hallazgo => hallazgo?.fotos || [])
     .map(foto => foto?.ruta_storage)
@@ -72,5 +84,5 @@ export async function prepararImagenesInforme(snapshot) {
   if (snapshot?.emisor?.firma_url) {
     try { firma = await descargarComoDataUri(snapshot.emisor.firma_url); } catch { firma = null; }
   }
-  return { logo, firma, fotos, dimensionesFotos, warnings };
+  return { logo, firma, fotos, dimensionesFotos, dibujos, warnings };
 }

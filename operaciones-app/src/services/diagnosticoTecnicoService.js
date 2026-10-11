@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../lib/supabaseClient.js';
+import { catalogoComponentesService } from '../../../src/services/catalogoComponentesService.js';
 
 const DIAGNOSTICO_COLUMNS = 'id,empresa_id,tipo,oportunidad_id,recepcion_id,activo_id,estado,resumen_diagnostico,resumen_origen,elaborado_por,emitido_por,emitido_en,created_at,updated_at';
 const LINEA_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,actividad_id,tarea_id,hallazgo,cargo_id,horas_mano_obra,activo_id,horas_maquina,orden,created_at,updated_at';
@@ -7,8 +8,9 @@ const FAMILIA_COLUMNS = 'id,empresa_id,nombre,activo';
 const TIPO_SERVICIO_COLUMNS = 'id,empresa_id,codigo,nombre,clasificacion,estado,rol,familia_trabajo_id';
 const CARGO_COLUMNS = 'id,codigo,nombre,tipo,estado';
 const ACTIVO_COLUMNS = 'id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id';
-const HALLAZGO_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,componente_parte,tipo_dano_codigo,causa_probable_codigo,condicion,riesgo,matriz_version,prioridad_calculada,prioridad_override,prioridad_override_motivo,prioridad_efectiva,accion_recomendada,atribuible_a,observacion,incluir_en_informe,created_by,created_at,updated_at';
-const MEDICION_COLUMNS = 'id,empresa_id,hallazgo_id,parametro,unidad,nominal,minimo,maximo,medido,resultado_calculado,condicion_sugerida,created_by,created_at,updated_at';
+const HALLAZGO_COLUMNS = 'id,empresa_id,diagnostico_id,familia_trabajo_id,componente_parte,componente_catalogo_id,tipo_dano_codigo,causa_probable_codigo,condicion,riesgo,matriz_version,prioridad_calculada,prioridad_override,prioridad_override_motivo,prioridad_efectiva,accion_recomendada,atribuible_a,observacion,incluir_en_informe,created_by,created_at,updated_at';
+const MEDICION_COLUMNS = 'id,empresa_id,hallazgo_id,parametro,unidad,nominal,minimo,maximo,medido,zona_id,medida_id,cota,resultado_calculado,condicion_sugerida,created_by,created_at,updated_at';
+const ZONA_HALLAZGO_COLUMNS = 'id,empresa_id,hallazgo_id,componente_id,zona_id,orden,nota,creado_en';
 const HALLAZGO_LINEA_COLUMNS = 'id,empresa_id,hallazgo_id,linea_id,created_by,created_at';
 const DIAGNOSTICO_CATALOGO_COLUMNS = 'id,empresa_id,catalogo,codigo,etiqueta,orden,activo,default_id';
 
@@ -150,21 +152,27 @@ export async function obtenerDiagnosticoTecnico(empresaId, diagnosticoId) {
 
   const hallazgoIds = (hallazgos || []).map(hallazgo => hallazgo.id);
   let mediciones = [];
+  let zonasHallazgos = [];
   let enlaces = [];
   if (hallazgoIds.length) {
-    const [{ data: medicionesData, error: medicionesError }, { data: enlacesData, error: enlacesError }] = await Promise.all([
+    const [{ data: medicionesData, error: medicionesError }, { data: enlacesData, error: enlacesError }, { data: zonasData, error: zonasError }] = await Promise.all([
       supabase.from('diagnostico_tecnico_hallazgo_mediciones').select(MEDICION_COLUMNS).eq('empresa_id', empresaId).in('hallazgo_id', hallazgoIds).order('created_at'),
       supabase.from('diagnostico_tecnico_hallazgo_lineas').select(HALLAZGO_LINEA_COLUMNS).eq('empresa_id', empresaId).in('hallazgo_id', hallazgoIds).order('created_at'),
+      supabase.from('diagnostico_tecnico_hallazgo_zonas').select(ZONA_HALLAZGO_COLUMNS).eq('empresa_id', empresaId).in('hallazgo_id', hallazgoIds).order('orden'),
     ]);
     if (medicionesError) throw medicionesError;
     if (enlacesError) throw enlacesError;
+    if (zonasError) throw zonasError;
     mediciones = medicionesData || [];
     enlaces = enlacesData || [];
+    zonasHallazgos = zonasData || [];
   }
   const medicionesPorHallazgo = new Map();
   mediciones.forEach(medicion => medicionesPorHallazgo.set(medicion.hallazgo_id, [...(medicionesPorHallazgo.get(medicion.hallazgo_id) || []), medicion]));
   const enlacesPorHallazgo = new Map();
   enlaces.forEach(enlace => enlacesPorHallazgo.set(enlace.hallazgo_id, [...(enlacesPorHallazgo.get(enlace.hallazgo_id) || []), enlace]));
+  const zonasPorHallazgo = new Map();
+  zonasHallazgos.forEach(zona => zonasPorHallazgo.set(zona.hallazgo_id, [...(zonasPorHallazgo.get(zona.hallazgo_id) || []), zona]));
 
   return {
     ...diagnostico,
@@ -175,6 +183,7 @@ export async function obtenerDiagnosticoTecnico(empresaId, diagnosticoId) {
     hallazgos: (hallazgos || []).map(hallazgo => ({
       ...hallazgo,
       mediciones: medicionesPorHallazgo.get(hallazgo.id) || [],
+      zonas: zonasPorHallazgo.get(hallazgo.id) || [],
       lineas: enlacesPorHallazgo.get(hallazgo.id) || [],
     })),
   };
@@ -214,6 +223,7 @@ const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => ({
   diagnostico_id: diagnosticoId,
   familia_trabajo_id: hallazgo.familia_trabajo_id,
   componente_parte: String(hallazgo.componente_parte || '').trim(),
+  componente_catalogo_id: hallazgo.componente_catalogo_id || null,
   tipo_dano_codigo: hallazgo.tipo_dano_codigo,
   causa_probable_codigo: hallazgo.causa_probable_codigo,
   condicion: hallazgo.condicion,
@@ -230,9 +240,28 @@ const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => ({
 export async function crearDiagnosticoHallazgo(empresaId, diagnosticoId, hallazgo) {
   requireEmpresa(empresaId);
   requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  let payload = hallazgoPayload(empresaId, diagnosticoId, hallazgo);
+  if (!payload.componente_catalogo_id) {
+    const supabase = getSupabaseClient();
+    const { data: diag, error: diagError } = await supabase.from('diagnosticos_tecnicos').select('recepcion_id').eq('empresa_id', empresaId).eq('id', diagnosticoId).single();
+    if (diagError) throw new Error(diagError.message || 'No se pudo obtener el activo de la recepción.');
+    if (diag?.recepcion_id) {
+      const { data: recepcion, error: recepcionError } = await supabase.from('recepciones_activos_cliente').select('activo_id').eq('empresa_id', empresaId).eq('id', diag.recepcion_id).single();
+      if (recepcionError) throw new Error(recepcionError.message || 'No se pudo obtener el activo de la recepción.');
+      if (recepcion?.activo_id) {
+        const { data: activo, error: activoError } = await supabase.from('activos').select('componente_catalogo_id,tipo_activo').eq('empresa_id', empresaId).eq('id', recepcion.activo_id).maybeSingle();
+        if (activoError) throw new Error(activoError.message || 'No se pudo obtener el componente del activo.');
+        if (activo?.tipo_activo !== 'maquinaria_completa' && activo?.componente_catalogo_id) {
+          const { data: componente, error: componenteError } = await supabase.from('catalogo_componentes').select('id,nombre').eq('id', activo.componente_catalogo_id).single();
+          if (componenteError) throw new Error(componenteError.message || 'No se pudo obtener el nombre del componente.');
+          payload = { ...payload, componente_catalogo_id: componente.id, componente_parte: componente.nombre };
+        }
+      }
+    }
+  }
   const { data, error } = await getSupabaseClient()
     .from('diagnostico_tecnico_hallazgos')
-    .insert(hallazgoPayload(empresaId, diagnosticoId, hallazgo))
+    .insert(payload)
     .select(HALLAZGO_COLUMNS)
     .single();
   if (error) throw getError(error);
@@ -269,13 +298,74 @@ export async function eliminarDiagnosticoHallazgo(empresaId, hallazgoId) {
 const medicionPayload = (empresaId, hallazgoId, medicion) => ({
   empresa_id: empresaId,
   hallazgo_id: hallazgoId,
-  parametro: String(medicion.parametro || '').trim(),
-  unidad: medicion.unidad,
+  parametro: String(medicion.parametro || medicion.nombre || '').trim(),
+  unidad: medicion.unidad || (medicion.medida_id ? 'mm' : null),
   nominal: medicion.nominal === '' || medicion.nominal == null ? null : Number(medicion.nominal),
   minimo: medicion.minimo === '' || medicion.minimo == null ? null : Number(medicion.minimo),
   maximo: medicion.maximo === '' || medicion.maximo == null ? null : Number(medicion.maximo),
   medido: medicion.medido === '' || medicion.medido == null ? null : Number(medicion.medido),
+  zona_id: medicion.zona_id || null,
+  medida_id: medicion.medida_id || null,
+  cota: medicion.cota || null,
 });
+
+export async function guardarComponenteCatalogoHallazgo(empresaId, diagnosticoId, hallazgoId, componenteId, nombre = null) {
+  requireEmpresa(empresaId); requireId(diagnosticoId, 'Falta el diagnóstico técnico.'); requireId(hallazgoId, 'Falta el hallazgo técnico.');
+  if (componenteId) {
+    const supabase = getSupabaseClient();
+    const { data: diagnostico, error: diagnosticoError } = await supabase.from('diagnosticos_tecnicos').select('recepcion_id').eq('empresa_id', empresaId).eq('id', diagnosticoId).single();
+    if (diagnosticoError) throw new Error(diagnosticoError.message || 'No se pudo obtener la recepción del diagnóstico.');
+    const { data: recepcion, error: recepcionError } = await supabase.from('recepciones_activos_cliente').select('activo_id').eq('empresa_id', empresaId).eq('id', diagnostico.recepcion_id).single();
+    if (recepcionError) throw new Error(recepcionError.message || 'No se pudo obtener el activo de la recepción.');
+    const { data: activo, error: activoError } = await supabase.from('activos').select('tipo_activo').eq('empresa_id', empresaId).eq('id', recepcion.activo_id).single();
+    if (activoError) throw new Error(activoError.message || 'No se pudo obtener el tipo de activo.');
+    if (activo.tipo_activo !== 'maquinaria_completa') await asignarComponenteCatalogoActivo(empresaId, recepcion.activo_id, componenteId);
+  }
+  const update = { componente_catalogo_id: componenteId || null };
+  if (componenteId && nombre) update.componente_parte = String(nombre).trim();
+  const { data, error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgos').update(update).eq('empresa_id', empresaId).eq('diagnostico_id', diagnosticoId).eq('id', hallazgoId).select(HALLAZGO_COLUMNS).single();
+  if (error) throw new Error(error.message || 'No se pudo guardar el componente del hallazgo.');
+  return data;
+}
+
+export async function reemplazarZonasHallazgo(empresaId, hallazgoId, componenteId, zonas = []) {
+  requireEmpresa(empresaId); requireId(hallazgoId, 'Falta el hallazgo técnico.'); requireId(componenteId, 'Selecciona un componente de catálogo.');
+  const payload = zonas.map((zona, index) => ({ zona_id: zona.zona_id || zona.id, orden: index + 1, nota: String(zona.nota || '').trim() || null }));
+  const { data, error } = await getSupabaseClient().rpc('reemplazar_zonas_hallazgo_diagnostico', { p_empresa_id: empresaId, p_hallazgo_id: hallazgoId, p_componente_id: componenteId, p_zonas: payload });
+  if (error) throw new Error(error.message || 'No se pudieron guardar las zonas del hallazgo.');
+  return data || [];
+}
+
+export async function guardarMedicionLigada(empresaId, hallazgoId, medicion) {
+  requireEmpresa(empresaId); requireId(hallazgoId, 'Falta el hallazgo técnico.');
+  return medicion.id ? actualizarDiagnosticoMedicion(empresaId, hallazgoId, medicion) : crearDiagnosticoMedicion(empresaId, hallazgoId, medicion);
+}
+
+export async function asignarComponenteCatalogoActivo(empresaId, activoId, componenteId) {
+  requireEmpresa(empresaId); requireId(activoId, 'Falta el activo.');
+  const { data, error } = await getSupabaseClient().rpc('asignar_componente_catalogo_activo', { p_empresa_id: empresaId, p_activo_id: activoId, p_componente_id: componenteId || null });
+  if (error) throw new Error(error.message || 'No se pudo guardar el componente del activo.');
+  return data;
+}
+
+export async function crearTipoDanoDiagnostico(empresaId, etiqueta) {
+  requireEmpresa(empresaId);
+  const { data, error } = await getSupabaseClient().rpc('crear_tipo_dano_diagnostico', { p_empresa_id: empresaId, p_etiqueta: etiqueta });
+  if (error) throw new Error(error.message || 'No se pudo crear el tipo de daño.');
+  const fila = Array.isArray(data) ? data[0] : data;
+  const catalogo = await listarCatalogosHallazgos(empresaId);
+  return { valor: fila, catalogo };
+}
+
+export async function listarComponentesDiagnostico(empresaId, diagnosticoId) {
+  requireEmpresa(empresaId); requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const supabase = getSupabaseClient();
+  const { data: diag, error: diagError } = await supabase.from('diagnosticos_tecnicos').select('recepcion_id').eq('empresa_id', empresaId).eq('id', diagnosticoId).single();
+  if (diagError) throw new Error(diagError.message || 'No se pudo obtener la recepción del diagnóstico.');
+  const { data: recepcion, error: recepcionError } = await supabase.from('recepciones_activos_cliente').select('sociedad_id').eq('empresa_id', empresaId).eq('id', diag.recepcion_id).single();
+  if (recepcionError) throw new Error(recepcionError.message || 'No se pudo obtener la sociedad de la recepción.');
+  return catalogoComponentesService.listar(empresaId, recepcion.sociedad_id || null);
+}
 
 export async function crearDiagnosticoMedicion(empresaId, hallazgoId, medicion) {
   requireEmpresa(empresaId);

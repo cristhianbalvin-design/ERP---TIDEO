@@ -8,9 +8,27 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
   const op = { ...DEFAULTS, ...opciones };
   const fotosDe = hallazgoId => fotosPorHallazgo instanceof Map ? fotosPorHallazgo.get(hallazgoId) : fotosPorHallazgo?.[hallazgoId];
   const hallazgosOrigen = diagnostico?.hallazgos || diagnostico?.diagnostico_tecnico_hallazgos || [];
+  const componenteCatalogo = item => {
+    const id = item.componente_catalogo_id;
+    if (!id) return null;
+    const catalogo = rows(catalogOf(catalogos, 'componentes')).find(row => row.id === id || row.componente_id === id);
+    if (!catalogo) return null;
+    const zonas = item.zonas || item.zonas_fijadas || [];
+    const medicionesDibujo = (item.mediciones || []).filter(m => m.medida_id).map(m => {
+      const medida = rows(catalogo.zonas).flatMap(z => z.medidas || []).find(x => x.id === m.medida_id);
+      return { zona_id: m.zona_id, medida_id: m.medida_id, cota: m.cota ?? medida?.cota ?? null,
+        nombre: medida?.nombre || m.parametro || null, unidad: 'mm', nominal: m.nominal ?? null,
+        minimo: m.minimo ?? null, maximo: m.maximo ?? null, medido: m.medido ?? null,
+        resultado: m.resultado_calculado || m.resultado || null };
+    });
+    return { componente_id: id, componente_nombre: catalogo.nombre || item.componente_parte,
+      svg: catalogo.svg || catalogo.dibujo_svg ? sanitizarSvgCatalogo(catalogo.svg || catalogo.dibujo_svg) : null,
+      zonas: zonas.map(z => { const zonaId = z.zona_id || z.id; const fuente = rows(catalogo.zonas).find(x => x.id === zonaId); return { zona_id: zonaId, nombre: fuente?.nombre || z.nombre || null, orden: z.orden, nota: z.nota || null }; }),
+      medidas: medicionesDibujo };
+  };
   const hallazgos = hallazgosOrigen.filter(item => item.incluir_en_informe === true && !(op.ocultar_conformes && item.condicion === 'conforme')).map(item => ({
     hallazgo_id: item.id || item.hallazgo_id || null,
-    componente_parte: item.componente_parte || null,
+    componente_parte: (item.componente_catalogo_id && rows(catalogOf(catalogos, 'componentes')).find(row => row.id === item.componente_catalogo_id)?.nombre) || item.componente_parte || null,
     tipo_dano_codigo: item.tipo_dano_codigo || null,
     tipo_dano_etiqueta: value(item.tipo_dano_etiqueta, etiqueta(catalogOf(catalogos, 'tipos_dano'), item.tipo_dano_codigo)),
     causa_probable_codigo: item.causa_probable_codigo || null,
@@ -25,6 +43,7 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
     atribuible_a_etiqueta: value(item.atribuible_a_etiqueta, etiqueta(catalogOf(catalogos, 'atribuibles'), item.atribuible_a), ({ desgaste_normal: 'Desgaste normal', operacion: 'Operación', defecto_fabrica: 'Defecto de fábrica', instalacion: 'Instalación' })[item.atribuible_a]),
     prioridad: item.prioridad_efectiva || item.prioridad_override || item.prioridad_calculada || item.prioridad || null,
     observacion: item.observacion || null,
+    ...(componenteCatalogo(item) ? { dibujo: componenteCatalogo(item) } : {}),
     fotos: (Array.isArray(fotosDe(item.id || item.hallazgo_id)) ? fotosDe(item.id || item.hallazgo_id) : [])
       .filter(foto => foto.excluir_del_informe === false && foto.signedUrl)
       .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
@@ -32,7 +51,7 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
       .map(foto => ({ url: foto.signedUrl, leyenda: foto.leyenda || null })),
   }));
   const ids = new Set(hallazgos.map(item => item.hallazgo_id));
-  const medicionesOrigen = hallazgosOrigen.flatMap(h => (h.mediciones || []).map(m => ({ ...m, hallazgo_id: h.id || h.hallazgo_id })));
+  const medicionesOrigen = hallazgosOrigen.flatMap(h => (h.mediciones || []).filter(m => !m.medida_id).map(m => ({ ...m, hallazgo_id: h.id || h.hallazgo_id })));
   const mediciones = op.incluir_mediciones ? medicionesOrigen.filter(m => ids.has(m.hallazgo_id)).map(m => ({
     hallazgo_id: m.hallazgo_id || null, parametro: m.parametro || null, unidad: m.unidad || null,
     nominal: m.nominal ?? null, minimo: m.minimo ?? null, maximo: m.maximo ?? null, medido: m.medido ?? null,
@@ -105,3 +124,4 @@ export function construirVistaInforme(diagnostico, opciones = {}, catalogos = {}
     emisor: { nombre: head.emisor_nombre || null, cargo: head.emisor_cargo || null },
   };
 }
+import { sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
