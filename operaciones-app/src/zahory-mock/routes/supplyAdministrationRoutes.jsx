@@ -13,9 +13,10 @@ import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 import { RecepcionOCPage } from '../pages/RecepcionOCPage.jsx';
 import { UbicacionesPage } from '../pages/UbicacionesPage.jsx';
+import { InventarioKardexPage } from '../pages/InventarioKardexPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
-  'solicitudes', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas', 'almacen-ubicaciones',
+  'solicitudes', 'almacen-inventario', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas', 'almacen-ubicaciones',
   'compras-proveedores', 'compras-cotizaciones', 'compras-oc',
   'compras-importaciones', 'compras-recepciones',
   'consolidado', 'finanzas-cxc', 'finanzas-cxp', 'finanzas-tesoreria',
@@ -28,6 +29,7 @@ export function renderSupplyAdministrationRoute(route, context) {
   const { onNavigate, setCurrentOT } = context;
 
   switch (route) {
+    case 'almacen-inventario': return <InventarioKardexPage />;
     case 'solicitudes': return <><AdministrativeAppLinkPage title="Solicitudes SOLPE" adminRoute="solpe" /><SolicitudesPage onNav={onNavigate} /></>;
     case 'almacen-reservas': return <PlaceholderPage title="Reserva de Repuestos" subtitle="Reserva de ítems de stock vinculados a una OT específica. Bloquea el ítem hasta consumo o liberación." />;
     case 'almacen-movimientos': return <><AdministrativeAppLinkPage title="Entradas y Salidas" adminRoute="inventario" /><PlaceholderPage title="Entradas & Salidas" /></>;
