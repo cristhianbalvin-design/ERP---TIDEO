@@ -58,8 +58,8 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_buscar_procesos_compra", params: [s("texto", 200, true), s("estado", 80, true), d("desde", true), d("hasta", true), n("limite", true)] },
   { name: "asistente_buscar_ordenes_compra", desc: "Busca órdenes de compra; monto admite importe exacto o rango y requiere permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), id("proveedor_id", true), d("desde", true), d("hasta", true), n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
   { name: "asistente_buscar_gastos", desc: "Busca gastos y compras registrados en Compras/Gastos (facturas, boletas, egresos directos); monto = importe exacto, monto_min/monto_max = rango; ultimos_meses admite 1–36 y se usa solo si no envías desde/hasta; moneda PEN (soles) o USD (dólares); origen campo o backoffice; devuelve total filtrado por moneda.", params: [s("texto", 200, true), m("monto", true), m("monto_min", true), m("monto_max", true), e("moneda", ["PEN", "USD"], true), s("estado_pago", 80, true), e("origen", ["campo", "backoffice"], true), s("ceco", 100, true), s("proveedor", 200, true), d("desde", true), d("hasta", true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, n("limite", true), society()] },
-  { name: "asistente_resumen_mensual", desc: "Resume por mes y moneda gastos, órdenes de compra, CxP o caja chica, con totales y promedios; úsala para totales, promedios, consultas 'por mes' y para saber de qué meses hay datos. Para CxP agrupa por MES DE VENCIMIENTO y solo incluye documentos abiertos con saldo; no es un histórico de compras. Para órdenes de compra agrupa por fecha de emisión. Al responder, indica cuántos meses tuvieron datos y cuáles meses no tuvieron datos. No la uses para buscar un registro concreto; para eso usa la búsqueda de la entidad. Admite periodo o ultimos_meses (1–36), o desde y hasta explícitos (máximo 36 meses; si se indican fechas, estas prevalecen). Si no se indica rango, usa los últimos 6 meses. moneda es opcional (PEN o USD).", params: [e("entidad", ["gastos", "ordenes_compra", "cxp", "caja_chica"]), society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true), e("moneda", ["PEN", "USD"], true)] },
-  { name: "asistente_consultar_manual", desc: "Consulta el manual cuando pregunten cómo usar una pantalla, por un proceso o qué pueden hacer aquí. Usa la pantalla del contexto si existe. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
+  { name: "asistente_resumen_mensual", desc: "Resume por mes y moneda gastos, órdenes de compra, CxP o caja chica, con totales y promedios; úsala para totales, promedios, consultas 'por mes' y para saber de qué meses hay datos. Para CxP úsala solo para 'qué vence cada mes' o 'vencimientos por mes': agrupa por MES DE VENCIMIENTO y solo incluye documentos abiertos con saldo; aclara que son vencimientos por mes de vencimiento, no el total que debo pagar ni un histórico de compras. Para cuánto debo/tengo que pagar usa asistente_resumen_cxp, que incluye todo el pendiente, también lo vencido. Para órdenes de compra agrupa por fecha de emisión. Al responder, indica cuántos meses tuvieron datos y cuáles meses no tuvieron datos. No la uses para buscar un registro concreto; para eso usa la búsqueda de la entidad. Admite periodo o ultimos_meses (1–36), o desde y hasta explícitos (máximo 36 meses; si se indican fechas, estas prevalecen). Si no se indica rango, usa los últimos 6 meses. moneda es opcional (PEN o USD).", params: [e("entidad", ["gastos", "ordenes_compra", "cxp", "caja_chica"]), society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true), e("moneda", ["PEN", "USD"], true)] },
+  { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el manual no cubre el tema, dilo claramente y ofrece solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
   { name: "asistente_buscar_materiales", params: [s("texto", 200, true), s("familia", 100, true), s("estado", 80, true), n("limite", true)] },
@@ -71,9 +71,9 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_detalle_guia_remision", params: [id("guia_id")] },
   { name: "asistente_buscar_ordenes_venta", params: [s("texto", 200, true), s("estado", 80, true), d("desde", true), d("hasta", true), n("limite", true), society(true)], nullFill: true },
   { name: "asistente_detalle_orden_venta", params: [id("orden_id"), society()] },
-  { name: "asistente_resumen_cxc", desc: "Cuentas por cobrar: total pendiente de cobro, vencido, antigüedad por días de mora y principales clientes, por moneda. Usar para '¿cuánto tengo por cobrar?'.", params: [society(), s("texto", 200, true)] },
+  { name: "asistente_resumen_cxc", desc: "Cuentas por cobrar: total pendiente de cobro, vencido, antigüedad por días de mora y principales clientes, por moneda. Usar para '¿cuánto tengo por cobrar?', incluyendo lo vencido; al responder, menciona por separado el importe vencido.", params: [society(), s("texto", 200, true)] },
   { name: "asistente_buscar_cxc", desc: "Lista facturas por cobrar a clientes (abiertas por defecto) con cliente, vencimiento, mora y saldo. Para vencidas usa solo_vencidas=true, nunca estado. Estado: por_cobrar, cobro_parcial, cobrada. Cuántas = cantidad_devuelta. Admite monto exacto o rango con permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), { name: "solo_vencidas", kind: "boolean", optional: true }, n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
-  { name: "asistente_resumen_cxp", desc: "Cuentas por pagar: total pendiente de pago, vencido, antigüedad por días de mora y principales proveedores, por moneda. Usar para '¿cuánto debo pagar?'.", params: [society(), s("texto", 200, true)] },
+  { name: "asistente_resumen_cxp", desc: "Cuentas por pagar: total pendiente de pago, incluyendo documentos vencidos, antigüedad por días de mora y principales proveedores, por moneda. Usar para '¿cuánto debo pagar?', '¿cuánto tengo que pagar?' o '¿cuánto pago este mes?'; entrega todo el saldo pendiente, no solo lo que vence este mes. Al responder, menciona por separado cuánto está vencido.", params: [society(), s("texto", 200, true)] },
   { name: "asistente_buscar_cxp", desc: "Lista documentos por pagar a proveedores (abiertos por defecto) con proveedor, vencimiento, mora, prioridad_pago y saldo. Para vencidos usa solo_vencidas=true, nunca estado. Para prioridad (alta, media, baja) pasa texto=alta. Estado admite por_pagar, pago_parcial, pagada. Cuántos = cantidad_devuelta. Admite monto exacto o rango con permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), { name: "solo_vencidas", kind: "boolean", optional: true }, n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
   { name: "asistente_resumen_caja_chica", desc: "Caja chica: fondos activos con responsable, saldo disponible, monto mínimo y si requieren reposición, más el total por moneda. Usar para '¿cuánto tengo en caja chica?'. texto filtra por nombre de fondo o responsable.", params: [society(), s("texto", 200, true)] },
   { name: "asistente_buscar_caja_chica", desc: "Lista gastos (egresos) de caja chica con fondo, responsable, concepto, categoría y comprobante, y el total filtrado por moneda. Admite texto y fechas desde/hasta (AAAA-MM-DD), además de monto exacto o rango con permiso financiero.", params: [s("texto", 200, true), s("estado", 80, true), d("desde", true), d("hasta", true), n("limite", true), m("monto", true), m("monto_min", true), m("monto_max", true), society()] },
@@ -104,7 +104,7 @@ export type SupabaseLike = {
   auth: { getUser(token: string): PromiseLike<{ data: { user: unknown | null }; error: unknown | null }> };
   rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown | null }>;
 };
-type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => Promise<{ response: Response; data?: any }>;
+type ModelCall = (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => Promise<{ response: Response; data?: any }>;
 export type HandlerDeps = { createSupabase(token: string): SupabaseLike; callOpenAI: ModelCall; env: (name: string) => string | undefined; now?: () => number };
 
 const allowedOrigins = (extra: string | undefined): Set<string> => {
@@ -131,6 +131,15 @@ const reply = (status: number, body: Record<string, unknown>, origin: string | n
 const errorReply = (status: number, message: string, origin: string | null, origins: Set<string>) => reply(status, { error: message }, origin, origins);
 const safeJson = (value: unknown) => (JSON.stringify(value) ?? "null").replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
+const MONEY_RE = /(?:\b(?:S\/|US\$|\$)\s*[-+]?\d[\d,]*(?:\.\d{1,2})?|\b[-+]?\d[\d,.]*\s*(?:soles?|d[oó]lares?))/gi;
+const QUERY_ERROR_RE = /error en los par[aá]metros|no se pudo consultar|no pude consultar/iu;
+const GREETING_RE = /^(?:hola|buenos? d[ií]as|buenas tardes|buenas noches|hey|buenas)[!.,\s¿?¡]*$/iu;
+const hasGuardTrigger = (answer: string, question: string, historyContents: string[]) => {
+  if (GREETING_RE.test(question.trim())) return false;
+  if (QUERY_ERROR_RE.test(answer)) return true;
+  const amounts = answer.match(MONEY_RE) ?? [];
+  return amounts.length > 0 && !amounts.every(amount => historyContents.some(content => content.includes(amount)));
+};
 
 async function safely<T extends { data: unknown; error: unknown }>(operation: () => T | PromiseLike<T>): Promise<T | { data: null; error: true }> {
   try { return await operation(); } catch { return { data: null, error: true }; }
@@ -224,6 +233,7 @@ export function createHandler(deps: HandlerDeps) {
     if (!deps.env("OPENAI_API_KEY")) return errorReply(502, "El servicio no está disponible.", origin, origins);
     const start = (deps.now ?? Date.now)();
     const toolsUsed: string[] = [];
+    let toolCallsAttempted = false;
     let tokensIn = 0, tokensOut = 0;
     let rpcFailed = false;
     let quotaRemaining: number | undefined;
@@ -263,14 +273,18 @@ export function createHandler(deps: HandlerDeps) {
     const contextText = body.contexto ? `\nContexto de pantalla: ${safeJson(body.contexto)}` : "";
     messages.push({ role: "user", content: `${body.pregunta}${contextText}` });
     let rounds = 0;
+    let guardActivated = false;
+    let retryToolChoice: string | undefined;
     try {
       while (true) {
         const finalRound = rounds >= MAX_ROUNDS;
         if (finalRound) messages.push({ role: "system", content: "Se alcanzó el máximo de consultas a herramientas; responde con lo ya disponible." });
+        const toolChoice = retryToolChoice;
+        retryToolChoice = undefined;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
         let result: { response: Response; data?: any };
-        try { result = await deps.callOpenAI(messages, finalRound ? [] : OPENAI_TOOLS, model, controller.signal); }
+        try { result = await deps.callOpenAI(messages, finalRound ? [] : OPENAI_TOOLS, model, controller.signal, toolChoice); }
         finally { clearTimeout(timer); }
         if (!result.response.ok || !result.data) { await audit("error", "openai_http", null); return errorReply(502, "La IA no está disponible en este momento.", origin, origins); }
         tokensIn += Number(result.data.usage?.prompt_tokens) || 0;
@@ -278,16 +292,28 @@ export function createHandler(deps: HandlerDeps) {
         const message = result.data.choices?.[0]?.message;
         if (!message) { await audit("error", finalRound ? "max_rondas" : "openai_respuesta_invalida", null); return errorReply(502, finalRound ? "No se pudo completar la consulta." : "La IA devolvió una respuesta no válida.", origin, origins); }
         const calls = message.tool_calls ?? [];
+        if (calls.length) toolCallsAttempted = true;
         if (finalRound) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
           if (calls.length || !answer) { await audit("error", "max_rondas", null); return errorReply(502, "No se pudo completar la consulta.", origin, origins); }
-          await audit("completado", rpcFailed ? "rpc_error" : null, answer.slice(0, 1200));
+          await audit("completado", rpcFailed ? "rpc_error" : guardActivated ? "guarda_sin_herramienta" : null, answer.slice(0, 1200));
           return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin, origins);
         }
         if (!calls.length) {
           const answer = typeof message.content === "string" ? message.content.trim() : "";
           if (!answer) { await audit("error", "respuesta_vacia", null); return errorReply(502, "La IA devolvió una respuesta no válida.", origin, origins); }
-          await audit("completado", rpcFailed ? "rpc_error" : null, answer.slice(0, 1200));
+          if (!finalRound && !guardActivated && !toolCallsAttempted && toolsUsed.length === 0 && hasGuardTrigger(answer, body.pregunta, (body.historial ?? []).map((item: { content: string }) => item.content))) {
+            guardActivated = true;
+            retryToolChoice = "required";
+            messages.push({ role: "system", content: "Antes de responder, consulta una herramienta pertinente. No des cifras ni afirmes errores de consulta sin consultar primero." });
+            continue;
+          }
+          if (guardActivated && !toolsUsed.length) {
+            const neutral = "No pude consultar los datos para responder eso. ¿Puedes reformular la pregunta?";
+            await audit("completado", "guarda_sin_herramienta", neutral);
+            return reply(200, { respuesta: neutral, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [] }, origin, origins);
+          }
+          await audit("completado", rpcFailed ? "rpc_error" : guardActivated ? "guarda_sin_herramienta" : null, answer.slice(0, 1200));
           return reply(200, { respuesta: answer, ...(quotaRemaining !== undefined ? { cuota_restante: quotaRemaining } : {}), herramientas_usadas: [...new Set(toolsUsed)] }, origin, origins);
         }
         messages.push({ role: "assistant", content: message.content ?? null, tool_calls: calls });
@@ -352,10 +378,10 @@ const handler = createHandler({
     global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false },
   }) as unknown as SupabaseLike,
   env: (name) => Deno.env.get(name),
-  callOpenAI: async (messages, tools, model, signal) => {
+  callOpenAI: async (messages, tools, model, signal, toolChoice) => {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST", signal, headers: { Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, ...(tools.length ? { tools, tool_choice: "auto" } : {}), temperature: 0.1, max_tokens: MAX_OUTPUT_TOKENS }),
+      body: JSON.stringify({ model, messages, ...(tools.length ? { tools, tool_choice: toolChoice ?? "auto" } : {}), temperature: 0.1, max_tokens: MAX_OUTPUT_TOKENS }),
     });
     return { response, data: response.ok ? await response.json() : undefined };
   },
