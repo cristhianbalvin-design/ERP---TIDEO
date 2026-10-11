@@ -1,4 +1,4 @@
-import { createHandler, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
+import { collectBackedNumbers, comparisonRanges, createHandler, extractMoneyAmounts, hasUnsupportedMoney, OPENAI_TOOLS, relativeDateRange, SYSTEM_PROMPT, TOOL_SPECS, topicsWithoutCoverage, validateArgs, type HandlerDeps, type SupabaseLike } from "./index.ts";
 
 const EMPRESA = "emp20609996464";
 const SOCIEDAD = "22222222-2222-4222-8222-222222222222";
@@ -31,9 +31,10 @@ Deno.test("esquema de conteo publica las 13 entidades exactas y requiere entidad
 const jsonResponse = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
 const completion = (message: any, usage = { prompt_tokens: 12, completion_tokens: 7 }) => ({ response: jsonResponse({}), data: { choices: [{ message }], usage } });
 
-function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }>; quota?: unknown; extraOrigins?: string; model?: string | null; now?: () => number; rpc?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; rpcAll?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }>; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal) => any } = {}) {
+function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLike<{ data: { user: unknown | null }; error: unknown | null }>; quota?: unknown; extraOrigins?: string; model?: string | null; now?: () => number; rpc?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }> | { data: unknown; error: unknown | null }; rpcAll?: (name: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown | null }>; ai?: (messages: Array<Record<string, unknown>>, tools: unknown[], model: string, signal: AbortSignal, toolChoice?: string) => any } = {}) {
   const calls: { name: string; args: Record<string, unknown> }[] = [];
   const aiCalls: Array<Array<Record<string, unknown>>> = [];
+  const aiToolChoices: Array<string | undefined> = [];
   const supabase: SupabaseLike = {
     auth: { getUser: (token) => options.getUser ? options.getUser(token) : Promise.resolve({ data: { user: options.user === false ? null : { id: "user" } }, error: options.user === false ? new Error("invalid") : null }) },
     rpc: (name, args) => {
@@ -51,13 +52,13 @@ function setup(options: { user?: boolean; getUser?: (token: string) => PromiseLi
     createSupabase: () => supabase,
     env: (name) => name === "ASISTENTE_ORIGENES_EXTRA" ? options.extraOrigins : name === "OPENAI_MODEL_ASISTENTE" && options.model === null ? undefined : name === "OPENAI_MODEL_ASISTENTE" && options.model ? options.model : env(name),
     now: options.now ?? (() => 1000),
-    callOpenAI: async (...args) => { aiCalls.push(args[0]); return options.ai ? await options.ai(...args) : completion({ role: "assistant", content: "Consulta completada." }); },
+    callOpenAI: async (...args) => { aiCalls.push(args[0]); aiToolChoices.push(args[4]); return options.ai ? await options.ai(...args) : completion({ role: "assistant", content: "Consulta completada." }); },
   };
   const handler = createHandler(deps);
   const request = (body: unknown = { empresa_id: EMPRESA, pregunta: "¿Qué cuentas hay?" }, extra: RequestInit = {}) => new Request("https://edge.example/asistente-erp", {
     method: "POST", headers: { Authorization: "Bearer valid-token", Origin: "https://erp.tideo.tech", "Content-Type": "application/json", ...(extra.headers as Record<string, string> ?? {}) }, body: JSON.stringify(body), ...extra,
   });
-  return { handler, request, calls, aiCalls };
+  return { handler, request, calls, aiCalls, aiToolChoices };
 }
 
 const thenableWithoutCatch = <T>(value: T): PromiseLike<T> => {
@@ -777,6 +778,268 @@ Deno.test("resumen mensual convierte ultimos_meses a fechas usando hoy en Lima",
   equal(rpc.args.p_desde, "2025-08-01"); equal(rpc.args.p_hasta, "2026-01-31");
 });
 
+Deno.test("cifra sin respaldo reintenta en auto y acepta luego el importe consultado", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { saldo: 18034.6 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : n === 2
+    ? completion({ role: "assistant", content: "Tienes S/ 1,000.00 en bancos." })
+    : completion({ role: "assistant", content: "El saldo consultado es S/ -18,034.60." }) });
+  const response = await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo en bancos?" }));
+  equal(response.status, 200);
+  equal((await response.json()).respuesta, "El saldo consultado es S/ -18,034.60.");
+  equal(x.aiCalls.length, 3);
+  equal(x.aiToolChoices[0], undefined); equal(x.aiToolChoices[1], undefined); equal(x.aiToolChoices[2], undefined);
+  assert(x.aiCalls[2].some(message => message.role === "system" && String(message.content).includes("consulta la herramienta que falta para cada parte") && String(message.content).includes("dilo sin dar cifras")));
+  assert(x.calls.some(call => call.name === "asistente_resumen_tesoreria"));
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("guarda anti-invención reintenta afirmaciones de error sin herramienta", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", content: "Error en los parámetros; no pude consultar." })
+    : n === 2
+    ? completion({ role: "assistant", tool_calls: [{ id: "c", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "El total pendiente se consultó correctamente." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto debo pagar?" }))).status, 200);
+  equal(x.aiCalls.length, 3); equal(x.aiToolChoices[1], "required");
+});
+
+Deno.test("guarda no se activa con saludos ni registra su código", async () => {
+  const x = setup({ ai: async () => completion({ role: "assistant", content: "¡Hola! Soy Aria, ¿en qué te ayudo?" }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Hola" }))).status, 200);
+  equal(x.aiCalls.length, 1);
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("guarda no se activa cuando todos los importes ya están en el historial enviado", async () => {
+  const x = setup({ ai: async () => completion({ role: "assistant", content: "El saldo es S/ 83,630.79." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Dame más detalles", historial: [{ role: "assistant", content: "El saldo es S/ 83,630.79." }] }))).status, 200);
+  equal(x.aiCalls.length, 1);
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("guarda no se activa después de usar una herramienta", async () => {
+  let n = 0;
+  const x = setup({ rpc: (name) => ({ data: name === "asistente_resumen_tesoreria" ? { saldo: 1000 } : {}, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "t", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Saldo: S/ 1,000.00." }) });
+  equal((await x.handler(x.request())).status, 200);
+  equal(x.aiCalls.length, 2); equal(x.aiToolChoices[1], undefined);
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("llamada inválida informa parámetros permitidos sin sociedad_id", async () => {
+  let toolMessage = "";
+  let n = 0;
+  const x = setup({ ai: async (messages) => {
+    if (messages.some(message => message.role === "tool")) toolMessage = String(messages.at(-1)?.content);
+    return ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_cxp", arguments: JSON.stringify({ sociedad_id: uuid }) } }] })
+      : completion({ role: "assistant", content: "Parámetros no válidos." });
+  } });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Cuánto debo pagar" }));
+  assert(toolMessage.includes("Parámetros de consulta no válidos."), toolMessage);
+  assert(toolMessage.includes("texto"), toolMessage);
+  assert(!toolMessage.includes("sociedad_id"), toolMessage);
+});
+
+Deno.test("guarda reintenta tras una llamada inválida si la respuesta menciona error de consulta", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify({ solo_con_stock: "si" }) } }] })
+    : n === 2
+    ? completion({ role: "assistant", content: "No pude consultar los datos." })
+    : n === 3
+    ? completion({ role: "assistant", tool_calls: [{ id: "valid", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Consulté el total pendiente." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Stock" }))).json();
+  equal(result.respuesta, "Consulté el total pendiente.");
+  equal(x.aiCalls.length, 4); equal(x.aiToolChoices[0], undefined); equal(x.aiToolChoices[1], undefined); equal(x.aiToolChoices[2], "required"); equal(x.aiToolChoices[3], undefined);
+  assert(!x.calls.some(call => call.name === "asistente_resumen_stock"));
+  const cxpCall = x.calls.find(call => call.name === "asistente_resumen_cxp");
+  assert(cxpCall); equal(cxpCall!.args.p_sociedad_id, null);
+});
+
+Deno.test("guarda no se activa tras una llamada inválida si no afirma error de consulta", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "invalid", type: "function", function: { name: "asistente_resumen_stock", arguments: JSON.stringify({ solo_con_stock: "si" }) } }] })
+    : completion({ role: "assistant", content: "Parámetros no válidos." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Stock" }))).json();
+  equal(result.respuesta, "Parámetros no válidos.");
+  equal(x.aiCalls.length, 2); equal(x.aiToolChoices[1], undefined);
+  assert(!x.calls.some(call => call.name === "asistente_resumen_stock"));
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("si el único reintento no llama herramientas, responde neutral y audita la guarda", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", content: "No pude consultar: error en los parámetros." })
+    : completion({ role: "assistant", content: "No pude consultar: error en los parámetros." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto debo?" }))).json();
+  equal(x.aiCalls.length, 2); equal(x.aiToolChoices[1], "required");
+  equal(result.respuesta, "No pude consultar los datos para responder eso. ¿Puedes reformular la pregunta?");
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "guarda_sin_herramienta");
+});
+
+Deno.test("descripciones de resúmenes y manual contienen reglas de selección y respuesta", () => {
+  const cxp = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxp")!.desc!;
+  const mensual = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_mensual")!.desc!;
+  const cxc = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_cxc")!.desc!;
+  const manual = TOOL_SPECS.find(tool => tool.name === "asistente_consultar_manual")!.desc!;
+  assert(cxp.includes("¿cuánto tengo que pagar?") && cxp.includes("pendiente") && cxp.includes("vencido"));
+  assert(mensual.includes("vencimientos por mes") && mensual.includes("fecha de emisión") && mensual.includes("36 meses"));
+  assert(cxc.includes("pendiente") && cxc.includes("vencido"));
+  assert(manual.includes("siempre e inmediatamente") && manual.includes("Buena práctica:") && manual.includes("Nunca la uses para consultar datos del ERP"));
+});
+
+Deno.test("SYSTEM_PROMPT conserva exactamente 3178 caracteres", () => {
+  equal(SYSTEM_PROMPT.length, 3178);
+});
+
+Deno.test("produccion: importe respaldado por bancos no cubre cuentas por pagar", async () => {
+  let n = 0;
+  const x = setup({ rpc: name => ({ data: name === "asistente_resumen_tesoreria"
+    ? { saldo_total: -18034.6, cuentas: [{ saldo: 862 }, { saldo: -18896.6 }] }
+    : { pendiente: 18034.6 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : n === 2
+    ? completion({ role: "assistant", content: "El pendiente de pago es S/ 18,034.60." })
+    : n === 3
+    ? completion({ role: "assistant", tool_calls: [{ id: "p", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "El pendiente por pagar es S/ 18,034.60 y el saldo en bancos es S/ -18,034.60." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar este mes? y ¿Cuánto hay en bancos?" }))).json();
+  equal(result.respuesta, "El pendiente por pagar es S/ 18,034.60 y el saldo en bancos es S/ -18,034.60.");
+  equal(x.aiCalls.length, 4); equal(x.aiToolChoices[2], undefined);
+  assert(x.aiCalls[2].some(message => message.role === "system" && String(message.content).includes("cuentas por pagar")));
+  assert(result.herramientas_usadas.includes("asistente_resumen_tesoreria") && result.herramientas_usadas.includes("asistente_resumen_cxp"));
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, null);
+});
+
+Deno.test("tema financiero aun sin cubrir tras la vuelta extra devuelve neutral y audita", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { saldo_total: -18034.6, cuentas: [{ saldo: 862 }, { saldo: -18896.6 }] }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "El pendiente de pago es S/ 18,034.60." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar este mes? y ¿Cuánto hay en bancos?" }))).json();
+  equal(x.aiCalls.length, 3);
+  equal(result.respuesta, "No pude verificar las cifras de esa respuesta. ¿Puedes hacer la consulta por partes?");
+  equal(result.herramientas_usadas.join(","), "asistente_resumen_tesoreria");
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "cifras_sin_respaldo");
+});
+
+Deno.test("un tema respondido con su herramienta no reintenta por cobertura", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { pendiente: 18034.6 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "p", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Debes S/ 18,034.60." }) });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar este mes?" }));
+  equal(x.aiCalls.length, 2);
+});
+
+Deno.test("dos temas respondidos por ambas herramientas no reintenta", async () => {
+  let n = 0;
+  const x = setup({ rpc: name => ({ data: name === "asistente_resumen_cxp" ? { pendiente: 50 } : { saldo: 100 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [
+      { id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } },
+      { id: "p", type: "function", function: { name: "asistente_resumen_cxp", arguments: "{}" } },
+    ] })
+    : completion({ role: "assistant", content: "Debes S/ 50.00 y tienes S/ 100.00 en bancos." }) });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar y cuánto hay en bancos?" }));
+  equal(x.aiCalls.length, 2);
+});
+
+Deno.test("respuesta sin importes no reintenta aunque falte cobertura tematica", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "No encontre datos de pagos." }) });
+  await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar?" }));
+  equal(x.aiCalls.length, 2);
+});
+
+Deno.test("temas sin cobertura reconoce terminos con y sin tilde y evita falsos positivos", () => {
+  equal(topicsWithoutCoverage("pagamos", []).length, 0);
+  equal(topicsWithoutCoverage("pagos a proveedores", []).length, 0);
+  equal(topicsWithoutCoverage("¿Cuánto debo?", []).join(","), "cuentas por pagar");
+  equal(topicsWithoutCoverage("CxP", []).join(","), "cuentas por pagar");
+  equal(topicsWithoutCoverage("Bancos", []).join(","), "tesorería/bancos");
+  equal(topicsWithoutCoverage("caja chica", []).join(","), "caja chica");
+  equal(topicsWithoutCoverage("por cobrar", []).join(","), "cuentas por cobrar");
+  equal(topicsWithoutCoverage("tesorería", []).join(","), "tesorería/bancos");
+  equal(topicsWithoutCoverage("tesoreria", []).join(","), "tesorería/bancos");
+});
+
+Deno.test("sin herramientas intentadas, la guarda anterior precede a la verificacion financiera", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", content: "El pendiente es S/ 18,034.60." })
+    : completion({ role: "assistant", content: "No consulte la herramienta." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto tengo que pagar?" }))).json();
+  equal(x.aiCalls.length, 2); equal(x.aiToolChoices[1], "required");
+  equal(result.respuesta, "No pude consultar los datos para responder eso. ¿Puedes reformular la pregunta?");
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "guarda_sin_herramienta");
+});
+
+Deno.test("cifra aún sin respaldo tras la vuelta extra devuelve neutral y audita", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { saldo: 100 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "El total es S/ 999.00." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Cuánto hay en bancos?" }))).json();
+  equal(x.aiCalls.length, 3);
+  equal(result.respuesta, "No pude verificar las cifras de esa respuesta. ¿Puedes hacer la consulta por partes?");
+  equal(result.herramientas_usadas.join(","), "asistente_resumen_tesoreria");
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "cifras_sin_respaldo");
+});
+
+Deno.test("importes exactos, absolutos, sumas, totales por arreglo e historial tienen respaldo", async () => {
+  equal(extractMoneyAmounts("S/ 1,234.56; US$ 7,143.26; 1,234.56 soles; $ 80" ).join(","), "1234.56,7143.26,1234.56,80");
+  const toolContents = ['<datos>{"primero":100,"segundo":200,"filas":[{"moneda":"PEN","saldo":10},{"moneda":"PEN","saldo":20}]}</datos>'];
+  const backed = collectBackedNumbers(toolContents);
+  for (const amount of [100, 200, 300, 30]) assert(backed.some(value => Math.abs(value - amount) <= 0.005));
+  assert(!hasUnsupportedMoney("S/ 300.00, S/ -100.00 y S/ 30 soles.", toolContents));
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { primero: 100, segundo: 200, filas: [{ moneda: "PEN", saldo: 10 }, { moneda: "PEN", saldo: 20 }] }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "b", type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Total: S/ 300.00 y S/ 30.00." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Dame los totales" }))).status, 200);
+  equal(x.aiCalls.length, 2);
+  const history = setup({ ai: async () => completion({ role: "assistant", content: "El saldo es S/ 83,630.79." }) });
+  equal((await history.handler(history.request({ empresa_id: EMPRESA, pregunta: "Más detalle", historial: [{ role: "assistant", content: "Saldo: S/ 83,630.79." }] }))).status, 200);
+  equal(history.aiCalls.length, 1);
+});
+
+Deno.test("respuestas sin importes y saludos no necesitan verificación", async () => {
+  const plain = setup({ ai: async () => completion({ role: "assistant", content: "No encontré datos." }) });
+  equal((await plain.handler(plain.request())).status, 200); equal(plain.aiCalls.length, 1);
+  const greeting = setup({ ai: async () => completion({ role: "assistant", content: "¡Hola! Soy Aria." }) });
+  equal((await greeting.handler(greeting.request({ empresa_id: EMPRESA, pregunta: "Hola" }))).status, 200); equal(greeting.aiCalls.length, 1);
+});
+
+Deno.test("finalRound también bloquea importes sin respaldo tras una vuelta extra", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { saldo: 100 }, error: null }), ai: async () => {
+    n++;
+    if (n <= 4) return completion({ role: "assistant", tool_calls: [{ id: `b${n}`, type: "function", function: { name: "asistente_resumen_tesoreria", arguments: "{}" } }] });
+    return completion({ role: "assistant", content: "Saldo: S/ 999.00." });
+  } });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "Consulta bancos" }))).json();
+  equal(x.aiCalls.length, 6);
+  equal(result.respuesta, "No pude verificar las cifras de esa respuesta. ¿Puedes hacer la consulta por partes?");
+  equal(x.calls.find(call => call.name === "asistente_registrar_historial")!.args.p_error_code, "cifras_sin_respaldo");
+});
+
+Deno.test("descripciones financieras indican consultar cada tema y el prompt conserva longitud", () => {
+  for (const name of ["asistente_resumen_cxp", "asistente_resumen_tesoreria", "asistente_resumen_cxc", "asistente_resumen_caja_chica"]) {
+    assert(TOOL_SPECS.find(tool => tool.name === name)!.desc!.includes("Si la pregunta combina varios temas, llama además a la herramienta de cada tema, una por parte."));
+  }
+  equal(SYSTEM_PROMPT.length, 3178);
+});
+
 Deno.test("la fecha Lima se inyecta como contexto de sistema y el prompt permanece bajo el límite", async () => {
   const x = setup({ now: () => Date.parse("2026-10-09T04:30:00Z") });
   equal((await x.handler(x.request())).status, 200);
@@ -790,7 +1053,7 @@ Deno.test("la herramienta de resumen mensual declara parámetros y la respuesta 
   assert(tool);
   equal(JSON.stringify(tool.function.parameters.properties.entidad.enum), JSON.stringify(["gastos", "ordenes_compra", "cxp", "caja_chica"]));
   assert(!("sociedad_id" in tool.function.parameters.properties));
-  assert(tool.function.description.includes("MES DE VENCIMIENTO") && tool.function.description.includes("no es un histórico de compras"));
+  assert(tool.function.description.includes("MES DE VENCIMIENTO") && tool.function.description.includes("ni un histórico de compras"));
   assert(tool.function.description.includes("órdenes de compra agrupa por fecha de emisión"));
   let n = 0; let toolContent = "";
   const x = setup({ rpc: () => ({ data: { contenido: "x".repeat(20_000) }, error: null }), ai: async messages => {
@@ -800,4 +1063,42 @@ Deno.test("la herramienta de resumen mensual declara parámetros y la respuesta 
   equal((await x.handler(x.request())).status, 200);
   assert(new TextEncoder().encode(toolContent.slice("<datos>".length, -"</datos>".length)).length <= 12_040);
   assert(toolContent.includes("resultado truncado"));
+});
+
+Deno.test("comparisonRanges compara el mismo tramo mensual y ajusta al último día", () => {
+  equal(JSON.stringify(comparisonRanges("2026-10-11", "mes")), JSON.stringify({ actual: { desde: "2026-10-01", hasta: "2026-10-11" }, anterior: { desde: "2026-09-01", hasta: "2026-09-11" } }));
+  equal(JSON.stringify(comparisonRanges("2026-03-31", "mes")), JSON.stringify({ actual: { desde: "2026-03-01", hasta: "2026-03-31" }, anterior: { desde: "2026-02-01", hasta: "2026-02-28" } }));
+  equal(JSON.stringify(comparisonRanges("2026-01-15", "mes")), JSON.stringify({ actual: { desde: "2026-01-01", hasta: "2026-01-15" }, anterior: { desde: "2025-12-01", hasta: "2025-12-15" } }));
+  equal(JSON.stringify(comparisonRanges("2028-03-30", "mes")), JSON.stringify({ actual: { desde: "2028-03-01", hasta: "2028-03-30" }, anterior: { desde: "2028-02-01", hasta: "2028-02-29" } }));
+});
+
+Deno.test("comparisonRanges compara el mismo tramo anual y ajusta el día bisiesto", () => {
+  equal(JSON.stringify(comparisonRanges("2026-10-11", "anio")), JSON.stringify({ actual: { desde: "2026-01-01", hasta: "2026-10-11" }, anterior: { desde: "2025-01-01", hasta: "2025-10-11" } }));
+  equal(JSON.stringify(comparisonRanges("2028-02-29", "anio")), JSON.stringify({ actual: { desde: "2028-01-01", hasta: "2028-02-29" }, anterior: { desde: "2027-01-01", hasta: "2027-02-28" } }));
+  equal(JSON.stringify(comparisonRanges("2026-12-31", "anio")), JSON.stringify({ actual: { desde: "2026-01-01", hasta: "2026-12-31" }, anterior: { desde: "2025-01-01", hasta: "2025-12-31" } }));
+});
+
+Deno.test("comparativos valida parámetros y publica solo entidades y filtros permitidos", async () => {
+  const spec = TOOL_SPECS.find(tool => tool.name === "asistente_comparar_periodos")!;
+  equal(validateArgs(spec, { entidad: "gastos", comparacion: "mes", sociedad_id: SOCIEDAD }), null);
+  equal(validateArgs(spec, { entidad: "gastos", comparacion: "mes", desde: "2026-10-01" }), null);
+  equal(validateArgs(spec, { entidad: "cxp", comparacion: "mes" }), null);
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_comparar_periodos") as any;
+  equal(JSON.stringify(tool.function.parameters.properties.entidad.enum), JSON.stringify(["gastos", "ordenes_compra", "caja_chica"]));
+  assert(!("sociedad_id" in tool.function.parameters.properties));
+  for (const name of ["desde", "hasta", "desde_actual", "hasta_actual", "desde_anterior", "hasta_anterior"]) assert(!(name in tool.function.parameters.properties));
+});
+
+Deno.test("comparativos calcula sus fechas en el servidor y envía cuatro rangos al RPC", async () => {
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-10-11T12:00:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "c", type: "function", function: { name: "asistente_comparar_periodos", arguments: JSON.stringify({ entidad: "gastos", comparacion: "mes", moneda: "PEN" }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "este mes vs el anterior" }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_comparar_periodos")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_entidad, "gastos");
+  equal(rpc.args.p_desde_actual, "2026-10-01"); equal(rpc.args.p_hasta_actual, "2026-10-11");
+  equal(rpc.args.p_desde_anterior, "2026-09-01"); equal(rpc.args.p_hasta_anterior, "2026-09-11");
+  equal(rpc.args.p_moneda, "PEN");
+  assert(!("p_comparacion" in rpc.args));
 });
