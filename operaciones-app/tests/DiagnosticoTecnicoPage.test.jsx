@@ -772,7 +772,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     const family = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => family.props.onChange({ target: { value: 'fam-1' } }));
     await act(async () => buttonByText(renderer, '＋ Agregar hallazgo').props.onClick());
-    expect(footerButtons()).toEqual(['← Volver a la lista', '＋ Otro daño en este componente', 'Guardar hallazgo']);
+    expect(footerButtons()).toEqual(['← Volver a la lista', 'Ver dibujo', '＋ Otro daño en este componente', 'Guardar hallazgo']);
     await act(async () => renderer.root.findByProps({ 'aria-label': 'Cerrar' }).props.onClick());
     await act(async () => buttonByText(renderer, 'Cerrar sin guardar').props.onClick());
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === false)).toBe(true);

@@ -222,32 +222,22 @@ function ComponentField({ item, componentType, components, disabled, onSelect, o
   </div>;
 }
 
-function DibujoHallazgoVista({ component, markup, onZone, disabled, onVisibilityChange }) {
-  const drawingRef = useRef(null);
-  const [visible, setVisible] = useState(true);
+function DibujoHallazgoVista({ component, markup, onZone, disabled }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    const show = () => drawingRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    const show = () => setSheetOpen(true);
     window.addEventListener('dx-show-hallazgo-drawing', show);
     return () => window.removeEventListener('dx-show-hallazgo-drawing', show);
   }, []);
-  useEffect(() => {
-    const node = drawingRef.current;
-    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
-    const observer = new IntersectionObserver(([entry]) => { setVisible(entry.isIntersecting); onVisibilityChange?.(entry.isIntersecting); }, { threshold: 0.12 });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [component?.id, markup]);
-  const image = <div className="dx-drawing-canvas" role="group" aria-label={`Dibujo de ${component?.nombre}`} dangerouslySetInnerHTML={{ __html: markup }} onClick={event => { if (!disabled) onZone(event); if (sheetOpen) setSheetOpen(false); }} />;
+  const image = <div className="dx-drawing-canvas" role="group" aria-label={`Dibujo de ${component?.nombre}`} dangerouslySetInnerHTML={{ __html: markup }} onClick={event => { if (!disabled) onZone(event); }} />;
   return <>
-    <div ref={drawingRef}>{image}</div>
-    {!visible && <button type="button" className="dx-floating-drawing" onClick={() => setSheetOpen(true)}>Ver dibujo</button>}
+    <div>{image}</div>
     {sheetOpen && <div className="dx-drawing-sheet-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSheetOpen(false); }}><section className="dx-drawing-sheet" role="dialog" aria-modal="true" aria-label={`Dibujo de ${component?.nombre}`}><header><strong>Dibujo · {component?.nombre}</strong><button type="button" aria-label="Cerrar dibujo" onClick={() => setSheetOpen(false)}>×</button></header>{image}</section></div>}
   </>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onRegisterAddHallazgo, onRegisterAddOtro, onRegisterBackToList, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange, onViewChange, onDrawingVisibilityChange }) {
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onRegisterAddHallazgo, onRegisterAddOtro, onRegisterBackToList, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange, onViewChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
@@ -457,12 +447,17 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     const item = first.item;
     if (item.familia_trabajo_id) setCollapsedGroups(current => { const next = new Set(current); next.delete(item.familia_trabajo_id); return next; });
     setExpandedKeys(current => new Set([...current, keyFor(item)]));
-    requestAnimationFrame(() => {
+    const focusMissingField = () => {
       const card = itemCardRefs.current.get(keyFor(item));
       card?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
       const target = card?.querySelector?.(`[data-required-field="${first.missingFields[0]}"]`);
+      const field = target?.closest?.('.field');
+      field?.classList?.add('dx-required-missing');
+      globalThis.setTimeout(() => field?.classList?.remove('dx-required-missing'), 2200);
       ((target?.matches?.('input,select,button,textarea') ? target : target?.querySelector?.('input,select,button,textarea')) || card)?.focus?.({ preventScroll: true });
-    });
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusMissingField);
+    else focusMissingField();
   }, [items]);
   useEffect(() => { onRegisterGoToIncomplete?.(goToIncomplete); return () => onRegisterGoToIncomplete?.(null); }, [goToIncomplete, onRegisterGoToIncomplete]);
 
@@ -472,8 +467,11 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     const incomplete = getIncompleteHallazgos(items);
     if (incomplete.length) {
       setSaving(false);
-      const message = `Hay ${incomplete.length} hallazgo${incomplete.length === 1 ? '' : 's'} incompleto${incomplete.length === 1 ? '' : 's'}. Complétalos o elimínalos.`;
+      const fieldLabels = { family: 'el trabajo', component: 'el componente', 'component-text': 'el componente', damage: 'el tipo de daño', cause: 'la causa probable', condition: 'la condición', risk: 'el riesgo', action: 'la acción recomendada', attribution: 'la atribución', override_reason: 'el motivo de la prioridad' };
+      const missingLabel = fieldLabels[incomplete[0].missingFields[0]] || 'un campo obligatorio';
+      const message = `Falta ${missingLabel}. Hay ${incomplete.length} hallazgo${incomplete.length === 1 ? '' : 's'} incompleto${incomplete.length === 1 ? '' : 's'}. Complétalo o elimínalo.`;
       onError?.(message);
+      goToIncomplete();
       return { ok: false, error: message };
     }
     const invalidMediciones = items.flatMap(item => (item.mediciones || []).map((measurement, index) => ({
@@ -503,8 +501,8 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
           persisted.set(keyFor(item), { ...current, ...saved, _componentDirty: false });
         }
         if (current._zonesDirty) {
-          const zones = await reemplazarZonasHallazgo(empresaId, current.id, current.componente_catalogo_id, current.zonas || []);
-          persisted.set(keyFor(item), { ...(persisted.get(keyFor(item)) || current), zonas, _zonesDirty: false });
+          const zonasGuardadas = await reemplazarZonasHallazgo(empresaId, current.id, current.componente_catalogo_id, current.zonas || []);
+          persisted.set(keyFor(item), { ...(persisted.get(keyFor(item)) || current), zonas: zonasGuardadas, _zonesDirty: false });
         }
       }
       for (const item of items) {
@@ -595,7 +593,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         return { ok: false, error: message };
       }
     } finally { setSaving(false); }
-  }, [canEdit, readOnly, saving, diagnostico?.id, empresaId, deletedItems, items, deletedMediciones, deletedLineas, onError, onNotice]);
+  }, [canEdit, readOnly, saving, diagnostico?.id, empresaId, deletedItems, items, deletedMediciones, deletedLineas, onError, onNotice, goToIncomplete]);
 
   useEffect(() => { onRegisterSave?.(saveAll); return () => onRegisterSave?.(null); }, [onRegisterSave, saveAll]);
 
@@ -656,7 +654,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     const drawingSvg = selectedComponent?.svg || selectedComponent?.dibujo_svg || '';
     const damageOptions = buscarTiposDano(catalogs.tipo_dano, busquedaDano).items;
     const damageExact = buscarTiposDano(catalogs.tipo_dano, busquedaDano).exacta;
-    const drawingMarkup = drawingSvg ? markupDibujoHallazgo(drawingSvg, item.zonas || []) : '';
+    const drawingMarkup = drawingSvg ? markupDibujoHallazgo(drawingSvg, item.zonas || [], {}, item.mediciones || []) : '';
     const expanded = expandedKeys.has(keyFor(item));
     const toggle = () => setExpandedKeys(current => { const next = new Set(current); if (next.has(keyFor(item))) next.delete(keyFor(item)); else next.add(keyFor(item)); return next; });
     const itemName = item.componente_parte?.trim() || 'sin nombre';
@@ -666,7 +664,12 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       const zoneId = zone?.getAttribute('data-z');
       if (!zoneId) return;
       const definition = selectedComponent?.zonas?.find(row => row.id === zoneId);
-      if ((item.zonas || []).some(row => (row.zona_id || row.id) === zoneId)) return;
+      if ((item.zonas || []).some(row => (row.zona_id || row.id) === zoneId)) {
+        const linked = (item.mediciones || []).filter(measure => measure.zona_id === zoneId);
+        setDeletedMediciones(current => [...current, ...linked.filter(measure => measure.id)]);
+        updateItem(item, { zonas: item.zonas.filter(row => (row.zona_id || row.id) !== zoneId).map((row, order) => ({ ...row, orden: order + 1 })), _zonesDirty: true, mediciones: item.mediciones.filter(measure => measure.zona_id !== zoneId) });
+        return;
+      }
       const nextZones = [...(item.zonas || []), { zona_id: zoneId, nombre: definition?.nombre, orden: (item.zonas || []).length + 1, nota: '' }];
       const additions = (definition?.medidas || []).filter(measure => !(item.mediciones || []).some(row => row.medida_id === measure.id)).map(measure => ({ _key: `med-${Date.now()}-${Math.random()}`, parametro: measure.nombre, unidad: 'mm', nominal: '', minimo: '', maximo: '', medido: '', zona_id: zoneId, medida_id: measure.id, cota: measure.cota, referencia: measure.referencia, _new: true, _dirty: true }));
       updateItem(item, { zonas: nextZones, _zonesDirty: true, mediciones: [...(item.mediciones || []), ...additions] });
@@ -681,7 +684,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         <ComponentField item={item} componentType={activoRecepcion?.tipo_activo} components={componentes} disabled={!canEdit} onSelect={value => { const component = componentes.find(row => row.id === value); const linked = item.mediciones.filter(measure => measure.medida_id); setDeletedMediciones(current => [...current, ...linked.filter(measure => measure.id)]); updateItem(item, { componente_catalogo_id: component?.id || null, componente_parte: value === 'otro' ? 'Otro' : component?.nombre || '', zonas: [], mediciones: item.mediciones.filter(measure => !measure.medida_id), _componentDirty: true, _zonesDirty: true }); }} onTextChange={value => updateItem(item, { componente_parte: value, componente_catalogo_id: null })} />
       )}
       {corregirTipo && <div className="dx-component-correction-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setCorregirTipo(false); }}><section className="dx-component-correction" role="dialog" aria-modal="true" aria-label="Corregir tipo"><h4>Corregir tipo de componente</h4><p>Actualiza el componente asignado al activo recibido.</p><label htmlFor="dx-componente-correcto">Tipo de componente</label><select id="dx-componente-correcto" className="select" value={componentePorAsignar} onChange={event => setComponentePorAsignar(event.target.value)}>{componentes.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select><div><button type="button" className="btn btn-secondary" onClick={() => setCorregirTipo(false)}>Cancelar</button><button type="button" className="btn btn-primary" disabled={tipoActivoGuardando || !componentePorAsignar} onClick={async () => { const component = componentes.find(row => row.id === componentePorAsignar); if (!component || !activoRecepcion?.id) return; setTipoActivoGuardando(true); try { await asignarComponenteActivo(empresaId, activoRecepcion.id, component.id); setActivoRecepcion(current => ({ ...current, tipo_activo: 'componente', componente_catalogo_id: component.id })); setItems(current => current.map(row => row.id === item.id || keyFor(row) === keyFor(item) ? { ...row, componente_catalogo_id: component.id, componente_parte: component.nombre, zonas: [], mediciones: (row.mediciones || []).filter(measure => !measure.medida_id), _dirty: true, _componentDirty: true, _zonesDirty: true } : row)); setCorregirTipo(false); onNotice?.('Tipo del activo corregido. El dibujo se actualizó.'); } catch (error) { onError?.(errorMessage(error)); } finally { setTipoActivoGuardando(false); } }}>{tipoActivoGuardando ? 'Guardando…' : 'Guardar tipo'}</button></div></section></div>}
-      {drawingSvg && <section className="dx-hallazgo-drawing"><div className="dx-drawing-title"><div><span className="hallazgo-section-label">DIBUJO DEL COMPONENTE</span><h4>{selectedComponent?.nombre}</h4></div><small>Toca una zona dañada para marcarla</small></div><DibujoHallazgoVista component={selectedComponent} markup={drawingMarkup} onZone={markDrawingZone} disabled={!canEdit} onVisibilityChange={onDrawingVisibilityChange} />{(item.zonas || []).length > 0 && <div className="dx-zone-chips">{(item.zonas || []).map((zone, index) => <span key={zone.zona_id || zone.id}><b>{index + 1}</b>{selectedComponent.zonas?.find(row => row.id === (zone.zona_id || zone.id))?.nombre || zone.nombre}<input aria-label={`Nota del pin ${index + 1}`} value={zone.nota || ''} disabled={!canEdit} placeholder="Nota (opcional)" onChange={event => updateItem(item, { zonas: item.zonas.map(row => (row.zona_id || row.id) === (zone.zona_id || zone.id) ? { ...row, nota: event.target.value } : row), _zonesDirty: true })} /><button type="button" aria-label={`Quitar ${zone.nombre || 'zona'}`} disabled={!canEdit} onClick={() => { const zoneId = zone.zona_id || zone.id; setDeletedMediciones(current => [...current, ...item.mediciones.filter(measure => measure.zona_id === zoneId && measure.id)]); updateItem(item, { zonas: item.zonas.filter(row => (row.zona_id || row.id) !== zoneId).map((row, order) => ({ ...row, orden: order + 1 })), _zonesDirty: true, mediciones: item.mediciones.filter(measure => measure.zona_id !== zoneId) }); }}>×</button></span>)}</div>}</section>}
+      {drawingSvg && <section className="dx-hallazgo-drawing"><div className="dx-drawing-title"><div><span className="hallazgo-section-label">DIBUJO DEL COMPONENTE</span><h4>{selectedComponent?.nombre}</h4></div><small>Toca una zona dañada para marcarla o quitarla</small></div><DibujoHallazgoVista component={selectedComponent} markup={drawingMarkup} onZone={markDrawingZone} disabled={!canEdit} />{(item.zonas || []).length > 0 && <div className="dx-zone-chips">{(item.zonas || []).map((zone, index) => <span key={zone.zona_id || zone.id}><b>{index + 1}</b>{selectedComponent.zonas?.find(row => row.id === (zone.zona_id || zone.id))?.nombre || zone.nombre}<input aria-label={`Nota del pin ${index + 1}`} value={zone.nota || ''} disabled={!canEdit} placeholder="Nota (opcional)" onChange={event => updateItem(item, { zonas: item.zonas.map(row => (row.zona_id || row.id) === (zone.zona_id || zone.id) ? { ...row, nota: event.target.value } : row), _zonesDirty: true })} /><button type="button" aria-label={`Quitar ${zone.nombre || 'zona'}`} disabled={!canEdit} onClick={() => { const zoneId = zone.zona_id || zone.id; setDeletedMediciones(current => [...current, ...item.mediciones.filter(measure => measure.zona_id === zoneId && measure.id)]); updateItem(item, { zonas: item.zonas.filter(row => (row.zona_id || row.id) !== zoneId).map((row, order) => ({ ...row, orden: order + 1 })), _zonesDirty: true, mediciones: item.mediciones.filter(measure => measure.zona_id !== zoneId) }); }}>×</button></span>)}</div>}</section>}
       <div className="hallazgo-grid">
         {!inheritedComponent && !item.componente_catalogo_id && <div className="field"><label>Componente / parte *</label><input data-required-field="component-text" className="input" aria-label="Componente / parte" value={item.componente_parte || ''} disabled={!canEdit} onChange={event => updateItem(item, { componente_parte: event.target.value })} /></div>}
         <div className="field dx-tipo-dano"><label>{CATALOG_LABELS.tipo_dano}</label><input data-required-field="damage" className="input" role="combobox" aria-expanded={tipoDanoAbierto === keyFor(item)} aria-label="Tipo de daño" value={tipoDanoAbierto === keyFor(item) ? busquedaDano : catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || ''} disabled={!canEdit} placeholder="Buscar tipo de daño…" onFocus={() => { setBusquedaDano(''); setTipoDanoAbierto(keyFor(item)); }} onChange={event => setBusquedaDano(event.target.value)} onBlur={() => window.setTimeout(() => setTipoDanoAbierto(null), 120)} />{tipoDanoAbierto === keyFor(item) && <div className="dx-tipo-dano-menu">{agruparTiposDano(damageOptions).map(group => <div key={group.id}><small>{group.label}</small>{group.items.map(option => <button type="button" key={`${group.id}-${option.codigo}`} onMouseDown={event => event.preventDefault()} onClick={() => { updateItem(item, { tipo_dano_codigo: option.codigo }); setTipoDanoAbierto(null); }}>{option.etiqueta}</button>)}</div>)}{!damageExact && busquedaDano.trim() && <p className="dx-tipo-dano-similar">Parecidos: {damageOptions.slice(0, 3).map(option => option.etiqueta).join(' · ') || 'sin coincidencias'}</p>}{!damageExact && canEdit && puedeEditarMaestros && busquedaDano.trim() && <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const result = await crearTipoDanoDiagnostico(empresaId, busquedaDano.trim()); const rows = result.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: result.valor.codigo }); setTipoDanoAbierto(null); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{busquedaDano.trim()}»</button>}</div>}</div>

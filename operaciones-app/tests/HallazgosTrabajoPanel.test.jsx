@@ -101,6 +101,16 @@ beforeEach(() => {
 });
 
 describe('HallazgosTrabajoPanel', () => {
+  it('incluye los estilos de tema del dibujo del catálogo y sus zonas', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    for (const selector of ['.part', '.part.alt', '.part.hole', '.cav', '.thin', '.cl', '.dimline', '.lead', '.dimtxt', '.dimbg', '.dimdot', '.lbl', '[data-cota].c-on', '[data-z].is-marked']) {
+      expect(css).toContain(`.dx-drawing-canvas svg ${selector}`);
+    }
+    expect(css).toContain('.dx-drawing-canvas .dx-hallazgo-pin');
+    expect(css).toContain('var(--dx-ui-red-bg)');
+    expect(css).toContain('var(--dx-ui-ink)');
+  });
+
   it('mantiene visible la sección de hallazgos aunque el activo preceda a la sección en el DOM', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     expect(css).toContain('.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not([aria-labelledby="dx-hallazgos-title"]){display:none}');
@@ -257,7 +267,16 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => callbacks.addHallazgo());
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
-    expect(callbacks.error).toContain('Hay 1 hallazgo incompleto. Complétalos o elimínalos.');
+    expect(callbacks.error).toContain('Falta el componente. Hay 1 hallazgo incompleto.');
+  });
+
+  it('nombra el campo faltante y desplaza el foco a la causa probable', async () => {
+    const { renderer, callbacks } = await renderPanel([{ ...baseHallazgo, causa_probable_codigo: null }]);
+    await openEditor(renderer);
+    const result = await callbacks.save();
+    expect(result.error).toContain('Falta la causa probable.');
+    expect(mocks.actualizarDiagnosticoHallazgo).not.toHaveBeenCalled();
+    renderer.unmount();
   });
 
   it('valida el parámetro de cada medición y no envía la medición incompleta', async () => {
@@ -383,6 +402,37 @@ describe('HallazgosTrabajoPanel', () => {
     expect(textOf(renderer.root)).toContain('Carcasa');
     await act(async () => callbacks.save());
     expect(mocks.reemplazarZonasHallazgo).toHaveBeenCalledWith('empresa-prueba', 'hallazgo-1', 'component-1', [expect.objectContaining({ zona_id: 'zone-1' })]);
+    renderer.unmount();
+  });
+
+  it('guarda una zona con nota y su medición ligada del cilindro sin excepción', async () => {
+    mocks.listarComponentesDiagnostico.mockResolvedValue([{
+      id: 'component-cil', nombre: 'Cilindro hidráulico',
+      svg: '<svg viewBox="0 0 300 120"><rect class="part" data-z="zone-cil" x="10" y="20" width="180" height="70"/><path data-cota="cota-diametro" class="dimline" d="M20 10h160"/></svg>',
+      zonas: [{ id: 'zone-cil', nombre: 'Camisa', medidas: [{ id: 'med-cil', nombre: 'Diámetro', cota: 'cota-diametro' }] }],
+    }]);
+    mocks.obtenerActivoRecepcionDiagnostico.mockResolvedValue({ id: 'asset-cil', nombre: 'Cilindro hidráulico', tipo_activo: 'componente', componente_catalogo_id: 'component-cil' });
+    mocks.actualizarDiagnosticoHallazgo.mockResolvedValue({ id: 'hallazgo-1', componente_catalogo_id: 'component-cil' });
+    mocks.reemplazarZonasHallazgo.mockImplementation(async (_empresa, _hallazgo, _componente, zonas) => zonas);
+    mocks.crearDiagnosticoMedicion.mockImplementation(async (_empresa, _hallazgo, medicion) => ({ ...medicion, id: 'medicion-guardada' }));
+    const { renderer, callbacks } = await renderPanel([{ ...baseHallazgo, componente_parte: 'Cilindro hidráulico', componente_catalogo_id: 'component-cil', _dirty: true }]);
+    await openEditor(renderer);
+
+    const drawing = renderer.root.findByProps({ role: 'group', 'aria-label': 'Dibujo de Cilindro hidráulico' });
+    await act(async () => drawing.props.onClick({ target: { closest: () => ({ getAttribute: () => 'zone-cil' }) } }));
+    expect(drawing.props.dangerouslySetInnerHTML.__html).toContain('dx-hallazgo-pin');
+    const note = renderer.root.findByProps({ 'aria-label': 'Nota del pin 1' });
+    await act(async () => note.props.onChange({ target: { value: 'Rayado longitudinal' } }));
+    const measured = renderer.root.findAllByType('input').filter(input => input.props.type === 'number').at(-1);
+    await act(async () => measured.props.onChange({ target: { value: '75.2' } }));
+    expect(drawing.props.dangerouslySetInnerHTML.__html).toContain('c-on');
+
+    let result;
+    await act(async () => { result = await callbacks.save(); });
+    expect(result).toEqual({ ok: true });
+    expect(callbacks.error).toBe('');
+    expect(mocks.reemplazarZonasHallazgo).toHaveBeenCalledWith('empresa-prueba', 'hallazgo-1', 'component-cil', [expect.objectContaining({ zona_id: 'zone-cil', nota: 'Rayado longitudinal' })]);
+    expect(mocks.crearDiagnosticoMedicion).toHaveBeenCalledWith('empresa-prueba', 'hallazgo-1', expect.objectContaining({ zona_id: 'zone-cil', medida_id: 'med-cil', cota: 'cota-diametro', medido: '75.2' }));
     renderer.unmount();
   });
 
