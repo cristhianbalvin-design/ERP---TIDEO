@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
     'crearDiagnosticoMedicion', 'actualizarDiagnosticoMedicion', 'eliminarDiagnosticoMedicion',
     'crearEnlaceDiagnosticoHallazgoLinea', 'eliminarEnlaceDiagnosticoHallazgoLinea',
     'emitirDiagnosticoTecnico', 'reabrirDiagnosticoTecnico', 'listarHistorialEstadosDiagnostico',
+    'listarComponentesDiagnostico', 'obtenerActivoRecepcionDiagnostico', 'guardarComponenteCatalogoHallazgo',
+    'reemplazarZonasHallazgo', 'crearTipoDanoDiagnostico', 'usuarioPuedeEditarMaestros',
   ].map(name => [name, vi.fn()])),
 }));
 
@@ -27,6 +29,9 @@ vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   usuarioPuedeInforme: mocks.informePermission,
   generarConclusionIA: mocks.generateConclusion,
   obtenerOCrearBorrador: mocks.getDraft,
+}));
+vi.mock('../src/zahory-mock/pages/DiagnosticoInformePanel.jsx', () => ({
+  DiagnosticoInformePanel: () => <div className="mock-report-panel"><button type="button" className="dx-informe-emitir">Emitir informe</button></div>,
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
@@ -105,6 +110,9 @@ beforeEach(() => {
   mocks.service.listarCargosEmpresa.mockResolvedValue([]);
   mocks.service.listarActivosPropios.mockResolvedValue([]);
   mocks.service.listarCatalogosHallazgos.mockResolvedValue([]);
+  mocks.service.listarComponentesDiagnostico.mockResolvedValue([]);
+  mocks.service.obtenerActivoRecepcionDiagnostico.mockResolvedValue({ tipo_activo: 'maquinaria_completa' });
+  mocks.service.usuarioPuedeEditarMaestros.mockResolvedValue(false);
   mocks.service.listarHistorialEstadosDiagnostico.mockResolvedValue([]);
   mocks.service.emitirDiagnosticoTecnico.mockResolvedValue({ estado: 'emitido' });
   mocks.service.reabrirDiagnosticoTecnico.mockResolvedValue({ estado: 'borrador' });
@@ -731,6 +739,43 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(source).toContain('onMouseDown={event => event.preventDefault()}');
     expect(source).toContain("window.addEventListener('scroll', closeOnViewportChange, true)");
     expect(source).toContain("window.addEventListener('resize', closeOnViewportChange)");
+  });
+
+  it('el wizard de mantenimiento crea el borrador y entra directo al trabajo con acciones por vista', async () => {
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    mocks.service.listarReferenciasDiagnostico.mockResolvedValue([{ id: 'rac-wizard', numero: 'RAC-WIZARD', cliente: 'Cliente', activo: 'Bomba' }]);
+    mocks.service.crearDiagnosticoTecnico.mockResolvedValue({ id: 'wizard-dx' });
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('wizard-dx', 'mantenimiento'));
+    await renderPage();
+    await act(async () => { buttonByText(renderer, 'Mantenimiento').props.onClick(); await wait(0); });
+    expect(textOf(renderer.root)).toContain('Recepción');
+    const reference = renderer.root.findByProps({ role: 'combobox', 'aria-label': 'Recepción de activo' });
+    await act(async () => { reference.props.onFocus(); await wait(350); });
+    const referenceOption = renderer.root.findAllByType('button').find(button => textOf(button).includes('RAC-WIZARD'));
+    await act(async () => referenceOption.props.onClick());
+    const wizardForm = () => renderer.root.findByProps({ id: 'diagnostico-cabecera-form' });
+    await act(async () => wizardForm().props.onSubmit({ preventDefault() {} }));
+    expect(textOf(renderer.root)).toContain('Equipo recibido');
+    await act(async () => wizardForm().props.onSubmit({ preventDefault() {} }));
+    await act(async () => wizardForm().props.onSubmit({ preventDefault() {} }));
+    await waitFor(() => buttonByText(renderer, 'Siguiente: informe'));
+    expect(mocks.service.crearDiagnosticoTecnico).toHaveBeenCalledWith('empresa-prueba', 'usuario-prueba', expect.objectContaining({ recepcion_id: 'rac-wizard' }));
+    expect(renderer.root.findByProps({ 'aria-label': 'Pasos del diagnóstico' }).findAllByType('button').map(textOf)).toEqual(['Recepción', 'Equipo', 'Hallazgos', 'Informe', 'Cierre']);
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active)).toBe(true);
+    const footerButtons = () => renderer.root.find(node => node.props.className?.includes('diagnostico-modal-footer')).findAllByType('button').map(button => textOf(button).trim());
+    expect(footerButtons()).toEqual(['＋ Agregar hallazgo', 'Siguiente: informe']);
+    await act(async () => buttonByText(renderer, 'Siguiente: informe').props.onClick());
+    await waitFor(() => buttonByText(renderer, 'Emitir informe'));
+    expect(footerButtons()).toEqual(['← Volver a hallazgos', 'Emitir informe']);
+    await act(async () => buttonByText(renderer, '← Volver a hallazgos').props.onClick());
+    await act(async () => buttonByText(renderer, '＋ Agregar hallazgo').props.onClick());
+    const family = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
+    await act(async () => family.props.onChange({ target: { value: 'fam-1' } }));
+    await act(async () => buttonByText(renderer, '＋ Agregar hallazgo').props.onClick());
+    expect(footerButtons()).toEqual(['← Volver a la lista', '＋ Otro daño en este componente', 'Guardar hallazgo']);
+    await act(async () => renderer.root.findByProps({ 'aria-label': 'Cerrar' }).props.onClick());
+    await act(async () => buttonByText(renderer, 'Cerrar sin guardar').props.onClick());
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === false)).toBe(true);
   });
 
   it('R20: el scroll dentro del menú no lo cierra, pero el scroll externo sí', () => {

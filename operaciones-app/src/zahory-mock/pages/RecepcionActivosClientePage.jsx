@@ -3,6 +3,8 @@ import { Icon, FooterBrand } from '../components/shell.jsx';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import { subirAdjunto } from '../../../../src/services/storageService.js';
+import { catalogoComponentesService } from '../../../../src/services/catalogoComponentesService.js';
+import { asignarComponenteCatalogoActivo } from '../../services/diagnosticoTecnicoService.js';
 import {
   ESTADOS_CUSTODIA,
   actualizarEstadoCustodia,
@@ -46,6 +48,7 @@ const emptyForm = sociedadId => ({
   observaciones: '',
   checklist: Object.fromEntries(CHECKLIST_ITEMS.map(([key]) => [key, false])),
   sociedad_id: sociedadId || '',
+  componente_catalogo_id: '',
 });
 
 const nombreCliente = cliente => cliente?.razon_social || cliente?.nombre_comercial || cliente?.ruc || 'Cliente sin nombre';
@@ -85,6 +88,7 @@ export function RecepcionActivosClientePage() {
   const [fotos, setFotos] = useState([]);
   const [altaActivoForm, setAltaActivoForm] = useState(null);
   const [altaActivoModalAbierta, setAltaActivoModalAbierta] = useState(false);
+  const [componentesCatalogo, setComponentesCatalogo] = useState([]);
 
   const showToast = message => {
     setToast(message);
@@ -120,6 +124,13 @@ export function RecepcionActivosClientePage() {
   }, [empresaId, sociedadId, sesion.estado]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  useEffect(() => {
+    let active = true;
+    if (!empresaId || !sociedadId || sesion.estado !== 'listo') { setComponentesCatalogo([]); return () => { active = false; }; }
+    catalogoComponentesService.listar(empresaId, sociedadId).then(rows => { if (active) setComponentesCatalogo(rows || []); }).catch(() => { if (active) setComponentesCatalogo([]); });
+    return () => { active = false; };
+  }, [empresaId, sociedadId, sesion.estado]);
 
   useEffect(() => {
     if (sesion.estado !== 'listo' || !empresaId) return undefined;
@@ -164,6 +175,8 @@ export function RecepcionActivosClientePage() {
       ...actual,
       activo_id: activo.id,
       cliente_id: activo.cliente_propietario_id || '',
+      tipo_activo: activo.tipo_activo || '',
+      componente_catalogo_id: activo.componente_catalogo_id || '',
     }));
     setAssetSearch(nombreActivo(activo));
   };
@@ -179,6 +192,7 @@ export function RecepcionActivosClientePage() {
     }
     setAltaActivoForm({
       tipo_activo: form.tipo_activo || '',
+      componente_catalogo_id: form.componente_catalogo_id || '',
       codigo_origen: '',
       nombre: '',
       marca: '',
@@ -281,6 +295,12 @@ export function RecepcionActivosClientePage() {
         }), activo: activoExistente };
       const recepcion = resultado.recepcion;
       const activo = resultado.activo || activoExistente;
+      const tipoActivo = altaActivoForm?.tipo_activo || form.tipo_activo || activo?.tipo_activo;
+      const componenteId = altaActivoForm?.tipo_activo === 'componente' ? altaActivoForm.componente_catalogo_id : form.componente_catalogo_id;
+      if (activo && tipoActivo === 'componente' && (componenteId || activo.componente_catalogo_id)) {
+        const selectionChanged = componenteId !== activo.componente_catalogo_id;
+        if (selectionChanged) await asignarComponenteCatalogoActivo(empresaId, activo.id, componenteId || null);
+      }
       const erroresFotos = [];
       for (const foto of fotos) {
         try {
@@ -378,7 +398,8 @@ export function RecepcionActivosClientePage() {
             <div className="field"><label>Hora de ingreso</label><input className="input" type="time" value={form.hora_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('hora_ingreso', event.target.value)} /></div>
             <div className="field"><label>Guía de ingreso</label><input className="input" value={form.guia_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('guia_ingreso', event.target.value)} placeholder="N.° de guía o documento" /></div>
             <div className="field"><label>Horómetro / kilometraje de ingreso <span className="hint">(opcional)</span></label><div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 8 }}><input className="input" type="number" min="0" step="0.01" inputMode="decimal" value={form.lectura_valor} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_valor', event.target.value)} placeholder="Sin dato" /><select className="select" value={form.lectura_unidad} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_unidad', event.target.value)}><option value="horas">Horas</option><option value="km">Km</option></select></div><div className="hint" style={{ marginTop: 4 }}>Si se informa, se conserva en el historial del activo.</div></div>
-            <div className="field"><label>Tipo de activo <span className="hint">(opcional)</span></label><select className="select" value={form.tipo_activo} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('tipo_activo', event.target.value)}><option value="">Sin especificar</option><option value="componente">Componente</option><option value="maquinaria_completa">Maquinaria completa</option></select><div className="hint" style={{ marginTop: 4 }}>Se guarda en la ficha persistente del activo.</div></div>
+            <div className="field"><label>Tipo de activo <span className="hint">(opcional)</span></label><select className="select" value={form.tipo_activo || activosPorId.get(form.activo_id)?.tipo_activo || ''} disabled={sociedadBloqueada || saving} onChange={event => setForm(actual => ({ ...actual, tipo_activo: event.target.value, componente_catalogo_id: '' }))}><option value="">Sin especificar</option><option value="componente">Componente</option><option value="maquinaria_completa">Maquinaria completa</option></select><div className="hint" style={{ marginTop: 4 }}>Se guarda en la ficha persistente del activo.</div></div>
+            {(form.tipo_activo || activosPorId.get(form.activo_id)?.tipo_activo) === 'componente' && <div className="field"><label>Tipo de componente <span className="hint">(opcional)</span></label><select className="select" value={form.componente_catalogo_id || activosPorId.get(form.activo_id)?.componente_catalogo_id || ''} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select><div className="hint" style={{ marginTop: 4 }}>El diagnóstico podrá usar el dibujo técnico de este tipo.</div></div>}
             <div className="field"><label>Sociedad</label><input className="input" value={sesion.sociedadActiva?.nombre || sesion.sociedadActiva?.codigo || sociedadId || 'Sin sociedad'} readOnly /></div>
             <div className="field" style={{ gridColumn: '1 / -1' }}><label>Observaciones</label><textarea className="input" rows="3" value={form.observaciones} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('observaciones', event.target.value)} /></div>
           </div>
@@ -443,6 +464,7 @@ export function RecepcionActivosClientePage() {
                   <option value="maquinaria_completa">Maquinaria completa</option>
                 </select>
               </div>
+              {altaActivoForm.tipo_activo === 'componente' && <div className="field"><label>Tipo de componente <span className="hint">(opcional)</span></label><select className="select" value={altaActivoForm.componente_catalogo_id || ''} disabled={saving} onChange={event => actualizarAltaActivo('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select></div>}
               <div className="grid-2">
                 <div className="field"><label>Código</label><input className="input" value="Se asignará al guardar" readOnly /></div>
                 <div className="field"><label>Nombre *</label><input className="input" value={altaActivoForm.nombre} disabled={saving} onChange={event => actualizarAltaActivo('nombre', event.target.value)} required /></div>

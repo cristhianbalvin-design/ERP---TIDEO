@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buscarTiposDano, construirSvgInforme, normalizarBusquedaTipoDano, posicionarPines, resultadoMedicion, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
+import { agruparTiposDano, grupoTipoDano, markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 
 test('calcula límites inclusivos y acepta coma decimal', () => {
   assert.equal(resultadoMedicion({ minimo: '2,5', maximo: '4.5', medido: '4,5' }), 'dentro');
@@ -37,4 +38,18 @@ test('normaliza acentos y ordena coincidencias del buscador', () => {
   assert.equal(result.items[0].codigo, 'corrosion');
   assert.equal(result.exacta, false);
   assert.equal(result.parecidos.length, 1);
+});
+
+test('clasifica los 47 tipos existentes en los siete grupos aprobados', () => {
+  const codes = ['desgaste','rayado','corrosion','fisura_grieta','deformacion','fuga','picadura','golpe_abolladura','holgura_excesiva','rotura','desprendimiento_cromo','sobrecalentamiento','contaminacion','desgaste_abrasivo','desgaste_adhesivo','erosion','cavitacion','fretting','descascarado','estrias','oxidacion','quemado','ovalizacion','conicidad','excentricidad','curvatura','torsion','alabeo','fatiga','porosidad','soldadura_defectuosa','reparacion_previa','rosca_danada','rosca_barrida','chavetero_danado','pernos_flojos','sello_danado','fuga_interna','aceite_degradado','juego_axial','rodamiento_danado','diente_roto','desalineacion','atascamiento','falta_lubricacion','ruido_vibracion','pieza_faltante'];
+  assert.equal(codes.length, 47);
+  assert.ok(codes.every(code => ['superficie','geometria','materiales','roscas','sellado','mecanico'].includes(grupoTipoDano(code))));
+  assert.deepEqual(agruparTiposDano(codes.map(codigo => ({ codigo }))).map(group => group.id), ['frecuentes','superficie','geometria','materiales','roscas','sellado','mecanico']);
+});
+
+test('el dibujo presenta zonas seleccionadas y pines con el número de orden', () => {
+  const result = markupDibujoHallazgo('<svg viewBox="0 0 100 80"><rect data-z="eje" x="5" y="5" width="40" height="20"/></svg>', [{ zona_id: 'eje' }], { eje: { x: 5, y: 5, width: 40, height: 20 } });
+  assert.match(result, /data-z="eje"[^>]*is-marked/);
+  assert.match(result, /class="dx-hallazgo-pin"/);
+  assert.match(result, /<text y="\.5">1<\/text>/);
 });

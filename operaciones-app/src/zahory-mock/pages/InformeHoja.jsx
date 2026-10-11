@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { agruparFotosEnFilas } from '../../services/informeFotosFilas.js';
+import { construirSvgInforme, medirBboxZonas } from './dibujoHallazgoLogic.js';
 
 const dash = value => value === null || value === undefined || value === '' ? '—' : value;
 const hasValue = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -49,6 +50,7 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
           <p>{dash(item.observacion)}</p>
           {measures.length > 0 && <div className="dx-inf-table-wrap"><table className="dx-inf-table"><thead><tr><th>Parámetro</th><th>Especificado</th><th>Medido</th><th>Resultado</th></tr></thead><tbody>{measures.map((measure, mi) => <tr key={`${measure.parametro}-${mi}`}><td>{dash(measure.parametro)}{measure.unidad ? ` (${measure.unidad})` : ''}</td><td>{measure.nominal !== null && measure.nominal !== undefined ? measure.nominal : `${dash(measure.minimo)} – ${dash(measure.maximo)}`}</td><td>{dash(measure.medido)}</td><td className={/fuera|no_conforme|fall/i.test(String(measure.resultado || measure.condicion_sugerida || '')) ? 'is-bad' : 'is-good'}>{dash(measure.resultado || measure.condicion_sugerida)}</td></tr>)}</tbody></table></div>}
           <div className="dx-inf-recommend"><strong>Recomendación</strong><span>{dash(item.accion_recomendada_etiqueta)}</span></div>
+          {item.dibujo?.svg && <section className="dx-inf-drawing"><h4>Dibujo del componente · {dash(item.dibujo.componente_nombre)}</h4><div className="dx-inf-drawing-svg" dangerouslySetInnerHTML={{ __html: construirSvgInforme({ svg: item.dibujo.svg, zonasMarcadas: item.dibujo.zonas || [], bboxPorZona: medirBboxZonas(item.dibujo.svg), cotasMedidas: item.dibujo.medidas || [] }) }} />{item.dibujo.zonas?.length > 0 && <p className="dx-inf-drawing-legend">{item.dibujo.zonas.map((zone, zi) => <span key={`${zone.zona_id}-${zi}`}><b>{zi + 1}</b>{zone.nombre}{zone.nota ? ` · ${zone.nota}` : ''}</span>)}</p>}{item.dibujo.medidas?.length > 0 && <div className="dx-inf-table-wrap"><table className="dx-inf-table"><thead><tr><th>Cota</th><th>Nominal</th><th>Mín.</th><th>Máx.</th><th>Medido</th><th>Resultado</th></tr></thead><tbody>{item.dibujo.medidas.map((measure, mi) => <tr key={`${measure.medida_id || measure.cota}-${mi}`}><td>{dash(measure.nombre)}{measure.cota ? ` · ${measure.cota}` : ''}</td><td>{dash(measure.nominal)}</td><td>{dash(measure.minimo)}</td><td>{dash(measure.maximo)}</td><td>{dash(measure.medido)}</td><td>{dash(measure.resultado)}</td></tr>)}</tbody></table></div>}</section>}
           {item.fotos?.length > 0 && <div className="dx-informe-fotos">{(() => {
             const fotos = item.fotos.map((foto, fotoIndex) => {
               const key = `${item.hallazgo_id || index}:${foto.url}:${fotoIndex}`;

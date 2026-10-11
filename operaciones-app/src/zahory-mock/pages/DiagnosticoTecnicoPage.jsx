@@ -18,6 +18,7 @@ import {
   listarActivosPropios,
   listarCargosEmpresa,
   listarCatalogosHallazgos,
+  listarComponentesDiagnostico,
   listarDiagnosticosTecnicos,
   listarFamiliasTrabajo,
   listarPlantillasActividad,
@@ -94,6 +95,11 @@ const materialValidationError = material => {
   return '';
 };
 const SLOW_SAVE_WARNING = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
+const dispatchDiagnosticoWorkMode = active => {
+  const detail = { active };
+  const event = typeof CustomEvent === 'function' ? new CustomEvent('dx-diagnostico-work-mode', { detail }) : { type: 'dx-diagnostico-work-mode', detail };
+  window.dispatchEvent(event);
+};
 const observeSaveStep = (step, operation, onSlow) => {
   const startedAt = Date.now();
   let settled = false;
@@ -429,6 +435,7 @@ export function DiagnosticoTecnicoPage() {
   const [diagnosticos, setDiagnosticos] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [wizardStep, setWizardStep] = useState(1);
   const [search, setSearch] = useState('');
   const [listQuery, setListQuery] = useState('');
   const [references, setReferences] = useState([]);
@@ -446,6 +453,8 @@ export function DiagnosticoTecnicoPage() {
   const [taskPanel, setTaskPanel] = useState(false);
   const [taskPanelHasSelection, setTaskPanelHasSelection] = useState(false);
   const [informePanel, setInformePanel] = useState(false);
+  const [hallazgoView, setHallazgoView] = useState('lista');
+  const [dibujoHallazgoVisible, setDibujoHallazgoVisible] = useState(true);
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
   const [plantillasActividad, setPlantillasActividad] = useState([]);
   const [lineValidationErrors, setLineValidationErrors] = useState({});
@@ -462,6 +471,9 @@ export function DiagnosticoTecnicoPage() {
   const mountedRef = useRef(true);
   const modalSessionRef = useRef(0);
   const hallazgosSaveRef = useRef(null);
+  const hallazgosAddRef = useRef(null);
+  const hallazgosAddOtroRef = useRef(null);
+  const hallazgosBackRef = useRef(null);
   const goToIncompleteHallazgoRef = useRef(null);
   const tableAnchorRef = useRef(null);
 
@@ -475,6 +487,18 @@ export function DiagnosticoTecnicoPage() {
   const canEditLines = access.editar && !isReadOnly && Boolean(sesion.permiteEscritura);
   const canSave = !selected && canCreate;
   const selectedReference = form.referencia;
+
+  useEffect(() => {
+    const active = Boolean(selected?.tipo === 'mantenimiento');
+    dispatchDiagnosticoWorkMode(active);
+    return () => dispatchDiagnosticoWorkMode(false);
+  }, [selected?.id, selected?.tipo]);
+
+  useEffect(() => {
+    setHallazgoView('lista');
+    setDibujoHallazgoVisible(true);
+    setInformePanel(false);
+  }, [selected?.id]);
 
   const cargarLista = useCallback(async () => {
     if (!access.ver || !empresaId) return;
@@ -537,12 +561,12 @@ export function DiagnosticoTecnicoPage() {
     if (!selected || !access.ver || !empresaId) return () => { vigente = false; };
     setLoadingCatalogs(true);
     setCatalogError('');
-    Promise.all([listarFamiliasTrabajo(empresaId), listarTiposServicioInterno(empresaId), listarCargosEmpresa(empresaId), listarActivosPropios(empresaId), listarCatalogosHallazgos(empresaId)])
-      .then(([familias, tipos, cargos, activos, hallazgoRows]) => {
+    Promise.all([listarFamiliasTrabajo(empresaId), listarTiposServicioInterno(empresaId), listarCargosEmpresa(empresaId), listarActivosPropios(empresaId), listarCatalogosHallazgos(empresaId), selected.tipo === 'mantenimiento' ? listarComponentesDiagnostico(empresaId, selected.id) : Promise.resolve([])])
+      .then(([familias, tipos, cargos, activos, hallazgoRows, componentes]) => {
         if (!vigente) return;
         const hallazgos = { tipo_dano: [], causa_probable: [], unidad_medicion: [] };
         hallazgoRows.forEach(row => { if (hallazgos[row.catalogo]) hallazgos[row.catalogo].push(row); });
-        setCatalogs({ familias, tipos, cargos, activos, hallazgos });
+        setCatalogs({ familias, tipos, cargos, activos, hallazgos, componentes });
       })
       .catch(loadError => { if (vigente) setCatalogError(errorMessage(loadError)); })
       .finally(() => { if (vigente) setLoadingCatalogs(false); });
@@ -581,6 +605,7 @@ export function DiagnosticoTecnicoPage() {
     setSelected(null);
     setPendingLineDeletes([]);
     setForm({ ...EMPTY_FORM, tipo });
+    setWizardStep(1);
     setSearch('');
     setReferenceError('');
     setCatalogError('');
@@ -653,6 +678,7 @@ export function DiagnosticoTecnicoPage() {
       await cargarLista();
       if (!isActive()) return;
       await openExisting(created);
+      setWizardStep(1);
     } catch (saveError) {
       if (isActive()) setError(errorMessage(saveError));
     } finally {
@@ -792,7 +818,7 @@ export function DiagnosticoTecnicoPage() {
   };
 
   const saveAll = async () => {
-    if (!selected || !canEditLines || modalBusy) return;
+    if (!selected || !canEditLines || modalBusy) return false;
     setError('');
     setNotice('');
     const linesSaved = await saveAllLines({ includeDeletes: true });
@@ -801,13 +827,13 @@ export function DiagnosticoTecnicoPage() {
       setError(hallazgosPendientes
         ? 'Falló el guardado de tareas; los hallazgos quedaron pendientes. Corrige las tareas con error antes de guardar hallazgos.'
         : 'Falló el guardado de tareas. Corrige las tareas con error antes de volver a guardar.');
-      return;
+      return false;
     }
     if (selected.tipo === 'mantenimiento' && hallazgosDirty) {
       const result = await hallazgosSaveRef.current?.();
       if (result && !result.ok) {
         setError(`Se guardaron las tareas pero fallaron los hallazgos: ${result.error}`);
-        return;
+        return false;
       }
     }
     if (summaryDirty) {
@@ -815,8 +841,15 @@ export function DiagnosticoTecnicoPage() {
         const saved = await guardarResumenDiagnostico(empresaId, selected.id, resumenVisible, selected.resumen_origen || 'auto');
         setSelected(current => current?.id === selected.id ? { ...current, ...saved, _resumenGuardado: saved.resumen_diagnostico || '', _origenResumenGuardado: saved.resumen_origen } : current);
         setNotice('Cambios guardados.');
-      } catch (saveError) { setError(errorMessage(saveError)); return; }
+      } catch (saveError) { setError(errorMessage(saveError)); return false; }
     }
+    return true;
+  };
+
+  const goInforme = async () => {
+    if (!canEditLines) { setInformePanel(true); return; }
+    const saved = await saveAll();
+    if (saved) setInformePanel(true);
   };
 
   const deleteLine = async line => {
@@ -1074,6 +1107,7 @@ export function DiagnosticoTecnicoPage() {
       {(form.tipo || selected) && <ModalShell
         key={selected?.id || `nuevo-${form.tipo}`}
         open
+        fullPage={selected?.tipo === 'mantenimiento'}
         variant={selected ? 'dx-modal' : undefined}
         width={selected ? 1160 : 1040}
         titleClassName={selected ? 'dx-modal-title' : ''}
@@ -1086,7 +1120,13 @@ export function DiagnosticoTecnicoPage() {
         dirty={detailDirty || (taskPanel && taskPanelHasSelection)}
         busy={modalBusy}
         onClose={closeDetail}
-        footer={requestClose => <>
+        footer={requestClose => selected?.tipo === 'mantenimiento' ? <>
+          <div className="dx-work-footer-status">
+            {cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
+            {error && <div className="alert alert-error">{error}</div>}
+          </div>
+          {!informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => hallazgosBackRef.current?.()}>← Volver a la lista</button>{!dibujoHallazgoVisible && <button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => document.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
+        </> : <>
           <div style={{ flex: 1 }}>
             {selected && cambiosCount > 0 && <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar{selected.tipo === 'mantenimiento' && Number(hallazgosDirtySummary.fotos || 0) > 0 ? ` · ${hallazgosDirtySummary.fotos} foto${hallazgosDirtySummary.fotos === 1 ? '' : 's'} pendiente${hallazgosDirtySummary.fotos === 1 ? '' : 's'}` : ''}</div>}
             {slowSaveWarning && <div className="alert alert-warning" style={{ margin: 0 }}>{slowSaveWarning}</div>}
@@ -1100,29 +1140,31 @@ export function DiagnosticoTecnicoPage() {
             {!cambiosSinGuardar && !modalBusy && <span className="dx-save-status" role="status">Sin cambios por guardar</span>}
             <button type="button" className="btn btn-primary dx-save" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy} title={!cambiosSinGuardar && !modalBusy ? 'No hay cambios por guardar' : undefined}>{modalBusy ? 'Guardando...' : 'Guardar todo'}</button>
           </>}
-          {!selected && canSave && <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>}
+          {!selected && canSave && (form.tipo === 'mantenimiento' ? <div className="dx-wizard-footer"><button type="button" className="btn btn-secondary" onClick={requestClose}>Cancelar</button>{wizardStep > 1 && <button type="button" className="btn btn-secondary" onClick={() => setWizardStep(step => step - 1)}>← Anterior</button>}<span className="dx-work-spacer" /><button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Creando…' : wizardStep === 3 ? 'Crear borrador' : 'Siguiente'}</button></div> : <button className="btn btn-primary" type="submit" form="diagnostico-cabecera-form" disabled={saving || !selectedReference || !sesion.permiteEscritura}>{saving ? 'Guardando...' : 'Guardar'}</button>)}
         </>}
       >
         {readOnlyReason && <div className="alert alert-warning diagnostico-readonly-alert">{readOnlyReason}</div>}
-        {!selected && <form id="diagnostico-cabecera-form" onSubmit={save}>
-          <div className="card-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16 }}>
+        {!selected && <form id="diagnostico-cabecera-form" onSubmit={event => { if (form.tipo === 'mantenimiento' && wizardStep < 3) { event.preventDefault(); setWizardStep(step => Math.min(3, step + 1)); return; } save(event); }}>
+          {form.tipo === 'mantenimiento' && <div className="dx-wizard-progress" aria-label="Pasos para crear el diagnóstico">{['Recepción','Equipo','Datos'].map((label, index) => <button key={label} type="button" className={wizardStep === index + 1 ? 'is-current' : wizardStep > index + 1 ? 'is-done' : ''} aria-current={wizardStep === index + 1 ? 'step' : undefined} disabled={wizardStep < index + 1} onClick={() => setWizardStep(index + 1)}><i>{wizardStep > index + 1 ? '✓' : index + 1}</i><span>{label}</span></button>)}</div>}
+          {form.tipo !== 'mantenimiento' || wizardStep === 1 ? <div className="card-body dx-wizard-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16 }}>
             <div className="field"><label>Tipo</label><input className="input" value={typeLabel(form.tipo)} disabled /></div>
             <ReferenceSelector tipo={form.tipo} value={selectedReference} search={search} references={references} loading={loadingReferences} disabled={false} onSearch={setSearch} onSelect={reference => { setForm(current => ({ ...current, referencia: reference })); setSearch(referenceLabel(reference)); }} />
-          </div>
+          </div> : form.tipo === 'mantenimiento' && wizardStep === 2 ? <div className="card-body dx-wizard-body"><h3>Equipo recibido</h3>{selectedReference ? <div className="dx-wizard-summary"><strong>{selectedReference.activo || 'Activo sin descripción'}</strong><span>Recepción {referenceLabel(selectedReference)}</span>{selectedReference.cliente && <span>Cliente · {selectedReference.cliente}</span>}{selectedReference.numero_serie && <span>Serie · {selectedReference.numero_serie}</span>}</div> : <div role="alert" className="alert alert-warning">Primero selecciona la recepción.</div>}</div> : form.tipo === 'mantenimiento' ? <div className="card-body dx-wizard-body"><h3>Revisa los datos</h3><p>Se creará un borrador directamente para continuar con los hallazgos.</p><div className="dx-wizard-summary"><strong>{selectedReference?.activo || 'Activo'}</strong><span>Recepción {referenceLabel(selectedReference)}</span><span>{selectedReference?.cliente || 'Cliente sin dato'}</span><span>Estado inicial · Borrador</span></div></div> : null}
         </form>}
         {selected && <div className="dx-scope">
+          {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico"><button className="is-done" type="button" disabled><i /><span>Recepción</span></button><button className="is-done" type="button" disabled><i /><span>Equipo</span></button><button className={!informePanel ? 'is-current' : 'is-done'} type="button" onClick={() => setInformePanel(false)}><i /><span>Hallazgos</span></button><button className={informePanel ? 'is-current' : ''} type="button" onClick={() => informePanel ? null : goInforme()}><i /><span>Informe</span></button><button type="button" disabled><i /><span>Cierre</span></button></nav></div>}
           {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button> : null} />}
           {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button></div>}
-          <div className="dx-summary">
+          <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
           </div>
-          <div className={selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}>
+          <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             {selected.tipo === 'mantenimiento' ? <>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
-                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
+                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterAddHallazgo={add => { hallazgosAddRef.current = add; }} onRegisterAddOtro={add => { hallazgosAddOtroRef.current = add; }} onRegisterBackToList={back => { hallazgosBackRef.current = back; }} onViewChange={setHallazgoView} onDrawingVisibilityChange={setDibujoHallazgoVisible} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
               </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-diagnostico-resumen-title">

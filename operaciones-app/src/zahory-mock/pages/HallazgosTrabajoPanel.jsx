@@ -6,6 +6,12 @@ import {
   crearDiagnosticoHallazgo,
   crearDiagnosticoMedicion,
   crearEnlaceDiagnosticoHallazgoLinea,
+  guardarComponenteCatalogoHallazgo,
+  listarComponentesDiagnostico,
+  obtenerActivoRecepcionDiagnostico,
+  reemplazarZonasHallazgo,
+  crearTipoDanoDiagnostico,
+  usuarioPuedeEditarMaestros,
   eliminarDiagnosticoHallazgo,
   eliminarDiagnosticoMedicion,
   eliminarEnlaceDiagnosticoHallazgoLinea,
@@ -13,7 +19,10 @@ import {
 } from '../../services/diagnosticoTecnicoService.js';
 import { listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnosticoHallazgoFotosService.js';
 import HallazgoFotos from './HallazgoFotos.jsx';
+import { asignarComponenteActivo, usuarioPuedeEditarRecepcionActivosCliente } from '../../services/recepcionesActivosClienteService.js';
 import { getIncompleteHallazgos } from './hallazgosValidation.js';
+import { buscarTiposDano, resultadoMedicion } from './dibujoHallazgoLogic.js';
+import { agruparTiposDano, markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 
 const CATALOG_LABELS = {
   tipo_dano: 'Tipo de daño',
@@ -98,14 +107,14 @@ function MeasurementTable({ item, catalogs, canEdit, update, remove }) {
   return <section className="hallazgo-section hallazgo-measurements">
     <div className="hallazgo-section-head"><div><h4>Mediciones</h4><span className="hint">El resultado sugiere la condición; el técnico la confirma.</span></div>{canEdit && <button type="button" className="btn btn-secondary" onClick={add}>+ Medición</button>}</div>
     {!item.mediciones?.length ? <p className="muted">Sin mediciones.</p> : <div className="table-wrap"><table className="table hallazgo-measurement-table"><thead><tr><th>Parámetro</th><th>Unidad</th><th>Nominal</th><th>Mín.</th><th>Máx.</th><th>Medido</th><th>Resultado</th><th>Sugerencia</th><th /></tr></thead><tbody>
-      {item.mediciones.map(measurement => <tr key={measurement.id || measurement._key}>
-        <td><input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} /></td>
+      {item.mediciones.map(measurement => { const result = measurement.medida_id ? resultadoMedicion(measurement) : null; return <tr key={measurement.id || measurement._key}>
+        <td><input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} />{measurement.medida_id && <small className="dx-measure-linked">Medida de catálogo{measurement.cota ? ` · cota ${measurement.cota}` : ''}</small>}{measurement.referencia && <details className="dx-measure-reference"><summary>Referencia típica</summary><p>{measurement.referencia}</p></details>}</td>
         <td><select className="select" value={measurement.unidad || ''} disabled={!canEdit} onChange={event => patch(measurement, { unidad: event.target.value })}><option value="">—</option>{(catalogs.unidad_medicion || []).map(option => <option key={option.codigo} value={option.codigo}>{option.etiqueta}</option>)}</select></td>
         {['nominal', 'minimo', 'maximo', 'medido'].map(field => <td key={field}><input className="input" type="number" step="any" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></td>)}
-        <td><span className={`badge ${measurement.resultado_calculado === 'fuera_de_rango' ? 'priority-p1' : 'priority-p4'}`}>{RESULT_LABELS[measurement.resultado_calculado] || 'Pendiente'}</span></td>
+        <td><span className={`badge ${result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'priority-p1' : 'priority-p4'}`}>{result === 'fuera' ? 'Fuera de tolerancia' : result === 'dentro' ? 'Dentro de rango' : RESULT_LABELS[measurement.resultado_calculado] || 'Pendiente'}</span></td>
         <td><div className="hallazgo-suggestion-cell"><span className="badge slate">{measurement.condicion_sugerida ? CONDITION_LABELS[measurement.condicion_sugerida] || measurement.condicion_sugerida : 'Pendiente'}</span>{canEdit && measurement.condicion_sugerida && measurement.condicion_sugerida !== item.condicion && <button type="button" className="btn btn-ghost" onClick={() => update({ condicion: measurement.condicion_sugerida })}>Aplicar sugerencia</button>}</div></td>
         <td>{canEdit && <button type="button" className="btn btn-ghost" aria-label="Eliminar medición" onClick={() => remove(measurement)}>Eliminar</button>}</td>
-      </tr>)}
+      </tr>; })}
     </tbody></table></div>}
   </section>;
 }
@@ -201,13 +210,55 @@ function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remov
   </section>;
 }
 
-export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange }) {
+function ComponentField({ item, componentType, components, disabled, onSelect, onTextChange }) {
+  return <div className="field dx-hallazgo-component">
+    <label>{componentType === 'maquinaria_completa' ? 'Componente o parte *' : 'Tipo de componente *'}</label>
+    <select data-required-field="component" className="select" value={item.componente_catalogo_id || ''} disabled={disabled} onChange={event => onSelect(event.target.value)}>
+      <option value="">Seleccionar componente…</option>
+      {components.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}
+      <option value="otro">Otro · texto libre</option>
+    </select>
+    {!item.componente_catalogo_id && item.componente_parte && <input className="input" aria-label="Componente o parte" value={item.componente_parte === 'Otro' ? '' : item.componente_parte} disabled={disabled} onChange={event => onTextChange(event.target.value)} placeholder="Describe el componente" />}
+  </div>;
+}
+
+function DibujoHallazgoVista({ component, markup, onZone, disabled, onVisibilityChange }) {
+  const drawingRef = useRef(null);
+  const [visible, setVisible] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const show = () => drawingRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    window.addEventListener('dx-show-hallazgo-drawing', show);
+    return () => window.removeEventListener('dx-show-hallazgo-drawing', show);
+  }, []);
+  useEffect(() => {
+    const node = drawingRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(([entry]) => { setVisible(entry.isIntersecting); onVisibilityChange?.(entry.isIntersecting); }, { threshold: 0.12 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [component?.id, markup]);
+  const image = <div className="dx-drawing-canvas" role="group" aria-label={`Dibujo de ${component?.nombre}`} dangerouslySetInnerHTML={{ __html: markup }} onClick={event => { if (!disabled) onZone(event); if (sheetOpen) setSheetOpen(false); }} />;
+  return <>
+    <div ref={drawingRef}>{image}</div>
+    {!visible && <button type="button" className="dx-floating-drawing" onClick={() => setSheetOpen(true)}>Ver dibujo</button>}
+    {sheetOpen && <div className="dx-drawing-sheet-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setSheetOpen(false); }}><section className="dx-drawing-sheet" role="dialog" aria-modal="true" aria-label={`Dibujo de ${component?.nombre}`}><header><strong>Dibujo · {component?.nombre}</strong><button type="button" aria-label="Cerrar dibujo" onClick={() => setSheetOpen(false)}>×</button></header>{image}</section></div>}
+  </>;
+}
+
+export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onRegisterAddHallazgo, onRegisterAddOtro, onRegisterBackToList, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange, onViewChange, onDrawingVisibilityChange }) {
   const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
   const [deletedLineas, setDeletedLineas] = useState([]);
   const [catalogs, setCatalogs] = useState({ tipo_dano: [], causa_probable: [], unidad_medicion: [] });
   const [catalogError, setCatalogError] = useState('');
+  const [componentes, setComponentes] = useState([]);
+  const [activoRecepcion, setActivoRecepcion] = useState(null);
+  const [busquedaDano, setBusquedaDano] = useState('');
+  const [tipoDanoAbierto, setTipoDanoAbierto] = useState(null);
+  const [puedeEditarMaestros, setPuedeEditarMaestros] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState(() => new Set());
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
@@ -230,6 +281,27 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const pendingGroupFocus = useRef(null);
   const [pendingDeleteKey, setPendingDeleteKey] = useState(null);
   const [pendingDeleteFamilyId, setPendingDeleteFamilyId] = useState(null);
+  const [view, setView] = useState('lista');
+  const [activeKey, setActiveKey] = useState(null);
+  const [corregirTipo, setCorregirTipo] = useState(false);
+  const [tipoActivoGuardando, setTipoActivoGuardando] = useState(false);
+  const [permisoEditarRecepcion, setPermisoEditarRecepcion] = useState(false);
+  const [componentePorAsignar, setComponentePorAsignar] = useState('');
+
+  const changeView = useCallback((nextView, itemKey = null) => {
+    setView(nextView);
+    if (itemKey) setActiveKey(itemKey);
+    onViewChange?.(nextView, itemKey);
+    if (nextView === 'editor' && typeof window !== 'undefined') {
+      const scrollTop = () => {
+        const workCard = typeof document !== 'undefined' ? document.querySelector?.('.dx-work-card') : null;
+        if (workCard?.scrollTo) workCard.scrollTo({ top: 0, behavior: 'smooth' });
+        else window.scrollTo?.({ top: 0, behavior: 'smooth' });
+      };
+      if (typeof globalThis.requestAnimationFrame === 'function') globalThis.requestAnimationFrame(scrollTop);
+      else scrollTop();
+    }
+  }, [onViewChange]);
 
   const updatePendingFotos = next => {
     const urlsToKeep = new Set(next.map(row => row.previewUrl));
@@ -291,6 +363,31 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     return () => { active = false; };
   }, [empresaId]);
 
+  useEffect(() => {
+    let active = true;
+    if (!empresaId) return () => { active = false; };
+    usuarioPuedeEditarRecepcionActivosCliente(empresaId).then(value => {
+      if (active) setPermisoEditarRecepcion(value);
+    }).catch(() => { if (active) setPermisoEditarRecepcion(false); });
+    return () => { active = false; };
+  }, [empresaId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!empresaId || !diagnostico?.id) return () => { active = false; };
+    Promise.all([listarComponentesDiagnostico(empresaId, diagnostico.id), obtenerActivoRecepcionDiagnostico(empresaId, diagnostico.id)])
+      .then(([rows, activo]) => { if (active) { setComponentes(rows || []); setActivoRecepcion(activo); } })
+      .catch(error => { if (active) setCatalogError(errorMessage(error)); });
+    return () => { active = false; };
+  }, [empresaId, diagnostico?.id]);
+
+  useEffect(() => {
+    let active = true;
+    if (!empresaId) return () => { active = false; };
+    usuarioPuedeEditarMaestros(empresaId).then(value => { if (active) setPuedeEditarMaestros(value); }).catch(() => { if (active) setPuedeEditarMaestros(false); });
+    return () => { active = false; };
+  }, [empresaId]);
+
   const dirty = items.some(item => item._dirty || item.mediciones?.some(row => row._dirty) || item.lineas?.some(row => row._dirty)) || deletedItems.length > 0 || deletedMediciones.length > 0 || deletedLineas.length > 0 || fotosPendientes.length > 0;
   useEffect(() => { itemsChangeRef.current?.(items); }, [items]);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
@@ -313,9 +410,18 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const addHallazgo = familyOrId => {
     const family = typeof familyOrId === 'object' ? familyOrId : familias.find(row => row.id === familyOrId);
     if (!family || !canEdit || readOnly) return;
-    const next = normalize({ familia_trabajo_id: family.id, componente_parte: '', condicion: 'conforme', riesgo: 'monitorear', matriz_version: 1, accion_recomendada: 'monitorear', atribuible_a: 'desgaste_normal', incluir_en_informe: true, mediciones: [], lineas: [], _dirty: true });
+    const inherited = activoRecepcion?.tipo_activo !== 'maquinaria_completa' ? componentes.find(row => row.id === activoRecepcion?.componente_catalogo_id) : null;
+    const next = normalize({ familia_trabajo_id: family.id, componente_parte: inherited?.nombre || '', componente_catalogo_id: inherited?.id || null, condicion: 'conforme', riesgo: 'monitorear', matriz_version: 1, accion_recomendada: 'monitorear', atribuible_a: 'desgaste_normal', incluir_en_informe: true, mediciones: [], zonas: [], lineas: [], _dirty: true });
     setItems(current => [...current, next]);
     setExpandedKeys(current => new Set([...current, keyFor(next)]));
+    changeView('editor', keyFor(next));
+  };
+  const addDamageSibling = item => {
+    if (!canEdit || readOnly) return;
+    const next = normalize({ familia_trabajo_id: item.familia_trabajo_id, componente_parte: item.componente_parte, componente_catalogo_id: item.componente_catalogo_id || null, condicion: 'conforme', riesgo: 'monitorear', matriz_version: 1, accion_recomendada: 'monitorear', atribuible_a: 'desgaste_normal', incluir_en_informe: true, mediciones: [], zonas: [], lineas: [], _dirty: true });
+    setItems(current => [...current, next]);
+    setExpandedKeys(current => new Set([...current, keyFor(next)]));
+    changeView('editor', keyFor(next));
   };
   const createWork = async event => {
     event.preventDefault();
@@ -387,6 +493,19 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
           : await crearDiagnosticoHallazgo(empresaId, diagnostico.id, item);
         persisted.set(keyFor(item), { ...item, ...saved, _dirty: false });
         savedHallazgoCount += 1;
+      }
+      for (const item of items) {
+        const current = persisted.get(keyFor(item)) || item;
+        if (!current.id || !current.componente_catalogo_id) continue;
+        const component = componentes.find(row => row.id === current.componente_catalogo_id);
+        if (component && current._componentDirty) {
+          const saved = await guardarComponenteCatalogoHallazgo(empresaId, diagnostico.id, current.id, component.id, component.nombre);
+          persisted.set(keyFor(item), { ...current, ...saved, _componentDirty: false });
+        }
+        if (current._zonesDirty) {
+          const zones = await reemplazarZonasHallazgo(empresaId, current.id, current.componente_catalogo_id, current.zonas || []);
+          persisted.set(keyFor(item), { ...(persisted.get(keyFor(item)) || current), zonas, _zonesDirty: false });
+        }
       }
       for (const item of items) {
         const current = persisted.get(keyFor(item)) || item;
@@ -481,6 +600,24 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   useEffect(() => { onRegisterSave?.(saveAll); return () => onRegisterSave?.(null); }, [onRegisterSave, saveAll]);
 
   const groups = useMemo(() => familias.filter(familia => lines.some(line => line.familia_trabajo_id === familia.id) || items.some(item => item.familia_trabajo_id === familia.id) || extraFamilyIds.includes(familia.id) || sessionFamilyIds.includes(familia.id)).map(familia => ({ ...familia, items: items.filter(item => item.familia_trabajo_id === familia.id), lines: lines.filter(line => line.familia_trabajo_id === familia.id) })), [familias, lines, items, extraFamilyIds, sessionFamilyIds]);
+  useEffect(() => {
+    onRegisterAddHallazgo?.(() => {
+      if (groups.length === 1) addHallazgo(groups[0].id);
+      else setFamilyToAdd('choose');
+    });
+    return () => onRegisterAddHallazgo?.(null);
+  }, [onRegisterAddHallazgo, groups, addHallazgo]);
+  useEffect(() => {
+    onRegisterAddOtro?.(() => {
+      const current = items.find(item => keyFor(item) === activeKey);
+      if (current) addDamageSibling(current);
+    });
+    return () => onRegisterAddOtro?.(null);
+  }, [onRegisterAddOtro, items, activeKey, addDamageSibling]);
+  useEffect(() => {
+    onRegisterBackToList?.(() => changeView('lista'));
+    return () => onRegisterBackToList?.(null);
+  }, [onRegisterBackToList, changeView]);
   const incompleteHallazgos = getIncompleteHallazgos(items);
   const incompleteKeys = new Set(incompleteHallazgos.map(row => keyFor(row.item)));
   const incompleteGroupIds = new Set(incompleteHallazgos.map(row => row.item.familia_trabajo_id).filter(Boolean));
@@ -514,17 +651,40 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     const effective = item.prioridad_override || item.prioridad_efectiva || calculated;
     const options = PRIORITIES.filter(priority => PRIORITY_RANK[priority] >= PRIORITY_RANK[calculated]);
     const selectedFamily = familias.find(familia => familia.id === item.familia_trabajo_id);
+    const selectedComponent = componentes.find(component => component.id === item.componente_catalogo_id);
+    const inheritedComponent = activoRecepcion?.tipo_activo !== 'maquinaria_completa' && activoRecepcion?.componente_catalogo_id ? componentes.find(component => component.id === activoRecepcion.componente_catalogo_id) : null;
+    const drawingSvg = selectedComponent?.svg || selectedComponent?.dibujo_svg || '';
+    const damageOptions = buscarTiposDano(catalogs.tipo_dano, busquedaDano).items;
+    const damageExact = buscarTiposDano(catalogs.tipo_dano, busquedaDano).exacta;
+    const drawingMarkup = drawingSvg ? markupDibujoHallazgo(drawingSvg, item.zonas || []) : '';
     const expanded = expandedKeys.has(keyFor(item));
     const toggle = () => setExpandedKeys(current => { const next = new Set(current); if (next.has(keyFor(item))) next.delete(keyFor(item)); else next.add(keyFor(item)); return next; });
     const itemName = item.componente_parte?.trim() || 'sin nombre';
     const requestDelete = () => item.id ? setPendingDeleteKey(keyFor(item)) : removeHallazgo(item);
-    return <article className="hallazgos-card" key={keyFor(item)} ref={node => { if (node) itemCardRefs.current.set(keyFor(item), node); else itemCardRefs.current.delete(keyFor(item)); }} tabIndex={-1}>
-      <div className="hallazgos-card-head"><button type="button" className="hallazgo-summary-toggle" aria-expanded={expanded} onClick={toggle}><span className={`badge condition-${item.condicion || 'sin-dato'}`}>{CONDITION_LABELS[item.condicion] || 'Sin condición'}</span><span className="hallazgo-summary-title"><span className="hallazgo-kicker">{selectedFamily?.nombre || 'Trabajo no disponible'}</span><strong>{item.componente_parte || 'Nuevo hallazgo'}</strong></span></button><div className="hallazgo-card-actions">{incompleteKeys.has(keyFor(item)) && <span className="hallazgo-incomplete-badge">Incompleto</span>}<span className={`badge priority-${effective.toLowerCase()}`}>{effective} · {RISK_LABELS[item.riesgo] || 'Sin riesgo'}</span>{canEdit && <button type="button" className="hallazgo-delete-button" aria-label={`Eliminar hallazgo ${itemName}`} title="Eliminar hallazgo" onClick={requestDelete}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3" /></svg><span className="sr-only">Eliminar hallazgo</span></button>}</div></div>
+    const markDrawingZone = event => {
+      const zone = event.target.closest?.('[data-z]');
+      const zoneId = zone?.getAttribute('data-z');
+      if (!zoneId) return;
+      const definition = selectedComponent?.zonas?.find(row => row.id === zoneId);
+      if ((item.zonas || []).some(row => (row.zona_id || row.id) === zoneId)) return;
+      const nextZones = [...(item.zonas || []), { zona_id: zoneId, nombre: definition?.nombre, orden: (item.zonas || []).length + 1, nota: '' }];
+      const additions = (definition?.medidas || []).filter(measure => !(item.mediciones || []).some(row => row.medida_id === measure.id)).map(measure => ({ _key: `med-${Date.now()}-${Math.random()}`, parametro: measure.nombre, unidad: 'mm', nominal: '', minimo: '', maximo: '', medido: '', zona_id: zoneId, medida_id: measure.id, cota: measure.cota, referencia: measure.referencia, _new: true, _dirty: true }));
+      updateItem(item, { zonas: nextZones, _zonesDirty: true, mediciones: [...(item.mediciones || []), ...additions] });
+    };
+    return <article className={`hallazgos-card${view === 'editor' ? ' dx-hallazgo-editor-card' : ''}`} key={keyFor(item)} ref={node => { if (node) itemCardRefs.current.set(keyFor(item), node); else itemCardRefs.current.delete(keyFor(item)); }} tabIndex={-1}>
+      <div className="hallazgos-card-head"><button type="button" className="hallazgo-summary-toggle" aria-expanded={expanded} onClick={toggle}><span className={`badge condition-${item.condicion || 'sin-dato'}`}>{CONDITION_LABELS[item.condicion] || 'Sin condición'}</span><span className="hallazgo-summary-title"><span className="hallazgo-kicker">{selectedFamily?.nombre || 'Trabajo no disponible'}</span><strong>{item.componente_parte || 'Nuevo hallazgo'}</strong></span></button><div className="hallazgo-card-actions">{incompleteKeys.has(keyFor(item)) && <span className="hallazgo-incomplete-badge">Incompleto</span>}<span className={`badge priority-${effective.toLowerCase()}`}>{effective} · {RISK_LABELS[item.riesgo] || 'Sin riesgo'}</span>{canEdit && <button type="button" className="dx-sibling-action" onClick={() => addDamageSibling(item)}>＋ Otro daño</button>}{canEdit && <button type="button" className="hallazgo-delete-button" aria-label={`Eliminar hallazgo ${itemName}`} title="Eliminar hallazgo" onClick={requestDelete}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3" /></svg><span className="sr-only">Eliminar hallazgo</span></button>}</div></div>
       {pendingDeleteKey === keyFor(item) && <div className="hallazgo-delete-confirm" role="alertdialog" aria-label="Confirmar eliminación del hallazgo"><span>¿Eliminar este hallazgo? Se eliminarán también sus mediciones y fotos.</span><div><button type="button" className="hallazgo-delete-confirm-action" onClick={() => { removeHallazgo(item); setPendingDeleteKey(null); }}>Eliminar</button><button type="button" onClick={() => setPendingDeleteKey(null)}>Cancelar</button></div></div>}
-      {expanded && <>
+      {view === 'editor' && keyFor(item) === activeKey && <>
+      {activoRecepcion?.tipo_activo !== 'maquinaria_completa' && inheritedComponent ? (
+        <div className="dx-component-lock"><span>Componente del activo</span><strong>{inheritedComponent.nombre}</strong><small>Heredado de {activoRecepcion.nombre || activoRecepcion.codigo || 'el activo recibido'} {permisoEditarRecepcion && <>· <button type="button" onClick={() => { setComponentePorAsignar(inheritedComponent.id); setCorregirTipo(true); }}>Corregir tipo</button></>}</small></div>
+      ) : (
+        <ComponentField item={item} componentType={activoRecepcion?.tipo_activo} components={componentes} disabled={!canEdit} onSelect={value => { const component = componentes.find(row => row.id === value); const linked = item.mediciones.filter(measure => measure.medida_id); setDeletedMediciones(current => [...current, ...linked.filter(measure => measure.id)]); updateItem(item, { componente_catalogo_id: component?.id || null, componente_parte: value === 'otro' ? 'Otro' : component?.nombre || '', zonas: [], mediciones: item.mediciones.filter(measure => !measure.medida_id), _componentDirty: true, _zonesDirty: true }); }} onTextChange={value => updateItem(item, { componente_parte: value, componente_catalogo_id: null })} />
+      )}
+      {corregirTipo && <div className="dx-component-correction-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setCorregirTipo(false); }}><section className="dx-component-correction" role="dialog" aria-modal="true" aria-label="Corregir tipo"><h4>Corregir tipo de componente</h4><p>Actualiza el componente asignado al activo recibido.</p><label htmlFor="dx-componente-correcto">Tipo de componente</label><select id="dx-componente-correcto" className="select" value={componentePorAsignar} onChange={event => setComponentePorAsignar(event.target.value)}>{componentes.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select><div><button type="button" className="btn btn-secondary" onClick={() => setCorregirTipo(false)}>Cancelar</button><button type="button" className="btn btn-primary" disabled={tipoActivoGuardando || !componentePorAsignar} onClick={async () => { const component = componentes.find(row => row.id === componentePorAsignar); if (!component || !activoRecepcion?.id) return; setTipoActivoGuardando(true); try { await asignarComponenteActivo(empresaId, activoRecepcion.id, component.id); setActivoRecepcion(current => ({ ...current, tipo_activo: 'componente', componente_catalogo_id: component.id })); setItems(current => current.map(row => row.id === item.id || keyFor(row) === keyFor(item) ? { ...row, componente_catalogo_id: component.id, componente_parte: component.nombre, zonas: [], mediciones: (row.mediciones || []).filter(measure => !measure.medida_id), _dirty: true, _componentDirty: true, _zonesDirty: true } : row)); setCorregirTipo(false); onNotice?.('Tipo del activo corregido. El dibujo se actualizó.'); } catch (error) { onError?.(errorMessage(error)); } finally { setTipoActivoGuardando(false); } }}>{tipoActivoGuardando ? 'Guardando…' : 'Guardar tipo'}</button></div></section></div>}
+      {drawingSvg && <section className="dx-hallazgo-drawing"><div className="dx-drawing-title"><div><span className="hallazgo-section-label">DIBUJO DEL COMPONENTE</span><h4>{selectedComponent?.nombre}</h4></div><small>Toca una zona dañada para marcarla</small></div><DibujoHallazgoVista component={selectedComponent} markup={drawingMarkup} onZone={markDrawingZone} disabled={!canEdit} onVisibilityChange={onDrawingVisibilityChange} />{(item.zonas || []).length > 0 && <div className="dx-zone-chips">{(item.zonas || []).map((zone, index) => <span key={zone.zona_id || zone.id}><b>{index + 1}</b>{selectedComponent.zonas?.find(row => row.id === (zone.zona_id || zone.id))?.nombre || zone.nombre}<input aria-label={`Nota del pin ${index + 1}`} value={zone.nota || ''} disabled={!canEdit} placeholder="Nota (opcional)" onChange={event => updateItem(item, { zonas: item.zonas.map(row => (row.zona_id || row.id) === (zone.zona_id || zone.id) ? { ...row, nota: event.target.value } : row), _zonesDirty: true })} /><button type="button" aria-label={`Quitar ${zone.nombre || 'zona'}`} disabled={!canEdit} onClick={() => { const zoneId = zone.zona_id || zone.id; setDeletedMediciones(current => [...current, ...item.mediciones.filter(measure => measure.zona_id === zoneId && measure.id)]); updateItem(item, { zonas: item.zonas.filter(row => (row.zona_id || row.id) !== zoneId).map((row, order) => ({ ...row, orden: order + 1 })), _zonesDirty: true, mediciones: item.mediciones.filter(measure => measure.zona_id !== zoneId) }); }}>×</button></span>)}</div>}</section>}
       <div className="hallazgo-grid">
-        <div className="field"><label>Componente / parte *</label><input data-required-field="component" className="input" aria-label="Componente / parte" value={item.componente_parte || ''} disabled={!canEdit} onChange={event => updateItem(item, { componente_parte: event.target.value })} /></div>
-        <SelectField label={CATALOG_LABELS.tipo_dano} requiredKey="damage" value={item.tipo_dano_codigo} options={[...catalogs.tipo_dano, ...(item.tipo_dano_codigo && !catalogs.tipo_dano.some(row => row.codigo === item.tipo_dano_codigo) ? [{ codigo: item.tipo_dano_codigo, etiqueta: item.tipo_dano_codigo, inactivo: true }] : [])]} allowInactive onChange={value => updateItem(item, { tipo_dano_codigo: value })} disabled={!canEdit} />
+        {!inheritedComponent && !item.componente_catalogo_id && <div className="field"><label>Componente / parte *</label><input data-required-field="component-text" className="input" aria-label="Componente / parte" value={item.componente_parte || ''} disabled={!canEdit} onChange={event => updateItem(item, { componente_parte: event.target.value })} /></div>}
+        <div className="field dx-tipo-dano"><label>{CATALOG_LABELS.tipo_dano}</label><input data-required-field="damage" className="input" role="combobox" aria-expanded={tipoDanoAbierto === keyFor(item)} aria-label="Tipo de daño" value={tipoDanoAbierto === keyFor(item) ? busquedaDano : catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || ''} disabled={!canEdit} placeholder="Buscar tipo de daño…" onFocus={() => { setBusquedaDano(''); setTipoDanoAbierto(keyFor(item)); }} onChange={event => setBusquedaDano(event.target.value)} onBlur={() => window.setTimeout(() => setTipoDanoAbierto(null), 120)} />{tipoDanoAbierto === keyFor(item) && <div className="dx-tipo-dano-menu">{agruparTiposDano(damageOptions).map(group => <div key={group.id}><small>{group.label}</small>{group.items.map(option => <button type="button" key={`${group.id}-${option.codigo}`} onMouseDown={event => event.preventDefault()} onClick={() => { updateItem(item, { tipo_dano_codigo: option.codigo }); setTipoDanoAbierto(null); }}>{option.etiqueta}</button>)}</div>)}{!damageExact && busquedaDano.trim() && <p className="dx-tipo-dano-similar">Parecidos: {damageOptions.slice(0, 3).map(option => option.etiqueta).join(' · ') || 'sin coincidencias'}</p>}{!damageExact && canEdit && puedeEditarMaestros && busquedaDano.trim() && <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const result = await crearTipoDanoDiagnostico(empresaId, busquedaDano.trim()); const rows = result.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: result.valor.codigo }); setTipoDanoAbierto(null); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{busquedaDano.trim()}»</button>}</div>}</div>
         <SelectField label={CATALOG_LABELS.causa_probable} requiredKey="cause" value={item.causa_probable_codigo} options={[...catalogs.causa_probable, ...(item.causa_probable_codigo && !catalogs.causa_probable.some(row => row.codigo === item.causa_probable_codigo) ? [{ codigo: item.causa_probable_codigo, etiqueta: item.causa_probable_codigo, inactivo: true }] : [])]} allowInactive onChange={value => updateItem(item, { causa_probable_codigo: value })} disabled={!canEdit} />
         <ChoiceButtons label="Condición del componente" requiredKey="condition" value={item.condicion} options={Object.entries(CONDITION_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { condicion: value })} />
         <ChoiceButtons label="Riesgo si no se atiende" requiredKey="risk" value={item.riesgo} options={Object.entries(RISK_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { riesgo: value })} />
@@ -542,14 +702,15 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     </article>;
   };
 
-  return <section className="hallazgos-panel" aria-label="Hallazgos del trabajo">
+  return <section className={`hallazgos-panel${view === 'editor' ? ' is-editor-view' : ' is-list-view'}`} aria-label="Hallazgos del trabajo">
     <div className="hallazgos-summary"><div><span className="hallazgo-section-label">RESUMEN</span><h3>Hallazgos del trabajo</h3></div><div className="hallazgos-summary-metrics"><strong>{count} hallazgo{count === 1 ? '' : 's'}</strong>{PRIORITIES.map(priority => <span key={priority} className={`badge priority-${priority.toLowerCase()}`}>{priority} · {priorities[priority] || 0}</span>)}</div></div>
     {incompleteHallazgos.length > 0 && <div className="hallazgos-incomplete-notice" role="status"><span>Hay {incompleteHallazgos.length} hallazgo{incompleteHallazgos.length === 1 ? '' : 's'} incompleto{incompleteHallazgos.length === 1 ? '' : 's'}. Complétalos o elimínalos.</span><button type="button" onClick={goToIncomplete}>Ir al hallazgo</button></div>}
     {catalogError && <div className="alert alert-error">No se cargaron los catálogos de hallazgos: {catalogError}</div>}
     {fotosLoadError && <div className="dx-foto-error" role="status">No se pudieron cargar las fotos de los hallazgos: {fotosLoadError}</div>}
-    {groups.map(group => { const expanded = !collapsedGroups.has(group.id); return <section className="hallazgos-work-section" key={group.id}><div className="hallazgos-work-head"><button ref={node => { if (node) groupHeaderRefs.current.set(group.id, node); else groupHeaderRefs.current.delete(group.id); }} type="button" className="hallazgos-group-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Contraer' : 'Expandir'} ${group.nombre}`} onClick={() => setCollapsedGroups(current => { const next = new Set(current); if (next.has(group.id)) next.delete(group.id); else next.add(group.id); return next; })}><span><strong>{group.nombre}</strong><small>{group.items.length} hallazgos · {group.lines.length} tareas</small></span><svg className={`hallazgos-group-chevron${expanded ? ' is-expanded' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button><div className="hallazgos-work-actions">{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addHallazgo(group.id)}>+ Agregar hallazgo</button>}{canEdit && group.items.length === 0 && <button type="button" className="hallazgo-delete-button" aria-label={`Quitar trabajo ${group.nombre}`} title="Quitar trabajo" onClick={() => setPendingDeleteFamilyId(group.id)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3" /></svg></button>}</div></div>{pendingDeleteFamilyId === group.id && group.items.length === 0 && <div className="hallazgo-delete-confirm" role="alertdialog" aria-label={`Confirmar quitar trabajo ${group.nombre}`}><span>Se quitarán las {group.lines.length} tareas de este trabajo de la lista. Los cambios se guardan al presionar Guardar todo. Nada se borra de la base de datos hasta entonces.</span><div><button type="button" className="hallazgo-delete-confirm-action" onClick={() => removeEmptyFamily(group)}>Quitar trabajo</button><button type="button" onClick={() => setPendingDeleteFamilyId(null)}>Cancelar</button></div></div>}{expanded && (group.items.length ? group.items.map(renderItem) : <p className="muted">Sin hallazgos para este trabajo.</p>)}</section>; })}
-    {orphanItems.map(renderItem)}
-    {canEdit && !readOnly && <div className="hallazgos-add-family">
+    {view === 'lista' && groups.map(group => <section className="dx-findings-list-group" key={group.id} aria-label={`Hallazgos de ${group.nombre}`}><h4>{group.nombre}</h4>{group.items.map(item => { const component = componentes.find(row => row.id === item.componente_catalogo_id); const svg = component?.svg || component?.dibujo_svg || ''; const mini = svg ? markupDibujoHallazgo(svg, item.zonas || []) : ''; return <article className="dx-finding-list-row" key={keyFor(item)}><button type="button" className="dx-finding-list-open" onClick={() => changeView('editor', keyFor(item))}><span className="dx-finding-thumbnail" aria-hidden="true">{mini ? <span dangerouslySetInnerHTML={{ __html: mini }} /> : <span className="dx-finding-thumbnail-empty">⌁</span>}</span><span className="dx-finding-list-name"><strong>{item.componente_parte || 'Nuevo hallazgo'}</strong><small>{catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || 'Tipo de daño pendiente'} · {CONDITION_LABELS[item.condicion] || 'Sin condición'}</small></span></button><button type="button" className="btn btn-secondary" onClick={() => changeView('editor', keyFor(item))}>Editar</button>{canEdit && <button type="button" className="btn btn-secondary" onClick={() => addDamageSibling(item)}>＋ Otro daño</button>}</article>; })}{canEdit && <button type="button" className="dx-list-add-damage" onClick={() => addHallazgo(group.id)}>＋ Otro daño</button>}</section>)}
+    {view === 'lista' && orphanItems.length > 0 && <section className="dx-findings-list-group"><h4>Sin trabajo asignado</h4>{orphanItems.map(item => <article className="dx-finding-list-row" key={keyFor(item)}><strong>{item.componente_parte || 'Nuevo hallazgo'}</strong><button type="button" className="btn btn-secondary" onClick={() => changeView('editor', keyFor(item))}>Editar</button></article>)}</section>}
+    {view === 'editor' && (() => { const current = items.find(item => keyFor(item) === activeKey); return current ? renderItem(current) : <div className="alert alert-warning">El hallazgo seleccionado ya no está disponible.</div>; })()}
+    {view === 'lista' && canEdit && !readOnly && <div className="hallazgos-add-family">
       {familyToAdd ? <div className="hallazgos-add-work-options"><select autoFocus className="select" aria-label="Elegir trabajo o componente" value="" onChange={event => { const id = event.target.value; if (!id) return; pendingGroupFocus.current = id; const existing = groups.find(group => group.id === id); if (existing) setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); else { setSessionFamilyIds(current => current.includes(id) ? current : [...current, id]); onExtraFamilyIdsChange?.(current => current.includes(id) ? current : [...current, id]); setCollapsedGroups(current => { const next = new Set(current); next.delete(id); return next; }); } setFamilyToAdd(''); }}><option value="">Elegir existente...</option>{familias.map(familia => <option value={familia.id} key={familia.id}>{familia.nombre}</option>)}</select>
         <form onSubmit={createWork}><input className="input" aria-label="Crear trabajo o componente" value={newFamilyName} onChange={event => setNewFamilyName(event.target.value)} placeholder="Nombre del nuevo trabajo o componente" /><button type="submit" disabled={creatingFamily || !newFamilyName.trim() || !onCreateFamily}>{creatingFamily ? 'Creando\u2026' : '+ Crear trabajo o componente'}</button></form>
         <button type="button" className="hallazgos-add-cancel" onClick={() => { setFamilyToAdd(''); setCreateFamilyError(''); }}>Cancelar</button>{createFamilyError && <span role="alert">{createFamilyError}</span>}

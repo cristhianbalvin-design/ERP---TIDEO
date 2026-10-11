@@ -44,7 +44,7 @@ const escapeXml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&
 
 export function construirSvgInforme({ svg, zonasMarcadas = [], bboxPorZona = {}, cotasMedidas = [] } = {}) {
   const clean = sanitizarSvgCatalogo(svg);
-  const style = '<style>*{font-family:Arial,sans-serif}.zone{opacity:.28}.zone.pinned{opacity:1;fill:#fce8e6;stroke:#c62828;stroke-width:2}.zone.measured{opacity:1;stroke:#1565c0;stroke-width:2}.pin circle{fill:#c62828;stroke:#fff;stroke-width:2}.pin text{fill:#fff;font-size:12px;font-weight:bold;text-anchor:middle;dominant-baseline:central}</style>';
+  const style = '<style>*{font-family:Arial,sans-serif}.zone{opacity:.28}.zone.pinned{opacity:1;fill:#fce8e6;stroke:#c62828;stroke-width:2}.zone.measured{opacity:1;stroke:#1565c0;stroke-width:2}[data-cota].c-on{opacity:1}[data-cota].c-on .dimline{stroke:#0a9db0;stroke-width:2.4}.pin circle{fill:#c62828;stroke:#fff;stroke-width:2}.pin text{fill:#fff;font-size:12px;font-weight:bold;text-anchor:middle;dominant-baseline:central}</style>';
   const pins = posicionarPines(zonasMarcadas.map(z => ({ ...z, bbox: bboxPorZona[z.zona_id] || z.bbox || {} })));
   const idSet = new Set(zonasMarcadas.map(z => z.zona_id));
   const measures = new Set(cotasMedidas.map(m => m.zona_id));
@@ -53,6 +53,13 @@ export function construirSvgInforme({ svg, zonasMarcadas = [], bboxPorZona = {},
     const classes = [...(open.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || []), ...(idSet.has(zoneId) ? ['pinned'] : ['zone']), ...(measures.has(zoneId) ? ['measured'] : [])];
     const base = open.replace(/\s+class=["'][^"']*["']/i, '');
     return `${base} class="${escapeXml([...new Set(classes)].join(' '))}"${close}`;
+  });
+  const markedCotas = new Set(cotasMedidas.map(measure => measure.cota).filter(Boolean));
+  output = output.replace(/(<[^>]+data-cota=["']([^"']+)["'][^>]*)(>)/gi, (all, open, cotaId, close) => {
+    if (!markedCotas.has(cotaId)) return all;
+    const classText = open.match(/\bclass=["']([^"']*)["']/i)?.[1] || '';
+    const classes = [...new Set([...classText.split(/\s+/).filter(Boolean), 'c-on'])];
+    return `${open.replace(/\s+class=["'][^"']*["']/i, '')} class="${escapeXml(classes.join(' '))}"${close}`;
   });
   const markers = pins.map(pin => `<g class="pin" transform="translate(${pin.cx} ${pin.cy})"><circle r="10"/><text y=".5">${pin.orden}</text></g>`).join('');
   return output.replace(/<\/svg\s*>/i, `${markers}</svg>`);

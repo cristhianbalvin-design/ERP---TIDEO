@@ -50,6 +50,17 @@ export async function usuarioPuedeDiagnostico(empresaId, accion) {
   return Boolean(data);
 }
 
+export async function usuarioPuedeEditarMaestros(empresaId) {
+  requireEmpresa(empresaId);
+  const { data, error } = await getSupabaseClient().rpc('usuario_puede', {
+    target_empresa_id: empresaId,
+    target_pantalla: 'maestros',
+    target_accion: 'editar',
+  });
+  if (error) throw error;
+  return Boolean(data);
+}
+
 const mensajeErrorEstado = (error, accion) => {
   const codigo = error?.code;
   if (codigo === '42501') return `No tienes permiso para ${accion} el diagnóstico.`;
@@ -365,6 +376,18 @@ export async function listarComponentesDiagnostico(empresaId, diagnosticoId) {
   const { data: recepcion, error: recepcionError } = await supabase.from('recepciones_activos_cliente').select('sociedad_id').eq('empresa_id', empresaId).eq('id', diag.recepcion_id).single();
   if (recepcionError) throw new Error(recepcionError.message || 'No se pudo obtener la sociedad de la recepción.');
   return catalogoComponentesService.listar(empresaId, recepcion.sociedad_id || null);
+}
+
+export async function obtenerActivoRecepcionDiagnostico(empresaId, diagnosticoId) {
+  requireEmpresa(empresaId); requireId(diagnosticoId, 'Falta el diagnóstico técnico.');
+  const supabase = getSupabaseClient();
+  const { data: diagnostico, error: diagnosticoError } = await supabase.from('diagnosticos_tecnicos').select('recepcion_id').eq('empresa_id', empresaId).eq('id', diagnosticoId).single();
+  if (diagnosticoError) throw diagnosticoError;
+  const { data: recepcion, error: recepcionError } = await supabase.from('recepciones_activos_cliente').select('activo_id').eq('empresa_id', empresaId).eq('id', diagnostico.recepcion_id).single();
+  if (recepcionError) throw recepcionError;
+  const { data: activo, error: activoError } = await supabase.from('activos').select('id,nombre,codigo,tipo_activo,componente_catalogo_id').eq('empresa_id', empresaId).eq('id', recepcion.activo_id).single();
+  if (activoError) throw activoError;
+  return activo;
 }
 
 export async function crearDiagnosticoMedicion(empresaId, hallazgoId, medicion) {

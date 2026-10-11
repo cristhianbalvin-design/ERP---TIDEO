@@ -50,7 +50,7 @@ export async function listarActivosCliente(empresaId, sociedadId) {
   exigirEmpresaYSociedad(empresaId, sociedadId);
   const { data, error } = await getSupabaseClient()
     .from('activos')
-    .select('id,empresa_id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id')
+    .select('id,empresa_id,codigo,nombre,marca,modelo,placa_serie,estado,propietario_tipo,cliente_propietario_id,tipo_activo,componente_catalogo_id')
     .eq('empresa_id', empresaId)
     .eq('propietario_tipo', 'cliente')
     .neq('estado', 'dado_baja')
@@ -299,4 +299,32 @@ export async function actualizarEstadoCustodia(empresaId, recepcionId, nuevoEsta
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function asignarComponenteActivo(empresaId, activoId, componenteCatalogoId) {
+  if (!empresaId || !activoId || !componenteCatalogoId) throw new Error('Selecciona el activo y su tipo de componente.');
+  const supabase = getSupabaseClient();
+  const puedeEditar = await usuarioPuedeEditarRecepcionActivosCliente(empresaId);
+  if (!puedeEditar) throw new Error('No tienes permiso para editar la recepción de activos.');
+  const { data, error } = await supabase
+    .from('activos')
+    .update({ tipo_activo: 'componente', componente_catalogo_id: componenteCatalogoId })
+    .eq('empresa_id', empresaId)
+    .eq('id', activoId)
+    .eq('propietario_tipo', 'cliente')
+    .select('id,nombre,codigo,tipo_activo,componente_catalogo_id')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function usuarioPuedeEditarRecepcionActivosCliente(empresaId) {
+  if (!empresaId) return false;
+  const { data, error } = await getSupabaseClient().rpc('usuario_puede', {
+    target_empresa_id: empresaId,
+    target_pantalla: 'recepcion_activos_cliente',
+    target_accion: 'editar',
+  });
+  if (error) throw error;
+  return Boolean(data);
 }
