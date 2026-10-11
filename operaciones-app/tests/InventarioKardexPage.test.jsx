@@ -1,0 +1,86 @@
+import React from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  sesion: { empresaId: 'e1', sociedadId: 's1', estado: 'listo', vistaConsolidada: false, sociedadesIdsAlcance: ['s1'] },
+  cargarInventario: vi.fn(), cargarKardexMaterial: vi.fn(), rpc: vi.fn(),
+}));
+vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
+vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc: mocks.rpc }) }));
+vi.mock('../src/services/inventarioKardexService.js', () => ({ cargarInventarioKardex: mocks.cargarInventario, cargarKardexPorMaterial: mocks.cargarKardexMaterial }));
+import { InventarioKardexPage } from '../src/zahory-mock/pages/InventarioKardexPage.jsx';
+
+const material = (id, descripcion, extra = {}) => ({ id, codigo: id.toUpperCase(), descripcion, familia: 'Insumos', unidad: 'und', punto_reorden: 10, stock_seguridad: 2, costo_promedio: 3, ...extra });
+const datos = {
+  almacenes: [{ id: 'a1', nombre: 'Almacén Norte' }],
+  ubicaciones: [{ id: 'u1', almacen_id: 'a1', nombre: 'CUA-01', codigo: 'CUA-01', uso: 'cuarentena' }],
+  stock: [
+    { id: 'st1', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', lote: 'L-1', fisico: 5, reservado: 0, materiales: material('m1', 'Filtro hidráulico'), almacenes: { nombre: 'Almacén Norte' }, ubicaciones: { nombre: 'CUA-01', codigo: 'CUA-01', uso: 'cuarentena' } },
+    { id: 'st1b', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u2', lote: 'L-2', fisico: 5, reservado: 0, materiales: material('m1', 'Filtro hidr\u00e1ulico'), almacenes: { nombre: 'Almac\u00e9n Norte' }, ubicaciones: { nombre: 'R-01', codigo: 'R-01', uso: 'almacenaje' } },
+    { id: 'st2', material_id: 'm2', almacen_id: 'a1', fisico: 0, reservado: 0, materiales: material('m2', 'Perno agotado'), almacenes: { nombre: 'Almacén Norte' } },
+  ],
+  kardex: [], kardexParcial: false, limiteKardex: 200,
+};
+const movimiento = { id: 'k1', material_id: 'm1', tipo: 'entrada', cantidad: 5, created_at: '2026-01-01T10:00:00Z', anulado: true, motivo: 'Recepción', saldo_cantidad: 0, almacenes: { nombre: 'Almacén Norte' }, ubicaciones: { nombre: 'CUA-01' }, materiales: material('m1', 'Filtro hidráulico') };
+
+async function renderPage() {
+  let root;
+  await act(async () => { root = TestRenderer.create(<InventarioKardexPage />); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+  return root;
+}
+
+function texto(root) {
+  const recorrer = nodo => typeof nodo === 'string' ? nodo : Array.isArray(nodo) ? nodo.map(recorrer).join('') : nodo && typeof nodo === 'object' ? (nodo.children || []).map(recorrer).join('') : '';
+  return recorrer(root.toJSON());
+}
+
+beforeEach(() => {
+  mocks.sesion = { empresaId: 'e1', sociedadId: 's1', estado: 'listo', vistaConsolidada: false, sociedadesIdsAlcance: ['s1'] };
+  mocks.cargarInventario.mockReset().mockResolvedValue(datos);
+  mocks.cargarKardexMaterial.mockReset().mockResolvedValue({ kardex: [movimiento], kardexParcial: false, limiteKardex: 200 });
+  mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
+});
+
+describe('InventarioKardexPage', () => {
+  it('muestra el stock consolidado con estados Bajo reorden y Agotado', async () => {
+    const root = await renderPage();
+    expect(root.root.findAllByProps({ className: 'dx-ui-pill is-amber' })).toHaveLength(1);
+    expect(root.root.findAll(node => node.children?.join('') === 'Agotado')).toHaveLength(1);
+  });
+
+  it('abre detalle con ubicación en cuarentena y carga el kardex del material con anulado tachado', async () => {
+    const root = await renderPage();
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    expect(mocks.cargarKardexMaterial).toHaveBeenCalledWith(expect.objectContaining({ empresaId: 'e1', sociedadId: 's1', materialId: 'm1' }));
+    expect(texto(root)).toContain('Cuarentena');
+    expect(texto(root)).toContain('reorden 10 + seguridad 2');
+    expect(root.root.findAll(node => node.props.className?.includes('dx-stk-dcols') && node.props.className.includes('is-void'))).toHaveLength(1);
+    expect(texto(root)).not.toContain('historial de este material podría estar incompleto');
+    expect(texto(root)).toContain('Almacén Norte');
+    expect(texto(root)).toContain('CUA-01');
+  });
+
+  it('avisa si el kardex del material está parcial', async () => {
+    mocks.cargarKardexMaterial.mockResolvedValue({ kardex: [movimiento], kardexParcial: true, limiteKardex: 200 });
+    const root = await renderPage();
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    expect(texto(root)).toContain('El kardex muestra solo los 200 movimientos más recientes');
+  });
+
+  it('muestra el estado sin permiso', async () => {
+    mocks.rpc.mockResolvedValue({ data: false, error: null });
+    const root = await renderPage();
+    expect(texto(root)).toContain('No tienes permiso para ver el inventario.');
+    expect(mocks.cargarInventario).not.toHaveBeenCalled();
+  });
+
+  it('muestra error de lectura y permite reintentar', async () => {
+    mocks.cargarInventario.mockRejectedValueOnce(new Error('Fallo de lectura'));
+    const root = await renderPage();
+    expect(root.root.findByProps({ role: 'alert' }).children.join('')).toContain('Fallo de lectura');
+    await act(async () => { root.root.findAllByType('button').find(button => button.children.join('') === 'Reintentar').props.onClick(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(root.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
+    expect(mocks.cargarInventario).toHaveBeenCalledTimes(2);
+  });
+});

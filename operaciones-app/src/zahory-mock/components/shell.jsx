@@ -241,7 +241,7 @@ export const SIDEBAR_ZONES = [
         id: 'almacen', label: 'Almacén & Repuestos', emoji: '📦',
         roles: ['gerente', 'almacenero'],
         items: [
-          { id: 'catalogo',            label: 'Inventario & Kardex',     icon: 'box' },
+          { id: 'almacen-inventario', label: 'Inventario & Kardex',     icon: 'box' },
           { id: 'solicitudes',         label: 'Solicitudes SOLPE',       icon: 'parts' },
           { id: 'almacen-reservas',    label: 'Reserva de Repuestos',    icon: 'lock',     badge: 'PRÓXIMO', badgeColor: 'proximo' },
           { id: 'almacen-movimientos', label: 'Entradas & Salidas',      icon: 'download' },
