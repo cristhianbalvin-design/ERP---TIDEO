@@ -105,10 +105,10 @@ const SIDEBAR = [
     { key: 'bi_cs', label: 'BI Customer Success', icon: I.trend },
   ]},
   { section: 'Aria', standalone: true, items: [
-    { key: 'aria', action: 'openAria', label: 'Aria', icon: <IconoAria size={20} /> },
+    { key: 'aria', action: 'openAria', label: 'Aria - Asistente IA', ariaLabel: 'Preguntar a Aria', icon: <IconoAria size={20} /> },
   ]},
-  { section: 'Campo Movil', items: [
-    { key: 'campo', label: 'Vistas de Campo', icon: I.mobile },
+  { section: 'Version Movil', standalone: true, items: [
+    { key: 'campo', label: 'Versión Móvil', icon: I.mobile },
   ]},
   { section: 'Configuracion', items: [
     { key: 'usuarios', label: 'Usuarios', icon: I.users },
@@ -144,7 +144,6 @@ const SECTION_ICONS = {
   Compras: I.cart,
   Administracion: I.bank,
   'Customer Success': I.target,
-  'Campo Movil': I.mobile,
   Configuracion: I.settings,
 };
 
@@ -562,21 +561,21 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                 <>
                   <button
                     type="button"
-                    className="sidebar-area-btn"
+                    className={'sidebar-area-btn ' + (active === group.items[0].key ? 'active' : '')}
                     onClick={event => toggleFlyout(event, group.key)}
                     title={group.items[0].label}
-                    aria-label={group.items[0].label}
+                    aria-label={group.items[0].ariaLabel || group.items[0].label}
                   >{group.items[0].icon}</button>
                   {flyoutKey === group.key && (
                     <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.items[0].label}</div>
-                      {group.items.map(it => <button type="button" key={it.key} className="sidebar-flyout-item" onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
+                      {group.items.map(it => <button type="button" key={it.key} className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
                     </div>
                   )}
                 </>
               ) : group.standalone ? (
                 <div
-                  className="sidebar-item"
+                  className={'sidebar-item ' + (active === group.items[0].key ? 'active' : '')}
                   onClick={() => handleItem(group.items[0])}
                   style={{padding:'8px 10px', fontSize:12, borderRadius:8}}
                   onKeyDown={event => {
@@ -587,7 +586,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label="Preguntar a Aria"
+                  aria-label={group.items[0].ariaLabel || group.items[0].label}
                 >
                   {group.items[0].icon}<span style={{fontWeight:500}}>{group.items[0].label}</span>
                 </div>

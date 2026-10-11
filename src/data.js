@@ -1076,7 +1076,7 @@ export const pantallasPermisos = [
   { key: 'ia_comercial', modulo: 'Comercial', pantalla: 'IA Comercial', acciones: ['ver','exportar'] },
   { key: 'ia_operativa', modulo: 'Operaciones', pantalla: 'IA Operativa', acciones: ['ver','exportar','costos'] },
   { key: 'ia_financiera', modulo: 'Administracion', pantalla: 'IA Financiera', acciones: ['ver','exportar','finanzas'] },
-  { key: 'campo', modulo: 'Operaciones', pantalla: 'Vistas de Campo', acciones: ['ver','crear','editar'] },
+  { key: 'campo', modulo: 'Operaciones', pantalla: 'Versión Móvil', acciones: ['ver','crear','editar'] },
   { key: 'organigrama', modulo: 'Configuracion', pantalla: 'Organigrama', acciones: ['ver','crear','editar','exportar'] },
   { key: 'servicios', modulo: 'Configuracion', pantalla: 'Catalogo Servicios', acciones: ['ver','crear','editar','exportar'] },
   { key: 'tarifarios', modulo: 'Configuracion', pantalla: 'Tarifarios', acciones: ['ver','crear','editar','exportar'] }
