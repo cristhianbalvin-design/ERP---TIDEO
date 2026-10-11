@@ -2396,7 +2396,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-wizard-footer{display:flex;align-items:center;gap:8px;width:100%}
 .dx-wizard-footer .btn{min-height:44px}
 .dx-work-card>.diagnostico-modal-footer .dx-action-44{min-height:44px;white-space:normal}
-.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not(:first-child){display:none}
+.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not([aria-labelledby="dx-hallazgos-title"]){display:none}
 .hallazgos-panel.is-editor-view .hallazgos-summary,.hallazgos-panel.is-editor-view .hallazgos-incomplete-notice{display:none}
 .dx-hallazgo-editor-card{display:flex;flex-direction:column;gap:16px;padding:20px}
 .dx-hallazgo-editor-card>.hallazgos-card-head{display:none}

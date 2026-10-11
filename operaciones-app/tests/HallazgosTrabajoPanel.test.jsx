@@ -1,4 +1,5 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -100,6 +101,11 @@ beforeEach(() => {
 });
 
 describe('HallazgosTrabajoPanel', () => {
+  it('mantiene visible la sección de hallazgos aunque el activo preceda a la sección en el DOM', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    expect(css).toContain('.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not([aria-labelledby="dx-hallazgos-title"]){display:none}');
+  });
+
   it('muestra campos de hallazgo, matriz, mediciones y tareas, sin controles fuera de v1', async () => {
     const { renderer } = await renderPanel([{
       id: 'hallazgo-1', familia_trabajo_id: 'family-1', componente_parte: 'Vástago', tipo_dano_codigo: 'desgaste',
@@ -124,6 +130,45 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
     expect(text).not.toContain('Incluir en informe');
+  });
+
+  it('monta todo el formulario para un activo recibido sin componente de catálogo', async () => {
+    mocks.obtenerActivoRecepcionDiagnostico.mockResolvedValue({
+      id: 'asset-without-component', nombre: 'TAPA DE CILINDRO', tipo_activo: 'componente', componente_catalogo_id: null,
+    });
+    const { renderer, callbacks } = await renderPanel([{ ...baseHallazgo, componente_parte: 'Prueba Fase 2 - cilindro', componente_catalogo_id: null }]);
+    await openEditor(renderer);
+
+    const componentSelect = renderer.root.findByProps({ 'data-required-field': 'component' });
+    expect(textOf(componentSelect.parent)).toContain('Tipo de componente *');
+    expect(renderer.root.findByProps({ 'aria-label': 'Tipo de daño' })).toBeTruthy();
+    expect(textOf(renderer.root)).toContain('Condición del componente');
+    expect(textOf(renderer.root)).toContain('MATRIZ v1');
+    expect(textOf(renderer.root)).toContain('Mediciones');
+    expect(textOf(renderer.root)).toContain('Fotos');
+    renderer.unmount();
+  });
+
+  it('monta el dibujo con zonas y el resto del formulario para un activo con componente cil', async () => {
+    mocks.listarComponentesDiagnostico.mockResolvedValue([{
+      id: 'component-cil', nombre: 'Cilindro', svg: '<svg viewBox="0 0 100 100"><rect data-z="zone-liner" x="10" y="10" width="50" height="50" /></svg>',
+      zonas: [{ id: 'zone-liner', nombre: 'Camisa', medidas: [] }],
+    }]);
+    mocks.obtenerActivoRecepcionDiagnostico.mockResolvedValue({
+      id: 'asset-with-cil', nombre: 'CILINDRO', tipo_activo: 'componente', componente_catalogo_id: 'component-cil',
+    });
+    const { renderer } = await renderPanel([{ ...baseHallazgo, componente_parte: 'Cilindro', componente_catalogo_id: 'component-cil' }]);
+    await openEditor(renderer);
+
+    const drawing = renderer.root.findByProps({ role: 'group', 'aria-label': 'Dibujo de Cilindro' });
+    expect(drawing.props.dangerouslySetInnerHTML.__html).toContain('data-z="zone-liner"');
+    await act(async () => drawing.props.onClick({ target: { closest: () => ({ getAttribute: () => 'zone-liner' }) } }));
+    expect(renderer.root.findByProps({ 'aria-label': 'Tipo de daño' })).toBeTruthy();
+    expect(textOf(renderer.root)).toContain('Camisa');
+    expect(textOf(renderer.root)).toContain('MATRIZ v1');
+    expect(textOf(renderer.root)).toContain('Mediciones');
+    expect(textOf(renderer.root)).toContain('Fotos');
+    renderer.unmount();
   });
 
   it('permite agregar un hallazgo solo bajo un trabajo que ya tiene líneas', async () => {
