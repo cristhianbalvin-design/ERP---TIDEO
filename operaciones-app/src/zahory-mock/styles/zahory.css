@@ -2375,6 +2375,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-inf-signature{display:flex;flex-direction:column;align-items:center;margin:8px auto 4px;text-align:center;min-height:54px}.dx-inf-signature img{max-width:150px;height:44px;object-fit:contain}.dx-inf-signature strong{font-weight:700}.dx-inf-signature span{font-size:.9em}
 
 /* Stock y Kardex · reglas visuales del mock aprobado */
+.dx-ui.dx-stk { padding:24px 28px 60px; }
 .dx-stk-alert{margin-bottom:12px;padding:12px 16px;border:1px solid var(--dx-ui-line);border-radius:8px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)}
 .dx-stk-alert .dx-btn{margin-left:8px}
 .dx-stk-cols { --dx-ui-cols:minmax(0,1fr) 84px 96px 104px 116px 124px 20px; }
