@@ -2430,7 +2430,7 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-stk-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:16px 20px;border-bottom:1px solid var(--dx-ui-line)}
 .dx-stk-meta div small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .dx-stk-meta div span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@container (max-width:860px){.dx-stk-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:860px){.dx-stk-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.dx-stk-meta div span em{white-space:normal}}
 .dx-stk-wcols { --dx-ui-cols:minmax(0,1fr) 120px 96px 76px 84px; cursor:default; }
 .dx-stk-wcols.dx-ui-row{cursor:default;min-height:60px}
 .dx-stk-wcols.dx-ui-row:hover{background:transparent}
