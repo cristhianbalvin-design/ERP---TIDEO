@@ -760,7 +760,12 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => wizardForm().props.onSubmit({ preventDefault() {} }));
     await waitFor(() => buttonByText(renderer, 'Siguiente: informe'));
     expect(mocks.service.crearDiagnosticoTecnico).toHaveBeenCalledWith('empresa-prueba', 'usuario-prueba', expect.objectContaining({ recepcion_id: 'rac-wizard' }));
-    expect(renderer.root.findByProps({ 'aria-label': 'Pasos del diagnóstico' }).findAllByType('button').map(textOf)).toEqual(['Recepción', 'Equipo', 'Hallazgos', 'Informe', 'Cierre']);
+    const workSteps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+    expect(workSteps).toHaveLength(5);
+    expect(workSteps.slice(0, 3).every(button => button.props.className === 'is-done')).toBe(true);
+    expect(workSteps[3].props.className).toBe('is-current');
+    expect(renderer.root.findAll(node => node.props.className?.split(' ').includes('dx-work-page'))).toHaveLength(1);
+    expect(renderer.root.findAll(node => node.props.className === 'ops-modal-backdrop')).toHaveLength(0);
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active)).toBe(true);
     const footerButtons = () => renderer.root.find(node => node.props.className?.includes('diagnostico-modal-footer')).findAllByType('button').map(button => textOf(button).trim());
     expect(footerButtons()).toEqual(['＋ Agregar hallazgo', 'Siguiente: informe']);
@@ -772,9 +777,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     const family = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
     await act(async () => family.props.onChange({ target: { value: 'fam-1' } }));
     await act(async () => buttonByText(renderer, '＋ Agregar hallazgo').props.onClick());
-    expect(footerButtons()).toEqual(['← Volver a la lista', 'Ver dibujo', '＋ Otro daño en este componente', 'Guardar hallazgo']);
-    await act(async () => renderer.root.findByProps({ 'aria-label': 'Cerrar' }).props.onClick());
-    await act(async () => buttonByText(renderer, 'Cerrar sin guardar').props.onClick());
+    expect(footerButtons()).toEqual(['← Volver a hallazgos', 'Ver dibujo', '＋ Otro daño en este componente', 'Guardar hallazgo']);
+    await act(async () => renderer.root.findAll(node => node.props.className === 'dx-work-back-link')[0].props.onClick());
+    await act(async () => renderer.root.findAll(node => node.props.className === 'ops-modal-confirm-close')[0].props.onClick());
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === false)).toBe(true);
   });
 

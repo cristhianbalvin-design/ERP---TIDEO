@@ -21,7 +21,7 @@ import { listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnost
 import HallazgoFotos from './HallazgoFotos.jsx';
 import { asignarComponenteActivo, usuarioPuedeEditarRecepcionActivosCliente } from '../../services/recepcionesActivosClienteService.js';
 import { getIncompleteHallazgos } from './hallazgosValidation.js';
-import { buscarTiposDano, resultadoMedicion } from './dibujoHallazgoLogic.js';
+import { agruparMedicionesPorZona, buscarTiposDano, resultadoMedicion } from './dibujoHallazgoLogic.js';
 import { agruparTiposDano, markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 
 const CATALOG_LABELS = {
@@ -101,24 +101,28 @@ function ChoiceButtons({ label, value, options, disabled, onChange, hint, requir
   </div>;
 }
 
-function MeasurementTable({ item, catalogs, canEdit, update, remove }) {
+function MeasurementTable({ item, catalogs, componentes = [], canEdit, update, remove }) {
   const add = () => update({ mediciones: [...(item.mediciones || []), emptyMeasurement()] });
-  const patch = (measurement, changes) => update({ mediciones: (item.mediciones || []).map(row => row === measurement ? { ...row, ...changes, _dirty: true } : row) });
+  const patch = (measurement, changes) => update({ mediciones: (item.mediciones || []).map(row => keyFor(row) === keyFor(measurement) ? { ...row, ...changes, _dirty: true } : row) });
+  const component = componentes.find(row => row.id === item.componente_catalogo_id);
+  const groups = agruparMedicionesPorZona(item.zonas || [], component?.zonas || [], item.mediciones || []);
+  const renderMeasure = measurement => {
+    const result = resultadoMedicion(measurement);
+    const tone = result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'is-out' : result === 'dentro' ? 'is-in' : 'is-none';
+    return <article className={`dx-measure-card${measurement.cota ? ' has-drawing-cota' : ''}`} key={measurement.id || measurement._key}>
+      <div className="dx-measure-title"><strong>{measurement.parametro || 'Medici\u00f3n'}</strong>{measurement.cota && <span>cota en el dibujo</span>}</div>
+      <div className="dx-measure-values">{[['nominal','Nominal (mm)'],['minimo','M\u00ednimo (mm)'],['maximo','M\u00e1ximo (mm)'],['medido','Medido (mm)']].map(([field,label]) => <label key={field}>{label}<input aria-label={label} className="input" type="number" step="any" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<span className={`dx-measure-result ${tone}`}>{result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'Fuera de tolerancia' : result === 'dentro' ? 'Dentro' : 'Sin evaluar'}</span></div>
+      {measurement.referencia && <details className="dx-measure-reference"><summary>Referencia t&#237;pica</summary><p>{measurement.referencia}</p></details>}
+      {canEdit && <button type="button" className="dx-measure-remove" aria-label={`Eliminar ${measurement.parametro || 'medici\u00f3n'}`} onClick={() => remove(measurement)}>&#215;</button>}
+    </article>;
+  };
   return <section className="hallazgo-section hallazgo-measurements">
-    <div className="hallazgo-section-head"><div><h4>Mediciones</h4><span className="hint">El resultado sugiere la condición; el técnico la confirma.</span></div>{canEdit && <button type="button" className="btn btn-secondary" onClick={add}>+ Medición</button>}</div>
-    {!item.mediciones?.length ? <p className="muted">Sin mediciones.</p> : <div className="table-wrap"><table className="table hallazgo-measurement-table"><thead><tr><th>Parámetro</th><th>Unidad</th><th>Nominal</th><th>Mín.</th><th>Máx.</th><th>Medido</th><th>Resultado</th><th>Sugerencia</th><th /></tr></thead><tbody>
-      {item.mediciones.map(measurement => { const result = measurement.medida_id ? resultadoMedicion(measurement) : null; return <tr key={measurement.id || measurement._key}>
-        <td><input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} />{measurement.medida_id && <small className="dx-measure-linked">Medida de catálogo{measurement.cota ? ` · cota ${measurement.cota}` : ''}</small>}{measurement.referencia && <details className="dx-measure-reference"><summary>Referencia típica</summary><p>{measurement.referencia}</p></details>}</td>
-        <td><select className="select" value={measurement.unidad || ''} disabled={!canEdit} onChange={event => patch(measurement, { unidad: event.target.value })}><option value="">—</option>{(catalogs.unidad_medicion || []).map(option => <option key={option.codigo} value={option.codigo}>{option.etiqueta}</option>)}</select></td>
-        {['nominal', 'minimo', 'maximo', 'medido'].map(field => <td key={field}><input className="input" type="number" step="any" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></td>)}
-        <td><span className={`badge ${result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'priority-p1' : 'priority-p4'}`}>{result === 'fuera' ? 'Fuera de tolerancia' : result === 'dentro' ? 'Dentro de rango' : RESULT_LABELS[measurement.resultado_calculado] || 'Pendiente'}</span></td>
-        <td><div className="hallazgo-suggestion-cell"><span className="badge slate">{measurement.condicion_sugerida ? CONDITION_LABELS[measurement.condicion_sugerida] || measurement.condicion_sugerida : 'Pendiente'}</span>{canEdit && measurement.condicion_sugerida && measurement.condicion_sugerida !== item.condicion && <button type="button" className="btn btn-ghost" onClick={() => update({ condicion: measurement.condicion_sugerida })}>Aplicar sugerencia</button>}</div></td>
-        <td>{canEdit && <button type="button" className="btn btn-ghost" aria-label="Eliminar medición" onClick={() => remove(measurement)}>Eliminar</button>}</td>
-      </tr>; })}
-    </tbody></table></div>}
+    <div className="hallazgo-section-head"><div><h4>Mediciones <span className="dx-new-tag">NUEVO</span></h4></div><span className="hint">Seg&#250;n las zonas marcadas</span></div>
+    {groups.map(group => <section className="dx-measure-zone" key={group.zonaId}><h5><b>{group.orden}</b>{group.nombre}</h5>{group.medidas.map(renderMeasure)}</section>)}
+    {(item.mediciones || []).some(measurement => !measurement.medida_id) && <section className="dx-other-measures"><h5>Otras mediciones</h5>{(item.mediciones || []).filter(measurement => !measurement.medida_id).map(measurement => <div className="dx-other-measure-row" key={measurement.id || measurement._key}><label>Par&#225;metro<input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} /></label><label>Unidad<select className="select" value={measurement.unidad || ''} disabled={!canEdit} onChange={event => patch(measurement, { unidad: event.target.value })}><option value="">&#8212;</option>{(catalogs.unidad_medicion || []).map(option => <option key={option.codigo} value={option.codigo}>{option.etiqueta}</option>)}</select></label>{['nominal','minimo','maximo','medido'].map(field => <label key={field}>{field}<input className="input" type="number" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<button type="button" onClick={() => remove(measurement)}>&#215;</button></div>)}</section>}
+    {canEdit && <button type="button" className="dx-measure-add" onClick={add}>+ Medici&#243;n</button>}
   </section>;
 }
-
 function ObservationField({ item, disabled, onChange }) {
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -699,14 +703,14 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         <ObservationField item={item} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
       </div>
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
-      <MeasurementTable item={item} catalogs={catalogs} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />
+      <MeasurementTable item={item} catalogs={catalogs} componentes={componentes} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />
       <HallazgoFotos empresaId={empresaId} diagnosticoId={diagnostico?.id} hallazgo={item} fotos={fotosPorHallazgo[item.id] || []} fotosPendientes={fotosPendientes.filter(row => row.hallazgoKey === keyFor(item))} readOnly={readOnly} onFotosChange={fotos => changeHallazgoFotos(item.id, fotos)} onFotosPendientesChange={fotos => changePendingForHallazgo(keyFor(item), fotos)} />
       </>}
     </article>;
   };
 
   return <section className={`hallazgos-panel${view === 'editor' ? ' is-editor-view' : ' is-list-view'}`} aria-label="Hallazgos del trabajo">
-    <div className="hallazgos-summary"><div><span className="hallazgo-section-label">RESUMEN</span><h3>Hallazgos del trabajo</h3></div><div className="hallazgos-summary-metrics"><strong>{count} hallazgo{count === 1 ? '' : 's'}</strong>{PRIORITIES.map(priority => <span key={priority} className={`badge priority-${priority.toLowerCase()}`}>{priority} · {priorities[priority] || 0}</span>)}</div></div>
+    <div className="hallazgos-summary"><div><span className="hallazgo-section-label">RESUMEN</span><h3>Hallazgos por trabajo</h3></div><div className="hallazgos-summary-metrics"><strong>{count} hallazgo{count === 1 ? '' : 's'}</strong>{PRIORITIES.map(priority => <span key={priority} className={`badge priority-${priority.toLowerCase()}`}>{priority} · {priorities[priority] || 0}</span>)}</div></div>
     {incompleteHallazgos.length > 0 && <div className="hallazgos-incomplete-notice" role="status"><span>Hay {incompleteHallazgos.length} hallazgo{incompleteHallazgos.length === 1 ? '' : 's'} incompleto{incompleteHallazgos.length === 1 ? '' : 's'}. Complétalos o elimínalos.</span><button type="button" onClick={goToIncomplete}>Ir al hallazgo</button></div>}
     {catalogError && <div className="alert alert-error">No se cargaron los catálogos de hallazgos: {catalogError}</div>}
     {fotosLoadError && <div className="dx-foto-error" role="status">No se pudieron cargar las fotos de los hallazgos: {fotosLoadError}</div>}

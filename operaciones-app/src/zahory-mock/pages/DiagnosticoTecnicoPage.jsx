@@ -427,7 +427,7 @@ function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validat
   );
 }
 
-export function DiagnosticoTecnicoPage() {
+export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const sesion = useSesionOperativa();
   const empresaId = sesion.empresaId;
   const usuarioId = sesion.usuario?.id;
@@ -475,6 +475,7 @@ export function DiagnosticoTecnicoPage() {
   const hallazgosBackRef = useRef(null);
   const goToIncompleteHallazgoRef = useRef(null);
   const tableAnchorRef = useRef(null);
+  const routeOpenIdRef = useRef('');
 
   useEffect(() => {
     mountedRef.current = true;
@@ -639,6 +640,13 @@ export function DiagnosticoTecnicoPage() {
       }
       if (requestId !== openRequestRef.current) return;
       setSelected(detail);
+      if (detail.tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location?.hash !== undefined) {
+        const query = new URLSearchParams(window.location?.hash?.split('?')[1] || '');
+        if (query.get('trabajo') !== detail.id) {
+          query.set('trabajo', detail.id);
+          window.location.hash = `/diagnostico-tecnico?${query}`;
+        }
+      }
       setPendingLineDeletes([]);
       setForm({ tipo: detail.tipo, referencia: reference });
       setSearch('');
@@ -646,6 +654,13 @@ export function DiagnosticoTecnicoPage() {
       setError(errorMessage(loadError));
     }
   };
+
+  useEffect(() => {
+    const id = routeParams.trabajo;
+    if (!id || !access.ver || !empresaId || selected?.id === id || routeOpenIdRef.current === id) return;
+    routeOpenIdRef.current = id;
+    openExisting({ id }).finally(() => { if (routeOpenIdRef.current === id) routeOpenIdRef.current = ''; });
+  }, [routeParams.trabajo, access.ver, empresaId, selected?.id]);
 
   const save = async event => {
     event.preventDefault();
@@ -901,6 +916,7 @@ export function DiagnosticoTecnicoPage() {
     setSavingLine(null);
     setSlowSaveWarning('');
     setSelected(null);
+    if (typeof window !== 'undefined' && window.location?.hash && new URLSearchParams(window.location.hash.split('?')[1] || '').has('trabajo')) window.location.hash = '/diagnostico-tecnico';
     setPendingLineDeletes([]);
     setInformePanel(false);
     setTaskPanel(false);
@@ -1057,7 +1073,7 @@ export function DiagnosticoTecnicoPage() {
 
       {!modalOpen && !sesion.permiteEscritura && <div className="alert alert-warning" style={{ marginBottom: 12 }}>Selecciona una sociedad concreta en la barra superior para poder editar.</div>}
 
-      <section className="dx-ui dx-list" aria-label="Listado de diagnósticos">
+      <section className={`dx-ui dx-list${selected?.tipo === 'mantenimiento' ? ' dx-list-work-hidden' : ''}`} aria-label="Listado de diagnósticos">
         <div className="dx-ui-summary" aria-label="Resumen de diagnósticos">
           <div className="dx-ui-chip"><b>{diagnosticos.length}</b><span>diagnósticos</span></div>
           <div className="dx-ui-chip"><b>{borradoresCount}</b><span>borradores</span></div>
@@ -1106,6 +1122,7 @@ export function DiagnosticoTecnicoPage() {
         key={selected?.id || `nuevo-${form.tipo}`}
         open
         fullPage={selected?.tipo === 'mantenimiento'}
+        pageMode={selected?.tipo === 'mantenimiento'}
         variant={selected ? 'dx-modal' : undefined}
         width={selected ? 1160 : 1040}
         titleClassName={selected ? 'dx-modal-title' : ''}
@@ -1118,12 +1135,21 @@ export function DiagnosticoTecnicoPage() {
         dirty={detailDirty || (taskPanel && taskPanelHasSelection)}
         busy={modalBusy}
         onClose={closeDetail}
+        pageHeader={selected?.tipo === 'mantenimiento' ? requestClose => {
+          const reference = form.referencia || {};
+          const title = `${String(reference.activo || selected.hallazgos?.[0]?.componente_parte || 'Equipo').toLocaleUpperCase('es')} · ${reference.cliente || 'Cliente'}`;
+          const motivo = reference.motivo || reference.observaciones || reference.observacion || reference.descripcion || reference.detalle || 'Motivo de recepción no disponible';
+          const tecnico = reference.tecnico_asignado || reference.tecnico_nombre || reference.tecnico || 'Sin técnico asignado';
+          const fecha = reference.fecha_ingreso ? new Date(reference.fecha_ingreso).toLocaleDateString('es-PE') : 'Fecha pendiente';
+          const componente = reference.componente_nombre || reference.tipo_componente || selected.hallazgos?.[0]?.componente_parte || 'Componente por confirmar';
+          return <header className="dx-work-identity"><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" onClick={requestClose}>← Diagnósticos</button><h1>{title}</h1></div><div className="dx-work-identity-status"><strong>{reference.numero || referenceLabel(reference)}</strong><span className={`dx-ui-pill ${selected.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(selected.estado)}</span></div><div className="dx-work-meta"><span><b>Motivo</b> {motivo}</span><span><b>Técnico</b> {tecnico} · {fecha}</span><span><b>Componente</b> {componente}</span></div></header>;
+        } : null}
         footer={requestClose => selected?.tipo === 'mantenimiento' ? <>
           <div className="dx-work-footer-status">
             {cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
             {error && <div className="alert alert-error">{error}</div>}
           </div>
-          {!informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => hallazgosBackRef.current?.()}>← Volver a la lista</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => document.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
+          {!informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => hallazgosBackRef.current?.()}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => document.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
         </> : <>
           <div style={{ flex: 1 }}>
             {selected && cambiosCount > 0 && <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar{selected.tipo === 'mantenimiento' && Number(hallazgosDirtySummary.fotos || 0) > 0 ? ` · ${hallazgosDirtySummary.fotos} foto${hallazgosDirtySummary.fotos === 1 ? '' : 's'} pendiente${hallazgosDirtySummary.fotos === 1 ? '' : 's'}` : ''}</div>}
@@ -1149,8 +1175,8 @@ export function DiagnosticoTecnicoPage() {
             <ReferenceSelector tipo={form.tipo} value={selectedReference} search={search} references={references} loading={loadingReferences} disabled={false} onSearch={setSearch} onSelect={reference => { setForm(current => ({ ...current, referencia: reference })); setSearch(referenceLabel(reference)); }} />
           </div> : form.tipo === 'mantenimiento' && wizardStep === 2 ? <div className="card-body dx-wizard-body"><h3>Equipo recibido</h3>{selectedReference ? <div className="dx-wizard-summary"><strong>{selectedReference.activo || 'Activo sin descripción'}</strong><span>Recepción {referenceLabel(selectedReference)}</span>{selectedReference.cliente && <span>Cliente · {selectedReference.cliente}</span>}{selectedReference.numero_serie && <span>Serie · {selectedReference.numero_serie}</span>}</div> : <div role="alert" className="alert alert-warning">Primero selecciona la recepción.</div>}</div> : form.tipo === 'mantenimiento' ? <div className="card-body dx-wizard-body"><h3>Revisa los datos</h3><p>Se creará un borrador directamente para continuar con los hallazgos.</p><div className="dx-wizard-summary"><strong>{selectedReference?.activo || 'Activo'}</strong><span>Recepción {referenceLabel(selectedReference)}</span><span>{selectedReference?.cliente || 'Cliente sin dato'}</span><span>Estado inicial · Borrador</span></div></div> : null}
         </form>}
-        {selected && <div className="dx-scope">
-          {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico"><button className="is-done" type="button" disabled><i /><span>Recepción</span></button><button className="is-done" type="button" disabled><i /><span>Equipo</span></button><button className={!informePanel ? 'is-current' : 'is-done'} type="button" onClick={() => setInformePanel(false)}><i /><span>Hallazgos</span></button><button className={informePanel ? 'is-current' : ''} type="button" onClick={() => informePanel ? null : goInforme()}><i /><span>Informe</span></button><button type="button" disabled><i /><span>Cierre</span></button></nav></div>}
+        {selected && <div className={`dx-scope${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-editing-report' : ''}`}>
+          {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico"><button className="is-done" type="button" disabled><i>✓</i><span>1 · Recepción</span></button><button className="is-done" type="button" disabled><i>✓</i><span>2 · Equipo</span></button><button className="is-done" type="button" disabled><i>✓</i><span>3 · Datos</span></button><button className={!informePanel ? 'is-current' : 'is-done'} type="button" onClick={() => setInformePanel(false)}><i>4</i><span>Hallazgos ({selected.hallazgos?.length || 0})</span></button><button className={informePanel ? 'is-current' : ''} type="button" onClick={() => informePanel ? null : goInforme()}><i>5</i><span>Informe</span></button></nav></div>}
           {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button> : null} />}
           {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button></div>}
           <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>

@@ -482,12 +482,12 @@ export async function resolverReferenciasDiagnostico(empresaId, tipo, ids) {
   if (tipo !== 'mantenimiento' || !references.length) return references;
   const { data: receipts, error: receiptError } = await getSupabaseClient()
     .from('recepciones_activos_cliente')
-    .select('id,fecha_ingreso')
+    .select('id,fecha_ingreso,observaciones')
     .eq('empresa_id', empresaId)
     .in('id', references.map(reference => reference.id));
   if (receiptError) return references;
-  const dates = new Map((receipts || []).map(receipt => [receipt.id, receipt.fecha_ingreso]));
-  return references.map(reference => ({ ...reference, fecha_ingreso: dates.get(reference.id) || null }));
+  const receiptsById = new Map((receipts || []).map(receipt => [receipt.id, receipt]));
+  return references.map(reference => ({ ...reference, fecha_ingreso: receiptsById.get(reference.id)?.fecha_ingreso || null, observaciones: receiptsById.get(reference.id)?.observaciones || null }));
 }
 
 export async function listarFamiliasTrabajo(empresaId) {

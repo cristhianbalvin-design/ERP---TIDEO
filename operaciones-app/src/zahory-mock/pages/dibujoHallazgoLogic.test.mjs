@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarTiposDano, construirSvgInforme, normalizarBusquedaTipoDano, posicionarPines, resultadoMedicion, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
+import { agruparMedicionesPorZona, buscarTiposDano, construirSvgInforme, normalizarBusquedaTipoDano, posicionarPines, resultadoMedicion, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
 import { agruparTiposDano, grupoTipoDano, markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 
 test('calcula límites inclusivos y acepta coma decimal', () => {
@@ -50,6 +50,21 @@ test('clasifica los 47 tipos existentes en los siete grupos aprobados', () => {
 test('el dibujo presenta zonas seleccionadas y pines con el número de orden', () => {
   const result = markupDibujoHallazgo('<svg viewBox="0 0 100 80"><rect data-z="eje" x="5" y="5" width="40" height="20"/></svg>', [{ zona_id: 'eje' }], { eje: { x: 5, y: 5, width: 40, height: 20 } });
   assert.match(result, /data-z="eje"[^>]*is-marked/);
+  assert.match(result, /class="is-marked"\s*\/>/);
+  assert.doesNotMatch(result, /\/\s+class=/);
   assert.match(result, /class="dx-hallazgo-pin"/);
   assert.match(result, /<text y="\.5">1<\/text>/);
+});
+
+
+test('agrupa mediciones de cat\u00e1logo por zona y conserva los tres estados de resultado', () => {
+  const groups = agruparMedicionesPorZona(
+    [{ zona_id: 'vastago', orden: 1 }, { zona_id: 'camisa', orden: 2 }],
+    [{ id: 'vastago', nombre: 'V\u00e1stago', medidas: [{ id: 'dv', nombre: '\u00d8 v\u00e1stago', cota: 'dvas' }, { id: 'lv', nombre: 'Longitud \u00fatil', cota: 'lvas' }] }, { id: 'camisa', nombre: 'Camisa', medidas: [{ id: 'di', nombre: '\u00d8 interior', cota: 'dint' }] }],
+    [{ medida_id: 'dv', zona_id: 'vastago', parametro: '\u00d8 v\u00e1stago', cota: 'dvas', minimo: 59.97, maximo: 60, medido: 59.82 }, { medida_id: 'di', zona_id: 'camisa', parametro: '\u00d8 interior', cota: 'dint', minimo: 60, maximo: 60.04, medido: 60.02 }],
+  );
+  assert.deepEqual(groups.map(group => group.nombre), ['V\u00e1stago', 'Camisa']);
+  assert.deepEqual(groups[0].medidas.map(measure => measure.resultado), ['fuera', 'sin_evaluar']);
+  assert.equal(groups[0].medidas[0].cota, 'dvas');
+  assert.equal(groups[1].medidas[0].resultado, 'dentro');
 });

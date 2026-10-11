@@ -31,13 +31,17 @@ export function markupDibujoHallazgo(svg, zonasMarcadas = [], bboxPorZona = {}, 
   let output = safeSvg.replace(/(<[^>]+data-z=["']([^"']+)["'][^>]*)(>)/gi, (all, open, id, close) => {
     const classText = open.match(/\bclass=["']([^"']*)["']/i)?.[1] || '';
     const classes = [...classText.split(/\s+/).filter(Boolean).filter(name => name !== 'is-marked'), ...(selected.has(id) ? ['is-marked'] : [])];
-    return `${open.replace(/\s+class=["'][^"']*["']/i, '')} class="${classes.join(' ')}"${close}`;
+    const selfClosing = /\/\s*$/.test(open);
+    const base = open.replace(/\s*\/\s*$/, '').replace(/\s+class=["'][^"']*["']/i, '');
+    return `${base} class="${classes.join(' ')}"${selfClosing ? ' /' : ''}${close}`;
   });
   output = output.replace(/(<[^>]+data-cota=["']([^"']+)["'][^>]*)(>)/gi, (all, open, id, close) => {
     const classes = open.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || [];
     if (cotasMarcadas.has(id)) classes.push('c-on');
     const cleanOpen = open.replace(/\s+class=["'][^"']*["']/i, '');
-    return `${cleanOpen} class="${[...new Set(classes)].join(' ')}"${close}`;
+    const selfClosing = /\/\s*$/.test(open);
+    const base = cleanOpen.replace(/\s*\/\s*$/, '');
+    return `${base} class="${[...new Set(classes)].join(' ')}"${selfClosing ? ' /' : ''}${close}`;
   });
   const marker = pins.map(pin => `<g class="dx-hallazgo-pin" transform="translate(${pin.cx} ${pin.cy})"><circle r="12"/><text y=".5">${pin.orden}</text></g>`).join('');
   return output.replace(/<svg\b([^>]*)>/i, (_all, attrs) => {

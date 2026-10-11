@@ -125,7 +125,7 @@ describe('HallazgosTrabajoPanel', () => {
     }]);
     await openEditor(renderer);
     const text = textOf(renderer.root);
-    expect(text).toContain('Hallazgos del trabajo');
+    expect(text).toContain('Hallazgos por trabajo');
     expect(text).toContain('Condición del componente');
     expect(text).toContain('MATRIZ v1');
     expect(text).toContain('P1 · 1');
@@ -423,8 +423,9 @@ describe('HallazgosTrabajoPanel', () => {
     expect(drawing.props.dangerouslySetInnerHTML.__html).toContain('dx-hallazgo-pin');
     const note = renderer.root.findByProps({ 'aria-label': 'Nota del pin 1' });
     await act(async () => note.props.onChange({ target: { value: 'Rayado longitudinal' } }));
-    const measured = renderer.root.findAllByType('input').filter(input => input.props.type === 'number').at(-1);
+    const measured = renderer.root.findByProps({ 'aria-label': 'Medido (mm)' });
     await act(async () => measured.props.onChange({ target: { value: '75.2' } }));
+    expect(renderer.root.findByProps({ 'aria-label': 'Medido (mm)' }).props.value).toBe('75.2');
     expect(drawing.props.dangerouslySetInnerHTML.__html).toContain('c-on');
 
     let result;

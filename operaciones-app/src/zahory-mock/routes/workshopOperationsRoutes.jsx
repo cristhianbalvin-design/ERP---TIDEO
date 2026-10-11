@@ -42,7 +42,7 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'ots': return <OTsListadoPage onNav={onNavigate} setCurrentOT={setCurrentOT} />;
     case 'crear-ot': return <CrearOTPage onNav={onNavigate} />;
     case 'recepcion-activos': return <RecepcionActivosClientePage />;
-    case 'diagnostico-tecnico': return <DiagnosticoTecnicoPage />;
+    case 'diagnostico-tecnico': return <DiagnosticoTecnicoPage routeParams={routeParams} />;
     case 'ot-detalle': return <OTDetallePage onNav={onNavigate} code={currentOT} />;
     case 'taller':
     case 'crear-parte-taller': return <ParteTallerPage onNav={onNavigate} routeParams={routeParams} />;

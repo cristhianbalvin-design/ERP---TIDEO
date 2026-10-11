@@ -12,6 +12,25 @@ export function resultadoMedicion({ minimo, maximo, medido } = {}) {
   return (min !== null && value < min) || (max !== null && value > max) ? 'fuera' : 'dentro';
 }
 
+export function agruparMedicionesPorZona(zonas = [], definiciones = [], mediciones = []) {
+  const medidasPorZona = new Map();
+  for (const medida of mediciones) {
+    medidasPorZona.set(medida.zona_id, [...(medidasPorZona.get(medida.zona_id) || []), medida]);
+  }
+  return zonas.map((zona, index) => {
+    const zonaId = zona.zona_id || zona.id;
+    const definicion = definiciones.find(item => item.id === zonaId);
+    const actuales = medidasPorZona.get(zonaId) || [];
+    const medidas = (definicion?.medidas || []).map(definida => actuales.find(item => item.medida_id === definida.id) || {
+      _key: `missing:${zonaId}:${definida.id}`, zona_id: zonaId, medida_id: definida.id,
+      parametro: definida.nombre, unidad: 'mm', cota: definida.cota, referencia: definida.referencia,
+      nominal: '', minimo: '', maximo: '', medido: '',
+    }).map(medida => ({ ...medida, resultado: resultadoMedicion(medida) || 'sin_evaluar' }));
+    return { zonaId, nombre: definicion?.nombre || zona.nombre || zonaId, orden: zona.orden || index + 1, medidas,
+      otras: actuales.filter(item => !item.medida_id) };
+  });
+}
+
 export function posicionarPines(zonas = []) {
   const placed = [];
   const candidatesFor = box => {
