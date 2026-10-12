@@ -33,6 +33,7 @@ describe('lógica de Inventario & Kardex', () => {
     ['transferencia_entrada', 1, 'Transf. entrada'],
     ['transferencia_salida', -1, 'Transf. salida'],
     ['ajuste', 1, 'Ajuste'],
+    ['transferencia_entrada', 1, 'Transf. entrada'],
   ])('aplica signo y etiqueta a %s', (tipo, esperado, etiqueta) => {
     expect(cantidadConSigno({ tipo, cantidad: 5 })).toBe(esperado * 5);
     expect(etiquetaTipoMovimiento(tipo)).toBe(etiqueta);
@@ -53,6 +54,13 @@ describe('lógica de Inventario & Kardex', () => {
     expect(esTransferencia({ tipo: 'transferencia_salida' })).toBe(true);
     expect(esTransferencia({ tipo: 'transferencia_entrada' })).toBe(true);
     expect(esTransferencia({ tipo: 'entrada' })).toBe(false);
+  });
+
+  it('etiqueta los motivos nuevos y conserva ambas liberaciones como pares de transferencia', () => {
+    expect(etiquetaMotivoKardex('liberacion_cuarentena')).toBe('Liberación de cuarentena');
+    expect(etiquetaMotivoKardex('reversa_despacho')).toBe('Reversa de despacho');
+    expect(esTransferencia({ tipo: 'transferencia_salida', referencia_tipo: 'transferencia', motivo: 'liberacion_cuarentena' })).toBe(true);
+    expect(esTransferencia({ tipo: 'transferencia_entrada', referencia_tipo: 'transferencia', motivo: 'liberacion_cuarentena' })).toBe(true);
   });
 
   it('resuelve etiquetas legibles de ubicaciones y almacenes con id como fallback', () => {

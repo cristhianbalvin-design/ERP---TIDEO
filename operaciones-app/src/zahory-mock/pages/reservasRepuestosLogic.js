@@ -2,6 +2,7 @@ const ESTADOS_LINEA = Object.freeze({
   estimado: ['Estimado', 'is-gray'], reservado: ['Reservado', 'is-green'],
   reservado_parcial_solpe: ['Reservado parcial + SOLPE', 'is-amber'],
   despachado_parcial: ['Despachado parcial', 'is-cyan'], despachado: ['Despachado', 'is-green'],
+  despachado_liberado: ['Despachado y liberado', 'is-cyan'],
   liberado: ['Liberado', 'is-gray'], consumido: ['Consumido', 'is-gray'], anulado: ['Anulado', 'is-gray'],
 });
 const numero = valor => Number(valor || 0);
@@ -18,6 +19,7 @@ export function estadoAgregadoOT(ot) {
   const liberado = lineas.reduce((suma, linea) => suma + numero(linea.liberado), 0);
   if (pendientes === 0 && despachado > 0 && liberado === 0) return { texto: 'Despachado', tono: 'is-green' };
   if (pendientes === 0 && liberado > 0 && despachado === 0) return { texto: 'Liberado', tono: 'is-gray' };
+  if (pendientes === 0 && liberado > 0 && despachado > 0) return { texto: 'Despachado y liberado', tono: 'is-cyan' };
   if (despachado > 0) return { texto: 'Despachado parcial', tono: 'is-cyan' };
   if (lineas.some(linea => numero(linea.cantidad_estimada) > numero(linea.reservado))) return { texto: 'Reserva pendiente', tono: 'is-amber' };
   return { texto: 'Reservado', tono: 'is-green' };
@@ -26,11 +28,11 @@ export function etiquetaConteoLineas(cantidad) { return `${cantidad} ${Number(ca
 export function etiquetaEstadoOT(estado) {
   return ({ programada: 'Programada', ejecucion: 'Ejecución', cerrada: 'Cerrada', cancelada: 'Cancelada', anulada: 'Anulada' })[estado] || String(estado || 'Sin estado');
 }
-export function validarCantidadReserva(valor, pendiente) {
+export function validarCantidadReserva(valor, pendiente, sufijo = 'pendientes') {
   const texto = String(valor ?? '').trim();
   const cantidad = Number(texto.replace(',', '.'));
   if (!texto || !Number.isFinite(cantidad) || cantidad <= 0) return 'La cantidad debe ser mayor a cero.';
-  if (cantidad > numero(pendiente)) return `La cantidad no puede superar ${numero(pendiente)} pendientes.`;
+  if (cantidad > numero(pendiente)) return `La cantidad no puede superar ${numero(pendiente)} ${sufijo}.`;
   if (Math.round(cantidad * 100) !== cantidad * 100) return 'La cantidad admite hasta 2 decimales.';
   return '';
 }
@@ -51,7 +53,8 @@ export function mapearErrorReserva(error) {
   return error?.message || 'No se pudo completar la acción sobre la reserva.';
 }
 export function puedeOperarLinea(permisos, accion, ot, linea) {
-  const clave = accion === 'despachar' ? 'despachar' : 'liberar';
+  const clave = accion === 'despachar' || accion === 'revertir' ? 'despachar' : 'liberar';
+  const cantidad = accion === 'revertir' ? numero(linea?.despachado) : numero(linea?.pendiente);
   return permisos?.[clave] === true && ['programada', 'ejecucion'].includes(ot?.estado)
-    && numero(linea?.pendiente) > 0 && linea?.estado !== 'anulado';
+    && cantidad > 0 && (accion === 'revertir' || linea?.estado !== 'anulado');
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc }) }));
-import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT } from '../src/services/reservasRepuestosService.js';
+import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespachoOT } from '../src/services/reservasRepuestosService.js';
 
 describe('reservasRepuestosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null }); });
@@ -27,6 +27,16 @@ describe('reservasRepuestosService', () => {
       p_empresa_id: 'empresa-1', p_ot_segmento_repuesto_id: 'segmento-9', p_cantidad: 1.5,
       p_motivo: 'Corrección', p_observacion: 'Nota',
     });
+  });
+
+  it('llama revertirDespachoOT con parámetros exactos y ninguno undefined', async () => {
+    const lineas = [{ ot_segmento_repuesto_id: 'segmento-1', cantidad: 1.5 }];
+    await revertirDespachoOT({ empresa_id: 'empresa-1', ot_id: 'ot-1', lineas, motivo: 'Error de despacho', observacion: 'Nota' });
+    expect(rpc).toHaveBeenCalledWith('wms_revertir_despacho_ot', {
+      p_empresa_id: 'empresa-1', p_ot_id: 'ot-1', p_lineas: lineas,
+      p_motivo: 'Error de despacho', p_observacion: 'Nota',
+    });
+    expect(Object.values(rpc.mock.calls[0][1]).some(valor => valor === undefined)).toBe(false);
   });
 
   it('llama conciliarCierreOT con nombre RPC y parámetros exactos', async () => {

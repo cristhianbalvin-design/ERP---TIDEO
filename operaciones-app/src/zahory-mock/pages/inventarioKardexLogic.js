@@ -77,6 +77,8 @@ const TIPOS = {
 
 export function etiquetaMotivoKardex(motivo) {
   if (motivo === 'despacho_taller') return TIPOS.despacho_taller[0];
+  if (motivo === 'reversa_despacho') return 'Reversa de despacho';
+  if (motivo === 'liberacion_cuarentena') return 'Liberación de cuarentena';
   return String(motivo || '').replaceAll('_', ' ').replace(/^\p{L}/u, letra => letra.toLocaleUpperCase('es-PE'));
 }
 

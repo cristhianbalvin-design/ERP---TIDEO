@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc }) }));
-import { anularMovimiento, registrarMovimientoManual, transferirStock } from '../src/services/inventarioMovimientosService.js';
+import { anularMovimiento, liberarCuarentena, registrarMovimientoManual, transferirStock } from '../src/services/inventarioMovimientosService.js';
 
 describe('inventarioMovimientosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { kardex_id: 'k1', saldo: 2 }, error: null }); });
@@ -33,6 +33,15 @@ describe('inventarioMovimientosService', () => {
       p_empresa_id: 'e1', p_stock_origen_id: 'st-1', p_almacen_destino_id: 'a2',
       p_ubicacion_destino_id: 'u2', p_cantidad: 2.5, p_observacion: null,
     });
+  });
+
+  it('llama liberarCuarentena con nombres exactos y ninguno undefined', async () => {
+    await liberarCuarentena({ empresa_id: 'e1', stock_origen_id: 'st-1', almacen_destino_id: 'a2', ubicacion_destino_id: 'u2', cantidad: 2, motivo: 'Inspección aprobada', observacion: 'Nota' });
+    expect(rpc).toHaveBeenCalledWith('wms_liberar_cuarentena', {
+      p_empresa_id: 'e1', p_stock_origen_id: 'st-1', p_almacen_destino_id: 'a2',
+      p_ubicacion_destino_id: 'u2', p_cantidad: 2, p_motivo: 'Inspección aprobada', p_observacion: 'Nota',
+    });
+    expect(Object.values(rpc.mock.calls[0][1]).some(valor => valor === undefined)).toBe(false);
   });
 
   it('propaga el mensaje de servidor sin envolverlo en detalles técnicos', async () => {

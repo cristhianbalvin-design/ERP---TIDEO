@@ -6,7 +6,8 @@ import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolida
 import { MovimientoPanel } from './MovimientoPanel.jsx';
 import { MovimientoDetalle } from './MovimientoDetalle.jsx';
 import { TransferenciaPanel } from './TransferenciaPanel.jsx';
-import { anularMovimiento, registrarMovimientoManual, transferirStock } from '../../services/inventarioMovimientosService.js';
+import { LiberarCuarentenaPanel } from './LiberarCuarentenaPanel.jsx';
+import { anularMovimiento, liberarCuarentena, registrarMovimientoManual, transferirStock } from '../../services/inventarioMovimientosService.js';
 import { etiquetaMotivoMovimiento, mapearErrorMovimiento } from './inventarioMovimientosLogic.js';
 
 const fmtNumero = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
@@ -47,7 +48,7 @@ function MovimientoFila({ movimiento, conMaterial, onOpen, onSelect }) {
   const nombreUbicacion = movimiento.ubicaciones?.nombre || movimiento.ubicaciones?.codigo;
   const referencia = movimiento.nro_documento || movimiento.referencia_id || movimiento.referencia_tipo || '';
   const transferencia = esTransferencia(movimiento);
-  const motivoVisible = transferencia ? 'Transferencia' : etiquetaMotivoMovimiento(movimiento.motivo);
+  const motivoVisible = movimiento.motivo === 'liberacion_cuarentena' ? etiquetaMotivoMovimiento(movimiento.motivo) : transferencia ? 'Transferencia' : etiquetaMotivoMovimiento(movimiento.motivo);
   const detalle = [motivoVisible, referencia].filter(Boolean).join(' · ');
   const saldo = movimiento.saldo_cantidad;
   const anulado = Boolean(movimiento.anulado);
@@ -69,6 +70,7 @@ export function InventarioKardexPage() {
   const [puedeVer, setPuedeVer] = useState(false);
   const [permiteCrear, setPermiteCrear] = useState(false);
   const [permiteEditar, setPermiteEditar] = useState(false);
+  const [permiteLiberar, setPermiteLiberar] = useState(false);
   const [permisosCargados, setPermisosCargados] = useState(false);
   const [datos, setDatos] = useState({ almacenes: [], ubicaciones: [], stock: [], kardex: [], kardexParcial: false, limiteKardex: 200 });
   const [cargando, setCargando] = useState(true);
@@ -88,6 +90,7 @@ export function InventarioKardexPage() {
   const [reintentoKardexMaterial, setReintentoKardexMaterial] = useState(0);
   const [panelAccion, setPanelAccion] = useState('');
   const [transferenciaInicial, setTransferenciaInicial] = useState(null);
+  const [liberacionInicial, setLiberacionInicial] = useState(null);
   const [movimientoDetalle, setMovimientoDetalle] = useState(null);
   const [toast, setToast] = useState('');
   const controlQueAbre = useRef(null);
@@ -102,12 +105,13 @@ export function InventarioKardexPage() {
     let vigente = true;
     if (sesion.cargando || sesion.estado !== 'listo' || !empresaId) return () => { vigente = false; };
     setPermisosCargados(false);
-    Promise.all(['ver', 'crear', 'editar'].map(target_accion => getSupabaseClient().rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'inventario', target_accion })))
-      .then(([ver, crear, editar]) => {
+    Promise.all(['ver', 'crear', 'editar', 'liberar'].map(target_accion => getSupabaseClient().rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'inventario', target_accion })))
+      .then(([ver, crear, editar, liberar]) => {
         if (ver.error) throw ver.error;
         if (crear.error) throw crear.error;
         if (editar.error) throw editar.error;
-        if (vigente) { setPuedeVer(Boolean(ver.data)); setPermiteCrear(Boolean(crear.data)); setPermiteEditar(Boolean(editar.data)); setPermisosCargados(true); }
+        if (liberar.error) throw liberar.error;
+        if (vigente) { setPuedeVer(Boolean(ver.data)); setPermiteCrear(Boolean(crear.data)); setPermiteEditar(Boolean(editar.data)); setPermiteLiberar(Boolean(liberar.data)); setPermisosCargados(true); }
       }).catch(err => { if (vigente) { setError(mensajeError(err)); setPermisosCargados(true); } });
     return () => { vigente = false; };
   }, [empresaId, sesion.cargando, sesion.estado, sesion.permiteEscritura, reintentoPermisos]);
@@ -115,6 +119,7 @@ export function InventarioKardexPage() {
   const puedeEscribir = sesion.permiteEscritura !== false;
   const puedeCrear = permiteCrear && puedeEscribir;
   const puedeEditar = permiteEditar && puedeEscribir;
+  const puedeLiberar = permiteLiberar && puedeEscribir;
 
   const cargar = useCallback(async () => {
     setCargando(true); setError('');
@@ -176,6 +181,8 @@ export function InventarioKardexPage() {
   const cerrarPanelMovimiento = () => { setPanelAccion(''); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
   const abrirPanelTransferencia = (fila, opciones = {}, focoRestaurar) => { controlQueAbre.current = focoRestaurar || globalThis.document?.activeElement; setToast(''); setTransferenciaInicial({ stockOrigen: fila, cantidadInicial: opciones.cantidadInicial ?? Math.max(Number(fila.disponible ?? (Number(fila.fisico) - Number(fila.reservado))), 0), ...opciones }); };
   const cerrarPanelTransferencia = () => { setTransferenciaInicial(null); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
+  const abrirPanelLiberacion = fila => { controlQueAbre.current = globalThis.document?.activeElement; setToast(''); setLiberacionInicial(fila); };
+  const cerrarPanelLiberacion = () => { setLiberacionInicial(null); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
   const abrirDetalleMovimiento = movimiento => { controlQueAbre.current = globalThis.document?.activeElement; setMovimientoDetalle(movimiento); };
   const cerrarDetalleMovimiento = () => { setMovimientoDetalle(null); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
   const ejecutarMovimiento = async form => {
@@ -194,6 +201,14 @@ export function InventarioKardexPage() {
     try {
       await transferirStock({ empresa_id: empresaId, stock_origen_id: transferenciaInicial.stockOrigen.id, almacen_destino_id: form.almacen_destino_id, ubicacion_destino_id: form.ubicacion_destino_id, cantidad: form.cantidad, observacion: form.observacion });
       setTransferenciaInicial(null); setToast('Transferencia registrada correctamente.');
+      setReintentoCarga(value => value + 1); setReintentoKardexMaterial(value => value + 1);
+      globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0);
+    } catch (err) { throw new Error(mapearErrorMovimiento(err)); }
+  };
+  const ejecutarLiberacion = async form => {
+    try {
+      await liberarCuarentena({ empresa_id: empresaId, stock_origen_id: liberacionInicial.id, almacen_destino_id: form.almacen_destino_id, ubicacion_destino_id: form.ubicacion_destino_id, cantidad: form.cantidad, motivo: form.motivo, observacion: form.observacion });
+      setLiberacionInicial(null); setToast('Stock liberado. Se trasladó a una ubicación normal y quedó disponible.');
       setReintentoCarga(value => value + 1); setReintentoKardexMaterial(value => value + 1);
       globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0);
     } catch (err) { throw new Error(mapearErrorMovimiento(err)); }
@@ -221,7 +236,7 @@ export function InventarioKardexPage() {
         <div className="dx-ui-summary"><div className="dx-ui-chip"><b>{fmtNumero(calculo.fisico)}</b><span>Físico ({materialSeleccionado.unidad})</span></div><div className="dx-ui-chip"><b>{fmtNumero(calculo.reservado)}</b><span>Reservado</span></div><div className="dx-ui-chip dx-stk-chip-warn"><b>{fmtNumero(calculo.noDisponible)}</b><span>En cuarentena o merma</span></div><div className="dx-ui-chip dx-stk-chip-hl"><b>{fmtNumero(calculo.disponible)}</b><span>Disponible</span></div></div>
         <div className="dx-ui-card"><div className="dx-stk-meta"><div><small>Costo promedio</small><span>{fmtDinero(calculo.costoPromedio, calculo.moneda)}</span></div><div><small>Valor en inventario</small><span>{fmtDinero(calculo.valor, calculo.moneda)}</span></div><div><small>Control</small><span>{materialSeleccionado.tipo_control === 'lote' ? 'Por lote' : materialSeleccionado.tipo_control === 'serie' ? 'Por serie' : 'Sin control'}</span></div><div><small>Alerta de reposición</small><span>{fmtNumero(calculo.reorden)} {materialSeleccionado.unidad} <em style={{ fontStyle: 'normal', color: 'var(--dx-ui-gray)', fontWeight: 500, fontSize: 12 }}>(reorden {fmtNumero(materialSeleccionado.punto_reorden || materialSeleccionado.stock_minimo)} + seguridad {fmtNumero(materialSeleccionado.stock_seguridad)})</em></span></div></div>
           <div className="dx-ui-toolbar"><h2>Dónde está</h2><span className="dx-ui-count">{filas.length} ubicación(es)</span></div><div className="dx-ui-head dx-stk-wcols" aria-hidden="true"><span>Ubicación</span><span>Uso</span><span>Lote</span><span>Físico</span><span>Reservado</span></div>
-          {filas.map(fila => <div className="dx-ui-row dx-stk-wcols" key={fila.id}><div className="dx-stk-main"><span><b>{fila.ubicacion}</b><small>{fila.almacen}</small></span></div><span><span className={`dx-ui-pill ${['cuarentena', 'merma'].includes(fila.uso) ? 'is-amber' : 'is-gray'}`}><i />{fila.uso === 'almacenaje' ? 'Almacenaje' : fila.uso === 'cuarentena' ? 'Cuarentena' : fila.uso === 'merma' ? 'Merma' : fila.uso}</span></span><div className="dx-stk-n" style={{ textAlign: 'left' }}><span className="dx-stk-lbl">Lote / serie</span>{[fila.lote, fila.serie].filter(Boolean).join(' / ') || '—'}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Físico</span>{fmtNumero(fila.fisico)}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Reservado</span>{fmtNumero(fila.reservado)}</div><div className="dx-mov-row-actions">{permisosCargados && puedeCrear && <button type="button" className="dx-btn" aria-label={`Mover ${materialSeleccionado.descripcion} desde ${fila.ubicacion}`} onClick={() => abrirPanelTransferencia(fila)}>Mover</button>}</div></div>)}
+          {filas.map(fila => <div className="dx-ui-row dx-stk-wcols" key={fila.id}><div className="dx-stk-main"><span><b>{fila.ubicacion}</b><small>{fila.almacen}</small></span></div><span><span className={`dx-ui-pill ${['cuarentena', 'merma'].includes(fila.uso) ? 'is-amber' : 'is-gray'}`}><i />{fila.uso === 'almacenaje' ? 'Almacenaje' : fila.uso === 'cuarentena' ? 'Cuarentena' : fila.uso === 'merma' ? 'Merma' : fila.uso}</span></span><div className="dx-stk-n" style={{ textAlign: 'left' }}><span className="dx-stk-lbl">Lote / serie</span>{[fila.lote, fila.serie].filter(Boolean).join(' / ') || '—'}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Físico</span>{fmtNumero(fila.fisico)}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Reservado</span>{fmtNumero(fila.reservado)}</div><div className="dx-mov-row-actions">{permisosCargados && ['cuarentena', 'merma'].includes(fila.uso) ? puedeLiberar ? <button type="button" className="dx-btn" aria-label={`Liberar ${materialSeleccionado.descripcion} desde ${fila.ubicacion}`} onClick={() => abrirPanelLiberacion(fila)}>Liberar</button> : <span><button type="button" className="dx-btn" disabled title="Sin permiso para liberar" aria-label="Liberar deshabilitado: sin permiso">Liberar</button><small className="dx-mov-disabled-reason">Sin permiso para liberar</small></span> : permisosCargados && puedeCrear && <button type="button" className="dx-btn" aria-label={`Mover ${materialSeleccionado.descripcion} desde ${fila.ubicacion}`} onClick={() => abrirPanelTransferencia(fila)}>Mover</button>}</div></div>)}
           {!filas.length && <div className="dx-ui-empty">Sin existencias en ning&uacute;n almac&eacute;n.</div>}
         </div>
         <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Kardex del material</h2><span className="dx-ui-count">{movimientosMaterialFiltrados.length} movimiento(s)</span><select className="dx-stk-sel" aria-label="Filtrar por tipo de movimiento" value={tipo} onChange={evento => setTipo(evento.target.value)}><option value="">Todos los tipos</option>{tiposKardexMaterial.map(valor => <option key={valor} value={valor}>{etiquetaTipoMovimiento(valor)}</option>)}</select></div>{errorKardexMaterial && <div className="dx-stk-alert" role="alert">{errorKardexMaterial} <button type="button" className="dx-btn" onClick={() => setReintentoKardexMaterial(value => value + 1)}>Reintentar</button></div>}{cargandoKardexMaterial ? <div className="dx-ui-empty" role="status">Cargando kardex del material...</div> : !errorKardexMaterial && <><div className="dx-ui-head dx-stk-dcols" aria-hidden="true"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span></div>{movimientosMaterialFiltrados.map(movimiento => <MovimientoFila key={movimiento.id} movimiento={movimiento} onSelect={abrirDetalleMovimiento} />)}{!movimientosMaterialFiltrados.length && <div className="dx-ui-empty">Sin movimientos de este tipo.</div>}{kardexMaterialParcial && <div className="dx-stk-note">El kardex muestra solo los 200 movimientos m&aacute;s recientes; el historial de este material podr&iacute;a estar incompleto.</div>}</>}</div>
@@ -237,6 +252,7 @@ export function InventarioKardexPage() {
     </>}
     {panelAccion && <MovimientoPanel accion={panelAccion} materiales={materiales} almacenes={datos.almacenes} ubicaciones={datos.ubicaciones} stock={datos.stock} sociedades={sesion.sociedadesDisponibles || []} initialMaterialId={materialSeleccionado?.id || ''} sociedadId={sociedadActiva?.id === '**todas**' || sociedadId === '**todas**' ? null : sociedadActiva?.id || sociedadId} onClose={cerrarPanelMovimiento} onSubmit={ejecutarMovimiento} />}
     {transferenciaInicial && <TransferenciaPanel material={materialesPorId.get(transferenciaInicial.stockOrigen.material_id) || transferenciaInicial.stockOrigen.materiales} stockOrigen={transferenciaInicial.stockOrigen} destinoInicial={transferenciaInicial.destinoInicial} cantidadInicial={transferenciaInicial.cantidadInicial} almacenes={datos.almacenes} ubicaciones={datos.ubicaciones} onClose={cerrarPanelTransferencia} onSubmit={ejecutarTransferencia} />}
+    {liberacionInicial && <LiberarCuarentenaPanel material={materialesPorId.get(liberacionInicial.material_id) || liberacionInicial.materiales} stockOrigen={liberacionInicial} almacenes={datos.almacenes} ubicaciones={datos.ubicaciones} onClose={cerrarPanelLiberacion} onSubmit={ejecutarLiberacion} />}
     {movimientoDetalle && <MovimientoDetalle movimiento={movimientoDetalle} movimientosRelacionados={[...datos.kardex, ...kardexMaterial]} stock={datos.stock} almacenes={datos.almacenes} ubicaciones={datos.ubicaciones} puedeEditar={puedeEditar} onClose={cerrarDetalleMovimiento} onAnnul={ejecutarAnulacion} onReverseTransfer={permisosCargados && puedeCrear ? (fila, opciones) => { const retorno = controlQueAbre.current; cerrarDetalleMovimiento(); abrirPanelTransferencia(fila, opciones, retorno); } : undefined} />}
   </section>;
 }
