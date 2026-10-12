@@ -2914,6 +2914,24 @@ a { color: var(--cyan); text-decoration: none; }
 [data-theme='dark'] .dx-work-page .dx-inf-drawing h4,
 [data-theme='dark'] .dx-work-page .dx-inf-drawing-legend { color:var(--dx-ui-ink); }
 [data-theme='dark'] .dx-work-page .dx-inf-sheet { background:#fff; color:#1F2937; }
+[data-theme='dark'] .dx-work-page .dx-inf-inline .dx-inf-controls .dx-inf-save {
+  border-color:var(--dx-ui-primary-bg);
+  background:var(--dx-ui-primary-bg);
+  color:var(--dx-ui-primary-fg);
+}
+[data-theme='dark'] .dx-work-page .dx-diagnostico-resumen-add {
+  border-color:var(--dx-ui-primary-bg);
+  background:var(--dx-ui-primary-bg);
+  color:var(--dx-ui-primary-fg);
+}
+[data-theme='dark'] .dx-work-page .dx-info,
+[data-theme='dark'] .dx-work-page .dx-info b {
+  background:var(--dx-ui-cyan-bg);
+  color:var(--dx-ui-cyan-fg);
+}
+[data-theme='dark'] .dx-work-page .diagnostico-estado-history-toggle > span {
+  color:var(--dx-ui-gray);
+}
 
 .dx-work-page .dx-cascada-task-row .dx-cascada-fields {
   grid-template-columns:minmax(0,1fr) minmax(72px,.55fr) minmax(0,1fr) minmax(72px,.55fr);
