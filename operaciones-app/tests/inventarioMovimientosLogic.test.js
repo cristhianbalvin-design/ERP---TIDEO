@@ -13,6 +13,7 @@ describe('inventarioMovimientosLogic', () => {
   it('muestra etiquetas conocidas y un respaldo legible para motivos de lectura', () => {
     expect(etiquetaMotivoMovimiento('ajuste_positivo')).toBe('Ajuste positivo');
     expect(etiquetaMotivoMovimiento('recepcion_oc')).toBe('Recepción de OC');
+    expect(etiquetaMotivoMovimiento('despacho_taller')).toBe('Despacho a taller');
     expect(etiquetaMotivoMovimiento('motivo_desconocido')).toBe('Motivo desconocido');
   });
 
@@ -45,6 +46,8 @@ describe('inventarioMovimientosLogic', () => {
     expect(movimientoAnulable({ motivo: 'devolucion_proveedor', referencia_tipo: 'recepcion_oc' })).toBe(false);
     expect(motivoNoAnulable({ motivo: 'recepcion_oc', referencia_tipo: 'recepcion_oc' })).toContain('Recepciones');
     expect(motivoNoAnulable({ motivo: 'consumo_ot', referencia_tipo: 'ot' })).toContain('OT');
+    expect(movimientoAnulable({ motivo: 'despacho_taller', referencia_tipo: 'ot' })).toBe(false);
+    expect(motivoNoAnulable({ motivo: 'despacho_taller', referencia_tipo: 'ot' })).toContain('se corrige desde la OT');
     expect(motivoNoAnulable({ motivo: 'transferencia_entrada', referencia_tipo: 'transferencia' })).toContain('transferencia');
     expect(motivoNoAnulable({ motivo: 'anulacion', referencia_tipo: 'anulacion' })).toContain('no se puede anular');
     expect(motivoNoAnulable({ motivo: 'saldo_inicial' }, false)).toContain('Tu rol');

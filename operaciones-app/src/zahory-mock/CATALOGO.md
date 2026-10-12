@@ -73,7 +73,7 @@ Fuente: `navigation.js`, `components/shell.jsx` (sidebar) y los tres archivos en
 | Taller & Operaciones | Confiabilidad | Disponibilidad Mecánica | `#/disponibilidad-mecanica` | `pages/pages2_v2.jsx` — `DisponibilidadMecanica` | A |
 | Supply Chain | Almacén & Repuestos | Inventario & Kardex | `#/catalogo` | `pages/pages2_v2.jsx` — `CatalogoPage` | B2 |
 | Supply Chain | Almacén & Repuestos | Solicitudes SOLPE | `#/solicitudes` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `solpe`); referencia mock intacta: `pages/pages2_v2.jsx` — `SolicitudesPage` | B1 |
-| Supply Chain | Almacén & Repuestos | Reserva de Repuestos | `#/almacen-reservas` | `components/PlaceholderPage.jsx` — `PlaceholderPage` | B2 |
+| Supply Chain | Almacén & Repuestos | Reserva de Repuestos | `#/almacen-reservas` | `pages/ReservaRepuestosPage.jsx` — `ReservaRepuestosPage` | B2-C |
 | Supply Chain | Almacén & Repuestos | Stock Mínimos & Alertas | `#/almacen-alertas` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `inventario`); referencia mock intacta: `components/PlaceholderPage.jsx` — `PlaceholderPage` | B1 |
 | Supply Chain | Compras & Importación | Proveedores | `#/compras-proveedores` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `proveedores`); referencia mock intacta: `components/PlaceholderPage.jsx` — `PlaceholderPage` | B1 |
 | Supply Chain | Compras & Importación | Cotizaciones Compra | `#/compras-cotizaciones` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `cot_compras`); referencia mock intacta: `components/PlaceholderPage.jsx` — `PlaceholderPage` | B1 |
