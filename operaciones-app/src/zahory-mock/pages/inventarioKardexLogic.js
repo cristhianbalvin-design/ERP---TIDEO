@@ -101,6 +101,20 @@ export function esTransferencia(movimiento) {
     || movimiento?.referencia_tipo === 'transferencia';
 }
 
+export function resolverEtiquetaUbicacionAlmacen(id, tipo, { almacenes = [], ubicaciones = [], stock = [], registro } = {}) {
+  if (id == null || id === '') return '—';
+  const esAlmacen = tipo === 'almacen';
+  const catalogo = esAlmacen ? almacenes : ubicaciones;
+  const relacion = esAlmacen ? 'almacenes' : 'ubicaciones';
+  const campoId = esAlmacen ? 'almacen_id' : 'ubicacion_id';
+  const items = [catalogo.find(registro => registro.id === id), stock.find(fila => fila[campoId] === id)?.[relacion], registro].filter(Boolean);
+  const item = items.find(registro => registro.codigo && registro.nombre) || items[0];
+  const codigo = item?.codigo;
+  const nombre = item?.nombre;
+  if (codigo && nombre) return `${codigo} · ${nombre}`;
+  return nombre || codigo || id;
+}
+
 export function etiquetaValorizacion(movimiento) {
   if (movimiento?.anulado) return 'Anulado';
   return ['pendiente_factura', 'provisional'].includes(movimiento?.valorizacion_estado) ? 'Provisional' : 'Definitiva';

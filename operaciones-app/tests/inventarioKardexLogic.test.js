@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolidarStockPorMaterial, esTransferencia, etiquetaTipoMovimiento, etiquetaValorizacion } from '../src/zahory-mock/pages/inventarioKardexLogic.js';
+import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolidarStockPorMaterial, esTransferencia, etiquetaTipoMovimiento, etiquetaValorizacion, resolverEtiquetaUbicacionAlmacen } from '../src/zahory-mock/pages/inventarioKardexLogic.js';
 
 describe('lógica de Inventario & Kardex', () => {
   it('resta reservado y físico en cuarentena y merma del disponible', () => {
@@ -48,6 +48,19 @@ describe('lógica de Inventario & Kardex', () => {
     expect(esTransferencia({ tipo: 'transferencia_salida' })).toBe(true);
     expect(esTransferencia({ tipo: 'transferencia_entrada' })).toBe(true);
     expect(esTransferencia({ tipo: 'entrada' })).toBe(false);
+  });
+
+  it('resuelve etiquetas legibles de ubicaciones y almacenes con id como fallback', () => {
+    const datos = {
+      ubicaciones: [{ id: 'u1', codigo: 'R-01', nombre: 'Rack principal' }],
+      almacenes: [{ id: 'a1', codigo: 'ALM-01', nombre: 'Almacén Norte' }],
+      stock: [{ ubicacion_id: 'u2', ubicaciones: { codigo: 'CUA-01', nombre: 'Cuarentena' }, almacen_id: 'a2', almacenes: { nombre: 'Almacén Sur' } }],
+    };
+    expect(resolverEtiquetaUbicacionAlmacen('u1', 'ubicacion', datos)).toBe('R-01 · Rack principal');
+    expect(resolverEtiquetaUbicacionAlmacen('u2', 'ubicacion', datos)).toBe('CUA-01 · Cuarentena');
+    expect(resolverEtiquetaUbicacionAlmacen('a1', 'almacen', datos)).toBe('ALM-01 · Almacén Norte');
+    expect(resolverEtiquetaUbicacionAlmacen('a2', 'almacen', datos)).toBe('Almacén Sur');
+    expect(resolverEtiquetaUbicacionAlmacen('u-no-encontrada', 'ubicacion', datos)).toBe('u-no-encontrada');
   });
 
   it('consolida varias filas de stock por material y conserva el detalle', () => {

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { etiquetaMotivoMovimiento, motivoNoAnulable } from './inventarioMovimientosLogic.js';
-import { cantidadConSigno, claseTipoMovimiento, etiquetaTipoMovimiento, etiquetaValorizacion, esTransferencia } from './inventarioKardexLogic.js';
+import { cantidadConSigno, claseTipoMovimiento, etiquetaTipoMovimiento, etiquetaValorizacion, esTransferencia, resolverEtiquetaUbicacionAlmacen } from './inventarioKardexLogic.js';
 
 const fecha = value => value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const cantidad = value => Number(value || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 
-export function MovimientoDetalle({ movimiento, movimientosRelacionados = [], puedeEditar, stock = [], onClose, onAnnul, onReverseTransfer }) {
+export function MovimientoDetalle({ movimiento, movimientosRelacionados = [], puedeEditar, stock = [], almacenes = [], ubicaciones = [], onClose, onAnnul, onReverseTransfer }) {
   const [confirmar, setConfirmar] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
@@ -44,7 +44,9 @@ export function MovimientoDetalle({ movimiento, movimientosRelacionados = [], pu
     finally { envioRef.current = false; setGuardando(false); }
   };
   const detalle = movimiento.materiales || {};
-  const loc = movimiento.ubicaciones || {};
+  const catalogos = { almacenes, ubicaciones, stock };
+  const etiquetaAlmacen = item => item ? resolverEtiquetaUbicacionAlmacen(item.almacen_id, 'almacen', { ...catalogos, registro: item.almacenes }) : '—';
+  const etiquetaUbicacion = item => item ? resolverEtiquetaUbicacionAlmacen(item.ubicacion_id, 'ubicacion', { ...catalogos, registro: item.ubicaciones }) : '—';
   const registradoPor = movimiento.usuario_nombre || movimiento.usuario_id || movimiento.created_by;
   const registradoPorEsUuid = typeof registradoPor === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(registradoPor);
 
@@ -64,13 +66,13 @@ export function MovimientoDetalle({ movimiento, movimientosRelacionados = [], pu
           <div><dt>Cantidad</dt><dd>{cantidadFirmada > 0 ? '+' : '−'}{cantidad(Math.abs(cantidadFirmada))} {detalle.unidad || ''}</dd></div>
           <div><dt>Material</dt><dd>{detalle.descripcion || movimiento.material_id || '—'}</dd></div>
           <div><dt>Motivo</dt><dd>{transferencia ? movimiento.tipo === 'transferencia_salida' ? 'Transferencia · salida' : 'Transferencia · entrada' : etiquetaMotivoMovimiento(movimiento.motivo) || '—'}</dd></div>
-          <div><dt>Almacén</dt><dd>{movimiento.almacenes?.nombre || movimiento.almacen_id || '—'}</dd></div>
-          <div><dt>Ubicación</dt><dd>{loc.nombre || loc.codigo || movimiento.ubicacion_id || '—'}</dd></div>
+          <div><dt>Almacén</dt><dd>{etiquetaAlmacen(movimiento)}</dd></div>
+          <div><dt>Ubicación</dt><dd>{etiquetaUbicacion(movimiento)}</dd></div>
           <div><dt>Lote / serie</dt><dd>{[movimiento.lote, movimiento.serie].filter(Boolean).join(' / ') || '—'}</dd></div>
           <div><dt>Vencimiento</dt><dd>{movimiento.vencimiento || '—'}</dd></div>
           <div><dt>Costo unitario</dt><dd>{movimiento.costo_unitario == null ? '—' : `${movimiento.moneda || 'PEN'} ${cantidad(movimiento.costo_unitario)}`}</dd></div>
           <div><dt>Referencia</dt><dd>{transferencia ? <span className="dx-mov-link">{movimiento.referencia_id || '—'}</span> : movimiento.nro_documento || movimiento.referencia_id || '—'}</dd></div>
-          {transferencia && <><div><dt>Origen</dt><dd>{origen ? `${origen.almacenes?.nombre || origen.almacen_id || '—'} · ${origen.ubicaciones?.nombre || origen.ubicacion_id || '—'}` : 'Asiento de salida vinculado por referencia'}</dd></div><div><dt>Destino</dt><dd>{destino ? `${destino.almacenes?.nombre || destino.almacen_id || '—'} · ${destino.ubicaciones?.nombre || destino.ubicacion_id || '—'}` : 'Asiento de entrada vinculado por referencia'}</dd></div><div><dt>Asiento relacionado</dt><dd>{asientoPar ? `${etiquetaTipoMovimiento(asientoPar.tipo)} · ${asientoPar.id}` : 'El otro asiento comparte la misma referencia.'}</dd></div></>}
+          {transferencia && <><div><dt>Origen</dt><dd>{origen ? `${etiquetaAlmacen(origen)} · ${etiquetaUbicacion(origen)}` : 'Asiento de salida vinculado por referencia'}</dd></div><div><dt>Destino</dt><dd>{destino ? `${etiquetaAlmacen(destino)} · ${etiquetaUbicacion(destino)}` : 'Asiento de entrada vinculado por referencia'}</dd></div><div><dt>Asiento relacionado</dt><dd>{asientoPar ? `${etiquetaTipoMovimiento(asientoPar.tipo)} · ${asientoPar.id}` : 'El otro asiento comparte la misma referencia.'}</dd></div></>}
           <div><dt>Observación</dt><dd>{movimiento.observacion || '—'}</dd></div>
           {!registradoPorEsUuid && <div><dt>Registrado por</dt><dd>{registradoPor || '—'}</dd></div>}
           <div><dt>Saldo después</dt><dd>{movimiento.saldo_cantidad == null ? '—' : `${cantidad(movimiento.saldo_cantidad)} ${detalle.unidad || ''}`}</dd></div>

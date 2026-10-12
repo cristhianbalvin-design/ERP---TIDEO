@@ -250,4 +250,22 @@ describe('InventarioKardexPage', () => {
     const menu = getZahoryNavigation(supplyAdministrationRouteIds);
     expect(JSON.stringify(menu)).not.toContain('Entradas & Salidas');
   });
+
+  it('resuelve ubicación, origen y destino de una transferencia sin joins', async () => {
+    const salida = { id: 'tr-out-no-join', tipo: 'transferencia_salida', cantidad: 2, referencia_tipo: 'transferencia', referencia_id: 'tr-ref-no-join', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u2', created_at: '2026-02-01', materiales: material('m1', 'Filtro hidráulico') };
+    const entrada = { ...salida, id: 'tr-in-no-join', tipo: 'transferencia_entrada', ubicacion_id: 'u1' };
+    mocks.cargarInventario.mockResolvedValue({ ...datos, kardex: [salida, entrada] });
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === 'Kardex').props.onClick(); });
+    const fila = root.root.findAll(node => node.props.className?.includes('dx-stk-kcols') && node.props.role === 'button')[0];
+    await act(async () => { fila.props.onClick(); });
+
+    const valores = Object.fromEntries(root.root.findAllByType('dt').map(dt => [dt.children.join(''), dt.parent.findByType('dd').children.join('')]));
+    expect(valores['Ubicación']).toBe('R-01 · R-01');
+    expect(valores['Origen']).toBe('Almacén Norte · R-01 · R-01');
+    expect(valores['Destino']).toBe('Almacén Norte · CUA-01 · CUA-01');
+    expect(valores['Ubicación']).not.toContain('u2');
+    expect(valores['Origen']).not.toContain('u2');
+    expect(valores['Destino']).not.toContain('u1');
+  });
 });
