@@ -22,6 +22,13 @@ export const formatDateFinanciero = formatearFechaBI;
 export const currencyAmount = amount;
 export const filtrarPorMoneda = (rows = [], moneda, key = 'moneda') => currencyRows(rows, normalizarMonedaBI(moneda), key);
 
+export function resolverSociedadScope({ sociedadId, sociedadActivaId, sociedades = [] } = {}) {
+  const sociedadIds = sociedades.map(sociedad => sociedad?.id);
+  if (sociedadIds.includes(sociedadId)) return sociedadId;
+  if (sociedadIds.includes(sociedadActivaId)) return sociedadActivaId;
+  return sociedadIds[0] || '';
+}
+
 export function asignarSociedadMovimientos({
   movimientos = [], cuentasBancarias = [], cxc = [], cxp = [], facturas = [],
 } = {}) {

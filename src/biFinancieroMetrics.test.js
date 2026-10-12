@@ -4,7 +4,23 @@ import {
   asignarSociedadMovimientos, calcularCajaNetaMes, calcularCxc, calcularCxp, calcularFacturacionPorCliente,
   calcularRetenciones, calcularSemanasCaja, filasCSVFinanciero, filtrarPorMoneda,
   filasPresupuestoFinanciero, formatDateFinanciero, serieResultados,
+  resolverSociedadScope,
 } from './biFinancieroMetrics.js';
+
+test('resuelve la sociedad seleccionada cuando pertenece a las disponibles', () => {
+  assert.equal(resolverSociedadScope({
+    sociedadId: 's2', sociedadActivaId: 's1', sociedades: [{ id: 's1' }, { id: 's2' }],
+  }), 's2');
+});
+
+test('usa una sociedad disponible si la activa quedó fuera y devuelve vacío sin sociedades', () => {
+  assert.equal(resolverSociedadScope({
+    sociedadId: 's3', sociedadActivaId: 's4', sociedades: [{ id: 's1' }, { id: 's2' }],
+  }), 's1');
+  assert.equal(resolverSociedadScope({
+    sociedadId: 's3', sociedadActivaId: 's4', sociedades: [],
+  }), '');
+});
 
 test('deduce sociedad de movimientos por cuenta, CxC, CxP y factura sin mutarlos', () => {
   const movimientos = [

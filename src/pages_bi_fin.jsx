@@ -12,7 +12,8 @@ import {
   calcularFacturacionPorCliente, calcularRetenciones, calcularSemanasCaja,
   categoriasCostosResultados, crearCSVFinanciero, filasCSVFinanciero,
   filasPresupuestoFinanciero, formatDateFinanciero, porcentajeDeIngresos,
-  serieResultados, tablaResultadosFinancieros, totalizar, variacionPorcentual,
+  resolverSociedadScope, serieResultados, tablaResultadosFinancieros, totalizar,
+  variacionPorcentual,
 } from './biFinancieroMetrics.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
@@ -670,8 +671,13 @@ export function BIFinanciero() {
       && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
   );
   const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
+  const sociedadEfectivaId = resolverSociedadScope({
+    sociedadId: scopeSociedadId,
+    sociedadActivaId: sociedadActiva?.id,
+    sociedades: sociedadesDisponibles,
+  });
   const scopeIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
-    ? [scopeSociedadId || sociedadActiva?.id].filter(Boolean)
+    ? [sociedadEfectivaId].filter(Boolean)
     : sociedadesDisponibles.map(sociedad => sociedad.id);
   const cecosEmpresa = centrosCosto.filter(centro => (
     centro.empresa_id === empresa?.id && centro.estado === 'activo'
@@ -701,7 +707,7 @@ export function BIFinanciero() {
     supabaseMode,
     empresa?.id,
     multisociedadActiva,
-    scopeSociedadId,
+    sociedadEfectivaId,
     scopeMode,
     scopeIdsKey,
     sociedadesKey,
@@ -716,8 +722,9 @@ export function BIFinanciero() {
       setResultados([]);
       return;
     }
-    if (multisociedadActiva && !sociedadesDisponibles.some(sociedad => sociedad.id === scopeSociedadId)) {
-      setScopeSociedadId(sociedadActiva?.id || sociedadesDisponibles[0]?.id || '');
+    if (multisociedadActiva && !sociedadesDisponibles.length) {
+      setResultados([]);
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -1014,7 +1021,7 @@ export function BIFinanciero() {
             </select>
           )}
           {multisociedadActiva && scopeMode === ER_SCOPE_MODE.SOCIEDAD && (
-            <select className="select bif-society" aria-label="Sociedad" value={scopeSociedadId}
+            <select className="select bif-society" aria-label="Sociedad" value={sociedadEfectivaId}
               onChange={event => setScopeSociedadId(event.target.value)}>
               {sociedadesDisponibles.map(sociedad => (
                 <option key={sociedad.id} value={sociedad.id}>
