@@ -4,10 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'empresa-1', estado: 'listo', cargando: false },
-  listar: vi.fn(), despachar: vi.fn(), liberar: vi.fn(),
+  listar: vi.fn(), despachar: vi.fn(), liberar: vi.fn(), revertir: vi.fn(),
 }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
-vi.mock('../src/services/reservasRepuestosService.js', () => ({ listarReservasOT: mocks.listar, despacharReservaOT: mocks.despachar, liberarReservaOT: mocks.liberar }));
+vi.mock('../src/services/reservasRepuestosService.js', () => ({ listarReservasOT: mocks.listar, despacharReservaOT: mocks.despachar, liberarReservaOT: mocks.liberar, revertirDespachoOT: mocks.revertir }));
 import { ReservaRepuestosPage } from '../src/zahory-mock/pages/ReservaRepuestosPage.jsx';
 
 const lineaBase = { id: 'segmento-1', descripcion: 'Filtro hidráulico', codigo: 'FIL-01', unidad: 'und', cantidad_estimada: 3, reservado: 3, despachado: 0, liberado: 0, pendiente: 3, estado: 'reservado', origenes: [] };
@@ -28,6 +28,7 @@ describe('ReservaRepuestosPage', () => {
     mocks.listar.mockReset().mockResolvedValue(resultado());
     mocks.despachar.mockReset().mockResolvedValue({});
     mocks.liberar.mockReset().mockResolvedValue({});
+    mocks.revertir.mockReset().mockResolvedValue({});
     vi.stubGlobal('requestAnimationFrame', callback => callback());
     vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn(), querySelector: vi.fn(() => null) });
   });
@@ -64,6 +65,35 @@ describe('ReservaRepuestosPage', () => {
     expect(button(root, 'Liberar').props.disabled).toBe(true);
     expect(root.root.findAll(node => node.children?.join('').includes('Sin permiso de despacho'))).toHaveLength(1);
     expect(root.root.findAll(node => node.children?.join('').includes('Sin permiso para liberar'))).toHaveLength(1);
+    expect(button(root, 'Revertir').props.disabled).toBe(true);
+    expect(button(root, 'Revertir').props.title).toBe('Sin permiso para revertir');
+  });
+
+  it('deshabilita Revertir cuando no hay despacho o la OT está cerrada', async () => {
+    const sinDespacho = await renderPage(); await openDetail(sinDespacho);
+    expect(button(sinDespacho, 'Revertir').props.title).toBe('Nada despachado');
+    sinDespacho.unmount();
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, estado: 'cerrada', lineas: [{ ...lineaBase, despachado: 2, pendiente: 1 }] }));
+    const cerrada = await renderPage(); await openDetail(cerrada);
+    expect(button(cerrada, 'Revertir').props.disabled).toBe(true);
+    expect(button(cerrada, 'Revertir').props.title).toBe('OT cerrada');
+  });
+
+  it('abre el panel, exige motivo, revierte con el servicio y muestra la acción en el historial', async () => {
+    const conDespacho = { ...otBase, lineas: [{ ...lineaBase, despachado: 2, pendiente: 1 }], acciones: [{ id: 'acc-1', tipo: 'reversa_despacho', cantidad: 1, motivo: 'Error de despacho' }] };
+    mocks.listar.mockResolvedValue(resultado(conDespacho));
+    const root = await renderPage(); await openDetail(root);
+    expect(button(root, 'Revertir').props.disabled).not.toBe(true);
+    await act(async () => button(root, 'Revertir').props.onClick({ currentTarget: { isConnected: true, focus: vi.fn() } }));
+    const dialog = root.root.findByProps({ role: 'dialog' });
+    expect(button(root, 'Revertir despacho').props.disabled).toBe(true);
+    await act(async () => dialog.findByProps({ id: 'dx-reversa-motivo' }).props.onChange({ target: { value: 'Error de despacho' } }));
+    expect(button(root, 'Revertir despacho').props.disabled).toBe(false);
+    await act(async () => dialog.findByType('form').props.onSubmit({ preventDefault: vi.fn() }));
+    expect(mocks.revertir).toHaveBeenCalledWith({ empresa_id: 'empresa-1', ot_id: 'ot-1', lineas: [{ ot_segmento_repuesto_id: 'segmento-1', cantidad: 2 }], motivo: 'Error de despacho', observacion: null });
+    expect(root.root.findAll(node => node.children?.join('').includes('Reversa de despacho'))).toHaveLength(1);
+    expect(root.root.findAll(node => node.children?.join('').includes('1 · Error de despacho'))).toHaveLength(1);
+    expect(root.root.findAllByProps({ role: 'status' }).some(node => node.children.join('').includes('Despacho revertido. La cantidad vuelve a la reserva de la OT.'))).toBe(true);
   });
 
   it('envía el despacho al servicio con los parámetros exactos', async () => {

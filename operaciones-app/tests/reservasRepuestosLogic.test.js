@@ -6,9 +6,14 @@ describe('reservasRepuestosLogic', () => {
     expect(etiquetaEstadoLinea('despachado_parcial')).toBe('Despachado parcial');
     expect(tonoEstadoLinea('reservado_parcial_solpe')).toBe('is-amber');
     expect(etiquetaEstadoLinea('liberado')).toBe('Liberado');
+    expect(etiquetaEstadoLinea('despachado_liberado')).toBe('Despachado y liberado');
+    expect(tonoEstadoLinea('despachado_liberado')).toBe('is-cyan');
   });
   it('OT reservada con pendiente cero no se etiqueta como reserva pendiente', () => {
     expect(estadoAgregadoOT({ lineas: [{ estado: 'reservado', cantidad_estimada: 2, reservado: 2, pendiente: 0 }] })).toEqual({ texto: 'Reservado', tono: 'is-green' });
+  });
+  it('agrega líneas completamente devueltas como despachadas y liberadas', () => {
+    expect(estadoAgregadoOT({ lineas: [{ estado: 'despachado_liberado', pendiente: 0, despachado: 1, liberado: 1 }] })).toEqual({ texto: 'Despachado y liberado', tono: 'is-cyan' });
   });
   it('conteo pluraliza línea', () => { expect(etiquetaConteoLineas(1)).toBe('1 línea'); expect(etiquetaConteoLineas(2)).toBe('2 líneas'); });
   it('traduce estados operativos de OT', () => { expect(etiquetaEstadoOT('ejecucion')).toBe('Ejecución'); });
@@ -31,5 +36,9 @@ describe('reservasRepuestosLogic', () => {
     expect(puedeOperarLinea({}, 'despachar', ot, linea)).toBe(false);
     expect(puedeOperarLinea({ liberar: true }, 'liberar', { estado: 'cerrada' }, linea)).toBe(false);
     expect(puedeOperarLinea({ liberar: true }, 'liberar', ot, { pendiente: 0 })).toBe(false);
+    expect(puedeOperarLinea({ despachar: true }, 'revertir', ot, { despachado: 2 })).toBe(true);
+    expect(puedeOperarLinea({ despachar: true }, 'revertir', ot, { estado: 'anulado', despachado: 2 })).toBe(true);
+    expect(puedeOperarLinea({ despachar: true }, 'revertir', { estado: 'cerrada' }, { despachado: 2 })).toBe(false);
+    expect(puedeOperarLinea({ despachar: true }, 'revertir', ot, { despachado: 0 })).toBe(false);
   });
 });

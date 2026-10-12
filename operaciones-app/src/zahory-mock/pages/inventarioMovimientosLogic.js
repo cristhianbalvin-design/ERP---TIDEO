@@ -9,6 +9,8 @@ const ETIQUETAS_MOTIVOS_LECTURA = Object.freeze({
   consumo_ot: 'Consumo de OT',
   despacho_guia: 'Despacho por guía',
   despacho_taller: 'Despacho a taller',
+  reversa_despacho: 'Reversa de despacho',
+  liberacion_cuarentena: 'Liberación de cuarentena',
   transferencia: 'Transferencia',
   oc_pendiente_factura: 'Ingreso pendiente de factura',
   anulacion_entrada: 'Anulación de entrada',
@@ -78,6 +80,26 @@ export function listarDestinosTransferencia(ubicaciones = [], stockOrigen) {
     && (ubicacion.almacen_id !== stockOrigen?.almacen_id || ubicacion.id !== stockOrigen?.ubicacion_id));
 }
 
+export function listarDestinosLiberacionCuarentena(ubicaciones = []) {
+  return ubicaciones.filter(ubicacion => ubicacion.activo !== false && !['cuarentena', 'merma'].includes(ubicacion.uso));
+}
+
+export function validarLiberacionCuarentena(form, { material, stockOrigen, ubicacionDestino } = {}) {
+  const errores = {};
+  const valorCantidad = cantidad(form.cantidad);
+  const disponible = Math.max(cantidad(stockOrigen?.disponible ?? (cantidad(stockOrigen?.fisico) - cantidad(stockOrigen?.reservado))), 0);
+  if (!(valorCantidad > 0)) errores.cantidad = 'La cantidad debe ser mayor a cero.';
+  else if (valorCantidad > disponible) errores.cantidad = `Solo hay ${disponible} ${material?.unidad || 'unidades'} disponibles en esta ubicación.`;
+  if (material?.tipo_control === 'serie' && valorCantidad !== 1) errores.cantidad = 'Para materiales controlados por serie, la cantidad debe ser 1.';
+  if (!texto(form.almacen_destino_id)) errores.almacen_destino_id = 'Elige el almacén de destino.';
+  if (!texto(form.ubicacion_destino_id)) errores.ubicacion_destino_id = 'Elige la ubicación de destino.';
+  if (form.almacen_destino_id === stockOrigen?.almacen_id && form.ubicacion_destino_id === stockOrigen?.ubicacion_id) errores.ubicacion_destino_id = 'El destino debe ser distinto del origen.';
+  if (ubicacionDestino && (ubicacionDestino.activo === false || ['cuarentena', 'merma'].includes(ubicacionDestino.uso))) errores.ubicacion_destino_id = 'El destino debe ser una ubicación normal y activa.';
+  if (ubicacionDestino && form.almacen_destino_id !== ubicacionDestino.almacen_id) errores.ubicacion_destino_id = 'La ubicación seleccionada no pertenece al almacén de destino.';
+  if (!texto(form.motivo)) errores.motivo = 'Indica un motivo para liberar.';
+  return errores;
+}
+
 export function validarTransferencia(form, { material, stockOrigen, ubicacionDestino } = {}) {
   const errores = {};
   const valorCantidad = cantidad(form.cantidad);
@@ -103,6 +125,8 @@ function filaUso(stock, stockId, ubicacionId) { return stock.find(item => item.i
 const MOTIVOS_ANULABLES = new Set(['saldo_inicial', 'ajuste_positivo', 'devolucion_ot', 'compra_directa_sin_oc', 'merma', 'robo', 'error_ingreso', 'ajuste_conteo', 'ajuste_manual']);
 export function motivoNoAnulable(movimiento, puedeEditar = true) {
   if (movimiento?.anulado) return 'Este movimiento ya fue anulado.';
+  if (movimiento?.motivo === 'reversa_despacho') return 'La reversa de despacho se corrige despachando de nuevo desde la OT.';
+  if (movimiento?.motivo === 'liberacion_cuarentena') return 'Se corrige con una transferencia o con una nueva liberación según corresponda.';
   if (movimiento?.motivo === 'despacho_taller') return 'El despacho a taller se corrige desde la OT.';
   if (movimiento?.motivo === 'anulacion' || movimiento?.referencia_tipo === 'anulacion') return 'Una anulación no se puede anular. Registra un nuevo movimiento si hace falta.';
   if (movimiento?.referencia_tipo === 'recepcion_oc' || movimiento?.motivo === 'recepcion_oc') return 'Las recepciones de OC se anulan desde Recepciones, porque también cambian el estado de la orden.';

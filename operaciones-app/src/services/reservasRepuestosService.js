@@ -28,6 +28,13 @@ export function liberarReservaOT({ empresa_id, ot_segmento_repuesto_id, cantidad
   });
 }
 
+export function revertirDespachoOT({ empresa_id, ot_id, lineas, motivo, observacion = null }) {
+  return ejecutarRpc('wms_revertir_despacho_ot', {
+    p_empresa_id: empresa_id, p_ot_id: ot_id, p_lineas: lineas,
+    p_motivo: motivo, p_observacion: observacion,
+  });
+}
+
 export function conciliarCierreOT({ empresa_id, ot_id }) {
   return ejecutarRpc('wms_conciliar_cierre_ot', { p_empresa_id: empresa_id, p_ot_id: ot_id });
 }

@@ -3922,3 +3922,5 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-desp-history li small { grid-column:1/-1; }
   .dx-desp-panel header,.dx-desp-panelbody { padding-left:17px; padding-right:17px; }
 }
+.dx-mov-disabled-reason { max-width:150px; color:var(--dx-ui-gray); font-size:10px; line-height:1.3; text-align:right; }
+@media(max-width:600px){.dx-mov-disabled-reason{text-align:left}}

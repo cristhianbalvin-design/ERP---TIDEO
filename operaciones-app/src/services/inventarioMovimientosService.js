@@ -28,3 +28,12 @@ export function transferirStock({ empresa_id, stock_origen_id, almacen_destino_i
     p_cantidad: cantidad, p_observacion: typeof observacion === 'string' ? observacion.trim() || null : observacion ?? null,
   });
 }
+
+export function liberarCuarentena({ empresa_id, stock_origen_id, almacen_destino_id, ubicacion_destino_id, cantidad, motivo, observacion = null }) {
+  const nota = typeof observacion === 'string' ? observacion.trim() || null : observacion ?? null;
+  return ejecutarRpc('wms_liberar_cuarentena', {
+    p_empresa_id: empresa_id, p_stock_origen_id: stock_origen_id,
+    p_almacen_destino_id: almacen_destino_id, p_ubicacion_destino_id: ubicacion_destino_id,
+    p_cantidad: cantidad, p_motivo: motivo, p_observacion: nota,
+  });
+}

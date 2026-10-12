@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advertenciaDestinoTransferencia, calcularDiferenciaAjuste, etiquetaMotivoMovimiento, listarDestinosTransferencia, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarMovimiento, validarTransferencia } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
+import { advertenciaDestinoTransferencia, calcularDiferenciaAjuste, etiquetaMotivoMovimiento, listarDestinosLiberacionCuarentena, listarDestinosTransferencia, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarLiberacionCuarentena, validarMovimiento, validarTransferencia } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
 
 const material = { id: 'm1', tipo_control: 'lote', unidad: 'und' };
 const fila = { id: 's1', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', lote: 'L-1', fisico: 8, disponible: 7, reservado: 1, sociedad_id: 'soc1', ubicaciones: { uso: 'almacenaje' } };
@@ -14,6 +14,8 @@ describe('inventarioMovimientosLogic', () => {
     expect(etiquetaMotivoMovimiento('ajuste_positivo')).toBe('Ajuste positivo');
     expect(etiquetaMotivoMovimiento('recepcion_oc')).toBe('Recepción de OC');
     expect(etiquetaMotivoMovimiento('despacho_taller')).toBe('Despacho a taller');
+    expect(etiquetaMotivoMovimiento('liberacion_cuarentena')).toBe('Liberación de cuarentena');
+    expect(etiquetaMotivoMovimiento('reversa_despacho')).toBe('Reversa de despacho');
     expect(etiquetaMotivoMovimiento('motivo_desconocido')).toBe('Motivo desconocido');
   });
 
@@ -48,6 +50,10 @@ describe('inventarioMovimientosLogic', () => {
     expect(motivoNoAnulable({ motivo: 'consumo_ot', referencia_tipo: 'ot' })).toContain('OT');
     expect(movimientoAnulable({ motivo: 'despacho_taller', referencia_tipo: 'ot' })).toBe(false);
     expect(motivoNoAnulable({ motivo: 'despacho_taller', referencia_tipo: 'ot' })).toContain('se corrige desde la OT');
+    expect(movimientoAnulable({ motivo: 'reversa_despacho', referencia_tipo: 'ot' })).toBe(false);
+    expect(motivoNoAnulable({ motivo: 'reversa_despacho', referencia_tipo: 'ot' })).toBe('La reversa de despacho se corrige despachando de nuevo desde la OT.');
+    expect(movimientoAnulable({ motivo: 'liberacion_cuarentena', referencia_tipo: 'transferencia' })).toBe(false);
+    expect(motivoNoAnulable({ motivo: 'liberacion_cuarentena', referencia_tipo: 'transferencia' })).toContain('transferencia o con una nueva liberación');
     expect(motivoNoAnulable({ motivo: 'transferencia_entrada', referencia_tipo: 'transferencia' })).toContain('transferencia');
     expect(motivoNoAnulable({ motivo: 'anulacion', referencia_tipo: 'anulacion' })).toContain('no se puede anular');
     expect(motivoNoAnulable({ motivo: 'saldo_inicial' }, false)).toContain('Tu rol');
@@ -82,5 +88,16 @@ describe('inventarioMovimientosLogic', () => {
   it('lista ubicaciones activas excluyendo la ubicación de origen', () => {
     const ubicaciones = [{ id: 'u1', almacen_id: 'a1' }, { id: 'u2', almacen_id: 'a1', activo: false }, { id: 'u3', almacen_id: 'a2' }];
     expect(listarDestinosTransferencia(ubicaciones, { almacen_id: 'a1', ubicacion_id: 'u1' }).map(item => item.id)).toEqual(['u3']);
+  });
+
+  it('para liberar solo ofrece destinos normales activos y valida cantidad, serie, destino y motivo', () => {
+    const ubicaciones = [{ id: 'u1', almacen_id: 'a1', uso: 'cuarentena' }, { id: 'u2', almacen_id: 'a1', uso: 'almacenaje' }, { id: 'u3', almacen_id: 'a1', uso: 'merma' }, { id: 'u4', almacen_id: 'a2', uso: 'almacenaje', activo: false }];
+    expect(listarDestinosLiberacionCuarentena(ubicaciones).map(item => item.id)).toEqual(['u2']);
+    const stockOrigen = { ...fila, disponible: 3, ubicaciones: { uso: 'cuarentena' } };
+    const valido = { cantidad: '2', almacen_destino_id: 'a1', ubicacion_destino_id: 'u2', motivo: 'Inspección aprobada' };
+    expect(validarLiberacionCuarentena(valido, { material, stockOrigen, ubicacionDestino: ubicaciones[1] })).toEqual({});
+    expect(validarLiberacionCuarentena({ ...valido, cantidad: '4' }, { material, stockOrigen, ubicacionDestino: ubicaciones[1] }).cantidad).toContain('Solo hay 3');
+    expect(validarLiberacionCuarentena({ ...valido, motivo: '' }, { material, stockOrigen, ubicacionDestino: ubicaciones[1] }).motivo).toContain('motivo');
+    expect(validarLiberacionCuarentena({ ...valido, cantidad: '2' }, { material: { ...material, tipo_control: 'serie' }, stockOrigen, ubicacionDestino: ubicaciones[1] }).cantidad).toContain('cantidad debe ser 1');
   });
 });
