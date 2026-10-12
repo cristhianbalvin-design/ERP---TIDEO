@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { I, moneyD } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
+import './costeo_variables.css';
 
 const numero = value => Number(value || 0);
 const moneyUsd = value => moneyD(numero(value), 'US$');
 const porcentaje = value => `${(numero(value) * 100).toLocaleString('es-PE', { minimumFractionDigits:2, maximumFractionDigits:2 })}%`;
+const normalizarBusqueda = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 function DepreciacionActivos() {
   const { empresa, role, addToast } = useApp();
@@ -20,6 +22,7 @@ function DepreciacionActivos() {
   const puedeEditar = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes('costeo_variables'));
   const valorizacionPorActivo = useMemo(() => new Map(valorizaciones.map(item => [item.activo_id, item])), [valorizaciones]);
   const configPorActivo = useMemo(() => new Map(configuraciones.map(item => [item.activo_id, item])), [configuraciones]);
+  const activosConDepreciacionManual = useMemo(() => activos.filter(item => numero(configPorActivo.get(item.id)?.depreciacion_manual) > 0).length, [activos, configPorActivo]);
 
   const cargar = async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -83,30 +86,31 @@ function DepreciacionActivos() {
   };
 
   return <>
-    <div className="page-sub" style={{ marginBottom:18 }}>La depreciación manual reemplaza el cálculo mensual. Las horas disponibles al mes son solo una referencia y se editan desde la ficha del Activo.</div>
-    {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
-    <div className="card">
-      <div className="card-head"><h3>Activos de la empresa</h3><span className="badge badge-cyan">{activos.length}</span></div>
-      <div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Activo</th><th className="num">Deprec. mensual calculada</th><th style={{ minWidth:180 }}>Manual</th><th className="num">Costo/hora resultante</th><th className="num">Horas/mes</th><th style={{ textAlign:'right' }}>Acción</th></tr></thead>
-        <tbody>
-          {cargando ? <tr><td colSpan="6" className="text-muted" style={{ padding:22 }}>Cargando activos y depreciación...</td></tr> : activos.map(activo => {
-            const valorizacion = valorizacionPorActivo.get(activo.id) || {};
-            const manualRaw = valoresManual[activo.id] ?? '';
-            const existe = configPorActivo.has(activo.id);
-            const puedeGuardarFila = existe ? puedeEditar : puedeCrear;
-            return <tr key={activo.id}>
-              <td><strong>{activo.nombre}</strong>{activo.codigo && <div className="text-muted mono" style={{ fontSize:11 }}>{activo.codigo}</div>}{activo.estado === 'en_mantenimiento' && <span className="badge badge-orange" style={{ marginTop:4 }}>En mantenimiento</span>}</td>
-              <td className="num">{valorizacion.depreciacion_mensual_usd_calculada != null ? moneyUsd(valorizacion.depreciacion_mensual_usd_calculada) : '—'}</td>
-              <td><input type="number" min="0" step="0.01" className="input num" value={manualRaw} disabled={!puedeGuardarFila || guardandoActivoId === activo.id} onChange={event => setValoresManual(prev => ({ ...prev, [activo.id]: event.target.value }))} placeholder="US$ 0.00" /></td>
-              <td className="num">{valorizacion.costo_hora_activo_usd != null ? moneyUsd(valorizacion.costo_hora_activo_usd) : '—'}</td>
-              <td className="num">{activo.horas_disponibles_mes != null ? numero(activo.horas_disponibles_mes).toLocaleString('es-PE', { maximumFractionDigits:2 }) : '—'}</td>
-              <td style={{ textAlign:'right' }}><button className="btn btn-secondary btn-sm" disabled={!puedeGuardarFila || guardandoActivoId === activo.id} onClick={() => guardar(activo)}>{I.save} {guardandoActivoId === activo.id ? 'Guardando...' : 'Guardar'}</button></td>
-            </tr>;
-          })}
-          {!cargando && activos.length === 0 && <tr><td colSpan="6" className="text-muted" style={{ padding:22 }}>No hay activos vigentes registrados para esta empresa.</td></tr>}
-        </tbody>
-      </table></div>
+    <div className="dx-ui-summary" aria-label="Resumen">
+      <div className="dx-ui-chip"><b>{activos.length}</b><span>activos vigentes</span></div>
+      <div className="dx-ui-chip"><b>{activosConDepreciacionManual}</b><span>con depreciación manual</span></div>
+    </div>
+    {error && <div className="dx-costeovar-error" role="alert">{error}</div>}
+    <div className="dx-ui-card">
+      <div className="dx-ui-toolbar"><h2>Activos de la empresa</h2><span className="dx-ui-count">{activos.length} activos</span></div>
+      <div className="dx-ui-head dx-costeovar-dep-cols" aria-hidden="true"><span>Activo</span><span className="num">Deprec. mensual calculada</span><span>Manual</span><span className="num">Costo/hora resultante</span><span className="num">Horas/mes</span><span></span></div>
+      {cargando ? <div className="dx-ui-empty">Cargando activos y depreciación...</div> : activos.length === 0 ? <div className="dx-ui-empty">No hay activos vigentes registrados para esta empresa.</div> : activos.map(activo => {
+        const valorizacion = valorizacionPorActivo.get(activo.id) || {};
+        const manualRaw = valoresManual[activo.id] ?? '';
+        const configuracionGuardada = configPorActivo.get(activo.id);
+        const guardadoRaw = configuracionGuardada?.depreciacion_manual ?? '';
+        const dirty = String(manualRaw) !== String(guardadoRaw);
+        const existe = configPorActivo.has(activo.id);
+        const puedeGuardarFila = existe ? puedeEditar : puedeCrear;
+        return <div key={activo.id} className={`dx-ui-row dx-costeovar-dep-cols${dirty ? ' is-dirty' : ''}`}>
+          <div className="dx-costeovar-main"><span className="dx-ui-icon is-violet" aria-hidden="true">{I.package}</span><span><b>{activo.nombre}</b><small>{activo.codigo || '—'}</small>{activo.estado === 'en_mantenimiento' && <span className="dx-costeovar-maintenance">En mantenimiento</span>}</span></div>
+          <div className="dx-costeovar-cell num"><span className="dx-costeovar-lbl">Deprec. mensual calculada</span><span className="dx-costeovar-money">{valorizacion.depreciacion_mensual_usd_calculada != null ? moneyUsd(valorizacion.depreciacion_mensual_usd_calculada) : '—'}</span></div>
+          <div className="dx-costeovar-cell is-wide"><span className="dx-costeovar-lbl">Manual</span><label className="dx-costeovar-field"><span>US$</span><input type="number" min="0" step="0.01" aria-label={`Depreciación manual de ${activo.nombre}`} value={manualRaw} disabled={!puedeGuardarFila || guardandoActivoId === activo.id} onChange={event => setValoresManual(prev => ({ ...prev, [activo.id]: event.target.value }))} placeholder="0.00" /></label>{dirty && <small className="dx-costeovar-dirty">Cambio sin guardar</small>}</div>
+          <div className="dx-costeovar-cell num"><span className="dx-costeovar-lbl">Costo/hora resultante</span><span className="dx-costeovar-money">{valorizacion.costo_hora_activo_usd != null ? moneyUsd(valorizacion.costo_hora_activo_usd) : '—'}</span></div>
+          <div className="dx-costeovar-cell num"><span className="dx-costeovar-lbl">Horas/mes</span><span className="dx-costeovar-money">{activo.horas_disponibles_mes != null ? numero(activo.horas_disponibles_mes).toLocaleString('es-PE', { maximumFractionDigits:2 }) : '—'}</span></div>
+          <div className="dx-costeovar-act"><button type="button" className={`dx-btn${dirty ? ' primary' : ''}`} aria-label={`Guardar depreciación manual de ${activo.nombre}`} disabled={!dirty || !puedeGuardarFila || guardandoActivoId === activo.id} onClick={() => guardar(activo)}><span aria-hidden="true">{I.save}</span>{guardandoActivoId === activo.id ? 'Guardando...' : 'Guardar'}</button></div>
+        </div>;
+      })}
     </div>
   </>;
 }
@@ -182,25 +186,23 @@ function GastoAdministrativo() {
   };
 
   const hayCalculado = numero(porcentajeCalculado) > 0;
+  const porcentajeManualGuardado = configuracion?.porcentaje_manual != null ? String(numero(configuracion.porcentaje_manual) * 100) : '';
+  const manualDirty = String(porcentajeManual) !== porcentajeManualGuardado;
   return <>
-    <div className="page-sub" style={{ marginBottom:18 }}>El porcentaje calculado es una referencia. Si registras un valor manual, Hoja de Costeo usará ese valor. El manual se ingresa como porcentaje y se guarda como proporción.</div>
-    {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
-    <div className="card">
-      <div className="card-head"><h3>Gasto administrativo de la empresa</h3></div>
-      {cargando ? <div className="text-muted" style={{ padding:22 }}>Cargando porcentaje de gasto administrativo...</div> : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:18, padding:18 }}>
-        <div style={{ padding:16, border:'1px solid var(--border)', borderRadius:8 }}>
-          <div className="eyebrow" style={{ marginBottom:8 }}>% calculado</div>
-          {hayCalculado ? <strong style={{ fontSize:24 }}>{porcentaje(porcentajeCalculado)}</strong> : <div className="text-muted">Sin datos; verifica la información o usa un valor manual.</div>}
+    <div className="dx-ui-summary" aria-label="Resumen">
+      <div className="dx-ui-chip"><b>{porcentajeCalculado != null ? porcentaje(porcentajeCalculado) : '—'}</b><span>calculado</span></div>
+      <div className="dx-ui-chip"><b>{porcentajeManualGuardado === '' ? '—' : `${numero(porcentajeManualGuardado).toLocaleString('es-PE', { maximumFractionDigits: 2 })}%`}</b><span>manual</span></div>
+    </div>
+    {error && <div className="dx-costeovar-error" role="alert">{error}</div>}
+    <div className="dx-ui-card">
+      <div className="dx-ui-toolbar"><h2>Gasto administrativo de la empresa</h2></div>
+      {cargando ? <div className="dx-ui-empty">Cargando porcentaje de gasto administrativo...</div> : <>
+        <div className="dx-costeovar-adm">
+          <div className="dx-costeovar-box"><h3>% calculado</h3>{hayCalculado ? <div className="dx-costeovar-big">{porcentaje(porcentajeCalculado)}</div> : <div className="dx-costeovar-no-data">Sin datos; verifica la información o usa un valor manual.</div>}<p className="dx-costeovar-hint">Referencia calculada con la información de la empresa.</p></div>
+          <div className="dx-costeovar-box"><h3>% manual</h3><label className="dx-costeovar-field"><input type="number" min="0" step="0.01" aria-label="Porcentaje manual de gasto administrativo" value={porcentajeManual} disabled={!puedeGuardar || guardando} onChange={event => setPorcentajeManual(event.target.value)} placeholder="Ej. 18.30" /><span>%</span></label>{manualDirty && <small className="dx-costeovar-dirty">Cambio sin guardar</small>}<p className="dx-costeovar-hint">Si lo registras, Hoja de Costeo usará este valor en lugar del calculado.</p></div>
         </div>
-        <label style={{ display:'grid', gap:8 }}>
-          <span className="eyebrow">% manual</span>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <input type="number" min="0" step="0.01" className="input num" value={porcentajeManual} disabled={!puedeGuardar || guardando} onChange={event => setPorcentajeManual(event.target.value)} placeholder="Ej. 18.30" />
-            <span className="text-muted">%</span>
-          </div>
-        </label>
-      </div>}
-      {!cargando && <div style={{ display:'flex', justifyContent:'flex-end', padding:'0 18px 18px' }}><button className="btn btn-primary" disabled={!puedeGuardar || guardando} onClick={guardar}>{I.save} {guardando ? 'Guardando...' : 'Guardar gasto administrativo'}</button></div>}
+        <div className="dx-costeovar-foot"><button type="button" className={`dx-btn${manualDirty ? ' primary' : ''}`} aria-label="Guardar porcentaje manual de gasto administrativo" disabled={!manualDirty || !puedeGuardar || guardando} onClick={guardar}><span aria-hidden="true">{I.save}</span>{guardando ? 'Guardando...' : 'Guardar'}</button></div>
+      </>}
     </div>
   </>;
 }
@@ -215,6 +217,8 @@ export default function CosteoVariables() {
   const [cargando, setCargando] = useState(true);
   const [guardandoCargoId, setGuardandoCargoId] = useState(null);
   const [error, setError] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroMetodo, setFiltroMetodo] = useState('todos');
   const puedeCrear = Boolean(role?.permisos?.todo || role?.permisos?.crear?.includes('costeo_variables'));
   const puedeEditar = Boolean(role?.permisos?.todo || role?.permisos?.editar?.includes('costeo_variables'));
 
@@ -224,6 +228,26 @@ export default function CosteoVariables() {
       .map(item => [item.cargo_id, numero(item.costo_hora_planilla)])
   ), [tarifas]);
   const configPorCargo = useMemo(() => new Map(configuraciones.map(item => [item.cargo_id, item])), [configuraciones]);
+  const metodoDeCargo = cargo => {
+    const manual = numero(valoresManual[cargo.id] ?? configPorCargo.get(cargo.id)?.costo_hora_manual);
+    const planilla = tarifaPorCargo.get(cargo.id) || 0;
+    return manual > 0 ? 'manual' : planilla > 0 ? 'planilla' : 'sin';
+  };
+  const cargosFiltrados = useMemo(() => {
+    const terms = normalizarBusqueda(busqueda).split(/\s+/).filter(Boolean);
+    return cargos.filter(cargo => {
+      const texto = normalizarBusqueda(`${cargo.nombre || ''} ${cargo.codigo || ''}`);
+      const coincideBusqueda = terms.every(term => texto.includes(term));
+      const coincideMetodo = filtroMetodo === 'todos' || metodoDeCargo(cargo) === filtroMetodo;
+      return coincideBusqueda && coincideMetodo;
+    });
+  }, [cargos, busqueda, filtroMetodo, valoresManual, tarifaPorCargo, configPorCargo]);
+  const conteoMetodos = {
+    todos: cargos.length,
+    manual: cargos.filter(cargo => metodoDeCargo(cargo) === 'manual').length,
+    planilla: cargos.filter(cargo => metodoDeCargo(cargo) === 'planilla').length,
+    sin: cargos.filter(cargo => metodoDeCargo(cargo) === 'sin').length,
+  };
 
   const cargar = async () => {
     if (!empresa?.id || !isSupabaseConfigured()) {
@@ -294,51 +318,61 @@ export default function CosteoVariables() {
     }
   };
 
+  const titulo = vista === 'costo_hora' ? 'Costo hora por cargo' : vista === 'depreciacion' ? 'Depreciación de activos' : 'Gasto administrativo';
+  const nota = vista === 'costo_hora'
+    ? 'Esta sección agrupa variables comerciales de costeo y se gestiona separada de Maestros Base.'
+    : vista === 'depreciacion'
+      ? 'La depreciación manual reemplaza el cálculo mensual. Las horas disponibles al mes son solo una referencia y se editan desde la ficha del Activo.'
+      : 'El porcentaje calculado es una referencia. Si registras un valor manual, Hoja de Costeo usará ese valor. El manual se ingresa como porcentaje.';
+  const conteoCargoManual = conteoMetodos.manual;
+  const resumenCargo = <div className="dx-ui-summary" aria-label="Resumen">
+    <div className="dx-ui-chip"><b>{cargos.length}</b><span>cargos</span></div>
+    <div className="dx-ui-chip"><b>{conteoCargoManual}</b><span>con costo manual</span></div>
+    <div className="dx-ui-chip"><b>{conteoMetodos.planilla}</b><span>según planilla</span></div>
+    <div className="dx-ui-chip"><b>{conteoMetodos.sin}</b><span>sin tarifa</span></div>
+  </div>;
+  const filtros = [
+    ['todos', 'Todos'], ['manual', 'Manual'], ['planilla', 'Planilla'], ['sin', 'Sin tarifa'],
+  ];
   return (
-    <div className="page-content">
-      <div className="page-header">
-        <div>
-          <div className="eyebrow">Variables Comerciales de Costeo</div>
-          <h1 className="page-title">{vista === 'costo_hora' ? 'Costo hora por cargo' : vista === 'depreciacion' ? 'Depreciación de activos' : 'Gasto administrativo'}</h1>
-          <div className="page-sub">Variables comerciales que alimentan el cálculo de Hoja de Costeo.</div>
-        </div>
-      </div>
-      <nav aria-label="Variables de costeo" style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:18 }}>
-        <button type="button" className={vista === 'costo_hora' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('costo_hora')}>Costo hora por cargo</button>
-        <button type="button" className={vista === 'depreciacion' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('depreciacion')}>Depreciación de activos</button>
-        <button type="button" className={vista === 'gasto_administrativo' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setVista('gasto_administrativo')}>Gasto administrativo</button>
+    <section className="dx-ui dx-costeovar">
+      <header className="dx-ui-head-page">
+        <div><div className="dx-ui-eyebrow">Variables comerciales de costeo</div><h1 className="dx-ui-title">{titulo}</h1><p className="dx-ui-sub">Variables comerciales que alimentan el cálculo de Hoja de Costeo.</p></div>
+      </header>
+      <nav className="dx-ui-tabs" aria-label="Variables de costeo">
+        <button type="button" className={`dx-ui-tab${vista === 'costo_hora' ? ' on' : ''}`} aria-pressed={vista === 'costo_hora'} onClick={() => setVista('costo_hora')}>Costo hora por cargo</button>
+        <button type="button" className={`dx-ui-tab${vista === 'depreciacion' ? ' on' : ''}`} aria-pressed={vista === 'depreciacion'} onClick={() => setVista('depreciacion')}>Depreciación de activos</button>
+        <button type="button" className={`dx-ui-tab${vista === 'gasto_administrativo' ? ' on' : ''}`} aria-pressed={vista === 'gasto_administrativo'} onClick={() => setVista('gasto_administrativo')}>Gasto administrativo</button>
       </nav>
-      <div style={{ marginBottom:18, padding:'11px 14px', borderRadius:8, background:'rgba(6,182,212,.08)', border:'1px solid rgba(6,182,212,.2)', fontSize:13, color:'var(--fg-muted)' }}>
-        Esta sección agrupa variables comerciales de costeo y se gestiona separada de Maestros Base.
-      </div>
+      <p className="dx-costeovar-note"><span aria-hidden="true">{I.alertCircle}</span><span>{nota}</span></p>
       {vista === 'depreciacion' ? <DepreciacionActivos /> : vista === 'gasto_administrativo' ? <GastoAdministrativo /> : <>
-      {error && <div className="alert alert-danger" style={{ marginBottom:16 }}>{error}</div>}
-      <div className="card">
-        <div className="card-head"><h3>Cargos de la empresa</h3><span className="badge badge-cyan">{cargos.length}</span></div>
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead><tr><th>Cargo</th><th className="num">Según planilla</th><th style={{ minWidth:180 }}>Manual</th><th>Método usado</th><th style={{ textAlign:'right' }}>Acción</th></tr></thead>
-            <tbody>
-              {cargando ? <tr><td colSpan="5" className="text-muted" style={{ padding:22 }}>Cargando cargos y tarifas...</td></tr> : cargos.map(cargo => {
-                const planilla = tarifaPorCargo.get(cargo.id) || 0;
-                const manualRaw = valoresManual[cargo.id] ?? '';
-                const manual = numero(manualRaw);
-                const usaManual = manual > 0;
-                const puedeGuardarFila = configPorCargo.has(cargo.id) ? puedeEditar : puedeCrear;
-                return <tr key={cargo.id}>
-                  <td><strong>{cargo.nombre}</strong>{cargo.codigo && <div className="text-muted mono" style={{ fontSize:11 }}>{cargo.codigo}</div>}{cargo.estado !== 'activo' && <span className="badge badge-gray" style={{ marginTop:4 }}>Inactivo</span>}</td>
-                  <td className="num">{planilla > 0 ? moneyUsd(planilla) : '—'}</td>
-                  <td><input type="number" min="0" step="0.01" className="input num" value={manualRaw} disabled={!puedeGuardarFila || guardandoCargoId === cargo.id} onChange={event => setValoresManual(prev => ({ ...prev, [cargo.id]: event.target.value }))} placeholder="US$ 0.00" /></td>
-                  <td>{usaManual ? <span className="badge badge-purple">Manual</span> : planilla > 0 ? <span className="badge badge-cyan">Planilla</span> : <span className="badge badge-gray">Sin tarifa</span>}</td>
-                  <td style={{ textAlign:'right' }}><button className="btn btn-secondary btn-sm" disabled={!puedeGuardarFila || guardandoCargoId === cargo.id} onClick={() => guardar(cargo)}>{I.save} {guardandoCargoId === cargo.id ? 'Guardando...' : 'Guardar'}</button></td>
-                </tr>;
-              })}
-              {!cargando && cargos.length === 0 && <tr><td colSpan="5" className="text-muted" style={{ padding:22 }}>No hay cargos registrados para esta empresa.</td></tr>}
-            </tbody>
-          </table>
+        {resumenCargo}
+        {error && <div className="dx-costeovar-error" role="alert">{error}</div>}
+        <div className="dx-ui-card">
+          <div className="dx-ui-toolbar"><h2>Cargos de la empresa</h2><span className="dx-ui-count">{cargando ? '0 cargos' : cargosFiltrados.length === cargos.length ? `${cargos.length} cargos` : `${cargosFiltrados.length} de ${cargos.length} cargos`}</span><label className="dx-ui-search"><span aria-hidden="true">{I.search}</span><input type="search" aria-label="Buscar cargo por nombre o código" placeholder="Buscar cargo o código" value={busqueda} onChange={event => setBusqueda(event.target.value)} /></label></div>
+          <div className="dx-costeovar-filters" role="group" aria-label="Filtrar por método usado">
+            {filtros.map(([metodo, label]) => <button key={metodo} type="button" className={`dx-costeovar-filter${filtroMetodo === metodo ? ' on' : ''}`} aria-pressed={filtroMetodo === metodo} onClick={() => setFiltroMetodo(metodo)}>{label}<b>{conteoMetodos[metodo]}</b></button>)}
+          </div>
+          <div className="dx-ui-head dx-costeovar-cargo-cols" aria-hidden="true"><span>Cargo</span><span className="num">Según planilla</span><span>Manual</span><span>Método usado</span><span></span></div>
+          {cargando ? <div className="dx-ui-empty">Cargando cargos y tarifas...</div> : cargos.length === 0 ? <div className="dx-ui-empty">No hay cargos registrados para esta empresa.</div> : cargosFiltrados.length === 0 ? <div className="dx-ui-empty">No hay cargos con estos filtros.</div> : cargosFiltrados.map(cargo => {
+            const planilla = tarifaPorCargo.get(cargo.id) || 0;
+            const manualRaw = valoresManual[cargo.id] ?? '';
+            const configuracionGuardada = configPorCargo.get(cargo.id);
+            const guardadoRaw = configuracionGuardada?.costo_hora_manual ?? '';
+            const dirty = String(manualRaw) !== String(guardadoRaw);
+            const metodo = metodoDeCargo(cargo);
+            const puedeGuardarFila = configuracionGuardada ? puedeEditar : puedeCrear;
+            const pillClass = metodo === 'manual' ? 'dx-costeovar-pill-manual' : metodo === 'planilla' ? 'is-cyan' : 'is-gray';
+            return <div key={cargo.id} className={`dx-ui-row dx-costeovar-cargo-cols${dirty ? ' is-dirty' : ''}`}>
+              <div className="dx-costeovar-main"><span className="dx-ui-icon is-cyan" aria-hidden="true">{I.users}</span><span><b>{cargo.nombre}</b><small>{cargo.codigo || '—'}</small>{cargo.estado !== 'activo' && <span className="dx-costeovar-inactive">Inactivo</span>}</span></div>
+              <div className="dx-costeovar-cell num"><span className="dx-costeovar-lbl">Según planilla</span><span className={`dx-costeovar-money${planilla > 0 ? '' : ' is-none'}`}>{planilla > 0 ? moneyUsd(planilla) : '—'}</span></div>
+              <div className="dx-costeovar-cell is-wide"><span className="dx-costeovar-lbl">Manual</span><label className="dx-costeovar-field"><span>US$</span><input type="number" min="0" step="0.01" aria-label={`Costo hora manual de ${cargo.nombre}`} value={manualRaw} disabled={!puedeGuardarFila || guardandoCargoId === cargo.id} onChange={event => setValoresManual(prev => ({ ...prev, [cargo.id]: event.target.value }))} placeholder="0.00" /></label>{dirty && <small className="dx-costeovar-dirty">Cambio sin guardar</small>}</div>
+              <div className="dx-costeovar-cell"><span className="dx-costeovar-lbl">Método usado</span><span className={`dx-ui-pill ${pillClass}`}><i aria-hidden="true" />{metodo === 'manual' ? 'Manual' : metodo === 'planilla' ? 'Planilla' : 'Sin tarifa'}</span></div>
+              <div className="dx-costeovar-act"><button type="button" className={`dx-btn${dirty ? ' primary' : ''}`} aria-label={`Guardar costo hora de ${cargo.nombre}`} disabled={!dirty || !puedeGuardarFila || guardandoCargoId === cargo.id} onClick={() => guardar(cargo)}><span aria-hidden="true">{I.save}</span>{guardandoCargoId === cargo.id ? 'Guardando...' : 'Guardar'}</button></div>
+            </div>;
+          })}
         </div>
-      </div>
       </>}
-    </div>
+    </section>
   );
 }
