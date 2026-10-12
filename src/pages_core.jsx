@@ -6290,7 +6290,7 @@ function BIComercial() {
     const amount = Number(value) || 0;
     const unit = Math.abs(amount) >= 1_000_000 ? 1_000_000 : Math.abs(amount) >= 1_000 ? 1_000 : 1;
     const suffix = unit === 1_000_000 ? 'M' : unit === 1_000 ? 'K' : '';
-    return `${currencySymbol(moneda)} ${unit === 1 ? amount : (amount / unit).toFixed(1).replace(/\.0$/, '')}${suffix}`;
+    return `${unit === 1 ? amount : (amount / unit).toFixed(1).replace(/\.0$/, '')}${suffix}`;
   };
   const cantidadTexto = (cantidad, singular, plural) => `${cantidad} ${cantidad === 1 ? singular : plural}`;
   const cliente = row => cuentas.find(c => c.id === row.cuenta_id)?.razon_social || cuentas.find(c => c.id === row.cuenta_id)?.nombre_comercial || row.cliente || 'Sin cliente';

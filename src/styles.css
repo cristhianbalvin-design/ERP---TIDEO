@@ -4772,9 +4772,9 @@ body {
 .bic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
 .bic-panel { min-width:0; overflow:hidden; }
 .bic-empty { padding:20px 16px; color:var(--fg-muted); text-align:center; font-size:13px; }
-.bic-bars { display:flex; align-items:stretch; justify-content:space-around; gap:4px; min-height:210px; padding:18px 12px 12px; min-width:0; }
+.bic-bars { display:flex; align-items:stretch; justify-content:space-around; gap:4px; min-height:210px; padding:18px 12px 12px; min-width:0; overflow-x:hidden; }
 .bic-bar-col { display:flex; flex:1 1 0; flex-direction:column; align-items:center; gap:6px; min-width:0; font-size:11px; color:var(--fg-muted); }
-.bic-bar-col strong { max-width:100%; color:var(--fg); font-size:10px; font-weight:600; white-space:nowrap; }
+.bic-bar-col strong { width:100%; max-width:100%; overflow:hidden; color:var(--fg); font-size:8px; font-weight:600; text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 .bic-bar-track { display:flex; align-items:flex-end; justify-content:center; width:min(54px,100%); flex:1; border-bottom:1px solid var(--border); }
 .bic-bar-track i { width:100%; min-height:3px; border-radius:5px 5px 0 0; background:var(--bic-bar-neutral); }
 .bic-bar-track i.is-current { background:var(--cyan); }
