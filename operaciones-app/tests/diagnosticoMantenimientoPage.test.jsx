@@ -26,5 +26,21 @@ describe('Flujo de mantenimiento en página', () => {
     expect(report).toBeGreaterThan(card);
     expect(page.slice(card, report)).toContain('aria-label="Diagnóstico"');
     expect(page.slice(card, report)).toContain('onClick={guardarResumenParaInforme}');
+    expect(page).toContain('inline onClose=');
+    expect(page).toContain('markupDibujoHallazgo(selected.componente_svg ||');
+    expect(page).toContain("borradores.length === 1 ? 'borrador' : 'borradores'");
+    expect(page).toContain("estado === 'en_diagnostico' ? 'En diagn\u00f3stico'");
+    expect(page).not.toContain('new Date().toISOString().slice(0, 10)');
+  });
+  it('el borrador existente muestra una sola navegacion de cinco pasos', () => {
+    expect(page).not.toContain("workStep === 3 ? 'is-current' : ''");
+    expect(page).toContain("[1, 2, 3].map((step, index)");
+  });
+  it('restablece estado temporal del panel de tareas al abrir un borrador', () => {
+    const start = page.indexOf('const openExisting = async diagnostico => {');
+    const end = page.indexOf('  return (', start);
+    const openExisting = page.slice(start, end);
+    expect(openExisting).toContain('setTaskPanel(false)');
+    expect(openExisting).toContain('setTaskPanelHasSelection(false)');
   });
 });

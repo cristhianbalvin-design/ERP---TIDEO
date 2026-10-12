@@ -34,6 +34,17 @@ beforeEach(() => {
 });
 
 describe('DiagnosticoInformePanel', () => {
+  it('se integra en el flujo de trabajo sin overlay, cabecera modal ni botón de cierre', async () => {
+    await render({ inline: true });
+    const panel = renderer.root.findByProps({ className: 'dx-inf-overlay dx-inf-inline' });
+    expect(panel.props.role).toBe('region');
+    expect(panel.props['aria-modal']).toBeUndefined();
+    expect(renderer.root.findAllByProps({ className: 'dx-inf-controls-head' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ className: 'dx-inf-preview' })).toHaveLength(1);
+    expect(button('Emitir informe')).toBeTruthy();
+    renderer.unmount(); renderer = null;
+  });
+
   it('solo crea borrador con edición, y usuario con ver consulta existente sin poder editar', async () => {
     await render();
     expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1', 'd1');
