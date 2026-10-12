@@ -96,6 +96,7 @@ const materialValidationError = material => {
 };
 const SLOW_SAVE_WARNING = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
 const dispatchDiagnosticoWorkMode = active => {
+  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.dataset.dxDiagnosticoWorkMode = active ? 'true' : 'false';
   const detail = { active };
   const event = typeof CustomEvent === 'function' ? new CustomEvent('dx-diagnostico-work-mode', { detail }) : { type: 'dx-diagnostico-work-mode', detail };
   window.dispatchEvent(event);
@@ -1053,7 +1054,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const emitidosCount = diagnosticos.length - borradoresCount;
 
   return (
-    <main className="ops-page" style={{ padding: 24, width: '100%' }}>
+    <main className="ops-page" style={selected?.tipo === 'mantenimiento' ? { padding: 0, width: '100%', height: 'calc(100dvh - 68px)', minHeight: 0, overflow: 'hidden' } : { padding: 24, width: '100%' }}>
       <div className={selected?.tipo === 'mantenimiento' ? 'dx-list-work-hidden' : ''} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <div className="ops-eyebrow">Taller & Operaciones</div>

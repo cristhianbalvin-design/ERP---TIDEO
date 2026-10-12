@@ -286,6 +286,9 @@ describe('HallazgosTrabajoPanel', () => {
     const result = await callbacks.save();
     expect(result.error).toContain('Falta la causa probable.');
     expect(mocks.actualizarDiagnosticoHallazgo).not.toHaveBeenCalled();
+    const cause = renderer.root.findAllByType('select').find(select => select.props['aria-label'] === 'Causa probable');
+    await act(async () => cause.props.onChange({ target: { value: 'desgaste_normal' } }));
+    expect(callbacks.error).toBe('');
     renderer.unmount();
   });
 
@@ -444,6 +447,13 @@ describe('HallazgosTrabajoPanel', () => {
     expect(callbacks.error).toBe('');
     expect(mocks.reemplazarZonasHallazgo).toHaveBeenCalledWith('empresa-prueba', 'hallazgo-1', 'component-cil', [expect.objectContaining({ zona_id: 'zone-cil', nota: 'Rayado longitudinal' })]);
     expect(mocks.crearDiagnosticoMedicion).toHaveBeenCalledWith('empresa-prueba', 'hallazgo-1', expect.objectContaining({ zona_id: 'zone-cil', medida_id: 'med-cil', cota: 'cota-diametro', medido: '75.2' }));
+    expect(callbacks.dirty).toBe(false);
+    let secondSave;
+    await act(async () => { secondSave = await callbacks.save(); });
+    expect(secondSave).toEqual({ ok: true });
+    expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
+    expect(mocks.crearDiagnosticoMedicion).toHaveBeenCalledTimes(1);
+    expect(callbacks.dirty).toBe(false);
     renderer.unmount();
   });
 

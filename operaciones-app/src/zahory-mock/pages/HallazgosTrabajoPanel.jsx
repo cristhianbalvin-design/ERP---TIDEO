@@ -273,6 +273,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const groupHeaderRefs = useRef(new Map());
   const itemCardRefs = useRef(new Map());
   const pendingGroupFocus = useRef(null);
+  const validationErrorShown = useRef(false);
   const [pendingDeleteKey, setPendingDeleteKey] = useState(null);
   const [pendingDeleteFamilyId, setPendingDeleteFamilyId] = useState(null);
   const [view, setView] = useState('lista');
@@ -389,6 +390,12 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const dirtyTasks = items.flatMap(item => item.lineas || []).filter(link => link._dirty).length + deletedLineas.length;
   const dirtyFotos = fotosPendientes.length;
   const dirtyChanges = dirtyHallazgos + dirtyTasks + items.flatMap(item => item.mediciones || []).filter(row => row._dirty).length + deletedMediciones.length + dirtyFotos;
+  useEffect(() => {
+    if (validationErrorShown.current && getIncompleteHallazgos(items).length === 0) {
+      validationErrorShown.current = false;
+      onError?.('');
+    }
+  }, [items, onError]);
   useEffect(() => { onDirtySummary?.({ hallazgos: dirtyHallazgos, tareas: dirtyTasks, fotos: dirtyFotos, cambios: dirtyChanges }); }, [dirtyHallazgos, dirtyTasks, dirtyFotos, dirtyChanges, onDirtySummary]);
   useEffect(() => { onSavingChange?.(saving); }, [saving, onSavingChange]);
 
@@ -470,6 +477,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     setSaving(true); onError?.('');
     const incomplete = getIncompleteHallazgos(items);
     if (incomplete.length) {
+      validationErrorShown.current = true;
       setSaving(false);
       const fieldLabels = { family: 'el trabajo', component: 'el componente', 'component-text': 'el componente', damage: 'el tipo de daño', cause: 'la causa probable', condition: 'la condición', risk: 'el riesgo', action: 'la acción recomendada', attribution: 'la atribución', override_reason: 'el motivo de la prioridad' };
       const missingLabel = fieldLabels[incomplete[0].missingFields[0]] || 'un campo obligatorio';
@@ -519,7 +527,8 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
           const saved = measurement.id
             ? await actualizarDiagnosticoMedicion(empresaId, current.id, measurement)
             : await crearDiagnosticoMedicion(empresaId, current.id, measurement);
-          const next = { ...current, mediciones: current.mediciones.map(row => row === measurement ? { ...row, ...saved, _dirty: false, _new: false } : row) };
+          const measurementKey = keyFor(measurement);
+          const next = { ...current, mediciones: current.mediciones.map(row => keyFor(row) === measurementKey ? { ...row, ...saved, _dirty: false, _new: false } : row) };
           persisted.set(keyFor(item), next);
         }
       }
@@ -564,7 +573,16 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
           onNotice?.(`Las fotos se subieron, pero no se pudo actualizar su vista previa: ${errorMessage(error)}`);
         }
       }
-      setItems([...persisted.values()].map(normalize));
+      const rehydrated = [...persisted.values()].map(item => normalize({
+        ...item,
+        _dirty: false,
+        _zonesDirty: false,
+        _componentDirty: false,
+        mediciones: (item.mediciones || []).map(measurement => ({ ...measurement, _dirty: false, _new: false })),
+        zonas: (item.zonas || []).map(zone => ({ ...zone })),
+        lineas: (item.lineas || []).map(line => ({ ...line, _dirty: false, _new: false })),
+      }));
+      setItems(rehydrated);
       setDeletedItems([]); setDeletedMediciones([]); setDeletedLineas([]);
       if (fotosFallidas) {
         const message = `${fotosFallidas === 1 ? 'No se pudo subir 1 foto' : `No se pudieron subir ${fotosFallidas} fotos`}${primerErrorFoto ? `: ${primerErrorFoto}` : '.'}`;
@@ -577,8 +595,10 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       onError?.(`${firstInvalid.message} No se envió esa medición.`);
       onNotice?.(`Guardado parcial: se guardaron los hallazgos, pero no se guardaron ${invalidMediciones.length} medición${invalidMediciones.length === 1 ? '' : 'es'}.`);
       return { ok: false, error: `${firstInvalid.message} No se envió esa medición.` };
-    } else {
-      onNotice?.('Hallazgos guardados.');
+      } else {
+        validationErrorShown.current = false;
+        onError?.('');
+        onNotice?.('Hallazgos guardados.');
       return { ok: true };
       }
     } catch (error) {

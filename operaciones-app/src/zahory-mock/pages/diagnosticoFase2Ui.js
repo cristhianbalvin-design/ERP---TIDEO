@@ -1,4 +1,4 @@
-import { medirBboxZonas, posicionarPines, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
+import { medirBboxZonas, normalizeSvgViewport, posicionarPines, sanitizarSvgCatalogo } from './dibujoHallazgoLogic.js';
 
 export const GRUPOS_TIPOS_DANO = [
   { id: 'frecuentes', label: 'Los más usados', codes: ['desgaste', 'fuga', 'corrosion', 'fisura_grieta', 'rotura'] },
@@ -21,7 +21,7 @@ export function agruparTiposDano(items = []) {
 
 export function markupDibujoHallazgo(svg, zonasMarcadas = [], bboxPorZona = {}, mediciones = []) {
   if (!svg) return '';
-  const safeSvg = sanitizarSvgCatalogo(svg);
+  const safeSvg = normalizeSvgViewport(sanitizarSvgCatalogo(svg));
   if (!Object.keys(bboxPorZona).length) {
     try { bboxPorZona = medirBboxZonas(safeSvg); } catch { bboxPorZona = {}; }
   }

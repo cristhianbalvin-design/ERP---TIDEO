@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import { prepararImagenesInforme } from '../../services/informePdfImagenes.js';
 import { agruparFotosEnFilas } from '../../services/informeFotosFilas.js';
+import { etiquetaCondicion, etiquetaResultado } from './informeEtiquetas.js';
 
 const S = StyleSheet.create({
   page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 30 },
@@ -38,7 +39,7 @@ function TablaMediciones({ mediciones }) {
     {mediciones.map((m, i) => <View key={`${m.parametro}-${i}`} style={S.tableRow}>
       <Text style={[S.tableCell, { width: '30%' }]}>{fmt(m.parametro)}{m.unidad ? ` (${m.unidad})` : ''}</Text>
       <Text style={[S.tableCell, { width: '26%' }]}>{present(m.nominal) ? fmt(m.nominal) : [m.minimo, m.maximo].filter(present).join(' – ')}</Text>
-      <Text style={[S.tableCell, { width: '22%' }]}>{fmt(m.medido)}</Text><Text style={[S.tableCell, { width: '22%' }]}>{fmt(m.resultado)}</Text>
+      <Text style={[S.tableCell, { width: '22%' }]}>{fmt(m.medido)}</Text><Text style={[S.tableCell, { width: '22%' }]}>{fmt(etiquetaResultado(m.resultado || m.condicion_sugerida))}</Text>
     </View>)}
   </View>;
 }
@@ -95,7 +96,7 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
           height: Number(photo.height || photo.alto) > 0 ? Number(photo.height || photo.alto) : 1000,
         })));
         const findingFields = [
-          ['Daño', item.tipo_dano_etiqueta], ['Causa probable', item.causa_probable_etiqueta], ['Condición', item.condicion_etiqueta],
+          ['Daño', item.tipo_dano_etiqueta], ['Causa probable', item.causa_probable_etiqueta], ['Condición', etiquetaCondicion(item.condicion_etiqueta || item.condicion_codigo || item.condicion)],
           ['Riesgo', item.riesgo_etiqueta], ['Acción recomendada', item.accion_recomendada_etiqueta], ['Atribuible a', item.atribuible_a_etiqueta], ['Observación', item.observacion],
         ].filter(([, value]) => present(value));
         const estimateLines = text => Math.max(1, Math.ceil(text.length / 100));
@@ -112,7 +113,7 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
           {findingFields.map(([label, value]) => <Text key={label} style={S.line}><Text style={S.bold}>{label}: </Text>{fmt(value)}</Text>)}
           {(item.lineas || []).length || relatedTasks.length ? <Text style={S.line}><Text style={S.bold}>Tareas relacionadas: </Text>{[...(item.lineas || []).map(line => line.tarea_nombre), ...relatedTasks.map(task => task.tarea_nombre)].filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ')}</Text> : null}
           {measures.length ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Mediciones</Text><TablaMediciones mediciones={measures} /></> : null}
-          {item.dibujo?.svg && imagenes.dibujos?.[item.hallazgo_id] ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Dibujo · {fmt(item.dibujo.componente_nombre)}</Text><Image src={imagenes.dibujos[item.hallazgo_id]} style={S.drawing} />{(item.dibujo.zonas || []).length ? <Text style={S.drawingLegend}>{item.dibujo.zonas.map((zone, zi) => `${zi + 1}. ${fmt(zone.nombre)}${present(zone.nota) ? ` · ${fmt(zone.nota)}` : ''}`).join('   ')}</Text> : null}{(item.dibujo.medidas || []).length ? <TablaMediciones mediciones={item.dibujo.medidas.map(measure => ({ ...measure, parametro: `${fmt(measure.nombre)}${present(measure.cota) ? ` · ${fmt(measure.cota)}` : ''}`, resultado: measure.resultado || '' }))} /> : null}</> : null}
+          {item.dibujo?.svg && imagenes.dibujos?.[item.hallazgo_id] ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Dibujo · {fmt(item.dibujo.componente_nombre)}</Text><Image src={imagenes.dibujos[item.hallazgo_id]} style={S.drawing} />{(item.dibujo.zonas || []).length ? <Text style={S.drawingLegend}>{item.dibujo.zonas.map((zone, zi) => `${zi + 1}. ${fmt(zone.nombre)}${present(zone.nota) ? ` · ${fmt(zone.nota)}` : ''}`).join('   ')}</Text> : null}{(item.dibujo.medidas || []).length ? <TablaMediciones mediciones={item.dibujo.medidas.map(measure => ({ ...measure, parametro: fmt(measure.nombre), resultado: etiquetaResultado(measure.resultado) || '' }))} /> : null}</> : null}
           {photoRows.length ? <View style={S.photos}>{photoRows.map((row, ri) => <View style={S.photoRow} wrap={false} key={`fila-${ri}`}>
             {row.fotos.map((photo, pi) => <View style={S.photoBox} key={`${photo.ruta_storage}-${pi}`}>
               <Image src={photo.uri} style={[S.photo, { height: row.orientacion === 'horizontal' ? 112 : 145 }]} />

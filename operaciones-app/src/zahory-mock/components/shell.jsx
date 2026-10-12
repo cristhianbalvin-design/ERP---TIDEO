@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 export const Icon = ({ name, size = 16, stroke = 2 }) => {
@@ -342,7 +342,7 @@ const findAreaForPage = (pageId) => {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar = ({ current, onNav, role }) => {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("difesmaq_sidebar_collapsed") === "true");
-  const [autoCollapsed, setAutoCollapsed] = useState(false);
+  const [autoCollapsed, setAutoCollapsed] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true');
   const effectiveCollapsed = collapsed || autoCollapsed;
   const [openLines, setOpenLines] = useState(() => {
     const s = new Set(['flota-alquileres']);
@@ -356,7 +356,7 @@ export const Sidebar = ({ current, onNav, role }) => {
     document.documentElement.style.setProperty("--sidebar-w", collapsed ? "72px" : "248px");
   }, [collapsed]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const setWorkMode = event => setAutoCollapsed(Boolean(event.detail?.active));
     window.addEventListener('dx-diagnostico-work-mode', setWorkMode);
     return () => window.removeEventListener('dx-diagnostico-work-mode', setWorkMode);

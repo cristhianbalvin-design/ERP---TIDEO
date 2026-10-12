@@ -32,6 +32,19 @@ test('genera SVG con estilo y pines numerados', () => {
   assert.match(svg, /<text y="\.5">1<\/text>/);
 });
 
+test('normaliza el viewport y lleva una paleta autónoma para el informe y el PDF', () => {
+  const svg = construirSvgInforme({
+    svg: '<svg width="200" height="100"><rect class="part" data-z="tapaT" x="10" y="10" width="80" height="30" /></svg>',
+    zonasMarcadas: [{ zona_id: 'tapaT', orden: 1, bbox: { x: 10, y: 10, width: 80, height: 30 } }],
+  });
+  assert.match(svg, /viewBox="0 0 200 100"/);
+  assert.match(svg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  assert.match(svg, /<style>[\s\S]*\[data-z\]\.pinned[^<]+/);
+  assert.match(svg, /fill:#fce5e5/);
+  assert.match(svg, /<rect data-z="tapaT"[^>]*class="part pinned" \/>/);
+  assert.match(svg, /<g class="pin"/);
+});
+
 test('normaliza acentos y ordena coincidencias del buscador', () => {
   assert.equal(normalizarBusquedaTipoDano(' CORROSIÓN '), ' corrosion '.trim());
   const result = buscarTiposDano([{ codigo: 'fuga', etiqueta: 'fuga' }, { codigo: 'corrosion', etiqueta: 'corrosión' }], 'oxido');

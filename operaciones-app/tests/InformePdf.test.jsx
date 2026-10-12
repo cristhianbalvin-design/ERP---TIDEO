@@ -1836,4 +1836,19 @@ describe('InformePdf', () => {
     expect(textContents(tipo)).toEqual(['Tipo', 'Mantenimiento']);
     expect(snapshot.cabecera.tipo).toBe('mantenimiento');
   });
+
+  it('traduce condición y resultados del catálogo y omite el código de cota', () => {
+    const tree = create(<InformePdf snapshot={{
+      cabecera: {}, empresa: {}, resumen: {}, mediciones: [], tareas_repuestos: [],
+      hallazgos: [{ hallazgo_id: 'h1', componente_parte: 'Cilindro hidráulico', condicion: 'fuera_de_tolerancia', prioridad: 'P2', dibujo: {
+        componente_nombre: 'Cilindro hidráulico', zonas: [], svg: '<svg viewBox="0 0 10 10" />',
+        medidas: [{ nombre: 'Ø vástago', cota: 'dvas', nominal: 60, minimo: 59.97, maximo: 60, medido: 59.82, resultado: 'fuera_de_rango' }],
+      } }],
+    }} imagenes={{ dibujos: { h1: 'data:image/png;base64,fixture' } }} />).toJSON();
+    const text = textContents(tree).join(' ');
+    expect(text).toContain('Fuera de tolerancia');
+    expect(text).toContain('Ø vástago');
+    expect(text).not.toContain('dvas');
+    expect(text).not.toContain('fuera_de_rango');
+  });
 });

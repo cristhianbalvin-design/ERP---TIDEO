@@ -61,24 +61,47 @@ export function sanitizarSvgCatalogo(svgString = '') {
 
 const escapeXml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]);
 
+const DRAWING_STYLE = '<style>svg{overflow:visible;font-family:Arial,sans-serif}[data-z]{fill:#e7edf5;stroke:#1d3557;stroke-width:1.6;stroke-linejoin:round}[data-z].alt{fill:#cfdae9}[data-z].pinned,[data-z].is-marked{fill:#fce5e5;stroke:#c62828;stroke-width:2.2;opacity:1}.cav,.part.hole{fill:#f5f7fa;stroke:#1d3557;stroke-width:1.2}.thin{fill:none;stroke:#1d3557;stroke-width:1.2}.cl{fill:none;stroke:#1d3557;stroke-width:.8;stroke-dasharray:14 4 3 4;opacity:.55}.lead{stroke:#0a9db0;stroke-width:.9;stroke-dasharray:2 3}.dimline{stroke:#0a9db0;stroke-width:1.2;fill:none}.dimbg{fill:#f5f7fa}.dimtxt{fill:#06646f;font-size:11.5px;font-weight:600}.lbl{fill:#5d6b82;font-size:11px;font-weight:600;letter-spacing:.04em}.dimdot{fill:#0a9db0}[data-cota]{opacity:.3}[data-cota].c-on{opacity:1}[data-cota].c-on .dimline{stroke-width:2.4}.dx-hallazgo-pin circle,.pin circle{fill:#c62828;stroke:#fff;stroke-width:2}.dx-hallazgo-pin text,.pin text{fill:#fff;font-family:Arial,sans-serif;font-size:12px;font-weight:bold;text-anchor:middle;dominant-baseline:central}</style>';
+
+export function normalizeSvgViewport(svg) {
+  return String(svg).replace(/<svg\b([^>]*)>/i, (_all, originalAttrs) => {
+    let attrs = originalAttrs;
+    const viewBoxMatch = attrs.match(/\bviewBox=["']([^"']+)["']/i);
+    const widthMatch = attrs.match(/\bwidth=["']([\d.]+)(?:px)?["']/i);
+    const heightMatch = attrs.match(/\bheight=["']([\d.]+)(?:px)?["']/i);
+    const viewBox = viewBoxMatch?.[1] || (widthMatch && heightMatch ? `0 0 ${widthMatch[1]} ${heightMatch[1]}` : '0 0 1200 600');
+    const [, , , vbWidthRaw, vbHeightRaw] = viewBox.match(/^\s*([\d.+-]+)[ ,]+([\d.+-]+)[ ,]+([\d.+-]+)[ ,]+([\d.+-]+)\s*$/) || [];
+    const vbWidth = Number(vbWidthRaw) || 1200;
+    const vbHeight = Number(vbHeightRaw) || 600;
+    if (!viewBoxMatch) attrs += ` viewBox="${viewBox}"`;
+    if (!/\bwidth=/i.test(attrs)) attrs += ' width="1200"';
+    if (!/\bheight=/i.test(attrs)) attrs += ` height="${Math.round(1200 * vbHeight / vbWidth)}"`;
+    if (!/\bxmlns=/i.test(attrs)) attrs += ' xmlns="http://www.w3.org/2000/svg"';
+    const classes = attrs.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || [];
+    attrs = attrs.replace(/\s+class=["'][^"']*["']/i, '');
+    return `<svg${attrs} class="${[...new Set([...classes, 'dx-hallazgo-svg'])].join(' ')}">${DRAWING_STYLE}`;
+  });
+}
+
 export function construirSvgInforme({ svg, zonasMarcadas = [], bboxPorZona = {}, cotasMedidas = [] } = {}) {
   const clean = sanitizarSvgCatalogo(svg);
-  const style = '<style>*{font-family:Arial,sans-serif}.zone{opacity:.28}.zone.pinned{opacity:1;fill:#fce8e6;stroke:#c62828;stroke-width:2}.zone.measured{opacity:1;stroke:#1565c0;stroke-width:2}[data-cota].c-on{opacity:1}[data-cota].c-on .dimline{stroke:#0a9db0;stroke-width:2.4}.pin circle{fill:#c62828;stroke:#fff;stroke-width:2}.pin text{fill:#fff;font-size:12px;font-weight:bold;text-anchor:middle;dominant-baseline:central}</style>';
   const pins = posicionarPines(zonasMarcadas.map(z => ({ ...z, bbox: bboxPorZona[z.zona_id] || z.bbox || {} })));
   const idSet = new Set(zonasMarcadas.map(z => z.zona_id));
-  const measures = new Set(cotasMedidas.map(m => m.zona_id));
-  let output = clean.replace(/<svg\b([^>]*)>/i, (_all, attrs) => `<svg${attrs}>${style}`);
+  let output = normalizeSvgViewport(clean);
   output = output.replace(/(<[^>]+data-z=["']([^"']+)["'][^>]*)(>)/gi, (all, open, zoneId, close) => {
-    const classes = [...(open.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || []), ...(idSet.has(zoneId) ? ['pinned'] : ['zone']), ...(measures.has(zoneId) ? ['measured'] : [])];
-    const base = open.replace(/\s+class=["'][^"']*["']/i, '');
-    return `${base} class="${escapeXml([...new Set(classes)].join(' '))}"${close}`;
+    const classes = [...(open.match(/\bclass=["']([^"']*)["']/i)?.[1]?.split(/\s+/).filter(Boolean) || []), ...(idSet.has(zoneId) ? ['pinned'] : [])];
+    const selfClosing = /\/\s*$/.test(open);
+    const base = open.replace(/\s*\/\s*$/, '').replace(/\s+class=["'][^"']*["']/i, '');
+    return `${base} class="${escapeXml([...new Set(classes)].join(' '))}"${selfClosing ? ' /' : ''}${close}`;
   });
   const markedCotas = new Set(cotasMedidas.map(measure => measure.cota).filter(Boolean));
   output = output.replace(/(<[^>]+data-cota=["']([^"']+)["'][^>]*)(>)/gi, (all, open, cotaId, close) => {
     if (!markedCotas.has(cotaId)) return all;
     const classText = open.match(/\bclass=["']([^"']*)["']/i)?.[1] || '';
     const classes = [...new Set([...classText.split(/\s+/).filter(Boolean), 'c-on'])];
-    return `${open.replace(/\s+class=["'][^"']*["']/i, '')} class="${escapeXml(classes.join(' '))}"${close}`;
+    const selfClosing = /\/\s*$/.test(open);
+    const base = open.replace(/\s*\/\s*$/, '').replace(/\s+class=["'][^"']*["']/i, '');
+    return `${base} class="${escapeXml(classes.join(' '))}"${selfClosing ? ' /' : ''}${close}`;
   });
   const markers = pins.map(pin => `<g class="pin" transform="translate(${pin.cx} ${pin.cy})"><circle r="10"/><text y=".5">${pin.orden}</text></g>`).join('');
   return output.replace(/<\/svg\s*>/i, `${markers}</svg>`);

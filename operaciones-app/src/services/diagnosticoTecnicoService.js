@@ -393,7 +393,30 @@ export async function obtenerActivoRecepcionDiagnostico(empresaId, diagnosticoId
 export async function crearDiagnosticoMedicion(empresaId, hallazgoId, medicion) {
   requireEmpresa(empresaId);
   requireId(hallazgoId, 'Falta el hallazgo técnico.');
-  const { data, error } = await getSupabaseClient().from('diagnostico_tecnico_hallazgo_mediciones').insert(medicionPayload(empresaId, hallazgoId, medicion)).select(MEDICION_COLUMNS).single();
+  const supabase = getSupabaseClient();
+  const payload = medicionPayload(empresaId, hallazgoId, medicion);
+  const encontrarExistente = async () => {
+    if (!payload.zona_id || !payload.medida_id) return null;
+    const { data, error } = await supabase.from('diagnostico_tecnico_hallazgo_mediciones')
+      .select(MEDICION_COLUMNS).eq('empresa_id', empresaId).eq('hallazgo_id', hallazgoId)
+      .eq('zona_id', payload.zona_id).eq('medida_id', payload.medida_id).maybeSingle();
+    if (error) throw getError(error);
+    return data;
+  };
+  const actualizarExistente = async existente => {
+    const { data, error } = await supabase.from('diagnostico_tecnico_hallazgo_mediciones')
+      .update(payload).eq('id', existente.id).eq('empresa_id', empresaId).eq('hallazgo_id', hallazgoId)
+      .select(MEDICION_COLUMNS).single();
+    if (error) throw getError(error);
+    return data;
+  };
+  const existente = await encontrarExistente();
+  if (existente) return actualizarExistente(existente);
+  const { data, error } = await supabase.from('diagnostico_tecnico_hallazgo_mediciones').insert(payload).select(MEDICION_COLUMNS).single();
+  if (error?.code === '23505' && payload.zona_id && payload.medida_id) {
+    const insertConcurrente = await encontrarExistente();
+    if (insertConcurrente) return actualizarExistente(insertConcurrente);
+  }
   if (error) throw getError(error);
   return data;
 }

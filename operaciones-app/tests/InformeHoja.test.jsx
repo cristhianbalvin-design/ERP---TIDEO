@@ -49,4 +49,36 @@ describe('InformeHoja', () => {
     expect(renderer.root.findAllByType('img')).toHaveLength(0);
     renderer.unmount();
   });
+
+  it('traduce estados y muestra el nombre de la cota en las tablas del informe', () => {
+    const previousDocument = globalThis.document;
+    globalThis.document = {
+      createElement: () => ({ style: {}, innerHTML: '', querySelectorAll: () => [{ getBBox: () => ({ x: 5, y: 5, width: 40, height: 20 }), getAttribute: () => 'tapaT' }], remove() {} }),
+      body: { appendChild() {} },
+    };
+    const renderer = create(<InformeHoja snapshot={{
+      cabecera: {},
+      hallazgos: [{ hallazgo_id: 'h1', componente_parte: 'Cilindro hidráulico', condicion: 'fuera_de_tolerancia', prioridad: 'P2', dibujo: {
+        componente_nombre: 'Cilindro hidráulico',
+        svg: '<svg viewBox="0 0 100 50"><rect data-z="tapaT" x="5" y="5" width="40" height="20" /></svg>',
+        zonas: [{ zona_id: 'tapaT', nombre: 'Tapa', orden: 1 }],
+        medidas: [{ zona_id: 'tapaT', medida_id: 'dvas', nombre: 'Ø vástago', cota: 'dvas', nominal: 60, minimo: 59.97, maximo: 60, medido: 59.82, resultado: 'fuera_de_rango' }],
+      } }],
+      mediciones: [
+        { hallazgo_id: 'h1', parametro: 'Juego axial', unidad: 'mm', medido: 0.2, resultado: 'sin_sugerencia' },
+        { hallazgo_id: 'h1', parametro: 'Ø ojo de horquilla', unidad: 'mm', medido: 40, resultado: 'dentro_de_rango' },
+      ],
+      tareas_repuestos: [], resumen: {},
+    }} />);
+    const output = getText(renderer.toJSON());
+    expect(output).toContain('Fuera de tolerancia');
+    expect(output).toContain('Sin evaluar');
+    expect(output).toContain('Dentro');
+    expect(output).toContain('Ø vástago');
+    expect(output).not.toContain('dvas');
+    expect(output).not.toContain('fuera_de_rango');
+    expect(output).toContain('Vista previa · Borrador · Este informe no contiene valores económicos · Página 1 de 1');
+    renderer.unmount();
+    globalThis.document = previousDocument;
+  });
 });
