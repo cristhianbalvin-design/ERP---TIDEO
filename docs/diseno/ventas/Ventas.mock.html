@@ -1,0 +1,375 @@
+<title>Ventas TIDEO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap">
+<style>
+/* Layout: pantalla de listado dx-ui con panel lateral de detalle y formulario; mock de Ventas (Finanzas) */
+:root{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  --dx-ui-arrow:#9AA3B2; --dx-ui-on-primary:#FFFFFF; --dx-ui-scrim:rgba(15,27,48,.45);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+  --dx-ui-arrow:#64748B; --dx-ui-on-primary:#0F172A; --dx-ui-scrim:rgba(0,0,0,.6); color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+  --dx-ui-arrow:#64748B; --dx-ui-on-primary:#0F172A; --dx-ui-scrim:rgba(0,0,0,.6); color-scheme:dark; }
+*{box-sizing:border-box}
+body{margin:0;background:var(--dx-ui-bg);color:var(--dx-ui-ink);font:14px/1.4 'DM Sans',system-ui,sans-serif}
+.shell{display:flex;min-height:100vh}
+.side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.side span.on{background:rgba(255,255,255,.12);color:#fff}
+.side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.main{flex:1;min-width:0;padding:24px 28px}
+@media (max-width:900px){.side{display:none}.main{padding:16px}}
+
+.dx-ui{width:100%;margin-bottom:18px}
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-on-primary);border-color:var(--dx-ui-navy)}
+.dx-btn.danger{color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-fg)}
+.dx-btn:focus-visible,.dx-ui-tab:focus-visible,.dx-ven-sel:focus-visible,.dx-ven-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-btn[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);cursor:not-allowed}
+.dx-ui-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dx-ui-tab{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ui-tab.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+.dx-ui-tab em{font-style:normal;margin-left:6px;opacity:.75}
+
+.dx-ui-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-chip{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);min-width:150px}
+.dx-ui-chip b{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif}
+.dx-ui-chip span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui-chip small{color:var(--dx-ui-gray-fg);font-size:12px;font-variant-numeric:tabular-nums}
+.dx-ui-card{container-type:inline-size;overflow:hidden;width:100%;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 1px 2px rgba(15,27,48,.04);margin-bottom:16px}
+.dx-ui-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui-toolbar h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 16px/1.4 'Sora',sans-serif}
+.dx-ui-count{color:var(--dx-ui-gray);font-size:12px;white-space:nowrap}
+.dx-ui-search{display:flex;align-items:center;gap:8px;width:340px;max-width:100%;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray)}
+.dx-ui-search:focus-within{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui-head,.dx-ui-row{display:grid;grid-template-columns:var(--dx-ui-cols,minmax(0,1fr));column-gap:16px;align-items:center;padding-inline:20px}
+.dx-ui-head{min-height:38px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ui-row{min-height:68px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer;transition:background .12s}
+.dx-ui-row:last-child{border-bottom:0}
+.dx-ui-row:hover{background:var(--dx-ui-hover)}
+.dx-ui-row:hover .dx-ui-arrow{color:var(--dx-ui-navy);transform:translateX(2px)}
+.dx-ui-row:focus-visible{position:relative;z-index:1;outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-ui-icon{display:flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px}
+.dx-ui-icon.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui-icon.is-violet{background:var(--dx-ui-violet-bg);color:var(--dx-ui-violet)}
+.dx-ui-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ui-pill i{width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.dx-ui-pill.is-amber{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)}
+.dx-ui-pill.is-amber i{background:var(--dx-ui-amber-dot)}
+.dx-ui-pill.is-green{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-ui-pill.is-red{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)}
+.dx-ui-pill.is-red i{background:var(--dx-ui-red-dot)}
+.dx-ui-pill.is-gray{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)}
+.dx-ui-pill.is-gray i{background:var(--dx-ui-gray-dot)}
+.dx-ui-pill.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui-arrow{color:var(--dx-ui-arrow);transition:.12s}
+.dx-ui-empty{padding:48px 20px;color:var(--dx-ui-gray);text-align:center}
+@container (max-width:900px){
+  .dx-ui-head{display:none}
+  .dx-ui-row{row-gap:8px;padding:14px 16px}
+  .dx-ven-cols{grid-template-columns:minmax(0,1fr) 20px !important;grid-template-areas:"main arrow" "pills pills" "money money"}
+  .dx-ven-cols .dx-ven-main{grid-area:main}
+  .dx-ven-cols .dx-ven-date{display:none}
+  .dx-ven-cols .dx-ven-pills{grid-area:pills}
+  .dx-ven-cols .dx-ven-money{grid-area:money;text-align:left}
+  .dx-ven-cols .dx-ui-arrow{grid-area:arrow}
+}
+
+/* Reglas propias: Ventas (dx-ven-) */
+.dx-ven-cols{--dx-ui-cols:minmax(0,1fr) 150px 240px 130px 20px}
+.dx-ven-main{display:flex;align-items:center;gap:12px;min-width:0}
+.dx-ven-main>span:last-child{min-width:0}
+.dx-ven-main b{display:block;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dx-ven-main small{display:block;color:var(--dx-ui-gray);font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dx-ven-date{color:var(--dx-ui-gray-fg);font-size:13px}
+.dx-ven-date small{display:block;color:var(--dx-ui-gray);font-size:11px}
+.dx-ven-date small.is-late{color:var(--dx-ui-amber-fg);font-weight:600}
+.dx-ven-pills{display:flex;gap:6px;flex-wrap:wrap}
+.dx-ven-money{text-align:right;font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy);font-variant-numeric:tabular-nums}
+.dx-ven-money small{display:block;font:500 11px 'DM Sans',sans-serif;color:var(--dx-ui-gray)}
+.dx-ven-filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ven-sel{height:36px;min-width:150px;padding:0 12px;border-radius:999px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 13px 'DM Sans',sans-serif}
+.dx-ven-note{margin:0 0 16px;padding:10px 14px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:12px}
+
+/* Panel lateral */
+.dx-ven-scrim{position:fixed;inset:0;background:var(--dx-ui-scrim);z-index:20}
+.dx-ven-panel{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--dx-ui-card);border-left:1px solid var(--dx-ui-line);z-index:21;display:flex;flex-direction:column;box-shadow:-8px 0 30px rgba(15,27,48,.18)}
+.dx-ven-panel-head{display:flex;align-items:flex-start;gap:12px;padding:18px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ven-panel-head h3{margin:2px 0 0;color:var(--dx-ui-navy);font:700 18px/1.3 'Sora',sans-serif}
+.dx-ven-x{margin-left:auto;width:36px;height:36px;border-radius:8px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);cursor:pointer;font-size:18px;line-height:1}
+.dx-ven-x:focus-visible{outline:2px solid var(--dx-ui-cyan)}
+.dx-ven-panel-body{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:18px}
+.dx-ven-panel-body>*{flex:none}
+.dx-ven-panel-foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--dx-ui-line);background:var(--dx-ui-head)}
+.dx-ven-sec{margin:0 0 8px;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ven-kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dx-ven-kv div small{display:block;color:var(--dx-ui-gray);font-size:11px}
+.dx-ven-kv div b{display:block;font-weight:600;color:var(--dx-ui-ink)}
+.dx-ven-sum{border:1px solid var(--dx-ui-line);border-radius:10px;overflow:hidden}
+.dx-ven-sum div{display:flex;justify-content:space-between;gap:12px;padding:9px 14px;border-bottom:1px solid var(--dx-ui-line-soft);font-variant-numeric:tabular-nums}
+.dx-ven-sum div:last-child{border-bottom:0}
+.dx-ven-sum div.tot{background:var(--dx-ui-head);font-weight:700;color:var(--dx-ui-navy)}
+.dx-ven-sum div.bal{color:var(--dx-ui-amber-fg);font-weight:700}
+.dx-ven-bar{height:8px;border-radius:999px;background:var(--dx-ui-gray-bg);overflow:hidden;margin-top:8px}
+.dx-ven-bar i{display:block;height:100%;background:var(--dx-ui-green-fg);border-radius:999px}
+.dx-ven-alert{padding:12px 14px;border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);font-size:13px}
+.dx-ven-alert b{display:block;margin-bottom:2px}
+.dx-ven-tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.dx-ven-tl li{position:relative;display:flex;gap:12px;padding:0 0 16px 0}
+.dx-ven-tl li:before{content:"";position:absolute;left:5px;top:14px;bottom:-2px;width:2px;background:var(--dx-ui-line)}
+.dx-ven-tl li:last-child:before{display:none}
+.dx-ven-tl li>i{flex:none;width:12px;height:12px;margin-top:3px;border-radius:50%;background:var(--dx-ui-green-fg)}
+.dx-ven-tl li.todo>i{background:var(--dx-ui-card);border:2px solid var(--dx-ui-border)}
+.dx-ven-tl li b{display:block;font-weight:600;color:var(--dx-ui-navy)}
+.dx-ven-tl li small{color:var(--dx-ui-gray)}
+.dx-ven-tl li.todo b{color:var(--dx-ui-gray)}
+
+/* Formulario */
+.dx-ven-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dx-ven-field label{color:var(--dx-ui-gray);font-size:12px;font-weight:600}
+.dx-ven-in{height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif;min-width:0;width:100%}
+.dx-ven-in:focus{outline:0;border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ven-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:480px){.dx-ven-grid2,.dx-ven-kv{grid-template-columns:minmax(0,1fr)}}
+.dx-ven-seg{display:flex;gap:4px;padding:4px;border-radius:10px;background:var(--dx-ui-gray-bg)}
+.dx-ven-seg button{flex:1;height:34px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray-fg);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ven-seg button.on{background:var(--dx-ui-card);color:var(--dx-ui-navy);box-shadow:0 1px 2px rgba(15,27,48,.12)}
+.dx-ven-items{border:1px solid var(--dx-ui-line);border-radius:10px;overflow:hidden}
+.dx-ven-itemrow{display:grid;grid-template-columns:minmax(0,1fr) 64px 92px 28px;gap:8px;padding:8px 10px;border-bottom:1px solid var(--dx-ui-line-soft);align-items:center}
+.dx-ven-itemrow .dx-ven-in{height:36px}
+.dx-ven-itemrow button{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--dx-ui-gray);cursor:pointer}
+.dx-ven-add{padding:8px 10px;background:var(--dx-ui-head)}
+.dx-ven-add button{border:0;background:transparent;color:var(--dx-ui-cyan-fg);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ven-cobro{padding:14px;border:1px dashed var(--dx-ui-border);border-radius:10px;display:flex;flex-direction:column;gap:12px}
+.dx-ven-check{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--dx-ui-navy)}
+.dx-ven-check input{width:18px;height:18px;accent-color:var(--dx-ui-cyan)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="shell">
+  <aside class="side">
+    <b>TIDEO ERP</b>
+    <small>COMERCIAL</small><span>Cotizaciones</span><span>OS Clientes</span>
+    <small>FINANZAS</small><span>Facturación</span><span class="on">Ventas</span><span>CxC</span><span>Tesorería</span>
+  </aside>
+  <main class="main">
+    <section class="dx-ui dx-ven">
+      <div class="dx-ui-head-page">
+        <div>
+          <div class="dx-ui-eyebrow">Finanzas</div>
+          <h1 class="dx-ui-title">Ventas</h1>
+          <p class="dx-ui-sub">Ventas directas con o sin comprobante: qué falta facturar y qué falta cobrar.</p>
+        </div>
+        <div class="dx-ui-actions"><button class="dx-btn primary" id="btnNueva" type="button">Registrar venta</button></div>
+      </div>
+      <p class="dx-ven-note">Mock con datos de ejemplo. Solo VEN-2026-0001 es real (concepto, monto y moneda); clientes y otras ventas son ficticios.</p>
+
+      <div class="dx-ui-summary" id="chips"></div>
+      <div class="dx-ui-tabs" id="tabs" role="tablist" aria-label="Filtrar ventas"></div>
+
+      <div class="dx-ui-card">
+        <div class="dx-ui-toolbar">
+          <h2>Ventas</h2><span class="dx-ui-count" id="count"></span>
+          <label class="dx-ui-search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="q" type="search" placeholder="Buscar por número, cliente o concepto" aria-label="Buscar ventas">
+          </label>
+        </div>
+        <div class="dx-ven-filters">
+          <select class="dx-ven-sel" id="fSoc" aria-label="Sociedad"><option value="">Todas las sociedades</option><option>Sociedad A</option><option>Sociedad B</option></select>
+          <select class="dx-ven-sel" id="fMon" aria-label="Moneda"><option value="">Todas las monedas</option><option>PEN</option><option>USD</option></select>
+        </div>
+        <div class="dx-ui-head dx-ven-cols" aria-hidden="true"><span>Venta</span><span>Fecha</span><span>Comprobante y cobranza</span><span style="text-align:right">Monto</span><span></span></div>
+        <div id="rows"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="overlay" hidden></div>
+
+<script>
+var HOY = new Date('2026-10-12T12:00:00');
+var SYM = {PEN:'S/', USD:'US$'};
+var V = [
+ {id:'v1',n:'VEN-2026-0001',f:'2026-10-12',cli:'Cliente de ejemplo A',soc:'Sociedad A',con:'DESARROLLO DE ERP PERSONALIZADO',mon:'USD',sub:8474.58,igv:1525.42,tot:10000,pago:'credito',dias:30,com:'confirmada',cp:'pendiente',cobros:[]},
+ {id:'v2',n:'VEN-2026-0002',f:'2026-10-05',cli:'Cliente de ejemplo B',soc:'Sociedad A',con:'Servicio de mantenimiento en campo',mon:'PEN',sub:4720,igv:0,tot:4720,pago:'contado',com:'confirmada',cp:'sin',cobros:[{f:'2026-10-05',m:4720,cta:'Cuenta BCP soles',ref:'Transf. 004871'}]},
+ {id:'v3',n:'VEN-2026-0003',f:'2026-09-28',cli:'Cliente de ejemplo C',soc:'Sociedad B',con:'Venta de repuestos (lote 14 piezas)',mon:'PEN',sub:2000,igv:360,tot:2360,pago:'credito',dias:15,com:'confirmada',cp:'facturada',fact:'F001-00045',cobros:[{f:'2026-10-02',m:1000,cta:'Cuenta BBVA soles',ref:'Dep. 118820'}]},
+ {id:'v4',n:'VEN-2026-0004',f:'2026-10-10',cli:'Cliente de ejemplo D',soc:'Sociedad A',con:'Alquiler de equipo (1 semana)',mon:'USD',sub:1525.42,igv:274.58,tot:1800,pago:'contado',com:'borrador',cp:'pendiente',cobros:[]},
+ {id:'v5',n:'VEN-2026-0005',f:'2026-09-20',cli:'Cliente de ejemplo E',soc:'Sociedad A',con:'Servicio puntual de traslado',mon:'PEN',sub:800,igv:0,tot:800,pago:'contado',com:'anulada',cp:'pendiente',motivo:'Cliente desistió antes de la entrega',cobros:[]}
+];
+function cobrado(v){return v.cobros.reduce(function(s,c){return s+c.m},0)}
+function cobranza(v){var c=cobrado(v);return c>=v.tot-0.005?'cobrada':(c>0?'parcial':'pendiente')}
+function money(m,x){return SYM[m]+' '+Number(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function dias(f){return Math.max(0,Math.round((HOY-new Date(f+'T12:00:00'))/86400000))}
+function fdate(f){var d=new Date(f+'T12:00:00');return d.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}).replace('.','')}
+function pillsFor(v){
+  if(v.com==='anulada') return '<span class="dx-ui-pill is-red"><i></i>Anulada</span>';
+  if(v.com==='borrador') return '<span class="dx-ui-pill is-gray"><i></i>Borrador</span>';
+  var a = v.cp==='facturada'?'<span class="dx-ui-pill is-green"><i></i>Facturada</span>':(v.cp==='sin'?'<span class="dx-ui-pill is-red"><i></i>Sin comprobante</span>':'<span class="dx-ui-pill is-amber"><i></i>Por facturar</span>');
+  var c=cobranza(v);
+  var b = c==='cobrada'?'<span class="dx-ui-pill is-green"><i></i>Cobrada</span>':(c==='parcial'?'<span class="dx-ui-pill is-cyan"><i></i>Cobro parcial</span>':'<span class="dx-ui-pill is-gray"><i></i>Por cobrar</span>');
+  return a+b;
+}
+var TABS=[['todas','Todas',function(v){return true}],['borrador','Borrador',function(v){return v.com==='borrador'}],
+ ['porfacturar','Por facturar',function(v){return v.com==='confirmada'&&v.cp==='pendiente'}],
+ ['sin','Sin comprobante',function(v){return v.com==='confirmada'&&v.cp==='sin'}],
+ ['porcobrar','Por cobrar',function(v){return v.com==='confirmada'&&cobranza(v)!=='cobrada'}],
+ ['cobradas','Cobradas',function(v){return v.com==='confirmada'&&cobranza(v)==='cobrada'}],
+ ['anuladas','Anuladas',function(v){return v.com==='anulada'}]];
+var tab='todas';
+function sumBy(list,fn){var o={};list.forEach(function(v){var x=fn(v);if(x>0)o[v.mon]=(o[v.mon]||0)+x});var k=Object.keys(o);return k.length?k.map(function(m){return money(m,o[m]).replace(/\.00$/,'')}).join(' · '):'—'}
+function renderChips(){
+  var conf=V.filter(function(v){return v.com==='confirmada'});
+  var pf=conf.filter(function(v){return v.cp==='pendiente'});
+  var sc=conf.filter(function(v){return v.cp==='sin'});
+  var xc=conf.filter(function(v){return cobranza(v)!=='cobrada'});
+  var cm=conf.filter(function(v){return v.cobros.length});
+  var h='';
+  h+='<div class="dx-ui-chip"><b>'+pf.length+'</b><span>Por facturar</span><small>'+sumBy(pf,function(v){return v.tot})+'</small></div>';
+  h+='<div class="dx-ui-chip"><b>'+sc.length+'</b><span>Sin comprobante</span><small>'+sumBy(sc,function(v){return v.tot})+'</small></div>';
+  h+='<div class="dx-ui-chip"><b>'+xc.length+'</b><span>Por cobrar</span><small>'+sumBy(xc,function(v){return v.tot-cobrado(v)})+'</small></div>';
+  h+='<div class="dx-ui-chip"><b>'+cm.length+'</b><span>Con cobros este mes</span><small>'+sumBy(cm,function(v){return cobrado(v)})+'</small></div>';
+  document.getElementById('chips').innerHTML=h;
+}
+function renderTabs(){
+  document.getElementById('tabs').innerHTML=TABS.map(function(t){var n=V.filter(t[2]).length;
+    return '<button type="button" role="tab" aria-selected="'+(t[0]===tab)+'" class="dx-ui-tab'+(t[0]===tab?' on':'')+'" data-t="'+t[0]+'">'+t[1]+'<em>'+n+'</em></button>'}).join('');
+}
+function filtered(){
+  var f=TABS.filter(function(t){return t[0]===tab})[0][2];
+  var q=document.getElementById('q').value.trim().toLowerCase();
+  var s=document.getElementById('fSoc').value, m=document.getElementById('fMon').value;
+  return V.filter(function(v){return f(v)&&(!s||v.soc===s)&&(!m||v.mon===m)&&(!q||(v.n+' '+v.cli+' '+v.con).toLowerCase().indexOf(q)>-1)});
+}
+function renderRows(){
+  var L=filtered();
+  document.getElementById('count').textContent=L.length+(L.length===1?' venta':' ventas');
+  var el=document.getElementById('rows');
+  if(!L.length){el.innerHTML='<div class="dx-ui-empty">No hay ventas con estos filtros.</div>';return}
+  el.innerHTML=L.map(function(v){
+    var d=dias(v.f), late = v.com==='confirmada'&&v.cp==='pendiente'&&d>=7;
+    var sub = v.com==='confirmada'&&v.cp==='pendiente' ? '<small'+(late?' class="is-late"':'')+'>'+(d===0?'Hoy':'Hace '+d+' d')+' sin facturar</small>' : (v.com==='confirmada'&&v.cp==='sin'?'<small class="is-late">Pendiente de regularizar</small>':'');
+    var sal = (v.com==='confirmada')? '<small>Cobrado '+money(v.mon,cobrado(v))+'</small>' : '';
+    return '<div class="dx-ui-row dx-ven-cols" role="button" tabindex="0" data-id="'+v.id+'" aria-label="Abrir '+v.n+'">'+
+     '<div class="dx-ven-main"><span class="dx-ui-icon '+(v.cp==='sin'?'is-violet':'is-cyan')+'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span><span><b>'+v.n+' · '+v.cli+'</b><small>'+v.con+'</small></span></div>'+
+     '<div class="dx-ven-date">'+fdate(v.f)+sub+'</div>'+
+     '<div class="dx-ven-pills">'+pillsFor(v)+'</div>'+
+     '<div class="dx-ven-money">'+money(v.mon,v.tot)+sal+'</div>'+
+     '<svg class="dx-ui-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></div>';
+  }).join('');
+}
+function renderAll(){renderChips();renderTabs();renderRows()}
+
+var ov=document.getElementById('overlay');
+function closeP(){ov.hidden=true;ov.innerHTML=''}
+function openDetail(id){
+  var v=V.filter(function(x){return x.id===id})[0];
+  var cb=cobrado(v), pct=Math.min(100,Math.round(cb/v.tot*100)), sal=v.tot-cb;
+  var tl='<li><i></i><span><b>Venta registrada</b><small>'+fdate(v.f)+'</small></span></li>';
+  tl+= v.com==='borrador'?'<li class="todo"><i></i><span><b>Confirmación</b><small>Pendiente</small></span></li>':(v.com==='anulada'?'<li><i style="background:var(--dx-ui-red-dot)"></i><span><b>Anulada</b><small>'+v.motivo+'</small></span></li>':'<li><i></i><span><b>Venta confirmada</b><small>'+fdate(v.f)+'</small></span></li>');
+  v.cobros.forEach(function(c){tl+='<li><i></i><span><b>Cobro '+money(v.mon,c.m)+'</b><small>'+fdate(c.f)+' · '+c.cta+' · '+c.ref+' · ingreso en Tesorería</small></span></li>'});
+  if(v.com==='confirmada'){
+    if(cb<v.tot) tl+='<li class="todo"><i></i><span><b>Cobro pendiente</b><small>Saldo '+money(v.mon,sal)+(v.pago==='credito'?' · crédito '+v.dias+' días':'')+'</small></span></li>';
+    tl+= v.cp==='facturada'?'<li><i></i><span><b>Comprobante '+v.fact+'</b><small>Emitido</small></span></li>':(v.cp==='sin'?'<li class="todo"><i style="border-color:var(--dx-ui-red-dot)"></i><span><b>Sin comprobante</b><small>Pendiente de regularizar</small></span></li>':'<li class="todo"><i></i><span><b>Comprobante</b><small>Por emitir</small></span></li>');
+  }
+  var alert = (v.com==='confirmada'&&v.cp==='sin')?'<div class="dx-ven-alert"><b>Esta venta no tiene comprobante</b>Se registra como ingreso sin comprobante y queda visible hasta que la regularices emitiendo la boleta o factura.</div>':'';
+  var foot='';
+  if(v.com==='borrador') foot='<button class="dx-btn danger" type="button">Anular</button><button class="dx-btn" type="button">Editar</button><button class="dx-btn primary" type="button">Confirmar venta</button>';
+  else if(v.com==='confirmada'){
+    foot='<button class="dx-btn danger" type="button">Anular</button>';
+    if(cb<v.tot) foot+='<button class="dx-btn" type="button">Registrar cobro</button>';
+    if(v.cp==='pendiente') foot+='<button class="dx-btn" type="button">Marcar sin comprobante</button><button class="dx-btn primary" type="button">Emitir comprobante</button>';
+    if(v.cp==='sin') foot+='<button class="dx-btn primary" type="button">Regularizar con comprobante</button>';
+  }
+  ov.innerHTML='<div class="dx-ven-scrim" data-close="1"></div><aside class="dx-ven-panel" role="dialog" aria-label="Detalle de '+v.n+'">'+
+   '<div class="dx-ven-panel-head"><div><div class="dx-ui-eyebrow">'+v.n+'</div><h3>'+v.con+'</h3><div style="margin-top:8px" class="dx-ven-pills">'+pillsFor(v)+'</div></div><button class="dx-ven-x" type="button" data-close="1" aria-label="Cerrar">×</button></div>'+
+   '<div class="dx-ven-panel-body">'+alert+
+   '<div><p class="dx-ven-sec">Datos</p><div class="dx-ven-kv"><div><small>Cliente</small><b>'+v.cli+'</b></div><div><small>Sociedad</small><b>'+v.soc+'</b></div><div><small>Fecha</small><b>'+fdate(v.f)+'</b></div><div><small>Condición</small><b>'+(v.pago==='credito'?'Crédito '+v.dias+' días':'Contado')+'</b></div></div></div>'+
+   '<div><p class="dx-ven-sec">Importe</p><div class="dx-ven-sum"><div><span>Subtotal</span><span>'+money(v.mon,v.sub)+'</span></div><div><span>IGV</span><span>'+(v.igv?money(v.mon,v.igv):'Sin IGV')+'</span></div><div class="tot"><span>Total</span><span>'+money(v.mon,v.tot)+'</span></div>'+(v.com==='confirmada'?'<div><span>Cobrado</span><span>'+money(v.mon,cb)+'</span></div>'+(sal>0.005?'<div class="bal"><span>Saldo por cobrar</span><span>'+money(v.mon,sal)+'</span></div>':''):'')+'</div>'+(v.com==='confirmada'?'<div class="dx-ven-bar" aria-hidden="true"><i style="width:'+pct+'%"></i></div>':'')+'</div>'+
+   '<div><p class="dx-ven-sec">Recorrido de la venta</p><ul class="dx-ven-tl">'+tl+'</ul></div></div>'+
+   '<div class="dx-ven-panel-foot">'+foot+'</div></aside>';
+  ov.hidden=false; ov.querySelector('.dx-ven-x').focus();
+}
+var items=[{d:'Servicio de implementación',q:1,p:5000}];
+var segCom='factura', pago='contado', cobrado_ya=true;
+function openForm(){
+  items=[{d:'',q:1,p:0}]; segCom='factura'; pago='contado'; cobrado_ya=false;
+  ov.innerHTML='<div class="dx-ven-scrim" data-close="1"></div><aside class="dx-ven-panel" role="dialog" aria-label="Registrar venta">'+
+   '<div class="dx-ven-panel-head"><div><div class="dx-ui-eyebrow">Ventas</div><h3>Registrar venta</h3></div><button class="dx-ven-x" type="button" data-close="1" aria-label="Cerrar">×</button></div>'+
+   '<form class="dx-ven-panel-body" id="frm" onsubmit="return false">'+
+   '<div class="dx-ven-grid2"><div class="dx-ven-field"><label for="fCli">Cliente</label><select class="dx-ven-in" id="fCli"><option>Cliente de ejemplo A</option><option>Cliente de ejemplo B</option></select></div>'+
+   '<div class="dx-ven-field"><label for="fFec">Fecha</label><input class="dx-ven-in" id="fFec" type="date" value="2026-10-12"></div></div>'+
+   '<div class="dx-ven-grid2"><div class="dx-ven-field"><label for="fSocF">Sociedad</label><select class="dx-ven-in" id="fSocF"><option>Sociedad A</option><option>Sociedad B</option></select></div>'+
+   '<div class="dx-ven-field"><label for="fMonF">Moneda</label><select class="dx-ven-in" id="fMonF"><option value="PEN">S/ Soles</option><option value="USD">US$ Dólares</option></select></div></div>'+
+   '<div class="dx-ven-field"><label for="fOri">Origen (opcional)</label><select class="dx-ven-in" id="fOri"><option>Venta directa</option><option>Desde una cotización</option><option>Desde una OS de cliente</option></select></div>'+
+   '<div class="dx-ven-field"><label id="lblCom">Comprobante</label><div class="dx-ven-seg" role="group" aria-labelledby="lblCom" id="segCom"><button type="button" data-v="factura" class="on">Factura</button><button type="button" data-v="boleta">Boleta</button><button type="button" data-v="sin">Sin comprobante</button></div></div>'+
+   '<div class="dx-ven-alert" id="alSin" hidden><b>Sin comprobante</b>Se registra sin IGV y aparece en el ER como «Ingresos sin comprobante» hasta que la regularices.</div>'+
+   '<div><p class="dx-ven-sec">Ítems</p><div class="dx-ven-items" id="items"></div></div>'+
+   '<div class="dx-ven-sum" id="tot"></div>'+
+   '<div class="dx-ven-field"><label id="lblPago">Condición de pago</label><div class="dx-ven-seg" role="group" aria-labelledby="lblPago" id="segPago"><button type="button" data-v="contado" class="on">Contado</button><button type="button" data-v="credito">Crédito</button></div></div>'+
+   '<div class="dx-ven-field" id="boxDias" hidden><label for="fDias">Días de crédito</label><input class="dx-ven-in" id="fDias" type="number" min="1" value="30"></div>'+
+   '<div class="dx-ven-cobro" id="boxCobro"><label class="dx-ven-check"><input type="checkbox" id="chkCobro"> El dinero ya ingresó</label><div id="cobroCampos" hidden><div class="dx-ven-grid2"><div class="dx-ven-field"><label for="fCta">Cuenta bancaria</label><select class="dx-ven-in" id="fCta"><option>Cuenta BCP soles</option><option>Cuenta BBVA soles</option><option>Cuenta BCP dólares</option></select></div><div class="dx-ven-field"><label for="fFc">Fecha del cobro</label><input class="dx-ven-in" id="fFc" type="date" value="2026-10-12"></div></div><div class="dx-ven-field" style="margin-top:12px"><label for="fRef">Referencia</label><input class="dx-ven-in" id="fRef" placeholder="N° de operación"></div><p class="dx-ui-sub" style="font-size:12px">Genera un ingreso en Tesorería vinculado a esta venta.</p></div></div>'+
+   '</form>'+
+   '<div class="dx-ven-panel-foot"><button class="dx-btn" type="button" data-close="1">Guardar borrador</button><button class="dx-btn primary" type="button" data-close="1">Confirmar venta</button></div></aside>';
+  ov.hidden=false; drawItems();
+  document.getElementById('segCom').onclick=function(e){var b=e.target.closest('button');if(!b)return;segCom=b.dataset.v;[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b)});document.getElementById('alSin').hidden=segCom!=='sin';drawItems()};
+  document.getElementById('segPago').onclick=function(e){var b=e.target.closest('button');if(!b)return;pago=b.dataset.v;[].forEach.call(this.children,function(x){x.classList.toggle('on',x===b)});document.getElementById('boxDias').hidden=pago!=='credito'};
+  document.getElementById('chkCobro').onchange=function(){document.getElementById('cobroCampos').hidden=!this.checked};
+  document.getElementById('fMonF').onchange=drawItems;
+  ov.querySelector('#fCli').focus();
+}
+function drawItems(){
+  var mon=document.getElementById('fMonF').value;
+  document.getElementById('items').innerHTML=items.map(function(it,i){return '<div class="dx-ven-itemrow"><input class="dx-ven-in" data-i="'+i+'" data-k="d" value="'+it.d+'" placeholder="Descripción" aria-label="Descripción ítem '+(i+1)+'"><input class="dx-ven-in" data-i="'+i+'" data-k="q" type="number" min="1" value="'+it.q+'" aria-label="Cantidad"><input class="dx-ven-in" data-i="'+i+'" data-k="p" type="number" min="0" step="0.01" value="'+it.p+'" aria-label="Precio unitario"><button type="button" data-del="'+i+'" aria-label="Quitar ítem">×</button></div>'}).join('')+'<div class="dx-ven-add"><button type="button" id="addIt">+ Agregar ítem</button></div>';
+  var sub=items.reduce(function(s,i){return s+i.q*i.p},0), igv=segCom==='sin'?0:sub*0.18;
+  document.getElementById('tot').innerHTML='<div><span>Subtotal</span><span>'+money(mon,sub)+'</span></div><div><span>IGV 18%</span><span>'+(segCom==='sin'?'Sin IGV':money(mon,igv))+'</span></div><div class="tot"><span>Total</span><span>'+money(mon,sub+igv)+'</span></div>';
+}
+ov.addEventListener('input',function(e){var t=e.target;if(t.dataset&&t.dataset.i!==undefined){var it=items[+t.dataset.i];it[t.dataset.k]=t.dataset.k==='d'?t.value:parseFloat(t.value)||0;var mon=document.getElementById('fMonF').value;var sub=items.reduce(function(s,i){return s+i.q*i.p},0),igv=segCom==='sin'?0:sub*0.18;document.getElementById('tot').innerHTML='<div><span>Subtotal</span><span>'+money(mon,sub)+'</span></div><div><span>IGV 18%</span><span>'+(segCom==='sin'?'Sin IGV':money(mon,igv))+'</span></div><div class="tot"><span>Total</span><span>'+money(mon,sub+igv)+'</span></div>'}});
+ov.addEventListener('click',function(e){
+  if(e.target.closest('[data-close]')){closeP();return}
+  if(e.target.id==='addIt'){items.push({d:'',q:1,p:0});drawItems();return}
+  var d=e.target.closest('[data-del]');if(d&&items.length>1){items.splice(+d.dataset.del,1);drawItems()}
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ov.hidden)closeP()});
+document.getElementById('tabs').onclick=function(e){var b=e.target.closest('button');if(!b)return;tab=b.dataset.t;renderAll()};
+document.getElementById('q').oninput=renderRows;
+document.getElementById('fSoc').onchange=renderRows;document.getElementById('fMon').onchange=renderRows;
+document.getElementById('rows').addEventListener('click',function(e){var r=e.target.closest('.dx-ui-row');if(r)openDetail(r.dataset.id)});
+document.getElementById('rows').addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){var r=e.target.closest('.dx-ui-row');if(r){e.preventDefault();openDetail(r.dataset.id)}}});
+document.getElementById('btnNueva').onclick=openForm;
+renderAll();
+</script>

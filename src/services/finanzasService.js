@@ -13,6 +13,25 @@ export const diasPorCondicion = {
   '90 días': 90,
 };
 
+export function calcularTotalesVentaPreview(items = [], tipoVenta = 'con_comprobante') {
+  const subtotalLine = item => Math.round((Number(item.cantidad || 0) * Number(item.precio_unitario || 0) + Number.EPSILON) * 100) / 100;
+  const subtotal = items.reduce((sum, item) => sum + subtotalLine(item), 0);
+  const igv = tipoVenta === 'sin_comprobante' ? 0 : items.reduce((sum, item) => (
+    sum + (item.afecto_igv ? Math.round((subtotalLine(item) * 0.18 + Number.EPSILON) * 100) / 100 : 0)
+  ), 0);
+  return { subtotal: Math.round(subtotal * 100) / 100, igv: Math.round(igv * 100) / 100, total: Math.round((subtotal + igv) * 100) / 100 };
+}
+
+export function saldoVenta(venta = {}) {
+  return Math.max(0, Math.round((Number(venta.monto_total ?? venta.monto ?? 0) - Number(venta.monto_cobrado || 0)) * 100) / 100);
+}
+
+export function estadoVisibleVenta(venta = {}) {
+  const total = Number(venta.monto_total ?? venta.monto ?? 0);
+  const cobrado = Number(venta.monto_cobrado || 0);
+  return { estado: venta.estado || 'borrador', cobroParcial: venta.estado === 'confirmada' && cobrado > 0 && cobrado < total, saldo: saldoVenta(venta) };
+}
+
 const stripAccents = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 // El número se compara sin diferencias accidentales de mayúsculas o espacios.
@@ -470,7 +489,20 @@ export const finanzasService = {
       .order('fecha', { ascending: false })
       .order('creado_en', { ascending: false });
     if (error) throw error;
-    return data || [];
+    const ventas = data || [];
+    if (!ventas.length) return [];
+    const ids = ventas.map(venta => venta.id);
+    const [itemsResult, cobrosResult] = await Promise.all([
+      supabase.from('venta_items').select('*').eq('empresa_id', empresaId).in('venta_id', ids).order('orden'),
+      supabase.from('venta_cobros').select('*').eq('empresa_id', empresaId).in('venta_id', ids).order('fecha', { ascending: false }),
+    ]);
+    if (itemsResult.error) throw itemsResult.error;
+    if (cobrosResult.error) throw cobrosResult.error;
+    const itemsByVenta = new Map();
+    const cobrosByVenta = new Map();
+    (itemsResult.data || []).forEach(item => itemsByVenta.set(item.venta_id, [...(itemsByVenta.get(item.venta_id) || []), item]));
+    (cobrosResult.data || []).forEach(cobro => cobrosByVenta.set(cobro.venta_id, [...(cobrosByVenta.get(cobro.venta_id) || []), cobro]));
+    return ventas.map(venta => ({ ...venta, items: itemsByVenta.get(venta.id) || [], cobros: cobrosByVenta.get(venta.id) || [] }));
   },
 
   async getCuentasVentas(empresaId) {
@@ -484,60 +516,61 @@ export const finanzasService = {
     return data || [];
   },
 
-  async crearVenta(payload) {
+  async getSociedadesVentas(empresaId) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ventas')
-      .insert(payload)
-      .select()
-      .single();
+    const { data, error } = await supabase.from('sociedades')
+      .select('id, nombre, codigo, activa, es_principal')
+      .eq('empresa_id', empresaId).eq('activa', true).order('nombre');
     if (error) throw error;
     return data;
   },
 
-  async actualizarEstadoVenta(id, estado) {
+  async getCuentasBancariasVentas(empresaId) {
     const supabase = await getSupabaseClient();
-    const { data, error } = await supabase
-      .from('ventas')
-      .update({ estado })
-      .eq('id', id)
-      .select()
-      .single();
+    const { data, error } = await supabase.from('cuentas_bancarias')
+      .select('id, nombre, moneda, sociedad_id, estado, es_cuenta_detracciones')
+      .eq('empresa_id', empresaId).eq('estado', 'activo').order('nombre');
     if (error) throw error;
     return data;
   },
 
-  // ── Registrar Venta (pre-facturación) ────────────────────────────────────
-  // Inserta la venta en estado borrador o confirmada.
-  // NO genera CxC ni factura — eso ocurre al emitir el comprobante.
-  async registrarVenta({ empresaId, usuarioId, datos }) {
+  async registrarVenta({ empresaId, datos }) {
     const supabase = await getSupabaseClient();
-
-    const esCredito = datos.condicion_pago === 'credito';
-    const estadoSeguro = ['borrador', 'confirmada'].includes(datos.estado) ? datos.estado : 'borrador';
-
-    const ventaPayload = {
-      empresa_id: empresaId,
-      fecha: datos.fecha,
-      cuenta_id: datos.cuenta_id || null,
-      cliente_nombre_snapshot: datos.cliente_nombre_snapshot,
-      concepto: datos.concepto,
-      monto_total: Number(datos.monto_total),
-      moneda: datos.moneda || 'PEN',
-      estado: estadoSeguro,
-      condicion_pago: datos.condicion_pago || 'contado',
-      dias_credito: esCredito ? (Number(datos.dias_credito) || 30) : null,
-      fecha_vencimiento_pago: esCredito ? (datos.fecha_vencimiento_pago || null) : null,
-      creado_por: usuarioId || null,
-    };
-
-    const { data: venta, error } = await supabase
-      .from('ventas')
-      .insert(ventaPayload)
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('venta_guardar', {
+      p_empresa_id: empresaId,
+      p_venta: datos.venta,
+      p_items: datos.items,
+    });
     if (error) throw error;
-    return venta;
+    return data?.venta ? { ...data.venta, items: data.items || [] } : data;
+  },
+
+  async ventaConfirmar(empresaId, ventaId) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('venta_confirmar', { p_empresa_id: empresaId, p_venta_id: ventaId });
+    if (error) throw error;
+    return data?.venta || data;
+  },
+
+  async registrarCobroVenta(empresaId, ventaId, cobro) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('venta_registrar_cobro', { p_empresa_id: empresaId, p_venta_id: ventaId, p_cobro: cobro });
+    if (error) throw error;
+    return data;
+  },
+
+  async anularCobroVenta(empresaId, cobroId, motivo) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('venta_anular_cobro', { p_empresa_id: empresaId, p_cobro_id: cobroId, p_motivo: motivo });
+    if (error) throw error;
+    return data;
+  },
+
+  async anularVenta(empresaId, ventaId, motivo) {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.rpc('venta_anular', { p_empresa_id: empresaId, p_venta_id: ventaId, p_motivo: motivo });
+    if (error) throw error;
+    return data?.venta || data;
   },
 
   // ── Confirmar Venta (cerrar ciclo al emitir comprobante) ─────────────────
