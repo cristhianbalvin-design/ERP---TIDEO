@@ -110,6 +110,7 @@ function NavEntry({ item, route, navigate }) {
   return (
     <button
       className={`ops-nav-entry${itemMatchesRoute(item, route) ? ' active' : ''}`}
+      title={item.label}
       onClick={() => navigate(item.id)}
     >
       {item.icon && <Icon name={item.icon} size={14} />}
@@ -132,6 +133,18 @@ export function OperationalApp() {
   });
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('opera_ops_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('opera_ops_sidebar_collapsed', String(sidebarCollapsed));
+    } catch {}
+  }, [sidebarCollapsed]);
   useEffect(() => {
     const updateRoute = () => setLocation(readLocation());
     window.addEventListener('hashchange', updateRoute);
@@ -183,12 +196,12 @@ export function OperationalApp() {
 
   return (
     <div className="ops-shell">
-      <aside className="ops-sidebar">
+      <aside className={`ops-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`}>
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={operaIsotipo} alt="OPERA" />
           </div>
-          <div>
+          <div className="ops-brand-copy">
             <div className="ops-brand-text">OPERA</div>
             <div className="ops-brand-sub">OPERACIONES</div>
           </div>
@@ -244,7 +257,7 @@ export function OperationalApp() {
 
                       return (
                         <div className={`ops-nav-group${isOpen ? ' is-open' : ''}`} key={group.id}>
-                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} onClick={() => toggleGroup(group.id)} aria-expanded={isOpen}>
+                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} title={group.label} onClick={() => toggleGroup(group.id)} aria-expanded={isOpen}>
                             <span className="ops-nav-group-icon">{group.emoji}</span>
                             <span className="ops-nav-entry-label">{group.label}</span>
                             {group.groupBadge && <span className={`ops-nav-group-badge${group.groupBadgeClass ? ` ${group.groupBadgeClass}` : ''}`}>{group.groupBadge}</span>}
@@ -260,6 +273,7 @@ export function OperationalApp() {
                                   <div className="ops-nav-area" key={area.id}>
                                     <button
                                       className={`ops-nav-area-head${itemMatchesRoute(area, route) ? ' active' : ''}`}
+                                      title={area.label}
                                       onClick={() => {
                                         const nextOpen = !areaOpen;
                                         setOpenAreaId(nextOpen ? area.id : null);
@@ -291,6 +305,16 @@ export function OperationalApp() {
             </>
           )}
         </nav>
+        <button
+          type="button"
+          className="ops-sidebar-collapse"
+          title={sidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+          aria-label={sidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+          onClick={() => setSidebarCollapsed(current => !current)}
+        >
+          <span className="ops-sidebar-collapse-icon"><Icon name="chev" size={16} /></span>
+          {!sidebarCollapsed && <span>Colapsar</span>}
+        </button>
       </aside>
       <section className="ops-main-column">
         <OperationalHeader title={title} sesionOperativa={sesionOperativa} />
