@@ -19,9 +19,9 @@ Deno.test("SYSTEM_PROMPT tiene menos de 3200 caracteres", () => {
   assert(SYSTEM_PROMPT.length < 3200, `longitud: ${SYSTEM_PROMPT.length}`);
 });
 
-Deno.test("esquema de conteo publica las 13 entidades exactas y requiere entidad", () => {
+Deno.test("esquema de conteo publica las 15 entidades exactas y requiere entidad", () => {
   const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_contar_registros") as any;
-  const expected = ["cuentas", "leads", "oportunidades", "cotizaciones", "proveedores", "solpe", "procesos_compra", "ordenes_compra", "recepciones", "materiales", "almacenes", "guias_remision", "ordenes_venta"];
+  const expected = ["cuentas", "leads", "oportunidades", "cotizaciones", "proveedores", "solpe", "procesos_compra", "ordenes_compra", "recepciones", "materiales", "almacenes", "guias_remision", "ordenes_venta", "facturas", "os_clientes"];
   equal(tool.function.parameters.properties.entidad.type, "string");
   equal(JSON.stringify(tool.function.parameters.properties.entidad.enum), JSON.stringify(expected));
   equal(JSON.stringify(tool.function.parameters.required), JSON.stringify(["entidad"]));
@@ -1204,4 +1204,119 @@ Deno.test("cobertura temática de alertas incluye CxP/CxC, recepción y reposici
   equal(topicsWithoutCoverage("OC pendientes de recepción", ["asistente_alertas"]).length, 0);
   equal(topicsWithoutCoverage("materiales con mayor stock", []).includes("stock bajo y reposición"), false);
   equal(SYSTEM_PROMPT.length, 3178);
+});
+
+Deno.test("facturación y OS cliente publican las cuatro herramientas y amplían entidades de conteo", () => {
+  const names = ["asistente_buscar_facturas", "asistente_resumen_facturacion", "asistente_buscar_os_clientes", "asistente_resumen_os_clientes"];
+  for (const name of names) assert(OPENAI_TOOLS.some((tool: any) => tool.function.name === name));
+  const count = OPENAI_TOOLS.find((tool: any) => tool.function.name === "asistente_contar_registros") as any;
+  assert(count.function.parameters.properties.entidad.enum.includes("facturas"));
+  assert(count.function.parameters.properties.entidad.enum.includes("os_clientes"));
+  for (const name of names) assert(!("sociedad_id" in (OPENAI_TOOLS.find((tool: any) => tool.function.name === name) as any).function.parameters.properties));
+});
+
+Deno.test("descripciones de facturas y OS distinguen estados y totales de saldo CxC", () => {
+  const description = (name: string): string => {
+    const tool = TOOL_SPECS.find(candidate => candidate.name === name);
+    if (!tool) throw new Error(`tool ${name} is missing`);
+    if (typeof tool.desc !== "string") throw new Error(`description for ${name} is missing`);
+    return tool.desc;
+  };
+  const buscarOs = description("asistente_buscar_os_clientes");
+  const resumenOs = description("asistente_resumen_os_clientes");
+  for (const desc of [buscarOs, resumenOs]) {
+    assert(desc.includes("en_ejecucion"));
+    assert(!desc.includes("son estados equivalentes"));
+  }
+  const facturas = description("asistente_buscar_facturas");
+  assert(facturas.includes("no saldo por cobrar"));
+  assert(facturas.includes("asistente_resumen_cxc"));
+});
+
+Deno.test("facturas y resumen de facturación validan enums, límites y rangos", () => {
+  const facturas = TOOL_SPECS.find(tool => tool.name === "asistente_buscar_facturas")!;
+  const resumen = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_facturacion")!;
+  equal(validateArgs(facturas, { tipo_documento: "nota_credito" })?.p_tipo_documento, "nota_credito");
+  equal(validateArgs(facturas, { tipo_documento: "nota_debito" })?.p_tipo_documento, "nota_debito");
+  equal(validateArgs(facturas, { tipo_documento: "nota" }), null);
+  equal(validateArgs(facturas, { limite: 100 })?.p_limite, 100);
+  equal(validateArgs(facturas, { limite: 101 }), null);
+  equal(validateArgs(resumen, { periodo: "ultimos_meses", ultimos_meses: 36 })?.p_ultimos_meses, 36);
+  equal(validateArgs(resumen, { periodo: "ultimos_meses", ultimos_meses: 37 }), null);
+  equal(validateArgs(resumen, { desde: "2023-10-01" }), null);
+  equal(validateArgs(resumen, { desde: "2023-10-01", hasta: "2026-10-01" }), null);
+  equal(validateArgs(resumen, { desde: "2023-11-01", hasta: "2026-10-01" })?.p_desde, "2023-11-01");
+});
+
+Deno.test("búsqueda de facturas mapea filtros al RPC e incluye la pregunta del body", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "f", type: "function", function: { name: "asistente_buscar_facturas", arguments: JSON.stringify({ texto: "F-20", estado: "EMITIDA", tipo_documento: "factura", solo_vencidas: true, limite: 9, monto: 120 }) } }] })
+    : completion({ role: "assistant", content: "Hay documentos." }) });
+  const pregunta = "¿Qué facturas vencidas hay?";
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_buscar_facturas")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD);
+  equal(rpc.args.p_texto, "F-20"); equal(rpc.args.p_estado, "emitida"); equal(rpc.args.p_tipo_documento, "factura");
+  equal(rpc.args.p_solo_vencidas, true); equal(rpc.args.p_limite, 9); equal(rpc.args.p_monto, 120);
+  assert(String(x.aiCalls[0].find(message => message.role === "user")?.content).includes(pregunta));
+});
+
+Deno.test("resumen de facturación resuelve periodo relativo y mapea fechas al RPC", async () => {
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-10-11T12:00:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "rf", type: "function", function: { name: "asistente_resumen_facturacion", arguments: JSON.stringify({ periodo: "ultimos_meses", ultimos_meses: 3, moneda: "PEN" }) } }] })
+    : completion({ role: "assistant", content: "Resumen listo." }) });
+  equal((await x.handler(x.request({ pregunta: "Resume la facturación del trimestre", empresa_id: EMPRESA, sociedad_id: SOCIEDAD }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_resumen_facturacion")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD);
+  equal(rpc.args.p_desde, "2026-08-01"); equal(rpc.args.p_hasta, "2026-10-11"); equal(rpc.args.p_moneda, "PEN");
+  assert(!("p_periodo" in rpc.args) && !("p_ultimos_meses" in rpc.args));
+});
+
+Deno.test("búsqueda de OS cliente mapea estado y producción con sociedad del servidor", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "os", type: "function", function: { name: "asistente_buscar_os_clientes", arguments: JSON.stringify({ texto: "OS-7", estado: "EN_EJECUCION", estado_produccion: "Proceso", desde: "2026-01-01", hasta: "2026-06-30", limite: 8 }) } }] })
+    : completion({ role: "assistant", content: "Encontré una OS." }) });
+  equal((await x.handler(x.request({ pregunta: "Busca OS de clientes", empresa_id: EMPRESA, sociedad_id: SOCIEDAD }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_buscar_os_clientes")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_texto, "OS-7");
+  equal(rpc.args.p_estado, "en_ejecucion"); equal(rpc.args.p_estado_produccion, "Proceso");
+  equal(rpc.args.p_desde, "2026-01-01"); equal(rpc.args.p_hasta, "2026-06-30"); equal(rpc.args.p_limite, 8);
+});
+
+Deno.test("resumen de OS cliente mapea texto y sociedad al RPC", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "ros", type: "function", function: { name: "asistente_resumen_os_clientes", arguments: JSON.stringify({ texto: "cliente activo" }) } }] })
+    : completion({ role: "assistant", content: "Resumen listo." }) });
+  equal((await x.handler(x.request({ pregunta: "Resume mis órdenes de servicio", empresa_id: EMPRESA, sociedad_id: SOCIEDAD }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_resumen_os_clientes")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_texto, "cliente activo");
+});
+
+Deno.test("facturas por cobrar con resumen CxC responde sin reintento ni neutral", async () => {
+  let n = 0;
+  const x = setup({ rpc: () => ({ data: { saldo_pendiente: 125 }, error: null }), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "cxc", type: "function", function: { name: "asistente_resumen_cxc", arguments: "{}" } }] })
+    : completion({ role: "assistant", content: "Hay S/ 125.00 en facturas pendientes por cobrar." }) });
+  const result = await (await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "¿Qué facturas tengo por cobrar?" }))).json();
+  equal(result.respuesta, "Hay S/ 125.00 en facturas pendientes por cobrar.");
+  equal(x.aiCalls.length, 2);
+  equal(result.herramientas_usadas.join(","), "asistente_resumen_cxc");
+  equal(topicsWithoutCoverage("¿Qué facturas tengo por cobrar?", ["asistente_resumen_cxc"]).length, 0);
+});
+
+Deno.test("cobertura de facturación y OS clientes incluye temas válidos y excluye CxP/CxC", () => {
+  assert(topicsWithoutCoverage("¿Cuánto facturado y notas de crédito?", []).includes("facturación"));
+  assert(topicsWithoutCoverage("Busca boletas emitidas", []).includes("facturación"));
+  assert(!topicsWithoutCoverage("facturas por pagar", []).includes("facturación"));
+  assert(!topicsWithoutCoverage("factura de compra", []).includes("facturación"));
+  assert(!topicsWithoutCoverage("facturas de compra", []).includes("facturación"));
+  assert(!topicsWithoutCoverage("facturas por cobrar", []).includes("facturación"));
+  const osTopics = topicsWithoutCoverage("órdenes de servicio de clientes en ejecución", []);
+  assert(osTopics.includes("órdenes de servicio de clientes"));
+  assert(!topicsWithoutCoverage("OS de clientes en Proceso", ["asistente_buscar_os_clientes"]).includes("órdenes de servicio de clientes"));
+  equal(topicsWithoutCoverage("OS de clientes", ["asistente_resumen_os_clientes"]).includes("órdenes de servicio de clientes"), false);
 });
