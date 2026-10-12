@@ -5,12 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const api = vi.hoisted(() => ({ obtenerOCrearBorrador: vi.fn(), obtenerInformeVigente: vi.fn(), actualizarOpciones: vi.fn(), generarConclusionIA: vi.fn(), obtenerIdentidadEmpresa: vi.fn(), usuarioPuedeInforme: vi.fn(), emitirInformeDiagnostico: vi.fn(), generarPdfInforme: vi.fn(), firmarRutasFotosHallazgos: vi.fn(), listarFotosHallazgos: vi.fn() }));
 vi.mock('../src/services/diagnosticoInformeService.js', () => ({ ...api, OPCIONES_INFORME_POR_DEFECTO: { conclusion: '', conclusion_origen: 'manual', conclusion_confirmada: false, incluir_mediciones: false, mostrar_horas: false, ocultar_conformes: false } }));
 vi.mock('../src/services/diagnosticoHallazgoFotosService.js', () => ({ firmarRutasFotosHallazgos: (...args) => api.firmarRutasFotosHallazgos(...args), listarFotosHallazgos: (...args) => api.listarFotosHallazgos(...args) }));
+vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ auth: { getUser: async () => ({ data: { user: null } }) } }) }));
 vi.mock('../src/zahory-mock/pages/InformeHoja.jsx', () => ({ InformeHoja: ({ snapshot }) => <div data-testid="informe-hoja">{JSON.stringify(snapshot)}</div> }));
 vi.mock('../src/zahory-mock/pages/InformePdf.jsx', () => ({ generarPdfInforme: (...args) => api.generarPdfInforme(...args) }));
 import { DiagnosticoInformePanel } from '../src/zahory-mock/pages/DiagnosticoInformePanel.jsx';
 
 const draft = options => ({ id: 'inf-1', empresa_id: 'e1', estado: 'borrador', opciones: { conclusion: '', conclusion_origen: 'manual', conclusion_confirmada: false, incluir_mediciones: false, mostrar_horas: false, ocultar_conformes: false, ...options } });
-const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'mantenimiento', estado: 'emitido', hallazgos: [], lineas: [] };
+const diagnosis = { id: 'd1', recepcion_id: 'r1', tipo: 'fabricacion', estado: 'emitido', hallazgos: [], lineas: [] };
 let renderer;
 const text = node => node?.children?.map(child => typeof child === 'string' ? child : text(child)).join('') || '';
 const byLabel = label => renderer.root.findAll(node => node.type === 'label' && text(node).includes(label))[0];
@@ -34,6 +35,17 @@ beforeEach(() => {
 });
 
 describe('DiagnosticoInformePanel', () => {
+  it('se integra en el flujo de trabajo sin overlay, cabecera modal ni botón de cierre', async () => {
+    await render({ inline: true });
+    const panel = renderer.root.findByProps({ className: 'dx-inf-overlay dx-inf-inline' });
+    expect(panel.props.role).toBe('region');
+    expect(panel.props['aria-modal']).toBeUndefined();
+    expect(renderer.root.findAllByProps({ className: 'dx-inf-controls-head' })).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ className: 'dx-inf-preview' })).toHaveLength(1);
+    expect(button('Emitir informe')).toBeTruthy();
+    renderer.unmount(); renderer = null;
+  });
+
   it('solo crea borrador con edición, y usuario con ver consulta existente sin poder editar', async () => {
     await render();
     expect(api.obtenerOCrearBorrador).toHaveBeenCalledWith('r1', 'd1');
@@ -92,7 +104,7 @@ describe('DiagnosticoInformePanel', () => {
     renderer.unmount(); renderer = null;
     api.usuarioPuedeInforme.mockResolvedValue(false);
     await render();
-    expect(button('Emitir informe')).toBeUndefined();
+    expect(button('Emitir informe').props.disabled).toBe(true);
     renderer.unmount(); renderer = null;
     api.usuarioPuedeInforme.mockResolvedValue(true);
     const emitted = { id: 'v1', estado: 'emitido', version: 1, opciones: draft().opciones, snapshot: { version: 1, cabecera: {} } };
@@ -109,13 +121,15 @@ describe('DiagnosticoInformePanel', () => {
     api.obtenerIdentidadEmpresa.mockResolvedValue({ firmante: 'Ana Pérez', cargo_firmante: 'Jefa técnica' });
     const emitted = { id: 'v2', estado: 'emitido', version: 2, opciones: { ...draft().opciones, mostrar_horas: true }, snapshot: { version: 2, cabecera: {} } };
     api.emitirInformeDiagnostico.mockResolvedValue(emitted);
-    api.obtenerInformeVigente.mockResolvedValueOnce({ borrador: draft(), emitidos: [] }).mockResolvedValueOnce({ borrador: null, emitidos: [emitted] });
+    api.obtenerOCrearBorrador.mockResolvedValue(draft({ conclusion: 'Conclusión confirmada', conclusion_confirmada: true }));
+    api.obtenerInformeVigente.mockResolvedValueOnce({ borrador: draft({ conclusion: 'Conclusión confirmada', conclusion_confirmada: true }), emitidos: [] }).mockResolvedValueOnce({ borrador: null, emitidos: [emitted] });
     await render();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(button('Emitir informe').props.disabled).toBe(false);
     await act(async () => { button('Emitir informe').props.onClick(); await Promise.resolve(); });
     expect(renderer.root.findAll(node => node.props?.['aria-label'] === 'Confirmar emisión')).toHaveLength(1);
-    expect(renderer.root.findAllByType('input').map(node => node.props.value).filter(Boolean)).toEqual(['Ana Pérez', 'Jefa técnica']);
-    const check = renderer.root.findAllByType('input').find(node => node.props.type === 'checkbox' && node.props.checked === false);
+    expect(text(renderer.root)).toContain('No hay personas activas con firma cargada. Se usará el firmante configurado para la sociedad.');
+    const check = renderer.root.findAllByType('input').find(node => node.props.type === 'checkbox' && node.props.onChange && !node.props.checked);
     await act(async () => { check.props.onChange({ target: { checked: true } }); });
     let release;
     api.emitirInformeDiagnostico.mockImplementation(() => new Promise(resolve => { release = () => resolve(emitted); }));
@@ -136,6 +150,7 @@ describe('DiagnosticoInformePanel', () => {
   });
 
   it('muestra el error del servidor al emitir', async () => {
+    api.obtenerOCrearBorrador.mockResolvedValue(draft({ conclusion: 'Conclusión confirmada', conclusion_confirmada: true }));
     api.obtenerIdentidadEmpresa.mockResolvedValue({ firmante: 'Ana Pérez', cargo_firmante: 'Jefa técnica' });
     api.emitirInformeDiagnostico.mockRejectedValue(new Error('Error del servidor al emitir.'));
     await render();

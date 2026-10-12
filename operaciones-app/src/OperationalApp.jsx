@@ -111,6 +111,7 @@ function NavEntry({ item, route, navigate }) {
     <button
       className={`ops-nav-entry${itemMatchesRoute(item, route) ? ' active' : ''}`}
       title={item.label}
+      aria-label={item.label}
       onClick={() => navigate(item.id)}
     >
       {item.icon && <Icon name={item.icon} size={14} />}
@@ -133,6 +134,12 @@ export function OperationalApp() {
   });
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
+  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true');
+  useEffect(() => {
+    const onWorkMode = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
+    window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
+    return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('opera_ops_sidebar_collapsed') === 'true';
@@ -255,7 +262,7 @@ export function OperationalApp() {
 
   return (
     <div className="ops-shell">
-      <aside className={`ops-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+      <aside className={`ops-sidebar${diagnosticoWorkMode ? ' is-diagnostico-rail' : ''}${sidebarCollapsed ? ' is-collapsed' : ''}`}>
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={operaIsotipo} alt="OPERA" />
@@ -316,7 +323,7 @@ export function OperationalApp() {
 
                       return (
                         <div className={`ops-nav-group${isOpen ? ' is-open' : ''}`} key={group.id}>
-                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} title={group.label} onClick={event => sidebarCollapsed && window.matchMedia('(min-width: 681px)').matches ? toggleGroupFlyout(event, group) : toggleGroup(group.id)} aria-expanded={sidebarCollapsed && window.matchMedia('(min-width: 681px)').matches ? flyoutGroupId === group.id : isOpen}>
+                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} title={group.label} aria-label={group.label} onClick={event => sidebarCollapsed && window.matchMedia('(min-width: 681px)').matches ? toggleGroupFlyout(event, group) : toggleGroup(group.id)} aria-expanded={sidebarCollapsed && window.matchMedia('(min-width: 681px)').matches ? flyoutGroupId === group.id : isOpen}>
                             <span className="ops-nav-group-icon">{group.emoji}</span>
                             <span className="ops-nav-entry-label">{group.label}</span>
                             {group.groupBadge && <span className={`ops-nav-group-badge${group.groupBadgeClass ? ` ${group.groupBadgeClass}` : ''}`}>{group.groupBadge}</span>}

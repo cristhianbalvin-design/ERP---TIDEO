@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 export const Icon = ({ name, size = 16, stroke = 2 }) => {
@@ -341,6 +341,8 @@ const findAreaForPage = (pageId) => {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar = ({ current, onNav, role }) => {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("difesmaq_sidebar_collapsed") === "true");
+  const [autoCollapsed, setAutoCollapsed] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true');
+  const effectiveCollapsed = collapsed || autoCollapsed;
   const [openLines, setOpenLines] = useState(() => {
     const s = new Set(['flota-alquileres']);
     const grp = findGroupForPage(current);
@@ -352,6 +354,15 @@ export const Sidebar = ({ current, onNav, role }) => {
     localStorage.setItem("difesmaq_sidebar_collapsed", String(collapsed));
     document.documentElement.style.setProperty("--sidebar-w", collapsed ? "72px" : "248px");
   }, [collapsed]);
+
+  useLayoutEffect(() => {
+    const setWorkMode = event => setAutoCollapsed(Boolean(event.detail?.active));
+    window.addEventListener('dx-diagnostico-work-mode', setWorkMode);
+    return () => window.removeEventListener('dx-diagnostico-work-mode', setWorkMode);
+  }, []);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--sidebar-w", effectiveCollapsed ? "72px" : "248px");
+  }, [effectiveCollapsed]);
 
   useEffect(() => {
     const grp = findGroupForPage(current);
@@ -390,7 +401,7 @@ export const Sidebar = ({ current, onNav, role }) => {
   };
 
   return (
-    <aside className={"sidebar" + (collapsed ? " collapsed" : "")}>
+    <aside className={"sidebar" + (effectiveCollapsed ? " collapsed" : "")}>
 
       <div className="sidebar-logo">
         <div className="mark">Z</div>
@@ -398,10 +409,10 @@ export const Sidebar = ({ current, onNav, role }) => {
         <button
           className="sidebar-toggle"
           onClick={() => setCollapsed(v => !v)}
-          title={collapsed ? "Expandir menu" : "Colapsar menu"}
-          aria-label={collapsed ? "Expandir menu" : "Colapsar menu"}
+          title={effectiveCollapsed ? "Expandir menu" : "Colapsar menu"}
+          aria-label={effectiveCollapsed ? "Expandir menu" : "Colapsar menu"}
         >
-          <Icon name={collapsed ? "chev" : "menu"} size={15} />
+          <Icon name={effectiveCollapsed ? "chev" : "menu"} size={15} />
         </button>
       </div>
 
@@ -548,9 +559,9 @@ export const Sidebar = ({ current, onNav, role }) => {
         <button
           className="logout sidebar-footer-toggle"
           onClick={() => setCollapsed(v => !v)}
-          title={collapsed ? "Expandir menu" : "Colapsar menu"}
+          title={effectiveCollapsed ? "Expandir menu" : "Colapsar menu"}
         >
-          <Icon name={collapsed ? "chev" : "back"} size={15} />
+          <Icon name={effectiveCollapsed ? "chev" : "back"} size={15} />
         </button>
       </div>
 

@@ -8,22 +8,27 @@ vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => supaba
 import { listarPlantillasActividad, listarUsoTareasPorEmpresa } from '../src/services/diagnosticoTecnicoService.js';
 import { DiagnosticoAgregarTareasPanel } from '../src/zahory-mock/pages/DiagnosticoAgregarTareasPanel.jsx';
 
+const familias = [{ id: 'fam-1', nombre: 'Motor' }];
 const tipos = [
-  { id: 'act-a', nombre: 'Inspección', codigo: 'ACT' },
-  { id: 't-1', nombre: 'Cambio filtro', codigo: 'F-01' },
-  { id: 't-2', nombre: 'Ajuste bomba', codigo: 'B-02' },
-  ...Array.from({ length: 21 }, (_, i) => ({ id: `t-${i + 3}`, nombre: `Tarea ${i + 3}`, codigo: `C-${i + 3}` })),
+  { id: 'act-a', nombre: 'Inspección', codigo: 'ACT', rol: 'actividad', familia_trabajo_id: 'fam-1' },
+  { id: 't-1', nombre: 'Cambio filtro', codigo: 'F-01', rol: 'tarea' },
+  { id: 't-2', nombre: 'Ajuste bomba', codigo: 'B-02', rol: 'tarea' },
+  ...Array.from({ length: 21 }, (_, i) => ({ id: `t-${i + 3}`, nombre: `Tarea ${i + 3}`, codigo: `C-${i + 3}`, rol: 'tarea' })),
 ];
 const plantillas = [
-  { actividad_id: 'act-a', tarea_id: 't-1', cargo_id: 'cargo-1', orden: 0 },
-  { actividad_id: 'act-a', tarea_id: 't-2', cargo_id: null, orden: 1 },
+  { actividad_id: 'act-a', tarea_id: 't-1', cargo_id: 'cargo-1', orden: 0, horas: 1 },
+  { actividad_id: 'act-a', tarea_id: 't-2', cargo_id: null, orden: 1, horas: 2 },
 ];
-const familia = { id: 'fam-1', nombre: 'Motor' };
 let renderer;
-const allText = node => node?.children?.map(child => typeof child === 'string' ? child : allText(child)).join('') || '';
+const text = node => node?.children?.map(child => typeof child === 'string' ? child : text(child)).join('') || '';
 const buttons = () => renderer.root.findAllByType('button');
-const buttonText = value => buttons().find(button => allText(button).trim() === value);
-const renderPanel = (overrides = {}) => create(<DiagnosticoAgregarTareasPanel familia={familia} tipos={tipos} plantillas={plantillas} uso={{ 't-1': 2, 't-2': 8 }} actividadId="act-a" lineas={[]} onClose={vi.fn()} onAdd={vi.fn()} onApplyTemplate={vi.fn()} {...overrides} />);
+const buttonContaining = value => buttons().find(button => text(button).includes(value));
+const input = label => renderer.root.findByProps({ 'aria-label': label });
+const renderPanel = (overrides = {}) => create(<DiagnosticoAgregarTareasPanel
+  initialFamiliaId="fam-1" familias={familias} tipos={tipos} plantillas={plantillas}
+  uso={{ 't-1': 2, 't-2': 8 }} tipoDiagnostico="fabricacion"
+  onClose={vi.fn()} onAdd={vi.fn()} {...overrides}
+/>, { createNodeMock: element => element.type === 'input' ? { focus: vi.fn() } : null });
 
 afterEach(() => { renderer?.unmount(); renderer = null; });
 let windowListeners;
@@ -36,76 +41,63 @@ beforeEach(() => {
 });
 
 describe('DiagnosticoAgregarTareasPanel', () => {
-  it('filtra por nombre y código, y las píldoras filtran por uso, actividad y tareas existentes', async () => {
+  it('preselecciona el trabajo y presenta la cascada Trabajo > Actividad > Tarea', () => {
     renderer = renderPanel();
-    const search = renderer.root.findByProps({ id: 'dx-panel-search' });
-    await act(async () => { search.props.onChange({ target: { value: 'b-02' } }); });
-    expect(allText(renderer.root)).toContain('Ajuste bomba');
-    expect(allText(renderer.root)).not.toContain('Cambio filtro');
-    await act(async () => { search.props.onChange({ target: { value: '' } }); buttonText('Más usadas').props.onClick(); });
-    const rows = renderer.root.findAll(node => node.props.className?.includes('dx-panel-row'));
-    expect(allText(rows[0])).toContain('Ajuste bomba');
-    await act(async () => { buttonText('De la actividad').props.onClick(); });
-    expect(allText(renderer.root)).toContain('Cambio filtro');
-    expect(allText(renderer.root)).not.toContain('Tarea 3');
-    await act(async () => { buttonText('Ya en el diagnóstico').props.onClick(); });
-    expect(allText(renderer.root)).toContain('Sin coincidencias');
+    expect(text(renderer.root)).toContain('Motor');
+    expect(text(renderer.root)).toContain('Inspección');
+    expect(renderer.root.findAll(node => node.props['aria-current'] === 'step').map(text)).toContain('2Actividad');
+    expect(renderer.root.findAllByProps({ role: 'listbox', 'aria-label': 'Trabajo o componente' })).toHaveLength(1);
+    expect(renderer.root.findAllByProps({ role: 'listbox', 'aria-label': 'Actividad' })).toHaveLength(1);
   });
 
-  it('deshabilita De la actividad sin actividad y muestra solo tareas ya presentes en el grupo', async () => {
-    renderer = renderPanel({ actividadId: null, lineas: [{ tarea_id: 't-2' }] });
-    expect(buttonText('De la actividad').props.disabled).toBe(true);
-    await act(async () => { buttonText('Ya en el diagnóstico').props.onClick(); });
-    expect(allText(renderer.root)).toContain('Ajuste bomba');
-    const checkbox = renderer.root.findAllByType('input').find(input => input.props.type === 'checkbox');
-    expect(checkbox.props.disabled).toBe(true);
-    expect(allText(renderer.root)).toContain('Ya agregada');
-  });
-
-  it('limita a 20 filas, selecciona y cuenta, y deshabilita Agregar en cero', async () => {
-    renderer = renderPanel();
-    expect(renderer.root.findAll(node => node.props.className?.includes('dx-panel-row'))).toHaveLength(20);
-    expect(allText(renderer.root)).toContain('Mostrando las primeras 20 de');
-    expect(buttonText('Agregar 0 tareas').props.disabled).toBe(true);
-    const checkbox = renderer.root.findAllByType('input').find(input => input.props.type === 'checkbox');
+  it('filtra actividad y tareas por nombre o código y agrega las tareas seleccionadas', async () => {
+    const onAdd = vi.fn();
+    renderer = renderPanel({ onAdd, plantillas: [] });
+    await act(async () => { input('Buscar actividad').props.onChange({ target: { value: 'act' } }); });
+    expect(text(renderer.root)).toContain('Inspección');
+    await act(async () => { buttonContaining('Inspección').props.onClick(); });
+    await act(async () => { input('Buscar tarea').props.onChange({ target: { value: 'b-02' } }); });
+    expect(text(renderer.root)).toContain('Ajuste bomba');
+    expect(text(renderer.root)).not.toContain('Cambio filtro');
+    const checkbox = renderer.root.findAllByType('input').find(node => node.props.type === 'checkbox');
     await act(async () => { checkbox.props.onChange(); });
-    expect(allText(renderer.root)).toContain('1 seleccionadas');
-    expect(buttonText('Agregar 1 tareas').props.disabled).toBe(false);
+    expect(buttonContaining('Agregar a la lista').props.disabled).toBe(false);
+    await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
+    expect(onAdd).toHaveBeenCalledWith([expect.objectContaining({
+      familia_trabajo_id: 'fam-1', actividad_id: 'act-a', tarea_id: 't-2', horas_mano_obra: 0,
+    })], 0);
   });
 
-  it('aplicar plantilla omite las tareas que ya existen', async () => {
-    const apply = vi.fn();
-    renderer = renderPanel({ lineas: [{ tarea_id: 't-1' }], onApplyTemplate: apply });
-    await act(async () => { buttonText('Aplicar').props.onClick(); });
-    expect(apply).toHaveBeenCalledWith([{ actividad_id: 'act-a', tarea_id: 't-2', cargo_id: null, orden: 1 }], 'act-a');
-    expect(allText(renderer.root)).toContain('2 tareas');
-    expect(allText(renderer.root)).toContain('sin horas, las ingresas tú');
+  it('aplica la receta al seleccionar la actividad y evita duplicar tareas existentes', async () => {
+    const onAdd = vi.fn();
+    renderer = renderPanel({ onAdd, lineas: [{ familia_trabajo_id: 'fam-1', actividad_id: 'act-a', tarea_id: 't-1' }] });
+    await act(async () => { buttonContaining('Inspección').props.onClick(); });
+    expect(text(renderer.root)).toContain('Receta cargada: 2 tareas');
+    expect(text(renderer.root)).toContain('Cambio filtro');
+    expect(text(renderer.root)).toContain('Ajuste bomba');
+    await act(async () => { buttonContaining('Agregar a la lista').props.onClick(); });
+    expect(onAdd).toHaveBeenCalledWith([expect.objectContaining({ tarea_id: 't-2', horas_mano_obra: 2 })], 1);
   });
 
-  it('muestra avisos no bloqueantes cuando fallan las cargas de plantillas y uso', () => {
-    renderer = renderPanel({ plantillaError: true, usoError: true, plantillas: [], uso: {} });
-    expect(allText(renderer.root)).toContain('No se pudieron cargar plantillas');
-    expect(allText(renderer.root)).toContain('No se pudieron cargar uso');
-    expect(renderer.root.findByProps({ id: 'dx-panel-search' })).toBeTruthy();
+  it('mantiene horas de equipo deshabilitadas sin un activo propio', async () => {
+    renderer = renderPanel();
+    await act(async () => { buttonContaining('Inspección').props.onClick(); });
+    expect(renderer.root.findAllByProps({ 'aria-label': 'Horas de equipo' }).every(field => field.props.disabled)).toBe(true);
   });
 
-  it('cierra con Escape, overlay y Cancelar', async () => {
+  it('cierra con Escape y Cancelar desde el panel integrado', async () => {
     const close = vi.fn();
     renderer = renderPanel({ onClose: close });
-    const overlay = renderer.root.findByProps({ className: 'dx-panel-overlay' });
-    await act(async () => { overlay.props.onMouseDown({ target: {}, currentTarget: {} }); });
-    expect(close).not.toHaveBeenCalled();
-    await act(async () => { overlay.props.onMouseDown({ target: overlay, currentTarget: overlay }); });
+    const panel = renderer.root.findByProps({ role: 'region' });
+    await act(async () => { panel.props.onKeyDown({ key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() }); });
     expect(close).toHaveBeenCalledTimes(1);
-    await act(async () => { buttonText('Cancelar').props.onClick(); });
+    await act(async () => { buttonContaining('Cancelar').props.onClick(); });
     expect(close).toHaveBeenCalledTimes(2);
-    await act(async () => { windowListeners.get('keydown')?.({ key: 'Escape', stopPropagation: vi.fn() }); });
-    expect(close).toHaveBeenCalledTimes(3);
   });
 
-  it('lee plantillas por empresa en orden de actividad y orden', async () => {
+  it('lee plantillas por empresa incluyendo los valores de costo en orden estable', async () => {
     const calls = [];
-    const data = [{ actividad_id: 'act-a', tarea_id: 't-1', cargo_id: null, orden: 0 }];
+    const data = [{ actividad_id: 'act-a', tarea_id: 't-1', cargo_id: null, orden: 0, horas: 1, activo_id: null, horas_maquina: 0 }];
     const query = {
       select(value) { calls.push(['select', value]); return this; },
       eq(...args) { calls.push(['eq', ...args]); return this; },
@@ -116,7 +108,7 @@ describe('DiagnosticoAgregarTareasPanel', () => {
     await expect(listarPlantillasActividad('empresa-1')).resolves.toEqual(data);
     expect(supabase.from).toHaveBeenCalledWith('plantillas_actividad');
     expect(calls).toEqual([
-      ['select', 'actividad_id,tarea_id,cargo_id,orden'],
+      ['select', 'actividad_id,tarea_id,cargo_id,orden,horas,activo_id,horas_maquina'],
       ['eq', 'empresa_id', 'empresa-1'],
       ['order', 'actividad_id'],
       ['order', 'orden'],
@@ -126,7 +118,7 @@ describe('DiagnosticoAgregarTareasPanel', () => {
   it('acumula uso paginando el servicio en bloques de mil', async () => {
     const calls = [];
     supabase.from.mockImplementation(table => {
-      const query = { table, offset: 0, select() { return this; }, eq() { return this; }, range(start, end) { this.offset = start; calls.push([start, end]); return this; }, then(resolve, reject) {
+      const query = { offset: 0, select() { return this; }, eq() { return this; }, range(start, end) { this.offset = start; calls.push([start, end]); return this; }, then(resolve, reject) {
         const data = this.offset === 0 ? Array.from({ length: 1000 }, (_, i) => ({ tarea_id: i < 999 ? 't-1' : 't-2' })) : [{ tarea_id: 't-1' }, { tarea_id: 't-2' }];
         return Promise.resolve({ data, error: null }).then(resolve, reject);
       } };

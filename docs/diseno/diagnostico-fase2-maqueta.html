@@ -1,0 +1,659 @@
+<title>Diagnóstico en tablet</title>
+<style>
+:root{--bg:#eef1f5;--panel:#fff;--ink:#14233f;--muted:#5d6b82;--line:#d6dce6;--accent:#0a9db0;--accent-soft:#d9f1f4;--accent-ink:#06646f;
+ --draw:#1d3557;--draw-fill:#e7edf5;--draw-fill2:#cfdae9;--dim:#0a9db0;--ok:#2f9e57;--warn:#c47d0a;--bad:#d33b3b;--bad-soft:#fde4e4;
+ --font:'Plus Jakarta Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0d1626;--panel:#15223a;--ink:#e6edf8;--muted:#93a3bd;--line:#27385a;--accent:#2cc4d8;--accent-soft:#12394a;--accent-ink:#8fe3ef;--draw:#a9c1e6;--draw-fill:#1b2d4b;--draw-fill2:#243a5e;--dim:#2cc4d8;--bad:#ff7070;--bad-soft:#4a1f27}}
+:root[data-theme="dark"]{--bg:#0d1626;--panel:#15223a;--ink:#e6edf8;--muted:#93a3bd;--line:#27385a;--accent:#2cc4d8;--accent-soft:#12394a;--accent-ink:#8fe3ef;--draw:#a9c1e6;--draw-fill:#1b2d4b;--draw-fill2:#243a5e;--dim:#2cc4d8;--bad:#ff7070;--bad-soft:#4a1f27}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);padding:24px 16px;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.4rem;margin:0;font-weight:800}h2{font-size:1rem;margin:0;font-weight:700}
+.sub{color:var(--muted);margin:4px 0 0;max-width:74ch;font-size:.92rem}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+.tab{font:inherit;font-weight:700;font-size:.88rem;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#04323a}
+.tab:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,.pinchip button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:14px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+@media(max-width:640px){.row2{grid-template-columns:minmax(0,1fr)}}
+label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
+input,select{font:inherit;font-size:.9rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.badge{font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.badge.c{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.badge.p{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+.head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.kick{font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.note{font-size:.8rem;color:var(--muted);margin:0}
+.big{background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+.big svg{display:block;width:100%;min-width:560px;height:auto}
+svg .part{fill:var(--draw-fill);stroke:var(--draw);stroke-width:1.6}
+svg .part.alt{fill:var(--draw-fill2)}
+svg .part.hole{fill:var(--bg)}
+svg .cav{fill:var(--bg);stroke:var(--draw);stroke-width:1.2}
+svg .thin{fill:none;stroke:var(--draw);stroke-width:1.2}
+svg .cl{stroke:var(--draw);stroke-width:.8;stroke-dasharray:14 4 3 4;fill:none;opacity:.55}
+svg .dimline{stroke:var(--dim);stroke-width:1.2;fill:none}
+svg .lead{stroke:var(--dim);stroke-width:.9;stroke-dasharray:2 3}
+svg .dimtxt{font-family:var(--mono);font-size:11.5px;fill:var(--accent-ink);font-weight:600;text-transform:uppercase}
+svg .dimbg{fill:var(--bg)}svg .dimdot{fill:var(--dim)}
+svg .lbl{font-size:11px;fill:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+svg [data-cota]{opacity:.28}svg [data-cota].c-on{opacity:1}svg [data-cota].c-on .dimline{stroke-width:2.4}
+svg [data-z]{cursor:pointer}
+svg [data-z]:hover .part,svg [data-z].part:hover{stroke:var(--accent);stroke-width:2.4}
+svg .pinned .part,svg .pinned.part{fill:var(--bad-soft);stroke:var(--bad);stroke-width:2.4}
+.ro svg [data-z]{cursor:default}
+.pin{pointer-events:none}
+.pin circle{fill:var(--bad);stroke:#fff;stroke-width:2}
+.pin text{fill:#fff;font-weight:800;font-size:13px;font-family:var(--font);text-anchor:middle;dominant-baseline:central;text-transform:none}
+.hint{font-size:.82rem;color:var(--muted)}
+.pins{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pinchip{display:inline-flex;align-items:center;gap:6px;background:var(--bad-soft);border:1px solid var(--bad);border-radius:999px;padding:3px 4px 3px 4px;font-size:.82rem;font-weight:700}
+.pinchip i{font-style:normal;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--bad);color:#fff;font-size:.72rem}
+.pinchip button{border:0;background:transparent;color:var(--ink);cursor:pointer;font:inherit;font-weight:800;border-radius:999px;padding:0 6px}
+.zgroup{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.zgroup>.zh{display:flex;gap:8px;align-items:center}
+.zgroup>.zh i{font-style:normal;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--bad);color:#fff;font-size:.75rem;font-weight:800}
+.med{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:10px}
+.med:hover,.med.h{border-color:var(--accent);background:var(--accent-soft)}
+.med .mh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.chip{font-size:.72rem;font-weight:700;color:var(--muted);background:var(--bg);border-radius:6px;padding:2px 6px;font-family:var(--mono)}
+.nums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.2fr);gap:8px;align-items:end}
+@media(max-width:700px){.nums{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.res{font-size:.78rem;font-weight:800;padding:8px 10px;border-radius:8px;text-align:center;background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.res.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok);border-color:transparent}
+.res.bad{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+details.ref summary{cursor:pointer;font-size:.78rem;font-weight:700;color:var(--accent-ink)}
+details.ref p{margin:6px 0 0;font-size:.82rem;color:var(--muted)}
+.caso{max-width:420px}
+.equipo{display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:.86rem}
+.equipo b{font-weight:800}.equipo .chip{font-size:.72rem}
+.nuevo{border:1px dashed var(--accent);background:var(--accent-soft);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.nuevo .acts{display:flex;gap:8px;flex-wrap:wrap}
+.lock{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-weight:700}
+.lock span{font-weight:600;font-size:.72rem;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:2px 8px}
+.lnk{font:inherit;font-size:.8rem;font-weight:700;color:var(--accent-ink);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.warnbox{font-size:.82rem;color:var(--warn);font-weight:600}
+.empty{text-align:center;color:var(--muted);padding:18px;border:1px dashed var(--line);border-radius:10px;font-size:.9rem}
+.btn{font:inherit;font-weight:700;font-size:.82rem;padding:6px 12px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+/* Hoja del informe */
+.sheet{background:#fff;color:#14233f;border:1px solid #d6dce6;border-radius:6px;padding:28px 30px;display:flex;flex-direction:column;gap:14px;box-shadow:0 2px 14px rgba(0,0,0,.08)}
+.sheet .big{background:#f5f7fa;border-color:#d6dce6}
+.sheet svg{--bg:#f5f7fa;--draw:#1d3557;--draw-fill:#e7edf5;--draw-fill2:#cfdae9;--dim:#0a9db0;--accent-ink:#06646f;--muted:#5d6b82;--bad:#d33b3b;--bad-soft:#fde4e4}
+.sheet h3{margin:0;font-size:1.05rem;font-weight:800;letter-spacing:.01em}
+.sheet .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sheet table{border-collapse:collapse;width:100%;font-size:.82rem}
+.sheet th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#5d6b82;border-bottom:2px solid #14233f;padding:6px 8px}
+.sheet td{border-bottom:1px solid #e3e8ef;padding:6px 8px;vertical-align:top}
+.sheet td .n{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#d33b3b;color:#fff;font-size:.68rem;font-weight:800;margin-right:6px}
+.sheet .rb{font-weight:800;font-size:.74rem}
+.sheet .rb.ok{color:#2f9e57}.sheet .rb.bad{color:#d33b3b}
+.sheet .sec{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#5d6b82;font-weight:700}
+.fotos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.fotos div{background:repeating-linear-gradient(45deg,#e8edf3,#e8edf3 8px,#f2f5f9 8px,#f2f5f9 16px);border:1px solid #d6dce6;aspect-ratio:4/3;display:grid;place-items:center;font-size:.75rem;color:#5d6b82}
+.legend{font-size:.76rem;color:#5d6b82}
+.tip{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:10px 12px;font-size:.85rem;color:var(--accent-ink)}
+.sheet .flag{font-size:.72rem;color:#5d6b82}
+
+
+.wrap{max-width:1320px}
+.devbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg2{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--panel)}
+.seg2 button{font:inherit;font-size:.82rem;font-weight:700;border:0;background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer}
+.seg2 button[aria-pressed="true"]{background:var(--accent);color:#04323a}
+.pill{font-size:.76rem;font-weight:700;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:4px 12px}
+.frame{position:relative;margin:0 auto;width:100%;max-width:1280px;height:min(84vh,780px);border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg);transition:max-width .2s}
+.frame[data-d="tabl"]{max-width:1024px}.frame[data-d="tabp"]{max-width:768px;height:min(88vh,900px)}
+.shell{display:grid;grid-template-columns:auto minmax(0,1fr);height:100%}
+.sb{width:216px;background:#0f1d36;color:#c8d3e6;display:flex;flex-direction:column;transition:width .2s}
+.sb.col{width:64px}
+.sb-h{display:flex;align-items:center;gap:8px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.sb .mk{width:32px;height:32px;border-radius:8px;background:var(--accent);color:#04323a;font-weight:800;display:grid;place-items:center;flex:none}
+.sb .wm{font-weight:800;font-size:.86rem;white-space:nowrap;flex:1}
+.sb-h button{width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.18);background:transparent;color:#fff;cursor:pointer;font:inherit}
+.sb.col .wm{display:none}.sb.col .sb-h{flex-direction:column;padding:10px 0}
+.ni{display:flex;align-items:center;gap:12px;padding:12px 16px;font-size:.88rem;font-weight:600;white-space:nowrap}
+.ni i{font-style:normal;width:20px;text-align:center;flex:none}.ni.on{background:rgba(44,196,216,.16);color:#fff}
+.sb.col .ni{justify-content:center;padding:14px 0}.sb.col .ni span{display:none}
+.main{overflow:auto;position:relative;display:flex;flex-direction:column;min-width:0}
+.pg{padding:18px 20px;flex:1;container-type:inline-size;min-width:0}
+.actbar{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:5}
+.actbar:empty{display:none}.actbar .sp{flex:1}
+.big-t{min-height:44px;padding:10px 18px;font-size:.9rem}
+.lnk{font:inherit;font-size:.8rem;font-weight:700;color:var(--accent-ink);background:none;border:0;padding:0;cursor:pointer}
+.sumline{display:flex;gap:6px 22px;flex-wrap:wrap;font-size:.84rem;color:var(--muted)}.sumline b{color:var(--ink);margin-right:4px}
+.steps5{display:flex;gap:6px}
+.steps5 .st{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer}
+.steps5 .st i{display:block;height:5px;border-radius:5px;background:var(--line)}
+.steps5 .st span{font-size:.76rem;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps5 .st.done i,.steps5 .st.cur i{background:var(--accent)}.steps5 .st.cur span{color:var(--ink)}.steps5 .st.done span{color:var(--accent-ink)}
+.tbl{width:100%;border-collapse:collapse;font-size:.88rem}.tbl th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:12px 8px;border-bottom:1px solid var(--line)}.tbl tr[data-open]{cursor:pointer}.tbl tr[data-open]:hover{background:var(--accent-soft)}
+.ed{display:flex;flex-direction:column;gap:16px}
+.col-l,.col-r{display:flex;flex-direction:column;gap:14px;min-width:0}
+.stick{position:static}
+@container (max-width: 760px){.ed{grid-template-columns:minmax(0,1fr)}.stick{position:static}.row2{grid-template-columns:minmax(0,1fr)}.hc{grid-template-columns:minmax(0,1fr)}}
+#wzov{position:absolute;inset:0;background:rgba(10,20,40,.62);display:flex;align-items:flex-start;justify-content:center;padding:18px 12px;overflow:auto;z-index:50}
+.frame .big{overflow-x:visible}.frame .big svg{min-width:0}
+.big-m{}
+#dsheet{position:absolute;left:64px;right:0;bottom:68px;z-index:20;background:var(--panel);border-top:2px solid var(--accent);box-shadow:0 -12px 30px rgba(0,0,0,.28);padding:12px 20px 14px;max-height:68%;overflow:auto;border-radius:14px 14px 0 0}
+#dsheet .big{margin-top:8px}
+svg .thin,svg .cl,svg .lead,svg .dimline,svg .dimtxt,svg .dimbg,svg .dimdot,svg .lbl{pointer-events:none}
+#wz{width:100%;display:flex;justify-content:center}
+#wz .modal.xl{max-width:980px}
+.pbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+@media(max-width:760px){.pbar{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ps{font:inherit;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;color:var(--ink);display:flex;flex-direction:column;gap:2px}
+.ps b{font-size:.84rem}.ps span{font-size:.72rem;color:var(--muted)}
+.ps .nn{font-size:.68rem;font-weight:800;color:var(--accent-ink);letter-spacing:.05em}
+.ps[aria-current="step"]{border-color:var(--accent);background:var(--accent-soft)}
+.ps:disabled{opacity:.55;cursor:default}
+.ps:focus-visible,.tg:focus-visible,.hc button:focus-visible,#tdList li:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.leg{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.78rem;color:var(--muted)}
+.tg{font-size:.66rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.tg.ex{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.tg.nw{background:var(--accent);color:#04323a}
+.tg.ch{background:color-mix(in srgb,var(--warn) 25%,transparent);color:var(--warn)}
+.st-h{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.btn.pri{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn.acc{background:var(--accent);border-color:var(--accent);color:#04323a}
+.btn{padding:8px 14px}
+.hc{display:grid;grid-template-columns:150px minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:640px){.hc{grid-template-columns:minmax(0,1fr)}}
+.hc .th{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:4px}.hc .th svg{display:block;width:100%;height:auto}
+.hc .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.hc h3{margin:0;font-size:1rem}.hc .mm{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}
+.tp{display:flex;gap:6px;flex-wrap:wrap}.tp button{font:inherit;font-size:.8rem;font-weight:700;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.tp button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#04323a}
+.cb{position:relative}
+#tdList{position:absolute;z-index:10;left:0;right:0;top:100%;margin:4px 0 0;padding:6px;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.2);max-height:300px;overflow:auto}
+#tdList li{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:.88rem;display:flex;justify-content:space-between;gap:10px;color:var(--ink)}
+#tdList li.act,#tdList li:hover{background:var(--accent-soft)}
+#tdList li small{color:var(--muted);font-size:.72rem;white-space:nowrap}
+#tdList li.crear{border-top:1px dashed var(--line);margin-top:4px;color:var(--accent-ink);font-weight:700}
+#tdList .gh{font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:8px 10px 2px}
+.f3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media(max-width:700px){.f3{grid-template-columns:minmax(0,1fr)}}
+.sec-t{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.cover{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:.84rem}.cover dt{color:#5d6b82}.cover dd{margin:0;font-weight:600}
+.sheet hr{border:0;border-top:1px solid #e3e8ef;width:100%;margin:0}
+#wzov-old{background:rgba(10,20,40,.62);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto;z-index:50}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+#wz .wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+#wz h1{font-size:1.35rem;margin:0;font-weight:800}
+#wz .sub{color:var(--muted);margin:4px 0 0;font-size:.92rem;max-width:74ch}
+#wz .kick{font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+#wz .bg{background:color-mix(in srgb,var(--ink) 55%,var(--bg));border-radius:16px;padding:28px 16px;display:flex;justify-content:center;min-height:620px}
+#wz .modal{background:var(--panel);border-radius:16px;width:100%;max-width:720px;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.28);align-self:flex-start}
+#wz .mh{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:18px 22px 12px}
+#wz .mh h2{margin:0;font-size:1.15rem;font-weight:800}
+#wz .mh p{margin:2px 0 0;color:var(--muted);font-size:.86rem}
+#wz .hr{display:flex;gap:8px;align-items:center}
+#wz .badge{font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:999px;background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+#wz .x{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;font:inherit;font-weight:800}
+#wz .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;margin:0 22px 12px;background:var(--bg);align-self:flex-start}
+#wz .seg button{font:inherit;font-size:.82rem;font-weight:700;border:0;background:transparent;color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer}
+#wz .seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+#wz .seg small{font-weight:600;font-size:.66rem;color:var(--warn);margin-left:4px}
+#wz .steps{display:flex;gap:6px;padding:0 22px 14px;border-bottom:1px solid var(--line)}
+#wz .st{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;background:none;border:0;padding:0;font:inherit;text-align:left;cursor:default}
+#wz .st i{display:block;height:4px;border-radius:4px;background:var(--line)}
+#wz .st span{font-size:.74rem;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#wz .st.done i,#wz .st.cur i{background:var(--accent)}
+#wz .st.cur span{color:var(--ink)}
+#wz .st.done{cursor:pointer}
+#wz .st.done span{color:var(--accent-ink)}
+#wz .mb{padding:18px 22px;display:flex;flex-direction:column;gap:14px;min-height:340px}
+#wz .mf{display:flex;gap:10px;justify-content:space-between;align-items:center;padding:14px 22px;border-top:1px solid var(--line);flex-wrap:wrap}
+#wz .mf .l{font-size:.8rem;color:var(--muted)}
+#wz .btn{font:inherit;font-size:.88rem;font-weight:700;padding:9px 18px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+#wz .btn.pri{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+#wz .btn:disabled{opacity:.4;cursor:not-allowed}
+#wz .btn:focus-visible,#wz .x:focus-visible,#wz input:focus-visible,#wz select:focus-visible,#wz textarea:focus-visible,#wz .rec:focus-visible,#wz .chipb:focus-visible,#wz .seg button:focus-visible,#wz .st:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#wz label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
+#wz input,#wz select,#wz textarea{font:inherit;font-size:.9rem;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%;min-width:0}
+#wz textarea{resize:vertical;min-height:84px}
+#wz .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+#wz .list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow:auto}
+#wz .rec{display:flex;gap:12px;align-items:center;text-align:left;font:inherit;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;color:var(--ink);width:100%}
+#wz .rec[aria-checked="true"]{border-color:var(--accent);background:var(--accent-soft)}
+#wz .rec .r{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:none}
+#wz .rec[aria-checked="true"] .r{border:5px solid var(--accent)}
+#wz .rec b{font-family:var(--mono);font-size:.78rem}
+#wz .rec .m{display:flex;flex-direction:column;min-width:0;flex:1}
+#wz .rec .t{font-weight:700;font-size:.92rem}
+#wz .rec .s{font-size:.78rem;color:var(--muted)}
+#wz .chip{font-size:.7rem;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+#wz .chip.w{color:var(--warn);border-color:var(--warn)}
+#wz .chip.g{color:var(--ok);border-color:var(--ok)}
+#wz .empty{text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px;padding:22px;font-size:.88rem}
+#wz .card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--bg);display:flex;flex-direction:column;gap:10px}
+#wz .eq{display:grid;grid-template-columns:170px minmax(0,1fr);gap:16px;align-items:center}
+#wz .thumb{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px}
+#wz .thumb svg{display:block;width:100%;height:auto}
+#wz .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:.86rem}
+#wz .kv dt{color:var(--muted)}
+#wz .kv dd{margin:0;font-weight:600}
+#wz .src{display:inline-flex;gap:6px;align-items:center;font-size:.72rem;font-weight:700;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:2px 10px;align-self:flex-start}
+#wz .warn{font-size:.84rem;color:var(--warn);font-weight:600}
+#wz .hint{font-size:.8rem;color:var(--muted)}
+#wz .picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+#wz .pk{font:inherit;display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px;cursor:pointer;font-size:.8rem;font-weight:700}
+#wz .pk[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+#wz .pk svg{width:100%;height:auto;max-height:64px}
+#wz .chips{display:flex;gap:8px;flex-wrap:wrap}
+#wz .chipb{font:inherit;font-size:.84rem;font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 14px;border-radius:999px;cursor:pointer}
+#wz .chipb[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#04323a}
+#wz .sum{display:flex;flex-direction:column;gap:0}
+#wz .sum div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.88rem}
+#wz .sum div:last-child{border:0}
+#wz .sum span{color:var(--muted)}
+#wz .sum b{text-align:right}
+#wz .next{font-size:.84rem;color:var(--muted);background:var(--bg);border-radius:10px;padding:10px 12px}
+#wz .note{font-size:.8rem;color:var(--muted);margin:0}
+#wz svg .part{fill:var(--draw-fill);stroke:var(--draw);stroke-width:1.6}
+#wz svg .part.alt{fill:var(--draw-fill2)}
+#wz svg .part.hole{fill:var(--bg)}
+#wz svg .cav{fill:var(--bg);stroke:var(--draw);stroke-width:1.2}
+#wz svg .thin{fill:none;stroke:var(--draw);stroke-width:1.2}
+#wz svg .cl{stroke:var(--draw);stroke-width:.8;stroke-dasharray:14 4 3 4;fill:none;opacity:.55}
+#wz svg .dimline{stroke:var(--dim);stroke-width:1.2;fill:none}
+#wz svg .lead{stroke:var(--dim);stroke-width:.9;stroke-dasharray:2 3}
+#wz svg .dimtxt{font-family:var(--mono);font-size:11.5px;fill:var(--accent-ink);font-weight:600;text-transform:uppercase}
+#wz svg .dimbg{fill:var(--bg)}
+#wz svg .dimdot{fill:var(--dim)}
+#wz svg .lbl{font-size:11px;fill:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+@media(max-width:640px){#wz .row2{grid-template-columns:minmax(0,1fr)}
+#wz .mh,#wz .mb,#wz .mf,#wz .steps{padding-left:16px;padding-right:16px}
+#wz .seg{margin-left:16px}
+#wz .st:not(.cur) span{display:none}}
+@media(max-width:640px){#wz .eq{grid-template-columns:minmax(0,1fr)}}
+</style>
+<div class="wrap">
+  <div><div class="kick">Maqueta · Diagnóstico de mantenimiento en tablet y escritorio</div><h1>Modal corto para crear, página para trabajar</h1>
+  <p class="sub">La barra lateral se repliega sola al entrar a trabajar en el diagnóstico, para dar espacio al dibujo y a las mediciones. Cambia el tamaño de pantalla para ver cómo se adapta. Datos de ejemplo.</p></div>
+  <div class="devbar"><div class="seg2" role="group" aria-label="Tamaño de pantalla"><button type="button" data-d="desk" aria-pressed="true">Escritorio</button><button type="button" data-d="tabl" aria-pressed="false">Tablet horizontal</button><button type="button" data-d="tabp" aria-pressed="false">Tablet vertical</button></div><span class="pill" id="pillMenu"></span></div>
+  <div class="frame" id="frame">
+    <div class="shell">
+      <aside class="sb" id="sb"><div class="sb-h"><span class="mk">T</span><span class="wm">TIDEO ERP</span><button type="button" id="sbt" aria-label="Replegar menú">‹</button></div>
+        <nav><div class="ni"><i>⌂</i><span>Inicio</span></div><div class="ni"><i>▤</i><span>Recepciones</span></div><div class="ni on"><i>✎</i><span>Diagnósticos</span></div><div class="ni"><i>☰</i><span>Trabajos</span></div><div class="ni"><i>⚙</i><span>Maestros</span></div></nav></aside>
+      <main class="main" id="mainpane"><div class="pg" id="pg">
+        <section id="lista" class="stack">
+          <div class="st-h"><h2 style="font-size:1.2rem">Diagnósticos técnicos</h2><button class="btn pri big-t" id="nuevoD" type="button">＋ Nuevo diagnóstico</button></div>
+          <div class="card"><table class="tbl"><thead><tr><th>N.º</th><th>Equipo</th><th>Cliente</th><th>Estado</th></tr></thead><tbody>
+            <tr data-open="1"><td><b>DT-0007</b></td><td>CILINDRO</td><td>Minera Andes SAC</td><td><span class="badge p">Borrador · 2 hallazgos</span></td></tr>
+            <tr><td><b>DT-0006</b></td><td>BARRA CROMADA</td><td>Constructora Roca</td><td><span class="chip">Emitido</span></td></tr>
+            <tr><td><b>DT-0005</b></td><td>CAJA TRANSMISION</td><td>Minera Andes SAC</td><td><span class="chip">Emitido</span></td></tr></tbody></table></div>
+          <p class="note">Pulsa «Nuevo diagnóstico» para el modal de 3 pasos, o abre el borrador DT-0007 para ver la página de trabajo con hallazgos ya cargados.</p>
+        </section>
+        <section id="work" class="stack" hidden>
+          <div class="st-h"><div><button class="lnk" id="backL" type="button">← Diagnósticos</button><h2 id="wtitle" style="font-size:1.15rem;margin-top:2px"></h2></div><div id="wchips" class="mm"></div></div>
+          <div class="sumline" id="wsum"></div>
+          <div class="steps5" id="pbar5"></div>
+          <section id="s2" class="stack" hidden></section><section id="s3" class="stack" hidden></section><section id="s4" class="stack" hidden></section>
+        </section>
+      </div><div class="actbar" id="act"></div></main>
+    </div>
+    <div id="dsheet" hidden><div class="st-h"><h2 id="dsT" style="font-size:1rem"></h2><button class="btn big-t" id="dsX" type="button">Cerrar dibujo</button></div><div class="big" id="draw2"></div></div>
+    <div id="wzov" hidden><div id="wz"><div class="modal" role="dialog" aria-labelledby="mt">
+      <div class="mh"><div><h2 id="mt">Nuevo diagnóstico · Mantenimiento</h2><p id="msub"></p></div><div class="hr"><span class="badge">Borrador</span><button class="x" id="wx" type="button" aria-label="Cerrar">×</button></div></div>
+      <div class="steps" id="wsteps"></div><div class="mb" id="wbody"></div>
+      <div class="mf"><span class="l" id="wfoot"></span><div style="display:flex;gap:8px"><button class="btn" id="wback" type="button">Cerrar</button><button class="btn pri" id="wnext" type="button">Siguiente</button></div></div>
+    </div></div></div>
+  </div>
+</div>
+<script>
+const CAT = [{"id": "cil", "nombre": "Cilindro hidráulico", "descripcion": "Camisa, vástago, pistón y tapas", "orden": 1, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Cilindro hidráulico\"><path class=\"cl\" d=\"M70 150H735\"/>\n   <rect class=\"part alt\" data-z=\"tapaT\" x=\"108\" y=\"100\" width=\"44\" height=\"100\" rx=\"3\"/><path class=\"part alt\" data-z=\"tapaT\" d=\"M108 118H70a8 8 0 0 0-8 8v48a8 8 0 0 0 8 8h38Z\"/><circle cx=\"84\" cy=\"150\" r=\"20\" class=\"cav\"/>\n   <rect class=\"part \" data-z=\"camisa\" x=\"152\" y=\"100\" width=\"410\" height=\"100\" rx=\"0\"/><rect class=\"cav\" x=\"152\" y=\"112\" width=\"410\" height=\"76\"/>\n   <rect class=\"part alt\" data-z=\"piston\" x=\"326\" y=\"114\" width=\"40\" height=\"72\" rx=\"2\"/><path class=\"thin\" d=\"M336 114v72M346 114v72M356 114v72\" opacity=\".6\"/>\n   <rect class=\"part \" data-z=\"vastago\" x=\"366\" y=\"132\" width=\"360\" height=\"36\" rx=\"2\"/><path class=\"thin\" d=\"M700 132v36M708 132v36M716 132v36\" opacity=\".6\"/>\n   <rect class=\"part alt\" data-z=\"tapaD\" x=\"562\" y=\"100\" width=\"46\" height=\"100\" rx=\"3\"/>\n   <text class=\"lbl\" x=\"470\" y=\"86\" text-anchor=\"middle\">Camisa</text><text class=\"lbl\" x=\"130\" y=\"224\" text-anchor=\"middle\">Tapa trasera</text><text class=\"lbl\" x=\"585\" y=\"224\" text-anchor=\"middle\">Tapa delantera</text><text class=\"lbl\" x=\"690\" y=\"122\" text-anchor=\"middle\">Vástago</text><g class=\"dims\"><g class=\"\" data-cota=\"dint\"><line class=\"lead\" x1=\"215\" y1=\"112\" x2=\"215\" y2=\"31\"/><line class=\"dimline\" x1=\"215\" y1=\"112\" x2=\"215\" y2=\"188\"/><path class=\"dimline\" d=\"M211 119L215 112L219 119M211 181L215 188L219 181\"/><rect class=\"dimbg\" x=\"191.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"215\" y=\"26\" text-anchor=\"middle\">Ø INT</text></g><g class=\"\" data-cota=\"dpis\"><line class=\"lead\" x1=\"345\" y1=\"114\" x2=\"345\" y2=\"31\"/><line class=\"dimline\" x1=\"345\" y1=\"114\" x2=\"345\" y2=\"186\"/><path class=\"dimline\" d=\"M341 121L345 114L349 121M341 179L345 186L349 179\"/><rect class=\"dimbg\" x=\"310.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"345\" y=\"26\" text-anchor=\"middle\">Ø PISTÓN</text></g><g class=\"\" data-cota=\"dvas\"><line class=\"lead\" x1=\"650\" y1=\"132\" x2=\"650\" y2=\"31\"/><line class=\"dimline\" x1=\"650\" y1=\"132\" x2=\"650\" y2=\"168\"/><path class=\"dimline\" d=\"M646 139L650 132L654 139M646 161L650 168L654 161\"/><rect class=\"dimbg\" x=\"619.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"650\" y=\"26\" text-anchor=\"middle\">Ø VÁST.</text></g><g class=\"\" data-cota=\"lvas\"><line class=\"lead\" x1=\"535\" y1=\"238\" x2=\"535\" y2=\"271\"/><line class=\"dimline\" x1=\"345\" y1=\"238\" x2=\"725\" y2=\"238\"/><path class=\"dimline\" d=\"M352 234L345 238L352 242M718 234L725 238L718 242M345 232V244M725 232V244\"/><rect class=\"dimbg\" x=\"493\" y=\"272\" width=\"84\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"535\" y=\"284\" text-anchor=\"middle\">LONG. ÚTIL</text></g><g class=\"\" data-cota=\"dbuj\"><line class=\"lead\" x1=\"585\" y1=\"132\" x2=\"585\" y2=\"31\"/><line class=\"dimline\" x1=\"585\" y1=\"132\" x2=\"585\" y2=\"168\"/><path class=\"dimline\" d=\"M581 139L585 132L589 139M581 161L585 168L589 161\"/><rect class=\"dimbg\" x=\"557.8\" y=\"14\" width=\"54.400000000000006\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"585\" y=\"26\" text-anchor=\"middle\">Ø BUJE</text></g><g class=\"\" data-cota=\"hor\"><line class=\"lead\" x1=\"84\" y1=\"130\" x2=\"84\" y2=\"31\"/><line class=\"dimline\" x1=\"84\" y1=\"130\" x2=\"84\" y2=\"170\"/><path class=\"dimline\" d=\"M80 137L84 130L88 137M80 163L84 170L88 163\"/><rect class=\"dimbg\" x=\"60.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"84\" y=\"26\" text-anchor=\"middle\">Ø OJO</text></g></g></svg>", "zonas": [{"id": "camisa", "nombre": "Camisa", "orden": 1, "medidas": [{"id": "dint", "nombre": "Ø interior", "cota": "dint", "desde": "Medido en 3 puntos a lo largo de la carrera", "referencia": "Tubo bruñido típico clase H8 (en Ø50: +0,039/0). Rugosidad Ra 0,2 a 0,6 µm.", "orden": 1}]}, {"id": "vastago", "nombre": "Vástago", "orden": 2, "medidas": [{"id": "dvas", "nombre": "Ø vástago", "cota": "dvas", "desde": "Medido en la zona de sello", "referencia": "Superficie cromada Ra 0,1 a 0,3 µm. El diámetro y su tolerancia salen del plano.", "orden": 1}, {"id": "lvas", "nombre": "Longitud útil", "cota": "lvas", "desde": "Del extremo roscado al pistón", "referencia": "Según plano.", "orden": 2}]}, {"id": "piston", "nombre": "Pistón y émbolo", "orden": 3, "medidas": [{"id": "dpis", "nombre": "Ø exterior", "cota": "dpis", "desde": "Medido en el diámetro de las bandas guía", "referencia": "Sin valor general: depende del sello y la guía del plano.", "orden": 1}]}, {"id": "tapaD", "nombre": "Tapa delantera", "orden": 4, "medidas": [{"id": "dbuj", "nombre": "Ø buje guía", "cota": "dbuj", "desde": "Medido en el buje guía", "referencia": "Juego buje–vástago típico de ajuste H8/f7.", "orden": 1}]}, {"id": "tapaT", "nombre": "Tapa trasera", "orden": 5, "medidas": [{"id": "hor", "nombre": "Ø ojo de horquilla", "cota": "hor", "desde": "Medido en el ojo de la horquilla", "referencia": "Según plano del pivote.", "orden": 1}]}]}, {"id": "eje", "nombre": "Eje con muñones", "descripcion": "Muñones, cuerpo y chavetero", "orden": 2, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Eje con muñones\"><path class=\"cl\" d=\"M30 150H735\"/>\n   <rect class=\"part \" data-z=\"muñonA\" x=\"60\" y=\"120\" width=\"160\" height=\"60\" rx=\"2\"/><path class=\"thin\" d=\"M70 120v60M210 120v60\" opacity=\".5\"/>\n   <rect class=\"part alt\" data-z=\"cuerpo\" x=\"220\" y=\"105\" width=\"320\" height=\"90\" rx=\"2\"/><rect class=\"part \" data-z=\"muñonB\" x=\"540\" y=\"120\" width=\"160\" height=\"60\" rx=\"2\"/><path class=\"thin\" d=\"M550 120v60M690 120v60\" opacity=\".5\"/>\n   <rect class=\"part \" data-z=\"chavetero\" x=\"70\" y=\"96\" width=\"88\" height=\"24\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"140\" y=\"212\" text-anchor=\"middle\">Muñón A</text><text class=\"lbl\" x=\"380\" y=\"222\" text-anchor=\"middle\">Cuerpo central</text><text class=\"lbl\" x=\"620\" y=\"212\" text-anchor=\"middle\">Muñón B</text><text class=\"lbl\" x=\"138\" y=\"90\" text-anchor=\"middle\">Chavetero</text><g class=\"dims\"><g class=\"\" data-cota=\"dma\"><line class=\"lead\" x1=\"190\" y1=\"120\" x2=\"190\" y2=\"31\"/><line class=\"dimline\" x1=\"190\" y1=\"120\" x2=\"190\" y2=\"180\"/><path class=\"dimline\" d=\"M186 127L190 120L194 127M186 173L190 180L194 173\"/><rect class=\"dimbg\" x=\"173.9\" y=\"14\" width=\"32.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"190\" y=\"26\" text-anchor=\"middle\">Ø A</text></g><g class=\"\" data-cota=\"dcu\"><line class=\"lead\" x1=\"380\" y1=\"105\" x2=\"380\" y2=\"31\"/><line class=\"dimline\" x1=\"380\" y1=\"105\" x2=\"380\" y2=\"195\"/><path class=\"dimline\" d=\"M376 112L380 105L384 112M376 188L380 195L384 188\"/><rect class=\"dimbg\" x=\"345.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"26\" text-anchor=\"middle\">Ø CUERPO</text></g><g class=\"\" data-cota=\"dmb\"><line class=\"lead\" x1=\"620\" y1=\"120\" x2=\"620\" y2=\"31\"/><line class=\"dimline\" x1=\"620\" y1=\"120\" x2=\"620\" y2=\"180\"/><path class=\"dimline\" d=\"M616 127L620 120L624 127M616 173L620 180L624 173\"/><rect class=\"dimbg\" x=\"603.9\" y=\"14\" width=\"32.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"620\" y=\"26\" text-anchor=\"middle\">Ø B</text></g><g class=\"\" data-cota=\"ach\"><line class=\"lead\" x1=\"79\" y1=\"84\" x2=\"56\" y2=\"31\"/><line class=\"dimline\" x1=\"70\" y1=\"84\" x2=\"88\" y2=\"84\"/><path class=\"dimline\" d=\"M77 80L70 84L77 88M81 80L88 84L81 88M70 78V90M88 78V90\"/><rect class=\"dimbg\" x=\"32.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"56\" y=\"26\" text-anchor=\"middle\">ANCHO</text></g></g></svg>", "zonas": [{"id": "muñonA", "nombre": "Muñón A (lado acople)", "orden": 1, "medidas": [{"id": "dma", "nombre": "Ø muñón A", "cota": "dma", "desde": "Medido en 2 planos a 90°", "referencia": "Asiento de rodamiento típico k5 o m5; lo fija el catálogo del rodamiento. Medir ovalidad y conicidad.", "orden": 1}]}, {"id": "cuerpo", "nombre": "Cuerpo central", "orden": 2, "medidas": [{"id": "dcu", "nombre": "Ø cuerpo", "cota": "dcu", "desde": "Medido al centro del cuerpo", "referencia": "Según plano.", "orden": 1}]}, {"id": "muñonB", "nombre": "Muñón B (lado libre)", "orden": 3, "medidas": [{"id": "dmb", "nombre": "Ø muñón B", "cota": "dmb", "desde": "Medido en 2 planos a 90°", "referencia": "Igual criterio que el muñón A.", "orden": 1}]}, {"id": "chavetero", "nombre": "Chavetero", "orden": 4, "medidas": [{"id": "ach", "nombre": "Ancho de chavetero", "cota": "ach", "desde": "Medido en la boca del chavetero", "referencia": "Ancho según norma de la chaveta usada.", "orden": 1}]}]}, {"id": "bomba", "nombre": "Bomba de engranajes", "descripcion": "Carcasa, engranajes y eje", "orden": 3, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Bomba de engranajes\"><rect class=\"part \" data-z=\"carcasa\" x=\"210\" y=\"60\" width=\"340\" height=\"180\" rx=\"10\"/><path class=\"cav\" d=\"M380 114A60 60 0 1 0 380 186A60 60 0 1 0 380 114Z\" style=\"pointer-events:none\"/>\n   <rect class=\"thin\" x=\"172\" y=\"132\" width=\"38\" height=\"36\"/><rect class=\"thin\" x=\"550\" y=\"132\" width=\"38\" height=\"36\"/>\n   <path class=\"part alt\" data-z=\"engM\" d=\"M376.0 150.0L383.8 154.4L382.9 160.8L374.1 162.7L370.1 172.0L374.7 179.7L370.6 184.8L362.1 182.1L354.0 188.1L354.1 197.1L348.1 199.5L342.0 192.8L332.0 194.0L327.6 201.8L321.2 200.9L319.3 192.1L310.0 188.1L302.3 192.7L297.2 188.6L299.9 180.1L293.9 172.0L284.9 172.1L282.5 166.1L289.2 160.0L288.0 150.0L280.2 145.6L281.1 139.2L289.9 137.3L293.9 128.0L289.3 120.3L293.4 115.2L301.9 117.9L310.0 111.9L309.9 102.9L315.9 100.5L322.0 107.2L332.0 106.0L336.4 98.2L342.8 99.1L344.7 107.9L354.0 111.9L361.7 107.3L366.8 111.4L364.1 119.9L370.1 128.0L379.1 127.9L381.5 133.9L374.8 140.0Z\"/><path class=\"part alt\" data-z=\"engC\" d=\"M470.5 161.4L476.9 167.6L474.3 173.6L465.4 173.2L459.1 181.1L461.6 189.7L456.3 193.6L448.8 188.8L439.4 192.5L437.2 201.2L430.7 201.9L426.6 194.0L416.6 192.5L410.4 198.9L404.4 196.3L404.8 187.4L396.9 181.1L388.3 183.6L384.4 178.3L389.2 170.8L385.5 161.4L376.8 159.2L376.1 152.7L384.0 148.6L385.5 138.6L379.1 132.4L381.7 126.4L390.6 126.8L396.9 118.9L394.4 110.3L399.7 106.4L407.2 111.2L416.6 107.5L418.8 98.8L425.3 98.1L429.4 106.0L439.4 107.5L445.6 101.1L451.6 103.7L451.2 112.6L459.1 118.9L467.7 116.4L471.6 121.7L466.8 129.2L470.5 138.6L479.2 140.8L479.9 147.3L472.0 151.4Z\"/>\n   <circle class=\"part\" data-z=\"eje\" cx=\"332\" cy=\"150\" r=\"14\"/><path class=\"thin\" d=\"M326 137h12\" stroke-width=\"2\"/><circle class=\"thin\" cx=\"428\" cy=\"150\" r=\"12\"/>\n   <text class=\"lbl\" x=\"191\" y=\"124\" text-anchor=\"middle\">Entrada</text><text class=\"lbl\" x=\"569\" y=\"124\" text-anchor=\"middle\">Salida</text><g class=\"dims\"><g class=\"\" data-cota=\"dcam\"><line class=\"lead\" x1=\"332\" y1=\"226\" x2=\"332\" y2=\"271\"/><line class=\"dimline\" x1=\"272\" y1=\"226\" x2=\"392\" y2=\"226\"/><path class=\"dimline\" d=\"M279 222L272 226L279 230M385 222L392 226L385 230M272 220V232M392 220V232\"/><rect class=\"dimbg\" x=\"297.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"332\" y=\"284\" text-anchor=\"middle\">Ø CÁMARA</text></g><g class=\"\" data-cota=\"hpun\"><line class=\"lead\" x1=\"332\" y1=\"94\" x2=\"332\" y2=\"31\"/><circle class=\"dimdot\" cx=\"332\" cy=\"94\" r=\"3.2\"/><rect class=\"dimbg\" x=\"301.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"332\" y=\"26\" text-anchor=\"middle\">HOLGURA</text></g><g class=\"\" data-cota=\"dem\"><line class=\"lead\" x1=\"296\" y1=\"114\" x2=\"225\" y2=\"31\"/><circle class=\"dimdot\" cx=\"296\" cy=\"114\" r=\"3.2\"/><rect class=\"dimbg\" x=\"175.6\" y=\"14\" width=\"98.80000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"225\" y=\"26\" text-anchor=\"middle\">Ø EXT MOTRIZ</text></g><g class=\"\" data-cota=\"dec\"><line class=\"lead\" x1=\"464\" y1=\"114\" x2=\"510\" y2=\"31\"/><circle class=\"dimdot\" cx=\"464\" cy=\"114\" r=\"3.2\"/><rect class=\"dimbg\" x=\"449.5\" y=\"14\" width=\"121\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"510\" y=\"26\" text-anchor=\"middle\">Ø EXT CONDUCIDO</text></g><g class=\"\" data-cota=\"deje\"><line class=\"lead\" x1=\"318\" y1=\"150\" x2=\"85.5\" y2=\"150\"/><circle class=\"dimdot\" cx=\"318\" cy=\"150\" r=\"3.2\"/><rect class=\"dimbg\" x=\"38.5\" y=\"142\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"62\" y=\"154\" text-anchor=\"middle\">Ø EJE</text></g></g></svg>", "zonas": [{"id": "carcasa", "nombre": "Carcasa (cámara)", "orden": 1, "medidas": [{"id": "dcam", "nombre": "Ø cámara de engranajes", "cota": "dcam", "desde": "Medido en la cámara, en 2 planos", "referencia": "Holgura punta de diente a cámara: nueva ≈ 0,13 a 0,18 mm; con 0,25 a 0,38 mm la bomba rinde cerca de 30 a 40 %.", "orden": 1}, {"id": "hpun", "nombre": "Holgura punta–cámara", "cota": "hpun", "desde": "Entre la punta del diente y la pared de la cámara", "referencia": "Nueva ≈ 0,13 a 0,18 mm. Desde 0,25 mm hay pérdida clara de caudal.", "orden": 2}]}, {"id": "engM", "nombre": "Engranaje motriz", "orden": 2, "medidas": [{"id": "dem", "nombre": "Ø exterior", "cota": "dem", "desde": "Medido sobre las puntas de los dientes", "referencia": "Según plano de la bomba.", "orden": 1}, {"id": "axm", "nombre": "Espesor (juego axial)", "cota": null, "desde": "Se mide en la vista lateral: cara del engranaje contra la brida", "referencia": "Nuevo: cara a ras de la brida (hasta +0,03 mm). 0,13 a 0,18 mm por debajo ya baja el rendimiento.", "orden": 2}]}, {"id": "engC", "nombre": "Engranaje conducido", "orden": 3, "medidas": [{"id": "dec", "nombre": "Ø exterior", "cota": "dec", "desde": "Medido sobre las puntas de los dientes", "referencia": "Según plano de la bomba.", "orden": 1}]}, {"id": "eje", "nombre": "Eje motriz", "orden": 4, "medidas": [{"id": "deje", "nombre": "Ø eje en cojinete", "cota": "deje", "desde": "Medido en la zona del cojinete, 2 planos", "referencia": "Holgura eje–cojinete: nueva ≈ 0,05 a 0,08 mm; más holgura es desgaste. El cojinete suele ovalarse.", "orden": 1}]}]}, {"id": "reductor", "nombre": "Reductor de engranajes", "descripcion": "Carcasa, ejes, piñón, corona y rodamientos", "orden": 4, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Reductor de engranajes\"><rect class=\"part \" data-z=\"carcasa\" x=\"150\" y=\"70\" width=\"410\" height=\"192\" rx=\"4\"/><rect class=\"cav\" x=\"172\" y=\"88\" width=\"366\" height=\"156\"/>\n   <rect class=\"part alt\" data-z=\"ejeE\" x=\"70\" y=\"108\" width=\"350\" height=\"24\" rx=\"2\"/><rect class=\"part alt\" data-z=\"ejeS\" x=\"172\" y=\"182\" width=\"548\" height=\"24\" rx=\"2\"/>\n   <rect class=\"part \" data-z=\"pinon\" x=\"300\" y=\"98\" width=\"60\" height=\"44\" rx=\"2\"/><path class=\"thin\" d=\"M312 98v44M324 98v44M336 98v44M348 98v44\" opacity=\".6\"/>\n   <rect class=\"part \" data-z=\"corona\" x=\"290\" y=\"142\" width=\"80\" height=\"104\" rx=\"2\"/><path class=\"thin\" d=\"M302 142v104M314 142v104M326 142v104M338 142v104M350 142v104\" opacity=\".6\"/>\n   <rect class=\"part alt\" data-z=\"rodam\" x=\"176\" y=\"168\" width=\"32\" height=\"52\" rx=\"2\"/><rect class=\"part alt\" data-z=\"rodam\" x=\"500\" y=\"168\" width=\"32\" height=\"52\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"235\" y=\"58\" text-anchor=\"middle\">Carcasa</text><text class=\"lbl\" x=\"62\" y=\"98\" text-anchor=\"middle\">Entrada</text><text class=\"lbl\" x=\"660\" y=\"172\" text-anchor=\"middle\">Salida</text><g class=\"dims\"><g class=\"\" data-cota=\"dalo\"><line class=\"lead\" x1=\"185\" y1=\"222\" x2=\"150\" y2=\"271\"/><line class=\"dimline\" x1=\"185\" y1=\"166\" x2=\"185\" y2=\"222\"/><path class=\"dimline\" d=\"M181 173L185 166L189 173M181 215L185 222L189 215\"/><rect class=\"dimbg\" x=\"119.1\" y=\"272\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"150\" y=\"284\" text-anchor=\"middle\">Ø ALOJ.</text></g><g class=\"\" data-cota=\"dee\"><line class=\"lead\" x1=\"100\" y1=\"108\" x2=\"135\" y2=\"31\"/><line class=\"dimline\" x1=\"100\" y1=\"108\" x2=\"100\" y2=\"132\"/><path class=\"dimline\" d=\"M96 115L100 108L104 115M96 125L100 132L104 125\"/><rect class=\"dimbg\" x=\"104.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"135\" y=\"26\" text-anchor=\"middle\">Ø EJE E</text></g><g class=\"\" data-cota=\"jfl\"><line class=\"lead\" x1=\"362\" y1=\"142\" x2=\"430\" y2=\"31\"/><circle class=\"dimdot\" cx=\"362\" cy=\"142\" r=\"3.2\"/><rect class=\"dimbg\" x=\"376.9\" y=\"14\" width=\"106.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"430\" y=\"26\" text-anchor=\"middle\">JUEGO FLANCOS</text></g><g class=\"\" data-cota=\"dpi\"><line class=\"lead\" x1=\"330\" y1=\"98\" x2=\"320\" y2=\"31\"/><circle class=\"dimdot\" cx=\"330\" cy=\"98\" r=\"3.2\"/><rect class=\"dimbg\" x=\"289.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"320\" y=\"26\" text-anchor=\"middle\">Ø PIÑÓN</text></g><g class=\"\" data-cota=\"dco\"><line class=\"lead\" x1=\"368\" y1=\"232\" x2=\"385\" y2=\"271\"/><circle class=\"dimdot\" cx=\"368\" cy=\"232\" r=\"3.2\"/><rect class=\"dimbg\" x=\"350.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"385\" y=\"284\" text-anchor=\"middle\">Ø CORONA</text></g><g class=\"\" data-cota=\"des\"><line class=\"lead\" x1=\"650\" y1=\"206\" x2=\"650\" y2=\"271\"/><line class=\"dimline\" x1=\"650\" y1=\"182\" x2=\"650\" y2=\"206\"/><path class=\"dimline\" d=\"M646 189L650 182L654 189M646 199L650 206L654 199\"/><rect class=\"dimbg\" x=\"619.1\" y=\"272\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"650\" y=\"284\" text-anchor=\"middle\">Ø EJE S</text></g><g class=\"\" data-cota=\"das\"><line class=\"lead\" x1=\"228\" y1=\"206\" x2=\"245\" y2=\"271\"/><line class=\"dimline\" x1=\"228\" y1=\"182\" x2=\"228\" y2=\"206\"/><path class=\"dimline\" d=\"M224 189L228 182L232 189M224 199L228 206L232 199\"/><rect class=\"dimbg\" x=\"206.7\" y=\"272\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"245\" y=\"284\" text-anchor=\"middle\">Ø ASIENTO</text></g></g></svg>", "zonas": [{"id": "carcasa", "nombre": "Carcasa", "orden": 1, "medidas": [{"id": "dalo", "nombre": "Ø alojamiento de rodamiento", "cota": "dalo", "desde": "Medido en el alojamiento, 2 planos", "referencia": "Tolerancia típica H7 o la que indique el catálogo del rodamiento.", "orden": 1}]}, {"id": "ejeE", "nombre": "Eje de entrada", "orden": 2, "medidas": [{"id": "dee", "nombre": "Ø eje de entrada", "cota": "dee", "desde": "Medido en el asiento del rodamiento", "referencia": "Asiento típico k5 o m5 según el rodamiento.", "orden": 1}]}, {"id": "pinon", "nombre": "Piñón", "orden": 3, "medidas": [{"id": "jfl", "nombre": "Juego entre flancos", "cota": "jfl", "desde": "Con el eje de entrada bloqueado, reloj comparador en el flanco", "referencia": "Medir en 3 posiciones a 120°. Si crece cerca de 2,5 veces sobre su valor base, hay desgaste de flanco. El valor máximo lo da el fabricante.", "orden": 1}, {"id": "dpi", "nombre": "Ø exterior del piñón", "cota": "dpi", "desde": "Medido sobre las puntas", "referencia": "Según plano.", "orden": 2}]}, {"id": "corona", "nombre": "Corona", "orden": 4, "medidas": [{"id": "dco", "nombre": "Ø exterior de la corona", "cota": "dco", "desde": "Medido sobre las puntas", "referencia": "Según plano. Revisar picaduras y desgaste del flanco.", "orden": 1}]}, {"id": "ejeS", "nombre": "Eje de salida", "orden": 5, "medidas": [{"id": "des", "nombre": "Ø eje de salida", "cota": "des", "desde": "Medido fuera de la carcasa, donde asienta el sello", "referencia": "Marca de sello profunda indica reemplazo o recuperación.", "orden": 1}]}, {"id": "rodam", "nombre": "Rodamientos de salida", "orden": 6, "medidas": [{"id": "das", "nombre": "Ø asiento del rodamiento", "cota": "das", "desde": "Medido en el asiento sobre el eje", "referencia": "Asiento típico k5 o m5; si gira en el eje, está desgastado.", "orden": 1}]}]}, {"id": "buje", "nombre": "Buje y casquillo", "descripcion": "Alojamiento, buje y eje", "orden": 5, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Buje y casquillo\"><path class=\"cl\" d=\"M330 150H735\"/>\n   <rect class=\"part \" data-z=\"aloj\" x=\"400\" y=\"70\" width=\"260\" height=\"42\" rx=\"0\"/><rect class=\"part \" data-z=\"aloj\" x=\"400\" y=\"188\" width=\"260\" height=\"42\" rx=\"0\"/>\n   <rect class=\"part alt\" data-z=\"buje\" x=\"420\" y=\"112\" width=\"220\" height=\"18\" rx=\"1\"/><rect class=\"part alt\" data-z=\"buje\" x=\"420\" y=\"170\" width=\"220\" height=\"18\" rx=\"1\"/>\n   <rect class=\"part \" data-z=\"eje\" x=\"330\" y=\"134\" width=\"400\" height=\"32\" rx=\"1\"/>\n   <text class=\"lbl\" x=\"350\" y=\"92\" text-anchor=\"middle\">Alojamiento</text><text class=\"lbl\" x=\"378\" y=\"124\" text-anchor=\"middle\">Buje</text><text class=\"lbl\" x=\"352\" y=\"184\" text-anchor=\"middle\">Eje</text><g class=\"dims\"><g class=\"\" data-cota=\"dib\"><line class=\"lead\" x1=\"450\" y1=\"130\" x2=\"450\" y2=\"31\"/><line class=\"dimline\" x1=\"450\" y1=\"130\" x2=\"450\" y2=\"170\"/><path class=\"dimline\" d=\"M446 137L450 130L454 137M446 163L450 170L454 163\"/><rect class=\"dimbg\" x=\"426.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"450\" y=\"26\" text-anchor=\"middle\">Ø INT</text></g><g class=\"\" data-cota=\"deb\"><line class=\"lead\" x1=\"530\" y1=\"112\" x2=\"530\" y2=\"31\"/><line class=\"dimline\" x1=\"530\" y1=\"112\" x2=\"530\" y2=\"188\"/><path class=\"dimline\" d=\"M526 119L530 112L534 119M526 181L530 188L534 181\"/><rect class=\"dimbg\" x=\"506.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"26\" text-anchor=\"middle\">Ø EXT</text></g><g class=\"\" data-cota=\"dal\"><line class=\"lead\" x1=\"610\" y1=\"112\" x2=\"610\" y2=\"31\"/><line class=\"dimline\" x1=\"610\" y1=\"112\" x2=\"610\" y2=\"188\"/><path class=\"dimline\" d=\"M606 119L610 112L614 119M606 181L610 188L614 181\"/><rect class=\"dimbg\" x=\"579.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"610\" y=\"26\" text-anchor=\"middle\">Ø ALOJ.</text></g><g class=\"\" data-cota=\"dej\"><line class=\"lead\" x1=\"700\" y1=\"134\" x2=\"700\" y2=\"31\"/><line class=\"dimline\" x1=\"700\" y1=\"134\" x2=\"700\" y2=\"166\"/><path class=\"dimline\" d=\"M696 141L700 134L704 141M696 159L700 166L704 159\"/><rect class=\"dimbg\" x=\"676.5\" y=\"14\" width=\"47\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"700\" y=\"26\" text-anchor=\"middle\">Ø EJE</text></g><g class=\"\" data-cota=\"lb\"><line class=\"lead\" x1=\"530\" y1=\"252\" x2=\"530\" y2=\"271\"/><line class=\"dimline\" x1=\"420\" y1=\"252\" x2=\"640\" y2=\"252\"/><path class=\"dimline\" d=\"M427 248L420 252L427 256M633 248L640 252L633 256M420 246V258M640 246V258\"/><rect class=\"dimbg\" x=\"495.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"284\" text-anchor=\"middle\">LONGITUD</text></g></g></svg>", "zonas": [{"id": "aloj", "nombre": "Alojamiento", "orden": 1, "medidas": [{"id": "dal", "nombre": "Ø alojamiento", "cota": "dal", "desde": "Medido en el alojamiento, 2 planos", "referencia": "Tolerancia típica H7. Rugosidad del alojamiento Ra ≤ 3,2 µm.", "orden": 1}]}, {"id": "buje", "nombre": "Buje", "orden": 2, "medidas": [{"id": "dib", "nombre": "Ø interior", "cota": "dib", "desde": "Medido con el buje ya montado", "referencia": "Tras el montaje a presión queda H7 (H8 si el Ø supera 50 mm).", "orden": 1}, {"id": "deb", "nombre": "Ø exterior", "cota": "deb", "desde": "Medido antes de montar", "referencia": "Montaje a presión típico H7/p6 (interferencia ligera).", "orden": 2}, {"id": "lb", "nombre": "Longitud", "cota": "lb", "desde": "De cara a cara del buje", "referencia": "Según plano.", "orden": 3}]}, {"id": "eje", "nombre": "Eje", "orden": 3, "medidas": [{"id": "dej", "nombre": "Ø eje", "cota": "dej", "desde": "Medido en la zona del buje, 2 planos", "referencia": "Eje típico f7, rugosidad Ra ≤ 0,6 µm. Juego de trabajo H7/f7 o H8/f7.", "orden": 1}]}]}, {"id": "piston", "nombre": "Pistón con aros", "descripcion": "Cuerpo, ranura de sello, bandas guía y agujero", "orden": 6, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Pistón con aros\"><path class=\"cl\" d=\"M250 150H510\"/>\n   <rect class=\"part alt\" data-z=\"cuerpo\" x=\"280\" y=\"70\" width=\"200\" height=\"160\" rx=\"3\"/><rect class=\"cav\" x=\"280\" y=\"125\" width=\"200\" height=\"50\"/>\n   <rect class=\"part \" data-z=\"ranura\" x=\"360\" y=\"70\" width=\"40\" height=\"20\" rx=\"0\"/><rect class=\"part \" data-z=\"ranura\" x=\"360\" y=\"210\" width=\"40\" height=\"20\" rx=\"0\"/>\n   <rect class=\"part \" data-z=\"guia\" x=\"290\" y=\"70\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"440\" y=\"70\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"290\" y=\"221\" width=\"30\" height=\"9\" rx=\"0\"/><rect class=\"part \" data-z=\"guia\" x=\"440\" y=\"221\" width=\"30\" height=\"9\" rx=\"0\"/>\n   <path class=\"thin\" d=\"M280 125h200M280 175h200\" stroke-dasharray=\"3 3\"/>\n   <rect class=\"part hole\" data-z=\"agujero\" x=\"280\" y=\"125\" width=\"200\" height=\"50\" rx=\"0\"/>\n   <text class=\"lbl\" x=\"380\" y=\"108\" text-anchor=\"middle\">Cuerpo</text><text class=\"lbl\" x=\"380\" y=\"206\" text-anchor=\"middle\">Ranura</text><text class=\"lbl\" x=\"160\" y=\"134\" text-anchor=\"middle\">Eje del vástago</text><g class=\"dims\"><g class=\"\" data-cota=\"dpx\"><line class=\"lead\" x1=\"510\" y1=\"70\" x2=\"565\" y2=\"31\"/><line class=\"dimline\" x1=\"510\" y1=\"70\" x2=\"510\" y2=\"230\"/><path class=\"dimline\" d=\"M506 77L510 70L514 77M506 223L510 230L514 223\"/><rect class=\"dimbg\" x=\"530.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"565\" y=\"26\" text-anchor=\"middle\">Ø PISTÓN</text></g><g class=\"\" data-cota=\"lpx\"><line class=\"lead\" x1=\"380\" y1=\"262\" x2=\"380\" y2=\"271\"/><line class=\"dimline\" x1=\"280\" y1=\"262\" x2=\"480\" y2=\"262\"/><path class=\"dimline\" d=\"M287 258L280 262L287 266M473 258L480 262L473 266M280 256V268M480 256V268\"/><rect class=\"dimbg\" x=\"345.4\" y=\"272\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"284\" text-anchor=\"middle\">LONGITUD</text></g><g class=\"\" data-cota=\"arn\"><line class=\"lead\" x1=\"380\" y1=\"50\" x2=\"380\" y2=\"31\"/><line class=\"dimline\" x1=\"360\" y1=\"50\" x2=\"400\" y2=\"50\"/><path class=\"dimline\" d=\"M367 46L360 50L367 54M393 46L400 50L393 54M360 44V56M400 44V56\"/><rect class=\"dimbg\" x=\"330.6\" y=\"14\" width=\"98.80000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"380\" y=\"26\" text-anchor=\"middle\">ANCHO RANURA</text></g><g class=\"\" data-cota=\"dfr\"><line class=\"lead\" x1=\"380\" y1=\"90\" x2=\"475\" y2=\"31\"/><circle class=\"dimdot\" cx=\"380\" cy=\"90\" r=\"3.2\"/><rect class=\"dimbg\" x=\"444.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"475\" y=\"26\" text-anchor=\"middle\">Ø FONDO</text></g><g class=\"\" data-cota=\"agu\"><line class=\"lead\" x1=\"305\" y1=\"50\" x2=\"240\" y2=\"31\"/><line class=\"dimline\" x1=\"290\" y1=\"50\" x2=\"320\" y2=\"50\"/><path class=\"dimline\" d=\"M297 46L290 50L297 54M313 46L320 50L313 54M290 44V56M320 44V56\"/><rect class=\"dimbg\" x=\"198\" y=\"14\" width=\"84\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"240\" y=\"26\" text-anchor=\"middle\">ANCHO GUÍA</text></g><g class=\"\" data-cota=\"dag\"><line class=\"lead\" x1=\"300\" y1=\"150\" x2=\"138.3\" y2=\"150\"/><line class=\"dimline\" x1=\"300\" y1=\"125\" x2=\"300\" y2=\"175\"/><path class=\"dimline\" d=\"M296 132L300 125L304 132M296 168L300 175L304 168\"/><rect class=\"dimbg\" x=\"61.699999999999996\" y=\"142\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"100\" y=\"154\" text-anchor=\"middle\">Ø AGUJERO</text></g></g></svg>", "zonas": [{"id": "cuerpo", "nombre": "Cuerpo del pistón", "orden": 1, "medidas": [{"id": "dpx", "nombre": "Ø exterior", "cota": "dpx", "desde": "Medido sobre el cuerpo, 2 planos", "referencia": "Sin valor general: depende del sello y la guía del plano.", "orden": 1}, {"id": "lpx", "nombre": "Longitud total", "cota": "lpx", "desde": "De cara a cara del pistón", "referencia": "Según plano.", "orden": 2}]}, {"id": "ranura", "nombre": "Ranura del sello", "orden": 2, "medidas": [{"id": "arn", "nombre": "Ancho de ranura", "cota": "arn", "desde": "Medido en la ranura central", "referencia": "Según el perfil de sello. Ranura ensanchada deja pasar aceite.", "orden": 1}, {"id": "dfr", "nombre": "Ø fondo de ranura", "cota": "dfr", "desde": "Medido en el fondo de la ranura", "referencia": "Según el perfil de sello.", "orden": 2}]}, {"id": "guia", "nombre": "Banda guía", "orden": 3, "medidas": [{"id": "agu", "nombre": "Ancho de banda guía", "cota": "agu", "desde": "Medido en la banda guía", "referencia": "Si la banda está desgastada, el pistón roza la camisa.", "orden": 1}]}, {"id": "agujero", "nombre": "Agujero del vástago", "orden": 4, "medidas": [{"id": "dag", "nombre": "Ø agujero", "cota": "dag", "desde": "Medido en el cubo del pistón", "referencia": "Según plano. Revisar la rosca y el asiento.", "orden": 1}]}]}, {"id": "horq", "nombre": "Horquilla de vástago", "descripcion": "Cuerpo, orejas, perno y rosca", "orden": 7, "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 760 300\" role=\"img\" aria-label=\"Horquilla de vástago\"><path class=\"cl\" d=\"M40 150H570\"/>\n   <rect class=\"part alt\" data-z=\"rosca\" x=\"60\" y=\"124\" width=\"240\" height=\"52\" rx=\"2\"/><path class=\"thin\" d=\"M80 124l8 52M100 124l8 52M120 124l8 52M140 124l8 52M160 124l8 52M180 124l8 52M200 124l8 52M220 124l8 52\" opacity=\".5\"/>\n   <rect class=\"part \" data-z=\"cuerpo\" x=\"300\" y=\"90\" width=\"80\" height=\"120\" rx=\"2\"/>\n   <rect class=\"part alt\" data-z=\"orejas\" x=\"380\" y=\"90\" width=\"160\" height=\"42\" rx=\"2\"/><rect class=\"part alt\" data-z=\"orejas\" x=\"380\" y=\"168\" width=\"160\" height=\"42\" rx=\"2\"/>\n   <rect class=\"part \" data-z=\"perno\" x=\"470\" y=\"76\" width=\"30\" height=\"148\" rx=\"2\"/>\n   <text class=\"lbl\" x=\"180\" y=\"108\" text-anchor=\"middle\">Rosca</text><text class=\"lbl\" x=\"340\" y=\"78\" text-anchor=\"middle\">Cuerpo</text><text class=\"lbl\" x=\"540\" y=\"236\" text-anchor=\"start\">Orejas</text><g class=\"dims\"><g class=\"\" data-cota=\"drs\"><line class=\"lead\" x1=\"120\" y1=\"124\" x2=\"120\" y2=\"31\"/><line class=\"dimline\" x1=\"120\" y1=\"124\" x2=\"120\" y2=\"176\"/><path class=\"dimline\" d=\"M116 131L120 124L124 131M116 169L120 176L124 169\"/><rect class=\"dimbg\" x=\"89.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"120\" y=\"26\" text-anchor=\"middle\">Ø ROSCA</text></g><g class=\"\" data-cota=\"abe\"><line class=\"lead\" x1=\"430\" y1=\"132\" x2=\"430\" y2=\"31\"/><line class=\"dimline\" x1=\"430\" y1=\"132\" x2=\"430\" y2=\"168\"/><path class=\"dimline\" d=\"M426 139L430 132L434 139M426 161L430 168L434 161\"/><rect class=\"dimbg\" x=\"395.4\" y=\"14\" width=\"69.2\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"430\" y=\"26\" text-anchor=\"middle\">ABERTURA</text></g><g class=\"\" data-cota=\"dao\"><line class=\"lead\" x1=\"485\" y1=\"238\" x2=\"485\" y2=\"271\"/><line class=\"dimline\" x1=\"464\" y1=\"238\" x2=\"506\" y2=\"238\"/><path class=\"dimline\" d=\"M471 234L464 238L471 242M499 234L506 238L499 242M464 232V244M506 232V244\"/><rect class=\"dimbg\" x=\"446.7\" y=\"272\" width=\"76.60000000000001\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"485\" y=\"284\" text-anchor=\"middle\">Ø AGUJERO</text></g><g class=\"\" data-cota=\"dpe\"><line class=\"lead\" x1=\"485\" y1=\"64\" x2=\"530\" y2=\"31\"/><line class=\"dimline\" x1=\"470\" y1=\"64\" x2=\"500\" y2=\"64\"/><path class=\"dimline\" d=\"M477 60L470 64L477 68M493 60L500 64L493 68M470 58V70M500 58V70\"/><rect class=\"dimbg\" x=\"499.1\" y=\"14\" width=\"61.800000000000004\" height=\"17\" rx=\"3\"/><text class=\"dimtxt\" x=\"530\" y=\"26\" text-anchor=\"middle\">Ø PERNO</text></g></g></svg>", "zonas": [{"id": "rosca", "nombre": "Rosca del vástago", "orden": 1, "medidas": [{"id": "drs", "nombre": "Ø exterior de rosca", "cota": "drs", "desde": "Medido en la parte sana de la rosca", "referencia": "Según plano. Revisar hilos aplastados o corridos.", "orden": 1}]}, {"id": "cuerpo", "nombre": "Cuerpo de la horquilla", "orden": 2, "medidas": [{"id": "abe", "nombre": "Abertura entre orejas", "cota": "abe", "desde": "Medido entre las caras internas de las orejas", "referencia": "Según plano del pivote.", "orden": 1}]}, {"id": "orejas", "nombre": "Orejas (agujero)", "orden": 3, "medidas": [{"id": "dao", "nombre": "Ø agujero de oreja", "cota": "dao", "desde": "Medido en ambas orejas", "referencia": "Ajuste de pivote típico H8/f7; H11/c11 si hay mucha suciedad.", "orden": 1}]}, {"id": "perno", "nombre": "Perno", "orden": 4, "medidas": [{"id": "dpe", "nombre": "Ø perno", "cota": "dpe", "desde": "Medido en la zona de las orejas", "referencia": "Perno típico f7 o f8. Juego alto produce golpeteo.", "orden": 1}]}]}];
+const $ = id => document.getElementById(id);
+
+(function(){
+const REC = [
+  {n:'RAC-2026-00006',cli:'Minera Andes SAC',eq:'CILINDRO',f:'02/10/2026',est:'En diagnóstico',b:2,tipo:'componente',cat:'cil',marca:'Hidromec',mod:'HC-120',ser:'HM-44821'},
+  {n:'RAC-2026-00011',cli:'Constructora Roca',eq:'CIGÜEÑAL',f:'07/10/2026',est:'Recibido',b:0,tipo:'componente',cat:null,marca:'Cummins',mod:'QSB6.7',ser:'—'},
+  {n:'RAC-2026-00009',cli:'Minera Andes SAC',eq:'CAJA TRANSMISION',f:'05/10/2026',est:'Recibido',b:0,tipo:'componente',cat:null,marca:'Allison',mod:'3000',ser:'AL-7710'},
+  {n:'RAC-2026-00004',cli:'Transportes Lima Norte',eq:'SCOOP 3060 - JUNIOR',f:'29/09/2026',est:'Recibido',b:0,tipo:'maquinaria_completa',cat:null,marca:'Sandvik',mod:'3060',ser:'SC-3060-12'}
+];
+const TRAB = ['Cambio de sellos','Rectificado','Cambio de bocinas','Soldadura y recargue','Cromado','Evaluación y diagnóstico'];
+const TEC = ['Luis Paredes','Marco Quispe','Rosa Vidal'];
+const NAMES = ['Recepción','Equipo','Datos'];
+const fresh = () => ({created:false, step:0, rec:null, q:'', cat:undefined, motivo:'', trab:new Set(['Cambio de sellos']), tec:'', fecha:'2026-10-11'});
+let S = fresh();
+const svgOf = id => (CAT.find(c => c.id === id) || {}).svg || '';
+const nomOf = id => (CAT.find(c => c.id === id) || {}).nombre || '';
+const R = () => REC.find(r => r.n === S.rec);
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+function catEf(){ const r = R(); return S.cat !== undefined ? S.cat : r.cat; }
+function valido(){
+  if (S.step === 0) return !!S.rec;
+  if (S.step === 1) { const r = R(); return r.tipo === 'maquinaria_completa' || !!catEf(); }
+  if (S.step === 2) return S.trab.size > 0 && !!S.tec && S.motivo.trim().length > 2;
+  return true;
+}
+const sub = ['Elige la recepción del equipo que vas a diagnosticar.','Confirma el equipo y su tipo de componente.','Cuenta el motivo y el alcance. Al continuar se guarda el borrador.'];
+function render(){
+  $('msub').textContent = sub[S.step];
+  $('wsteps').innerHTML = NAMES.map((n,i) => `<button type="button" class="st ${i<S.step?'done':i===S.step?'cur':''}" data-i="${i}" ${i<S.step?'':'tabindex="-1"'}><i></i><span>${i+1} · ${n}</span></button>`).join('');
+  document.querySelectorAll('#wsteps .st.done').forEach(b => b.onclick = () => { S.step = +b.dataset.i; render(); });
+  $('wback').textContent = S.step === 0 ? 'Cerrar' : 'Atrás';
+  $('wnext').textContent = S.step === 2 ? 'Crear borrador y continuar' : 'Siguiente';
+  $('wnext').disabled = !valido();
+  $('wfoot').textContent = 'Paso ' + (S.step+1) + ' de 3';
+  [paso1, paso2, paso3][S.step]();
+}
+function paso1(){
+  const q = norm(S.q);
+  const items = REC.filter(r => !q || norm(r.n+' '+r.cli+' '+r.eq).includes(q));
+  $('wbody').innerHTML = `<label>Recepción de activo<input id="wq" type="search" placeholder="Buscar por número, cliente o activo…" value="${S.q}"></label>
+  <div class="list" role="radiogroup" aria-label="Recepciones">${items.map(r => `<button type="button" class="rec" role="radio" aria-checked="${r.n===S.rec}" data-n="${r.n}"><span class="r"></span><span class="m"><span class="t">${r.eq}</span><span class="s"><b>${r.n}</b> · ${r.cli} · ingreso ${r.f}</span></span>${r.b ? `<span class="chip w">${r.b} borradores</span>` : ''}<span class="chip">${r.est}</span></button>`).join('') || '<div class="empty">No hay recepciones que coincidan.</div>'}</div>
+  ${S.rec && R().b ? `<div class="warn">Esta recepción ya tiene ${R().b} diagnósticos en borrador. Puedes abrir uno de ellos en vez de crear otro.</div>` : ''}`;
+  $('wq').oninput = e => { S.q = e.target.value; const p = e.target.selectionStart; paso1(); $('wq').focus(); $('wq').setSelectionRange(p,p); };
+  document.querySelectorAll('#wbody .rec').forEach(b => b.onclick = () => { S.rec = b.dataset.n; S.cat = undefined; render(); });
+}
+function paso2(){
+  const r = R(), c = catEf();
+  let tipoHtml;
+  if (r.tipo === 'maquinaria_completa') {
+    tipoHtml = `<span class="src">Máquina completa</span><p class="hint">No hace falta elegir un tipo ahora: en cada hallazgo eliges qué componente evalúas (cilindro, bomba, reductor…).</p>`;
+  } else if (c && S.cat === undefined) {
+    tipoHtml = `<span class="src">Viene de la recepción</span><div class="eq"><div class="thumb">${svgOf(c)}</div><div><div class="kick">Tipo de componente</div><div style="font-weight:800;font-size:1.05rem">${nomOf(c)}</div><p class="hint">El dibujo y las medidas de este tipo se usarán en los hallazgos. <button type="button" class="chipb" id="wcorr" style="padding:2px 10px;font-size:.76rem">Corregir tipo</button></p></div></div>`;
+  } else {
+    tipoHtml = `<div class="warn">${c ? 'Elige el tipo correcto.' : 'Este equipo todavía no tiene tipo de componente.'}</div><p class="hint">Se guarda en el equipo y las próximas recepciones y diagnósticos ya lo traen.</p>
+    <div class="picker">${CAT.map(k => `<button type="button" class="pk" data-c="${k.id}" aria-pressed="${c===k.id}">${k.svg}${k.nombre}</button>`).join('')}<button type="button" class="pk" data-c="otro" aria-pressed="${c==='otro'}" style="justify-content:center;min-height:72px">Otro tipo<span class="hint" style="font-weight:600">sin dibujo</span></button></div>`;
+  }
+  $('wbody').innerHTML = `<div class="card"><div class="kick">Equipo recibido</div><dl class="kv"><dt>Equipo</dt><dd>${r.eq}</dd><dt>Cliente</dt><dd>${r.cli}</dd><dt>Marca / modelo</dt><dd>${r.marca} · ${r.mod}</dd><dt>Serie</dt><dd>${r.ser}</dd><dt>Recepción</dt><dd>${r.n}</dd></dl></div>${tipoHtml}`;
+  const corr = $('wcorr'); if (corr) corr.onclick = () => { S.cat = null; render(); };
+  document.querySelectorAll('#wbody .pk').forEach(b => b.onclick = () => { S.cat = b.dataset.c; render(); });
+}
+function paso3(){
+  $('wbody').innerHTML = `<label>Motivo o falla reportada por el cliente *<textarea id="wmot" placeholder="Ej.: pierde presión y hay fuga de aceite por el vástago">${S.motivo}</textarea></label>
+  <div><div class="kick" style="margin-bottom:8px">Trabajos a evaluar *</div><div class="chips">${TRAB.map(t => `<button type="button" class="chipb" aria-pressed="${S.trab.has(t)}">${t}</button>`).join('')}</div><p class="hint" style="margin-top:6px">Puedes marcar varios. Cada hallazgo se asocia a uno de ellos.</p></div>
+  <div class="row2"><label>Técnico responsable *<select id="wtec"><option value="">Elige…</option>${TEC.map(t => `<option ${S.tec===t?'selected':''}>${t}</option>`).join('')}</select></label>
+  <label>Fecha de inspección<input id="wfec" type="date" value="${S.fecha}"></label></div>`;
+  $('wmot').oninput = e => { S.motivo = e.target.value; $('wnext').disabled = !valido(); };
+  $('wtec').onchange = e => { S.tec = e.target.value; $('wnext').disabled = !valido(); };
+  $('wfec').onchange = e => S.fecha = e.target.value;
+  document.querySelectorAll('#wbody .chipb').forEach(b => b.onclick = () => { const t = b.textContent; S.trab.has(t) ? S.trab.delete(t) : S.trab.add(t); render(); });
+}
+const cerrar = () => { $('wzov').hidden = true; };
+$('wback').onclick = () => { if (S.step === 0) cerrar(); else { S.step--; render(); } };
+$('wx').onclick = cerrar;
+$('wnext').onclick = () => {
+  if (S.step < 2) { S.step++; render(); return; }
+  const r = R(); const c = catEf(); cerrar();
+  window.wzDone({rec:{n:r.n,cli:r.cli,eq:r.eq,marca:r.marca,mod:r.mod,ser:r.ser,tipo:r.tipo}, cat: r.tipo==='maquinaria_completa'?null:c, motivo:S.motivo, trab:[...S.trab], tec:S.tec, fecha:S.fecha.split('-').reverse().join('/'), hall:[]});
+};
+window.wzOpen = () => { S = fresh(); render(); $('wzov').hidden = false; };
+})();
+
+(function(){
+const NS='http://www.w3.org/2000/svg';
+const cat = id => CAT.find(c => c.id === id);
+const catNom = id => id === 'otro' ? 'Otro componente' : (cat(id) || {}).nombre || '';
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const TD = [
+  ['Los más usados', [['desgaste','Desgaste'],['rayado','Rayado'],['corrosion','Corrosión'],['fisura_grieta','Fisura o grieta'],['deformacion','Deformación'],['fuga','Fuga'],['picadura','Picadura'],['golpe_abolladura','Golpe o abolladura'],['holgura_excesiva','Holgura excesiva'],['rotura','Rotura'],['desprendimiento_cromo','Desprendimiento de cromo'],['sobrecalentamiento','Sobrecalentamiento'],['contaminacion','Contaminación']]],
+  ['Desgaste y superficie', [['desgaste_abrasivo','Desgaste abrasivo'],['desgaste_adhesivo','Desgaste adhesivo (agarrotamiento)'],['erosion','Erosión'],['cavitacion','Cavitación'],['fretting','Desgaste por fricción (fretting)'],['descascarado','Descascarado (spalling)'],['estrias','Marcas o estrías'],['oxidacion','Oxidación'],['quemado','Quemado o decoloración por calor']]],
+  ['Geometría', [['ovalizacion','Ovalización'],['conicidad','Conicidad'],['excentricidad','Excentricidad o descentrado'],['curvatura','Curvatura o pandeo'],['torsion','Torsión'],['alabeo','Alabeo']]],
+  ['Material y fatiga', [['fatiga','Fatiga del material'],['porosidad','Porosidad'],['soldadura_defectuosa','Soldadura defectuosa'],['reparacion_previa','Reparación previa deficiente']]],
+  ['Roscas y fijaciones', [['rosca_danada','Rosca dañada'],['rosca_barrida','Rosca barrida'],['chavetero_danado','Chavetero deformado o dañado'],['pernos_flojos','Pernos flojos o faltantes']]],
+  ['Sellado y fluidos', [['sello_danado','Sello dañado o extruido'],['fuga_interna','Fuga interna'],['aceite_degradado','Aceite degradado']]],
+  ['Mecánico', [['juego_axial','Juego axial excesivo'],['rodamiento_danado','Rodamiento dañado'],['diente_roto','Diente roto o astillado'],['desalineacion','Desalineación'],['atascamiento','Atascamiento o bloqueo'],['falta_lubricacion','Falta de lubricación'],['ruido_vibracion','Ruido o vibración anormal'],['pieza_faltante','Pieza faltante']]]
+];
+const SIN = {corrosion:'oxido herrumbre', rayado:'rayon rayadura ralladura surco', fuga:'derrame gotea pierde aceite', fisura_grieta:'rajadura rajado quebradura', golpe_abolladura:'golpeado abollado impacto', rotura:'roto quebrado', desgaste:'gastado', sello_danado:'retén reten empaquetadura', picadura:'pitting hoyos', sobrecalentamiento:'recalentado temperatura', holgura_excesiva:'juego flojo', desprendimiento_cromo:'cromo pelado descascarado'};
+const FREQ = {rayado:24, desgaste:19, fuga:15, corrosion:11, sello_danado:9};
+const ITEMS = []; TD.forEach(g => g[1].forEach(o => ITEMS.push({code:o[0], name:o[1], group:g[0]})));
+const tdName = code => (ITEMS.find(i => i.code === code) || {}).name || '';
+const DEMO = {
+  rec:{n:'RAC-2026-00006',cli:'Minera Andes SAC',eq:'CILINDRO',marca:'Hidromec',mod:'HC-120',ser:'HM-44821',tipo:'componente'},
+  cat:'cil', motivo:'Pierde presión y hay fuga de aceite por el vástago.', trab:['Rectificado','Cambio de sellos'], tec:'Rosa Vidal', fecha:'11/10/2026',
+  hall:[
+    {id:1, trab:'Rectificado', comp:'cil', td:'rayado', pins:['vastago','camisa'], med:{'cil/vastago/dvas':{nom:60,min:59.97,max:60,med:59.82}}, cond:'Reparar', riesgo:'Alto', prio:'P2', causa:'Contaminación', accion:'Rectificar y cromar vástago; honear camisa.', fotos:2, inc:true},
+    {id:2, trab:'Cambio de sellos', comp:'cil', td:'sello_danado', pins:['piston'], med:{}, cond:'Reemplazar', riesgo:'Medio', prio:'P1', causa:'Fin de vida útil', accion:'Reemplazar kit completo de sellos.', fotos:1, inc:true}
+  ]
+};
+let D = JSON.parse(JSON.stringify(DEMO));
+let stage = 1, editId = null, nextId = 3;
+const custom = [];
+
+function mount(host, h, readonly){
+  const c = cat(h.comp); host.innerHTML = c.svg;
+  const svg = host.querySelector('svg'); svg.removeAttribute('width'); svg.removeAttribute('height');
+  svg.querySelectorAll('[data-z]').forEach(el => {
+    el.classList.toggle('pinned', h.pins.includes(el.dataset.z));
+    el.style.cursor = readonly ? 'default' : 'pointer';
+    if (!readonly) {
+      el.setAttribute('tabindex','0'); el.setAttribute('role','button');
+      el.setAttribute('aria-label','Zona ' + c.zonas.find(z => z.id === el.dataset.z).nombre);
+      el.addEventListener('click', () => togglePin(el.dataset.z));
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePin(el.dataset.z); } });
+    }
+  });
+  const cotas = new Set();
+  h.pins.forEach(zid => c.zonas.find(z => z.id === zid).medidas.forEach(m => { if (m.cota && (!readonly || hasMed(h, zid, m.id))) cotas.add(m.cota); }));
+  svg.querySelectorAll('[data-cota]').forEach(el => el.classList.toggle('c-on', cotas.has(el.dataset.cota)));
+  const placed = [];
+  h.pins.forEach((zid, i) => {
+    const el = svg.querySelector('[data-z="' + zid + '"]'); const b = el.getBBox();
+    let cx = b.x + b.width/2, cy = b.y + b.height/2;
+    const wide = b.width > b.height * 2.5;
+    const offs = (wide ? [[-b.width/4,-b.height/2+12],[b.width/4,-b.height/2+12],[-b.width/4,b.height/2-12]] : []).concat([[0,0],[0,-b.height/2+12],[0,b.height/2-12],[-b.width/4,0],[b.width/4,0],[-b.width/3,-b.height/2+12],[b.width/3,-b.height/2+12]]);
+    for (const o of offs) { const x = b.x + b.width/2 + o[0], y = b.y + b.height/2 + o[1]; if (placed.every(p => Math.hypot(p[0]-x, p[1]-y) > 26)) { cx = x; cy = y; break; } }
+    placed.push([cx, cy]);
+    const g = document.createElementNS(NS,'g'); g.setAttribute('class','pin');
+    const ci = document.createElementNS(NS,'circle'); ci.setAttribute('cx', cx); ci.setAttribute('cy', cy); ci.setAttribute('r', 11);
+    const tx = document.createElementNS(NS,'text'); tx.setAttribute('x', cx); tx.setAttribute('y', cy); tx.textContent = i+1;
+    g.append(ci, tx); svg.appendChild(g);
+  });
+}
+const mk = (h, zid, mid) => h.comp + '/' + zid + '/' + mid;
+const hasMed = (h, zid, mid) => { const v = h.med[mk(h,zid,mid)]; return v && v.med !== undefined && v.med !== ''; };
+function resultado(m){ if (!m || m.med === '' || m.med == null || m.min === '' || m.min == null || m.max === '' || m.max == null) return null; return (+m.med >= +m.min && +m.med <= +m.max) ? 'ok' : 'bad'; }
+const hFuera = h => Object.values(h.med).some(v => resultado(v) === 'bad');
+
+/* ---- navegación ---- */
+let view = 'lista', userCollapsed = false;
+let sheetOpen = false, io = null;
+function openSheet(){ sheetOpen = true; $('dsheet').hidden = false; redrawSheet(); }
+function closeSheet(){ sheetOpen = false; $('dsheet').hidden = true; }
+function redrawSheet(){ const h = H(); if (!sheetOpen || !h || !h.comp || h.comp === 'otro') return; $('dsT').textContent = 'Dibujo · ' + (h.pins.length ? h.pins.length + (h.pins.length === 1 ? ' zona marcada' : ' zonas marcadas') : 'toca una zona para marcarla'); mount($('draw2'), h, false); }
+window.closeSheet = closeSheet;
+function go(n){ closeSheet(); if (n === 2) { editId = null; view = 'hall'; } else if (n === 3) { view = 'edit'; } else { editId = null; view = 'inf'; } drawApp(); }
+const STEPS5 = ['Recepción','Equipo','Datos','Hallazgos','Informe'];
+function drawApp(){
+  const work = view !== 'lista';
+  $('lista').hidden = work; $('work').hidden = !work;
+  $('sb').classList.toggle('col', work || userCollapsed);
+  $('sbt').textContent = (work || userCollapsed) ? '›' : '‹';
+  $('pillMenu').textContent = work ? 'Menú replegado automáticamente' : userCollapsed ? 'Menú replegado' : 'Menú desplegado';
+  if (!work) return;
+  const cur = view === 'inf' ? 4 : 3;
+  $('pbar5').innerHTML = STEPS5.map((n,i) => `<button type="button" class="st ${i<cur?'done':i===cur?'cur':''}" data-i="${i}" ${i>=3&&i!==cur?'':'tabindex="-1"'}><i></i><span>${i<3?'✓ ':''}${i+1} · ${n}${i===3?' ('+D.hall.length+')':''}</span></button>`).join('');
+  $('pbar5').querySelectorAll('.st').forEach(b => { const i = +b.dataset.i; if (i === 3) b.onclick = () => go(2); if (i === 4) b.onclick = () => go(4); });
+  $('wtitle').textContent = D.rec.eq + ' · ' + D.rec.cli;
+  $('wchips').innerHTML = `<span class="chip">${D.rec.n}</span><span class="badge p">Borrador</span>`;
+  $('wsum').innerHTML = `<span><b>Motivo</b> ${D.motivo}</span><span><b>Técnico</b> ${D.tec} · ${D.fecha}</span><span><b>Componente</b> ${D.cat ? catNom(D.cat) : D.rec.tipo === 'maquinaria_completa' ? 'Máquina completa' : 'Sin tipo'}</span>`;
+  $('s2').hidden = view !== 'hall'; $('s3').hidden = view !== 'edit'; $('s4').hidden = view !== 'inf';
+  if (view === 'hall') drawS2(); if (view === 'edit') drawS3(); if (view === 'inf') drawS4();
+  drawAct();
+  $('mainpane').scrollTop = 0;
+}
+function drawAct(){
+  const A = $('act');
+  if (view === 'hall') A.innerHTML = `<button class="btn big-t" id="aAdd" type="button">＋ Agregar hallazgo</button><span class="sp"></span><button class="btn pri big-t" id="aNext" type="button" ${D.hall.length?'':'disabled'}>Siguiente: informe →</button>`;
+  if (view === 'edit') A.innerHTML = `<button class="btn big-t" id="aBack" type="button">← Volver a la lista</button><button class="btn acc big-t" id="aDib" type="button" hidden>Ver dibujo</button><span class="sp"></span><button class="btn big-t" id="aOtro" type="button">＋ Otro daño en este componente</button><button class="btn pri big-t" id="aSave" type="button">Guardar hallazgo</button>`;
+  if (view === 'inf') A.innerHTML = `<button class="btn big-t" id="aBack" type="button">← Volver a hallazgos</button><span class="sp"></span><button class="btn pri big-t" id="aEmit" type="button">Emitir informe</button>`;
+  const g = id => $(id);
+  if (g('aAdd')) g('aAdd').onclick = () => newH(D.trab[0], D.cat);
+  if (g('aNext')) g('aNext').onclick = () => go(4);
+  if (g('aBack')) g('aBack').onclick = () => go(view === 'inf' ? 2 : 2);
+  if (g('aSave')) g('aSave').onclick = () => go(2);
+  if (g('aDib')) g('aDib').onclick = () => openSheet();
+  if (g('aOtro')) g('aOtro').onclick = () => { const h = H(); newH(h.trab, h.comp); };
+  if (g('aEmit')) g('aEmit').onclick = () => { $('emitido').hidden = false; $('emitido').scrollIntoView({block:'nearest'}); };
+}
+window.wzDone = nd => { D = nd; nextId = 1; newH(D.trab[0], D.cat); };
+window.loadDemo = () => { D = JSON.parse(JSON.stringify(DEMO)); nextId = 3; editId = null; view = 'hall'; drawApp(); };
+window.toggleSb = () => { if (view !== 'lista') return; userCollapsed = !userCollapsed; drawApp(); };
+window.backLista = () => { editId = null; view = 'lista'; drawApp(); };
+window.initApp = () => drawApp();
+
+/* ---- paso 2 ---- */
+function drawS2(){
+  const trabs = D.trab;
+  $('s2').innerHTML = `<div class="st-h"><h2>Hallazgos por trabajo</h2></div>
+    ${D.hall.length ? '' : '<div class="empty">Aún no hay hallazgos. Agrega el primero: el componente ya viene de la recepción.</div>'}
+    ${trabs.map(tr => { const hs = D.hall.filter(h => h.trab === tr); return `<div class="card stack"><div class="st-h"><h2>${tr}</h2><span class="hint">${hs.length} ${hs.length === 1 ? 'hallazgo' : 'hallazgos'}</span></div>${hs.length ? hs.map(hCard).join('') : '<div class="hint">Sin hallazgos en este trabajo.</div>'}</div>`; }).join('')}`;
+  document.querySelectorAll('.hc').forEach(el => {
+    const id = +el.dataset.id; const h = D.hall.find(x => x.id === id);
+    if (h.comp && h.comp !== 'otro') mount(el.querySelector('.th'), h, true);
+    el.querySelector('[data-a="e"]').onclick = () => { editId = id; go(3); };
+    el.querySelector('[data-a="o"]').onclick = () => newH(h.trab, h.comp);
+  });
+}
+function hCard(h){
+  const f = hFuera(h);
+  return `<div class="hc" data-id="${h.id}"><div class="th">${h.comp && h.comp !== 'otro' ? '' : '<div class="hint" style="padding:20px;text-align:center">Sin dibujo</div>'}</div>
+  <div><h3>${h.comp ? catNom(h.comp) : 'Sin componente'} · ${h.td ? tdName(h.td) || (custom.find(c => c.code === h.td) || {}).name : 'sin tipo de daño'}</h3>
+  <div class="mm">${f ? '<span class="badge c">Fuera de tolerancia</span>' : ''}<span class="badge p">${h.prio} · ${h.cond}</span><span class="chip">${h.pins.length} ${h.pins.length === 1 ? 'zona marcada' : 'zonas marcadas'}</span><span class="chip">${h.fotos} ${h.fotos === 1 ? 'foto' : 'fotos'}</span></div>
+  <div class="hint">${h.accion || 'Sin acción recomendada todavía.'}</div>
+  <div class="acts"><button class="btn" data-a="e" type="button">Editar hallazgo</button><button class="btn" data-a="o" type="button">＋ Otro daño en este componente</button></div></div></div>`;
+}
+function newH(trab, comp){
+  const h = {id:nextId++, trab, comp: comp || null, td:'', pins:[], med:{}, cond:'Reparar', riesgo:'Medio', prio:'P2', causa:'', accion:'', fotos:0, inc:true};
+  D.hall.push(h); editId = h.id; go(3);
+}
+
+/* ---- paso 3 ---- */
+const H = () => D.hall.find(h => h.id === editId);
+function togglePin(zid){ const h = H(); const i = h.pins.indexOf(zid); if (i >= 0) h.pins.splice(i,1); else h.pins.push(zid); drawS3(); }
+function drawS3(){
+  const h = H(); if (!h) return;
+  const c = h.comp && h.comp !== 'otro' ? cat(h.comp) : null;
+  const heredado = D.rec.tipo === 'componente' && D.cat && h.comp === D.cat;
+  const compHtml = heredado
+    ? `<label>Componente / parte *</label><div class="lock">${catNom(h.comp)}<span>Viene de la recepción</span></div><span class="hint">Se toma del equipo recibido.</span>`
+    : `<label>Componente / parte *<select id="selComp"><option value="">Elige el componente…</option>${CAT.map(k => `<option value="${k.id}" ${h.comp===k.id?'selected':''}>${k.nombre}</option>`).join('')}<option value="otro" ${h.comp==='otro'?'selected':''}>Otro (escribir)…</option></select></label><span class="hint">${D.rec.tipo === 'maquinaria_completa' ? 'Máquina completa: elige qué componente evalúas en este hallazgo.' : 'Este equipo no tiene tipo de componente: al elegirlo se guarda en el equipo.'}</span>`;
+  const left = c ? `<div class="card stack stick"><div class="st-h"><h2>Zonas dañadas</h2><span class="tg nw">Nuevo</span></div>
+    <div class="tip">Toca una zona del dibujo para marcarla. Cada zona lleva un solo pin. Si hay otro daño distinto, se registra como otro hallazgo.</div>
+    <div class="big" id="draw"></div><div class="pins" id="pins"></div></div>` : `<div class="card"><div class="empty">${h.comp === 'otro' ? 'Sin dibujo: las mediciones se agregan a mano, como hoy.' : 'Elige el componente para ver su dibujo.'}</div></div>`;
+  const right = `
+  <div class="card stack">
+    <div class="st-h"><h2>Hallazgo ${D.hall.findIndex(x => x.id === h.id)+1} de ${D.hall.length} · ${h.trab}</h2><span class="tg ch">Cambia: componente y tipo de daño</span></div>
+    <div class="row2"><div class="stack" style="gap:6px">${compHtml}</div><div class="stack" style="gap:6px" id="tdHost"></div></div>
+    <div class="f3">
+      <label>Causa probable<select data-f="causa">${['','Contaminación','Fin de vida útil','Mal montaje','Sobrecarga','Falta de lubricación','Impacto'].map(x => `<option ${h.causa===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label>Condición<select data-f="cond">${['Aceptable','Reparar','Reemplazar'].map(x => `<option ${h.cond===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label>Riesgo<select data-f="riesgo">${['Bajo','Medio','Alto'].map(x => `<option ${h.riesgo===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label>Prioridad<select data-f="prio">${['P1','P2','P3'].map(x => `<option ${h.prio===x?'selected':''}>${x}</option>`).join('')}</select></label>
+      <label style="grid-column:span 2">Acción recomendada<input data-f="accion" value="${h.accion}"></label>
+    </div>
+    <p class="note">Causa, condición, riesgo, prioridad y acción ya existen hoy; sus opciones aquí son de ejemplo.</p>
+  </div>
+  ${c ? `<div class="card stack"><div class="st-h"><h2>Mediciones</h2><span class="tg nw">Nuevo</span><span class="hint">Según las zonas marcadas</span></div><div id="meds" class="stack"></div></div>` : ''}
+  <div class="card stack"><div class="st-h"><h2>Fotos y observaciones</h2><span class="tg ex">Ya existe</span></div><div class="fotos">${Array.from({length: Math.max(h.fotos,2)}, (_, i) => `<div>${i < h.fotos ? 'Foto ' + (i+1) + ' (ejemplo)' : '＋ Agregar foto'}</div>`).join('')}</div>
+    <label><span>Incluir en el informe</span><select data-f="inc"><option value="1" ${h.inc?'selected':''}>Sí</option><option value="0" ${h.inc?'':'selected'}>No</option></select></label></div>`;
+  $('s3').innerHTML = `<div class="ed"><div class="col-l">${left}</div><div class="col-r">${right}</div></div>`;
+  document.querySelectorAll('#s3 [data-f]').forEach(el => el.oninput = () => { h[el.dataset.f] = el.dataset.f === 'inc' ? el.value === '1' : el.value; });
+  const sc = $('selComp'); if (sc) sc.onchange = e => { h.comp = e.target.value || null; h.pins = []; h.med = {}; if (D.rec.tipo === 'componente' && h.comp) D.cat = h.comp; drawS3(); };
+  tdCombo(h);
+  if (c) { mount($('draw'), h, false); drawPins(h, c); drawMeds(h, c); }
+  if (io) { io.disconnect(); io = null; }
+  if (c && 'IntersectionObserver' in window) { io = new IntersectionObserver(es => { const vis = es[0].isIntersecting; const bt = $('aDib'); if (bt) bt.hidden = vis; if (vis) closeSheet(); }, {root: $('mainpane'), threshold: 0.15}); io.observe($('draw')); }
+  redrawSheet();
+}
+function drawPins(h, c){
+  $('pins').innerHTML = h.pins.length ? h.pins.map((zid,i) => `<span class="pinchip"><i>${i+1}</i>${c.zonas.find(z => z.id === zid).nombre}<button type="button" data-q="${zid}" aria-label="Quitar pin">×</button></span>`).join('') : '<span class="hint">Ninguna zona marcada todavía.</span>';
+  $('pins').querySelectorAll('[data-q]').forEach(b => b.onclick = () => togglePin(b.dataset.q));
+}
+function drawMeds(h, c){
+  if (!h.pins.length) { $('meds').innerHTML = '<div class="empty">Marca una zona en el dibujo para ver sus medidas.</div>'; return; }
+  $('meds').innerHTML = h.pins.map((zid,i) => { const z = c.zonas.find(z => z.id === zid);
+    return `<div class="zgroup"><div class="zh"><i>${i+1}</i><strong>${z.nombre}</strong></div>` + z.medidas.map(m => { const v = h.med[mk(h,zid,m.id)] || {}; const r = resultado(v);
+      return `<div class="med"><div class="mh"><strong>${m.nombre}</strong><span class="chip">${m.cota ? 'cota en el dibujo' : 'sin cota dibujada'}</span></div>
+      <div class="nums">${['nom:Nominal','min:Mínimo','max:Máximo','med:Medido'].map(s => { const [k,l] = s.split(':'); return `<label>${l} (mm)<input inputmode="decimal" data-k="${k}" data-mk="${mk(h,zid,m.id)}" value="${v[k] ?? ''}"></label>`; }).join('')}<div class="res ${r||''}" data-res="${mk(h,zid,m.id)}">${r==='ok'?'Dentro de tolerancia':r==='bad'?'Fuera de tolerancia':'Sin evaluar'}</div></div></div>`; }).join('') + '</div>'; }).join('');
+  document.querySelectorAll('#meds input').forEach(inp => inp.oninput = () => { const k = inp.dataset.mk; h.med[k] = h.med[k] || {}; h.med[k][inp.dataset.k] = inp.value; const r = resultado(h.med[k]); const el = document.querySelector('[data-res="' + k + '"]'); el.className = 'res ' + (r||''); el.textContent = r==='ok'?'Dentro de tolerancia':r==='bad'?'Fuera de tolerancia':'Sin evaluar'; });
+}
+
+/* ---- buscador de tipo de daño ---- */
+function allItems(){ return ITEMS.concat(custom.map(c => ({code:c.code, name:c.name, group:'Creados por tu empresa'}))); }
+function tdCombo(h){
+  const host = $('tdHost');
+  host.innerHTML = `<label for="tdIn" style="flex-direction:row;gap:8px;align-items:center">Tipo de daño * <span class="tg nw">Nuevo</span></label><div class="cb"><input id="tdIn" role="combobox" aria-expanded="false" aria-controls="tdList" aria-autocomplete="list" autocomplete="off" placeholder="Escribe: rayado, óxido, fuga…" value="${(allItems().find(i => i.code === h.td) || {}).name || ''}"><ul id="tdList" role="listbox" hidden></ul></div><span class="hint">${allItems().length} tipos. Si no existe, puedes crearlo al escribirlo.</span>`;
+  const inp = $('tdIn'), ul = $('tdList'); let act = -1, opts = [];
+  const score = (it, q) => { const n = norm(it.name), s = norm(SIN[it.code] || ''); if (n === q) return 100; if (n.startsWith(q)) return 80; if (n.split(/\s+/).some(w => w.startsWith(q))) return 70; if (n.includes(q)) return 50; if (s.split(/\s+/).some(w => w.startsWith(q))) return 60; return 0; };
+  function show(){
+    const q = norm(inp.value === (allItems().find(i => i.code === h.td) || {}).name ? '' : inp.value);
+    let html = ''; opts = [];
+    const add = (it, extra) => { opts.push({it}); html += `<li role="option" data-i="${opts.length-1}" aria-selected="false">${it.name}<small>${extra || ''}</small></li>`; };
+    if (!q) {
+      html += '<div class="gh">Más usados por tu empresa</div>';
+      Object.keys(FREQ).sort((a,b) => FREQ[b]-FREQ[a]).forEach(k => { const it = allItems().find(i => i.code === k); add(it, 'usado ' + FREQ[k] + ' veces'); });
+      let g = '';
+      allItems().forEach(it => { if (it.group !== g) { g = it.group; html += `<div class="gh">${g}</div>`; } add(it, ''); });
+    } else {
+      const m = allItems().map(it => ({it, s: score(it,q)})).filter(x => x.s > 0).sort((a,b) => b.s - a.s).slice(0,8);
+      m.forEach(x => add(x.it, SIN[x.it.code] && x.s === 60 ? 'también: ' + SIN[x.it.code].split(' ')[0] : x.it.group));
+      if (!m.length) html += '<div class="gh">Sin coincidencias</div>';
+      if (!m.some(x => norm(x.it.name) === q)) { opts.push({crear: inp.value.trim()}); html += `<li role="option" class="crear" data-i="${opts.length-1}">＋ Crear «${inp.value.trim()}» como tipo nuevo<small>para toda la empresa</small></li>`; }
+    }
+    ul.innerHTML = html; ul.hidden = false; inp.setAttribute('aria-expanded','true'); act = -1;
+    ul.querySelectorAll('li').forEach(li => li.onmousedown = e => { e.preventDefault(); pick(+li.dataset.i); });
+  }
+  function pick(i){
+    const o = opts[i]; if (!o) return;
+    if (o.crear) { const nm = o.crear.charAt(0).toUpperCase() + o.crear.slice(1); const code = 'x_' + norm(nm).replace(/[^a-z0-9]+/g,'_'); if (!custom.find(c => c.code === code)) custom.push({code, name:nm}); h.td = code; inp.value = nm; }
+    else { h.td = o.it.code; inp.value = o.it.name; }
+    close();
+  }
+  function close(){ ul.hidden = true; inp.setAttribute('aria-expanded','false'); inp.value = (allItems().find(i => i.code === h.td) || {}).name || ''; }
+  function mv(d){ const lis = [...ul.querySelectorAll('li')]; if (!lis.length) return; act = (act + d + lis.length) % lis.length; lis.forEach((l,i) => { l.classList.toggle('act', i === act); }); lis[act].scrollIntoView({block:'nearest'}); }
+  inp.onfocus = () => { inp.select(); show(); };
+  inp.oninput = show;
+  inp.onblur = () => setTimeout(close, 120);
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (ul.hidden) show(); mv(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); mv(-1); }
+    else if (e.key === 'Enter') { e.preventDefault(); const lis = [...ul.querySelectorAll('li')]; const i = act >= 0 ? +lis[act].dataset.i : (lis.length ? +lis[0].dataset.i : -1); if (i >= 0) pick(i); }
+    else if (e.key === 'Escape') close();
+  };
+}
+
+/* ---- paso 4: informe ---- */
+function drawS4(){
+  const hs = D.hall.filter(h => h.inc);
+  $('s4').innerHTML = `<div class="st-h"><span class="hint">Así se verá el informe antes de emitirlo.</span><span class="tg ch">Cambia: el hallazgo incluye el dibujo</span></div>
+  <div class="sheet">
+    <div><div class="sec">Informe técnico · ${D.rec.n}</div><h3>${D.rec.eq} · ${D.rec.cli}</h3></div>
+    <dl class="cover"><dt>Equipo</dt><dd>${D.rec.marca} · ${D.rec.mod} · serie ${D.rec.ser}</dd><dt>Motivo</dt><dd>${D.motivo}</dd><dt>Técnico</dt><dd>${D.tec} · ${D.fecha}</dd></dl>
+    <hr>
+    ${hs.length ? hs.map((h,i) => hojaH(h,i)).join('<hr>') : '<div class="flag">No hay hallazgos incluidos en el informe.</div>'}
+  </div>
+  <p class="note">Al emitir, el informe se congela con su dibujo y sus datos. Si luego cambia el catálogo, este informe no se altera.</p>
+  <div id="emitido" class="tip" hidden>Informe emitido. Siguiente etapa: generar la Hoja de Costeo desde este diagnóstico.</div>`;
+  hs.forEach((h,i) => { const el = $('hd' + h.id); if (el) mount(el, h, true); });
+}
+function hojaH(h, i){
+  const c = h.comp && h.comp !== 'otro' ? cat(h.comp) : null; const rows = [];
+  if (c) h.pins.forEach((zid, k) => { const z = c.zonas.find(z => z.id === zid); z.medidas.forEach(m => { const v = h.med[mk(h,zid,m.id)]; if (v && v.med !== undefined && v.med !== '') rows.push({n:k+1, z:z.nombre, m, v, r:resultado(v)}); }); });
+  const tdn = (allItems().find(x => x.code === h.td) || {}).name || 'Sin tipo de daño';
+  return `<div><div class="sec">Hallazgo ${i+1} · ${h.trab}</div><h3>${catNom(h.comp)} · ${tdn}</h3></div>
+  <div class="meta">${hFuera(h) ? '<span class="badge c">Fuera de tolerancia</span>' : ''}<span class="badge p">${h.prio} · ${h.cond}</span></div>
+  <p style="margin:0;font-size:.88rem">${h.accion || ''}${h.causa ? ' Causa probable: ' + h.causa.toLowerCase() + '.' : ''}</p>
+  ${c && h.pins.length ? `<div><div class="sec" style="margin-bottom:6px">Ubicación del daño</div><div class="big" id="hd${h.id}"></div><div class="legend" style="margin-top:6px">${h.pins.map((z,k) => `<b>${k+1}</b> ${c.zonas.find(x => x.id === z).nombre}`).join(' &nbsp;·&nbsp; ')}</div></div>` : ''}
+  ${rows.length ? `<table><thead><tr><th>Zona</th><th>Parámetro</th><th>Especificado</th><th>Medido</th><th>Resultado</th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="n">${r.n}</span>${r.z}</td><td>${r.m.nombre}</td><td>${r.v.min} – ${r.v.max} mm</td><td>${r.v.med} mm</td><td><span class="rb ${r.r||''}">${r.r==='ok'?'Dentro':r.r==='bad'?'Fuera de tolerancia':'—'}</span></td></tr>`).join('')}</tbody></table>` : ''}
+  <div><div class="sec" style="margin-bottom:6px">Fotos</div><div class="fotos">${Array.from({length:Math.max(h.fotos,1)}, (_,k) => `<div>Foto ${k+1} (ejemplo)</div>`).join('')}</div></div>`;
+}
+
+})();
+
+document.getElementById('nuevoD').onclick = () => window.wzOpen();
+document.querySelector('[data-open]').onclick = () => window.loadDemo();
+document.getElementById('dsX').onclick = () => window.closeSheet();
+document.getElementById('backL').onclick = () => window.backLista();
+document.getElementById('sbt').onclick = () => window.toggleSb();
+document.querySelectorAll('.seg2 button').forEach(b => b.onclick = () => { document.querySelectorAll('.seg2 button').forEach(x => x.setAttribute('aria-pressed', x === b)); document.getElementById('frame').dataset.d = b.dataset.d; });
+document.getElementById('frame').dataset.d = 'desk';
+window.initApp();
+</script>

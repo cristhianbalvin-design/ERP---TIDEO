@@ -94,15 +94,24 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ### Estructura de cada prompt a Codex
 Contexto → Objetivo → Restricciones → Checklist. Sin código dentro del prompt. Pedir evidencia literal y cerrar con STOP.
 
-### Prohibido sin autorización explícita de Cristhian
-- `git commit`, `merge`, `push`, `stash`, `reset`, `clean`, `checkout`.
-- `supabase db push` y cualquier comando supabase.
-- Herramientas del conector Supabase que escriban (`apply_migration`, `execute_sql`) contra producción.
-- `git add .` (agregar siempre archivos por nombre).
-- Instalar paquetes o usar la red desde Codex.
+### Autonomía (reemplaza las prohibiciones anteriores, 2026-10-11)
+Tras aprobar Cristhian el alcance, Claude trabaja en bucle (implementar → verificar → corregir) hasta cumplir el checklist, sin confirmaciones intermedias. Mientras Codex trabaja, Claude consulta `codex_job` hasta que termine. El único STOP del ciclo es el del diagnóstico, salvo las compuertas de abajo.
+
+**Libre, sin preguntar**
+- Lecturas, SELECT, pruebas, lint, build, `git status`, `git diff` y consultas de solo lectura al conector Supabase.
+- Crear la rama de la feature (cada tarea en su propia rama, desde `origin/main` actualizado), `git add` por nombre de archivo (nunca `git add .`) y commits en esa rama. Los comandos git que escriben (rama, add, commit) los ejecuta Claude, no Codex: el sandbox de Codex no puede escribir en `.git` de un worktree. Si el shell de Claude no alcanza el worktree, los ejecuta Cristhian con un bloque de PowerShell encadenado con `&&`. Codex deja los cambios sin commitear.
+- SQL y migraciones directo en producción, solo en el proyecto Supabase "ERP - Tideo" (`atqwyjfidfoepthygfoo`), nunca en "Web Principal - Tideo". Cada cambio lleva un bloque de comprobación con `RAISE EXCEPTION` para revertirse solo si falla, y se verifica con SELECT después. El `.sql` de la migración se commitea en la rama.
+- Migraciones aditivas (tablas, columnas, funciones, índices, políticas). Todo `CREATE OR REPLACE` de una función existente parte de `pg_get_functiondef` de la versión remota vigente, con diff; para `generar_cxp_centralizado` se ejecuta siempre `scripts/regression_cxp_centralizado_20260924.sql`.
+
+**Requiere OK explícito de Cristhian**
+- `DROP`, `TRUNCATE`, `DELETE` o `UPDATE` masivo sin `WHERE` acotado, y cambios de RLS que reduzcan acceso.
+- `merge`, `push`, `supabase db push`, `stash`, `reset`, `clean`, `checkout` fuera de la rama de la feature, `worktree add` y desplegar edge functions.
+- Instalar paquetes o dar red a Codex.
+
+**Claude avisa y se detiene** si cambia el alcance, si algo afecta datos de otros tenants, o si un error persiste tras 3 intentos.
 
 ### SQL y base de datos
-Todo trabajo apunta a producción; no existe proyecto de desarrollo. El SQL se entrega solo como script `BEGIN … ROLLBACK` (dry-run) para que Cristhian lo revise. El COMMIT lo ejecuta él manualmente.
+Todo trabajo apunta a producción; no existe proyecto de desarrollo ni branches de Supabase. Claude aplica el SQL con `apply_migration` o `execute_sql` según la sección Autonomía, con auto-reversión por `RAISE EXCEPTION` y verificación posterior. Los cambios destructivos se entregan como `BEGIN … ROLLBACK` y el COMMIT lo ejecuta Cristhian.
 
 ### Entorno
 Windows / PowerShell: usar `Select-String`, no `grep`. Los PDF llevan la marca TIDEO. Las pruebas de la herramienta se hacen en un worktree descartable, nunca en la carpeta principal.

@@ -39,6 +39,11 @@ describe('DiagnosticoEstadoPanel', () => {
     expect(button(renderer.root, 'Reabrir diagnóstico')).toBeFalsy();
   });
 
+  it('oculta la emisión cuando el flujo aún no llegó al paso de informe', async () => {
+    await render({ permitirEmision: false });
+    expect(button(renderer.root, 'Emitir diagnóstico')).toBeFalsy();
+  });
+
   it('coloca el botón opcional del informe en la misma barra de acciones', async () => {
     await render({ diagnostico: { id: 'd1', estado: 'emitido' }, informeAction: <button type="button">Informe al cliente</button> });
     const actions = renderer.root.findByProps({ className: 'diagnostico-estado-actions dx-action-bar' });

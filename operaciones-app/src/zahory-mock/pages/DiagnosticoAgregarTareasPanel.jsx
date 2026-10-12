@@ -3,8 +3,8 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const num = value => Number(value) || 0;
 
-export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
-  const [familiaId, setFamiliaId] = useState('');
+export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], initialFamiliaId = '', onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
+  const [familiaId, setFamiliaId] = useState(initialFamiliaId);
   const [actividadId, setActividadId] = useState('');
   const [query, setQuery] = useState(['', '', '']);
   const [createStep, setCreateStep] = useState(0);
@@ -20,16 +20,13 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   const family = familias.find(item => item.id === familiaId);
   const actividad = tipos.find(item => item.id === actividadId);
   const allActivities = tipos.filter(item => item.rol === 'actividad');
-  const activitiesFor = id => {
-    const linked = allActivities.filter(item => item.familia_trabajo_id === id);
-    return linked.length ? linked : allActivities.filter(item => !item.familia_trabajo_id);
-  };
+  const activitiesFor = id => allActivities.filter(item => item.familia_trabajo_id === id);
   const activities = activitiesFor(familiaId);
   const tasks = tipos.filter(item => item.rol === 'tarea' || item.rol == null);
   const recipe = useMemo(() => plantillas.filter(row => row.actividad_id === actividadId && row.tarea_id).slice().sort((a, b) => num(a.orden) - num(b.orden)), [plantillas, actividadId]);
   const isFab = tipoDiagnostico === 'fabricacion';
   const lines = useMemo(() => {
-    if (isFab && recipe.length) return recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map((row, index) => ({
+    if (recipe.length) return recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map((row, index) => ({
       familia_trabajo_id: familiaId, actividad_id: actividadId, tarea_id: row.tarea_id,
       cargo_id: selected[row.tarea_id]?.cargo_id ?? row.cargo_id ?? '', horas_mano_obra: selected[row.tarea_id]?.horas_mano_obra ?? row.horas ?? 0,
       activo_id: selected[row.tarea_id]?.activo_id ?? row.activo_id ?? '', horas_maquina: selected[row.tarea_id]?.horas_maquina ?? row.horas_maquina ?? 0,
@@ -146,7 +143,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
           {!actividad ? <div className="dx-cascada-empty">Primero elige una actividad.</div> : <>
             {!isFab && <label className="dx-cascada-solo"><input type="checkbox" checked={soloActividad} onChange={event => { setSoloActividad(event.target.checked); if (event.target.checked) setSelected({}); }} /><span>Costear solo la actividad<small>Sin tareas. El costo queda en la actividad.</small></span></label>}
             {soloActividad ? editFields(soloLine, 'solo') : <div className="dx-cascada-list dx-cascada-tasks" role="group" aria-label="Tareas disponibles">
-                {isFab && recipe.length ? <><p className="dx-cascada-note">Receta cargada: {recipe.length} tareas. Puedes ajustar horas, cargo y equipo para este trabajo. La receta original no cambia.</p>{recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map(row => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines.find(item => item.tarea_id === row.tarea_id); if (!line) return null; return <div className="dx-cascada-task-row is-selected" key={row.tarea_id}><strong>{task?.nombre || 'Tarea del cat\u00e1logo'}</strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task?.nombre || 'tarea'} de esta lista`} title="Quitar de esta lista" onClick={() => setRemovedRecipeTasks(current => ({ ...current, [row.tarea_id]: true }))}>&times;</button>{editFields(line, row.tarea_id, true)}</div>; })}{catalogTasks.filter(task => selected[task.id]).map(task => <div className="dx-cascada-task-row is-selected" key={task.id}><strong>{task.nombre}<small>Nueva</small></strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>{editFields(selected[task.id], task.id)}</div>)}</>
+                {recipe.length ? <><p className="dx-cascada-note">Receta cargada: {recipe.length} tareas. Puedes ajustar horas, cargo y equipo para este trabajo. La receta original no cambia.</p>{recipe.filter(row => !removedRecipeTasks[row.tarea_id]).map(row => { const task = tasks.find(item => item.id === row.tarea_id); const line = lines.find(item => item.tarea_id === row.tarea_id); if (!line) return null; return <div className="dx-cascada-task-row is-selected" key={row.tarea_id}><strong>{task?.nombre || 'Tarea del cat\u00e1logo'}</strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task?.nombre || 'tarea'} de esta lista`} title="Quitar de esta lista" onClick={() => setRemovedRecipeTasks(current => ({ ...current, [row.tarea_id]: true }))}>&times;</button>{editFields(line, row.tarea_id, true)}</div>; })}{catalogTasks.filter(task => selected[task.id]).map(task => <div className="dx-cascada-task-row is-selected" key={task.id}><strong>{task.nombre}<small>Nueva</small></strong><button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>{editFields(selected[task.id], task.id)}</div>)}</>
                 : <>{recipe.length > 0 && <p className="dx-cascada-note">Las tareas de receta aparecen como sugeridas.</p>}{suggestedTasks.length > 0 && <><h4 className="dx-cascada-task-group">Sugeridas</h4>{suggestedTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className={`dx-cascada-task-row${line ? ' is-selected' : ''}`} key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0 && suggested.has(task.id)} onChange={() => toggleTask(task)} /><span>{task.nombre}<small>{line?._new ? 'Nueva' : 'Sugerida por la receta'}</small></span></label>{line && <button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>}{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{catalogTasks.length > 0 && <><h4 className="dx-cascada-task-group">Cat&#xE1;logo</h4>{catalogTasks.map(task => { const row = recipe.find(item => item.tarea_id === task.id); const line = selected[task.id]; return <div className={`dx-cascada-task-row${line ? ' is-selected' : ''}`} key={task.id}><label className="dx-cascada-taskcheck"><input type="checkbox" checked={Boolean(line)} disabled={isFab && recipe.length > 0 && suggested.has(task.id)} onChange={() => toggleTask(task)} /><span>{task.nombre}{line?._new && <small>Nueva</small>}</span></label>{line && <button type="button" className="dx-cascada-task-remove" aria-label={`Quitar ${task.nombre} de esta lista`} title="Quitar de esta lista" onClick={() => toggleTask(task)}>&times;</button>}{line && editFields(line, task.id, Boolean(row))}</div>; })}</>}{!taskOptions.length && <div className="dx-cascada-empty">No hay tareas en la receta.</div>}</>}
               </div>}
             {creationBox(3)}
