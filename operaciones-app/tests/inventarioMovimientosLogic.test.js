@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularDiferenciaAjuste, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarMovimiento } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
+import { calcularDiferenciaAjuste, etiquetaMotivoMovimiento, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarMovimiento } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
 
 const material = { id: 'm1', tipo_control: 'lote', unidad: 'und' };
 const fila = { id: 's1', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', lote: 'L-1', fisico: 8, disponible: 7, reservado: 1, sociedad_id: 'soc1', ubicaciones: { uso: 'almacenaje' } };
@@ -8,6 +8,12 @@ describe('inventarioMovimientosLogic', () => {
   it('expone motivos del servidor por acción y calcula diferencia de conteo', () => {
     expect(Object.keys(MOTIVOS_MOVIMIENTO.entrada)).toEqual(['saldo_inicial', 'ajuste_positivo', 'devolucion_ot', 'compra_directa_sin_oc']);
     expect(calcularDiferenciaAjuste('4', 8)).toBe(-4);
+  });
+
+  it('muestra etiquetas conocidas y un respaldo legible para motivos de lectura', () => {
+    expect(etiquetaMotivoMovimiento('ajuste_positivo')).toBe('Ajuste positivo');
+    expect(etiquetaMotivoMovimiento('recepcion_oc')).toBe('Recepción de OC');
+    expect(etiquetaMotivoMovimiento('motivo_desconocido')).toBe('Motivo desconocido');
   });
 
   it('valida costo, documento y control de lote para entradas', () => {

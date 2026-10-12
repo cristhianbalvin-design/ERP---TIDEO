@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { motivoNoAnulable } from './inventarioMovimientosLogic.js';
+import { etiquetaMotivoMovimiento, motivoNoAnulable } from './inventarioMovimientosLogic.js';
 import { claseTipoMovimiento, etiquetaTipoMovimiento, etiquetaValorizacion } from './inventarioKardexLogic.js';
 
 const fecha = value => value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -37,6 +37,8 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
   };
   const detalle = movimiento.materiales || {};
   const loc = movimiento.ubicaciones || {};
+  const registradoPor = movimiento.usuario_nombre || movimiento.usuario_id || movimiento.created_by;
+  const registradoPorEsUuid = typeof registradoPor === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(registradoPor);
 
   return <div className="dx-mov-overlay" onMouseDown={evento => { if (evento.target === evento.currentTarget) onClose(); }}>
     <section ref={panelRef} className="dx-mov-panel" role="dialog" aria-modal="true" aria-labelledby="mov-detalle-titulo" onKeyDown={evento => {
@@ -53,7 +55,7 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
           <div><dt>Fecha</dt><dd>{fecha(movimiento.created_at || movimiento.fecha)}</dd></div>
           <div><dt>Cantidad</dt><dd>{cantidad(movimiento.cantidad)} {detalle.unidad || ''}</dd></div>
           <div><dt>Material</dt><dd>{detalle.descripcion || movimiento.material_id || '—'}</dd></div>
-          <div><dt>Motivo</dt><dd>{movimiento.motivo || '—'}</dd></div>
+          <div><dt>Motivo</dt><dd>{etiquetaMotivoMovimiento(movimiento.motivo) || '—'}</dd></div>
           <div><dt>Almacén</dt><dd>{movimiento.almacenes?.nombre || movimiento.almacen_id || '—'}</dd></div>
           <div><dt>Ubicación</dt><dd>{loc.nombre || loc.codigo || movimiento.ubicacion_id || '—'}</dd></div>
           <div><dt>Lote / serie</dt><dd>{[movimiento.lote, movimiento.serie].filter(Boolean).join(' / ') || '—'}</dd></div>
@@ -61,7 +63,7 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
           <div><dt>Costo unitario</dt><dd>{movimiento.costo_unitario == null ? '—' : `${movimiento.moneda || 'PEN'} ${cantidad(movimiento.costo_unitario)}`}</dd></div>
           <div><dt>Documento</dt><dd>{movimiento.nro_documento || movimiento.referencia_id || '—'}</dd></div>
           <div><dt>Observación</dt><dd>{movimiento.observacion || '—'}</dd></div>
-          <div><dt>Registrado por</dt><dd>{movimiento.usuario_nombre || movimiento.usuario_id || movimiento.created_by || '—'}</dd></div>
+          {!registradoPorEsUuid && <div><dt>Registrado por</dt><dd>{registradoPor || '—'}</dd></div>}
           <div><dt>Saldo después</dt><dd>{movimiento.saldo_cantidad == null ? '—' : `${cantidad(movimiento.saldo_cantidad)} ${detalle.unidad || ''}`}</dd></div>
           {movimiento.anulado_motivo && <div><dt>Motivo de anulación</dt><dd>{movimiento.anulado_motivo}</dd></div>}
         </dl>

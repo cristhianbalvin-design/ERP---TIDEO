@@ -4,6 +4,23 @@ export const MOTIVOS_MOVIMIENTO = Object.freeze({
   ajuste: { ajuste_conteo: 'Ajuste por conteo', ajuste_manual: 'Ajuste manual' },
 });
 
+const ETIQUETAS_MOTIVOS_LECTURA = Object.freeze({
+  recepcion_oc: 'Recepción de OC',
+  consumo_ot: 'Consumo de OT',
+  despacho_guia: 'Despacho por guía',
+  transferencia: 'Transferencia',
+  oc_pendiente_factura: 'Ingreso pendiente de factura',
+  anulacion_entrada: 'Anulación de entrada',
+  anulacion_salida: 'Anulación de salida',
+});
+
+export function etiquetaMotivoMovimiento(motivo) {
+  if (!motivo) return '';
+  const etiqueta = Object.values(MOTIVOS_MOVIMIENTO).find(motivos => motivos[motivo])?.[motivo]
+    || ETIQUETAS_MOTIVOS_LECTURA[motivo];
+  return etiqueta || String(motivo).replace(/_/g, ' ').replace(/^./u, letra => letra.toLocaleUpperCase('es-PE'));
+}
+
 const cantidad = value => Number(String(value ?? '').replace(',', '.'));
 const texto = value => String(value ?? '').trim();
 

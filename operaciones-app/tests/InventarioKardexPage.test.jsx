@@ -64,6 +64,18 @@ describe('InventarioKardexPage', () => {
     expect(texto(root)).toContain('CUA-01');
   });
 
+  it('muestra el motivo como etiqueta y omite el UUID de registrado por en el detalle', async () => {
+    const uuid = '123e4567-e89b-12d3-a456-426614174000';
+    mocks.cargarInventario.mockResolvedValue({ ...datos, kardex: [{ ...movimiento, anulado: false, motivo: 'recepcion_oc', usuario_id: uuid }] });
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === 'Kardex').props.onClick(); });
+    const fila = root.root.findAll(node => node.props.className?.includes('dx-stk-kcols') && node.props.role === 'button')[0];
+    await act(async () => { fila.props.onClick(); });
+    expect(texto(root)).toContain('Recepción de OC');
+    expect(texto(root)).not.toContain(uuid);
+    expect(root.root.findAll(node => node.type === 'dt' && node.children.join('') === 'Registrado por')).toHaveLength(0);
+  });
+
   it('avisa si el kardex del material está parcial', async () => {
     mocks.cargarKardexMaterial.mockResolvedValue({ kardex: [movimiento], kardexParcial: true, limiteKardex: 200 });
     const root = await renderPage();
