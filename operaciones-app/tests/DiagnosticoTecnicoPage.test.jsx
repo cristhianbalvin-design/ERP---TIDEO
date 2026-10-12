@@ -87,6 +87,7 @@ beforeEach(() => {
   };
   documentListeners = new Map();
   globalThis.document = {
+    documentElement: { dataset: {} },
     addEventListener: (name, listener) => {
       const listeners = documentListeners.get(name) || new Set();
       listeners.add(listener);
@@ -806,6 +807,16 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => renderer.root.findAll(node => node.props.className === 'dx-work-back-link')[0].props.onClick());
     await act(async () => renderer.root.findAll(node => node.props.className === 'ops-modal-confirm-close')[0].props.onClick());
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === false)).toBe(true);
+  });
+
+  it('oculta el listado y activa work-mode al crear un mantenimiento', async () => {
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    await renderPage();
+    await act(async () => { buttonByText(renderer, 'Mantenimiento').props.onClick(); await wait(0); });
+    const list = renderer.root.findAll(node => node.props.className?.startsWith('dx-ui dx-list'))[0];
+    expect(list.props.className).toContain('dx-list-work-hidden');
+    expect(document.documentElement.dataset.dxDiagnosticoWorkMode).toBe('true');
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === true)).toBe(true);
   });
 
   it('R20: el scroll dentro del menú no lo cierra, pero el scroll externo sí', () => {

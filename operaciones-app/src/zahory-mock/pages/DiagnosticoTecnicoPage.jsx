@@ -504,10 +504,10 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const selectedReference = form.referencia;
 
   useEffect(() => {
-    const active = Boolean(selected?.tipo === 'mantenimiento');
+    const active = Boolean(selected?.tipo === 'mantenimiento' || (!selected && form.tipo === 'mantenimiento'));
     dispatchDiagnosticoWorkMode(active);
     return () => dispatchDiagnosticoWorkMode(false);
-  }, [selected?.id, selected?.tipo]);
+  }, [selected?.id, selected?.tipo, form.tipo]);
 
   useEffect(() => {
     setHallazgoView('lista');
@@ -1155,7 +1155,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
 
   return (
     <main className="ops-page" style={maintenancePage ? { padding: 0, width: '100%', height: 'calc(100dvh - 68px)', minHeight: 0, overflow: 'hidden' } : { padding: 24, width: '100%' }}>
-      <div className={selected?.tipo === 'mantenimiento' ? 'dx-list-work-hidden' : ''} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className={maintenancePage ? 'dx-list-work-hidden' : ''} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <div className="ops-eyebrow">Taller & Operaciones</div>
           <h1 style={{ margin: '4px 0 6px' }}>Diagnóstico Técnico</h1>
@@ -1176,7 +1176,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
 
       {!modalOpen && !sesion.permiteEscritura && <div className="alert alert-warning" style={{ marginBottom: 12 }}>Selecciona una sociedad concreta en la barra superior para poder editar.</div>}
 
-      <section className={`dx-ui dx-list${selected?.tipo === 'mantenimiento' ? ' dx-list-work-hidden' : ''}`} aria-label="Listado de diagnósticos">
+      <section className={`dx-ui dx-list${maintenancePage ? ' dx-list-work-hidden' : ''}`} aria-label="Listado de diagnósticos">
         <div className="dx-ui-summary" aria-label="Resumen de diagnósticos">
           <div className="dx-ui-chip"><b>{diagnosticos.length}</b><span>diagnósticos</span></div>
           <div className="dx-ui-chip"><b>{borradoresCount}</b><span>borradores</span></div>
