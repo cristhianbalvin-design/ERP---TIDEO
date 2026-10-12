@@ -3922,3 +3922,7 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-desp-history li small { grid-column:1/-1; }
   .dx-desp-panel header,.dx-desp-panelbody { padding-left:17px; padding-right:17px; }
 }
+.dx-foto-controls { display:flex; flex-wrap:wrap; gap:8px; }
+@media (pointer: coarse) {
+  .dx-foto-controls .dx-foto-upload { min-height:44px; }
+}

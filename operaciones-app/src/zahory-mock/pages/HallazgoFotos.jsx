@@ -16,6 +16,9 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   const scrollBeforePicker = useRef(null);
   const publish = next => onFotosChange?.(next);
   const total = fotos.length + fotosPendientes.length;
+  const isCoarsePointer = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false;
 
   const capturePickerScroll = event => {
     const ancestors = [];
@@ -124,11 +127,20 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
 
   return <section className="dx-foto-section" aria-label="Fotos del hallazgo">
     <div className="dx-foto-head"><strong>Fotos</strong><span>{total} de 3</span></div>
-    {!hallazgo?.id && !readOnly && <p className="dx-foto-notice">Guarda el hallazgo para agregar fotos.</p>}
-    {hallazgo?.id && !readOnly && <label className="dx-foto-upload">
+    {!hallazgo?.id && !readOnly && <p className="dx-foto-notice">Las fotos se subirán al guardar el hallazgo.</p>}
+    {!readOnly && <div className="dx-foto-controls">{isCoarsePointer ? <>
+      <label className="dx-foto-upload">
+        <span>Tomar foto</span>
+        <input type="file" aria-label="Tomar foto del hallazgo" accept="image/*" capture="environment" disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
+      </label>
+      <label className="dx-foto-upload">
+        <span>Elegir de la galería</span>
+        <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
+      </label>
+    </> : <label className="dx-foto-upload">
       <span>{uploading ? 'Subiendo fotos…' : 'Agregar fotos'}</span>
       <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
-    </label>}
+    </label>}</div>}
     {fotosPendientes.length > 0 && <div className="dx-foto-grid">{fotosPendientes.map(pending => <article className="dx-foto-card dx-foto-card-pending" key={pending.id}>
       <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${pending.archivo.name || 'foto pendiente'}`} onClick={() => setPreview({ url: pending.previewUrl, alt: pending.archivo.name || 'Foto pendiente' })}><img src={pending.previewUrl} alt="" /></button>
       <span className="dx-foto-pending-label" role="status">Pendiente de guardar</span>
