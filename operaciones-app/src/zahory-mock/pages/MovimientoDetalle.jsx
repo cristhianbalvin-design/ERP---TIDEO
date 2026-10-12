@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { etiquetaMotivoMovimiento, motivoNoAnulable } from './inventarioMovimientosLogic.js';
-import { claseTipoMovimiento, etiquetaTipoMovimiento, etiquetaValorizacion } from './inventarioKardexLogic.js';
+import { cantidadConSigno, claseTipoMovimiento, etiquetaTipoMovimiento, etiquetaValorizacion, esTransferencia } from './inventarioKardexLogic.js';
 
 const fecha = value => value ? new Date(value).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const cantidad = value => Number(value || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 
-export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose, onAnnul }) {
+export function MovimientoDetalle({ movimiento, movimientosRelacionados = [], puedeEditar, stock = [], onClose, onAnnul, onReverseTransfer }) {
   const [confirmar, setConfirmar] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
@@ -13,7 +13,15 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
   const panelRef = useRef(null);
   const focoRef = useRef(null);
   const envioRef = useRef(false);
+  const transferencia = esTransferencia(movimiento);
+  const cantidadFirmada = cantidadConSigno(movimiento);
   const motivoNo = motivoNoAnulable(movimiento, puedeEditar);
+  const asientoPar = transferencia && movimiento.referencia_id != null
+    ? movimientosRelacionados.find(item => item.id !== movimiento.id && item.referencia_id === movimiento.referencia_id && esTransferencia(item))
+    : null;
+  const origen = movimiento.tipo === 'transferencia_salida' ? movimiento : asientoPar?.tipo === 'transferencia_salida' ? asientoPar : null;
+  const destino = movimiento.tipo === 'transferencia_entrada' ? movimiento : asientoPar?.tipo === 'transferencia_entrada' ? asientoPar : null;
+  const stockInverso = destino && stock.find(item => item.material_id === movimiento.material_id && item.almacen_id === destino.almacen_id && item.ubicacion_id === destino.ubicacion_id && item.sociedad_id === movimiento.sociedad_id && (item.lote || null) === (movimiento.lote || null) && (item.serie || null) === (movimiento.serie || null));
   const filaStock = stock.find(item => item.material_id === movimiento.material_id && item.almacen_id === movimiento.almacen_id && item.ubicacion_id === movimiento.ubicacion_id && item.sociedad_id === movimiento.sociedad_id && (item.lote || null) === (movimiento.lote || null) && (item.serie || null) === (movimiento.serie || null));
   const disponibleActual = Number(filaStock?.disponible ?? filaStock?.fisico ?? 0);
   const faltaStock = movimiento.tipo === 'entrada' && disponibleActual < Number(movimiento.cantidad || 0);
@@ -53,15 +61,16 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
         <div className="dx-mov-pills"><span className={`dx-ui-pill ${claseTipoMovimiento(movimiento.tipo)}`}><i />{etiquetaTipoMovimiento(movimiento.tipo)}</span><span className={`dx-ui-pill ${movimiento.anulado ? 'is-gray' : etiquetaValorizacion(movimiento) === 'Provisional' ? 'is-amber' : 'is-green'}`}><i />{etiquetaValorizacion(movimiento)}</span></div>
         <dl className="dx-mov-dl">
           <div><dt>Fecha</dt><dd>{fecha(movimiento.created_at || movimiento.fecha)}</dd></div>
-          <div><dt>Cantidad</dt><dd>{cantidad(movimiento.cantidad)} {detalle.unidad || ''}</dd></div>
+          <div><dt>Cantidad</dt><dd>{cantidadFirmada > 0 ? '+' : '−'}{cantidad(Math.abs(cantidadFirmada))} {detalle.unidad || ''}</dd></div>
           <div><dt>Material</dt><dd>{detalle.descripcion || movimiento.material_id || '—'}</dd></div>
-          <div><dt>Motivo</dt><dd>{etiquetaMotivoMovimiento(movimiento.motivo) || '—'}</dd></div>
+          <div><dt>Motivo</dt><dd>{transferencia ? movimiento.tipo === 'transferencia_salida' ? 'Transferencia · salida' : 'Transferencia · entrada' : etiquetaMotivoMovimiento(movimiento.motivo) || '—'}</dd></div>
           <div><dt>Almacén</dt><dd>{movimiento.almacenes?.nombre || movimiento.almacen_id || '—'}</dd></div>
           <div><dt>Ubicación</dt><dd>{loc.nombre || loc.codigo || movimiento.ubicacion_id || '—'}</dd></div>
           <div><dt>Lote / serie</dt><dd>{[movimiento.lote, movimiento.serie].filter(Boolean).join(' / ') || '—'}</dd></div>
           <div><dt>Vencimiento</dt><dd>{movimiento.vencimiento || '—'}</dd></div>
           <div><dt>Costo unitario</dt><dd>{movimiento.costo_unitario == null ? '—' : `${movimiento.moneda || 'PEN'} ${cantidad(movimiento.costo_unitario)}`}</dd></div>
-          <div><dt>Documento</dt><dd>{movimiento.nro_documento || movimiento.referencia_id || '—'}</dd></div>
+          <div><dt>Referencia</dt><dd>{transferencia ? <span className="dx-mov-link">{movimiento.referencia_id || '—'}</span> : movimiento.nro_documento || movimiento.referencia_id || '—'}</dd></div>
+          {transferencia && <><div><dt>Origen</dt><dd>{origen ? `${origen.almacenes?.nombre || origen.almacen_id || '—'} · ${origen.ubicaciones?.nombre || origen.ubicacion_id || '—'}` : 'Asiento de salida vinculado por referencia'}</dd></div><div><dt>Destino</dt><dd>{destino ? `${destino.almacenes?.nombre || destino.almacen_id || '—'} · ${destino.ubicaciones?.nombre || destino.ubicacion_id || '—'}` : 'Asiento de entrada vinculado por referencia'}</dd></div><div><dt>Asiento relacionado</dt><dd>{asientoPar ? `${etiquetaTipoMovimiento(asientoPar.tipo)} · ${asientoPar.id}` : 'El otro asiento comparte la misma referencia.'}</dd></div></>}
           <div><dt>Observación</dt><dd>{movimiento.observacion || '—'}</dd></div>
           {!registradoPorEsUuid && <div><dt>Registrado por</dt><dd>{registradoPor || '—'}</dd></div>}
           <div><dt>Saldo después</dt><dd>{movimiento.saldo_cantidad == null ? '—' : `${cantidad(movimiento.saldo_cantidad)} ${detalle.unidad || ''}`}</dd></div>
@@ -69,7 +78,7 @@ export function MovimientoDetalle({ movimiento, puedeEditar, stock = [], onClose
         </dl>
         {motivoNo && <div className="dx-mov-warn">{motivoNo}</div>}
       </div>
-      <footer><button type="button" className="dx-btn" onClick={onClose}>Cerrar</button>{!motivoNo && <button type="button" className="dx-btn danger" onClick={() => setConfirmar(true)}>Anular movimiento…</button>}</footer>
+      <footer><button type="button" className="dx-btn" onClick={onClose}>Cerrar</button>{transferencia && onReverseTransfer && stockInverso && <button type="button" className="dx-mov-shortcut" onClick={() => onReverseTransfer(stockInverso, { destinoInicial: { almacen_id: origen?.almacen_id, ubicacion_id: origen?.ubicacion_id }, cantidadInicial: movimiento.cantidad })}>Revertir con transferencia inversa</button>}{!motivoNo && <button type="button" className="dx-btn danger" onClick={() => setConfirmar(true)}>Anular movimiento…</button>}</footer>
     </section>
     {confirmar && <div className="dx-mov-confirm-overlay" onMouseDown={evento => { if (evento.target === evento.currentTarget && !guardando) setConfirmar(false); }}>
       <form className="dx-mov-confirm" role="alertdialog" aria-modal="true" aria-labelledby="mov-anular-titulo" aria-describedby="mov-anular-descripcion" onSubmit={anular} onKeyDown={evento => {

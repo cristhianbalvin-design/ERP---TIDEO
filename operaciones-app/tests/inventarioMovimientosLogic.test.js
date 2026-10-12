@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularDiferenciaAjuste, etiquetaMotivoMovimiento, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarMovimiento } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
+import { advertenciaDestinoTransferencia, calcularDiferenciaAjuste, etiquetaMotivoMovimiento, listarDestinosTransferencia, mapearErrorMovimiento, motivoNoAnulable, movimientoAnulable, MOTIVOS_MOVIMIENTO, validarMovimiento, validarTransferencia } from '../src/zahory-mock/pages/inventarioMovimientosLogic.js';
 
 const material = { id: 'm1', tipo_control: 'lote', unidad: 'und' };
 const fila = { id: 's1', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', lote: 'L-1', fisico: 8, disponible: 7, reservado: 1, sociedad_id: 'soc1', ubicaciones: { uso: 'almacenaje' } };
@@ -54,5 +54,30 @@ describe('inventarioMovimientosLogic', () => {
   it('muestra los mensajes de negocio del servidor sin texto técnico', () => {
     expect(mapearErrorMovimiento(new Error('El stock disponible es insuficiente.'))).toBe('El stock disponible es insuficiente.');
     expect(mapearErrorMovimiento(new Error('SOCIEDAD_OBLIGATORIA'))).toContain('Selecciona una sociedad');
+  });
+
+  it('valida transferencias con coma decimal, disponible, destinos y serie', () => {
+    const origen = { ...fila, disponible: 7 };
+    const forma = { cantidad: '2,5', almacen_destino_id: 'a1', ubicacion_destino_id: 'u2' };
+    expect(validarTransferencia(forma, { material, stockOrigen: origen, ubicacionDestino: { id: 'u2', almacen_id: 'a1', uso: 'almacenaje' } })).toEqual({});
+    expect(validarTransferencia({ ...forma, cantidad: '7,1' }, { material, stockOrigen: origen, ubicacionDestino: { id: 'u2' } }).cantidad).toContain('1 reservados');
+    expect(validarTransferencia({ ...forma, cantidad: '0' }, { material, stockOrigen: origen, ubicacionDestino: { id: 'u2' } }).cantidad).toContain('mayor a cero');
+    expect(validarTransferencia({ cantidad: '2', almacen_destino_id: 'a1', ubicacion_destino_id: 'u1' }, { material: { ...material, tipo_control: 'serie' }, stockOrigen: origen, ubicacionDestino: { id: 'u1' } }).cantidad).toContain('cantidad debe ser 1');
+    expect(validarTransferencia({ cantidad: '1', almacen_destino_id: 'a1', ubicacion_destino_id: 'u1' }, { material, stockOrigen: origen, ubicacionDestino: { id: 'u1', almacen_id: 'a1' } }).ubicacion_destino_id).toContain('distinto');
+    expect(validarTransferencia({ cantidad: '1' }, { material, stockOrigen: origen })).toMatchObject({ almacen_destino_id: expect.any(String), ubicacion_destino_id: expect.any(String) });
+  });
+
+  it('bloquea transferir desde cuarentena o merma y advierte sin bloquear hacia ellas', () => {
+    const origen = { ...fila, ubicaciones: { uso: 'cuarentena' } };
+    const errores = validarTransferencia({ cantidad: '1', almacen_destino_id: 'a1', ubicacion_destino_id: 'u2' }, { material, stockOrigen: origen, ubicacionDestino: { id: 'u2', almacen_id: 'a1', uso: 'merma' } });
+    expect(errores.stock_origen_id).toContain('Liberar');
+    expect(errores.ubicacion_destino_id).toBeUndefined();
+    expect(advertenciaDestinoTransferencia({ uso: 'merma' })).toContain('no queda disponible');
+    expect(advertenciaDestinoTransferencia({ uso: 'almacenaje' })).toBe('');
+  });
+
+  it('lista ubicaciones activas excluyendo la ubicación de origen', () => {
+    const ubicaciones = [{ id: 'u1', almacen_id: 'a1' }, { id: 'u2', almacen_id: 'a1', activo: false }, { id: 'u3', almacen_id: 'a2' }];
+    expect(listarDestinosTransferencia(ubicaciones, { almacen_id: 'a1', ubicacion_id: 'u1' }).map(item => item.id)).toEqual(['u3']);
   });
 });

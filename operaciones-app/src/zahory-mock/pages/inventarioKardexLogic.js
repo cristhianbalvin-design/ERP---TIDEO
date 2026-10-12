@@ -96,6 +96,11 @@ export function cantidadConSigno(movimiento) {
   return Math.abs(numero(movimiento?.cantidad)) * signoMovimiento(movimiento);
 }
 
+export function esTransferencia(movimiento) {
+  return ['transferencia_entrada', 'transferencia_salida'].includes(movimiento?.tipo)
+    || movimiento?.referencia_tipo === 'transferencia';
+}
+
 export function etiquetaValorizacion(movimiento) {
   if (movimiento?.anulado) return 'Anulado';
   return ['pendiente_factura', 'provisional'].includes(movimiento?.valorizacion_estado) ? 'Provisional' : 'Definitiva';

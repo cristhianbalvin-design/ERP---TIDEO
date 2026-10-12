@@ -20,3 +20,11 @@ export function registrarMovimientoManual({ empresa_id, accion, motivo, material
 export function anularMovimiento({ empresa_id, kardex_id, motivo }) {
   return ejecutarRpc('wms_anular_movimiento', { p_empresa_id: empresa_id, p_kardex_id: kardex_id, p_motivo: motivo });
 }
+
+export function transferirStock({ empresa_id, stock_origen_id, almacen_destino_id, ubicacion_destino_id, cantidad, observacion = null }) {
+  return ejecutarRpc('wms_transferir_stock', {
+    p_empresa_id: empresa_id, p_stock_origen_id: stock_origen_id,
+    p_almacen_destino_id: almacen_destino_id, p_ubicacion_destino_id: ubicacion_destino_id,
+    p_cantidad: cantidad, p_observacion: typeof observacion === 'string' ? observacion.trim() || null : observacion ?? null,
+  });
+}

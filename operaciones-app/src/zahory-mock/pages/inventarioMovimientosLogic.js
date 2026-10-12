@@ -69,6 +69,34 @@ export function validarMovimiento(form, { material, stock = [], ubicacion } = {}
   return errores;
 }
 
+export const MENSAJE_ORIGEN_NO_TRANSFERIBLE = 'Desde cuarentena/merma no se transfiere. Para sacar stock de cuarentena se usará la acción Liberar, aún no disponible; solo se podrá mermar o devolver al proveedor desde Movimientos.';
+export const ADVERTENCIA_DESTINO_NO_DISPONIBLE = 'Aviso: entra como físico y no queda disponible.';
+
+export function listarDestinosTransferencia(ubicaciones = [], stockOrigen) {
+  return ubicaciones.filter(ubicacion => ubicacion.activo !== false
+    && (ubicacion.almacen_id !== stockOrigen?.almacen_id || ubicacion.id !== stockOrigen?.ubicacion_id));
+}
+
+export function validarTransferencia(form, { material, stockOrigen, ubicacionDestino } = {}) {
+  const errores = {};
+  const valorCantidad = cantidad(form.cantidad);
+  const disponible = Math.max(cantidad(stockOrigen?.disponible ?? (cantidad(stockOrigen?.fisico) - cantidad(stockOrigen?.reservado))), 0);
+  if (!(valorCantidad > 0)) errores.cantidad = 'La cantidad debe ser mayor a cero.';
+  else if (valorCantidad > disponible) errores.cantidad = `Solo hay ${disponible} ${material?.unidad || 'unidades'} libres en esta ubicación${stockOrigen?.reservado ? ` (${stockOrigen.reservado} reservados)` : ''}.`;
+  if (material?.tipo_control === 'serie' && valorCantidad !== 1) errores.cantidad = 'Para materiales controlados por serie, la cantidad debe ser 1.';
+  if (!form.almacen_destino_id) errores.almacen_destino_id = 'Elige el almacén de destino.';
+  if (!form.ubicacion_destino_id) errores.ubicacion_destino_id = 'Elige la ubicación de destino.';
+  if (form.almacen_destino_id === stockOrigen?.almacen_id && form.ubicacion_destino_id === stockOrigen?.ubicacion_id) errores.ubicacion_destino_id = 'El destino debe ser distinto del origen.';
+  if (ubicacionDestino && ubicacionDestino.activo === false) errores.ubicacion_destino_id = 'El destino debe estar activo; esta ubicación está inactiva.';
+  if (ubicacionDestino && form.almacen_destino_id !== ubicacionDestino.almacen_id) errores.ubicacion_destino_id = 'La ubicación seleccionada no pertenece al almacén de destino.';
+  if (['cuarentena', 'merma'].includes(stockOrigen?.ubicaciones?.uso || stockOrigen?.uso)) errores.stock_origen_id = MENSAJE_ORIGEN_NO_TRANSFERIBLE;
+  return errores;
+}
+
+export function advertenciaDestinoTransferencia(ubicacionDestino) {
+  return ['cuarentena', 'merma'].includes(ubicacionDestino?.uso) ? ADVERTENCIA_DESTINO_NO_DISPONIBLE : '';
+}
+
 function filaUso(stock, stockId, ubicacionId) { return stock.find(item => item.id === stockId || item.ubicacion_id === ubicacionId)?.ubicaciones?.uso || ''; }
 
 const MOTIVOS_ANULABLES = new Set(['saldo_inicial', 'ajuste_positivo', 'devolucion_ot', 'compra_directa_sin_oc', 'merma', 'robo', 'error_ingreso', 'ajuste_conteo', 'ajuste_manual']);

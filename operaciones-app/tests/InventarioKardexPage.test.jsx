@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'e1', sociedadId: 's1', estado: 'listo', vistaConsolidada: false, sociedadesIdsAlcance: ['s1'] },
-  cargarInventario: vi.fn(), cargarKardexMaterial: vi.fn(), rpc: vi.fn(), registrar: vi.fn(), anular: vi.fn(),
+  cargarInventario: vi.fn(), cargarKardexMaterial: vi.fn(), rpc: vi.fn(), registrar: vi.fn(), anular: vi.fn(), transferir: vi.fn(),
 }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc: mocks.rpc }) }));
 vi.mock('../src/services/inventarioKardexService.js', () => ({ cargarInventarioKardex: mocks.cargarInventario, cargarKardexPorMaterial: mocks.cargarKardexMaterial }));
-vi.mock('../src/services/inventarioMovimientosService.js', () => ({ registrarMovimientoManual: mocks.registrar, anularMovimiento: mocks.anular }));
+vi.mock('../src/services/inventarioMovimientosService.js', () => ({ registrarMovimientoManual: mocks.registrar, anularMovimiento: mocks.anular, transferirStock: mocks.transferir }));
 import { InventarioKardexPage } from '../src/zahory-mock/pages/InventarioKardexPage.jsx';
+import { redirigirAlmacenMovimientosObsoleto, supplyAdministrationRouteIds } from '../src/zahory-mock/routes/supplyAdministrationRoutes.jsx';
+import { getZahoryNavigation } from '../src/zahory-mock/navigation.js';
 
 const material = (id, descripcion, extra = {}) => ({ id, codigo: id.toUpperCase(), descripcion, familia: 'Insumos', unidad: 'und', tipo_control: 'lote', punto_reorden: 10, stock_seguridad: 2, costo_promedio: 3, ...extra });
 const datos = {
@@ -43,6 +45,7 @@ beforeEach(() => {
   mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
   mocks.registrar.mockReset().mockResolvedValue({ kardex_id: 'k-new' });
   mocks.anular.mockReset().mockResolvedValue('k-reverse');
+  mocks.transferir.mockReset().mockResolvedValue({ transferencia_id: 'tr-new' });
 });
 
 describe('InventarioKardexPage', () => {
@@ -171,5 +174,80 @@ describe('InventarioKardexPage', () => {
     await change('material_id', 'm1'); await change('motivo', 'saldo_inicial'); await change('almacen_id', 'a1'); await change('ubicacion_id', 'u2'); await change('lote', 'L-new'); await change('cantidad', '1'); await change('costo_unitario', '4');
     await act(async () => { await root.root.findAllByType('form').find(item => item.props.onSubmit).props.onSubmit({ preventDefault: vi.fn() }); });
     expect(root.root.findAllByProps({ role: 'alert' }).some(alert => alert.children.join('').includes('El lote ya existe con otro vencimiento.'))).toBe(true);
+  });
+
+  it('muestra Mover por fila solo con permiso crear y conserva el caso sin disponible', async () => {
+    const root = await renderPage();
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    expect(root.root.findAllByProps({ children: 'Mover' })).toHaveLength(2);
+    root.unmount();
+
+    const agotado = await renderPage();
+    await act(async () => { agotado.root.findByProps({ 'aria-label': 'Abrir Perno agotado' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { agotado.root.findAllByProps({ children: 'Mover' })[0].props.onClick(); });
+    expect(agotado.root.findByProps({ role: 'dialog' }).findAllByType('button').find(button => button.props.type === 'submit').props.disabled).toBe(true);
+    agotado.unmount();
+
+    const cuarentena = await renderPage();
+    await act(async () => { cuarentena.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { cuarentena.root.findByProps({ 'aria-label': 'Mover Filtro hidráulico desde CUA-01' }).props.onClick(); });
+    expect(texto(cuarentena)).toContain('Liberar, aún no disponible');
+    expect(cuarentena.root.findByProps({ role: 'dialog' }).findAllByType('button').find(button => button.props.type === 'submit').props.disabled).toBe(true);
+    cuarentena.unmount();
+
+    mocks.rpc.mockImplementation((_nombre, { target_accion }) => Promise.resolve({ data: target_accion !== 'crear', error: null }));
+    const sinCrear = await renderPage();
+    await act(async () => { sinCrear.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    expect(sinCrear.root.findAllByProps({ children: 'Mover' })).toHaveLength(0);
+  });
+
+  it('registra transferencia, recarga stock y kardex y avisa el éxito', async () => {
+    const root = await renderPage();
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    const mover = root.root.findByProps({ 'aria-label': 'Mover Filtro hidráulico desde R-01' });
+    await act(async () => { mover.props.onClick(); });
+    expect(texto(root)).toContain('Origen · solo lectura');
+    await act(async () => { root.root.findByProps({ name: 'cantidad' }).props.onChange({ target: { value: '2,5' } }); });
+    const form = root.root.findAllByType('form').find(item => item.props.onSubmit);
+    await act(async () => { await form.props.onSubmit({ preventDefault: vi.fn() }); await Promise.resolve(); await Promise.resolve(); });
+    expect(mocks.transferir).toHaveBeenCalledWith({ empresa_id: 'e1', stock_origen_id: 'st1b', almacen_destino_id: 'a1', ubicacion_destino_id: 'u1', cantidad: 2.5, observacion: null });
+    expect(mocks.cargarInventario).toHaveBeenCalledTimes(2);
+    expect(mocks.cargarKardexMaterial).toHaveBeenCalledTimes(2);
+    expect(texto(root)).toContain('Transferencia registrada correctamente.');
+  });
+
+  it('mantiene el panel abierto y muestra el error del servidor', async () => {
+    mocks.transferir.mockRejectedValueOnce(new Error('Solo se puede mover stock disponible.'));
+    const root = await renderPage();
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Abrir Filtro hidráulico' }).props.onClick(); await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { root.root.findByProps({ 'aria-label': 'Mover Filtro hidráulico desde R-01' }).props.onClick(); });
+    await act(async () => { root.root.findByProps({ name: 'cantidad' }).props.onChange({ target: { value: '1' } }); });
+    await act(async () => { await root.root.findAllByType('form').find(item => item.props.onSubmit).props.onSubmit({ preventDefault: vi.fn() }); await Promise.resolve(); await Promise.resolve(); });
+    expect(root.root.findAllByProps({ role: 'dialog' })).toHaveLength(1);
+    expect(root.root.findAllByProps({ role: 'alert' }).some(alert => alert.children.join('').includes('Solo se puede mover stock disponible.'))).toBe(true);
+  });
+
+  it('muestra transferencia enlazada sin anulación y redirige la ruta obsoleta', async () => {
+    const salida = { id: 'tr-out', tipo: 'transferencia_salida', cantidad: 2, motivo: 'transferencia', referencia_tipo: 'transferencia', referencia_id: 'tr-ref', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u2', created_at: '2026-02-01', materiales: material('m1', 'Filtro hidráulico'), ubicaciones: { nombre: 'R-01' }, almacenes: { nombre: 'Almacén Norte' } };
+    const entrada = { ...salida, id: 'tr-in', tipo: 'transferencia_entrada', almacen_id: 'a1', ubicacion_id: 'u1', ubicaciones: { nombre: 'CUA-01' } };
+    mocks.cargarInventario.mockResolvedValue({ ...datos, kardex: [salida, entrada] });
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === 'Kardex').props.onClick(); });
+    const fila = root.root.findAll(node => node.props.className?.includes('dx-stk-kcols') && node.props.role === 'button')[0];
+    expect(texto(root)).toContain('Transf. salida');
+    await act(async () => { fila.props.onClick(); });
+    expect(texto(root)).toContain('tr-ref');
+    expect(texto(root)).toContain('Asiento relacionado');
+    expect(texto(root)).toContain('Una transferencia se corrige con una transferencia inversa.');
+    expect(texto(root)).not.toContain('Anular movimiento…');
+    expect(texto(root)).toContain('−2');
+
+    vi.stubGlobal('window', { location: { hash: '#/almacen-movimientos' } });
+    expect(redirigirAlmacenMovimientosObsoleto()).toBe(true);
+    expect(globalThis.window.location.hash).toBe('#/almacen-inventario');
+    vi.unstubAllGlobals();
+    expect(supplyAdministrationRouteIds.has('almacen-movimientos')).toBe(false);
+    const menu = getZahoryNavigation(supplyAdministrationRouteIds);
+    expect(JSON.stringify(menu)).not.toContain('Entradas & Salidas');
   });
 });
