@@ -49,6 +49,14 @@ describe('ReservaRepuestosPage', () => {
     expect(root.root.findAll(node => node.children?.join('') === 'SOLPE en curso')).toHaveLength(0);
   });
 
+  it('muestra solo la etiqueta de líneas en el chip y conserva el conteo del encabezado', async () => {
+    const root = await renderPage(); await openDetail(root);
+    const chipResumen = root.root.find(node => node.props.className === 'dx-ui-summary').findAllByType('span')[0];
+    const encabezadoTarjeta = root.root.findAll(node => node.props.className === 'dx-ui-count').find(node => node.children.join('').includes('programada'));
+    expect(chipResumen.children.join('')).toBe('Línea');
+    expect(encabezadoTarjeta.children.join('')).toBe('1 línea · programada');
+  });
+
   it('deshabilita las acciones y explica la falta de permisos', async () => {
     mocks.listar.mockResolvedValue(resultado(otBase, { despachar: false, liberar: false }));
     const root = await renderPage(); await openDetail(root);

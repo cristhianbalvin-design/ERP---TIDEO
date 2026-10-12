@@ -23,7 +23,7 @@ export function despacharReservaOT({ empresa_id, ot_id, lineas, recibe_en_taller
 
 export function liberarReservaOT({ empresa_id, ot_segmento_repuesto_id, cantidad, motivo, observacion = null }) {
   return ejecutarRpc('wms_liberar_reserva_ot', {
-    p_empresa_id: empresa_id, p_ot_segmento_repuesto_id, p_cantidad: cantidad,
+    p_empresa_id: empresa_id, p_ot_segmento_repuesto_id: ot_segmento_repuesto_id, p_cantidad: cantidad,
     p_motivo: motivo, p_observacion: observacion,
   });
 }

@@ -1672,7 +1672,7 @@ a { color: var(--cyan); text-decoration: none; }
 }
 /* Recepciones de compra: estilos propios, dentro del shadow root de Operaciones. */
 .dx-recepcion { --dx-recepcion-gap:14px; }
-.dx-ui.dx-recepcion,.dx-ui.dx-ubicaciones { padding:24px 28px 60px; }
+.dx-ui.dx-recepcion,.dx-ui.dx-ubicaciones,.dx-ui.dx-desp { padding:24px 28px 60px; }
 .dx-recepcion .dx-recepcion-cols { --dx-ui-cols:220px minmax(0,1fr) 130px 120px 130px 20px; }
 .dx-recepcion .dx-recepcion-oc { display:flex; align-items:center; gap:10px; min-width:0; color:var(--dx-ui-navy); font-weight:600; }
 .dx-recepcion .dx-recepcion-cols > :first-child { white-space:nowrap; }
