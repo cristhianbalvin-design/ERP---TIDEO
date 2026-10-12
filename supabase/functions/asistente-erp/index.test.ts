@@ -1102,3 +1102,69 @@ Deno.test("comparativos calcula sus fechas en el servidor y envía cuatro rangos
   equal(rpc.args.p_moneda, "PEN");
   assert(!("p_comparacion" in rpc.args));
 });
+
+Deno.test("Top N valida ranking, n y rango de gasto", () => {
+  const spec = TOOL_SPECS.find(tool => tool.name === "asistente_top_n")!;
+  assert(validateArgs(spec, { ranking: "proveedores_gasto" }) !== null);
+  assert(validateArgs(spec, { ranking: "clientes_cxc", n: 40 }) !== null);
+  equal(validateArgs(spec, { ranking: "otro" }), null);
+  equal(validateArgs(spec, { ranking: "categorias_gasto", n: 41 }), null);
+  equal(validateArgs(spec, { ranking: "materiales_stock", n: 0 }), null);
+  equal(validateArgs(spec, { ranking: "proveedores_gasto", desde: "2026-01-01" }), null);
+  equal(validateArgs(spec, { ranking: "proveedores_gasto", desde: "2023-01-01", hasta: "2026-02-01" }), null);
+  equal(validateArgs(spec, { ranking: "clientes_cxc", periodo: "anio_actual" }), null);
+  assert(validateArgs(spec, { ranking: "categorias_gasto", desde: "2026-01-01", hasta: "2026-12-31" }) !== null);
+});
+
+Deno.test("Top N publica enums y cobertura de todos los temas nuevos", () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_top_n") as any;
+  assert(tool);
+  equal(JSON.stringify(tool.function.parameters.properties.ranking.enum), JSON.stringify(["proveedores_gasto", "categorias_gasto", "clientes_cxc", "materiales_stock"]));
+  equal(tool.function.parameters.properties.n.maximum, 40);
+  assert(topicsWithoutCoverage("top proveedores por gastos", []).includes("gastos por proveedor"));
+  assert(topicsWithoutCoverage("gastos por proveedor", []).includes("gastos por proveedor"));
+  assert(topicsWithoutCoverage("proveedores por gastos", []).includes("gastos por proveedor"));
+  assert(topicsWithoutCoverage("categorías de gasto", []).includes("categorías de gasto"));
+  assert(topicsWithoutCoverage("gastos por categorías", []).includes("categorías de gasto"));
+  assert(topicsWithoutCoverage("clientes con mayor saldo por cobrar", []).includes("clientes con mayor saldo por cobrar"));
+  assert(topicsWithoutCoverage("materiales con mayor stock", []).includes("materiales por stock o valor"));
+  assert(topicsWithoutCoverage("materiales con más stock", []).includes("materiales por stock o valor"));
+  equal(topicsWithoutCoverage("materiales con mayor stock", ["asistente_resumen_stock"]).length, 0);
+});
+
+Deno.test("Top N mapea el rango relativo al RPC y usa n=10 por defecto del servidor", async () => {
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-10-11T12:00:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "top", type: "function", function: { name: "asistente_top_n", arguments: JSON.stringify({ ranking: "proveedores_gasto", periodo: "mes_anterior" }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "top proveedores" }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_top_n")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_ranking, "proveedores_gasto");
+  equal(rpc.args.p_desde, "2026-09-01"); equal(rpc.args.p_hasta, "2026-09-30");
+  assert(!("p_periodo" in rpc.args) && !("p_ultimos_meses" in rpc.args) && !("p_n" in rpc.args));
+});
+
+Deno.test("Top N traduce fechas explícitas y respeta el límite n solicitado", async () => {
+  let n = 0;
+  const x = setup({ ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "top", type: "function", function: { name: "asistente_top_n", arguments: JSON.stringify({ ranking: "categorias_gasto", n: 7, desde: "2026-01-15", hasta: "2026-03-31", periodo: "anio_actual" }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ empresa_id: EMPRESA, sociedad_id: SOCIEDAD, pregunta: "categorías de gasto" }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_top_n")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD); equal(rpc.args.p_ranking, "categorias_gasto");
+  equal(rpc.args.p_n, 7); equal(rpc.args.p_desde, "2026-01-15"); equal(rpc.args.p_hasta, "2026-03-31");
+  assert(!("p_periodo" in rpc.args) && !("p_ultimos_meses" in rpc.args));
+});
+
+Deno.test("Top N de clientes y materiales consulta cortes actuales sin fechas", async () => {
+  for (const ranking of ["clientes_cxc", "materiales_stock"]) {
+    let n = 0;
+    const x = setup({ ai: async () => ++n === 1
+      ? completion({ role: "assistant", tool_calls: [{ id: "top", type: "function", function: { name: "asistente_top_n", arguments: JSON.stringify({ ranking, n: 5 }) } }] })
+      : completion({ role: "assistant", content: "Listo." }) });
+    equal((await x.handler(x.request({ empresa_id: EMPRESA, pregunta: "top actual" }))).status, 200);
+    const rpc = x.calls.find(call => call.name === "asistente_top_n")!;
+    equal(rpc.args.p_ranking, ranking); equal(rpc.args.p_n, 5); equal(rpc.args.p_sociedad_id, null);
+    assert(!("p_desde" in rpc.args) && !("p_hasta" in rpc.args) && !("p_periodo" in rpc.args));
+  }
+});
