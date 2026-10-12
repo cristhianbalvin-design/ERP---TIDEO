@@ -142,9 +142,9 @@ export function ApplicationWelcome({ onEnterAdministration, onEnterAttendance })
   return (
     <main className="application-welcome">
       <div className="application-welcome-content">
-        <img className="application-wordmark" src="/logo_tideo.png" alt="TIDEO Tech & Strategy" />
+        <img className="application-wordmark" src="/opera/opera-logo-dark.png" alt="OPERA by Tideo Tech & Strategy" />
         <div className="application-welcome-intro">
-          <div className="eyebrow">Plataforma TIDEO</div>
+          <div className="eyebrow">Plataforma OPERA</div>
           <h1 className="font-display">Elige una aplicación</h1>
           <p>Selecciona el espacio en el que deseas trabajar.</p>
         </div>

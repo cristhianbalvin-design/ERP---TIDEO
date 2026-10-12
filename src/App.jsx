@@ -164,10 +164,10 @@ function IOSInstallBanner() {
       display: 'flex', alignItems: 'center', gap: 12,
       maxWidth: 440, margin: '0 auto',
     }}>
-      <img src="/icons/tideo-icon-192.png" alt="" style={{ width: 42, height: 42, borderRadius: 9, flexShrink: 0 }} />
+      <img src="/icons/opera-icon-192.png" alt="" style={{ width: 42, height: 42, borderRadius: 9, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', marginBottom: 3 }}>
-          Instala TIDEO ERP
+          Instala OPERA ERP
         </div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 }}>
           Toca <IOSShareIcon /> y luego{' '}

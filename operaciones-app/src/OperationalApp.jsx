@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import tideoIsotipo from '../../public/tideo-isotipo.png';
+import operaIsotipo from '../../public/opera/opera-isotipo-light.png';
 import { isSupabaseConfigured } from './lib/supabaseClient.js';
 import { useSesionOperativa } from './lib/sesionOperativa.js';
 import { OperationalHeader } from './OperationalHeader.jsx';
@@ -186,10 +186,10 @@ export function OperationalApp() {
       <aside className="ops-sidebar">
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
-            <img src={tideoIsotipo} alt="TIDEO" />
+            <img src={operaIsotipo} alt="OPERA" />
           </div>
           <div>
-            <div className="ops-brand-text">TIDEO</div>
+            <div className="ops-brand-text">OPERA</div>
             <div className="ops-brand-sub">OPERACIONES</div>
           </div>
         </a>

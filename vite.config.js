@@ -41,8 +41,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
 
       manifest: {
-        name: 'TIDEO ERP',
-        short_name: 'TIDEO ERP',
+        name: 'OPERA ERP',
+        short_name: 'OPERA ERP',
         description: 'ERP modular multitenant con CRM, operaciones, finanzas, campo móvil, BI e IA.',
         start_url: '/',
         scope: '/',
@@ -51,10 +51,10 @@ export default defineConfig({
         background_color: '#EEF2F6',
         theme_color: '#0D1B2E',
         icons: [
-          { src: '/icons/tideo-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: '/icons/tideo-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: '/icons/tideo-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: '/icons/tideo-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/opera-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/opera-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/opera-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/icons/opera-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
 
