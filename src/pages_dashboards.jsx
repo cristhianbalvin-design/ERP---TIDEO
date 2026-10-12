@@ -26,6 +26,20 @@ export default function DashboardsPage({ role, activeParams = {}, onTabChange })
     if (activeTab.routeKey !== requestedRouteKey) onTabChange?.(activeTab.routeKey);
   }, [activeTab?.key, activeTab?.routeKey, requestedRouteKey, onTabChange]);
 
+  useEffect(() => {
+    const button = buttonRefs.current[activeTab?.key];
+    const tablist = button?.closest('.dashboards-tablist');
+    if (!button || !tablist) return;
+
+    const buttonRect = button.getBoundingClientRect();
+    const tablistRect = tablist.getBoundingClientRect();
+    if (buttonRect.left < tablistRect.left) {
+      tablist.scrollLeft -= tablistRect.left - buttonRect.left;
+    } else if (buttonRect.right > tablistRect.right) {
+      tablist.scrollLeft += buttonRect.right - tablistRect.right;
+    }
+  }, [activeTab?.key]);
+
   if (!activeTab) return null;
 
   const activate = tab => {
