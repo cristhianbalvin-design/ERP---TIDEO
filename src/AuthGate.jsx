@@ -27,10 +27,10 @@ function SplashLoading({ message, duration }) {
 
       <div className="col fade-in" style={{alignItems:'center', gap:32, zIndex:1}}>
         <img 
-          src="/logo_tideo.png" 
-          alt="TIDEO" 
+          src="/opera/opera-logo-dark.png"
+          alt="OPERA by Tideo Tech & Strategy"
           className="animate-breathe"
-          style={{height:140, display:'block'}} 
+          style={{width:240, height:'auto', maxWidth:'80%', display:'block'}}
         />
         <div style={{textAlign:'center', width:'100%'}}>
           <div className="font-display" style={{fontSize:16, fontWeight:700, color:'#fff', letterSpacing:'0.15em', textTransform:'uppercase', opacity:0.9}}>
@@ -260,7 +260,7 @@ export function AuthGate({ children }) {
         padding:24
       }}>
         <form className="card" onSubmit={handleRecoveryPassword} style={{width:'min(430px, 100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO Tech & Strategy" style={{height:96, marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)', marginBottom:8}}>
             {recoveryDone ? 'Contrasena actualizada' : 'Nueva contrasena'}
           </div>
@@ -314,7 +314,7 @@ export function AuthGate({ children }) {
         padding:24
       }}>
         <form className="card" onSubmit={submit} style={{width:'min(460px, 100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO Tech & Strategy" style={{height:110, marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           
           <div className="font-display" style={{fontSize:28, fontWeight:800, color:'var(--navy)', marginBottom:12}}>
             {mode === 'login' ? 'Ingresar' : mode === 'forgot' ? 'Recuperar contrasena' : 'Crear usuario'}
@@ -420,7 +420,7 @@ export function AuthGate({ children }) {
         padding:24
       }}>
         <div className="card" style={{width:'min(480px, 100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO" style={{height:80, marginBottom:24, marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           <div className="font-display" style={{fontSize:22, fontWeight:700, color:'var(--navy)'}}>No se pudo verificar tu acceso</div>
           <p className="text-muted" style={{marginTop:10, lineHeight:1.5}}>{membresiaError}</p>
           <p className="text-muted" style={{marginTop:8, fontSize:12}}>
@@ -461,7 +461,7 @@ export function AuthGate({ children }) {
         padding:24
       }}>
         <div className="card" style={{width:'min(520px, 100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO" style={{height:90, marginBottom:24, marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           <div className="font-display" style={{fontSize:24, fontWeight:800, color:'var(--navy)', marginBottom:12}}>Selecciona una empresa</div>
           
           <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:16, width:'100%'}}>
@@ -526,7 +526,7 @@ export function AuthGate({ children }) {
         padding:24
       }}>
         <div className="card" style={{width:460, padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO" style={{height:80, marginBottom:24, marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           <div className="font-display" style={{fontSize:22, fontWeight:700, color:'var(--navy)', marginTop:6}}>Sin acceso</div>
           <p className="text-muted" style={{marginTop:8}}>
             El usuario <strong>{authUser.email}</strong> no está asociado a ninguna empresa activa.
@@ -566,7 +566,7 @@ export function AuthGate({ children }) {
     return (
       <div className="app-shell" style={{alignItems:'center', justifyContent:'center', background:'#1A2B4A', backgroundImage:`url('/bg_login.jpg')`, backgroundRepeat:'repeat', backgroundSize:'1000px', padding:24}}>
         <form className="card" onSubmit={handleCambiarPass} style={{width:'min(420px,100%)', padding:40, textAlign:'center', borderRadius:16, boxShadow:'var(--shadow-lg)'}}>
-          <img src="/logo_tideo.png" alt="TIDEO" style={{height:90, marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
+          <img src="/opera/opera-logo-light.png" alt="OPERA by Tideo Tech & Strategy" style={{width:260, height:'auto', maxWidth:'100%', marginBottom:24, display:'block', marginLeft:'auto', marginRight:'auto'}} />
           <div className="font-display" style={{fontSize:22, fontWeight:800, color:'var(--navy)', marginBottom:8}}>Cambiar contraseña</div>
           <p className="text-muted" style={{fontSize:13, marginBottom:24}}>Tu cuenta tiene una contraseña temporal. Debes crear una nueva para continuar.</p>
           <div className="input-group" style={{textAlign:'left'}}>

@@ -1027,7 +1027,7 @@ export const pantallasPermisos = [
   { key: 'partes', modulo: 'Operaciones', pantalla: 'Partes Diarios', acciones: ['ver','crear','editar','aprobar','costos'] },
   { key: 'cierre', modulo: 'Operaciones', pantalla: 'Cierre y Calidad', acciones: ['ver','editar','aprobar','exportar'] },
   { key: 'tickets', modulo: 'Operaciones', pantalla: 'Soporte y Tickets', acciones: ['ver','crear','editar','aprobar','exportar'] },
-  { key: 'inventario', modulo: 'Logistica', pantalla: 'Almacenes e Inventario', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
+  { key: 'inventario', modulo: 'Logistica', pantalla: 'Almacenes e Inventario', acciones: ['ver','crear','editar','aprobar','exportar','costos','despachar','liberar'] },
   { key: 'solpe', modulo: 'Logistica', pantalla: 'SOLPE Interna', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'remision', modulo: 'Logistica', pantalla: 'Transporte y Guias', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'proveedores', modulo: 'Compras', pantalla: 'Proveedores', acciones: ['ver','crear','editar','aprobar','exportar','costos','finanzas'] },
@@ -1076,7 +1076,7 @@ export const pantallasPermisos = [
   { key: 'ia_comercial', modulo: 'Comercial', pantalla: 'IA Comercial', acciones: ['ver','exportar'] },
   { key: 'ia_operativa', modulo: 'Operaciones', pantalla: 'IA Operativa', acciones: ['ver','exportar','costos'] },
   { key: 'ia_financiera', modulo: 'Administracion', pantalla: 'IA Financiera', acciones: ['ver','exportar','finanzas'] },
-  { key: 'campo', modulo: 'Operaciones', pantalla: 'Vistas de Campo', acciones: ['ver','crear','editar'] },
+  { key: 'campo', modulo: 'Operaciones', pantalla: 'Versión Móvil', acciones: ['ver','crear','editar'] },
   { key: 'organigrama', modulo: 'Configuracion', pantalla: 'Organigrama', acciones: ['ver','crear','editar','exportar'] },
   { key: 'servicios', modulo: 'Configuracion', pantalla: 'Catalogo Servicios', acciones: ['ver','crear','editar','exportar'] },
   { key: 'tarifarios', modulo: 'Configuracion', pantalla: 'Tarifarios', acciones: ['ver','crear','editar','exportar'] }

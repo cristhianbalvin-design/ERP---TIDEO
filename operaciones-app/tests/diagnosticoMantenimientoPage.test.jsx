@@ -7,7 +7,7 @@ const flow = await readFile(new URL('../src/zahory-mock/pages/diagnosticoFlujo.j
 
 describe('Flujo de mantenimiento en página', () => {
   it('usa la ruta nueva y una página en vez del contenedor de diálogo', () => {
-    expect(page).toMatch(/window\.location\.hash = '\/diagnostico-tecnico\?nuevo=mantenimiento'/);
+    expect(page).toMatch(/window\.location\.hash = `\/diagnostico-tecnico\?nuevo=mantenimiento/);
     expect(page).toMatch(/pageMode=\{maintenancePage\}/);
     expect(page).toMatch(/className="dx-initial-flow"/);
     expect(page).not.toMatch(/key=\{selected\?\.id \|\| `nuevo-\$\{form\.tipo\}`\}/);

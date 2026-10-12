@@ -13,9 +13,11 @@ import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
 import { AdministrativeAppLinkPage } from '../components/AdministrativeAppLinkPage.jsx';
 import { RecepcionOCPage } from '../pages/RecepcionOCPage.jsx';
 import { UbicacionesPage } from '../pages/UbicacionesPage.jsx';
+import { InventarioKardexPage } from '../pages/InventarioKardexPage.jsx';
+import { ReservaRepuestosPage } from '../pages/ReservaRepuestosPage.jsx';
 
 export const supplyAdministrationRouteIds = new Set([
-  'solicitudes', 'almacen-reservas', 'almacen-movimientos', 'almacen-alertas', 'almacen-ubicaciones',
+  'solicitudes', 'almacen-inventario', 'almacen-reservas', 'almacen-alertas', 'almacen-ubicaciones',
   'compras-proveedores', 'compras-cotizaciones', 'compras-oc',
   'compras-importaciones', 'compras-recepciones',
   'consolidado', 'finanzas-cxc', 'finanzas-cxp', 'finanzas-tesoreria',
@@ -24,13 +26,21 @@ export const supplyAdministrationRouteIds = new Set([
   'proveedores',
 ]);
 
+export function redirigirAlmacenMovimientosObsoleto(hash = globalThis.window?.location?.hash || '') {
+  if (String(hash).split('?', 1)[0].replace(/^#\/?/, '') !== 'almacen-movimientos') return false;
+  if (globalThis.window?.location) globalThis.window.location.hash = '#/almacen-inventario';
+  return true;
+}
+
+redirigirAlmacenMovimientosObsoleto();
+
 export function renderSupplyAdministrationRoute(route, context) {
   const { onNavigate, setCurrentOT } = context;
 
   switch (route) {
+    case 'almacen-inventario': return <InventarioKardexPage />;
     case 'solicitudes': return <><AdministrativeAppLinkPage title="Solicitudes SOLPE" adminRoute="solpe" /><SolicitudesPage onNav={onNavigate} /></>;
-    case 'almacen-reservas': return <PlaceholderPage title="Reserva de Repuestos" subtitle="Reserva de ítems de stock vinculados a una OT específica. Bloquea el ítem hasta consumo o liberación." />;
-    case 'almacen-movimientos': return <><AdministrativeAppLinkPage title="Entradas y Salidas" adminRoute="inventario" /><PlaceholderPage title="Entradas & Salidas" /></>;
+    case 'almacen-reservas': return <ReservaRepuestosPage />;
     case 'almacen-alertas': return <><AdministrativeAppLinkPage title="Stock Mínimos y Alertas" adminRoute="inventario" /><PlaceholderPage title="Stock Mínimos & Alertas" /></>;
     case 'almacen-ubicaciones': return <UbicacionesPage />;
     case 'compras-proveedores': return <><AdministrativeAppLinkPage title="Proveedores" adminRoute="proveedores" /><PlaceholderPage title="Proveedores" /></>;

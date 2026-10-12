@@ -112,10 +112,10 @@ function MobileFieldView({ onExit, profile, setProfile, dark, setDark }) {
     <div className="mobile-field-shell" style={{background:dark?'#0D1B2E':'#EEF2F6'}}>
       <div className="mobile-field-toolbar">
         <div className="mobile-field-brand">
-          <div style={{width:32,height:32,background:dark?'#162038':'#fff',borderRadius:6,padding:4,display:'flex',alignItems:'center',justifyContent:'center'}}><img src="assets/tideo-isotipo.svg" alt="" style={{width:'100%'}}/></div>
+          <div style={{width:32,height:32,background:dark?'#162038':'#fff',borderRadius:6,padding:4,display:'flex',alignItems:'center',justifyContent:'center'}}><img src={dark ? '/opera/opera-isotipo-dark.png' : '/opera/opera-isotipo-light.png'} alt="" style={{width:'100%'}}/></div>
           <div>
             <div className="font-display" style={{fontWeight:700,fontSize:16,color:dark?'#fff':'var(--navy)'}}>Modo Campo</div>
-            <div style={{fontSize:11,color:'var(--fg-muted)'}}>TIDEO ERP · Mobile PWA</div>
+            <div style={{fontSize:11,color:'var(--fg-muted)'}}>OPERA ERP · Mobile PWA</div>
           </div>
         </div>
         <div className="header-spacer"/>
@@ -2115,7 +2115,7 @@ function VendedorView({ screen, setScreen, dark, setDark, onExit, profile, setPr
     const texto = 'Aviso de prueba para modo campo';
     addNotificacion(texto);
     if (puedeNotificar && Notification.permission === 'granted') {
-      new Notification('TIDEO ERP', { body: texto, icon: '/icons/tideo-icon-192.png' });
+      new Notification('OPERA ERP', { body: texto, icon: '/icons/opera-icon-192.png' });
     }
     mostrarToast('Notificacion enviada');
   };

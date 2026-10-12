@@ -16,6 +16,7 @@ export function buildRoleDePermisos(rol, permisosRows = [], accesoCampo = false,
   const verFinanzas = esSuperadmin || rows.some(p => p.puede_ver_finanzas === TRUE);
   const verCostos = esSuperadmin || rows.some(p => p.puede_ver_costos === TRUE);
   const verPrecios = esSuperadmin || rows.some(p => p.permisos_extra?.puede_ver_precios === TRUE);
+  const permisosInventario = rows.find(p => p.pantalla === 'inventario')?.permisos_extra || {};
   const puedeAprobar = esSuperadmin || rows.some(p => p.puede_aprobar === TRUE);
   const verConsolidadoGrupo = esAdmin || especialesExtra.ver_consolidado_grupo === TRUE;
 
@@ -36,6 +37,8 @@ export function buildRoleDePermisos(rol, permisosRows = [], accesoCampo = false,
       ver_finanzas: verFinanzas,
       ver_costos: verCostos,
       ver_precios: verPrecios,
+      despachar: Boolean(esAdmin || permisosInventario.puede_despachar === TRUE),
+      liberar: Boolean(esAdmin || permisosInventario.puede_liberar === TRUE),
       aprobar_descuentos: Boolean(esAdmin || especialesExtra.aprobar_descuentos === TRUE || puedeAprobar),
       anular_documentos: Boolean(esAdmin || especialesExtra.anular_documentos === TRUE),
       ver_agenda_equipo: esAdmin,

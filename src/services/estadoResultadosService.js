@@ -129,6 +129,14 @@ const cxpIsRhe = cxp => cxpDocType(cxp) === 'rhe'
   || Boolean(cxp?.recibo_honorarios_id)
   || amount(cxp?.monto_bruto) > 0;
 
+export function filtrarIngresosVentaSinComprobante(ventas = [], periodo, sociedadIds = null) {
+  const scopeSociedades = normalizeSociedadIds(sociedadIds);
+  return (ventas || []).filter(venta => venta?.tipo_venta === 'sin_comprobante'
+    && venta?.estado === 'confirmada'
+    && isInPeriod(venta?.fecha, periodo)
+    && matchesSociedad(venta?.sociedad_id, scopeSociedades));
+}
+
 export const ER_TIPO_SISTEMA_LABELS = {
   mano_obra: 'Mano de obra',
   materiales: 'Materiales',
@@ -302,7 +310,7 @@ async function resolveCecoFilter(supabase, empresaId, cecoIds = [], cebeIds = []
   return cecosFromCebe;
 }
 
-export function buildEstadoResultados({ base, comprasGastos = [], ots = [], facturas = null, centrosCosto = [], centrosBeneficio = [], sociedadIds = null, empresa, periodo = '2026-04' }) {
+export function buildEstadoResultados({ base, comprasGastos = [], ots = [], facturas = null, ventasSinComprobante = [], centrosCosto = [], centrosBeneficio = [], sociedadIds = null, empresa, periodo = '2026-04' }) {
   const result = emptyResult(periodo);
   const empresaId = empresa?.id;
   const scopeSociedades = normalizeSociedadIds(sociedadIds);
@@ -335,6 +343,16 @@ export function buildEstadoResultados({ base, comprasGastos = [], ots = [], fact
       addToBlock(result.er.ingresos, 'Ventas de servicios', base.ingresos.total, 'PEN');
     }
   }
+
+  filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).forEach(venta => {
+    addToBlock(result.er.ingresos, 'Ingresos sin comprobante', venta.subtotal, venta.moneda || 'PEN', {
+      fuente: 'Ventas',
+      id: venta.id,
+      fecha: venta.fecha,
+      concepto: venta.concepto || venta.numero || 'Venta sin comprobante',
+      documento: venta.numero,
+    });
+  });
 
   if (!Array.isArray(facturas)) {
     (base?.costoVentas?.items || []).forEach(item => {
@@ -415,6 +433,21 @@ async function loadFacturas(supabase, empresaId, periodo, cebeIds = [], sociedad
     .neq('estado', 'anulada')
     .in('tipo_documento', ['factura', 'boleta']);
   if (selectedCebes.length) query = query.in('centro_beneficio_id', selectedCebes);
+  if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadVentasSinComprobante(supabase, empresaId, periodo, sociedadIds = null) {
+  const { start, next } = periodBounds(periodo);
+  let query = supabase.from('ventas')
+    .select('id, numero, fecha, concepto, subtotal, moneda, estado, tipo_venta, sociedad_id')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_venta', 'sin_comprobante')
+    .eq('estado', 'confirmada')
+    .gte('fecha', start)
+    .lt('fecha', next);
   if (sociedadIds) query = query.in('sociedad_id', sociedadIds);
   const { data, error } = await query;
   if (error) throw error;
@@ -645,8 +678,9 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
   const effectiveCecoIds = await resolveCecoFilter(supabase, empresaId, cecoIds, cebeIds, scopeSociedades);
   const result = emptyResult(periodo);
 
-  const [facturas, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
+  const [facturas, ventasSinComprobante, costosOt, comprasGastos, detalleNomina, pagosFinancieros, cxpDevengos, cajaChica, erConfig] = await Promise.all([
     loadFacturas(supabase, empresaId, periodo, cebeIds, scopeSociedades),
+    loadVentasSinComprobante(supabase, empresaId, periodo, scopeSociedades),
     loadCostosOt(supabase, empresaId, scopeSociedades),
     loadComprasGastos(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
     loadNomina(supabase, empresaId, periodo, effectiveCecoIds, scopeSociedades),
@@ -686,6 +720,13 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
       fecha: f.fecha_emision,
       concepto: f.numero || f.tipo_documento || 'Venta de servicios',
       documento: f.numero,
+    });
+  });
+
+  filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).forEach(venta => {
+    addToBlock(result.er.ingresos, 'Ingresos sin comprobante', venta.subtotal, venta.moneda, {
+      fuente: 'Ventas', id: venta.id, fecha: venta.fecha,
+      concepto: venta.concepto || venta.numero || 'Venta sin comprobante', documento: venta.numero,
     });
   });
 
@@ -838,6 +879,7 @@ export async function getEstadoResultados({ empresaId, periodo, cecoIds = [], ce
 
   return finalizeResult(result, {
     facturas: facturas.length,
+    ventas_sin_comprobante: filtrarIngresosVentaSinComprobante(ventasSinComprobante, periodo, scopeSociedades).length,
     costos_ot: costosOt.filter(c => isInPeriod(c.fecha_er, periodo) && c.ordenes_trabajo?.estado !== 'anulada').length,
     compras_gastos: comprasGastosParaEr.length,
     cxp_devengos: cxpDevengosEr.length,

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
+import { normalizeDashboardRoute } from './dashboardsTabs.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, siguienteNumeroOSCliente as siguienteNumeroOSClienteRpc, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
@@ -16,7 +17,8 @@ import {
 import { clasificarCoincidenciasCargo, maestrosService, normalizarNombreCargo } from './services/maestrosService.js';
 import { CargoCreationDialog } from './components/CargoCreationDialog.jsx';
 import { cantidadRecibidaPorItemOc, comprasService, devolucionesService } from './services/comprasService.js';
-import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, conciliarCierreOT as conciliarCierreOTSvc, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { restarDespachadoDelConsumo } from './services/consumoCierreOT.js';
 import { registrarTransferenciaIntercompania } from './services/transferenciasIntercompaniaService.js';
 import { rrhhService } from './services/rrhhService.js';
 import { reclutamientoService } from './services/reclutamientoService.js';
@@ -244,6 +246,8 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
         ver_costos: pRows.some(p => p.puede_ver_costos),
         ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
         ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
+        despachar: Boolean(esAdminRol || pRows.find(p => p.pantalla === 'inventario')?.permisos_extra?.puede_despachar === true),
+        liberar: Boolean(esAdminRol || pRows.find(p => p.pantalla === 'inventario')?.permisos_extra?.puede_liberar === true),
         ver_consolidado_grupo: Boolean(esAdminRol || especialesExtra.ver_consolidado_grupo === true),
         aprobar_descuentos: Boolean(esAdminRol || especialesExtra.aprobar_descuentos === true),
         anular_documentos: Boolean(esAdminRol || especialesExtra.anular_documentos === true),
@@ -285,17 +289,19 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
   { id: 'dic_tercera_factura', categoria: 'Facturacion', clave: 'Tercera factura', texto: 'Tercera factura', estado: 'activo' },
 ];
 
-function getInitialActivePage() {
-  if (typeof window === 'undefined') return 'dashboard';
+function getInitialNavigation() {
+  if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
   const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  return hashPage || queryPage || savedPage || 'dashboard';
+  const initial = normalizeDashboardRoute(hashPage || queryPage || savedPage || 'dashboard');
+  return { pagina: initial.pagina || 'dashboard', params: initial.pestana ? { pestana: initial.pestana } : {} };
 }
 
 export function AppProvider({ children }) {
-  const [active, setActive] = useState(getInitialActivePage);
-  const [activeParams, setActiveParams] = useState({});
+  const [initialNavigation] = useState(getInitialNavigation);
+  const [active, setActive] = useState(initialNavigation.pagina);
+  const [activeParams, setActiveParams] = useState(initialNavigation.params);
   const [roleKey, setRoleKey] = useState('admin');
   const [empresa, setEmpresa] = useState(() => {
     if (isSupabaseConfigured()) return MOCK.empresas[0];
@@ -1820,13 +1826,35 @@ export function AppProvider({ children }) {
     });
   };
 
+  useEffect(() => {
+    const currentHash = window.location.hash.replace(/^#\/?/, '').trim();
+    const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
+    const savedPage = localStorage.getItem('tideo_active_page')?.trim();
+    const source = currentHash || queryPage || savedPage || '';
+    const normalized = normalizeDashboardRoute(source);
+    if (normalized.pagina !== 'dashboard') return;
+    const canonicalHash = normalized.pestana ? `dashboard/${normalized.pestana}` : 'dashboard';
+    if (source && currentHash !== canonicalHash) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${canonicalHash}`);
+    }
+    if (source) {
+      try { localStorage.setItem('tideo_active_page', 'dashboard'); } catch {}
+    }
+  }, []);
+
   const navigate = (page, params = {}) => {
-    setActive(page);
-    setActiveParams(params);
+    const normalized = normalizeDashboardRoute(page);
+    const nextPage = normalized.pagina || 'dashboard';
+    const nextParams = { ...params };
+    if (nextPage === 'dashboard' && normalized.pestana) nextParams.pestana = normalized.pestana;
+    const tabRoute = nextPage === 'dashboard' ? (nextParams.pestana || '') : '';
+    const hashPage = nextPage === 'dashboard' && tabRoute ? `dashboard/${tabRoute}` : nextPage;
+    setActive(nextPage);
+    setActiveParams(nextParams);
     try {
-      localStorage.setItem('tideo_active_page', page);
-      if (window.location.hash.replace(/^#\/?/, '') !== page) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${page}`);
+      localStorage.setItem('tideo_active_page', nextPage === 'dashboard' ? 'dashboard' : nextPage);
+      if (window.location.hash.replace(/^#\/?/, '') !== hashPage) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hashPage}`);
       }
     } catch { /* navegacion local: no bloquear si el storage no esta disponible */ }
   };
@@ -4283,17 +4311,15 @@ export function AppProvider({ children }) {
     });
 
     if (itemsADescontar.length > 0) {
-      setInventario(prev => {
+      const aplicarConsumoLocal = items => setInventario(prev => {
         const asignadoPorId = new Map();
-        for (const desc of itemsADescontar) {
+        for (const desc of items) {
           let restante = Number(desc.cantidad) || 0;
-          const candidatas = prev.filter(i =>
-            i.material_id === desc.material_id &&
-            (!desc.almacen_id || i.almacen_id === desc.almacen_id) &&
-            (desc.lote == null || i.lote === desc.lote) &&
-            (desc.serie == null || i.serie === desc.serie) &&
-            (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
-          ).slice().sort((a, b) => {
+          const candidatas = prev.filter(i => i.material_id === desc.material_id
+            && (!desc.almacen_id || i.almacen_id === desc.almacen_id)
+            && (desc.lote == null || i.lote === desc.lote)
+            && (desc.serie == null || i.serie === desc.serie)
+            && (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)).slice().sort((a, b) => {
             const fechaA = a.vencimiento ? Date.parse(a.vencimiento) : Infinity;
             const fechaB = b.vencimiento ? Date.parse(b.vencimiento) : Infinity;
             const av = Number.isFinite(fechaA) ? fechaA : Infinity;
@@ -4310,15 +4336,25 @@ export function AppProvider({ children }) {
         }
         return prev.map(i => {
           const desc = asignadoPorId.get(i.id) || 0;
-          if (!desc) return i;
-          return { ...i, disponible: Math.max(0, Number(i.disponible ?? i.stock_actual ?? 0) - desc), stock_actual: Math.max(0, Number(i.stock_actual ?? i.disponible ?? 0) - desc) };
+          return desc ? { ...i, disponible: Math.max(0, Number(i.disponible ?? i.stock_actual ?? 0) - desc), stock_actual: Math.max(0, Number(i.stock_actual ?? i.disponible ?? 0) - desc) } : i;
         });
       });
       if (isSupabaseConfigured()) {
-        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
-          .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
-          .catch(err => console.error('consumo OT inventario:', err));
-      }
+        getSupabaseClient().then(async sb => {
+          let itemsConsumo = itemsADescontar;
+          let yaConciliado = false;
+          try {
+            const { data, error } = await conciliarCierreOTSvc(sb, empresa.id, otId);
+            if (error) throw error;
+            itemsConsumo = restarDespachadoDelConsumo(itemsADescontar, data?.despachado || []);
+            yaConciliado = true;
+          } catch (err) { console.error('conciliación cierre OT inventario:', err); }
+          aplicarConsumoLocal(itemsConsumo);
+          await registrarConsumoOTSvc(sb, empresa.id, itemsConsumo, otId, authUser?.id, sociedadOtId, { yaConciliado });
+          const inv = await getStockCompleto(empresa.id);
+          if (inv?.length) setInventario(inv);
+        }).catch(err => console.error('consumo OT inventario:', err));
+      } else aplicarConsumoLocal(itemsADescontar);
     }
 
     addNotificacion(`Cierre Técnico registrado para la OT. Inventario consumido.`);
@@ -11113,7 +11149,13 @@ export function AppProvider({ children }) {
         puede_exportar: soloVer ? false : permisoPantallaActivo(permisos, 'exportar', p.key),
         puede_ver_costos: soloVer ? false : Boolean(permisos.ver_costos || permisos.todo),
         puede_ver_finanzas: soloVer ? false : Boolean(permisos.ver_finanzas || permisos.todo),
-        permisos_extra: { puede_ver_precios: soloVer ? false : Boolean(permisos.ver_precios || permisos.todo) },
+        permisos_extra: {
+          puede_ver_precios: soloVer ? false : Boolean(permisos.ver_precios || permisos.todo),
+          ...(p.key === 'inventario' ? {
+            puede_despachar: Boolean(permisos.despachar || permisos.todo),
+            puede_liberar: Boolean(permisos.liberar || permisos.todo),
+          } : {}),
+        },
       };
     }),
     {

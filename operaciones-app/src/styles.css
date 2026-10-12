@@ -218,6 +218,95 @@ body {
 .ops-nav-area-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 999px; }
 .ops-nav-area-body { margin-left: 11px; padding-left: 8px; border-left: 1px solid rgba(255,255,255,.1); }
 .ops-nav-area-body .ops-nav-entry { padding-left: 8px; font-size: 11px; }
+.ops-sidebar-collapse {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: transparent;
+  color: rgba(255,255,255,.52);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.ops-sidebar-collapse:hover { color: #fff; background: rgba(255,255,255,.04); }
+.ops-sidebar-collapse-icon { display: inline-flex; flex: 0 0 auto; }
+.ops-sidebar-collapse-icon svg { display: block; }
+
+@media (min-width: 681px) {
+  .ops-sidebar.is-collapsed { width: 72px; flex: 0 0 72px; padding: 20px 6px; overflow-x: hidden; }
+  .ops-sidebar.is-collapsed .ops-brand { justify-content: center; padding-right: 4px; padding-left: 4px; }
+  .ops-sidebar.is-collapsed .ops-brand-copy,
+  .ops-sidebar.is-collapsed .ops-module-search,
+  .ops-sidebar.is-collapsed .ops-nav-zone-label,
+  .ops-sidebar.is-collapsed .ops-nav-entry-label,
+  .ops-sidebar.is-collapsed .ops-nav-badge,
+  .ops-sidebar.is-collapsed .ops-nav-group-badge,
+  .ops-sidebar.is-collapsed .ops-nav-group-head > svg,
+  .ops-sidebar.is-collapsed .ops-nav-group-body { display: none; }
+  .ops-sidebar.is-collapsed .ops-nav-entry,
+  .ops-sidebar.is-collapsed .ops-nav-group-head { justify-content: center; padding-right: 4px; padding-left: 4px; }
+  .ops-sidebar.is-collapsed .ops-nav-group-icon { flex: 0 0 auto; }
+  .ops-sidebar.is-collapsed .ops-sidebar-collapse { justify-content: center; padding-right: 4px; padding-left: 4px; }
+  .ops-sidebar:not(.is-collapsed) .ops-sidebar-collapse-icon { transform: rotate(180deg); }
+  .ops-sidebar-flyout {
+    position: fixed;
+    z-index: 120;
+    width: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    background: var(--navy);
+    box-shadow: 0 18px 44px rgba(0,0,0,.28);
+    color: rgba(255,255,255,.78);
+  }
+  .ops-sidebar-flyout-title {
+    padding: 8px 10px 10px;
+    color: rgba(255,255,255,.48);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .ops-sidebar-flyout .ops-nav-entry,
+  .ops-sidebar-flyout .ops-sidebar-flyout-item {
+    width: 100%;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255,255,255,.78);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+  }
+  .ops-sidebar-flyout .ops-nav-entry:hover,
+  .ops-sidebar-flyout .ops-nav-entry.active,
+  .ops-sidebar-flyout .ops-sidebar-flyout-item:hover,
+  .ops-sidebar-flyout .ops-sidebar-flyout-item.active { background: rgba(255,255,255,.1); color: #fff; }
+  .ops-sidebar-flyout .ops-nav-entry > svg { width: 16px; height: 16px; flex: 0 0 16px; }
+  .ops-sidebar.is-collapsed .ops-sidebar-flyout .ops-nav-entry-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ops-sidebar-flyout-area-head > span:last-child { min-width: 0; flex: 1; }
+  .ops-sidebar-flyout-divider {
+    margin: 8px 0 4px;
+    padding: 4px 10px;
+    color: rgba(255,255,255,.4);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .08em;
+  }
+}
 
 .ops-main-column { min-width: 0; flex: 1; }
 
@@ -394,6 +483,7 @@ body {
   .ops-sidebar.is-diagnostico-rail .ops-nav-entry,
   .ops-sidebar.is-diagnostico-rail .ops-nav-group-head { width: 40px; min-width: 40px; min-height: 40px; }
   .ops-sidebar.is-diagnostico-rail .ops-nav-group { display: none; }
+  .ops-sidebar-collapse { display: none; }
   .ops-brand { padding-bottom: 10px; }
   .ops-product { display: none; }
   .ops-nav { flex: initial; margin-top: 9px; max-height: 52vh; }

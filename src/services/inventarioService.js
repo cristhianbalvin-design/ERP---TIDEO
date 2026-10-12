@@ -2,6 +2,7 @@ import { getSupabaseClient } from '../lib/supabaseClient.js';
 import { validarSociedadActivaParaEscritura } from './sociedadEscrituraService.js';
 import { getTipoCambioPorFecha } from './tipoCambioService.js';
 import { repartirStock, repartirLiberacionReserva } from './stockUbicaciones.js';
+import { restarDespachadoDelConsumo } from './consumoCierreOT.js';
 
 const mkId = (prefix) => {
   const r = globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -1061,7 +1062,21 @@ export async function ajustarValorizacionOcPendiente(empresaId, { orden_compra_i
   return ajustes;
 }
 
-export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId, sociedadId = null) {
+export async function conciliarCierreOT(supabase, empresaId, otId) {
+  return supabase.rpc('wms_conciliar_cierre_ot', { p_empresa_id: empresaId, p_ot_id: otId });
+}
+
+export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, otId, usuarioId, sociedadId = null, { yaConciliado = false } = {}) {
+  let itemsConsumo = itemsADescontar;
+  if (!yaConciliado) {
+    try {
+      const { data, error } = await conciliarCierreOT(supabase, empresaId, otId);
+      if (error) throw error;
+      itemsConsumo = restarDespachadoDelConsumo(itemsADescontar, data?.despachado || []);
+    } catch (error) {
+      console.error('conciliación cierre OT inventario:', error);
+    }
+  }
   const { data: ot, error: otError } = await supabase.from('ordenes_trabajo')
     .select('id').eq('id', otId).eq('empresa_id', empresaId).maybeSingle();
   if (otError) throw otError;
@@ -1074,7 +1089,7 @@ export async function registrarConsumoOT(supabase, empresaId, itemsADescontar, o
   const { sociedadId: sociedadOperacionId } = await validarSociedadActivaParaEscritura(
     supabase, empresaId, sociedadOt || sociedadId, 'La OT debe tener una sociedad derivable para consumir inventario.',
   );
-  for (const item of itemsADescontar) {
+  for (const item of itemsConsumo) {
     if (!item.material_id) continue;
     try {
       const { data: mat } = await supabase.from('materiales')

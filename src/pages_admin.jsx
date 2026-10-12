@@ -117,6 +117,8 @@ const ROLE_PERMISSION_COLUMNS = [
   { key: 'costos', label: 'Costos' },
   { key: 'precios', label: 'Precios' },
   { key: 'finanzas', label: 'Finanzas' },
+  { key: 'despachar', label: 'Despachar repuestos', soloPantalla: 'inventario' },
+  { key: 'liberar', label: 'Liberar reservas', soloPantalla: 'inventario' },
 ];
 
 const ROLE_APPLICATIONS = [
@@ -281,6 +283,7 @@ function Roles() {
       if (action === 'costos') return Boolean(role?.permisos?.ver_costos || role?.permisos?.todo);
       if (action === 'finanzas') return Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
       if (action === 'precios') return Boolean(role?.permisos?.ver_precios || role?.permisos?.todo);
+      if (action === 'despachar' || action === 'liberar') return screen.key === 'inventario' && Boolean(role?.permisos?.[action] || role?.permisos?.todo);
       const assigned = role?.permisos?.[action];
       return Array.isArray(assigned) ? assigned.includes(screen.key) : Boolean(assigned || role?.permisos?.todo);
     };
@@ -518,7 +521,9 @@ function Roles() {
   const cb = (p, act) => {
     let realKey = act;
     let isChecked;
-    if (act === 'costos')        { realKey = 'ver_costos';   isChecked = role.permisos.ver_costos   || role.permisos.todo; }
+    if (act === 'despachar')     { realKey = 'despachar';    isChecked = role.permisos.despachar || role.permisos.todo; }
+    else if (act === 'liberar')  { realKey = 'liberar';      isChecked = role.permisos.liberar || role.permisos.todo; }
+    else if (act === 'costos')   { realKey = 'ver_costos';   isChecked = role.permisos.ver_costos   || role.permisos.todo; }
     else if (act === 'finanzas') { realKey = 'ver_finanzas'; isChecked = role.permisos.ver_finanzas || role.permisos.todo; }
     else if (act === 'precios')  { realKey = 'ver_precios';  isChecked = role.permisos.ver_precios  || role.permisos.todo; }
     else {
@@ -536,6 +541,8 @@ function Roles() {
   };
 
   const isPermissionActive = (screen, action) => {
+    if (action === 'despachar') return screen.key === 'inventario' && Boolean(role.permisos.despachar || role.permisos.todo);
+    if (action === 'liberar') return screen.key === 'inventario' && Boolean(role.permisos.liberar || role.permisos.todo);
     if (action === 'costos') return Boolean(role.permisos.ver_costos || role.permisos.todo);
     if (action === 'finanzas') return Boolean(role.permisos.ver_finanzas || role.permisos.todo);
     if (action === 'precios') return Boolean(role.permisos.ver_precios || role.permisos.todo);
@@ -554,7 +561,10 @@ function Roles() {
         aria-label={`${allActive ? 'Desactivar' : 'Activar'} ${action} para ${scope}`}
         onClick={event => event.stopPropagation()}
         onChange={event => {
-          screens.forEach(screen => actualizarPermisosRol(sel, screen.key, permissionKey(action), event.target.checked));
+          if (['despachar', 'liberar'].includes(action)) {
+            const inventario = screens.find(screen => screen.key === 'inventario');
+            if (inventario) actualizarPermisosRol(sel, inventario.key, permissionKey(action), event.target.checked);
+          } else screens.forEach(screen => actualizarPermisosRol(sel, screen.key, permissionKey(action), event.target.checked));
           setPermisosDirty(true);
         }}
       />
@@ -774,7 +784,7 @@ function Roles() {
                       </tr>
                       <tr style={{background:'var(--surface)', position:'sticky', top:0, zIndex:1}}>
                         <th style={{fontSize:11}}>Aplicar a todas las pantallas visibles</th>
-                        {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{bulkCheckbox(displayedFunctionalSections.flatMap(section => section.pantallas), column.key, 'todas las pantallas funcionales visibles')}</th>)}
+                        {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{column.soloPantalla ? null : bulkCheckbox(displayedFunctionalSections.flatMap(section => section.pantallas), column.key, 'todas las pantallas funcionales visibles')}</th>)}
                       </tr>
                     </thead>
                     {displayedFunctionalSections.map(section => {
@@ -795,12 +805,12 @@ function Roles() {
                                 <span className="text-muted" style={{fontWeight:400, fontSize:11}}>{activeCount}/{section.pantallas.length} con permisos</span>
                               </button>
                             </th>
-                            {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{bulkCheckbox(section.pantallas, column.key, `la sección ${section.modulo}`)}</th>)}
+                            {ROLE_PERMISSION_COLUMNS.map(column => <th key={column.key} style={{textAlign:'center'}}>{column.soloPantalla ? (section.pantallas.some(screen => screen.key === column.soloPantalla) ? bulkCheckbox(section.pantallas, column.key, 'inventario') : null) : bulkCheckbox(section.pantallas, column.key, `la sección ${section.modulo}`)}</th>)}
                           </tr>
                           {isExpanded && section.pantallas.map(screen => (
                             <tr key={screen.key}>
                               <td><strong>{screen.pantalla}</strong></td>
-                              {ROLE_PERMISSION_COLUMNS.map(column => cb(screen, column.key))}
+                              {ROLE_PERMISSION_COLUMNS.map(column => column.soloPantalla && screen.key !== column.soloPantalla ? <td key={column.key} /> : cb(screen, column.key))}
                             </tr>
                           ))}
                         </tbody>
@@ -1048,7 +1058,7 @@ function Roles() {
             <div style={{color:'#fff'}}>
               {SIDEBAR.map((g,gi)=>{
                 if (g.plataforma && !role.permisos.plataforma) return null;
-                const items = g.items.filter(it => role.permisos.todo || allowed.has(it.key));
+                const items = g.items.filter(it => role.permisos.todo || allowed.has(it.key) || (it.accessAnyOf || []).some(key => allowed.has(key)));
                 if (!items.length) return null;
                 return (
                   <div key={gi}>
@@ -9226,7 +9236,7 @@ const NAV_SECTION_LABELS = {
   administracion: 'Administración',
   customer_success: 'Customer Success',
   inteligencia_artificial: 'Inteligencia Artificial',
-  campo_movil: 'Campo Móvil',
+  campo_movil: 'Versión Móvil',
   configuracion: 'Configuración',
 };
 

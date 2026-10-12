@@ -7,6 +7,7 @@ import { useApp } from './context.jsx';
 import { useTenantNavLabels } from './services/navLabelsService.js';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 import { puedeVerPantalla } from './access/roleAccess.js';
+import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { useAsistenteErp } from './context/AsistenteErpContext.jsx';
 
 function IconoAria({ size = 20 }) {
@@ -15,11 +16,8 @@ function IconoAria({ size = 20 }) {
 
 
 const SIDEBAR = [
-  { section: 'Business Intelligence', items: [
-    { key: 'dashboard', label: 'Dashboard General', icon: I.dashboard },
-    { key: 'bi_comercial', label: 'BI Comercial', icon: I.trend },
-    { key: 'bi_operativo', label: 'BI Operativo', icon: I.trend },
-    { key: 'bi_financiero', label: 'BI Financiero', icon: I.trend },
+  { section: 'Dashboards', standalone: true, items: [
+    { key: 'dashboard', label: 'Dashboards', fixedLabel: true, icon: I.dashboard, accessAnyOf: DASHBOARDS_ACCESS_ANY_OF },
   ]},
   { section: 'Plataforma', plataforma: true, items: [
     { key: 'tenants', label: 'Empresas / Tenants', icon: I.building },
@@ -105,10 +103,10 @@ const SIDEBAR = [
     { key: 'bi_cs', label: 'BI Customer Success', icon: I.trend },
   ]},
   { section: 'Aria', standalone: true, items: [
-    { key: 'aria', action: 'openAria', label: 'Aria', icon: <IconoAria size={20} /> },
+    { key: 'aria', action: 'openAria', label: 'Aria - Asistente IA', ariaLabel: 'Preguntar a Aria', icon: <IconoAria size={20} /> },
   ]},
-  { section: 'Campo Movil', items: [
-    { key: 'campo', label: 'Vistas de Campo', icon: I.mobile },
+  { section: 'Version Movil', standalone: true, items: [
+    { key: 'campo', label: 'Versión Móvil', icon: I.mobile },
   ]},
   { section: 'Configuracion', items: [
     { key: 'usuarios', label: 'Usuarios', icon: I.users },
@@ -134,7 +132,6 @@ if (import.meta.env.DEV) {
 }
 
 const SECTION_ICONS = {
-  'Business Intelligence': I.dashboard,
   Plataforma: I.building,
   'CRM & Marketing': I.users,
   Comercial: I.file,
@@ -144,7 +141,6 @@ const SECTION_ICONS = {
   Compras: I.cart,
   Administracion: I.bank,
   'Customer Success': I.target,
-  'Campo Movil': I.mobile,
   Configuracion: I.settings,
 };
 
@@ -156,7 +152,7 @@ const normalizarBusqueda = value => String(value || '')
   .toLowerCase()
   .trim();
 const SEARCH_ALIASES = {
-  dashboard: 'inicio principal resumen',
+  dashboard: 'dashboards general comercial operativo financiero bi inicio principal resumen',
   inventario: 'producto productos stock materiales existencias almacen',
   recepciones: 'recepcion productos producto ingreso compras conformidad proveedor',
   ordenes_compra: 'oc orden compra proveedor adquisiciones',
@@ -173,10 +169,6 @@ const SEARCH_ALIASES = {
 };
 
 const NAV_MODULE_KEYS = {
-  dashboard: 'bi.dashboard_general',
-  bi_comercial: 'bi.comercial',
-  bi_operativo: 'bi.operativo',
-  bi_financiero: 'bi.financiero',
   tenants: 'plataforma.tenants',
   planes: 'plataforma.planes',
   metricas_saas: 'plataforma.metricas_saas',
@@ -380,7 +372,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
-  const [flyoutTop, setFlyoutTop] = useState(0);
+  const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
   const [busquedaModulo, setBusquedaModulo] = useState('');
   const effectiveCollapsed = collapsed || isMobileNav || diagnosticoWorkMode;
   const badges = useMemo(() => buildSidebarBadges(app), [
@@ -400,7 +392,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
       .map(it => {
         const navKey = it.action ? it.key : (NAV_MODULE_KEYS[it.key] || it.key);
-        return { ...it, navKey, label: it.action ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
+        return { ...it, navKey, label: it.action || it.fixedLabel ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
       });
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
@@ -464,6 +456,27 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     });
   }, [activeGroupKey]);
 
+  useEffect(() => {
+    if (!flyoutKey) return;
+    const closeFlyout = () => setFlyoutKey(null);
+    const initialWidth = window.innerWidth;
+    const closeFlyoutOnWidthResize = () => {
+      if (window.innerWidth !== initialWidth) closeFlyout();
+    };
+    const closeFlyoutOnPageScroll = event => {
+      if (event.target?.closest?.('.sidebar-flyout')) return;
+      closeFlyout();
+    };
+    window.addEventListener('resize', closeFlyoutOnWidthResize);
+    window.addEventListener('orientationchange', closeFlyout);
+    window.addEventListener('scroll', closeFlyoutOnPageScroll, true);
+    return () => {
+      window.removeEventListener('resize', closeFlyoutOnWidthResize);
+      window.removeEventListener('orientationchange', closeFlyout);
+      window.removeEventListener('scroll', closeFlyoutOnPageScroll, true);
+    };
+  }, [flyoutKey]);
+
   const toggleCollapsed = () => {
     setCollapsed(prev => {
       const next = !prev;
@@ -496,16 +509,23 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     }
     handleNav(item.key);
   };
-  const toggleFlyout = (event, key) => {
+  const toggleFlyout = (event, key, itemCount) => {
     if (flyoutKey === key) {
       setFlyoutKey(null);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const nextTop = isMobileNav
-      ? Math.max(8, Math.min(rect.top, window.innerHeight - 280))
-      : 0;
-    setFlyoutTop(nextTop);
+    const viewportHeight = window.innerHeight;
+    const below = Math.max(0, viewportHeight - rect.top - 8);
+    const above = Math.max(0, rect.bottom - 8);
+    const estimatedHeight = 52 + itemCount * 36;
+    const openDown = below >= estimatedHeight;
+    const maxHeight = openDown ? below : above;
+    setFlyoutPosition({
+      top: openDown ? rect.top : 'auto',
+      bottom: openDown ? 'auto' : Math.max(0, viewportHeight - rect.bottom),
+      maxHeight,
+    });
     setFlyoutKey(key);
   };
 
@@ -519,10 +539,10 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
         style={{ width: '100%', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
       >
         <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-          <img src="/tideo-isotipo.png" alt="TIDEO" style={{width:'100%', height:'100%', objectFit:'contain'}} />
+          <img src="/opera/opera-isotipo-light.png" alt="OPERA" style={{width:'100%', height:'100%', objectFit:'contain'}} />
         </div>
         {!effectiveCollapsed && <div>
-          <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>TIDEO</div>
+          <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>OPERA</div>
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
         </div>}
       </button>
@@ -570,21 +590,21 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                 <>
                   <button
                     type="button"
-                    className="sidebar-area-btn"
-                    onClick={event => toggleFlyout(event, group.key)}
+                    className={'sidebar-area-btn ' + (active === group.items[0].key ? 'active' : '')}
+                    onClick={event => toggleFlyout(event, group.key, group.items.length)}
                     title={group.items[0].label}
-                    aria-label={group.items[0].label}
+                    aria-label={group.items[0].ariaLabel || group.items[0].label}
                   >{group.items[0].icon}</button>
                   {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
+                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.items[0].label}</div>
-                      {group.items.map(it => <button type="button" key={it.key} className="sidebar-flyout-item" onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
+                      {group.items.map(it => <button type="button" key={it.key} className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
                     </div>
                   )}
                 </>
               ) : group.standalone ? (
                 <div
-                  className="sidebar-item"
+                  className={'sidebar-item ' + (active === group.items[0].key ? 'active' : '')}
                   onClick={() => handleItem(group.items[0])}
                   style={{padding:'8px 10px', fontSize:12, borderRadius:8}}
                   onKeyDown={event => {
@@ -595,7 +615,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label="Preguntar a Aria"
+                  aria-label={group.items[0].ariaLabel || group.items[0].label}
                 >
                   {group.items[0].icon}<span style={{fontWeight:500}}>{group.items[0].label}</span>
                 </div>
@@ -604,7 +624,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                   <button
                     type="button"
                     className={'sidebar-area-btn ' + (group.active ? 'active' : '')}
-                    onClick={(event) => toggleFlyout(event, group.key)}
+                    onClick={(event) => toggleFlyout(event, group.key, group.items.length)}
                     title={group.section}
                     aria-label={group.section}
                   >
@@ -612,7 +632,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                     {group.items.some(it => it.badge) && <span className="sidebar-area-dot" />}
                   </button>
                   {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
+                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.section}</div>
                       {group.items.map(it => (
                         <button
@@ -779,7 +799,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     return () => media.removeEventListener?.('change', onChange);
   }, []);
 
-  const title = SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
+  const title = active === 'dashboard' ? 'Dashboards' : SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
 
   const isSupabase = dataMode === 'supabase';
   const canSwitchCompany = isSupabase ? todasMembresias.length > 1 : Boolean(role.permisos?.plataforma);
