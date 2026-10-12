@@ -3072,3 +3072,22 @@ textarea.dx-recact-control { height:auto; min-height:92px; padding:10px 12px; re
 @container (max-width:640px) { .dx-recact-form-grid { grid-template-columns:minmax(0,1fr); } }
 @container (max-width:520px) { .dx-recact-section>dl,.dx-recact-check-buttons { grid-template-columns:minmax(0,1fr); } .dx-recact-input-pair { grid-template-columns:minmax(0,1fr); } }
 @media (pointer:coarse) { .dx-recact-tabs button,.dx-recact-segmented button,.dx-recact-link { min-height:44px; } }
+/* Form alignment and full-width detail workspace. */
+.dx-recact { container-type:inline-size; }
+.dx-recact-field { gap:8px; }
+.dx-recact-field-label { display:flex; align-items:baseline; gap:4px; min-height:18px; min-width:0; white-space:nowrap; }
+.dx-recact-field-label>i { color:var(--dx-ui-red-fg); font-style:normal; }
+.dx-recact-field-label small { color:var(--dx-ui-gray); font-size:12px; font-weight:400; }
+.dx-recact-input-pair { align-items:stretch; }
+.dx-recact-input-pair>.dx-recact-segmented { height:44px; }
+.dx-recact-input-pair>.dx-recact-segmented button { min-height:44px; }
+.dx-recact-detail { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.dx-recact-detail>.dx-recact-section { min-width:0; }
+.dx-recact-detail>.dx-recact-section:nth-of-type(3) { grid-column:1/-1; }
+.dx-recact-diagnosis-strip { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:16px; min-width:0; padding:12px 16px; border:1px solid var(--dx-ui-line); border-radius:12px; background:var(--dx-ui-card); }
+.dx-recact-diagnosis-strip>div { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.dx-recact-diagnosis-strip b { color:var(--dx-ui-navy); font:700 14px 'Sora',sans-serif; }
+.dx-recact-diagnosis-strip span,.dx-recact-diagnosis-empty { color:var(--dx-ui-gray); font-size:13px; }
+.dx-recact-diagnosis-strip .dx-recact-link,.dx-recact-diagnosis-strip .dx-ui-pill { flex:none; }
+@container (max-width:760px) { .dx-recact-detail { grid-template-columns:minmax(0,1fr); } .dx-recact-detail>.dx-recact-section:nth-of-type(3) { grid-column:auto; } }
+@container (max-width:520px) { .dx-recact-diagnosis-strip { align-items:stretch; flex-direction:column; gap:8px; } .dx-recact-diagnosis-strip .dx-recact-link,.dx-recact-diagnosis-strip .dx-ui-pill { align-self:flex-start; } }

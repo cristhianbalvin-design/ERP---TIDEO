@@ -24,12 +24,14 @@ vi.mock('../src/services/recepcionesActivosClienteService.js', () => ({
   crearActivoClienteYRecepcion: mocks.crearActivoRecepcion,
 }));
 
-import { RecepcionActivosClientePage } from '../src/zahory-mock/pages/RecepcionActivosClientePage.jsx';
+import { RecepcionActivosClientePage, resolverAccionDiagnostico } from '../src/zahory-mock/pages/RecepcionActivosClientePage.jsx';
 
 const receiptRows = [
   { id: 'r-none', numero: 'RAC-2026-00001', numero_caso: 1, activo_id: 'a1', fecha_ingreso: '2026-10-01', hora_ingreso: '08:15:00', almacen_id: 'w1', estado_custodia: 'recibido', observaciones: 'Golpe lateral\nChecklist de condición: Integridad exterior verificada: Sí | Sin daños visibles adicionales: No registrado | Accesorios/documentación completos: Sí | Placa o número de serie legible: No registrado' },
   { id: 'r-draft', numero: 'RAC-2026-00002', numero_caso: 2, activo_id: 'a2', fecha_ingreso: '2026-10-02', almacen_id: 'w1', estado_custodia: 'en_diagnostico' },
   { id: 'r-issued', numero: 'RAC-2026-00003', numero_caso: 3, activo_id: 'a3', fecha_ingreso: '2026-10-03', almacen_id: 'w1', estado_custodia: 'listo_entrega' },
+  { id: 'r-late-none', numero: 'RAC-2026-00004', numero_caso: 4, activo_id: 'a1', fecha_ingreso: '2026-10-04', almacen_id: 'w1', estado_custodia: 'en_reparacion' },
+  { id: 'r-late-draft', numero: 'RAC-2026-00005', numero_caso: 5, activo_id: 'a2', fecha_ingreso: '2026-10-05', almacen_id: 'w1', estado_custodia: 'en_reparacion' },
 ];
 
 const textOf = node => node.children?.map(child => typeof child === 'string' ? child : child?.children ? textOf(child) : '').join('') || '';
@@ -48,7 +50,7 @@ beforeEach(() => {
   mocks.clientes.mockReset().mockResolvedValue([{ id: 'c1', razon_social: 'Cliente de prueba' }]);
   mocks.almacenes.mockReset().mockResolvedValue([{ id: 'w1', nombre: 'Almacén de prueba' }]);
   mocks.recepciones.mockReset().mockResolvedValue(receiptRows);
-  mocks.diagnosticos.mockReset().mockResolvedValue({ 'r-draft': { estado: 'borrador', id: 'd-draft', diagnostico_id: 'd-draft' }, 'r-issued': { estado: 'emitido', id: 'd-issued', diagnostico_id: 'd-issued' } });
+  mocks.diagnosticos.mockReset().mockResolvedValue({ 'r-draft': { estado: 'borrador', id: 'd-draft', diagnostico_id: 'd-draft' }, 'r-issued': { estado: 'emitido', id: 'd-issued', diagnostico_id: 'd-issued' }, 'r-late-draft': { estado: 'borrador', id: 'd-late-draft', diagnostico_id: 'd-late-draft' } });
   mocks.cambiarEstado.mockReset().mockImplementation(async (_id, estado) => ({ estado_custodia: estado }));
   mocks.crearRecepcion.mockReset().mockResolvedValue({ ...receiptRows[0], id: 'r-created', numero: 'RAC-2026-00004', numero_caso: 4, activo_id: 'a1' });
   mocks.crearActivoRecepcion.mockReset().mockResolvedValue({ recepcion: { id: 'r-created', numero: 'RAC-2026-00004', numero_caso: 4 }, activo: { id: 'a-new', codigo: 'ACT-NEW', nombre: 'Equipo nuevo', cliente_propietario_id: 'c1', tipo_activo: 'componente' } });
@@ -60,9 +62,24 @@ beforeEach(() => {
 });
 
 describe('RecepcionActivosClientePage', () => {
+  it('resuelve las acciones de diagnostico segun custodia y estado', () => {
+    expect(resolverAccionDiagnostico('recibido', null)).toEqual({ tipo: 'iniciar' });
+    expect(resolverAccionDiagnostico('en_reparacion', null)).toEqual({ tipo: 'ninguna' });
+    expect(resolverAccionDiagnostico('en_reparacion', 'emitido')).toEqual({ tipo: 'ver' });
+    expect(resolverAccionDiagnostico('en_reparacion', 'borrador')).toEqual({ tipo: 'borrador-tardio' });
+    expect(resolverAccionDiagnostico('en_diagnostico', 'borrador')).toEqual({ tipo: 'continuar' });
+  });
+
+  it('muestra el estado sin diagnostico y el enlace tardio al borrador en reparacion', async () => {
+    const root = await renderPage();
+    expect(rootText(root)).toContain('Sin diagnóstico registrado');
+    expect(findButton(root, 'Ver borrador')).toBeTruthy();
+    await act(async () => findButton(root, 'Ver borrador').props.onClick({ stopPropagation: vi.fn() }));
+    expect(window.location.hash).toContain('trabajo=d-late-draft');
+  });
   it('muestra filas, filtra por custodia y busca recepción, activo o cliente', async () => {
     const root = await renderPage();
-    expect(root.root.findAllByProps({ role: 'button' }).filter(node => node.props.className?.includes('dx-ui-row'))).toHaveLength(3);
+    expect(root.root.findAllByProps({ role: 'button' }).filter(node => node.props.className?.includes('dx-ui-row'))).toHaveLength(5);
     const tab = root.root.findAllByProps({ role: 'tab' }).find(node => textOf(node).includes('En diagnóstico'));
     await act(async () => tab.props.onClick());
     expect(root.root.findAll(node => node.props.className?.includes('dx-ui-row'))).toHaveLength(1);
