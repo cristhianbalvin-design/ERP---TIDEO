@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc }) }));
-import { anularMovimiento, registrarMovimientoManual } from '../src/services/inventarioMovimientosService.js';
+import { anularMovimiento, registrarMovimientoManual, transferirStock } from '../src/services/inventarioMovimientosService.js';
 
 describe('inventarioMovimientosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { kardex_id: 'k1', saldo: 2 }, error: null }); });
@@ -25,6 +25,14 @@ describe('inventarioMovimientosService', () => {
   it('llama la RPC de anulación con parámetros exactos', async () => {
     await anularMovimiento({ empresa_id: 'e1', kardex_id: 'k2', motivo: 'Error de ingreso' });
     expect(rpc).toHaveBeenCalledWith('wms_anular_movimiento', { p_empresa_id: 'e1', p_kardex_id: 'k2', p_motivo: 'Error de ingreso' });
+  });
+
+  it('llama la RPC de transferencia con los parámetros exactos y limpia la observación vacía', async () => {
+    await transferirStock({ empresa_id: 'e1', stock_origen_id: 'st-1', almacen_destino_id: 'a2', ubicacion_destino_id: 'u2', cantidad: 2.5, observacion: '  ' });
+    expect(rpc).toHaveBeenCalledWith('wms_transferir_stock', {
+      p_empresa_id: 'e1', p_stock_origen_id: 'st-1', p_almacen_destino_id: 'a2',
+      p_ubicacion_destino_id: 'u2', p_cantidad: 2.5, p_observacion: null,
+    });
   });
 
   it('propaga el mensaje de servidor sin envolverlo en detalles técnicos', async () => {

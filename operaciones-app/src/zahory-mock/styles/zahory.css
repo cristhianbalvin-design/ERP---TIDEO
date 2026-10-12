@@ -2510,3 +2510,15 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-btn.danger:disabled{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line)}
 .dx-mov-hint{margin:0;max-width:280px;align-self:center;color:var(--dx-ui-gray);font-size:12px;line-height:1.45}
 @media (max-width:520px){.dx-mov-row2,.dx-mov-dl{grid-template-columns:minmax(0,1fr)}.dx-mov-panel header,.dx-mov-panel footer{padding:12px 16px}.dx-mov-body{padding:16px}.dx-mov-panel footer .dx-btn,.dx-mov-confirm-f .dx-btn{min-height:44px;flex:1}}
+
+/* Transferencias de stock */
+.dx-mov-summary{padding:12px 14px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-gray-bg)}
+.dx-mov-summary h3{margin:0 0 10px;color:var(--dx-ui-navy);font:700 13px 'Sora',sans-serif}
+.dx-mov-summary .dx-mov-dl{gap:10px}
+.dx-mov-shortcut{min-height:44px;padding:0 12px;border:1px solid var(--dx-ui-cyan);border-radius:8px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-mov-shortcut:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-ui-row.dx-stk-wcols{grid-template-columns:minmax(0,1fr) 120px 96px 76px 84px auto;gap:10px}
+.dx-mov-row-actions{display:flex;justify-content:flex-end;align-items:center}
+.dx-mov-row-actions .dx-btn{min-height:40px}
+.dx-mov-link{color:var(--dx-ui-cyan-fg);font-weight:600}
+@media(max-width:600px){.dx-mov-summary .dx-mov-dl{grid-template-columns:minmax(0,1fr)}.dx-ui-row.dx-stk-wcols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:'main main' 'uso lote' 'fis res' 'actions actions'}.dx-ui-row.dx-stk-wcols>:nth-child(1){grid-area:main}.dx-ui-row.dx-stk-wcols>:nth-child(2){grid-area:uso}.dx-ui-row.dx-stk-wcols>:nth-child(3){grid-area:lote}.dx-ui-row.dx-stk-wcols>:nth-child(4){grid-area:fis}.dx-ui-row.dx-stk-wcols>:nth-child(5){grid-area:res}.dx-ui-row.dx-stk-wcols>:nth-child(6){grid-area:actions}.dx-mov-row-actions{justify-content:flex-start}}
