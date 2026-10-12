@@ -28,11 +28,11 @@ export function etiquetaConteoLineas(cantidad) { return `${cantidad} ${Number(ca
 export function etiquetaEstadoOT(estado) {
   return ({ programada: 'Programada', ejecucion: 'Ejecución', cerrada: 'Cerrada', cancelada: 'Cancelada', anulada: 'Anulada' })[estado] || String(estado || 'Sin estado');
 }
-export function validarCantidadReserva(valor, pendiente) {
+export function validarCantidadReserva(valor, pendiente, sufijo = 'pendientes') {
   const texto = String(valor ?? '').trim();
   const cantidad = Number(texto.replace(',', '.'));
   if (!texto || !Number.isFinite(cantidad) || cantidad <= 0) return 'La cantidad debe ser mayor a cero.';
-  if (cantidad > numero(pendiente)) return `La cantidad no puede superar ${numero(pendiente)} pendientes.`;
+  if (cantidad > numero(pendiente)) return `La cantidad no puede superar ${numero(pendiente)} ${sufijo}.`;
   if (Math.round(cantidad * 100) !== cantidad * 100) return 'La cantidad admite hasta 2 decimales.';
   return '';
 }

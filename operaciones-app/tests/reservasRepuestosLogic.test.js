@@ -19,7 +19,8 @@ describe('reservasRepuestosLogic', () => {
   it('traduce estados operativos de OT', () => { expect(etiquetaEstadoOT('ejecucion')).toBe('Ejecución'); });
   it('valida cantidad positiva, límite, decimales y motivo', () => {
     expect(validarCantidadReserva(0, 2)).toBe('La cantidad debe ser mayor a cero.');
-    expect(validarCantidadReserva(2.01, 2)).toMatch(/superar/);
+    expect(validarCantidadReserva(2.01, 2)).toContain('pendientes');
+    expect(validarCantidadReserva(2.01, 2, 'despachados')).toBe('La cantidad no puede superar 2 despachados.');
     expect(validarCantidadReserva(1.234, 2)).toMatch(/2 decimales/);
     expect(validarCantidadReserva(1.25, 2)).toBe('');
     expect(validarLiberacion({ cantidad: 1, pendiente: 2, motivo: '' })).toMatch(/motivo/);

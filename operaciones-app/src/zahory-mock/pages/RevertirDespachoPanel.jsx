@@ -10,7 +10,7 @@ export function RevertirDespachoPanel({ ot, linea, enviando, error, onClose, onS
   const [observacion, setObservacion] = useState('');
   const primero = useRef(null);
   const motivoFinal = motivo === 'Otro' ? otro.trim() : motivo;
-  const errorCantidad = validarCantidadReserva(cantidad, linea.despachado);
+  const errorCantidad = validarCantidadReserva(cantidad, linea.despachado, 'despachados');
   const cantidadNumerica = Number(String(cantidad).replace(',', '.'));
   const errorValidacion = errorCantidad || (!motivoFinal ? 'Indica un motivo para revertir.' : '');
   useEffect(() => { primero.current?.focus(); }, []);
