@@ -200,6 +200,26 @@ export async function listarRecepciones(empresaId, sociedadId) {
   return data || [];
 }
 
+export async function listarEstadosDiagnosticoRecepcion(empresaId, recepcionIds = []) {
+  if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
+  const ids = [...new Set((recepcionIds || []).filter(Boolean))];
+  if (!ids.length) return {};
+  const { data, error } = await getSupabaseClient()
+    .from('diagnosticos_tecnicos')
+    .select('id,recepcion_id,estado,tipo')
+    .eq('empresa_id', empresaId)
+    .eq('tipo', 'mantenimiento')
+    .in('recepcion_id', ids);
+  if (error) throw error;
+  return (data || []).reduce((result, row) => {
+    const current = result[row.recepcion_id];
+    if (!current || (row.estado === 'borrador' && current.estado !== 'borrador')) {
+      result[row.recepcion_id] = { estado: row.estado, id: row.id, diagnostico_id: row.id };
+    }
+    return result;
+  }, {});
+}
+
 export async function crearRecepcion(empresaId, datos) {
   if (!empresaId) throw new Error('No se pudo identificar la empresa operativa.');
   if (!datos?.sociedad_id) throw new Error('Selecciona una sociedad operativa antes de registrar la recepción.');

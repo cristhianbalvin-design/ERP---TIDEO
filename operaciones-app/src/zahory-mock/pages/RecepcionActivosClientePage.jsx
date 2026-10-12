@@ -1,73 +1,51 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Icon, FooterBrand } from '../components/shell.jsx';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { subirAdjunto } from '../../../../src/services/storageService.js';
+import { subirAdjunto, cargarAdjuntosPorEntidades, obtenerUrlAdjunto } from '../../../../src/services/storageService.js';
 import { catalogoComponentesService } from '../../../../src/services/catalogoComponentesService.js';
 import { asignarComponenteCatalogoActivo } from '../../services/diagnosticoTecnicoService.js';
 import {
-  ESTADOS_CUSTODIA,
-  actualizarEstadoCustodia,
-  crearActivoClienteYRecepcion,
-  crearRecepcion,
-  listarActivosCliente,
-  listarAlmacenes,
-  listarClientes,
-  listarRecepciones,
+  ESTADOS_CUSTODIA, actualizarEstadoCustodia, crearActivoClienteYRecepcion, crearRecepcion,
+  listarActivosCliente, listarAlmacenes, listarClientes, listarRecepciones, listarEstadosDiagnosticoRecepcion,
 } from '../../services/recepcionesActivosClienteService.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 const ANIO_MAXIMO_ACTIVO = new Date().getFullYear() + 1;
-
 const CHECKLIST_ITEMS = [
   ['integridad_exterior', 'Integridad exterior verificada'],
   ['sin_danos_visibles', 'Sin daños visibles adicionales'],
   ['accesorios_completos', 'Accesorios/documentación completos'],
   ['placa_serie_legible', 'Placa o número de serie legible'],
 ];
-
-const ESTADO_LABELS = {
-  recibido: 'Recibido',
-  en_diagnostico: 'En diagnóstico',
-  en_reparacion: 'En reparación',
-  listo_entrega: 'Listo para entrega',
-  entregado: 'Entregado',
-};
-
-const emptyForm = sociedadId => ({
-  cliente_id: '',
-  activo_id: '',
-  fecha_ingreso: today(),
-  hora_ingreso: nowTime(),
-  guia_ingreso: '',
-  lectura_valor: '',
-  lectura_unidad: 'horas',
-  tipo_activo: '',
-  almacen_id: '',
-  observaciones: '',
-  checklist: Object.fromEntries(CHECKLIST_ITEMS.map(([key]) => [key, false])),
-  sociedad_id: sociedadId || '',
-  componente_catalogo_id: '',
-});
-
+const ESTADO_LABELS = { recibido: 'Recibido', en_diagnostico: 'En diagnóstico', en_reparacion: 'En reparación', listo_entrega: 'Listo para entrega', entregado: 'Entregado' };
+const blankForm = sociedadId => ({ cliente_id: '', activo_id: '', fecha_ingreso: today(), hora_ingreso: nowTime(), guia_ingreso: '', lectura_valor: '', lectura_unidad: 'horas', tipo_activo: '', almacen_id: '', observaciones: '', checklist: Object.fromEntries(CHECKLIST_ITEMS.map(([key]) => [key, false])), sociedad_id: sociedadId || '', componente_catalogo_id: '' });
 const nombreCliente = cliente => cliente?.razon_social || cliente?.nombre_comercial || cliente?.ruc || 'Cliente sin nombre';
-const nombreActivo = activo => [activo?.codigo, activo?.nombre, activo?.marca, activo?.modelo, activo?.placa_serie].filter(Boolean).join(' · ');
+const nombreActivo = activo => activo ? [activo.nombre, activo.marca, activo.modelo, activo.placa_serie].filter(Boolean).join(' · ') : 'Activo sin nombre';
+const dateLabel = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('es-PE') : '—';
+const previewUrl = file => { try { return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : ''; } catch { return ''; } };
+const estadoCustodiaClass = estado => ({ recibido: 'is-amber', en_diagnostico: 'is-cyan', en_reparacion: 'is-violet', listo_entrega: 'is-green', entregado: 'is-gray' }[estado] || 'is-gray');
+const diagnosticUrl = row => row?.diagnostico_id
+  ? `/diagnostico-tecnico?nuevo=mantenimiento&trabajo=${encodeURIComponent(row.diagnostico_id)}`
+  : `/diagnostico-tecnico?nuevo=mantenimiento&recepcion=${encodeURIComponent(row?.id || '')}`;
+const abrirDiagnostico = url => { window.location.hash = url; };
 
-const serializarObservaciones = (observaciones, checklist) => {
-  const resumen = CHECKLIST_ITEMS
-    .map(([key, label]) => `${label}: ${checklist?.[key] ? 'Sí' : 'No registrado'}`)
-    .join(' | ');
-  return [String(observaciones || '').trim(), `Checklist de condición: ${resumen}`].filter(Boolean).join('\n');
-};
-
-const badgeClass = estado => ({
-  recibido: 'chip orange',
-  en_diagnostico: 'chip cyan',
-  en_reparacion: 'chip amber',
-  listo_entrega: 'chip green',
-  entregado: 'chip gray',
-}[estado] || 'chip gray');
+function parsearObservaciones(value = '') {
+  const text = String(value || '');
+  const marker = /Checklist de condición:\s*/i;
+  const match = marker.exec(text);
+  const libres = (match ? text.slice(0, match.index) : text).trim().replace(/\|\s*$/, '').trim();
+  const checklist = {};
+  if (match) {
+    const raw = text.slice(match.index + match[0].length);
+    CHECKLIST_ITEMS.forEach(([key, label]) => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const result = new RegExp(`${escaped}:\\s*(Sí|No registrado)`, 'i').exec(raw);
+      if (result) checklist[key] = result[1].toLowerCase() === 'sí';
+    });
+  }
+  return { observaciones: libres, checklist };
+}
 
 export function RecepcionActivosClientePage() {
   const sesion = useSesionOperativa();
@@ -77,7 +55,8 @@ export function RecepcionActivosClientePage() {
   const [clientes, setClientes] = useState([]);
   const [almacenes, setAlmacenes] = useState([]);
   const [recepciones, setRecepciones] = useState([]);
-  const [form, setForm] = useState(() => emptyForm(sociedadId));
+  const [diagnosticos, setDiagnosticos] = useState({});
+  const [form, setForm] = useState(() => blankForm(sociedadId));
   const [assetSearch, setAssetSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,413 +65,234 @@ export function RecepcionActivosClientePage() {
   const [puedeCrear, setPuedeCrear] = useState(false);
   const [puedeEditar, setPuedeEditar] = useState(false);
   const [fotos, setFotos] = useState([]);
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [adjuntosLoading, setAdjuntosLoading] = useState(false);
+  const [adjuntosError, setAdjuntosError] = useState('');
   const [altaActivoForm, setAltaActivoForm] = useState(null);
-  const [altaActivoModalAbierta, setAltaActivoModalAbierta] = useState(false);
+  const [altaActivoAbierta, setAltaActivoAbierta] = useState(false);
   const [componentesCatalogo, setComponentesCatalogo] = useState([]);
+  const [view, setView] = useState('list');
+  const [selectedId, setSelectedId] = useState('');
+  const [filter, setFilter] = useState('todos');
+  const [query, setQuery] = useState('');
+  const [banner, setBanner] = useState(null);
 
-  const showToast = message => {
-    setToast(message);
-    window.setTimeout(() => setToast(null), 3500);
-  };
-
+  const showToast = message => { setToast(message); window.setTimeout(() => setToast(null), 3500); };
   const cargar = useCallback(async () => {
-    if (!empresaId || !sociedadId || sesion.estado !== 'listo') {
-      setActivos([]);
-      setClientes([]);
-      setAlmacenes([]);
-      setRecepciones([]);
-      return;
-    }
-    setLoading(true);
-    setError('');
+    if (!empresaId || !sociedadId || sesion.estado !== 'listo') { setActivos([]); setClientes([]); setAlmacenes([]); setRecepciones([]); return; }
+    setLoading(true); setError('');
     try {
-      const [activosData, clientesData, almacenesData, recepcionesData] = await Promise.all([
-        listarActivosCliente(empresaId, sociedadId),
-        listarClientes(empresaId),
-        listarAlmacenes(empresaId, sociedadId),
-        listarRecepciones(empresaId, sociedadId),
-      ]);
-      setActivos(activosData);
-      setClientes(clientesData);
-      setAlmacenes(almacenesData);
-      setRecepciones(recepcionesData);
-    } catch (cargaError) {
-      setError(cargaError?.message || 'No se pudo cargar la recepción de activos.');
-    } finally {
-      setLoading(false);
-    }
+      const [assets, accounts, warehouses, receipts] = await Promise.all([listarActivosCliente(empresaId, sociedadId), listarClientes(empresaId), listarAlmacenes(empresaId, sociedadId), listarRecepciones(empresaId, sociedadId)]);
+      setActivos(assets); setClientes(accounts); setAlmacenes(warehouses); setRecepciones(receipts);
+      try { setDiagnosticos(await listarEstadosDiagnosticoRecepcion(empresaId, receipts.map(row => row.id))); } catch { setDiagnosticos({}); }
+    } catch (loadError) { setError(loadError?.message || 'No se pudo cargar la recepción de activos.'); }
+    finally { setLoading(false); }
   }, [empresaId, sociedadId, sesion.estado]);
-
   useEffect(() => { cargar(); }, [cargar]);
-
   useEffect(() => {
     let active = true;
     if (!empresaId || !sociedadId || sesion.estado !== 'listo') { setComponentesCatalogo([]); return () => { active = false; }; }
     catalogoComponentesService.listar(empresaId, sociedadId).then(rows => { if (active) setComponentesCatalogo(rows || []); }).catch(() => { if (active) setComponentesCatalogo([]); });
     return () => { active = false; };
   }, [empresaId, sociedadId, sesion.estado]);
-
   useEffect(() => {
     if (sesion.estado !== 'listo' || !empresaId) return undefined;
-    let vigente = true;
-    const cargarPermisos = async () => {
+    let active = true;
+    (async () => {
       const supabase = getSupabaseClient();
-      const [crear, editar] = await Promise.all([
+      const [create, edit] = await Promise.all([
         supabase.rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'recepcion_activos_cliente', target_accion: 'crear' }),
         supabase.rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'recepcion_activos_cliente', target_accion: 'editar' }),
       ]);
-      if (!vigente) return;
-      setPuedeCrear(!crear.error && Boolean(crear.data));
-      setPuedeEditar(!editar.error && Boolean(editar.data));
-    };
-    cargarPermisos().catch(permissionError => {
-      if (vigente) setError(permissionError?.message || 'No se pudieron verificar los permisos.');
-    });
-    return () => { vigente = false; };
+      if (active) { setPuedeCrear(!create.error && Boolean(create.data)); setPuedeEditar(!edit.error && Boolean(edit.data)); }
+    })().catch(permissionError => { if (active) setError(permissionError?.message || 'No se pudieron verificar los permisos.'); });
+    return () => { active = false; };
   }, [empresaId, sesion.estado]);
+  useEffect(() => { if (sociedadId && form.sociedad_id !== sociedadId) setForm(current => ({ ...current, sociedad_id: sociedadId })); }, [sociedadId, form.sociedad_id]);
+
+  const activosPorId = useMemo(() => new Map(activos.map(item => [item.id, item])), [activos]);
+  const clientesPorId = useMemo(() => new Map(clientes.map(item => [item.id, item])), [clientes]);
+  const almacenesPorId = useMemo(() => new Map(almacenes.map(item => [item.id, item])), [almacenes]);
+  const recepcion = recepciones.find(item => item.id === selectedId);
+  const activoDetalle = activosPorId.get(recepcion?.activo_id);
+  const activosVisibles = useMemo(() => {
+    const term = assetSearch.trim().toLowerCase();
+    return activos.filter(item => (!form.cliente_id || item.cliente_propietario_id === form.cliente_id) && (!term || [item.codigo, item.nombre, item.marca, item.modelo, item.placa_serie].filter(Boolean).join(' ').toLowerCase().includes(term))).slice(0, 50);
+  }, [activos, assetSearch, form.cliente_id]);
+  const filtradas = useMemo(() => recepciones.filter(row => {
+    const current = diagnosticos[row.id];
+    const estado = row.estado_custodia || 'recibido';
+    const matchesFilter = filter === 'todos' || filter === estado;
+    const asset = activosPorId.get(row.activo_id);
+    const client = clientesPorId.get(asset?.cliente_propietario_id);
+    const haystack = [row.numero, row.numero_caso, asset?.nombre, asset?.codigo, nombreCliente(client)].join(' ').toLowerCase();
+    return matchesFilter && (!query.trim() || haystack.includes(query.trim().toLowerCase())) && Boolean(current || !current);
+  }), [recepciones, filter, diagnosticos, activosPorId, clientesPorId, query]);
+  const resumen = useMemo(() => ({
+    total: recepciones.length,
+    diagnosticar: recepciones.filter(row => !diagnosticos[row.id]?.estado).length,
+    diagnostico: recepciones.filter(row => diagnosticos[row.id]?.estado === 'borrador' || row.estado_custodia === 'en_diagnostico').length,
+    taller: recepciones.filter(row => ['en_reparacion', 'listo_entrega'].includes(row.estado_custodia)).length,
+  }), [recepciones, diagnosticos]);
+  const conteos = useMemo(() => Object.fromEntries(['todos', ...ESTADOS_CUSTODIA].map(key => [key, key === 'todos' ? recepciones.length : recepciones.filter(row => (row.estado_custodia || 'recibido') === key).length])), [recepciones]);
 
   useEffect(() => {
-    if (sociedadId && form.sociedad_id !== sociedadId) setForm(actual => ({ ...actual, sociedad_id: sociedadId }));
-  }, [sociedadId, form.sociedad_id]);
+    let current = true;
+    if (view !== 'detail' || !recepcion?.id) { setAdjuntos([]); setAdjuntosError(''); return () => { current = false; }; }
+    setAdjuntosLoading(true); setAdjuntosError('');
+    cargarAdjuntosPorEntidades({ empresaId, entidadTipo: 'recepciones_activos_cliente', entidadIds: [recepcion.id] })
+      .then(async rows => Promise.all((rows || []).map(async row => ({ ...row, vistaUrl: await obtenerUrlAdjunto(row) }))))
+      .then(rows => { if (current) setAdjuntos(rows.filter(row => row.vistaUrl)); })
+      .catch(loadError => { if (current) setAdjuntosError(loadError?.message || 'No se pudieron cargar las fotografías.'); })
+      .finally(() => { if (current) setAdjuntosLoading(false); });
+    return () => { current = false; };
+  }, [empresaId, recepcion?.id, view]);
 
-  const activosVisibles = useMemo(() => {
-    const termino = assetSearch.trim().toLowerCase();
-    return activos.filter(activo => {
-      if (form.cliente_id && activo.cliente_propietario_id !== form.cliente_id) return false;
-      if (!termino) return true;
-      return nombreActivo(activo).toLowerCase().includes(termino);
-    }).slice(0, 50);
-  }, [activos, assetSearch, form.cliente_id]);
-
-  const activosPorId = useMemo(() => new Map(activos.map(activo => [activo.id, activo])), [activos]);
-  const clientesPorId = useMemo(() => new Map(clientes.map(cliente => [cliente.id, cliente])), [clientes]);
-  const almacenesPorId = useMemo(() => new Map(almacenes.map(almacen => [almacen.id, almacen])), [almacenes]);
-
-  const actualizarForm = (campo, valor) => setForm(actual => ({ ...actual, [campo]: valor }));
-
-  const seleccionarActivo = activo => {
-    setForm(actual => ({
-      ...actual,
-      activo_id: activo.id,
-      cliente_id: activo.cliente_propietario_id || '',
-      tipo_activo: activo.tipo_activo || '',
-      componente_catalogo_id: activo.componente_catalogo_id || '',
-    }));
-    setAssetSearch(nombreActivo(activo));
-  };
-
+  const actualizarForm = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const seleccionarActivo = item => { setForm(current => ({ ...current, activo_id: item.id, cliente_id: item.cliente_propietario_id || '', tipo_activo: item.tipo_activo || '', componente_catalogo_id: item.componente_catalogo_id || '' })); setAssetSearch(item.codigo || item.nombre || ''); };
+  const abrirNuevaRecepcion = () => { setForm(blankForm(sociedadId)); setAssetSearch(''); setAltaActivoForm(null); setAltaActivoAbierta(false); setFotos([]); setError(''); setBanner(null); setView('new'); };
+  const actualizarAltaActivo = (key, value) => { setAltaActivoForm(current => current ? { ...current, [key]: value } : current); if (key === 'tipo_activo') actualizarForm('tipo_activo', value); };
   const abrirAltaActivo = () => {
-    if (!form.cliente_id) {
-      setError('Selecciona un cliente antes de registrar un activo nuevo.');
-      return;
-    }
-    if (!puedeCrear || !sesion.permiteEscritura) {
-      setError('Tu rol o la sociedad activa no permiten registrar activos.');
-      return;
-    }
-    setAltaActivoForm({
-      tipo_activo: form.tipo_activo || '',
-      componente_catalogo_id: form.componente_catalogo_id || '',
-      codigo_origen: '',
-      nombre: '',
-      marca: '',
-      modelo: '',
-      placa_serie: '',
-      año_fabricacion: '',
-      año_overhaul: '',
-    });
-    setAltaActivoModalAbierta(true);
-    setError('');
+    if (!form.cliente_id) { setError('Selecciona un cliente antes de registrar un activo nuevo.'); return; }
+    if (!puedeCrear || !sesion.permiteEscritura) { setError('Tu rol o la sociedad activa no permiten registrar activos.'); return; }
+    setAltaActivoForm({ tipo_activo: form.tipo_activo || '', componente_catalogo_id: form.componente_catalogo_id || '', codigo_origen: '', nombre: assetSearch.trim(), marca: '', modelo: '', placa_serie: '', año_fabricacion: '', año_overhaul: '' });
+    setAltaActivoAbierta(true); setError('');
   };
-
-  const actualizarAltaActivo = (campo, valor) => {
-    setAltaActivoForm(actual => actual ? { ...actual, [campo]: valor } : actual);
-    if (campo === 'tipo_activo') setForm(actual => ({ ...actual, tipo_activo: valor }));
-  };
-
   const guardarAltaActivo = () => {
-    if (!altaActivoForm) return;
-    if (!puedeCrear || !sesion.permiteEscritura) {
-      setError('Tu rol o la sociedad activa no permiten registrar activos.');
-      return;
+    if (!altaActivoForm) return false;
+    if (!puedeCrear || !sesion.permiteEscritura) { setError('Tu rol o la sociedad activa no permiten registrar activos.'); return false; }
+    if (!altaActivoForm.tipo_activo) { setError('Selecciona el tipo de activo antes de registrar.'); return false; }
+    if (!String(altaActivoForm.nombre || '').trim()) { setError('El nombre es obligatorio para registrar el activo.'); return false; }
+    if (altaActivoForm.tipo_activo === 'maquinaria_completa' && !String(altaActivoForm.marca || '').trim()) { setError('La marca es obligatoria para una maquinaria completa.'); return false; }
+    if (altaActivoForm.tipo_activo === 'maquinaria_completa' && !String(altaActivoForm.modelo || '').trim()) { setError('El modelo es obligatorio para una maquinaria completa.'); return false; }
+    for (const [key, label] of [['año_fabricacion', 'El año de fabricación'], ['año_overhaul', 'El año de overhaul']]) {
+      const value = altaActivoForm[key]; if (value === '' || value == null) continue;
+      const year = Number(value); if (!Number.isInteger(year) || year < 1800 || year > ANIO_MAXIMO_ACTIVO) { setError(`${label} debe ser un año entero entre 1800 y ${ANIO_MAXIMO_ACTIVO}.`); return false; }
     }
-    if (!altaActivoForm.tipo_activo) {
-      setError('Selecciona el tipo de activo antes de registrar.');
-      return;
-    }
-    if (!String(altaActivoForm.nombre || '').trim()) {
-      setError('El nombre es obligatorio para registrar el activo.');
-      return;
-    }
-    if (altaActivoForm.tipo_activo === 'maquinaria_completa') {
-      if (!String(altaActivoForm.marca || '').trim()) {
-        setError('La marca es obligatoria para una maquinaria completa.');
-        return;
-      }
-      if (!String(altaActivoForm.modelo || '').trim()) {
-        setError('El modelo es obligatorio para una maquinaria completa.');
-        return;
-      }
-    }
-    for (const [campo, etiqueta] of [['año_fabricacion', 'El año de fabricación'], ['año_overhaul', 'El año de overhaul']]) {
-      const valor = altaActivoForm[campo];
-      if (valor === undefined || valor === null || String(valor).trim() === '') continue;
-      const anio = Number(valor);
-      if (!Number.isInteger(anio) || anio < 1800 || anio > ANIO_MAXIMO_ACTIVO) {
-        setError(`${etiqueta} debe ser un año entero entre 1800 y ${ANIO_MAXIMO_ACTIVO}.`);
-        return;
-      }
-    }
-    setError('');
-    setAltaActivoModalAbierta(false);
-    showToast('Activo preparado; se creará al registrar la recepción.');
+    setError(''); setAltaActivoAbierta(false); showToast('Activo preparado; se creará al registrar la recepción.'); return true;
   };
-
-  const abrirNuevaRecepcion = () => {
-    setForm(emptyForm(sociedadId));
-    setAssetSearch('');
-    setAltaActivoForm(null);
-    setAltaActivoModalAbierta(false);
-    setFotos([]);
-    setError('');
+  const seleccionarFotos = event => { const files = [...(event.target.files || [])]; setFotos(current => [...current, ...files].slice(0, 8)); event.currentTarget.value = ''; };
+  const cambiarEstado = async (id, estado) => {
+    if (!puedeEditar || !sesion.permiteEscritura) { setError('Tu rol o la sociedad activa no permiten editar recepciones.'); return; }
+    try { const updated = await actualizarEstadoCustodia(empresaId, id, estado); setRecepciones(current => current.map(row => row.id === id ? { ...row, ...updated } : row)); showToast(`Estado actualizado a ${ESTADO_LABELS[estado] || estado}.`); }
+    catch (stateError) { setError(stateError?.message || 'No se pudo actualizar el estado de custodia.'); }
   };
-
-  const seleccionarFotos = event => {
-    const nuevas = [...(event.target.files || [])];
-    setFotos(actuales => [...actuales, ...nuevas].slice(0, 8));
-    event.currentTarget.value = '';
-  };
-
-  const quitarFoto = foto => setFotos(actuales => actuales.filter(item => item !== foto));
-
   const guardar = async event => {
     event.preventDefault();
-    if (!puedeCrear || !sesion.permiteEscritura) {
-      setError('Tu rol o la sociedad activa no permiten registrar recepciones.');
-      return;
-    }
+    if (!puedeCrear || !sesion.permiteEscritura) { setError('Tu rol o la sociedad activa no permiten registrar recepciones.'); return; }
     const activoExistente = altaActivoForm ? null : activosPorId.get(form.activo_id);
+    if (!form.cliente_id) { setError('Selecciona el cliente propietario.'); return; }
+    if (!form.almacen_id) { setError('Selecciona el almacén de custodia.'); return; }
+    if (!form.fecha_ingreso) { setError('La fecha de ingreso es obligatoria.'); return; }
     if (!altaActivoForm && !activoExistente) { setError('Selecciona un activo de cliente válido.'); return; }
     if (!altaActivoForm && activoExistente.cliente_propietario_id !== form.cliente_id) { setError('El activo seleccionado no corresponde al cliente elegido.'); return; }
-
-    setSaving(true);
-    setError('');
+    if (altaActivoForm && !guardarAltaActivo()) return;
+    setSaving(true); setError('');
     try {
-      const resultado = altaActivoForm
-        ? await crearActivoClienteYRecepcion(empresaId, {
-          ...altaActivoForm,
-          cliente_propietario_id: form.cliente_id,
-          sociedad_id: form.sociedad_id,
-          fecha_ingreso: form.fecha_ingreso,
-          hora_ingreso: form.hora_ingreso,
-          guia_ingreso: form.guia_ingreso,
-          almacen_id: form.almacen_id,
-          observaciones: serializarObservaciones(form.observaciones, form.checklist),
-        })
-        : { recepcion: await crearRecepcion(empresaId, {
-          ...form,
-          observaciones: serializarObservaciones(form.observaciones, form.checklist),
-        }), activo: activoExistente };
-      const recepcion = resultado.recepcion;
-      const activo = resultado.activo || activoExistente;
-      const tipoActivo = altaActivoForm?.tipo_activo || form.tipo_activo || activo?.tipo_activo;
-      const componenteId = altaActivoForm?.tipo_activo === 'componente' ? altaActivoForm.componente_catalogo_id : form.componente_catalogo_id;
-      if (activo && tipoActivo === 'componente' && (componenteId || activo.componente_catalogo_id)) {
-        const selectionChanged = componenteId !== activo.componente_catalogo_id;
-        if (selectionChanged) await asignarComponenteCatalogoActivo(empresaId, activo.id, componenteId || null);
+      const observaciones = [String(form.observaciones || '').trim(), `Checklist de condición: ${CHECKLIST_ITEMS.map(([key, label]) => `${label}: ${form.checklist[key] ? 'Sí' : 'No registrado'}`).join(' | ')}`].filter(Boolean).join('\n');
+      const result = altaActivoForm
+        ? await crearActivoClienteYRecepcion(empresaId, { ...altaActivoForm, cliente_propietario_id: form.cliente_id, sociedad_id: form.sociedad_id, fecha_ingreso: form.fecha_ingreso, hora_ingreso: form.hora_ingreso, guia_ingreso: form.guia_ingreso, lectura_valor: form.lectura_valor, lectura_unidad: form.lectura_unidad, almacen_id: form.almacen_id, observaciones })
+        : { recepcion: await crearRecepcion(empresaId, { ...form, observaciones }), activo: activoExistente };
+      const created = result.recepcion;
+      const asset = result.activo || activoExistente;
+      const type = altaActivoForm?.tipo_activo || form.tipo_activo || asset?.tipo_activo;
+      const componentId = altaActivoForm?.tipo_activo === 'componente' ? altaActivoForm.componente_catalogo_id : form.componente_catalogo_id;
+      if (asset && type === 'componente' && (componentId || asset.componente_catalogo_id) && componentId !== asset.componente_catalogo_id) await asignarComponenteCatalogoActivo(empresaId, asset.id, componentId || null);
+      const photoErrors = [];
+      for (const photo of fotos) {
+        try { await subirAdjunto({ empresaId, entidadTipo: 'recepciones_activos_cliente', entidadId: created.id, file: photo, categoria: 'condicion_activo', descripcion: `Evidencia de condición de ${asset?.codigo || asset?.id}`, subidoPor: sesion.usuario?.id || null }); }
+        catch (photoError) { photoErrors.push(`${photo.name}: ${photoError?.message || 'error de carga'}`); }
       }
-      const erroresFotos = [];
-      for (const foto of fotos) {
-        try {
-          await subirAdjunto({
-            empresaId,
-            entidadTipo: 'recepciones_activos_cliente',
-            entidadId: recepcion.id,
-            file: foto,
-            categoria: 'condicion_activo',
-            descripcion: `Evidencia de condición de ${activo?.codigo || activo?.id}`,
-            subidoPor: sesion.usuario?.id || null,
-          });
-        } catch (fotoError) {
-          erroresFotos.push(`${foto.name}: ${fotoError?.message || 'error de carga'}`);
-        }
-      }
-      if (activo) {
-        setActivos(actuales => [activo, ...actuales.filter(item => item.id !== activo.id)]);
-      }
-      setRecepciones(actuales => [recepcion, ...actuales]);
-      abrirNuevaRecepcion();
-      showToast(erroresFotos.length ? `Recepción ${recepcion.numero} creada; algunas fotos fallaron.` : `Recepción ${recepcion.numero} registrada.`);
-      if (erroresFotos.length) setError(`La recepción se creó, pero no se cargaron: ${erroresFotos.join('; ')}`);
-    } catch (saveError) {
-      setError(saveError?.message || 'No se pudo registrar la recepción.');
-    } finally {
-      setSaving(false);
-    }
+      if (asset) setActivos(current => [asset, ...current.filter(item => item.id !== asset.id)]);
+      setRecepciones(current => [created, ...current]); setSelectedId(created.id); setDiagnosticos(current => ({ ...current, [created.id]: null })); setBanner({ kind: 'ok', text: `Recepción ${created.numero} registrada. El siguiente paso es el diagnóstico.` });
+      setForm(blankForm(sociedadId)); setAssetSearch(''); setAltaActivoForm(null); setAltaActivoAbierta(false); setFotos([]); setView('detail');
+      if (photoErrors.length) setError(`La recepción se creó, pero no se cargaron: ${photoErrors.join('; ')}`);
+      showToast(photoErrors.length ? `Recepción ${created.numero} creada; algunas fotos fallaron.` : `Recepción ${created.numero} registrada.`);
+    } catch (saveError) { setError(saveError?.message || 'No se pudo registrar la recepción.'); }
+    finally { setSaving(false); }
   };
 
-  const cambiarEstado = async (recepcionId, nuevoEstado) => {
-    if (!puedeEditar || !sesion.permiteEscritura) {
-      setError('Tu rol o la sociedad activa no permiten editar recepciones.');
-      return;
-    }
-    try {
-      const actualizada = await actualizarEstadoCustodia(empresaId, recepcionId, nuevoEstado);
-      setRecepciones(actuales => actuales.map(item => item.id === recepcionId ? { ...item, ...actualizada } : item));
-      showToast(`Estado actualizado a ${ESTADO_LABELS[nuevoEstado] || nuevoEstado}.`);
-    } catch (stateError) {
-      setError(stateError?.message || 'No se pudo actualizar el estado de custodia.');
-    }
+  const openDetail = row => { setSelectedId(row.id); setBanner(null); setError(''); setView('detail'); };
+  const toList = () => { setView('list'); setBanner(null); setError(''); };
+  const currentDiag = recepcion ? diagnosticos[recepcion.id] : null;
+  const diagnosticAction = row => {
+    const diag = diagnosticos[row.id];
+    if (diag?.estado === 'emitido') return <button type="button" className="dx-ui-pill is-green dx-recact-inline-pill" onClick={event => { event.stopPropagation(); abrirDiagnostico(diagnosticUrl({ id: row.id, diagnostico_id: diag.id })); }}>Diagnóstico emitido · Ver diagnóstico</button>;
+    if (diag?.estado === 'borrador') return <button type="button" className="dx-recact-link" onClick={event => { event.stopPropagation(); abrirDiagnostico(diagnosticUrl({ id: row.id, diagnostico_id: diag.id })); }}>Continuar borrador →</button>;
+    return <button type="button" className="dx-recact-link" onClick={event => { event.stopPropagation(); abrirDiagnostico(diagnosticUrl(row)); }}>Iniciar diagnóstico →</button>;
   };
+  const missing = [!form.cliente_id && 'cliente', !form.almacen_id && 'almacén', !(form.activo_id || (altaActivoForm && !altaActivoAbierta)) && 'activo', !form.fecha_ingreso && 'fecha de ingreso', altaActivoAbierta && 'datos del activo nuevo'].filter(Boolean);
+  const bloqueada = !sociedadId || !sesion.permiteEscritura;
 
-  const sociedadBloqueada = !sociedadId || !sesion.permiteEscritura;
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <div className="eyebrow">Taller · Almacén</div>
-          <h1>Recepción de activos de cliente</h1>
-          <div className="sub">Ingreso, custodia y condición inicial del activo recibido.</div>
-        </div>
-        <button className="btn btn-primary" type="button" onClick={abrirNuevaRecepcion} disabled={!puedeCrear || sociedadBloqueada}>
-          <Icon name="plus" size={14} /> Nueva recepción
-        </button>
+  return <section className="dx-ui dx-recact">
+    {view === 'list' && <>
+      <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Taller · Almacén</div><h1>Recepción de activos de cliente</h1><p>Ingreso, custodia y condición inicial del activo recibido.</p></div><button type="button" className="btn btn-primary" onClick={abrirNuevaRecepcion} disabled={!puedeCrear || bloqueada}>＋ Nueva recepción</button></header>
+      {!sociedadId && <div className="dx-recact-alert">Selecciona una sociedad operativa para cargar activos, almacenes y recepciones.</div>}
+      {!sesion.permiteEscritura && sociedadId && <div className="dx-recact-alert">Vista consolidada o de solo lectura: no se permite crear ni editar recepciones.</div>}
+      {!puedeCrear && sesion.estado === 'listo' && <div className="dx-recact-alert is-error">No tienes permiso para crear recepciones de activos de cliente.</div>}
+      {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}
+      <div className="dx-ui-summary"><div className="dx-ui-chip"><b>{resumen.total}</b><span>Recepciones</span></div><div className="dx-ui-chip"><b>{resumen.diagnosticar}</b><span>Por diagnosticar</span></div><div className="dx-ui-chip"><b>{resumen.diagnostico}</b><span>En diagnóstico</span></div><div className="dx-ui-chip"><b>{resumen.taller}</b><span>En taller o listos</span></div></div>
+      <div className="dx-ui-card dx-recact-card"><div className="dx-ui-toolbar"><h2>Recepciones de activos</h2><span className="dx-ui-count">{loading ? 'Cargando…' : `${filtradas.length} de ${recepciones.length}`}</span><label className="dx-ui-search"><span aria-hidden="true">⌕</span><input aria-label="Buscar por recepción, activo o cliente" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar recepción, activo o cliente" /></label></div>
+        <div className="dx-recact-tabs" role="tablist" aria-label="Filtrar por custodia">{[['todos', 'Todas'], ...ESTADOS_CUSTODIA.map(state => [state, ESTADO_LABELS[state]])].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? 'is-active' : ''} onClick={() => setFilter(key)}>{label}<small>{conteos[key]}</small></button>)}</div>
+        <div className="dx-ui-head dx-recact-cols" aria-hidden="true"><span>Recepción</span><span>Activo</span><span>Ingreso</span><span>Custodia</span><span>Diagnóstico</span><span /></div>
+        {loading && !recepciones.length ? <div className="dx-ui-empty">Cargando recepciones…</div> : !recepciones.length ? <div className="dx-ui-empty">Aún no hay recepciones para la sociedad activa.</div> : !filtradas.length ? <div className="dx-ui-empty">No hay recepciones que coincidan con la búsqueda o el filtro.</div> : filtradas.map(row => {
+          const asset = activosPorId.get(row.activo_id); const client = clientesPorId.get(asset?.cliente_propietario_id); const warehouse = almacenesPorId.get(row.almacen_id);
+          return <div key={row.id} className="dx-ui-row dx-recact-cols" role="button" tabIndex={0} onClick={() => openDetail(row)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openDetail(row); } }}>
+            <div className="dx-recact-num"><b>{row.numero || row.id}</b><small>Caso {row.numero_caso || '—'}</small></div><div className="dx-recact-asset"><b>{nombreActivo(asset)}</b><small>{asset?.codigo || row.activo_id} · {nombreCliente(client)}</small></div><div className="dx-recact-ing"><b>{dateLabel(row.fecha_ingreso)}{row.hora_ingreso ? ` · ${String(row.hora_ingreso).slice(0, 5)}` : ''}</b><small>{warehouse?.nombre || 'Sin almacén'}</small></div><span className={`dx-ui-pill ${estadoCustodiaClass(row.estado_custodia)}`}><i />{ESTADO_LABELS[row.estado_custodia] || 'Recibido'}</span><div className="dx-recact-diagnosis">{diagnosticAction(row)}</div><span className="dx-ui-arrow" aria-hidden="true">›</span>
+          </div>;
+        })}
       </div>
+    </>}
 
-      {!sociedadId && <div className="card" style={{ marginBottom: 12, color: '#b45309' }}>Selecciona una sociedad operativa para cargar activos, almacenes y recepciones.</div>}
-      {!sesion.permiteEscritura && sociedadId && <div className="card" style={{ marginBottom: 12, color: '#b45309' }}>Vista consolidada o de solo lectura: no se permite crear ni editar recepciones.</div>}
-      {!puedeCrear && sesion.estado === 'listo' && <div className="card" style={{ marginBottom: 12, color: '#b91c1c' }}>No tienes permiso para crear recepciones de activos de cliente.</div>}
-      {error && <div className="card" style={{ marginBottom: 12, color: '#b91c1c', borderColor: '#fecaca' }}>{error}</div>}
+    {view === 'detail' && recepcion && <>
+      <button type="button" className="dx-recact-back" onClick={toList}>← Volver a recepciones</button>
+      <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Detalle de recepción</div><h1>{recepcion.numero || recepcion.id} · Caso {recepcion.numero_caso || '—'}</h1><p>{nombreActivo(activoDetalle)} · {nombreCliente(clientesPorId.get(activoDetalle?.cliente_propietario_id))}</p></div><span className={`dx-ui-pill ${estadoCustodiaClass(recepcion.estado_custodia)}`}><i />{ESTADO_LABELS[recepcion.estado_custodia] || 'Recibido'}</span></header>
+      {banner && <div className="dx-recact-banner">{banner.text}<button type="button" className="btn btn-primary" onClick={() => abrirDiagnostico(diagnosticUrl({ id: recepcion.id }))}>Iniciar diagnóstico</button></div>}
+      {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}
+      <div className="dx-recact-steps" aria-label="Pasos de custodia">{ESTADOS_CUSTODIA.map((state, index) => <button key={state} type="button" className={`${state === recepcion.estado_custodia ? 'is-current' : index < ESTADOS_CUSTODIA.indexOf(recepcion.estado_custodia) ? 'is-done' : ''}`} disabled={!puedeEditar || !sesion.permiteEscritura} onClick={() => cambiarEstado(recepcion.id, state)}><b>{index + 1}</b>{ESTADO_LABELS[state]}</button>)}</div>
+      <div className="dx-recact-detail"><div className="dx-recact-stack">
+        <section className="dx-recact-section"><header><h2>Datos de ingreso</h2></header><dl><div><dt>Cliente</dt><dd>{nombreCliente(clientesPorId.get(activoDetalle?.cliente_propietario_id))}</dd></div><div><dt>Almacén</dt><dd>{almacenesPorId.get(recepcion.almacen_id)?.nombre || '—'}</dd></div><div><dt>Activo</dt><dd>{activoDetalle?.codigo || recepcion.activo_id} · {nombreActivo(activoDetalle)}</dd></div><div><dt>Ingreso</dt><dd>{dateLabel(recepcion.fecha_ingreso)}{recepcion.hora_ingreso ? ` · ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</dd></div><div><dt>Guía</dt><dd>{recepcion.guia_ingreso || '—'}</dd></div>{recepcion.lectura_valor != null && <div><dt>Horómetro / lectura</dt><dd>{recepcion.lectura_valor} {recepcion.lectura_unidad || 'h'}</dd></div>}</dl></section>
+        <section className="dx-recact-section"><header><h2>Condición inicial</h2></header><div className="dx-recact-section-body">{(() => { const parsed = parsearObservaciones(recepcion.observaciones); return <><div className="dx-recact-checks">{CHECKLIST_ITEMS.map(([key, label]) => <span key={key} className={`dx-recact-check ${parsed.checklist[key] ? 'is-yes' : 'is-no'}`}><b>{parsed.checklist[key] === undefined ? '—' : parsed.checklist[key] ? 'Sí' : 'No registrado'}</b>{label}</span>)}</div><div className="dx-recact-free"><b>Observaciones</b><p>{parsed.observaciones || 'Sin observaciones registradas.'}</p></div></>; })()}</div></section>
+        <section className="dx-recact-section"><header><h2>Evidencia fotográfica</h2><span>{adjuntos.length} imagen{adjuntos.length === 1 ? '' : 'es'}</span></header><div className="dx-recact-section-body">{adjuntosLoading ? <div className="dx-ui-empty">Cargando fotografías…</div> : adjuntosError ? <div className="dx-ui-empty" role="alert">{adjuntosError}</div> : !adjuntos.length ? <div className="dx-ui-empty">No hay fotografías cargadas.</div> : <div className="dx-recact-photos">{adjuntos.map((item, index) => <a key={item.id || item.storage_path} href={item.vistaUrl} target="_blank" rel="noreferrer"><img src={item.vistaUrl} alt={`Evidencia fotográfica ${index + 1}`} /></a>)}</div>}</div></section>
+      </div><aside className="dx-recact-diagnosis-card"><h2>Diagnóstico técnico</h2><p>{currentDiag?.estado === 'emitido' ? 'El diagnóstico técnico ya fue emitido para esta recepción.' : currentDiag?.estado === 'borrador' ? 'Hay un diagnóstico en borrador asociado a esta recepción.' : 'Inicia el diagnóstico técnico desde los datos de ingreso de esta recepción.'}</p><button type="button" className="btn btn-primary" onClick={() => abrirDiagnostico(diagnosticUrl({ id: recepcion.id, diagnostico_id: currentDiag?.id }))}>{currentDiag?.estado === 'emitido' ? 'Ver diagnóstico' : currentDiag?.estado === 'borrador' ? 'Continuar borrador' : 'Iniciar diagnóstico'}</button></aside></div>
+    </>}
 
-      <form className="card" onSubmit={guardar} style={{ marginBottom: 16 }}>
-        <div className="card-header"><h3>Nueva recepción</h3><span className="hint">El número y el número de caso se asignan al guardar.</span></div>
-        <div className="card-body">
-          <div className="grid-2">
-            <div className="field">
-              <label>Cliente propietario *</label>
-              <select className="select" value={form.cliente_id} disabled={sociedadBloqueada || saving} onChange={event => { setAltaActivoForm(null); setAltaActivoModalAbierta(false); setForm(actual => ({ ...actual, cliente_id: event.target.value, activo_id: '' })); }}>
-                <option value="">Seleccionar cliente</option>
-                {clientes.map(cliente => <option key={cliente.id} value={cliente.id}>{nombreCliente(cliente)}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Almacén de custodia *</label>
-              <select className="select" value={form.almacen_id} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('almacen_id', event.target.value)}>
-                <option value="">Seleccionar almacén</option>
-                {almacenes.map(almacen => <option key={almacen.id} value={almacen.id}>{almacen.codigo ? `${almacen.codigo} · ` : ''}{almacen.nombre}</option>)}
-              </select>
-            </div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label>Buscar activo del cliente *</label>
-              <input className="input" value={assetSearch} disabled={sociedadBloqueada || saving} onChange={event => { setAltaActivoForm(null); setAltaActivoModalAbierta(false); setAssetSearch(event.target.value); setForm(actual => ({ ...actual, activo_id: '' })); }} placeholder="Código, nombre, marca, modelo o serie" />
-              {assetSearch && !form.activo_id && <div style={{ border: '1px solid var(--border)', borderRadius: 8, marginTop: 6, maxHeight: 180, overflow: 'auto' }}>
-                {activosVisibles.map(activo => <button key={activo.id} type="button" onClick={() => seleccionarActivo(activo)} style={{ display: 'block', width: '100%', border: 0, borderBottom: '1px solid var(--border)', background: 'transparent', padding: '9px 10px', textAlign: 'left', cursor: 'pointer' }}><strong className="mono">{activo.codigo}</strong> · {activo.nombre}{activo.modelo ? ` · ${activo.modelo}` : ''}</button>)}
-                {!activosVisibles.length && <div className="hint" style={{ padding: 10 }}>{!form.cliente_id ? 'Selecciona un cliente para ver sus activos.' : 'Este cliente no tiene activos registrados que coincidan con la búsqueda.'}</div>}
-                {!activosVisibles.length && form.cliente_id && puedeCrear && sesion.permiteEscritura && !altaActivoForm && <button type="button" className="btn btn-secondary" style={{ margin: '0 10px 10px' }} onClick={abrirAltaActivo}>Registrar &quot;{assetSearch.trim()}&quot; como activo nuevo</button>}
-              </div>}
-              {altaActivoForm && !altaActivoModalAbierta && <div className="hint" style={{ marginTop: 6 }}>Activo nuevo preparado; se registrará junto con la recepción al guardar.</div>}
-              {form.activo_id && <div className="hint" style={{ marginTop: 6 }}>Seleccionado: {nombreActivo(activosPorId.get(form.activo_id))}</div>}
-            </div>
-            <div className="field"><label>Fecha de ingreso *</label><input className="input" type="date" value={form.fecha_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('fecha_ingreso', event.target.value)} required /></div>
-            <div className="field"><label>Hora de ingreso</label><input className="input" type="time" value={form.hora_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('hora_ingreso', event.target.value)} /></div>
-            <div className="field"><label>Guía de ingreso</label><input className="input" value={form.guia_ingreso} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('guia_ingreso', event.target.value)} placeholder="N.° de guía o documento" /></div>
-            <div className="field"><label>Horómetro / kilometraje de ingreso <span className="hint">(opcional)</span></label><div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 8 }}><input className="input" type="number" min="0" step="0.01" inputMode="decimal" value={form.lectura_valor} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_valor', event.target.value)} placeholder="Sin dato" /><select className="select" value={form.lectura_unidad} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('lectura_unidad', event.target.value)}><option value="horas">Horas</option><option value="km">Km</option></select></div><div className="hint" style={{ marginTop: 4 }}>Si se informa, se conserva en el historial del activo.</div></div>
-            <div className="field"><label>Tipo de activo <span className="hint">(opcional)</span></label><select className="select" value={form.tipo_activo || activosPorId.get(form.activo_id)?.tipo_activo || ''} disabled={sociedadBloqueada || saving} onChange={event => setForm(actual => ({ ...actual, tipo_activo: event.target.value, componente_catalogo_id: '' }))}><option value="">Sin especificar</option><option value="componente">Componente</option><option value="maquinaria_completa">Maquinaria completa</option></select><div className="hint" style={{ marginTop: 4 }}>Se guarda en la ficha persistente del activo.</div></div>
-            {(form.tipo_activo || activosPorId.get(form.activo_id)?.tipo_activo) === 'componente' && <div className="field"><label>Tipo de componente <span className="hint">(opcional)</span></label><select className="select" value={form.componente_catalogo_id || activosPorId.get(form.activo_id)?.componente_catalogo_id || ''} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select><div className="hint" style={{ marginTop: 4 }}>El diagnóstico podrá usar el dibujo técnico de este tipo.</div></div>}
-            <div className="field"><label>Sociedad</label><input className="input" value={sesion.sociedadActiva?.nombre || sesion.sociedadActiva?.codigo || sociedadId || 'Sin sociedad'} readOnly /></div>
-            <div className="field" style={{ gridColumn: '1 / -1' }}><label>Observaciones</label><textarea className="input" rows="3" value={form.observaciones} disabled={sociedadBloqueada || saving} onChange={event => actualizarForm('observaciones', event.target.value)} /></div>
+    {view === 'new' && <>
+      <button type="button" className="dx-recact-back" onClick={toList}>← Volver a recepciones</button>
+      <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Taller · Almacén</div><h1>Nueva recepción</h1><p>El número y el número de caso se asignan al guardar.</p></div></header>
+      {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}
+      <form className="dx-recact-form" onSubmit={guardar}>
+        <section className="dx-recact-section"><header><h2>Cliente y activo</h2></header><div className="dx-recact-form-body"><div className="dx-recact-form-grid">
+          <label className="dx-recact-field">Cliente propietario <i>*</i><select className="dx-recact-control" value={form.cliente_id} disabled={bloqueada || saving} onChange={event => { actualizarForm('cliente_id', event.target.value); actualizarForm('activo_id', ''); setAssetSearch(''); setAltaActivoForm(null); setAltaActivoAbierta(false); }}><option value="">Seleccionar cliente</option>{clientes.map(item => <option key={item.id} value={item.id}>{nombreCliente(item)}</option>)}</select></label>
+          <label className="dx-recact-field">Almacén de custodia <i>*</i><select className="dx-recact-control" value={form.almacen_id} disabled={bloqueada || saving} onChange={event => actualizarForm('almacen_id', event.target.value)}><option value="">Seleccionar almacén</option>{almacenes.map(item => <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} · ` : ''}{item.nombre}</option>)}</select></label>
+          <div className="dx-recact-field is-full">Activo del cliente <i>*</i>{form.activo_id ? <div className="dx-recact-picked"><div><b>{activosPorId.get(form.activo_id)?.codigo} · {nombreActivo(activosPorId.get(form.activo_id))}</b><small>{nombreCliente(clientesPorId.get(form.cliente_id))}</small></div><button type="button" className="dx-recact-link" onClick={() => { actualizarForm('activo_id', ''); setAssetSearch(''); }}>Cambiar</button></div> : <><input className="dx-recact-control" aria-label="Buscar activo del cliente" placeholder="Código, nombre, marca, modelo o serie" value={assetSearch} disabled={bloqueada || saving} onChange={event => { setAssetSearch(event.target.value); actualizarForm('activo_id', ''); setAltaActivoForm(null); setAltaActivoAbierta(false); }} />{assetSearch && <div className="dx-recact-results">{activosVisibles.map(item => <button key={item.id} type="button" onClick={() => seleccionarActivo(item)}><b>{item.codigo}</b><span>{nombreActivo(item)}</span></button>)}{!activosVisibles.length && <p>{!form.cliente_id ? 'Selecciona un cliente para ver sus activos.' : 'No hay activos que coincidan.'}</p>}{form.cliente_id && puedeCrear && sesion.permiteEscritura && !altaActivoAbierta && <button type="button" className="dx-recact-new-asset-button" onClick={abrirAltaActivo}>＋ Registrar como activo nuevo</button>}</div>}</>}
+            {altaActivoForm && !altaActivoAbierta && <div className="dx-recact-picked"><div><b>{altaActivoForm.nombre}</b><small>Activo nuevo · se creará con la recepción</small></div><button type="button" className="dx-recact-link" onClick={() => setAltaActivoAbierta(true)}>Editar</button></div>}
+            {altaActivoAbierta && altaActivoForm && <div className="dx-recact-new-asset">
+              <h3>Registrar activo nuevo</h3>
+              <div className="dx-recact-form-grid">
+                <label className="dx-recact-field is-full">Tipo de activo <i>*</i><div className="dx-recact-segmented">{[['componente', 'Componente'], ['maquinaria_completa', 'Maquinaria completa']].map(([value, label]) => <button key={value} type="button" aria-pressed={altaActivoForm.tipo_activo === value} onClick={() => actualizarAltaActivo('tipo_activo', value)}>{label}</button>)}</div></label>
+                <label className="dx-recact-field">Nombre <i>*</i><input className="dx-recact-control" value={altaActivoForm.nombre} onChange={event => actualizarAltaActivo('nombre', event.target.value)} /></label>
+                <label className="dx-recact-field">Código<input className="dx-recact-control" value="Se asignará al guardar" readOnly /></label>
+                <label className="dx-recact-field">Código de origen<input className="dx-recact-control" value={altaActivoForm.codigo_origen} onChange={event => actualizarAltaActivo('codigo_origen', event.target.value)} /></label>
+                {altaActivoForm.tipo_activo === 'componente' && <label className="dx-recact-field">Tipo de componente<select className="dx-recact-control" value={altaActivoForm.componente_catalogo_id} onChange={event => actualizarAltaActivo('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>}
+                {['componente', 'maquinaria_completa'].includes(altaActivoForm.tipo_activo) && <label className="dx-recact-field">Marca {altaActivoForm.tipo_activo === 'maquinaria_completa' && <i>*</i>}<input className="dx-recact-control" value={altaActivoForm.marca} onChange={event => actualizarAltaActivo('marca', event.target.value)} /></label>}
+                {['componente', 'maquinaria_completa'].includes(altaActivoForm.tipo_activo) && <label className="dx-recact-field">Modelo {altaActivoForm.tipo_activo === 'maquinaria_completa' && <i>*</i>}<input className="dx-recact-control" value={altaActivoForm.modelo} onChange={event => actualizarAltaActivo('modelo', event.target.value)} /></label>}
+                {altaActivoForm.tipo_activo === 'maquinaria_completa' && <label className="dx-recact-field">Placa / serie / chasis<input className="dx-recact-control" value={altaActivoForm.placa_serie} onChange={event => actualizarAltaActivo('placa_serie', event.target.value)} /></label>}
+                {altaActivoForm.tipo_activo === 'maquinaria_completa' && <label className="dx-recact-field">Año de fabricación<input className="dx-recact-control" type="number" min="1800" max={ANIO_MAXIMO_ACTIVO} value={altaActivoForm.año_fabricacion} onChange={event => actualizarAltaActivo('año_fabricacion', event.target.value)} /></label>}
+                {altaActivoForm.tipo_activo === 'maquinaria_completa' && <label className="dx-recact-field">Año de overhaul<input className="dx-recact-control" type="number" min="1800" max={ANIO_MAXIMO_ACTIVO} value={altaActivoForm.año_overhaul} onChange={event => actualizarAltaActivo('año_overhaul', event.target.value)} /></label>}
+              </div>
+              <div className="dx-recact-inline-actions"><button type="button" className="btn" onClick={() => { setAltaActivoAbierta(false); setAltaActivoForm(null); }}>Cancelar alta</button><button type="button" className="btn btn-primary" onClick={guardarAltaActivo}>Usar en la recepción</button></div>
+            </div>}
           </div>
-
-          <div className="card" style={{ marginTop: 14, border: '1px solid var(--card-border)' }}>
-            <div className="card-header"><h3>Checklist de condición inicial</h3><span className="hint">Se conserva dentro de observaciones.</span></div>
-            <div className="card-body"><div className="grid-2">
-              {CHECKLIST_ITEMS.map(([key, label]) => <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={Boolean(form.checklist[key])} disabled={sociedadBloqueada || saving} onChange={event => setForm(actual => ({ ...actual, checklist: { ...actual.checklist, [key]: event.target.checked } }))} />{label}</label>)}
-            </div></div>
-          </div>
-
-          <div className="card" style={{ marginTop: 14, border: '1px solid var(--card-border)' }}>
-            <div className="card-header"><h3>Evidencia fotográfica</h3><span className="hint">Máximo 8 imágenes; se cargan después de crear la recepción.</span></div>
-            <div className="card-body">
-              <input className="input" type="file" accept="image/*" capture="environment" multiple disabled={sociedadBloqueada || saving} onChange={seleccionarFotos} />
-              {fotos.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>{fotos.map(foto => <div key={`${foto.name}-${foto.lastModified}`} className="chip" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{foto.name}<button type="button" onClick={() => quitarFoto(foto)} disabled={saving} style={{ border: 0, background: 'transparent', cursor: 'pointer' }}>×</button></div>)}</div>}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><button className="btn btn-primary" type="submit" disabled={saving || sociedadBloqueada || !puedeCrear}>{saving ? 'Guardando...' : 'Registrar recepción'}</button></div>
-        </div>
+          </div></div></section>
+        <section className="dx-recact-section"><header><h2>Datos de ingreso</h2></header><div className="dx-recact-form-body"><div className="dx-recact-form-grid"><label className="dx-recact-field">Fecha de ingreso <i>*</i><input className="dx-recact-control" type="date" value={form.fecha_ingreso} disabled={bloqueada || saving} onChange={event => actualizarForm('fecha_ingreso', event.target.value)} /></label><label className="dx-recact-field">Hora de ingreso<input className="dx-recact-control" type="time" value={form.hora_ingreso} disabled={bloqueada || saving} onChange={event => actualizarForm('hora_ingreso', event.target.value)} /></label><label className="dx-recact-field">Guía de ingreso<input className="dx-recact-control" value={form.guia_ingreso} disabled={bloqueada || saving} onChange={event => actualizarForm('guia_ingreso', event.target.value)} placeholder="N.° de guía o documento" /></label><div className="dx-recact-field">Horómetro o kilometraje <small>(opcional)</small><div className="dx-recact-input-pair"><input className="dx-recact-control" type="number" min="0" step="0.01" value={form.lectura_valor} disabled={bloqueada || saving} onChange={event => actualizarForm('lectura_valor', event.target.value)} placeholder="Sin dato" /><div className="dx-recact-segmented">{[['horas', 'Horas'], ['km', 'Km']].map(([value, label]) => <button key={value} type="button" aria-pressed={form.lectura_unidad === value} onClick={() => actualizarForm('lectura_unidad', value)}>{label}</button>)}</div></div></div><div className="dx-recact-field is-full">Tipo de activo <small>(opcional)</small><div className="dx-recact-segmented">{[['', 'Sin especificar'], ['componente', 'Componente'], ['maquinaria_completa', 'Maquinaria completa']].map(([value, label]) => <button key={value || 'none'} type="button" aria-pressed={form.tipo_activo === value} onClick={() => actualizarForm('tipo_activo', value)}>{label}</button>)}</div></div>{form.tipo_activo === 'componente' && <label className="dx-recact-field">Tipo de componente<select className="dx-recact-control" value={form.componente_catalogo_id} onChange={event => actualizarForm('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>}<label className="dx-recact-field is-full">Sociedad<input className="dx-recact-control" value={sesion.sociedadActiva?.nombre || sesion.sociedadActiva?.codigo || sociedadId || 'Sin sociedad'} readOnly /></label></div></div></section>
+        <section className="dx-recact-section"><header><h2>Condición inicial</h2><span>El checklist se guarda dentro de las observaciones.</span></header><div className="dx-recact-section-body"><div className="dx-recact-check-buttons">{CHECKLIST_ITEMS.map(([key, label]) => <button key={key} type="button" aria-pressed={Boolean(form.checklist[key])} onClick={() => setForm(current => ({ ...current, checklist: { ...current.checklist, [key]: !current.checklist[key] } }))}><b>{form.checklist[key] ? '✓ Sí' : '— No registrado'}</b>{label}</button>)}</div><label className="dx-recact-field dx-recact-observations">Observaciones<textarea className="dx-recact-control" rows="4" value={form.observaciones} disabled={bloqueada || saving} onChange={event => actualizarForm('observaciones', event.target.value)} placeholder="Rayaduras, golpes, faltantes, estado de sellos…" /></label></div></section>
+        <section className="dx-recact-section"><header><h2>Evidencia fotográfica</h2><span>{fotos.length} de 8 · se cargan al crear la recepción</span></header><div className="dx-recact-section-body"><label className="dx-recact-drop"><b>Tomar foto o subir imágenes</b><span>En tablet se abre la cámara trasera. Hasta 8 imágenes.</span><input type="file" accept="image/*" capture="environment" multiple disabled={bloqueada || saving || fotos.length >= 8} onChange={seleccionarFotos} /></label><div className="dx-recact-photos">{fotos.map((photo, index) => <div key={`${photo.name}-${photo.lastModified}`}><img src={previewUrl(photo)} alt={`Vista previa ${index + 1}`} /><button type="button" aria-label={`Quitar foto ${index + 1}`} onClick={() => setFotos(current => current.filter(item => item !== photo))}>×</button></div>)}</div></div></section>
+        <div className="dx-recact-action-bar"><span className={missing.length ? '' : 'is-ready'}>{missing.length ? <>Falta: <b>{missing.join(', ')}</b></> : <b>Todo listo para registrar.</b>}</span><button type="button" className="btn" onClick={toList}>Cancelar</button><button type="submit" className="btn btn-primary" disabled={saving || bloqueada || !puedeCrear || Boolean(missing.length)}>{saving ? 'Guardando…' : 'Registrar recepción'}</button></div>
       </form>
-
-      <div className="card">
-        <div className="card-header"><h3>Recepciones de la sociedad activa</h3><span className="hint">{loading ? 'Cargando...' : `${recepciones.length} recepción(es)`}</span></div>
-        <div className="card-body" style={{ overflowX: 'auto' }}>
-          <table className="tbl" style={{ minWidth: 920 }}><thead><tr><th>Recepción</th><th>Activo</th><th>Cliente</th><th>Ingreso</th><th>Almacén</th><th>Custodia</th><th>Acción</th></tr></thead><tbody>
-            {recepciones.map(recepcion => {
-              const activo = activosPorId.get(recepcion.activo_id);
-              return <tr key={recepcion.id}>
-                <td className="mono"><strong>{recepcion.numero || recepcion.id}</strong><div className="hint">Caso {recepcion.numero_caso || '—'}</div></td>
-                <td>{activo ? nombreActivo(activo) : recepcion.activo_id}</td>
-                <td>{nombreCliente(clientesPorId.get(activo?.cliente_propietario_id))}</td>
-                <td>{recepcion.fecha_ingreso || '—'}{recepcion.hora_ingreso ? ` ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</td>
-                <td>{almacenesPorId.get(recepcion.almacen_id)?.nombre || recepcion.almacen_id || '—'}</td>
-                <td><span className={badgeClass(recepcion.estado_custodia)}>{ESTADO_LABELS[recepcion.estado_custodia] || recepcion.estado_custodia || 'Recibido'}</span></td>
-                <td><select className="select" value={recepcion.estado_custodia || 'recibido'} disabled={!puedeEditar || !sesion.permiteEscritura} onChange={event => cambiarEstado(recepcion.id, event.target.value)}>{ESTADOS_CUSTODIA.map(estado => <option key={estado} value={estado}>{ESTADO_LABELS[estado]}</option>)}</select></td>
-              </tr>;
-            })}
-            {!recepciones.length && <tr><td colSpan="7" className="text-center text-muted" style={{ padding: 24 }}>{loading ? 'Cargando recepciones...' : 'No hay recepciones para la sociedad activa.'}</td></tr>}
-          </tbody></table>
-        </div>
-      </div>
-
-      {altaActivoModalAbierta && altaActivoForm && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', zIndex: 1001, display: 'grid', placeItems: 'center', padding: 20, overflowY: 'auto' }}
-          onClick={event => { if (event.target === event.currentTarget && !saving) { setAltaActivoForm(null); setAltaActivoModalAbierta(false); } }}
-        >
-          <div className="card" style={{ width: '100%', maxWidth: 760, animation: 'fadeInUp 0.2s ease-out', margin: 'auto' }}>
-            <div className="card-header" style={{ background: 'var(--navy)', color: 'white', borderRadius: '8px 8px 0 0', justifyContent: 'space-between' }}>
-              <div><h3 style={{ margin: 0, color: 'white' }}>Registrar activo nuevo</h3><div style={{ fontSize: 12, opacity: .75, marginTop: 2 }}>Se asociará al cliente seleccionado.</div></div>
-              <button type="button" className="icon-btn" onClick={() => { setAltaActivoForm(null); setAltaActivoModalAbierta(false); }} disabled={saving} style={{ color: 'white', flexShrink: 0 }}><Icon name="x" size={16} /></button>
-            </div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {error && <div className="alert alert-error">{error}</div>}
-              <div className="field">
-                <label>Tipo de activo *</label>
-                <select className="select" value={altaActivoForm.tipo_activo} disabled={saving} onChange={event => actualizarAltaActivo('tipo_activo', event.target.value)} autoFocus>
-                  <option value="">Seleccionar tipo...</option>
-                  <option value="componente">Componente</option>
-                  <option value="maquinaria_completa">Maquinaria completa</option>
-                </select>
-              </div>
-              {altaActivoForm.tipo_activo === 'componente' && <div className="field"><label>Tipo de componente <span className="hint">(opcional)</span></label><select className="select" value={altaActivoForm.componente_catalogo_id || ''} disabled={saving} onChange={event => actualizarAltaActivo('componente_catalogo_id', event.target.value)}><option value="">Sin tipo de componente</option>{componentesCatalogo.map(component => <option key={component.id} value={component.id}>{component.nombre}</option>)}</select></div>}
-              <div className="grid-2">
-                <div className="field"><label>Código</label><input className="input" value="Se asignará al guardar" readOnly /></div>
-                <div className="field"><label>Nombre *</label><input className="input" value={altaActivoForm.nombre} disabled={saving} onChange={event => actualizarAltaActivo('nombre', event.target.value)} required /></div>
-                <div className="field"><label>Código de origen <span className="hint">(opcional)</span></label><input className="input" value={altaActivoForm.codigo_origen} disabled={saving} onChange={event => actualizarAltaActivo('codigo_origen', event.target.value)} placeholder="Código de fábrica u origen" /></div>
-                {altaActivoForm.tipo_activo === 'componente' && <>
-                  <div className="field"><label>Marca <span className="hint">(opcional)</span></label><input className="input" value={altaActivoForm.marca} disabled={saving} onChange={event => actualizarAltaActivo('marca', event.target.value)} /></div>
-                  <div className="field"><label>Modelo <span className="hint">(opcional)</span></label><input className="input" value={altaActivoForm.modelo} disabled={saving} onChange={event => actualizarAltaActivo('modelo', event.target.value)} /></div>
-                </>}
-                {altaActivoForm.tipo_activo === 'maquinaria_completa' && <>
-                  <div className="field"><label>Marca *</label><input className="input" value={altaActivoForm.marca} disabled={saving} onChange={event => actualizarAltaActivo('marca', event.target.value)} required /></div>
-                  <div className="field"><label>Modelo *</label><input className="input" value={altaActivoForm.modelo} disabled={saving} onChange={event => actualizarAltaActivo('modelo', event.target.value)} required /></div>
-                  <div className="field"><label>Placa / serie / chasis <span className="hint">(opcional)</span></label><input className="input" value={altaActivoForm.placa_serie} disabled={saving} onChange={event => actualizarAltaActivo('placa_serie', event.target.value)} /></div>
-                  <div className="field"><label>Año de fabricación <span className="hint">(opcional)</span></label><input className="input" type="number" min="1800" max={ANIO_MAXIMO_ACTIVO} step="1" value={altaActivoForm.año_fabricacion} disabled={saving} onChange={event => actualizarAltaActivo('año_fabricacion', event.target.value)} /></div>
-                  <div className="field"><label>Año de overhaul <span className="hint">(opcional)</span></label><input className="input" type="number" min="1800" max={ANIO_MAXIMO_ACTIVO} step="1" value={altaActivoForm.año_overhaul} disabled={saving} onChange={event => actualizarAltaActivo('año_overhaul', event.target.value)} /></div>
-                </>}
-              </div>
-              {!altaActivoForm.tipo_activo && <div className="hint">Selecciona el tipo para mostrar los campos específicos y habilitar el registro.</div>}
-            </div>
-            <div style={{ display: 'flex', gap: 10, padding: '4px 16px 16px' }}>
-              <button type="button" className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => { setAltaActivoForm(null); setAltaActivoModalAbierta(false); }} disabled={saving}>Cancelar</button>
-              <button type="button" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={guardarAltaActivo} disabled={saving || !puedeCrear || !sesion.permiteEscritura || !altaActivoForm.tipo_activo}>Usar en la recepción</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1A2B4A', color: '#f8fafc', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 500, boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>{toast}</div>}
-      <FooterBrand />
-    </div>
-  );
+    </>}
+    {toast && <div className="dx-recact-toast" role="status">{toast}</div>}
+  </section>;
 }
+
+export { parsearObservaciones };

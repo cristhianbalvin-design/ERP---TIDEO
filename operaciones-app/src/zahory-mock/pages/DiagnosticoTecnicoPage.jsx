@@ -494,6 +494,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const goToIncompleteHallazgoRef = useRef(null);
   const tableAnchorRef = useRef(null);
   const routeOpenIdRef = useRef('');
+  const routeReceptionIdRef = useRef('');
 
   useEffect(() => {
     mountedRef.current = true;
@@ -664,7 +665,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setHallazgosSaving(false);
     hallazgosSaveRef.current = null;
     setError('');
-    if (tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location) window.location.hash = '/diagnostico-tecnico?nuevo=mantenimiento';
+    if (tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location) window.location.hash = `/diagnostico-tecnico?nuevo=mantenimiento${routeParams.recepcion ? `&recepcion=${encodeURIComponent(routeParams.recepcion)}` : ''}`;
   };
 
   const openExisting = async diagnostico => {
@@ -960,6 +961,15 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setSearch(referenceLabel(reference));
     setDatosIniciales(current => ({ ...current, motivo: reference.observaciones || '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false }));
   };
+
+  useEffect(() => {
+    const id = routeParams.recepcion;
+    if (!id || form.tipo !== 'mantenimiento' || selectedReference?.id === id || routeReceptionIdRef.current === id) return;
+    const reference = references.find(item => item.id === id);
+    if (!reference) return;
+    routeReceptionIdRef.current = id;
+    selectInitialReference(reference);
+  }, [routeParams.recepcion, form.tipo, references, selectedReference?.id]);
 
   const deleteLine = async line => {
     if (!selected || !canEditLines) return;
