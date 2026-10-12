@@ -21,7 +21,8 @@ const dayNumber = value => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dia(valu
 const daysBetween = (from, to) => { const a = dayNumber(from), b = dayNumber(to); return a == null || b == null ? null : Math.max(0, b - a); };
 const addMonths = (periodo, offset) => { const [y, m] = periodo.split('-').map(Number); const date = new Date(Date.UTC(y, m - 1 + offset, 1)); return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`; };
 export function normalizarFuenteBI(value) {
-  const raw = clean(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const original = clean(value);
+  const raw = original.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
   const key = raw.replace(/ /g, '');
   if (!raw) return 'Sin fuente';
   if (['web', 'formularioweb'].includes(key)) return 'Web';
@@ -29,7 +30,18 @@ export function normalizarFuenteBI(value) {
   if (key === 'powerbiialanding') return 'Landing Power BI';
   if (['referido', 'manual'].includes(key)) return key[0].toUpperCase() + key.slice(1);
   if (key === 'linkedin') return 'LinkedIn';
-  return raw[0].toUpperCase() + raw.slice(1);
+  return original.replace(/_/g, ' ');
+}
+export function etiquetaBI(value, tipo = 'etapa') {
+  const raw = clean(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  const labels = tipo === 'lead'
+    ? { nuevo: 'Nuevo', 'en contacto': 'En contacto', contacto: 'En contacto', calificado: 'Calificado' }
+    : { calificacion: 'Calificación', propuesta: 'Propuesta', negociacion: 'Negociación', cierre: 'Cierre' };
+  return labels[raw] || (raw ? raw[0].toUpperCase() + raw.slice(1) : '');
+}
+export function formatearFechaBI(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean(value).slice(0, 10));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : clean(value);
 }
 export function escaparCSVBI(value) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; }
 export function crearCSVBI(headers, rows) { return `\uFEFF${[headers, ...rows].map(row => row.map(escaparCSVBI).join(',')).join('\r\n')}`; }

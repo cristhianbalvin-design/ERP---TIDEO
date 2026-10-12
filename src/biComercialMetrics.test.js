@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularBIComercial, crearCSVBI, filasCSVBI, normalizarFuenteBI, normalizarMonedaBI } from './biComercialMetrics.js';
+import { calcularBIComercial, crearCSVBI, etiquetaBI, filasCSVBI, formatearFechaBI, normalizarFuenteBI, normalizarMonedaBI } from './biComercialMetrics.js';
 
 const seed = () => ({
   periodo: '2026-06', moneda: 'PEN', hoy: '2026-06-30',
@@ -42,7 +42,13 @@ test('activos excluyen descartados y convertidos y embudo cuenta estados avanzad
   assert.deepEqual(result.funnel, { creados: 4, contactados: 3, calificados: 2, convertidos: 2 });
 });
 test('normaliza fuentes libres', () => {
-  assert.deepEqual(['web', 'formulario web', 'campo_movil', 'powerbi_ia_landing', 'linkedin', '', 'mi_fuente'].map(normalizarFuenteBI), ['Web', 'Web', 'Campo móvil', 'Landing Power BI', 'LinkedIn', 'Sin fuente', 'Mi fuente']);
+  assert.deepEqual(['web', 'formulario web', 'campo_movil', 'powerbi_ia_landing', 'linkedin', '', 'mi_fuente', 'QA verificacion'].map(normalizarFuenteBI), ['Web', 'Web', 'Campo móvil', 'Landing Power BI', 'LinkedIn', 'Sin fuente', 'mi fuente', 'QA verificacion']);
+});
+test('formatea etapas, estados de lead y fechas sin zona horaria', () => {
+  assert.deepEqual(['calificacion', 'propuesta', 'negociacion', 'cierre'].map(value => etiquetaBI(value)), ['Calificación', 'Propuesta', 'Negociación', 'Cierre']);
+  assert.deepEqual(['nuevo', 'en_contacto', 'calificado'].map(value => etiquetaBI(value, 'lead')), ['Nuevo', 'En contacto', 'Calificado']);
+  assert.equal(formatearFechaBI('2026-06-16'), '16/06/2026');
+  assert.equal(formatearFechaBI(''), '');
 });
 test('cotizado usa última versión y excluye borrador', () => {
   const result = calcularBIComercial(seed());

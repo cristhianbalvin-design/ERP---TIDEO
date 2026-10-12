@@ -4747,7 +4747,8 @@ body {
 .dashboards-panel { min-width:0; max-width:100%; }
 @media (prefers-reduced-motion:reduce) { .dashboards-tab { transition:none; } }
 
-.bic-page { display:grid; gap:18px; min-width:0; }
+.bic-page { --bic-bar-neutral:#78909c; display:grid; gap:18px; min-width:0; }
+.dark .bic-page { --bic-bar-neutral:#607d8b; }
 .bic-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin:0; }
 .bic-header h1 { margin:0; }
 .bic-controls { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; min-width:0; }
@@ -4764,16 +4765,18 @@ body {
 .bic-tooltip-trigger .bi-kpi-tooltip { display:none; position:absolute; z-index:30; top:20px; left:0; width:min(300px,80vw); padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:0 8px 24px rgba(15,27,48,.18); color:var(--fg); cursor:auto; }
 .bic-tooltip-trigger:hover .bi-kpi-tooltip,.bic-tooltip-trigger:focus .bi-kpi-tooltip { display:block; }
 .bic-tabs { display:flex; gap:6px; overflow-x:auto; margin:0; }
-.bic-tabs .tab { flex:none; }
+.bic-tabs .tab { appearance:none; flex:none; padding:10px 14px; border:0; border-bottom:2px solid transparent; margin-bottom:-1px; background:transparent; color:var(--fg-muted); font:inherit; font-size:13px; font-weight:500; }
+.bic-tabs .tab:hover { color:var(--fg); }
+.bic-tabs .tab.active { color:var(--fg); border-bottom-color:var(--cyan); font-weight:600; }
 .bic-content { display:grid; gap:16px; min-width:0; }
 .bic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; min-width:0; }
 .bic-panel { min-width:0; overflow:hidden; }
 .bic-empty { padding:20px 16px; color:var(--fg-muted); text-align:center; font-size:13px; }
-.bic-bars { display:flex; align-items:stretch; justify-content:space-around; gap:8px; min-height:210px; padding:18px 12px 12px; overflow-x:auto; }
-.bic-bar-col { display:flex; flex:1 0 52px; flex-direction:column; align-items:center; gap:6px; min-width:0; font-size:11px; color:var(--fg-muted); }
-.bic-bar-col strong { color:var(--fg); font-size:11px; font-weight:600; white-space:nowrap; }
+.bic-bars { display:flex; align-items:stretch; justify-content:space-around; gap:4px; min-height:210px; padding:18px 12px 12px; min-width:0; }
+.bic-bar-col { display:flex; flex:1 1 0; flex-direction:column; align-items:center; gap:6px; min-width:0; font-size:11px; color:var(--fg-muted); }
+.bic-bar-col strong { max-width:100%; color:var(--fg); font-size:10px; font-weight:600; white-space:nowrap; }
 .bic-bar-track { display:flex; align-items:flex-end; justify-content:center; width:min(54px,100%); flex:1; border-bottom:1px solid var(--border); }
-.bic-bar-track i { width:100%; min-height:3px; border-radius:5px 5px 0 0; background:var(--navy); }
+.bic-bar-track i { width:100%; min-height:3px; border-radius:5px 5px 0 0; background:var(--bic-bar-neutral); }
 .bic-bar-track i.is-current { background:var(--cyan); }
 .bic-list { padding:4px 16px 12px; }
 .bic-list-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--border); font-size:13px; }
@@ -4796,4 +4799,4 @@ body {
 .bic-compare strong { font-size:18px; overflow-wrap:anywhere; }
 @media (max-width:1000px) { .bic-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (max-width:700px) { .bic-header { flex-direction:column; } .bic-controls { justify-content:flex-start; width:100%; } .bic-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .bic-grid { grid-template-columns:minmax(0,1fr); } .bic-series { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-@media (max-width:420px) { .bic-kpis { grid-template-columns:minmax(0,1fr); } .bic-controls { align-items:stretch; } .bic-month { flex:1; min-width:120px; } .bic-controls>.btn { flex:1; } .bic-funnel-row { grid-template-columns:76px minmax(24px,1fr) 26px 34px; gap:5px; } .bic-series { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:420px) { .bic-kpis { grid-template-columns:minmax(0,1fr); } .bic-controls { display:grid; grid-template-columns:minmax(0,1fr); align-items:stretch; } .bic-segment,.bic-month,.bic-controls>.btn { width:100%; min-width:0; } .bic-month { min-width:170px; } .bic-funnel-row { grid-template-columns:76px minmax(24px,1fr) 26px 34px; gap:5px; } .bic-series { grid-template-columns:repeat(2,minmax(0,1fr)); } }
