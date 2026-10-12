@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import { cargarInventarioKardex, cargarKardexPorMaterial } from '../../services/inventarioKardexService.js';
 import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolidarStockPorMaterial, etiquetaTipoMovimiento, etiquetaValorizacion } from './inventarioKardexLogic.js';
+import { MovimientoPanel } from './MovimientoPanel.jsx';
+import { MovimientoDetalle } from './MovimientoDetalle.jsx';
+import { anularMovimiento, registrarMovimientoManual } from '../../services/inventarioMovimientosService.js';
+import { mapearErrorMovimiento } from './inventarioMovimientosLogic.js';
 
 const fmtNumero = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 const fmtDinero = (valor, moneda = 'PEN') => {
@@ -34,7 +38,7 @@ function PillTipo({ tipo }) {
   return <span className={`dx-ui-pill ${claseTipoMovimiento(tipo)}`}><i />{etiquetaTipoMovimiento(tipo)}</span>;
 }
 
-function MovimientoFila({ movimiento, conMaterial, onOpen }) {
+function MovimientoFila({ movimiento, conMaterial, onOpen, onSelect }) {
   const material = movimiento.materiales || {};
   const cantidad = cantidadConSigno(movimiento);
   const nombre = material.descripcion || movimiento.material_id;
@@ -44,8 +48,8 @@ function MovimientoFila({ movimiento, conMaterial, onOpen }) {
   const detalle = [movimiento.motivo, referencia].filter(Boolean).join(' · ');
   const saldo = movimiento.saldo_cantidad;
   const anulado = Boolean(movimiento.anulado);
-  const abrir = () => onOpen?.(movimiento.material_id);
-  return <div className={`dx-ui-row ${conMaterial ? 'dx-stk-kcols' : 'dx-stk-dcols'}${anulado ? ' is-void' : ''}`} role={conMaterial ? 'button' : undefined} tabIndex={conMaterial ? 0 : undefined} aria-label={conMaterial ? `Abrir ${nombre}` : undefined} onClick={conMaterial ? abrir : undefined} onKeyDown={conMaterial ? evento => { if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); abrir(); } } : undefined}>
+  const abrir = () => onSelect ? onSelect(movimiento) : conMaterial ? onOpen?.(movimiento.material_id) : undefined;
+  return <div className={`dx-ui-row ${conMaterial ? 'dx-stk-kcols' : 'dx-stk-dcols'} dx-mov-click${anulado ? ' is-void' : ''}`} role="button" tabIndex={0} aria-label={conMaterial ? `Ver movimiento de ${nombre}` : `Ver movimiento: ${detalle || etiquetaTipoMovimiento(movimiento.tipo)}`} onClick={abrir} onKeyDown={evento => { if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); abrir(); } }}>
     <span className="dx-stk-date">{fmtFecha(movimiento.created_at || movimiento.fecha)}</span>
     {conMaterial ? <span className="dx-stk-main"><span><b>{nombre}</b><small>{[nombreAlmacen, nombreUbicacion, detalle].filter(Boolean).join(' \u00b7 ')}</small></span></span> : <PillTipo tipo={movimiento.tipo} />}
     {conMaterial ? <PillTipo tipo={movimiento.tipo} /> : <span className="dx-stk-main"><span><b>{detalle || etiquetaTipoMovimiento(movimiento.tipo)}</b><small>{nombreAlmacen}{movimiento.ubicaciones?.nombre ? ` · ${movimiento.ubicaciones.nombre}` : ''}</small></span></span>}
@@ -58,8 +62,10 @@ function MovimientoFila({ movimiento, conMaterial, onOpen }) {
 
 export function InventarioKardexPage() {
   const sesion = useSesionOperativa();
-  const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance } = sesion;
+  const { empresaId, sociedadId, sociedadActiva, vistaConsolidada, sociedadesIdsAlcance } = sesion;
   const [puedeVer, setPuedeVer] = useState(false);
+  const [puedeCrear, setPuedeCrear] = useState(false);
+  const [puedeEditar, setPuedeEditar] = useState(false);
   const [permisosCargados, setPermisosCargados] = useState(false);
   const [datos, setDatos] = useState({ almacenes: [], ubicaciones: [], stock: [], kardex: [], kardexParcial: false, limiteKardex: 200 });
   const [cargando, setCargando] = useState(true);
@@ -77,18 +83,31 @@ export function InventarioKardexPage() {
   const [cargandoKardexMaterial, setCargandoKardexMaterial] = useState(false);
   const [errorKardexMaterial, setErrorKardexMaterial] = useState('');
   const [reintentoKardexMaterial, setReintentoKardexMaterial] = useState(0);
+  const [panelAccion, setPanelAccion] = useState('');
+  const [movimientoDetalle, setMovimientoDetalle] = useState(null);
+  const [toast, setToast] = useState('');
+  const controlQueAbre = useRef(null);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const temporizador = globalThis.setTimeout(() => setToast(''), 6000);
+    return () => globalThis.clearTimeout(temporizador);
+  }, [toast]);
 
   useEffect(() => {
     let vigente = true;
     if (sesion.cargando || sesion.estado !== 'listo' || !empresaId) return () => { vigente = false; };
     setPermisosCargados(false);
-    getSupabaseClient().rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'inventario', target_accion: 'ver' })
-      .then(resultado => {
-        if (resultado.error) throw resultado.error;
-        if (vigente) { setPuedeVer(Boolean(resultado.data)); setPermisosCargados(true); }
+    Promise.all(['ver', 'crear', 'editar'].map(target_accion => getSupabaseClient().rpc('usuario_puede', { target_empresa_id: empresaId, target_pantalla: 'inventario', target_accion })))
+      .then(([ver, crear, editar]) => {
+        if (ver.error) throw ver.error;
+        if (crear.error) throw crear.error;
+        if (editar.error) throw editar.error;
+        const puedeEscribir = sesion.permiteEscritura !== false;
+        if (vigente) { setPuedeVer(Boolean(ver.data)); setPuedeCrear(Boolean(crear.data) && puedeEscribir); setPuedeEditar(Boolean(editar.data) && puedeEscribir); setPermisosCargados(true); }
       }).catch(err => { if (vigente) { setError(mensajeError(err)); setPermisosCargados(true); } });
     return () => { vigente = false; };
-  }, [empresaId, sesion.cargando, sesion.estado, reintentoPermisos]);
+  }, [empresaId, sesion.cargando, sesion.estado, sesion.permiteEscritura, reintentoPermisos]);
 
   const cargar = useCallback(async () => {
     setCargando(true); setError('');
@@ -146,10 +165,34 @@ export function InventarioKardexPage() {
   const fmtSearchLabel = materialSeleccionado ? 'Buscar movimiento del material' : vista === 'stock' ? 'Buscar material' : 'Buscar movimiento';
   const abrirMaterial = id => { setMaterialId(id); setTipo(''); };
   const volver = () => setMaterialId('');
+  const abrirPanelMovimiento = accion => { controlQueAbre.current = globalThis.document?.activeElement; setToast(''); setPanelAccion(accion); };
+  const cerrarPanelMovimiento = () => { setPanelAccion(''); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
+  const abrirDetalleMovimiento = movimiento => { controlQueAbre.current = globalThis.document?.activeElement; setMovimientoDetalle(movimiento); };
+  const cerrarDetalleMovimiento = () => { setMovimientoDetalle(null); globalThis.setTimeout(() => controlQueAbre.current?.isConnected && controlQueAbre.current.focus?.(), 0); };
+  const ejecutarMovimiento = async form => {
+    try {
+      const sociedadFila = form.stock_id ? datos.stock.find(item => item.id === form.stock_id)?.sociedad_id : null;
+      const sociedadActivaId = sociedadActiva?.id === '**todas**' ? null : sociedadActiva?.id;
+      const sociedadSesionId = sociedadId === '**todas**' ? null : sociedadId;
+      const sociedadParaMovimiento = sociedadFila || sociedadActivaId || sociedadSesionId || form.sociedad_id;
+      if (!sociedadParaMovimiento || sociedadParaMovimiento === '**todas**') throw new Error('Selecciona una sociedad concreta antes de registrar el movimiento.');
+      await registrarMovimientoManual({ empresa_id: empresaId, accion: panelAccion, ...form, sociedad_id: sociedadParaMovimiento });
+      setPanelAccion(''); setToast(`${panelAccion === 'entrada' ? 'Entrada registrada' : panelAccion === 'salida' ? 'Salida registrada' : 'Ajuste aplicado'} correctamente.`);
+      setReintentoCarga(value => value + 1); setReintentoKardexMaterial(value => value + 1);
+    } catch (err) { throw new Error(mapearErrorMovimiento(err)); }
+  };
+  const ejecutarAnulacion = async motivo => {
+    try {
+      await anularMovimiento({ empresa_id: empresaId, kardex_id: movimientoDetalle.id, motivo });
+      cerrarDetalleMovimiento(); setToast('Movimiento anulado. Se registró el movimiento inverso.');
+      setReintentoCarga(value => value + 1); setReintentoKardexMaterial(value => value + 1);
+    } catch (err) { throw new Error(mapearErrorMovimiento(err)); }
+  };
   const buscar = <label className="dx-ui-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg><input value={busqueda} onChange={evento => setBusqueda(evento.target.value)} placeholder={vista === 'stock' ? 'Buscar por material, código o categoría' : 'Buscar por material, código o referencia'} aria-label={fmtSearchLabel} /></label>;
 
   return <section className="dx-ui dx-stk">
-    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Almacén · WMS</div><h1 className="dx-ui-title">{materialSeleccionado ? materialSeleccionado.descripcion : materialId ? 'Material' : 'Inventario & Kardex'}</h1><p className="dx-ui-sub">{materialSeleccionado ? `${materialSeleccionado.codigo} · ${materialSeleccionado.familia}` : 'Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.'}</p></div></header>
+    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Almacén · WMS</div><h1 className="dx-ui-title">{materialSeleccionado ? materialSeleccionado.descripcion : materialId ? 'Material' : 'Inventario & Kardex'}</h1><p className="dx-ui-sub">{materialSeleccionado ? `${materialSeleccionado.codigo} · ${materialSeleccionado.familia}` : 'Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.'}</p></div><div className="dx-ui-actions">{permisosCargados && puedeEditar && <button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('ajuste')}>Ajustar stock</button>}{permisosCargados && puedeCrear && <><button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('salida')}>Registrar salida</button><button type="button" className="dx-btn primary" onClick={() => abrirPanelMovimiento('entrada')}>Registrar entrada</button></>}</div></header>
+    {toast && <div className="dx-mov-toast" role="status">{toast}</div>}
     {!materialSeleccionado && <div className="dx-ui-tabs" role="tablist" aria-label="Vistas de inventario">
       <button type="button" className={`dx-ui-tab${vista === 'stock' ? ' on' : ''}`} role="tab" aria-selected={vista === 'stock'} onClick={() => { setVista('stock'); setMaterialId(''); setTipo(''); }}>Stock</button>
       <button type="button" className={`dx-ui-tab${vista === 'kardex' ? ' on' : ''}`} role="tab" aria-selected={vista === 'kardex'} onClick={() => { setVista('kardex'); setMaterialId(''); setTipo(''); }}>Kardex</button>
@@ -164,7 +207,7 @@ export function InventarioKardexPage() {
           {filas.map(fila => <div className="dx-ui-row dx-stk-wcols" key={fila.id}><div className="dx-stk-main"><span><b>{fila.ubicacion}</b><small>{fila.almacen}</small></span></div><span><span className={`dx-ui-pill ${['cuarentena', 'merma'].includes(fila.uso) ? 'is-amber' : 'is-gray'}`}><i />{fila.uso === 'almacenaje' ? 'Almacenaje' : fila.uso === 'cuarentena' ? 'Cuarentena' : fila.uso === 'merma' ? 'Merma' : fila.uso}</span></span><div className="dx-stk-n" style={{ textAlign: 'left' }}><span className="dx-stk-lbl">Lote</span>{fila.lote}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Físico</span>{fmtNumero(fila.fisico)}</div><div className="dx-stk-n"><span className="dx-stk-lbl">Reservado</span>{fmtNumero(fila.reservado)}</div></div>)}
           {!filas.length && <div className="dx-ui-empty">Sin existencias en ning&uacute;n almac&eacute;n.</div>}
         </div>
-        <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Kardex del material</h2><span className="dx-ui-count">{movimientosMaterialFiltrados.length} movimiento(s)</span><select className="dx-stk-sel" aria-label="Filtrar por tipo de movimiento" value={tipo} onChange={evento => setTipo(evento.target.value)}><option value="">Todos los tipos</option>{tiposKardexMaterial.map(valor => <option key={valor} value={valor}>{etiquetaTipoMovimiento(valor)}</option>)}</select></div>{errorKardexMaterial && <div className="dx-stk-alert" role="alert">{errorKardexMaterial} <button type="button" className="dx-btn" onClick={() => setReintentoKardexMaterial(value => value + 1)}>Reintentar</button></div>}{cargandoKardexMaterial ? <div className="dx-ui-empty" role="status">Cargando kardex del material...</div> : !errorKardexMaterial && <><div className="dx-ui-head dx-stk-dcols" aria-hidden="true"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span></div>{movimientosMaterialFiltrados.map(movimiento => <MovimientoFila key={movimiento.id} movimiento={movimiento} />)}{!movimientosMaterialFiltrados.length && <div className="dx-ui-empty">Sin movimientos de este tipo.</div>}{kardexMaterialParcial && <div className="dx-stk-note">El kardex muestra solo los 200 movimientos m&aacute;s recientes; el historial de este material podr&iacute;a estar incompleto.</div>}</>}</div>
+        <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Kardex del material</h2><span className="dx-ui-count">{movimientosMaterialFiltrados.length} movimiento(s)</span><select className="dx-stk-sel" aria-label="Filtrar por tipo de movimiento" value={tipo} onChange={evento => setTipo(evento.target.value)}><option value="">Todos los tipos</option>{tiposKardexMaterial.map(valor => <option key={valor} value={valor}>{etiquetaTipoMovimiento(valor)}</option>)}</select></div>{errorKardexMaterial && <div className="dx-stk-alert" role="alert">{errorKardexMaterial} <button type="button" className="dx-btn" onClick={() => setReintentoKardexMaterial(value => value + 1)}>Reintentar</button></div>}{cargandoKardexMaterial ? <div className="dx-ui-empty" role="status">Cargando kardex del material...</div> : !errorKardexMaterial && <><div className="dx-ui-head dx-stk-dcols" aria-hidden="true"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span></div>{movimientosMaterialFiltrados.map(movimiento => <MovimientoFila key={movimiento.id} movimiento={movimiento} onSelect={abrirDetalleMovimiento} />)}{!movimientosMaterialFiltrados.length && <div className="dx-ui-empty">Sin movimientos de este tipo.</div>}{kardexMaterialParcial && <div className="dx-stk-note">El kardex muestra solo los 200 movimientos m&aacute;s recientes; el historial de este material podr&iacute;a estar incompleto.</div>}</>}</div>
       </>; })()}
     </> : vista === 'stock' ? <>
       <div className="dx-ui-summary"><div className="dx-ui-chip dx-stk-chip-hl"><b>{fmtTotales(resumen)}</b><span>Valor del inventario</span></div><div className="dx-ui-chip"><b>{resumen.filter(item => item.calculo.fisico > 0).length}</b><span>Materiales con stock</span></div><div className="dx-ui-chip dx-stk-chip-warn"><b>{resumen.filter(item => item.calculo.estado === 'bajo').length}</b><span>Bajo reorden</span></div><div className="dx-ui-chip dx-stk-chip-bad"><b>{resumen.filter(item => item.calculo.estado === 'agotado').length}</b><span>Agotados</span></div></div>
@@ -173,7 +216,9 @@ export function InventarioKardexPage() {
     </> : <>
       {datos.kardexParcial && <div className="dx-stk-note">Se muestra una parte del historial: los {datos.limiteKardex} movimientos más recientes.</div>}
       <div className="dx-ui-summary"><div className="dx-ui-chip"><b>{movimientosFiltrados.length}</b><span>Movimientos visibles</span></div><div className="dx-ui-chip"><b>{movimientosFiltrados.filter(m => ['entrada', 'transferencia_entrada'].includes(m.tipo) && !m.anulado).length}</b><span>Entradas</span></div><div className="dx-ui-chip"><b>{movimientosFiltrados.filter(m => ['salida', 'transferencia_salida'].includes(m.tipo) && !m.anulado).length}</b><span>Salidas</span></div><div className="dx-ui-chip"><b>{movimientosFiltrados.filter(m => m.anulado).length}</b><span>Anulados</span></div></div>
-      <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Movimientos</h2><span className="dx-ui-count">{movimientosFiltrados.length} resultado(s)</span>{buscar}</div><div className="dx-stk-filters"><select className="dx-stk-sel" aria-label="Filtrar por almacén" value={almacenId} onChange={evento => setAlmacenId(evento.target.value)}><option value="">Todos los almacenes</option>{datos.almacenes.map(almacen => <option value={almacen.id} key={almacen.id}>{almacen.nombre}</option>)}</select><select className="dx-stk-sel" aria-label="Filtrar por tipo de movimiento" value={tipo} onChange={evento => setTipo(evento.target.value)}><option value="">Todos los tipos</option>{tiposKardex.map(valor => <option key={valor} value={valor}>{etiquetaTipoMovimiento(valor)}</option>)}</select></div><div className="dx-ui-head dx-stk-kcols" aria-hidden="true"><span>Fecha</span><span>Material</span><span>Tipo</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span><span /></div>{movimientosFiltrados.map(movimiento => <MovimientoFila key={movimiento.id} movimiento={movimiento} conMaterial onOpen={abrirMaterial} />)}{!movimientosFiltrados.length && <div className="dx-ui-empty">{datos.kardex.length ? 'Sin movimientos para estos filtros.' : 'No hay movimientos de inventario.'}</div>}</div>
+      <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Movimientos</h2><span className="dx-ui-count">{movimientosFiltrados.length} resultado(s)</span>{buscar}</div><div className="dx-stk-filters"><select className="dx-stk-sel" aria-label="Filtrar por almacén" value={almacenId} onChange={evento => setAlmacenId(evento.target.value)}><option value="">Todos los almacenes</option>{datos.almacenes.map(almacen => <option value={almacen.id} key={almacen.id}>{almacen.nombre}</option>)}</select><select className="dx-stk-sel" aria-label="Filtrar por tipo de movimiento" value={tipo} onChange={evento => setTipo(evento.target.value)}><option value="">Todos los tipos</option>{tiposKardex.map(valor => <option key={valor} value={valor}>{etiquetaTipoMovimiento(valor)}</option>)}</select></div><div className="dx-ui-head dx-stk-kcols" aria-hidden="true"><span>Fecha</span><span>Material</span><span>Tipo</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span><span /></div>{movimientosFiltrados.map(movimiento => <MovimientoFila key={movimiento.id} movimiento={movimiento} conMaterial onOpen={abrirMaterial} onSelect={abrirDetalleMovimiento} />)}{!movimientosFiltrados.length && <div className="dx-ui-empty">{datos.kardex.length ? 'Sin movimientos para estos filtros.' : 'No hay movimientos de inventario.'}</div>}</div>
     </>}
+    {panelAccion && <MovimientoPanel accion={panelAccion} materiales={materiales} almacenes={datos.almacenes} ubicaciones={datos.ubicaciones} stock={datos.stock} sociedades={sesion.sociedadesDisponibles || []} initialMaterialId={materialSeleccionado?.id || ''} sociedadId={sociedadActiva?.id === '**todas**' || sociedadId === '**todas**' ? null : sociedadActiva?.id || sociedadId} onClose={cerrarPanelMovimiento} onSubmit={ejecutarMovimiento} />}
+    {movimientoDetalle && <MovimientoDetalle movimiento={movimientoDetalle} puedeEditar={puedeEditar} stock={datos.stock} onClose={cerrarDetalleMovimiento} onAnnul={ejecutarAnulacion} />}
   </section>;
 }

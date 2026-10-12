@@ -10,7 +10,7 @@ const aplicarSociedad = (consulta, { sociedadId, vistaConsolidada, sociedadesIds
 
 const seleccionarKardex = (supabase, { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, limiteKardex, materialId }) => {
   let consulta = supabase.from('kardex')
-    .select('id,empresa_id,sociedad_id,material_id,almacen_id,ubicacion_id,tipo,motivo,cantidad,costo_unitario,costo_unitario_usd,moneda,saldo_cantidad,referencia_tipo,referencia_id,nro_documento,anulado,valorizacion_estado,precio_unitario_provisional,precio_unitario_real,created_at,fecha,lote,materiales(id,codigo,descripcion,unidad,familia,moneda),almacenes(codigo,nombre)')
+    .select('id,empresa_id,sociedad_id,material_id,almacen_id,ubicacion_id,tipo,motivo,cantidad,costo_unitario,costo_unitario_usd,moneda,saldo_cantidad,referencia_tipo,referencia_id,nro_documento,anulado,anulado_motivo,observacion,vencimiento,created_by,valorizacion_estado,precio_unitario_provisional,precio_unitario_real,created_at,fecha,lote,serie,materiales(id,codigo,descripcion,unidad,familia,moneda),almacenes(codigo,nombre)')
     .eq('empresa_id', empresaId);
   if (materialId) consulta = consulta.eq('material_id', materialId);
   consulta = consulta.order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limiteKardex + 1);
@@ -45,7 +45,7 @@ export async function cargarInventarioKardex({ empresaId, sociedadId, vistaConso
   const stock = [];
   for (let inicio = 0; ; inicio += 1000) {
     let consulta = supabase.from('stock')
-      .select('id,empresa_id,sociedad_id,material_id,almacen_id,ubicacion_id,lote,serie,fisico,disponible,reservado,materiales(id,codigo,descripcion,unidad,familia,costo_promedio,costo_promedio_usd,moneda,stock_minimo,punto_reorden,stock_seguridad,tipo_control),almacenes(id,codigo,nombre)')
+      .select('id,empresa_id,sociedad_id,material_id,almacen_id,ubicacion_id,lote,serie,vencimiento,fisico,disponible,reservado,materiales(id,codigo,descripcion,unidad,familia,costo_promedio,costo_promedio_usd,moneda,stock_minimo,punto_reorden,stock_seguridad,tipo_control),almacenes(id,codigo,nombre)')
       .eq('empresa_id', empresaId).order('material_id').range(inicio, inicio + 999);
     consulta = aplicarSociedad(consulta, { sociedadId, vistaConsolidada, sociedadesIdsAlcance });
     const { data, error } = await consulta;

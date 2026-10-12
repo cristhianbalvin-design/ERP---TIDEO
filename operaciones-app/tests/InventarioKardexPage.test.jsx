@@ -4,20 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'e1', sociedadId: 's1', estado: 'listo', vistaConsolidada: false, sociedadesIdsAlcance: ['s1'] },
-  cargarInventario: vi.fn(), cargarKardexMaterial: vi.fn(), rpc: vi.fn(),
+  cargarInventario: vi.fn(), cargarKardexMaterial: vi.fn(), rpc: vi.fn(), registrar: vi.fn(), anular: vi.fn(),
 }));
 vi.mock('../src/lib/sesionOperativa.js', () => ({ useSesionOperativa: () => mocks.sesion }));
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc: mocks.rpc }) }));
 vi.mock('../src/services/inventarioKardexService.js', () => ({ cargarInventarioKardex: mocks.cargarInventario, cargarKardexPorMaterial: mocks.cargarKardexMaterial }));
+vi.mock('../src/services/inventarioMovimientosService.js', () => ({ registrarMovimientoManual: mocks.registrar, anularMovimiento: mocks.anular }));
 import { InventarioKardexPage } from '../src/zahory-mock/pages/InventarioKardexPage.jsx';
 
-const material = (id, descripcion, extra = {}) => ({ id, codigo: id.toUpperCase(), descripcion, familia: 'Insumos', unidad: 'und', punto_reorden: 10, stock_seguridad: 2, costo_promedio: 3, ...extra });
+const material = (id, descripcion, extra = {}) => ({ id, codigo: id.toUpperCase(), descripcion, familia: 'Insumos', unidad: 'und', tipo_control: 'lote', punto_reorden: 10, stock_seguridad: 2, costo_promedio: 3, ...extra });
 const datos = {
   almacenes: [{ id: 'a1', nombre: 'Almacén Norte' }],
-  ubicaciones: [{ id: 'u1', almacen_id: 'a1', nombre: 'CUA-01', codigo: 'CUA-01', uso: 'cuarentena' }],
+  ubicaciones: [{ id: 'u1', almacen_id: 'a1', nombre: 'CUA-01', codigo: 'CUA-01', uso: 'cuarentena' }, { id: 'u2', almacen_id: 'a1', nombre: 'R-01', codigo: 'R-01', uso: 'almacenaje' }],
   stock: [
     { id: 'st1', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', lote: 'L-1', fisico: 5, reservado: 0, materiales: material('m1', 'Filtro hidráulico'), almacenes: { nombre: 'Almacén Norte' }, ubicaciones: { nombre: 'CUA-01', codigo: 'CUA-01', uso: 'cuarentena' } },
-    { id: 'st1b', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u2', lote: 'L-2', fisico: 5, reservado: 0, materiales: material('m1', 'Filtro hidr\u00e1ulico'), almacenes: { nombre: 'Almac\u00e9n Norte' }, ubicaciones: { nombre: 'R-01', codigo: 'R-01', uso: 'almacenaje' } },
+    { id: 'st1b', material_id: 'm1', empresa_id: 'e1', sociedad_id: 's1', almacen_id: 'a1', ubicacion_id: 'u2', lote: 'L-2', fisico: 5, disponible: 5, reservado: 0, materiales: material('m1', 'Filtro hidr\u00e1ulico'), almacenes: { nombre: 'Almac\u00e9n Norte' }, ubicaciones: { nombre: 'R-01', codigo: 'R-01', uso: 'almacenaje' } },
     { id: 'st2', material_id: 'm2', almacen_id: 'a1', fisico: 0, reservado: 0, materiales: material('m2', 'Perno agotado'), almacenes: { nombre: 'Almacén Norte' } },
   ],
   kardex: [], kardexParcial: false, limiteKardex: 200,
@@ -40,6 +41,8 @@ beforeEach(() => {
   mocks.cargarInventario.mockReset().mockResolvedValue(datos);
   mocks.cargarKardexMaterial.mockReset().mockResolvedValue({ kardex: [movimiento], kardexParcial: false, limiteKardex: 200 });
   mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
+  mocks.registrar.mockReset().mockResolvedValue({ kardex_id: 'k-new' });
+  mocks.anular.mockReset().mockResolvedValue('k-reverse');
 });
 
 describe('InventarioKardexPage', () => {
@@ -82,5 +85,51 @@ describe('InventarioKardexPage', () => {
     await act(async () => { root.root.findAllByType('button').find(button => button.children.join('') === 'Reintentar').props.onClick(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
     expect(root.root.findAllByProps({ role: 'alert' })).toHaveLength(0);
     expect(mocks.cargarInventario).toHaveBeenCalledTimes(2);
+  });
+
+  it('oculta Entrada y Salida sin permiso crear, y conserva Ajuste con permiso editar', async () => {
+    mocks.rpc.mockImplementation((_nombre, { target_accion }) => Promise.resolve({ data: target_accion !== 'crear', error: null }));
+    const root = await renderPage();
+    expect(texto(root)).not.toContain('Registrar entrada');
+    expect(texto(root)).not.toContain('Registrar salida');
+    expect(texto(root)).toContain('Ajustar stock');
+  });
+
+  it('oculta Ajuste y Anular sin permiso editar', async () => {
+    mocks.rpc.mockImplementation((_nombre, { target_accion }) => Promise.resolve({ data: target_accion !== 'editar', error: null }));
+    mocks.cargarInventario.mockResolvedValue({ ...datos, kardex: [{ ...movimiento, anulado: false, motivo: 'saldo_inicial', referencia_tipo: 'manual' }] });
+    const root = await renderPage();
+    expect(texto(root)).not.toContain('Ajustar stock');
+    await act(async () => { root.root.findAllByProps({ role: 'tab' }).find(tab => tab.children.join('') === 'Kardex').props.onClick(); });
+    const fila = root.root.findAll(node => node.props.className?.includes('dx-stk-kcols') && node.props.role === 'button')[0];
+    await act(async () => { fila.props.onClick(); });
+    expect(texto(root)).toContain('Tu rol no permite anular movimientos.');
+    expect(texto(root)).not.toContain('Anular movimiento…');
+  });
+
+  it('registra una entrada y refresca stock y kardex; el doble clic no duplica', async () => {
+    let resolver;
+    mocks.registrar.mockReturnValueOnce(new Promise(resolve => { resolver = resolve; }));
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByType('button').find(button => button.children.join('') === 'Registrar entrada').props.onClick(); });
+    const change = async (name, value) => act(async () => { root.root.findAll(node => node.props.name === name)[0].props.onChange({ target: { value } }); });
+    await change('material_id', 'm1'); await change('motivo', 'saldo_inicial'); await change('almacen_id', 'a1'); await change('ubicacion_id', 'u2'); await change('lote', 'L-new'); await change('cantidad', '2'); await change('costo_unitario', '4');
+    const form = root.root.findAllByType('form').find(item => item.props.onSubmit);
+    await act(async () => { const evento = { preventDefault: vi.fn() }; form.props.onSubmit(evento); form.props.onSubmit(evento); await Promise.resolve(); });
+    expect(mocks.registrar).toHaveBeenCalledTimes(1);
+    await act(async () => { resolver({ kardex_id: 'k-new' }); await Promise.resolve(); await Promise.resolve(); });
+    expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ empresa_id: 'e1', accion: 'entrada', sociedad_id: 's1', cantidad: '2' }));
+    expect(texto(root)).toContain('Entrada registrada correctamente.');
+    expect(mocks.cargarInventario).toHaveBeenCalledTimes(2);
+  });
+
+  it('muestra el error del servidor dentro del panel', async () => {
+    mocks.registrar.mockRejectedValueOnce(new Error('El lote ya existe con otro vencimiento.'));
+    const root = await renderPage();
+    await act(async () => { root.root.findAllByType('button').find(button => button.children.join('') === 'Registrar entrada').props.onClick(); });
+    const change = async (name, value) => act(async () => { root.root.findAll(node => node.props.name === name)[0].props.onChange({ target: { value } }); });
+    await change('material_id', 'm1'); await change('motivo', 'saldo_inicial'); await change('almacen_id', 'a1'); await change('ubicacion_id', 'u2'); await change('lote', 'L-new'); await change('cantidad', '1'); await change('costo_unitario', '4');
+    await act(async () => { await root.root.findAllByType('form').find(item => item.props.onSubmit).props.onSubmit({ preventDefault: vi.fn() }); });
+    expect(root.root.findAllByProps({ role: 'alert' }).some(alert => alert.children.join('').includes('El lote ya existe con otro vencimiento.'))).toBe(true);
   });
 });
