@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mock Almacén WMS — Fase 2a (Inventario &amp; Kardex)</title>
+<style>
+/* Variables copiadas de zahory.css, sección DX-UI base */
+.dx-ui{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',system-ui,sans-serif;
+}
+[data-theme='dark'] .dx-ui{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
+[data-theme='dark'] body{background:#020617}
+.mock-shell{display:flex;min-height:100vh}
+.mock-side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.mock-side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.mock-side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.mock-side span.on{background:rgba(255,255,255,.12);color:#fff}
+.mock-side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.mock-main{flex:1;min-width:0;padding:24px 28px}
+@media (max-width:900px){.mock-side{display:none}.mock-main{padding:16px}}
+
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-card);border-color:var(--dx-ui-navy)}
+[data-theme='dark'] .dx-btn.primary{color:#0F172A}
+.dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-btn[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);cursor:not-allowed}
+
+.dx-ui-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dx-ui-tab{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ui-tab.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+
+/* Base compartida (copia de zahory.css) */
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); margin-bottom:16px; }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+/* Reglas propias: Stock y Kardex (dx-stk-) */
+.dx-stk-cols { --dx-ui-cols:minmax(0,1fr) 84px 96px 104px 116px 124px 20px; }
+.dx-stk-main{display:flex;align-items:center;gap:12px;min-width:0}
+.dx-stk-main > span:last-child{min-width:0}
+.dx-stk-main b{display:block;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dx-stk-main small{display:block;color:var(--dx-ui-gray);font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+@container (max-width:860px){.dx-stk-kcols .dx-stk-main b,.dx-stk-kcols .dx-stk-main small,.dx-stk-dcols .dx-stk-main b,.dx-stk-dcols .dx-stk-main small{white-space:normal}}
+.dx-stk-n{font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy);text-align:right;white-space:nowrap}
+.dx-stk-n small{display:block;font:500 11px 'DM Sans',sans-serif;color:var(--dx-ui-gray)}
+.dx-stk-n.is-low{color:var(--dx-ui-amber-fg)}
+.dx-stk-n.is-out{color:var(--dx-ui-red-fg)}
+.dx-stk-lbl{display:none;color:var(--dx-ui-gray);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-stk-filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-stk-sel{height:36px;min-width:170px;padding:0 12px;border-radius:999px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 13px 'DM Sans',sans-serif}
+.dx-stk-sel:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-stk-note{margin-bottom:16px;padding:12px 16px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:13px}
+.dx-stk-chip-hl b{color:var(--dx-ui-cyan-fg)}
+.dx-stk-chip-warn b{color:var(--dx-ui-amber-fg)}
+.dx-stk-chip-bad b{color:var(--dx-ui-red-fg)}
+@container (max-width:860px){
+  .dx-stk-cols { --dx-ui-cols:repeat(3,minmax(0,1fr)) auto; grid-template-areas:"main main main pill" "fis disp val val"; }
+  .dx-stk-cols > :nth-child(1){grid-area:main}
+  .dx-stk-cols > :nth-child(2){grid-area:fis}
+  .dx-stk-cols > :nth-child(3){grid-area:disp}
+  .dx-stk-cols > :nth-child(4){display:none}
+  .dx-stk-cols > :nth-child(5){grid-area:val}
+  .dx-stk-cols > :nth-child(6){grid-area:pill;justify-self:end}
+  .dx-stk-cols > .dx-ui-arrow{display:none}
+  .dx-stk-cols .dx-stk-n{text-align:left}
+  .dx-stk-cols .dx-stk-lbl{display:block}
+}
+/* Kardex global */
+.dx-stk-kcols { --dx-ui-cols:96px minmax(0,1fr) 132px 84px 96px 84px 20px; }
+.dx-stk-date{color:var(--dx-ui-gray);font-size:13px;white-space:nowrap}
+.dx-stk-qty{font:700 14px 'Sora',sans-serif;text-align:right;white-space:nowrap}
+.dx-stk-qty.in{color:var(--dx-ui-green-fg)}
+.dx-stk-qty.out{color:var(--dx-ui-amber-fg)}
+.dx-stk-kcols.is-void{opacity:.5}
+.dx-stk-kcols.is-void .dx-stk-main b{text-decoration:line-through}
+@container (max-width:860px){
+  .dx-stk-kcols { --dx-ui-cols:repeat(3,minmax(0,1fr)); grid-template-areas:"main main main" "date pill pill" "cost qty bal"; }
+  .dx-stk-kcols > :nth-child(1){grid-area:date}
+  .dx-stk-kcols > :nth-child(2){grid-area:main}
+  .dx-stk-kcols > :nth-child(3){grid-area:pill;justify-self:end}
+  .dx-stk-kcols > :nth-child(4){grid-area:qty;justify-self:center}
+  .dx-stk-kcols > :nth-child(5){grid-area:cost}
+  .dx-stk-kcols > :nth-child(6){grid-area:bal;justify-self:end}
+  .dx-stk-kcols > .dx-ui-arrow{display:none}
+  .dx-stk-kcols .dx-stk-n{text-align:left}
+  .dx-stk-kcols > :nth-child(6).dx-stk-n{text-align:right}
+}
+/* Detalle de material */
+.dx-stk-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;color:var(--dx-ui-cyan-fg);font-weight:600;cursor:pointer;background:none;border:0;padding:0;font-family:inherit;font-size:14px}
+.dx-stk-back:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-stk-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:16px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-stk-meta div small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-stk-meta div span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@container (max-width:860px){.dx-stk-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dx-stk-wcols { --dx-ui-cols:minmax(0,1fr) 120px 96px 76px 84px; cursor:default; }
+.dx-stk-wcols.dx-ui-row{cursor:default;min-height:60px}
+.dx-stk-wcols.dx-ui-row:hover{background:transparent}
+@container (max-width:860px){
+  .dx-stk-wcols { --dx-ui-cols:minmax(0,1fr) minmax(0,1fr); grid-template-areas:"main main" "uso lote" "fis res"; }
+  .dx-stk-wcols > :nth-child(1){grid-area:main}
+  .dx-stk-wcols > :nth-child(2){grid-area:uso}
+  .dx-stk-wcols > :nth-child(3){grid-area:lote}
+  .dx-stk-wcols > :nth-child(4){grid-area:fis}
+  .dx-stk-wcols > :nth-child(5){grid-area:res}
+  .dx-stk-wcols .dx-stk-n{text-align:left}
+  .dx-stk-wcols .dx-stk-lbl{display:block}
+}
+.dx-stk-dcols { --dx-ui-cols:96px 132px minmax(0,1fr) 84px 96px 84px; cursor:default; }
+.dx-stk-dcols.dx-ui-row{cursor:default;min-height:60px}
+.dx-stk-dcols.dx-ui-row:hover{background:transparent}
+.dx-stk-dcols.is-void{opacity:.5}
+@container (max-width:860px){
+  .dx-stk-dcols { --dx-ui-cols:repeat(3,minmax(0,1fr)); grid-template-areas:"main main main" "date pill pill" "cost qty bal"; }
+  .dx-stk-dcols > :nth-child(1){grid-area:date}
+  .dx-stk-dcols > :nth-child(2){grid-area:pill;justify-self:end}
+  .dx-stk-dcols > :nth-child(3){grid-area:main}
+  .dx-stk-dcols > :nth-child(4){grid-area:qty;justify-self:center}
+  .dx-stk-dcols > :nth-child(5){grid-area:cost}
+  .dx-stk-dcols > :nth-child(6){grid-area:bal;justify-self:end}
+  .dx-stk-dcols .dx-stk-n{text-align:left}
+  .dx-stk-dcols > :nth-child(6).dx-stk-n{text-align:right}
+}
+@container (max-width:860px){
+  .dx-ui-head.dx-stk-cols,.dx-ui-head.dx-stk-kcols,.dx-ui-head.dx-stk-wcols,.dx-ui-head.dx-stk-dcols{display:none}
+  .dx-ui-row.dx-stk-cols,.dx-ui-row.dx-stk-kcols,.dx-ui-row.dx-stk-wcols,.dx-ui-row.dx-stk-dcols{row-gap:8px;padding:14px 16px}
+}
+.theme-toggle{position:fixed;right:14px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+/* ===== Fase 2b-A: movimientos (dx-mov-) ===== */
+.dx-mov-overlay{position:fixed;inset:0;z-index:20;background:rgba(15,27,48,.45)}
+.dx-mov-panel{position:fixed;top:0;right:0;bottom:0;z-index:21;display:flex;flex-direction:column;width:min(480px,100vw);background:var(--dx-ui-card);box-shadow:-8px 0 30px rgba(15,27,48,.25);color:var(--dx-ui-ink)}
+.dx-mov-panel header,.dx-mov-panel footer{display:flex;align-items:center;gap:10px;padding:16px 20px}
+.dx-mov-panel header{border-bottom:1px solid var(--dx-ui-line)}
+.dx-mov-panel header h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-mov-panel footer{justify-content:flex-end;border-top:1px solid var(--dx-ui-line)}
+.dx-mov-x{width:36px;height:36px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font-size:20px;cursor:pointer}
+.dx-mov-x:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-mov-body{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+.dx-mov-f label{display:block;margin-bottom:6px;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-f small{display:block;margin-top:6px;color:var(--dx-ui-gray);font-size:12px}
+.dx-mov-f small.bad{color:var(--dx-ui-red-fg)}
+.dx-mov-field{width:100%;min-width:0;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+textarea.dx-mov-field{height:auto;min-height:72px;padding:10px 12px;resize:vertical}
+.dx-mov-field:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-mov-field.is-bad{border-color:var(--dx-ui-red-dot)}
+.dx-mov-field[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)}
+.dx-mov-row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.dx-mov-ro{padding:10px 12px;border-radius:8px;background:var(--dx-ui-gray-bg);color:var(--dx-ui-navy);font-weight:600}
+.dx-mov-seg{display:flex;gap:6px}
+.dx-mov-seg button{flex:1;height:40px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-mov-seg button.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:var(--dx-ui-cyan)}
+.dx-mov-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-mov-sum{padding:12px 14px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-mov-sum small{display:block;margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-sum div{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
+.dx-mov-sum b{font-family:'Sora',sans-serif}
+.dx-mov-warn{padding:12px 14px;border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);font-size:13px}
+.dx-mov-alert{padding:12px 14px;border-radius:10px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);font-size:13px}
+.dx-mov-toast{margin-bottom:12px;padding:10px 16px;border-radius:10px;background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg);font-size:13px;font-weight:600}
+.dx-stk-dcols.dx-ui-row.dx-mov-click{cursor:pointer}
+.dx-stk-dcols.dx-ui-row.dx-mov-click:hover{background:var(--dx-ui-hover)}
+.dx-stk-dcols.dx-ui-row.dx-mov-click:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-mov-dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.dx-mov-dl small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-dl span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow-wrap:anywhere}
+.dx-mov-confirm{position:fixed;z-index:23;top:50%;left:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:22px;border-radius:14px;background:var(--dx-ui-card);box-shadow:0 12px 40px rgba(15,27,48,.35);color:var(--dx-ui-ink)}
+.dx-mov-confirm h2{margin:0 0 8px;color:var(--dx-ui-navy);font:700 17px 'Sora',sans-serif}
+.dx-mov-confirm p{margin:0 0 14px;color:var(--dx-ui-gray)}
+.dx-mov-confirm-f{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.dx-btn.danger{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot)}
+.dx-btn.danger[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line)}
+.mock-toggle2{position:fixed;right:150px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+@media (max-width:520px){.dx-mov-row2,.dx-mov-dl{grid-template-columns:minmax(0,1fr)}.mock-toggle2{right:14px;bottom:62px}}
+</style>
+</head>
+<body>
+<div class="mock-shell">
+  <aside class="mock-side">
+    <b>TIDEO · Operaciones</b>
+    <small>ALMACÉN</small>
+    <span class="on">Inventario &amp; Kardex</span>
+    <span>Entradas &amp; Salidas</span>
+    <span>Recepciones</span>
+    <span>Ubicaciones</span>
+    <span>Reserva de Repuestos</span>
+    <span>Stock Mínimos &amp; Alertas</span>
+  </aside>
+  <main class="mock-main">
+    <section class="dx-ui dx-stk" id="root">
+      <div class="dx-ui-head-page">
+        <div>
+          <div class="dx-ui-eyebrow">Almacén · WMS</div>
+          <h1 class="dx-ui-title" id="pageTitle">Inventario &amp; Kardex</h1>
+          <p class="dx-ui-sub" id="pageSub">Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.</p>
+        </div>
+        <div class="dx-ui-actions" id="pageActions"></div>
+      </div>
+      <div class="dx-ui-tabs" role="tablist" id="tabs">
+        <button class="dx-ui-tab on" role="tab" data-view="stock">Stock</button>
+        <button class="dx-ui-tab" role="tab" data-view="kardex">Kardex</button>
+      </div>
+      <div id="view"></div>
+    </section>
+  </main>
+</div>
+<button class="mock-toggle2" id="rolBtn" aria-label="Cambiar el rol simulado">Rol: Almacenero (crear + editar)</button>
+<button class="theme-toggle" id="themeBtn" aria-label="Cambiar tema claro u oscuro">Modo oscuro</button>
+
+<script>
+/* Datos ilustrativos (inspirados en el stock real de producción; sin clientes reales) */
+const ALMACENES = [{id:'ALM-001', nombre:'Almacén Central'},{id:'ALM-002', nombre:'Almacén Taller'}];
+const UB = {
+  'GEN':{n:'General', uso:'almacenaje'}, 'Z-A-R01-P01':{n:'Z-A · Rack 01 · Posición 01', uso:'almacenaje'},
+  'CUA':{n:'Cuarentena · en revisión', uso:'cuarentena'}, 'ZONA-TEST':{n:'Zona de prueba editada', uso:'almacenaje'},
+  'Z-B-R01':{n:'Z-B · Rack 01', uso:'almacenaje'}, 'Z-A-PISO':{n:'Z-A · Piso (bultos grandes)', uso:'almacenaje'}
+};
+const USO = {almacenaje:'Almacenaje', cuarentena:'Cuarentena', merma:'Merma'};
+const MATS = [
+ {id:'M1', cod:'MAT-001245', nombre:'Filtro de aceite hidráulico HF-220', cat:'Filtros', und:'und', ctl:'Por lote', cp:85.81, reorden:20,seg:5,
+  stock:[{alm:'ALM-001',ubi:'Z-A-R01-P01',lote:'L-1001',fis:6,res:3},{alm:'ALM-001',ubi:'CUA',lote:'L-0888',fis:14,res:0},{alm:'ALM-002',ubi:'GEN',lote:'—',fis:7,res:0}]},
+ {id:'M2', cod:'MAT-000455', nombre:'Grasa de litio EP2 cartucho 400 g', cat:'Lubricantes', und:'und', ctl:'Por lote', cp:17.99, reorden:100,seg:20,
+  stock:[{alm:'ALM-001',ubi:'GEN',lote:'L-0911',fis:393,res:0},{alm:'ALM-001',ubi:'ZONA-TEST',lote:'L-1010',fis:1,res:0}]},
+ {id:'M3', cod:'MAT-000112', nombre:'Aceite hidráulico ISO 68 (balde 20 L)', cat:'Lubricantes', und:'balde', ctl:'Por lote', cp:312.00, reorden:6,seg:2,
+  stock:[{alm:'ALM-001',ubi:'Z-A-R01-P01',lote:'L-0920',fis:14,res:0}]},
+ {id:'M4', cod:'MAT-000873', nombre:'Rodamiento rígido 6205-2RS', cat:'Rodamientos', und:'und', ctl:'Sin control', cp:14.20, reorden:100,seg:20,
+  stock:[{alm:'ALM-001',ubi:'Z-B-R01',lote:'—',fis:620,res:0}]},
+ {id:'M5', cod:'MAT-002318', nombre:'Sello de aceite 35x52x7', cat:'Sellos', und:'und', ctl:'Sin control', cp:6.80, reorden:80,seg:10,
+  stock:[{alm:'ALM-001',ubi:'Z-B-R01',lote:'—',fis:360,res:0}]},
+ {id:'M6', cod:'MAT-000931', nombre:'Correa trapezoidal B-52', cat:'Transmisión', und:'und', ctl:'Por lote', cp:41.00, reorden:30,seg:5,
+  stock:[{alm:'ALM-001',ubi:'GEN',lote:'L-0925',fis:25,res:0}]},
+ {id:'M7', cod:'MAT-001390', nombre:'Filtro de aire cabina CA-118', cat:'Filtros', und:'und', ctl:'Sin control', cp:58.00, reorden:15,seg:5,
+  stock:[{alm:'ALM-001',ubi:'GEN',lote:'—',fis:40,res:0}]},
+ {id:'M8', cod:'MAT-003377', nombre:'Pernos grado 8 1/2" x 2"', cat:'Ferretería', und:'und', ctl:'Sin control', cp:1.90, reorden:100,seg:20, stock:[]},
+ {id:'M9', cod:'MAT-000099', nombre:'Tambor lubricante 200 L', cat:'Lubricantes', und:'und', ctl:'Por lote', cp:1150.00, reorden:2,seg:1,
+  stock:[{alm:'ALM-001',ubi:'Z-A-PISO',lote:'L-0930',fis:18,res:4}]}
+];
+/* tipo: ent | sal | tin | tout | aju */
+const K0 = [
+ ['2026-09-02','M1','ALM-001','GEN','ent','Saldo inicial','Carga inicial',9,82.00,'def'],
+ ['2026-09-18','M1','ALM-001','CUA','ent','Recepción de OC','OC-26-0412',14,88.00,'def'],
+ ['2026-09-24','M1','ALM-001','GEN','tout','Transferencia','TR-0031',-9,85.81,'def'],
+ ['2026-09-24','M1','ALM-002','GEN','tin','Transferencia','TR-0031',9,85.81,'def'],
+ ['2026-10-02','M1','ALM-002','GEN','sal','Consumo OT','OT-26-0688',-2,85.81,'def'],
+ ['2026-10-05','M1','ALM-001','Z-A-R01-P01','ent','Recepción de OC','OC-26-0455',6,86.40,'def'],
+ ['2026-09-02','M2','ALM-001','GEN','ent','Saldo inicial','Carga inicial',300,17.80,'def'],
+ ['2026-09-30','M2','ALM-001','GEN','ent','Recepción de OC','OC-26-0430',93,18.60,'def'],
+ ['2026-10-08','M2','ALM-001','ZONA-TEST','ent','Recepción de OC','OC-018 (prueba)',1,18.50,'def'],
+ ['2026-09-02','M3','ALM-001','Z-A-R01-P01','ent','Saldo inicial','Carga inicial',16,312.00,'def'],
+ ['2026-10-01','M3','ALM-001','Z-A-R01-P01','sal','Consumo OT','OT-26-0681',-2,312.00,'def'],
+ ['2026-09-02','M4','ALM-001','Z-B-R01','ent','Saldo inicial','Carga inicial',640,14.20,'def'],
+ ['2026-09-20','M4','ALM-001','Z-B-R01','sal','Consumo OT','OT-26-0650',-20,14.20,'def'],
+ ['2026-09-12','M5','ALM-001','Z-B-R01','ent','Recepción de OC','OC-26-0398',360,6.80,'def'],
+ ['2026-09-02','M6','ALM-001','GEN','ent','Saldo inicial','Carga inicial',30,41.00,'def'],
+ ['2026-09-28','M6','ALM-001','GEN','sal','Consumo OT','OT-26-0670',-5,41.00,'def'],
+ ['2026-09-02','M7','ALM-001','GEN','ent','Saldo inicial','Carga inicial',40,58.00,'def'],
+ ['2026-09-02','M8','ALM-001','GEN','ent','Saldo inicial','Carga inicial',50,1.90,'def'],
+ ['2026-09-15','M8','ALM-001','GEN','sal','Consumo OT','OT-26-0662',-50,1.90,'def'],
+ ['2026-09-16','M8','ALM-001','GEN','ent','Entrada manual','Error de conteo',10,1.90,'def',true],
+ ['2026-09-16','M8','ALM-001','GEN','sal','Anulación','Anula entrada manual',-10,1.90,'def'],
+ ['2026-10-09','M9','ALM-001','Z-A-PISO','ent','Recepción de OC','OC-26-0460',18,1150.00,'prov']
+];
+/* saldo corrido por material */
+let KID=K0.length;
+const KROWS = K0.map((r,i)=>({id:i,fecha:r[0],mat:r[1],alm:r[2],ubi:r[3],tipo:r[4],motivo:r[5],ref:r[6],cant:r[7],costo:r[8],val:r[9],anulado:!!r[10]}));
+let KARDEX=[];
+function buildK(){
+  const rows=KROWS.slice().sort((a,b)=>a.fecha<b.fecha?-1:a.fecha>b.fecha?1:a.id-b.id);
+  const run={}; rows.forEach(r=>{ run[r.mat]=(run[r.mat]||0)+r.cant; r.saldo=run[r.mat]; });
+  KARDEX=rows.slice().reverse();
+}
+buildK();
+
+const ICON_BOX = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+const ICON_ARROW = '<svg class="dx-ui-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+const ICON_SEARCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+
+let view='stock', matSel=null, q='', fAlm='', fEst='', fTipo='', kAlm='', kTipo='';
+const $ = s => document.querySelector(s);
+const money = n => 'S/ ' + Number(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const int = n => Number(n).toLocaleString('es-PE');
+const MES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const fdate = s => { const [y,m,d]=s.split('-'); return d+' '+MES[+m-1]+' '+y; };
+const almNom = id => ALMACENES.find(a=>a.id===id).nombre;
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+function calc(m){
+  const fis=m.stock.reduce((s,x)=>s+x.fis,0), res=m.stock.reduce((s,x)=>s+x.res,0);
+  const cua=m.stock.filter(x=>UB[x.ubi].uso!=='almacenaje').reduce((s,x)=>s+x.fis,0);
+  const disp=Math.max(fis-res-cua,0);
+  const est = disp===0 ? 'agotado' : disp<=m.reorden+m.seg ? 'bajo' : 'normal';
+  const alms=[...new Set(m.stock.map(x=>x.alm))].map(a=>almNom(a).replace('Almacén ',''));
+  return {fis,res,cua,disp,val:fis*m.cp,est,alms};
+}
+const pillEst = e => e==='agotado' ? '<span class="dx-ui-pill is-red"><i></i>Agotado</span>'
+  : e==='bajo' ? '<span class="dx-ui-pill is-amber"><i></i>Bajo reorden</span>'
+  : '<span class="dx-ui-pill is-green"><i></i>Normal</span>';
+const TIPOS={ent:['Entrada','is-green'],sal:['Salida','is-amber'],tin:['Transf. entrada','is-cyan'],tout:['Transf. salida','is-cyan'],aju:['Ajuste','is-gray']};
+const pillTipo = t => `<span class="dx-ui-pill ${TIPOS[t][1]}"><i></i>${TIPOS[t][0]}</span>`;
+const pillVal = v => v==='def' ? '<span class="dx-ui-pill is-green"><i></i>Definitiva</span>' : '<span class="dx-ui-pill is-amber"><i></i>Provisional</span>';
+const qtyCls = c => c>0?'in':'out';
+const qtyTxt = c => (c>0?'+':'−')+int(Math.abs(c));
+const selAlm = (id,val) => `<select class="dx-stk-sel" id="${id}" aria-label="Filtrar por almacén"><option value="">Todos los almacenes</option>${ALMACENES.map(a=>`<option value="${a.id}" ${val===a.id?'selected':''}>${a.nombre}</option>`).join('')}</select>`;
+const selTipo = (id,val) => `<select class="dx-stk-sel" id="${id}" aria-label="Filtrar por tipo de movimiento"><option value="">Todos los tipos</option>${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}" ${val===k?'selected':''}>${v[0]}</option>`).join('')}</select>`;
+
+function keepSearch(){ const n=$('#q'); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); } }
+function bindOpen(sel, fn){
+  document.querySelectorAll(sel).forEach(r=>{
+    const go=()=>fn(r);
+    r.addEventListener('click',go);
+    r.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } });
+  });
+}
+
+function render0(){
+  document.querySelectorAll('#tabs .dx-ui-tab').forEach(t=>t.classList.toggle('on', t.dataset.view===view));
+  $('#tabs').style.display = matSel ? 'none' : '';
+  if(matSel) return renderDetalle();
+  if(view==='kardex') return renderKardex();
+  renderStock();
+}
+
+function renderStock(){
+  $('#pageTitle').textContent='Inventario & Kardex';
+  $('#pageSub').textContent='Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.';
+  $('#pageActions').innerHTML=actionsHtml(null); bindActions(null);
+  const data = MATS.map(m=>({m,c:calc(m)})).filter(({m,c})=>{
+    const txt=(m.nombre+m.cod+m.cat).toLowerCase().includes(q.toLowerCase());
+    const alm = !fAlm || m.stock.some(x=>x.alm===fAlm);
+    const est = !fEst || c.est===fEst;
+    return txt&&alm&&est;
+  });
+  const tot=MATS.map(calc), valor=tot.reduce((s,c)=>s+c.val,0);
+  const rows = data.map(({m,c})=>`
+    <div class="dx-ui-row dx-stk-cols" role="button" tabindex="0" data-mat="${m.id}" aria-label="Abrir ${esc(m.nombre)}">
+      <div class="dx-stk-main"><span class="dx-ui-icon is-cyan">${ICON_BOX}</span><span><b>${esc(m.nombre)}</b><small>${m.cod} · ${m.cat} · ${c.alms.join(' + ')||'Sin stock'}</small></span></div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Físico</span>${int(c.fis)} <small>${m.und}</small></div>
+      <div class="dx-stk-n ${c.est==='agotado'?'is-out':c.est==='bajo'?'is-low':''}"><span class="dx-stk-lbl">Disponible</span>${int(c.disp)}${c.cua?'<small>'+int(c.cua)+' en cuarentena</small>':'<small>&nbsp;</small>'}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Costo prom.</span>${money(m.cp)}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Valor</span>${money(c.val)}</div>
+      <span>${pillEst(c.est)}</span>
+      ${ICON_ARROW}
+    </div>`).join('');
+  $('#view').innerHTML=`
+    <div class="dx-ui-summary">
+      <div class="dx-ui-chip dx-stk-chip-hl"><b>${money(valor)}</b><span>Valor del inventario</span></div>
+      <div class="dx-ui-chip"><b>${tot.filter(c=>c.fis>0).length}</b><span>Materiales con stock</span></div>
+      <div class="dx-ui-chip dx-stk-chip-warn"><b>${tot.filter(c=>c.est==='bajo').length}</b><span>Bajo reorden</span></div>
+      <div class="dx-ui-chip dx-stk-chip-bad"><b>${tot.filter(c=>c.est==='agotado').length}</b><span>Agotados</span></div>
+    </div>
+    <div class="dx-stk-note">El stock en <b>cuarentena</b> y <b>merma</b> cuenta como existencia física pero no como disponible: no se reserva ni se despacha. Aquí se registran entradas, salidas y ajustes; la transferencia, la reubicación y el despacho a taller llegan en la siguiente fase.</div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>Materiales</h2><span class="dx-ui-count">${data.length} resultado(s)</span>
+        <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${esc(q)}" placeholder="Buscar por material, código o categoría" aria-label="Buscar material"></label></div>
+      <div class="dx-stk-filters">${selAlm('fAlm',fAlm)}
+        <select class="dx-stk-sel" id="fEst" aria-label="Filtrar por estado"><option value="">Todos los estados</option><option value="normal" ${fEst==='normal'?'selected':''}>Normal</option><option value="bajo" ${fEst==='bajo'?'selected':''}>Bajo reorden</option><option value="agotado" ${fEst==='agotado'?'selected':''}>Agotado</option></select></div>
+      <div class="dx-ui-head dx-stk-cols" aria-hidden="true"><span>Material</span><span>Físico</span><span>Disponible</span><span>Costo prom.</span><span>Valor</span><span>Estado</span><span></span></div>
+      ${rows || '<div class="dx-ui-empty">Sin coincidencias para tu búsqueda.</div>'}
+    </div>`;
+  $('#q').addEventListener('input',e=>{ q=e.target.value; renderStock(); keepSearch(); });
+  $('#fAlm').addEventListener('change',e=>{ fAlm=e.target.value; renderStock(); });
+  $('#fEst').addEventListener('change',e=>{ fEst=e.target.value; renderStock(); });
+  bindOpen('[data-mat]', r=>{ matSel=r.dataset.mat; fTipo=''; render(); window.scrollTo(0,0); });
+}
+
+function kRow(r, conMat){
+  const m=MATS.find(x=>x.id===r.mat);
+  const sub = `${almNom(r.alm).replace('Almacén ','')} · ${UB[r.ubi].n}`;
+  const valtxt = r.anulado ? '<span class="dx-ui-pill is-gray"><i></i>Anulado</span>' : pillVal(r.val);
+  if(conMat) return `
+    <div class="dx-ui-row dx-stk-kcols ${r.anulado?'is-void':''}" role="button" tabindex="0" data-mat="${m.id}" aria-label="Abrir ${esc(m.nombre)}">
+      <span class="dx-stk-date">${fdate(r.fecha)}</span>
+      <span class="dx-stk-main"><span><b>${esc(m.nombre)}</b><small>${sub} · ${r.motivo}${r.ref?' · '+esc(r.ref):''}</small></span></span>
+      <span>${pillTipo(r.tipo)}</span>
+      <div class="dx-stk-qty ${qtyCls(r.cant)}">${qtyTxt(r.cant)}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Costo unit.</span>${money(r.costo)}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Saldo</span>${int(r.saldo)}</div>
+      ${ICON_ARROW}
+    </div>`;
+  return `
+    <div class="dx-ui-row dx-stk-dcols dx-mov-click ${r.anulado?'is-void':''}" role="button" tabindex="0" data-k="${r.id}" aria-label="Ver movimiento">
+      <span class="dx-stk-date">${fdate(r.fecha)}</span>
+      <span>${pillTipo(r.tipo)}</span>
+      <span class="dx-stk-main"><span><b>${r.motivo}${r.ref?' · '+esc(r.ref):''}</b><small>${sub}</small></span></span>
+      <div class="dx-stk-qty ${qtyCls(r.cant)}">${qtyTxt(r.cant)}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Costo unit.</span>${money(r.costo)}<small>${valtxt}</small></div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Saldo</span>${int(r.saldo)}</div>
+    </div>`;
+}
+
+function renderKardex(){
+  $('#pageTitle').textContent='Kardex';
+  $('#pageSub').textContent='Todos los movimientos de inventario, del más reciente al más antiguo.';
+  $('#pageActions').innerHTML=actionsHtml(null); bindActions(null);
+  const f = KARDEX.filter(r=>{
+    const m=MATS.find(x=>x.id===r.mat);
+    return (m.nombre+m.cod+(r.ref||'')+r.motivo).toLowerCase().includes(q.toLowerCase())
+      && (!kAlm||r.alm===kAlm) && (!kTipo||r.tipo===kTipo);
+  });
+  const act=KARDEX.filter(r=>!r.anulado);
+  $('#view').innerHTML=`
+    <div class="dx-ui-summary">
+      <div class="dx-ui-chip"><b>${act.length}</b><span>Movimientos</span></div>
+      <div class="dx-ui-chip"><b>${act.filter(r=>r.tipo==='ent').length}</b><span>Entradas</span></div>
+      <div class="dx-ui-chip"><b>${act.filter(r=>r.tipo==='sal').length}</b><span>Salidas</span></div>
+      <div class="dx-ui-chip"><b>${act.filter(r=>r.tipo==='tin'||r.tipo==='tout').length}</b><span>Transferencias</span></div>
+    </div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>Movimientos</h2><span class="dx-ui-count">${f.length} resultado(s)</span>
+        <label class="dx-ui-search">${ICON_SEARCH}<input id="q" value="${esc(q)}" placeholder="Buscar por material, código o referencia" aria-label="Buscar movimiento"></label></div>
+      <div class="dx-stk-filters">${selAlm('kAlm',kAlm)}${selTipo('kTipo',kTipo)}</div>
+      <div class="dx-ui-head dx-stk-kcols" aria-hidden="true"><span>Fecha</span><span>Material</span><span>Tipo</span><span style="text-align:right">Cant.</span><span style="text-align:right">Costo unit.</span><span style="text-align:right">Saldo</span><span></span></div>
+      ${f.map(r=>kRow(r,true)).join('') || '<div class="dx-ui-empty">Sin movimientos para estos filtros.</div>'}
+    </div>`;
+  $('#q').addEventListener('input',e=>{ q=e.target.value; renderKardex(); keepSearch(); });
+  $('#kAlm').addEventListener('change',e=>{ kAlm=e.target.value; renderKardex(); });
+  $('#kTipo').addEventListener('change',e=>{ kTipo=e.target.value; renderKardex(); });
+  bindOpen('[data-mat]', r=>{ matSel=r.dataset.mat; fTipo=''; render(); window.scrollTo(0,0); });
+}
+
+function renderDetalle(){
+  const m=MATS.find(x=>x.id===matSel), c=calc(m);
+  $('#pageTitle').textContent=m.nombre;
+  $('#pageSub').textContent=m.cod+' · '+m.cat;
+  $('#pageActions').innerHTML=actionsHtml(m); bindActions(m);
+  const ks=KARDEX.filter(r=>r.mat===m.id && (!fTipo||r.tipo===fTipo));
+  const ws=m.stock.map(x=>`
+    <div class="dx-ui-row dx-stk-wcols">
+      <div class="dx-stk-main"><span><b>${UB[x.ubi].n}</b><small>${almNom(x.alm)}</small></span></div>
+      <span>${UB[x.ubi].uso==='almacenaje'?'<span class="dx-ui-pill is-gray"><i></i>Almacenaje</span>':'<span class="dx-ui-pill is-amber"><i></i>'+USO[UB[x.ubi].uso]+'</span>'}</span>
+      <div class="dx-stk-n" style="text-align:left"><span class="dx-stk-lbl">Lote</span>${x.lote}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Físico</span>${int(x.fis)}</div>
+      <div class="dx-stk-n"><span class="dx-stk-lbl">Reservado</span>${int(x.res)}</div>
+    </div>`).join('');
+  $('#view').innerHTML=`
+    <button class="dx-stk-back" id="back" aria-label="Volver al listado">← Volver a ${view==='kardex'?'Kardex':'Stock'}</button>
+    <div class="dx-ui-summary">
+      <div class="dx-ui-chip"><b>${int(c.fis)}</b><span>Físico (${m.und})</span></div>
+      <div class="dx-ui-chip"><b>${int(c.res)}</b><span>Reservado</span></div>
+      <div class="dx-ui-chip dx-stk-chip-warn"><b>${int(c.cua)}</b><span>En cuarentena o merma</span></div>
+      <div class="dx-ui-chip dx-stk-chip-hl"><b>${int(c.disp)}</b><span>Disponible</span></div>
+    </div>
+    <div class="dx-ui-card">
+      <div class="dx-stk-meta">
+        <div><small>Costo promedio</small><span>${money(m.cp)}</span></div>
+        <div><small>Valor en inventario</small><span>${money(c.val)}</span></div>
+        <div><small>Control</small><span>${m.ctl}</span></div>
+        <div><small>Alerta de reposición</small><span>${m.reorden+m.seg} ${m.und} <em style="font-style:normal;color:var(--dx-ui-gray);font-weight:500;font-size:12px">(reorden ${m.reorden} + seguridad ${m.seg})</em></span></div>
+      </div>
+      <div class="dx-ui-toolbar"><h2>Dónde está</h2><span class="dx-ui-count">${m.stock.length} ubicación(es)</span></div>
+      <div class="dx-ui-head dx-stk-wcols" aria-hidden="true"><span>Ubicación</span><span>Uso</span><span>Lote</span><span style="text-align:right">Físico</span><span style="text-align:right">Reservado</span></div>
+      ${ws || '<div class="dx-ui-empty">Sin existencias en ningún almacén.</div>'}
+    </div>
+    <div class="dx-ui-card">
+      <div class="dx-ui-toolbar"><h2>Kardex del material</h2><span class="dx-ui-count">${ks.length} movimiento(s)</span>${selTipo('fTipo',fTipo)}</div>
+      <div class="dx-ui-head dx-stk-dcols" aria-hidden="true"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span style="text-align:right">Cant.</span><span style="text-align:right">Costo unit.</span><span style="text-align:right">Saldo</span></div>
+      ${ks.map(r=>kRow(r,false)).join('') || '<div class="dx-ui-empty">Sin movimientos de este tipo.</div>'}
+    </div>`;
+  $('#back').addEventListener('click',()=>{ matSel=null; render(); });
+  $('#fTipo').addEventListener('change',e=>{ fTipo=e.target.value; renderDetalle(); });
+  bindOpen('[data-k]', r=>abrirDet(+r.dataset.k));
+}
+
+/* ===== Fase 2b-A: movimientos (mock) ===== */
+let rol='full', toast='', mov=null, anul=null, detK=null;
+const ROLES={full:'Almacenero (crear + editar)', crear:'Asistente (solo crear)', ver:'Solo lectura'};
+const can = a => rol==='full' || (rol==='crear' && a==='crear');
+const UBS = {'ALM-001':['GEN','Z-A-R01-P01','Z-A-PISO','Z-B-R01','ZONA-TEST','CUA'],'ALM-002':['GEN']};
+const MOT_ENT = {saldo_inicial:'Saldo inicial', ajuste_positivo:'Ajuste positivo', devolucion_ot:'Devolución de OT', compra_directa:'Compra directa sin OC'};
+const MOT_SAL = {devolucion_proveedor:'Devolución a proveedor', merma:'Merma', robo:'Robo o pérdida', error_ingreso:'Error de ingreso'};
+const MOT_AJU = {ajuste_conteo:'Ajuste por conteo', ajuste_manual:'Ajuste manual'};
+const TC = 3.75;
+const HOY = '2026-10-11';
+const ubNom = k => UB[k].n + (UB[k].uso!=='almacenaje' && !UB[k].n.toLowerCase().includes(USO[UB[k].uso].toLowerCase()) ? ' ('+USO[UB[k].uso].toLowerCase()+')' : '');
+const opt = (obj,sel) => Object.entries(obj).map(([k,v])=>`<option value="${k}" ${sel===k?'selected':''}>${v}</option>`).join('');
+const num = v => { const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?0:n; };
+const rowDisp = r => Math.max(r.fis-r.res,0);
+
+function actionsHtml(m){
+  const b=[];
+  if(can('editar')) b.push(`<button class="dx-btn" data-mov="aju">Ajustar stock</button>`);
+  if(can('crear')){ b.push(`<button class="dx-btn" data-mov="sal">Registrar salida</button>`); b.push(`<button class="dx-btn primary" data-mov="ent">Registrar entrada</button>`); }
+  return b.join('');
+}
+function bindActions(m){ document.querySelectorAll('[data-mov]').forEach(b=>b.onclick=()=>abrirMov(b.dataset.mov, m?m.id:null)); }
+
+function abrirMov(tipo, matId){
+  const m = matId ? MATS.find(x=>x.id===matId) : null;
+  mov = {tipo, mat:matId||'', lock:!!matId, motivo: tipo==='ent'?'saldo_inicial':tipo==='sal'?'devolucion_proveedor':'ajuste_conteo',
+    alm:'ALM-001', ubi:'GEN', ori:'', lote:'', venc:'', cant:'', costo:'', mon:'PEN', doc:'', obs:'', contada:'', err:{}};
+  if(m && tipo!=='ent' && m.stock.length) mov.ori='0';
+  renderMov(); setTimeout(()=>{const f=document.querySelector('#mvp select:not([disabled]),#mvp input'); if(f) f.focus();},0);
+}
+function cerrarMov(){ mov=null; const h=$('#movHost'); if(h) h.remove(); }
+function host(id){ let h=document.getElementById(id); if(!h){ h=document.createElement('div'); h.id=id; h.className='dx-ui dx-stk'; $('#root').appendChild(h); } return h; }
+
+function validarMov(p){
+  const e={}; const m=MATS.find(x=>x.id===p.mat);
+  if(!m){ e.mat='Elige el material.'; return e; }
+  const cant=num(p.cant);
+  if(p.tipo==='ent'){
+    if(!p.ubi) e.ubi='Elige la ubicación de destino.';
+    if(cant<=0) e.cant='La cantidad debe ser mayor a cero.';
+    if(m.ctl==='Por lote' && !p.lote.trim()) e.lote='Este material se controla por lote: indica el número de lote.';
+    if((p.motivo==='compra_directa'||p.motivo==='saldo_inicial') && num(p.costo)<=0) e.costo='Indica el costo unitario (mayor a 0).';
+    if(p.motivo==='compra_directa' && !p.doc.trim()) e.doc='Indica el número de documento de la compra.';
+  } else {
+    const r=m.stock[+p.ori];
+    if(!r){ e.ori='Elige la ubicación y el lote.'; return e; }
+    if(p.tipo==='sal'){
+      if(cant<=0) e.cant='La cantidad debe ser mayor a cero.';
+      else if(cant>rowDisp(r)) e.cant='Solo hay '+int(rowDisp(r))+' '+m.und+' libres en esta ubicación'+(r.res?' ('+int(r.res)+' reservados)':'')+'.';
+      if(UB[r.ubi].uso!=='almacenaje' && !['merma','devolucion_proveedor'].includes(p.motivo)) e.motivo='Desde '+USO[UB[r.ubi].uso].toLowerCase()+' solo se permite Merma o Devolución a proveedor.';
+      if(!p.obs.trim()) e.obs='Cuenta brevemente qué pasó.';
+    } else {
+      if(p.contada==='' || num(p.contada)<0) e.contada='Indica la cantidad contada (0 o más).';
+      else if(num(p.contada)===r.fis) e.contada='Sin diferencia: no hay nada que ajustar.';
+      else if(num(p.contada)<r.res) e.contada='Hay '+int(r.res)+' reservados en esta ubicación: no puedes contar menos. Libera primero las reservas.';
+      if(!p.obs.trim()) e.obs='La observación es obligatoria en un ajuste.';
+    }
+  }
+  return e;
+}
+
+function resumenMov(p){
+  const m=MATS.find(x=>x.id===p.mat); if(!m) return '';
+  const c=calc(m), cant=num(p.cant);
+  if(p.tipo==='ent'){
+    const r=m.stock.find(x=>x.alm===p.alm&&x.ubi===p.ubi&&x.lote===(p.lote.trim()||'—'));
+    const antes=r?r.fis:0, costoPEN=num(p.costo)>0?num(p.costo)*(p.mon==='USD'?TC:1):m.cp;
+    const nuevoCp = cant>0 ? (c.fis*m.cp+cant*costoPEN)/(c.fis+cant) : m.cp;
+    return `<div class="dx-mov-sum"><small>Quedará así</small>
+      <div><span>Stock en esta ubicación</span><b>${int(antes)} → ${int(antes+cant)} ${m.und}</b></div>
+      <div><span>Stock total del material</span><b>${int(c.fis)} → ${int(c.fis+cant)}</b></div>
+      <div><span>Costo promedio</span><b>${money(m.cp)} → ${money(nuevoCp)}</b></div></div>
+      ${UB[p.ubi] && UB[p.ubi].uso!=='almacenaje'?`<div class="dx-mov-warn">Esta ubicación es de <b>${USO[UB[p.ubi].uso].toLowerCase()}</b>: el stock entra como físico pero no queda disponible hasta liberarlo.</div>`:''}`;
+  }
+  const r=m.stock[+p.ori]; if(!r) return '';
+  if(p.tipo==='sal'){
+    return `<div class="dx-mov-sum"><small>Quedará así</small>
+      <div><span>Stock en esta ubicación</span><b>${int(r.fis)} → ${int(Math.max(r.fis-cant,0))} ${m.und}</b></div>
+      <div><span>Valor que sale</span><b>${money(cant*m.cp)}</b></div></div>
+      ${UB[r.ubi].uso!=='almacenaje'?`<div class="dx-mov-warn">Esta ubicación es de <b>${USO[UB[r.ubi].uso].toLowerCase()}</b>: solo se permite sacar con motivo Merma o Devolución a proveedor.</div>`:''}`;
+  }
+  const dif=p.contada===''?0:num(p.contada)-r.fis;
+  return `<div class="dx-mov-sum"><small>Resultado del conteo</small>
+      <div><span>En sistema</span><b>${int(r.fis)} ${m.und}</b></div>
+      <div><span>Diferencia</span><b>${dif>0?'+':dif<0?'−':''}${int(Math.abs(dif))}</b></div>
+      <div><span>Se registrará</span><b>${dif>0?'Entrada por ajuste':dif<0?'Salida por ajuste':'—'}</b></div>
+      <div><span>Valor del ajuste</span><b>${money(Math.abs(dif)*m.cp)}</b></div></div>`;
+}
+
+function renderMov(){
+  const p=mov; if(!p) return;
+  const h=host('movHost'); const m=MATS.find(x=>x.id===p.mat); const E=p.err;
+  const titulo={ent:'Registrar entrada',sal:'Registrar salida',aju:'Ajustar stock'}[p.tipo];
+  const fld=(id,label,inner,hint,err)=>`<div class="dx-mov-f"><label for="${id}">${label}</label>${inner}${err?`<small class="bad">${err}</small>`:hint?`<small>${hint}</small>`:''}</div>`;
+  const matSel = `<select id="mvm" class="dx-mov-field ${E.mat?'is-bad':''}" ${p.lock?'disabled':''}><option value="">Selecciona…</option>${MATS.map(x=>`<option value="${x.id}" ${p.mat===x.id?'selected':''}>${x.cod} · ${esc(x.nombre)}</option>`).join('')}</select>`;
+  let cuerpo='';
+  if(p.tipo==='ent'){
+    cuerpo=`${fld('mvmo','Motivo',`<select id="mvmo" class="dx-mov-field">${opt(MOT_ENT,p.motivo)}</select>`, p.motivo==='saldo_inicial'?'Para cargar existencias que ya estaban antes de usar el sistema.':p.motivo==='devolucion_ot'?'Material que vuelve de una OT sin usar.':p.motivo==='compra_directa'?'Compra sin orden de compra. Las compras con OC se reciben desde Recepciones.':'Corrige hacia arriba una diferencia a favor.')}
+      ${fld('mvm','Material',matSel,'',E.mat)}
+      <div class="dx-mov-row2">
+        ${fld('mva','Almacén',`<select id="mva" class="dx-mov-field">${ALMACENES.map(a=>`<option value="${a.id}" ${p.alm===a.id?'selected':''}>${a.nombre}</option>`).join('')}</select>`)}
+        ${fld('mvu','Ubicación',`<select id="mvu" class="dx-mov-field ${E.ubi?'is-bad':''}">${UBS[p.alm].map(k=>`<option value="${k}" ${p.ubi===k?'selected':''}>${ubNom(k)}</option>`).join('')}</select>`,'',E.ubi)}
+      </div>
+      ${m&&m.ctl==='Por lote'?`<div class="dx-mov-row2">${fld('mvl','Lote',`<input id="mvl" class="dx-mov-field ${E.lote?'is-bad':''}" value="${esc(p.lote)}" maxlength="30" placeholder="Ej. L-1020">`,'',E.lote)}${fld('mvv','Vencimiento (opcional)',`<input id="mvv" type="date" class="dx-mov-field" value="${p.venc}">`)}</div>`:''}
+      <div class="dx-mov-row2">
+        ${fld('mvc','Cantidad'+(m?' ('+m.und+')':''),`<input id="mvc" inputmode="decimal" class="dx-mov-field ${E.cant?'is-bad':''}" value="${esc(p.cant)}" placeholder="0">`,'',E.cant)}
+        ${fld('mvk','Costo unitario',`<input id="mvk" inputmode="decimal" class="dx-mov-field ${E.costo?'is-bad':''}" value="${esc(p.costo)}" placeholder="${m?m.cp.toFixed(2):'0.00'}">`, m&&!E.costo?'Vacío = usa el costo promedio actual (donde se permite).':'',E.costo)}
+      </div>
+      <div class="dx-mov-f"><label id="mvgl">Moneda del costo</label><div class="dx-mov-seg" role="radiogroup" aria-labelledby="mvgl">${['PEN','USD'].map(x=>`<button type="button" role="radio" aria-checked="${p.mon===x}" class="${p.mon===x?'on':''}" data-mon="${x}">${x==='PEN'?'Soles (S/)':'Dólares (US$)'}</button>`).join('')}</div>${p.mon==='USD'?'<small>Se convierte a soles con el tipo de cambio del día.</small>':''}</div>
+      ${p.motivo==='compra_directa'?fld('mvd','Documento de la compra',`<input id="mvd" class="dx-mov-field ${E.doc?'is-bad':''}" value="${esc(p.doc)}" maxlength="40" placeholder="Ej. F001-004512">`,'',E.doc):''}
+      ${fld('mvo','Observación (opcional)',`<textarea id="mvo" class="dx-mov-field" maxlength="200">${esc(p.obs)}</textarea>`)}`;
+  } else {
+    const oriSel = m ? `<select id="mvr" class="dx-mov-field ${E.ori?'is-bad':''}"><option value="">Selecciona…</option>${m.stock.map((r,i)=>`<option value="${i}" ${p.ori===String(i)?'selected':''}>${UB[r.ubi].n} · lote ${r.lote} · ${int(rowDisp(r))} libres</option>`).join('')}</select>` : `<select class="dx-mov-field" disabled><option>Primero elige el material</option></select>`;
+    const r = m && m.stock[+p.ori];
+    cuerpo=`${p.tipo==='sal'?fld('mvmo','Motivo',`<select id="mvmo" class="dx-mov-field ${E.motivo?'is-bad':''}">${opt(MOT_SAL,p.motivo)}</select>`,'Los consumos de OT y los despachos no se registran aquí.',E.motivo):fld('mvmo','Motivo',`<select id="mvmo" class="dx-mov-field">${opt(MOT_AJU,p.motivo)}</select>`)}
+      ${fld('mvm','Material',matSel,'',E.mat)}
+      ${fld('mvr','Ubicación y lote',oriSel,r&&r.res?int(r.res)+' reservados no se pueden sacar.':'',E.ori)}
+      ${p.tipo==='sal'?fld('mvc','Cantidad'+(m?' ('+m.und+')':''),`<input id="mvc" inputmode="decimal" class="dx-mov-field ${E.cant?'is-bad':''}" value="${esc(p.cant)}" placeholder="0">`,'',E.cant)
+        :`<div class="dx-mov-row2">${fld('mvs','Cantidad en sistema',`<div class="dx-mov-ro">${r?int(r.fis)+' '+m.und:'—'}</div>`)}${fld('mvt','Cantidad contada',`<input id="mvt" inputmode="decimal" class="dx-mov-field ${E.contada?'is-bad':''}" value="${esc(p.contada)}" placeholder="0">`,'',E.contada)}</div>`}
+      ${fld('mvo','Observación',`<textarea id="mvo" class="dx-mov-field ${E.obs?'is-bad':''}" maxlength="200">${esc(p.obs)}</textarea>`,'Queda en el historial del movimiento.',E.obs)}`;
+  }
+  h.innerHTML=`<div class="dx-mov-overlay" id="mvov"></div>
+  <aside class="dx-mov-panel" id="mvp" role="dialog" aria-modal="true" aria-labelledby="mvt1">
+    <header><h2 id="mvt1">${titulo}</h2><button class="dx-mov-x" id="mvx" aria-label="Cerrar">×</button></header>
+    <div class="dx-mov-body">${E.server?`<div class="dx-mov-alert" role="alert">${E.server}</div>`:''}${cuerpo}<div id="mvsum">${resumenMov(p)}</div></div>
+    <footer><button class="dx-btn" id="mvc2">Cancelar</button><button class="dx-btn primary" id="mvs">${p.tipo==='ent'?'Registrar entrada':p.tipo==='sal'?'Registrar salida':'Aplicar ajuste'}</button></footer>
+  </aside>`;
+  const g=id=>document.getElementById(id);
+  const sync=()=>{ if(g('mvmo')) p.motivo=g('mvmo').value; if(g('mvm')&&!p.lock) p.mat=g('mvm').value; if(g('mva')) p.alm=g('mva').value; if(g('mvu')) p.ubi=g('mvu').value; if(g('mvr')) p.ori=g('mvr').value;
+    if(g('mvl')) p.lote=g('mvl').value; if(g('mvv')) p.venc=g('mvv').value; if(g('mvc')) p.cant=g('mvc').value; if(g('mvk')) p.costo=g('mvk').value; if(g('mvd')) p.doc=g('mvd').value; if(g('mvo')) p.obs=g('mvo').value; if(g('mvt')) p.contada=g('mvt').value; };
+  ['mvmo','mvm','mva','mvr'].forEach(id=>{ const n=g(id); if(n) n.onchange=()=>{ sync(); if(id==='mva'){ p.ubi=UBS[p.alm][0]; } if(id==='mvm'){ p.ori=''; p.lote=''; const mm=MATS.find(x=>x.id===p.mat); if(mm&&p.tipo!=='ent'&&mm.stock.length) p.ori='0'; } p.err={}; renderMov(); const f=g(id); if(f) f.focus(); }; });
+  const u=g('mvu'); if(u) u.onchange=()=>{ sync(); p.err={}; renderMov(); g('mvu').focus(); };
+  ['mvl','mvv','mvc','mvk','mvd','mvo','mvt'].forEach(id=>{ const n=g(id); if(n) n.addEventListener('input',()=>{ sync(); const s=g('mvsum'); if(s) s.innerHTML=resumenMov(p); }); });
+  document.querySelectorAll('[data-mon]').forEach(b=>b.onclick=()=>{ sync(); p.mon=b.dataset.mon; renderMov(); });
+  g('mvx').onclick=cerrarMov; g('mvc2').onclick=cerrarMov; g('mvov').onclick=cerrarMov;
+  g('mvp').addEventListener('keydown',e=>{ if(e.key==='Escape') cerrarMov(); });
+  g('mvs').onclick=()=>{ sync(); p.err=validarMov(p); if(Object.keys(p.err).length){ renderMov(); const first=['mat','ori','ubi','lote','cant','costo','doc','contada','obs','motivo'].find(k=>p.err[k]); const idm={mat:'mvm',ori:'mvr',ubi:'mvu',lote:'mvl',cant:'mvc',costo:'mvk',doc:'mvd',contada:'mvt',obs:'mvo',motivo:'mvmo'}; const f=g(idm[first]); if(f) f.focus(); return; } aplicarMov(p); };
+}
+
+function findRow(m,alm,ubi,lote){ return m.stock.find(x=>x.alm===alm&&x.ubi===ubi&&x.lote===lote); }
+function pushK(o){ KROWS.push(Object.assign({id:KID++,fecha:HOY,val:'def',anulado:false},o)); buildK(); }
+function aplicarMov(p){
+  const m=MATS.find(x=>x.id===p.mat); const cant=num(p.cant);
+  if(p.tipo==='ent'){
+    const lote=p.lote.trim()||'—'; let r=findRow(m,p.alm,p.ubi,lote);
+    const costoPEN=num(p.costo)>0?num(p.costo)*(p.mon==='USD'?TC:1):m.cp; const c=calc(m);
+    m.cp=(c.fis*m.cp+cant*costoPEN)/(c.fis+cant);
+    if(r) r.fis+=cant; else m.stock.push({alm:p.alm,ubi:p.ubi,lote,fis:cant,res:0});
+    pushK({mat:m.id,alm:p.alm,ubi:p.ubi,tipo:'ent',motivo:MOT_ENT[p.motivo],ref:p.doc.trim()||'Entrada manual',cant,costo:costoPEN});
+    cerrarMov(); showToast('Entrada registrada: +'+int(cant)+' '+m.und+' de '+m.nombre+' en '+UB[p.ubi].n+'.');
+  } else if(p.tipo==='sal'){
+    const r=m.stock[+p.ori]; r.fis-=cant;
+    pushK({mat:m.id,alm:r.alm,ubi:r.ubi,tipo:'sal',motivo:MOT_SAL[p.motivo],ref:'Salida manual',cant:-cant,costo:m.cp});
+    cerrarMov(); showToast('Salida registrada: −'+int(cant)+' '+m.und+' de '+m.nombre+'.');
+  } else {
+    const r=m.stock[+p.ori], nueva=num(p.contada), dif=nueva-r.fis; r.fis=nueva;
+    pushK({mat:m.id,alm:r.alm,ubi:r.ubi,tipo:dif>0?'ent':'sal',motivo:MOT_AJU[p.motivo],ref:'Conteo físico',cant:dif,costo:m.cp});
+    cerrarMov(); showToast('Ajuste aplicado en '+m.nombre+': '+(dif>0?'+':'−')+int(Math.abs(dif))+' '+m.und+'.');
+  }
+}
+
+/* Detalle de un movimiento y anulación */
+function motivoNoAnulable(r){
+  if(r.anulado) return 'Este movimiento ya fue anulado.';
+  if(r.motivo==='Anulación') return 'Una anulación no se puede anular. Registra un nuevo movimiento si hace falta.';
+  if(r.motivo==='Recepción de OC') return 'Las recepciones de OC se anulan desde Recepciones, porque también cambian el estado de la orden.';
+  if(r.tipo==='tin'||r.tipo==='tout') return 'Una transferencia se corrige con una transferencia inversa.';
+  if(r.motivo==='Consumo OT') return 'El consumo de una OT se corrige desde la OT.';
+  if(!can('editar')) return 'Tu rol no permite anular movimientos.';
+  return '';
+}
+function rowParaAnular(r){ const m=MATS.find(x=>x.id===r.mat); return m.stock.find(x=>x.alm===r.alm&&x.ubi===r.ubi); }
+function abrirDet(id){ detK=KROWS.find(x=>x.id===id); renderDet(); setTimeout(()=>{const f=$('#dtx'); if(f) f.focus();},0); }
+function cerrarDet(){ detK=null; anul=null; ['detHost','anHost'].forEach(i=>{const h=document.getElementById(i); if(h) h.remove();}); }
+function renderDet(){
+  const r=detK; if(!r) return; const m=MATS.find(x=>x.id===r.mat); const h=host('detHost'); const no=motivoNoAnulable(r);
+  h.innerHTML=`<div class="dx-mov-overlay" id="dtov"></div>
+  <aside class="dx-mov-panel" id="dtp" role="dialog" aria-modal="true" aria-labelledby="dtt">
+    <header><h2 id="dtt">Detalle del movimiento</h2><button class="dx-mov-x" id="dtx" aria-label="Cerrar">×</button></header>
+    <div class="dx-mov-body">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${pillTipo(r.tipo)}${r.anulado?'<span class="dx-ui-pill is-gray"><i></i>Anulado</span>':pillVal(r.val)}</div>
+      <div class="dx-mov-dl">
+        <div><small>Fecha</small><span>${fdate(r.fecha)}</span></div>
+        <div><small>Cantidad</small><span>${qtyTxt(r.cant)} ${m.und}</span></div>
+        <div><small>Material</small><span>${esc(m.nombre)}</span></div>
+        <div><small>Motivo</small><span>${r.motivo}</span></div>
+        <div><small>Almacén</small><span>${almNom(r.alm)}</span></div>
+        <div><small>Ubicación</small><span>${UB[r.ubi].n}</span></div>
+        <div><small>Costo unitario</small><span>${money(r.costo)}</span></div>
+        <div><small>Referencia</small><span>${esc(r.ref||'—')}</span></div>
+        <div><small>Registrado por</small><span>${r.id%2?'M. Quispe':'R. Huamán'}</span></div>
+        <div><small>Saldo después</small><span>${int(r.saldo)} ${m.und}</span></div>
+      </div>
+      ${no?`<div class="dx-mov-warn">${no}</div>`:''}
+    </div>
+    <footer><button class="dx-btn" id="dtc">Cerrar</button>${no?'':'<button class="dx-btn danger" id="dta">Anular movimiento…</button>'}</footer>
+  </aside>`;
+  const g=id=>document.getElementById(id);
+  g('dtx').onclick=cerrarDet; g('dtc').onclick=cerrarDet; g('dtov').onclick=cerrarDet;
+  g('dtp').addEventListener('keydown',e=>{ if(e.key==='Escape') cerrarDet(); });
+  if(g('dta')) g('dta').onclick=()=>{ anul={motivo:'',err:''}; renderAnul(); };
+}
+function renderAnul(){
+  const r=detK, a=anul; if(!r||!a) return; const m=MATS.find(x=>x.id===r.mat); const row=rowParaAnular(r);
+  const inv = r.cant>0 ? 'salida' : 'entrada';
+  const falta = r.cant>0 && (!row || rowDisp(row)<r.cant);
+  const h=host('anHost');
+  h.innerHTML=`<div class="dx-mov-overlay" id="anov" style="z-index:22"></div>
+  <div class="dx-mov-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ant" aria-describedby="and">
+    <h2 id="ant">¿Anular este movimiento?</h2>
+    <p id="and">Se marcará como anulado y se registrará un movimiento inverso (${inv} de ${int(Math.abs(r.cant))} ${m.und}). El historial se conserva y no se puede deshacer.</p>
+    ${falta?`<div class="dx-mov-alert" role="alert">No se puede anular: en esa ubicación hay ${int(row?rowDisp(row):0)} ${m.und} libres y se necesitan ${int(r.cant)}. El stock ya se movió o se consumió.</div>`:''}
+    <div class="dx-mov-f" style="margin-top:12px"><label for="anm">Motivo de la anulación</label><textarea id="anm" class="dx-mov-field ${a.err?'is-bad':''}" maxlength="200">${esc(a.motivo)}</textarea>${a.err?`<small class="bad">${a.err}</small>`:'<small>Obligatorio. Queda en el historial.</small>'}</div>
+    <div class="dx-mov-confirm-f"><button class="dx-btn" id="anc">Volver</button><button class="dx-btn danger" id="any" ${falta?'disabled':''}>Anular movimiento</button></div>
+  </div>`;
+  const g=id=>document.getElementById(id);
+  g('anm').addEventListener('input',()=>{ a.motivo=g('anm').value; });
+  g('anc').onclick=()=>{ anul=null; g('anHost')&&document.getElementById('anHost').remove(); };
+  g('anov').onclick=g('anc').onclick;
+  g('anm').focus();
+  document.getElementById('anHost').addEventListener('keydown',e=>{ if(e.key==='Escape') g('anc').onclick(); });
+  g('any').onclick=()=>{
+    a.motivo=g('anm').value; if(!a.motivo.trim()){ a.err='Indica por qué se anula.'; renderAnul(); return; }
+    r.anulado=true; if(row) row.fis += (-r.cant);
+    pushK({mat:r.mat,alm:r.alm,ubi:r.ubi,tipo:r.cant>0?'sal':'ent',motivo:'Anulación',ref:'Anula '+r.motivo.toLowerCase(),cant:-r.cant,costo:r.costo});
+    cerrarDet(); showToast('Movimiento anulado. Se registró la '+inv+' inversa de '+int(Math.abs(r.cant))+' '+m.und+'.');
+  };
+}
+
+/* Toast, rol y render */
+function paintToast(){ document.querySelectorAll('.dx-mov-toast').forEach(n=>n.remove()); if(toast){ const t=document.createElement('div'); t.className='dx-mov-toast'; t.setAttribute('role','status'); t.textContent=toast; const v=$('#view'); v.insertBefore(t,v.firstChild); } }
+function showToast(t){ toast=t; render(); clearTimeout(window._tt); window._tt=setTimeout(()=>{ toast=''; paintToast(); },6000); }
+function render(){ render0(); paintToast(); }
+$('#rolBtn').onclick=()=>{ rol = rol==='full'?'crear':rol==='crear'?'ver':'full'; $('#rolBtn').textContent='Rol: '+ROLES[rol]; render(); };
+
+document.querySelectorAll('#tabs .dx-ui-tab').forEach(t=>t.addEventListener('click',()=>{ view=t.dataset.view; matSel=null; q=''; render(); }));
+$('#themeBtn').onclick=()=>{
+  const d=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme', d?'light':'dark');
+  $('#themeBtn').textContent = d?'Modo oscuro':'Modo claro';
+};
+render();
+</script>
+</body>
+</html>
