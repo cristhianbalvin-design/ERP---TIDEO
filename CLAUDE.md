@@ -99,7 +99,7 @@ Tras aprobar Cristhian el alcance, Claude trabaja en bucle (implementar → veri
 
 **Libre, sin preguntar**
 - Lecturas, SELECT, pruebas, lint, build, `git status`, `git diff` y consultas de solo lectura al conector Supabase.
-- Crear la rama de la feature (cada tarea en su propia rama, desde `origin/main` actualizado), `git add` por nombre de archivo (nunca `git add .`) y commits en esa rama. Codex puede ejecutar estos comandos git.
+- Crear la rama de la feature (cada tarea en su propia rama, desde `origin/main` actualizado), `git add` por nombre de archivo (nunca `git add .`) y commits en esa rama. Los comandos git que escriben (rama, add, commit) los ejecuta Claude, no Codex: el sandbox de Codex no puede escribir en `.git` de un worktree. Si el shell de Claude no alcanza el worktree, los ejecuta Cristhian con un bloque de PowerShell encadenado con `&&`. Codex deja los cambios sin commitear.
 - SQL y migraciones directo en producción, solo en el proyecto Supabase "ERP - Tideo" (`atqwyjfidfoepthygfoo`), nunca en "Web Principal - Tideo". Cada cambio lleva un bloque de comprobación con `RAISE EXCEPTION` para revertirse solo si falla, y se verifica con SELECT después. El `.sql` de la migración se commitea en la rama.
 - Migraciones aditivas (tablas, columnas, funciones, índices, políticas). Todo `CREATE OR REPLACE` de una función existente parte de `pg_get_functiondef` de la versión remota vigente, con diff; para `generar_cxp_centralizado` se ejecuta siempre `scripts/regression_cxp_centralizado_20260924.sql`.
 
