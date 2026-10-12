@@ -2508,4 +2508,5 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-mov-confirm-f{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
 .dx-btn.danger{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot)}
 .dx-btn.danger:disabled{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line)}
+.dx-mov-hint{margin:0;max-width:280px;align-self:center;color:var(--dx-ui-gray);font-size:12px;line-height:1.45}
 @media (max-width:520px){.dx-mov-row2,.dx-mov-dl{grid-template-columns:minmax(0,1fr)}.dx-mov-panel header,.dx-mov-panel footer{padding:12px 16px}.dx-mov-body{padding:16px}.dx-mov-panel footer .dx-btn,.dx-mov-confirm-f .dx-btn{min-height:44px;flex:1}}

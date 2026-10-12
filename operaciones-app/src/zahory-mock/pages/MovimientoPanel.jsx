@@ -40,7 +40,7 @@ export function MovimientoPanel({ accion, materiales, almacenes, ubicaciones, st
       return;
     }
     envioRef.current = true; setGuardando(true);
-    try { await onSubmit({ ...form, sociedad_id: fila?.sociedad_id || sociedadId || form.sociedad_id || null, cantidad: accion === 'ajuste' ? form.conteo : form.cantidad, costo_unitario: form.costo_unitario === '' ? null : numero(form.costo_unitario), lote: form.lote.trim() || fila?.lote || null, serie: form.serie.trim() || fila?.serie || null, nro_documento: form.nro_documento.trim() || null, observacion: form.observacion.trim() || null }); }
+    try { await onSubmit({ ...form, sociedad_id: fila?.sociedad_id || sociedadId || form.sociedad_id || null, cantidad: accion === 'ajuste' ? form.conteo : form.cantidad, costo_unitario: form.costo_unitario === '' ? null : numero(form.costo_unitario), lote: form.lote.trim() || fila?.lote || null, serie: form.serie.trim() || fila?.serie || null, vencimiento: form.vencimiento.trim() || null, nro_documento: form.nro_documento.trim() || null, observacion: form.observacion.trim() || null }); }
     catch (error) { setErrorServidor(error?.message || 'No se pudo registrar el movimiento.'); }
     finally { envioRef.current = false; setGuardando(false); }
   };

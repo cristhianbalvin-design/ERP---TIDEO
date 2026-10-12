@@ -107,6 +107,34 @@ describe('InventarioKardexPage', () => {
     expect(texto(root)).not.toContain('Anular movimiento…');
   });
 
+  it('explica el bloqueo de escritura consolidada solo cuando hay permisos', async () => {
+    mocks.sesion = { empresaId: 'e1', sociedadId: '**todas**', estado: 'listo', vistaConsolidada: true, sociedadesIdsAlcance: ['s1', 's2'], permiteEscritura: false };
+    mocks.rpc.mockResolvedValue({ data: true, error: null });
+    const consolidada = await renderPage();
+    expect(texto(consolidada)).toContain('Elige una sociedad concreta en el selector superior para registrar movimientos.');
+    expect(texto(consolidada)).not.toContain('Ajustar stock');
+    expect(texto(consolidada)).not.toContain('Registrar entrada');
+    expect(texto(consolidada)).not.toContain('Registrar salida');
+    consolidada.unmount();
+
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: true };
+    const concreta = await renderPage();
+    expect(texto(concreta)).not.toContain('Elige una sociedad concreta en el selector superior para registrar movimientos.');
+    expect(texto(concreta)).toContain('Ajustar stock');
+    expect(texto(concreta)).toContain('Registrar entrada');
+    expect(texto(concreta)).toContain('Registrar salida');
+    concreta.unmount();
+
+    mocks.rpc.mockResolvedValue({ data: false, error: null });
+    mocks.sesion = { ...mocks.sesion, permiteEscritura: false };
+    const sinPermisos = await renderPage();
+    expect(texto(sinPermisos)).not.toContain('Elige una sociedad concreta en el selector superior para registrar movimientos.');
+    expect(texto(sinPermisos)).not.toContain('Ajustar stock');
+    expect(texto(sinPermisos)).not.toContain('Registrar entrada');
+    expect(texto(sinPermisos)).not.toContain('Registrar salida');
+    sinPermisos.unmount();
+  });
+
   it('registra una entrada y refresca stock y kardex; el doble clic no duplica', async () => {
     let resolver;
     mocks.registrar.mockReturnValueOnce(new Promise(resolve => { resolver = resolve; }));
@@ -118,7 +146,7 @@ describe('InventarioKardexPage', () => {
     await act(async () => { const evento = { preventDefault: vi.fn() }; form.props.onSubmit(evento); form.props.onSubmit(evento); await Promise.resolve(); });
     expect(mocks.registrar).toHaveBeenCalledTimes(1);
     await act(async () => { resolver({ kardex_id: 'k-new' }); await Promise.resolve(); await Promise.resolve(); });
-    expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ empresa_id: 'e1', accion: 'entrada', sociedad_id: 's1', cantidad: '2' }));
+    expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ empresa_id: 'e1', accion: 'entrada', sociedad_id: 's1', cantidad: '2', vencimiento: null }));
     expect(texto(root)).toContain('Entrada registrada correctamente.');
     expect(mocks.cargarInventario).toHaveBeenCalledTimes(2);
   });

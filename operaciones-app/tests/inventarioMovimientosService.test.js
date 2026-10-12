@@ -7,6 +7,13 @@ import { anularMovimiento, registrarMovimientoManual } from '../src/services/inv
 describe('inventarioMovimientosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { kardex_id: 'k1', saldo: 2 }, error: null }); });
 
+  it('normaliza opcionales vacíos o con espacios a null y aplica moneda por defecto', async () => {
+    await registrarMovimientoManual({ empresa_id: 'e1', accion: 'entrada', motivo: 'saldo_inicial', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', sociedad_id: 'soc1', cantidad: 1, lote: '  ', serie: '', vencimiento: ' ', nro_documento: '   ', observacion: '', moneda: '  ' });
+    expect(rpc).toHaveBeenCalledWith('wms_registrar_movimiento_manual', expect.objectContaining({
+      p_moneda: 'PEN', p_vencimiento: null, p_lote: null, p_serie: null, p_nro_documento: null, p_observacion: null,
+    }));
+  });
+
   it('llama la RPC de registro con parámetros completos y exactos', async () => {
     const form = { empresa_id: 'e1', accion: 'entrada', motivo: 'saldo_inicial', material_id: 'm1', almacen_id: 'a1', ubicacion_id: 'u1', sociedad_id: 'soc1', cantidad: 3, costo_unitario: 4, moneda: 'USD', lote: 'L-1', serie: null, vencimiento: '2027-01-01', nro_documento: null, observacion: 'Inicio' };
     await registrarMovimientoManual(form);

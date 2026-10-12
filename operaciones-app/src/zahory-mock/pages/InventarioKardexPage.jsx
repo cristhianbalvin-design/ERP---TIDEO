@@ -64,8 +64,8 @@ export function InventarioKardexPage() {
   const sesion = useSesionOperativa();
   const { empresaId, sociedadId, sociedadActiva, vistaConsolidada, sociedadesIdsAlcance } = sesion;
   const [puedeVer, setPuedeVer] = useState(false);
-  const [puedeCrear, setPuedeCrear] = useState(false);
-  const [puedeEditar, setPuedeEditar] = useState(false);
+  const [permiteCrear, setPermiteCrear] = useState(false);
+  const [permiteEditar, setPermiteEditar] = useState(false);
   const [permisosCargados, setPermisosCargados] = useState(false);
   const [datos, setDatos] = useState({ almacenes: [], ubicaciones: [], stock: [], kardex: [], kardexParcial: false, limiteKardex: 200 });
   const [cargando, setCargando] = useState(true);
@@ -103,11 +103,14 @@ export function InventarioKardexPage() {
         if (ver.error) throw ver.error;
         if (crear.error) throw crear.error;
         if (editar.error) throw editar.error;
-        const puedeEscribir = sesion.permiteEscritura !== false;
-        if (vigente) { setPuedeVer(Boolean(ver.data)); setPuedeCrear(Boolean(crear.data) && puedeEscribir); setPuedeEditar(Boolean(editar.data) && puedeEscribir); setPermisosCargados(true); }
+        if (vigente) { setPuedeVer(Boolean(ver.data)); setPermiteCrear(Boolean(crear.data)); setPermiteEditar(Boolean(editar.data)); setPermisosCargados(true); }
       }).catch(err => { if (vigente) { setError(mensajeError(err)); setPermisosCargados(true); } });
     return () => { vigente = false; };
   }, [empresaId, sesion.cargando, sesion.estado, sesion.permiteEscritura, reintentoPermisos]);
+
+  const puedeEscribir = sesion.permiteEscritura !== false;
+  const puedeCrear = permiteCrear && puedeEscribir;
+  const puedeEditar = permiteEditar && puedeEscribir;
 
   const cargar = useCallback(async () => {
     setCargando(true); setError('');
@@ -191,7 +194,7 @@ export function InventarioKardexPage() {
   const buscar = <label className="dx-ui-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg><input value={busqueda} onChange={evento => setBusqueda(evento.target.value)} placeholder={vista === 'stock' ? 'Buscar por material, código o categoría' : 'Buscar por material, código o referencia'} aria-label={fmtSearchLabel} /></label>;
 
   return <section className="dx-ui dx-stk">
-    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Almacén · WMS</div><h1 className="dx-ui-title">{materialSeleccionado ? materialSeleccionado.descripcion : materialId ? 'Material' : 'Inventario & Kardex'}</h1><p className="dx-ui-sub">{materialSeleccionado ? `${materialSeleccionado.codigo} · ${materialSeleccionado.familia}` : 'Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.'}</p></div><div className="dx-ui-actions">{permisosCargados && puedeEditar && <button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('ajuste')}>Ajustar stock</button>}{permisosCargados && puedeCrear && <><button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('salida')}>Registrar salida</button><button type="button" className="dx-btn primary" onClick={() => abrirPanelMovimiento('entrada')}>Registrar entrada</button></>}</div></header>
+    <header className="dx-ui-head-page"><div><div className="dx-ui-eyebrow">Almacén · WMS</div><h1 className="dx-ui-title">{materialSeleccionado ? materialSeleccionado.descripcion : materialId ? 'Material' : 'Inventario & Kardex'}</h1><p className="dx-ui-sub">{materialSeleccionado ? `${materialSeleccionado.codigo} · ${materialSeleccionado.familia}` : 'Qué hay, dónde está y cuánto vale, con el historial de cada movimiento.'}</p></div><div className="dx-ui-actions">{permisosCargados && puedeEditar && <button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('ajuste')}>Ajustar stock</button>}{permisosCargados && puedeCrear && <><button type="button" className="dx-btn" onClick={() => abrirPanelMovimiento('salida')}>Registrar salida</button><button type="button" className="dx-btn primary" onClick={() => abrirPanelMovimiento('entrada')}>Registrar entrada</button></>}{permisosCargados && !puedeEscribir && (permiteCrear || permiteEditar) && <p className="dx-mov-hint">Elige una sociedad concreta en el selector superior para registrar movimientos.</p>}</div></header>
     {toast && <div className="dx-mov-toast" role="status">{toast}</div>}
     {!materialSeleccionado && <div className="dx-ui-tabs" role="tablist" aria-label="Vistas de inventario">
       <button type="button" className={`dx-ui-tab${vista === 'stock' ? ' on' : ''}`} role="tab" aria-selected={vista === 'stock'} onClick={() => { setVista('stock'); setMaterialId(''); setTipo(''); }}>Stock</button>
