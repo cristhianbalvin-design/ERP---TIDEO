@@ -2628,3 +2628,101 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-work-page .dx-work-add-activity:hover,.dx-work-page .dx-action-44.btn-secondary:hover,.dx-work-page .dx-wizard-footer .btn-secondary:hover{filter:brightness(.96)}
 [data-theme='dark'] .dx-work-page .dx-work-add-activity:hover,[data-theme='dark'] .dx-work-page .dx-action-44.btn-secondary:hover,[data-theme='dark'] .dx-work-page .dx-wizard-footer .btn-secondary:hover{filter:brightness(1.12)}
 @container (max-width:760px){.dx-inf-inline .dx-inf-layout{padding:0 12px 12px}.dx-work-page .dx-report-diagnosis-card{margin:0 12px 12px}}
+
+/* Ajustes del flujo de mantenimiento: superficies, contraste y ancho coherente. */
+[data-theme='dark'] .dx-work-page .dx-work-steps button.is-current span,
+[data-theme='dark'] .dx-work-page .dx-work-steps button.is-done span,
+[data-theme='dark'] .dx-work-page .dx-work-steps button span { color:var(--dx-ui-ink); }
+[data-theme='dark'] .dx-work-page .dx-work-steps button:not(.is-current):not(.is-done) span { color:var(--dx-ui-gray); }
+[data-theme='dark'] .dx-work-page .dx-work-steps button.is-current i,
+[data-theme='dark'] .dx-work-page .dx-work-steps button.is-done i { background:var(--dx-ui-cyan); }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg [data-cota] { opacity:.72; }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg [data-cota].c-on { opacity:1; }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg .dimtxt { fill:var(--cyan-highlight); }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg .lbl { fill:var(--text); }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg .dimline,
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg .lead { stroke:var(--text-muted); }
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas svg .dimbg { fill:var(--surface-2); }
+[data-theme='dark'] .dx-work-page .dx-hallazgo-drawing,
+[data-theme='dark'] .dx-work-page .dx-scope>.dx-body .hallazgo-grid,
+[data-theme='dark'] .dx-work-page .dx-scope>.dx-body .hallazgo-matrix,
+[data-theme='dark'] .dx-work-page .dx-scope>.dx-body .hallazgo-measurements,
+[data-theme='dark'] .dx-work-page .dx-scope>.dx-body .dx-foto-section,
+[data-theme='dark'] .dx-work-page .dx-diagnostico-resumen-card,
+[data-theme='dark'] .dx-work-page .dx-cascada-lines-group,
+[data-theme='dark'] .dx-work-page .dx-work-family-group,
+[data-theme='dark'] .dx-work-page .dx-work-activity-group {
+  border-color:var(--border-strong); background:var(--surface-4); color:var(--text);
+}
+[data-theme='dark'] .dx-work-page .dx-drawing-canvas { border-color:var(--border-strong); background:var(--surface-2); }
+[data-theme='dark'] .dx-work-page .dx-zone-chips>span { border-color:var(--badge-red-border); background:var(--badge-red-bg); color:var(--text); }
+[data-theme='dark'] .dx-work-page .dx-zone-chips input { border-color:var(--border-strong); background:var(--surface-2); color:var(--text); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-conclusion-editor label,
+[data-theme='dark'] .dx-inf-inline .dx-inf-options label,
+[data-theme='dark'] .dx-inf-inline .dx-inf-confirm { color:var(--text); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-conclusion-editor textarea {
+  border-color:var(--border-strong); background:var(--surface-2); color:var(--text); color-scheme:dark;
+}
+[data-theme='dark'] .dx-inf-inline .dx-inf-conclusion-editor textarea::placeholder { color:var(--dx-ui-gray); opacity:1; }
+[data-theme='dark'] .dx-inf-inline .dx-inf-options input,
+[data-theme='dark'] .dx-inf-inline .dx-inf-confirm input { accent-color:var(--dx-ui-cyan); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-controls {
+  border-color:var(--border-strong); background:var(--surface-4); color:var(--text);
+}
+[data-theme='dark'] .dx-inf-inline .dx-inf-preview { border-color:var(--border-strong); background:var(--bg); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-status { background:var(--status-review-bg); color:var(--status-review-fg); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-status.is-issued { background:var(--status-paid-bg); color:var(--status-paid-fg); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-ai-button,
+[data-theme='dark'] .dx-inf-inline .dx-inf-ai-confirm button {
+  border-color:var(--border-strong); background:var(--surface-2); color:var(--text);
+}
+[data-theme='dark'] .dx-inf-inline .dx-inf-ai-confirm { border-color:var(--border-strong); background:var(--surface-2); color:var(--text); }
+[data-theme='dark'] .dx-inf-inline .dx-inf-ai-label { color:var(--status-review-fg) !important; }
+[data-theme='dark'] .dx-inf-inline .dx-inf-conclusion-editor small,
+[data-theme='dark'] .dx-inf-inline .dx-inf-counter { color:var(--text-muted); }
+[data-theme='dark'] .dx-work-page .dx-diagnostico-resumen-regenerate {
+  border-color:var(--border-strong); background:var(--surface-2); color:var(--text);
+}
+[data-theme='dark'] .dx-work-page .dx-diagnostico-resumen-regenerate:disabled { background:var(--dx-ui-head); color:var(--dx-ui-gray); }
+[data-theme='dark'] .dx-work-page .dx-scope input:not([type='checkbox']):not([type='radio']):not([type='range']),
+[data-theme='dark'] .dx-work-page .dx-scope select,
+[data-theme='dark'] .dx-work-page .dx-scope textarea {
+  border-color:var(--border-strong); background-color:var(--surface-2); color:var(--text); color-scheme:dark;
+}
+[data-theme='dark'] .dx-work-page .dx-scope input::placeholder,
+[data-theme='dark'] .dx-work-page .dx-scope textarea::placeholder { color:var(--dx-ui-gray); opacity:1; }
+
+/* En el paso 6, el diagnóstico, el borrador y la vista previa comparten caja. */
+.dx-work-page .dx-report-diagnosis-card { box-sizing:border-box; width:auto; margin:0 12px 14px; }
+.dx-work-page .dx-inf-inline .dx-inf-layout { box-sizing:border-box; width:100%; padding-inline:12px; }
+.dx-work-page .dx-inf-inline .dx-inf-controls,
+.dx-work-page .dx-inf-inline .dx-inf-preview { box-sizing:border-box; width:100%; min-width:0; max-width:none; }
+
+/* Líneas del paso 5: siete columnas útiles en escritorio y tarjeta ordenada en móvil. */
+.dx-work-page .dx-cascada-table-wrap { min-width:0; overflow-x:hidden; }
+.dx-work-page .dx-cascada-lines-table { width:100%; min-width:0; table-layout:fixed; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(-n+2),
+.dx-work-page .dx-cascada-lines-table td:nth-child(-n+2) { display:none; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(3) { width:22%; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(4) { width:16%; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(5) { width:18%; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(6) { width:14%; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(7),
+.dx-work-page .dx-cascada-lines-table th:nth-child(8) { width:10%; }
+.dx-work-page .dx-cascada-lines-table th:nth-child(9) { width:10%; }
+.dx-work-page .dx-cascada-lines-group .diagnostico-combobox { min-width:0; width:100%; }
+.dx-work-page .dx-cascada-lines-group .diagnostico-combobox-control,
+.dx-work-page .dx-cascada-lines-group .diagnostico-combobox-control input { box-sizing:border-box; width:100%; min-width:0; height:38px; }
+.dx-work-page .dx-cascada-number { box-sizing:border-box; width:100%; min-width:0; height:38px; }
+.dx-work-page .dx-cascada-lines-table td { overflow-wrap:anywhere; }
+@container (max-width:760px) {
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 8px; }
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line td[data-label='Tarea'],
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line td[data-label='Detalle'] { grid-column:1/-1; }
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line td[data-label='H-H'],
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line td[data-label='H-equipo'] { grid-column:span 1; }
+  .dx-work-page .dx-cascada-lines-table .dx-cascada-line td[data-label='Nivel de costo'] { grid-column:1/-1; }
+}
+@media(max-width:560px) {
+  .dx-work-page .dx-report-diagnosis-card { margin-inline:12px; }
+}
