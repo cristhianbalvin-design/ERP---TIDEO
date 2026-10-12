@@ -110,6 +110,8 @@ function NavEntry({ item, route, navigate }) {
   return (
     <button
       className={`ops-nav-entry${itemMatchesRoute(item, route) ? ' active' : ''}`}
+      title={item.label}
+      aria-label={item.label}
       onClick={() => navigate(item.id)}
     >
       {item.icon && <Icon name={item.icon} size={14} />}
@@ -132,6 +134,12 @@ export function OperationalApp() {
   });
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
+  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true');
+  useEffect(() => {
+    const onWorkMode = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
+    window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
+    return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
+  }, []);
   useEffect(() => {
     const updateRoute = () => setLocation(readLocation());
     window.addEventListener('hashchange', updateRoute);
@@ -183,7 +191,7 @@ export function OperationalApp() {
 
   return (
     <div className="ops-shell">
-      <aside className="ops-sidebar">
+      <aside className={`ops-sidebar${diagnosticoWorkMode ? ' is-diagnostico-rail' : ''}`}>
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={tideoIsotipo} alt="TIDEO" />
@@ -244,7 +252,7 @@ export function OperationalApp() {
 
                       return (
                         <div className={`ops-nav-group${isOpen ? ' is-open' : ''}`} key={group.id}>
-                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} onClick={() => toggleGroup(group.id)} aria-expanded={isOpen}>
+                          <button className={`ops-nav-group-head${isActive ? ' active' : ''}`} title={group.label} aria-label={group.label} onClick={() => toggleGroup(group.id)} aria-expanded={isOpen}>
                             <span className="ops-nav-group-icon">{group.emoji}</span>
                             <span className="ops-nav-entry-label">{group.label}</span>
                             {group.groupBadge && <span className={`ops-nav-group-badge${group.groupBadgeClass ? ` ${group.groupBadgeClass}` : ''}`}>{group.groupBadge}</span>}

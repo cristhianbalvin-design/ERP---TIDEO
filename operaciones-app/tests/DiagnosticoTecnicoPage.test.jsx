@@ -32,7 +32,7 @@ vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   obtenerOCrearBorrador: mocks.getDraft,
 }));
 vi.mock('../src/zahory-mock/pages/DiagnosticoInformePanel.jsx', () => ({
-  DiagnosticoInformePanel: () => <div className="mock-report-panel"><button type="button" className="dx-informe-emitir">Emitir informe</button></div>,
+  DiagnosticoInformePanel: props => <div className="mock-report-panel"><button type="button" className="dx-informe-emitir" onClick={async () => { const result = await props.onEmitirDiagnostico?.(); await props.onRecargarDiagnostico?.(result); }}>Emitir informe</button></div>,
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
@@ -817,6 +817,30 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(list.props.className).toContain('dx-list-work-hidden');
     expect(document.documentElement.dataset.dxDiagnosticoWorkMode).toBe('true');
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active === true)).toBe(true);
+  });
+
+  it('mantiene el paso Informe en lectura al abrir un diagnóstico ya emitido', async () => {
+    const emitido = { ...detail('two', 'mantenimiento'), estado: 'emitido', resumen_diagnostico: 'Conclusión emitida', hallazgos: [] };
+    mocks.service.listarDiagnosticosTecnicos.mockResolvedValue([{ id: 'two', tipo: 'mantenimiento', estado: 'emitido', oportunidad_id: null, recepcion_id: 'rac-two', updated_at: null }]);
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(emitido);
+    await renderPage();
+    await act(async () => { listRows()[0].props.onClick(); await wait(120); });
+    expect(textOf(renderer.root)).toContain('Técnico: Sin asignar');
+    const footerButtons = () => renderer.root.find(node => node.props.className?.includes('diagnostico-modal-footer')).findAllByType('button').map(button => textOf(button).trim());
+    await act(async () => renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button')[4].props.onClick());
+    expect(footerButtons()).toEqual(['← Volver a hallazgos']);
+    expect(renderer.root.findAll(node => node.props.className?.includes('dx-dirty-count'))).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain('Diagnóstico emitido. Texto de solo lectura.');
+  });
+
+  it('define el ancho adaptable del informe y compacta la cabecera en los pasos finales', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(css).toContain('@container (min-width:900px){.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,360px) minmax(0,1fr)');
+    expect(css).toContain('@container (max-width:899px){.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,1fr)');
+    expect(css).toContain('.dx-work-identity.is-compact .dx-work-meta{flex-wrap:nowrap');
+    expect(source).toContain("informePanel || workStep >= 4 ? ' is-compact' : ''");
+    expect(source).toContain("|| 'Sin asignar'");
   });
 
   it('R20: el scroll dentro del menú no lo cierra, pero el scroll externo sí', () => {

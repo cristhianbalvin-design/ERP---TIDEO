@@ -75,6 +75,7 @@ const renderPanel = async (hallazgos, options = {}) => {
       onRegisterAddHallazgo={add => { callbacks.addHallazgo = add; }}
       onRegisterBackToList={back => { callbacks.backToList = back; }}
       onDirtyChange={dirty => { callbacks.dirty = dirty; }}
+      onDirtySummary={summary => { callbacks.dirtySummary = summary; }}
       onSavingChange={saving => { callbacks.saving = saving; }}
       onError={error => { callbacks.error = error; }}
       onNotice={notice => { callbacks.notice = notice; }}
@@ -101,6 +102,24 @@ beforeEach(() => {
 });
 
 describe('HallazgosTrabajoPanel', () => {
+  it('rehidrata hallazgos persistidos con mediciones y zonas sin marcarlos como cambios', async () => {
+    const hallazgoGuardado = {
+      ...baseHallazgo,
+      _dirty: true,
+      _zonesDirty: true,
+      zonas: [{ id: 'zone-1', zona_id: 'zone-1', nombre: 'Sello', orden: 1, nota: null, _dirty: true }],
+      mediciones: [1, 2, 3, 4].map(index => ({
+        id: `measurement-${index}`, parametro: `Medida ${index}`, unidad: 'mm', nominal: null,
+        minimo: '', maximo: null, medido: 12, _dirty: true, _new: true,
+      })),
+      lineas: [{ id: 'link-1', linea_id: 'line-1', _dirty: true, _new: true }],
+    };
+    const { renderer, callbacks } = await renderPanel([hallazgoGuardado]);
+    expect(callbacks.dirty).toBe(false);
+    expect(callbacks.dirtySummary).toEqual({ hallazgos: 0, tareas: 0, fotos: 0, cambios: 0 });
+    await act(async () => renderer.unmount());
+  });
+
   it('incluye los estilos de tema del dibujo del catálogo y sus zonas', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     for (const selector of ['.part', '.part.alt', '.part.hole', '.cav', '.thin', '.cl', '.dimline', '.lead', '.dimtxt', '.dimbg', '.dimdot', '.lbl', '[data-cota].c-on', '[data-z].is-marked']) {

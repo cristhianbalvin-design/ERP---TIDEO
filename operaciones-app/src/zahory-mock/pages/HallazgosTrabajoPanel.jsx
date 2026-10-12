@@ -81,6 +81,16 @@ const normalize = row => ({
   mediciones: (row.mediciones || []).map(item => ({ ...item, _dirty: Boolean(item._dirty) })),
   lineas: (row.lineas || []).map(item => ({ ...item, _dirty: Boolean(item._dirty) })),
 });
+// API rows are a saved baseline. Strip transient editor flags during hydration so
+// stale/internal fields in a response can never turn a read into a pending edit.
+const normalizePersisted = row => normalize({
+  ...row,
+  _dirty: false,
+  _zonesDirty: false,
+  _componentDirty: false,
+  mediciones: (row.mediciones || []).map(item => ({ ...item, _dirty: false, _new: false })),
+  lineas: (row.lineas || []).map(item => ({ ...item, _dirty: false, _new: false })),
+});
 
 function SelectField({ label, value, options, disabled, onChange, allowInactive = false, requiredKey }) {
   return <div className="field">
@@ -242,7 +252,7 @@ function DibujoHallazgoVista({ component, markup, onZone, disabled }) {
 }
 
 export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], familias = [], tipos = [], cargos = [], activos = [], extraFamilyIds = [], onExtraFamilyIdsChange, onCreateFamily, onRemoveFamilyLines, canEdit, readOnly, onRegisterSave, onRegisterGoToIncomplete, onRegisterAddHallazgo, onRegisterAddOtro, onRegisterBackToList, onDirtyChange, onDirtySummary, onSavingChange, onError, onNotice, onFotosChange, onItemsChange, onViewChange }) {
-  const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalize));
+  const [items, setItems] = useState(() => (diagnostico?.hallazgos || []).map(normalizePersisted));
   const [deletedItems, setDeletedItems] = useState([]);
   const [deletedMediciones, setDeletedMediciones] = useState([]);
   const [deletedLineas, setDeletedLineas] = useState([]);
@@ -311,7 +321,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   };
 
   useEffect(() => {
-    setItems((diagnostico?.hallazgos || []).map(normalize));
+    setItems((diagnostico?.hallazgos || []).map(normalizePersisted));
     setDeletedItems([]); setDeletedMediciones([]); setDeletedLineas([]);
     updatePendingFotos([]);
     setExpandedKeys(new Set((diagnostico?.hallazgos || []).slice(0, 1).map(row => row.id).filter(Boolean)));

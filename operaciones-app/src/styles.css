@@ -64,6 +64,22 @@ body {
 
 .ops-shell { min-height: 100vh; display: flex; align-items: flex-start; }
 .ops-sidebar { position: sticky; top: 0; width: 240px; height: 100vh; flex: 0 0 240px; display: flex; flex-direction: column; overflow: hidden; background: var(--navy); color: rgba(255,255,255,.78); padding: 20px 8px; }
+.ops-sidebar.is-diagnostico-rail { width: 72px; flex-basis: 72px; padding: 16px 6px; overflow-x: hidden; }
+.ops-sidebar.is-diagnostico-rail .ops-brand { justify-content: center; padding: 0 0 14px; }
+.ops-sidebar.is-diagnostico-rail .ops-brand > div:not(.ops-brand-logo-box),
+.ops-sidebar.is-diagnostico-rail .ops-module-search,
+.ops-sidebar.is-diagnostico-rail .ops-nav-zone-label,
+.ops-sidebar.is-diagnostico-rail .ops-nav-entry-label,
+.ops-sidebar.is-diagnostico-rail .ops-nav-badge,
+.ops-sidebar.is-diagnostico-rail .ops-nav-group-badge,
+.ops-sidebar.is-diagnostico-rail .ops-nav-group-head > svg,
+.ops-sidebar.is-diagnostico-rail .ops-nav-group-body { display: none !important; }
+.ops-sidebar.is-diagnostico-rail .ops-nav { overflow-x: hidden; }
+.ops-sidebar.is-diagnostico-rail .ops-nav-entry,
+.ops-sidebar.is-diagnostico-rail .ops-nav-group-head { justify-content: center; width: 100%; min-width: 0; padding-inline: 0; }
+.ops-sidebar.is-diagnostico-rail .ops-nav-entry svg { width: 18px; height: 18px; }
+.ops-sidebar.is-diagnostico-rail .ops-nav-group-icon { flex: none; }
+.ops-sidebar.is-diagnostico-rail .ops-nav-zone { margin-top: 8px; }
 .ops-brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; padding: 0 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .ops-brand-logo-box {
   width: 34px;
@@ -370,6 +386,14 @@ body {
 @media (max-width: 680px) {
   .ops-shell { display: block; }
   .ops-sidebar { position: static; width: 100%; height: auto; min-height: 0; padding: 13px 12px; }
+  .ops-sidebar.is-diagnostico-rail { width: 100%; height: auto; min-height: 0; padding: 8px 12px; }
+  .ops-sidebar.is-diagnostico-rail .ops-brand { justify-content: flex-start; padding-bottom: 8px; }
+  .ops-sidebar.is-diagnostico-rail .ops-nav { display: flex; flex-direction: row; gap: 4px; max-width: 100%; overflow-x: auto; }
+  .ops-sidebar.is-diagnostico-rail .ops-imported-nav { display: contents; }
+  .ops-sidebar.is-diagnostico-rail .ops-nav-zone { display: contents; }
+  .ops-sidebar.is-diagnostico-rail .ops-nav-entry,
+  .ops-sidebar.is-diagnostico-rail .ops-nav-group-head { width: 40px; min-width: 40px; min-height: 40px; }
+  .ops-sidebar.is-diagnostico-rail .ops-nav-group { display: none; }
   .ops-brand { padding-bottom: 10px; }
   .ops-product { display: none; }
   .ops-nav { flex: initial; margin-top: 9px; max-height: 52vh; }

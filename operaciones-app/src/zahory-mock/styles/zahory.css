@@ -2575,3 +2575,18 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-work-page .dx-report-diagnosis-card .dx-diagnostico-resumen-heading h3{font:700 17px 'Sora',sans-serif;color:var(--dx-ui-navy)}
 .dx-work-page>.diagnostico-modal-footer .dx-work-footer-status{white-space:normal}
 @container (max-width:760px){.dx-work-page .dx-initial-flow{padding:12px}.dx-work-page .dx-initial-grid{grid-template-columns:1fr}.dx-work-page .dx-work-page-head{padding-inline:12px}.dx-work-page .dx-initial-receipt{align-items:flex-start;flex-wrap:wrap}.dx-work-page .dx-report-diagnosis-card{margin:0 12px 12px;padding:12px}}
+
+/* Compact header and fluid report workspace for the final two steps. */
+.dx-work-page .dx-work-identity.is-compact{gap:4px 12px;padding-block:8px 5px}
+.dx-work-page .dx-work-identity.is-compact h1{font-size:17px}
+.dx-work-page .dx-work-identity.is-compact .dx-work-back-link{min-height:28px}
+.dx-work-page .dx-work-identity.is-compact .dx-work-meta{flex-wrap:nowrap;gap:4px 14px;margin-top:2px;overflow:hidden}
+.dx-work-page .dx-work-identity.is-compact .dx-work-meta>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-work-page .dx-work-page-head:has([aria-current="step"]:is(button:nth-child(4),button:nth-child(5))){padding-block:0 4px}
+.dx-inf-inline,.dx-inf-inline .dx-inf-layout,.dx-inf-inline .dx-inf-controls,.dx-inf-inline .dx-inf-preview{min-width:0;max-width:100%}
+.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:12px;padding:0 12px 12px;overflow-x:hidden}
+.dx-inf-inline .dx-inf-preview{max-height:calc(100dvh - 150px);min-height:460px}
+@container (min-width:900px){.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,360px) minmax(0,1fr);padding-inline:12px}.dx-inf-inline .dx-inf-preview{max-height:calc(100dvh - 150px);min-height:460px}}
+@container (max-width:899px){.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,1fr);padding-inline:10px}.dx-inf-inline .dx-inf-preview{max-height:none;min-height:360px}}
+@media(max-width:900px){.dx-work-page .dx-work-identity.is-compact .dx-work-meta{gap:4px 9px}.dx-work-page .dx-work-identity.is-compact .dx-work-meta>span{font-size:11px}}
+@media(max-width:560px){.dx-work-page .dx-work-identity.is-compact .dx-work-meta{flex-wrap:wrap}.dx-work-page .dx-work-identity.is-compact .dx-work-meta>span{flex:1 1 100%}}
