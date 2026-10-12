@@ -531,10 +531,10 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
         style={{ width: '100%', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}
       >
         <div style={{width:34, height:34, background:'#fff', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', padding:4, overflow:'hidden', boxShadow:'0 2px 4px rgba(0,0,0,0.1)'}}>
-          <img src="/tideo-isotipo.png" alt="TIDEO" style={{width:'100%', height:'100%', objectFit:'contain'}} />
+          <img src="/opera/opera-isotipo-light.png" alt="OPERA" style={{width:'100%', height:'100%', objectFit:'contain'}} />
         </div>
         {!effectiveCollapsed && <div>
-          <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>TIDEO</div>
+          <div className="sidebar-logo-text" style={{letterSpacing:'0.05em'}}>OPERA</div>
           <div className="sidebar-logo-sub" style={{opacity:0.6, fontSize:10, fontWeight:700, letterSpacing:'0.1em'}}>ERP</div>
         </div>}
       </button>

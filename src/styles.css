@@ -141,7 +141,7 @@ body {
   background: var(--navy-900);
 }
 .application-welcome-content { width: min(860px, 100%); margin: auto 0; }
-.application-wordmark { display: block; width: 150px; max-width: 70%; height: auto; margin: 0 auto 22px; }
+.application-wordmark { display: block; width: 240px; max-width: 70%; height: auto; margin: 0 auto 22px; }
 .application-welcome-intro { text-align: center; margin-bottom: 32px; }
 .application-welcome-intro .eyebrow { color: var(--slate-300); }
 .application-welcome-intro h1 { margin: 7px 0 8px; color: var(--sidebar-fg-active); font-size: clamp(25px, 4vw, 34px); }
