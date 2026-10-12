@@ -781,7 +781,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await waitFor(() => buttonByText(renderer, 'Siguiente: informe'));
     expect(mocks.service.crearDiagnosticoTecnico).toHaveBeenCalledWith('empresa-prueba', 'usuario-prueba', expect.objectContaining({ recepcion_id: 'rac-wizard' }));
     const workSteps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
-    expect(workSteps).toHaveLength(5);
+    expect(workSteps).toHaveLength(6);
     expect(workSteps.slice(0, 3).every(button => button.props.className === 'is-done')).toBe(true);
     expect(workSteps[3].props.className).toBe('is-current');
     expect(workSteps.slice(0, 3).every(button => button.props.disabled !== true)).toBe(true);
@@ -793,12 +793,14 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(renderer.root.findByProps({ 'data-active-work-step': 'summary' })).toBeTruthy();
     await act(async () => workSteps[3].props.onClick());
     expect(renderer.root.findByProps({ 'data-active-work-step': 'findings' })).toBeTruthy();
+    expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
     expect(renderer.root.findAll(node => node.props.className?.split(' ').includes('dx-work-page'))).toHaveLength(1);
     expect(renderer.root.findAll(node => node.props.className === 'ops-modal-backdrop')).toHaveLength(0);
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active)).toBe(true);
     const footerButtons = () => renderer.root.find(node => node.props.className?.includes('diagnostico-modal-footer')).findAllByType('button').map(button => textOf(button).trim());
     expect(footerButtons()).toEqual(['＋ Agregar hallazgo', 'Siguiente: informe']);
     await act(async () => buttonByText(renderer, 'Siguiente: informe').props.onClick());
+    expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
     await waitFor(() => buttonByText(renderer, 'Emitir informe'));
     expect(footerButtons()).toEqual(['← Volver a hallazgos', 'Emitir informe']);
     await act(async () => buttonByText(renderer, '← Volver a hallazgos').props.onClick());
@@ -904,6 +906,12 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     const row = diagnosticoId => listRows().find(node => textOf(node).includes(diagnosticoId === 'one' ? 'opp-one' : 'rac-two'));
     const otherBefore = textOf(row(otherId));
     await act(async () => { row(id).props.onClick(); await wait(100); });
+    if (_tipo === 'mantenimiento') {
+      expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeFalsy();
+      const steps = renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button');
+      await act(async () => { await steps[5].props.onClick(); await wait(0); });
+      expect(buttonByText(renderer, 'Emitir diagnóstico')).toBeTruthy();
+    }
     await act(async () => { buttonByText(renderer, 'Emitir diagnóstico').props.onClick(); });
     await act(async () => { buttonByText(renderer, 'Confirmar emisión').props.onClick(); await wait(40); });
     expect(textOf(row(id))).toContain('Emitido');
@@ -1039,7 +1047,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { listRows()[1].props.onClick(); await wait(100); });
     expect(buttonByText(renderer, 'Informe al cliente')).toBeTruthy();
     const actionBar = renderer.root.findByProps({ className: 'diagnostico-estado-actions dx-action-bar' });
-    expect(actionBar.findAllByType('button').map(button => textOf(button).trim())).toEqual(['Emitir diagnóstico', 'Informe al cliente']);
+    expect(actionBar.findAllByType('button').map(button => textOf(button).trim())).toEqual(['Informe al cliente']);
     expect(renderer.root.findAllByProps({ className: 'dx-inf-open-row' })).toHaveLength(0);
     renderer.unmount(); renderer = null;
 

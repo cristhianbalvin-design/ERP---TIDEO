@@ -36,6 +36,17 @@ beforeEach(() => {
 });
 
 describe('DiagnosticoAgregarTareasPanel', () => {
+  it('abre con el trabajo preseleccionado y el paso Actividad activo', () => {
+    renderer = create(<DiagnosticoAgregarTareasPanel
+      initialFamiliaId="fam-1"
+      familias={[familia]}
+      tipos={[{ id: 'act-a', nombre: 'Reparación de cilindros', rol: 'actividad', familia_trabajo_id: 'fam-1' }]}
+      onClose={vi.fn()} onAdd={vi.fn()}
+    />);
+    expect(allText(renderer.root)).toContain('Motor');
+    expect(allText(renderer.root)).toContain('Reparación de cilindros');
+    expect(renderer.root.findAll(node => node.props['aria-current'] === 'step').map(node => allText(node))).toContain('2Actividad');
+  });
   it('filtra por nombre y código, y las píldoras filtran por uso, actividad y tareas existentes', async () => {
     renderer = renderPanel();
     const search = renderer.root.findByProps({ id: 'dx-panel-search' });

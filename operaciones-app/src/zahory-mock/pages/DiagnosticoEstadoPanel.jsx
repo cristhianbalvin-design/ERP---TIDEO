@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { emitirDiagnosticoTecnico, listarHistorialEstadosDiagnostico, reabrirDiagnosticoTecnico } from '../../services/diagnosticoTecnicoService.js';
 
-export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, cambiosSinGuardar, onCambioCompleto, informeAction = null }) {
+export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, permiteEscritura, permitirEmision = true, cambiosSinGuardar, onCambioCompleto, informeAction = null }) {
   const [historial, setHistorial] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState('');
@@ -46,7 +46,7 @@ export function DiagnosticoEstadoPanel({ empresaId, diagnostico, puedeAprobar, p
     finally { busyRef.current = false; setBusy(false); }
   };
 
-  const visibleEmitir = diagnostico.estado === 'borrador' && puedeAprobar && permiteEscritura;
+  const visibleEmitir = permitirEmision && diagnostico.estado === 'borrador' && puedeAprobar && permiteEscritura;
   const visibleReabrir = diagnostico.estado === 'emitido' && puedeAprobar && permiteEscritura;
   const corto = motivo.trim().length < 10;
   const transicion = row => `${row.estado_anterior === 'borrador' ? 'Borrador' : 'Emitido'} → ${row.estado_nuevo === 'emitido' ? 'Emitido' : 'Borrador'}`;

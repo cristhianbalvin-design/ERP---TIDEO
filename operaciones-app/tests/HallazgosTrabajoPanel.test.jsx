@@ -215,6 +215,14 @@ describe('HallazgosTrabajoPanel', () => {
     expect(textOf(renderer.root)).not.toContain('Aplicar una actividad completa');
   });
 
+  it('inicia el selector del trabajo propuesto vacío al crear un hallazgo', async () => {
+    const { renderer, callbacks } = await renderPanel([]);
+    await act(async () => callbacks.addHallazgo());
+    const work = renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' });
+    expect(work.props.value).toBe('');
+    expect(work.findAllByType('option')[0].children.join('')).toBe('Elige un trabajo');
+  });
+
   it('ordena los hallazgos en una lista plana por prioridad y permite asignar el trabajo en el editor', async () => {
     const { renderer } = await renderPanel([
       { ...baseHallazgo, id: 'low', componente_parte: 'Bajo', prioridad_efectiva: 'P4', prioridad_calculada: 'P4' },
@@ -274,6 +282,8 @@ describe('HallazgosTrabajoPanel', () => {
   it('guarda un hallazgo nuevo antes de sus mediciones y enlaces', async () => {
     const { renderer, callbacks } = await renderPanel([]);
     await act(async () => callbacks.addHallazgo());
+    const proposedWork = renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' });
+    await act(async () => proposedWork.props.onChange({ target: { value: 'family-1' } }));
     const componentSelect = renderer.root.findAllByType('select').find(select => select.props['data-required-field'] === 'component');
     await act(async () => componentSelect.props.onChange({ target: { value: 'otro' } }));
     const componentInput = renderer.root.findByProps({ 'aria-label': 'Componente o parte' });
@@ -297,7 +307,7 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => callbacks.addHallazgo());
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
-    expect(callbacks.error).toContain('Falta el componente. Hay 1 hallazgo incompleto.');
+    expect(callbacks.error).toContain('Falta el trabajo. Hay 1 hallazgo incompleto.');
   });
 
   it('nombra el campo faltante y desplaza el foco a la causa probable', async () => {

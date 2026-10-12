@@ -3,8 +3,8 @@ import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const num = value => Number(value) || 0;
 
-export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
-  const [familiaId, setFamiliaId] = useState('');
+export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], initialFamiliaId = '', onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
+  const [familiaId, setFamiliaId] = useState(initialFamiliaId);
   const [actividadId, setActividadId] = useState('');
   const [query, setQuery] = useState(['', '', '']);
   const [createStep, setCreateStep] = useState(0);
