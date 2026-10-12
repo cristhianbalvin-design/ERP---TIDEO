@@ -827,7 +827,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { listRows()[0].props.onClick(); await wait(120); });
     expect(textOf(renderer.root)).toContain('Técnico: Sin asignar');
     const footerButtons = () => renderer.root.find(node => node.props.className?.includes('diagnostico-modal-footer')).findAllByType('button').map(button => textOf(button).trim());
-    await act(async () => renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button')[4].props.onClick());
+    await act(async () => renderer.root.findAll(node => node.props.className === 'dx-work-steps')[0].findAllByType('button')[5].props.onClick());
     expect(footerButtons()).toEqual(['← Volver a hallazgos']);
     expect(renderer.root.findAll(node => node.props.className?.includes('dx-dirty-count'))).toHaveLength(0);
     expect(textOf(renderer.root)).toContain('Diagnóstico emitido. Texto de solo lectura.');
@@ -1099,7 +1099,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { motivo.props.onChange({ target: { value: 'Ruido reportado' } }); await wait(0); });
     expect(buttonByText(renderer, 'Guardar cambios').props.disabled).toBe(false);
     await act(async () => { buttonByText(renderer, 'Guardar cambios').props.onClick(); await wait(0); });
-    expect(mocks.service.actualizarDatosInicialesDiagnostico).toHaveBeenCalledWith('empresa-prueba', 'two', expect.objectContaining({ motivo: 'Ruido reportado', tecnico_id: 'tec-1', fecha_inspeccion: '2026-10-10', trabajos_evaluar: ['fam-1'] }));
+    expect(mocks.service.actualizarDatosInicialesDiagnostico).toHaveBeenCalledWith('empresa-prueba', 'two', { motivo: 'Ruido reportado', tecnico_id: 'tec-1', fecha_inspeccion: '2026-10-10' });
     expect(buttonByText(renderer, 'Guardar cambios').props.disabled).toBe(true);
   });
 

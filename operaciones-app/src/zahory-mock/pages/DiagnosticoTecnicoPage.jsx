@@ -40,6 +40,7 @@ import { generarConclusionIA, obtenerOCrearBorrador, usuarioPuedeInforme } from 
 import { validarBorradorDiagnostico } from '../../services/validarBorradorDiagnostico.js';
 import { markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 import { fechaLocalISO } from './fechaLocal.js';
+import { agruparLineasPorTrabajo, datosInicialesValidos, PASOS_MANTENIMIENTO } from './diagnosticoFlujo.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -445,11 +446,10 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [wizardStep, setWizardStep] = useState(1);
-  const [datosIniciales, setDatosIniciales] = useState({ motivo: '', trabajos_evaluar: [], tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
-  const [datosInicialesGuardados, setDatosInicialesGuardados] = useState({ motivo: '', trabajos_evaluar: [], tecnico_id: '', fecha_inspeccion: '' });
+  const [datosIniciales, setDatosIniciales] = useState({ motivo: '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
+  const [datosInicialesGuardados, setDatosInicialesGuardados] = useState({ motivo: '', tecnico_id: '', fecha_inspeccion: '' });
   const [componentesInicio, setComponentesInicio] = useState([]);
   const [tecnicosInicio, setTecnicosInicio] = useState([]);
-  const [familiasInicio, setFamiliasInicio] = useState([]);
   const [equipoInicio, setEquipoInicio] = useState(null);
   const [datosInicioError, setDatosInicioError] = useState('');
   const [search, setSearch] = useState('');
@@ -584,12 +584,6 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     return () => { vigente = false; };
   }, [form.tipo, access.ver, empresaId]);
 
-  useEffect(() => {
-    let vigente = true;
-    if (form.tipo !== 'mantenimiento' || !access.ver || !empresaId) return () => { vigente = false; };
-    listarFamiliasTrabajo(empresaId).then(rows => { if (vigente) setFamiliasInicio(rows); }).catch(loadError => { if (vigente) setDatosInicioError(errorMessage(loadError)); });
-    return () => { vigente = false; };
-  }, [form.tipo, access.ver, empresaId]);
 
   useEffect(() => {
     let vigente = true;
@@ -655,7 +649,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setSelected(null);
     setPendingLineDeletes([]);
     setForm({ ...EMPTY_FORM, tipo });
-    setDatosIniciales({ motivo: '', trabajos_evaluar: [], tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
+    setDatosIniciales({ motivo: '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false });
     setComponentesInicio([]);
     setDatosInicioError('');
     setEquipoInicio(null);
@@ -700,7 +694,6 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       setSelected(detail);
       const initialData = {
         motivo: detail.motivo || '',
-        trabajos_evaluar: Array.isArray(detail.trabajos_evaluar) ? detail.trabajos_evaluar : [],
         tecnico_id: detail.tecnico_id || '',
         fecha_inspeccion: detail.fecha_inspeccion || '',
       };
@@ -756,13 +749,11 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
         motivo: datosIniciales.motivo,
         tecnico_id: datosIniciales.tecnico_id,
         fecha_inspeccion: datosIniciales.fecha_inspeccion,
-        trabajos_evaluar: datosIniciales.trabajos_evaluar,
       });
       if (isActive()) setNotice('Diagnóstico guardado en borrador.');
       await cargarLista();
       if (!isActive()) return;
       await openExisting(created);
-      setExtraFamilyIds(datosIniciales.trabajos_evaluar);
       setWizardStep(1);
       setWorkStep(4);
     } catch (saveError) {
@@ -933,28 +924,32 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   };
 
   const goInforme = async () => {
-    if (!canEditLines) { setInformePanel(true); setWorkStep(5); return; }
+    if (!canEditLines) { setInformePanel(true); setWorkStep(6); return; }
     const saved = await saveAll();
-    if (saved) { setInformePanel(true); setWorkStep(5); }
+    if (saved) { setInformePanel(true); setWorkStep(6); }
   };
 
   const initialDataDirty = Boolean(selected?.tipo === 'mantenimiento' && (
     datosIniciales.motivo !== datosInicialesGuardados.motivo
     || datosIniciales.tecnico_id !== datosInicialesGuardados.tecnico_id
     || datosIniciales.fecha_inspeccion !== datosInicialesGuardados.fecha_inspeccion
-    || JSON.stringify(datosIniciales.trabajos_evaluar || []) !== JSON.stringify(datosInicialesGuardados.trabajos_evaluar || [])
   ));
   const saveInitialData = async () => {
-    if (!selected || !canEditInitialData || !initialDataDirty) return;
+    if (!selected || !canEditInitialData || !initialDataDirty) return true;
     setSaving(true); setError(''); setNotice('');
     try {
-      const saved = await actualizarDatosInicialesDiagnostico(empresaId, selected.id, datosIniciales);
-      const next = { motivo: saved.motivo || '', tecnico_id: saved.tecnico_id || '', fecha_inspeccion: saved.fecha_inspeccion || '', trabajos_evaluar: saved.trabajos_evaluar || [] };
+      const saved = await actualizarDatosInicialesDiagnostico(empresaId, selected.id, {
+        motivo: datosIniciales.motivo,
+        tecnico_id: datosIniciales.tecnico_id,
+        fecha_inspeccion: datosIniciales.fecha_inspeccion,
+      });
+      const next = { motivo: saved.motivo || '', tecnico_id: saved.tecnico_id || '', fecha_inspeccion: saved.fecha_inspeccion || '' };
       setDatosIniciales(current => ({ ...current, ...next }));
       setDatosInicialesGuardados(next);
       setSelected(current => current?.id === selected.id ? { ...current, ...next, tecnico_nombre: tecnicosInicio.find(row => row.id === next.tecnico_id)?.nombre || current.tecnico_nombre } : current);
       setNotice('Cambios guardados.');
-    } catch (saveError) { setError(errorMessage(saveError)); }
+      return true;
+    } catch (saveError) { setError(errorMessage(saveError)); return false; }
     finally { setSaving(false); }
   };
   const selectInitialReference = reference => {
@@ -962,7 +957,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       && !window.confirm('Si cambias de recepción, se perderán los datos iniciales que ingresaste. ¿Continuar?')) return;
     setForm(current => ({ ...current, referencia: reference }));
     setSearch(referenceLabel(reference));
-    setDatosIniciales(current => ({ ...current, motivo: reference.observaciones || '', trabajos_evaluar: [], tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false }));
+    setDatosIniciales(current => ({ ...current, motivo: reference.observaciones || '', tecnico_id: '', fecha_inspeccion: fechaLocalISO(), componente_catalogo_id: null, corregirComponente: false }));
   };
 
   const deleteLine = async line => {
@@ -1129,20 +1124,16 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     ? Boolean(selectedReference)
     : wizardStep === 2
       ? Boolean(equipoInicio && (equipoInicio.activo.tipo_activo === 'maquinaria_completa' || equipoInicio.componente || datosIniciales.componente_catalogo_id))
-      : Boolean(selectedReference && datosIniciales.motivo.trim() && datosIniciales.trabajos_evaluar.length && datosIniciales.tecnico_id && datosIniciales.fecha_inspeccion);
+      : datosInicialesValidos(selectedReference, datosIniciales);
 
   const lineasActuales = selected?.lineas || [];
   const familiasPorId = new Map(catalogs.familias.map(item => [item.id, item]));
-  const gruposMap = new Map();
-  lineasActuales.forEach(line => {
-    const familia = familiasPorId.get(line.familia_trabajo_id) || { id: line.familia_trabajo_id || 'sin-familia', nombre: 'Trabajo no disponible' };
-    if (!gruposMap.has(familia.id)) gruposMap.set(familia.id, { familia, lines: [] });
-    gruposMap.get(familia.id).lines.push(line);
-  });
-  extraFamilyIds.forEach(id => {
+  const gruposMap = new Map(agruparLineasPorTrabajo(lineasActuales, catalogs.familias).map(group => [group.familia.id, group]));
+  [...extraFamilyIds, ...(selected?.hallazgos || []).map(hallazgo => hallazgo.familia_trabajo_id).filter(Boolean)].forEach(id => {
     if (!gruposMap.has(id) && familiasPorId.has(id)) gruposMap.set(id, { familia: familiasPorId.get(id), lines: [] });
   });
   const grupos = [...gruposMap.values()];
+  const renderLineas = lines => <DiagnosticoLineasTabla lines={lines} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />;
   const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
   const dirtyLineCount = lineasActuales.filter(line => line._dirty).length + pendingLineDeletes.length;
@@ -1243,7 +1234,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
         busy={modalBusy}
         onClose={closeDetail}
         pageHeader={maintenancePage ? requestClose => {
-          if (!selected) return <><header className="dx-work-identity"><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" onClick={requestClose}>← Diagnósticos</button><h1>Nuevo diagnóstico · Mantenimiento</h1></div><div className="dx-work-identity-status">{selectedReference?.numero && <strong>{selectedReference.numero}</strong>}<span className="dx-ui-pill is-amber"><i />Borrador</span></div></header><div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico">{['Recepción','Equipo','Datos','Hallazgos (0)','Informe'].map((label, index) => <button key={label} type="button" className={wizardStep === index + 1 ? 'is-current' : wizardStep > index + 1 ? 'is-done' : ''} aria-current={wizardStep === index + 1 ? 'step' : undefined} disabled={index > 2 || index + 1 > wizardStep} onClick={() => setWizardStep(index + 1)}><i>{wizardStep > index + 1 ? '✓' : index + 1}</i><span>{label}</span></button>)}</nav></div></>;
+          if (!selected) return <><header className="dx-work-identity"><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" onClick={requestClose}>← Diagnósticos</button><h1>Nuevo diagnóstico · Mantenimiento</h1></div><div className="dx-work-identity-status">{selectedReference?.numero && <strong>{selectedReference.numero}</strong>}<span className="dx-ui-pill is-amber"><i />Borrador</span></div></header><div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico">{PASOS_MANTENIMIENTO.map((label, index) => <button key={label} type="button" className={wizardStep === index + 1 ? 'is-current' : wizardStep > index + 1 ? 'is-done' : ''} aria-current={wizardStep === index + 1 ? 'step' : undefined} disabled={index > 2 || index + 1 > wizardStep} onClick={() => setWizardStep(index + 1)}><i>{wizardStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}</nav></div></>;
           const reference = form.referencia || {};
           const title = `${String(reference.activo || selected.hallazgos?.[0]?.componente_parte || 'Equipo').toLocaleUpperCase('es')} · ${reference.cliente || 'Cliente'}`;
           const motivo = selected.motivo || reference.motivo || reference.observaciones || reference.observacion || reference.descripcion || reference.detalle || '—';
@@ -1257,7 +1248,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {isReadOnly ? <span role="status">Informe emitido</span> : cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
             {error && <div className="alert alert-error">{error}</div>}
           </div>
-          {isReadOnly ? <button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button> : !informePanel && workStep <= 3 ? <><span className="dx-work-footer-status">{initialDataDirty ? 'Datos iniciales sin guardar' : selected.datos_iniciales_migracion_disponible === false ? 'Datos iniciales: —' : 'Datos del diagnóstico'}</span>{canEditInitialData && <button type="button" className="btn btn-primary dx-action-44" onClick={saveInitialData} disabled={!initialDataDirty || modalBusy}>{modalBusy ? 'Guardando…' : 'Guardar cambios'}</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => setWorkStep(4)}>Ir a hallazgos</button></> : !informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={event => event.currentTarget.getRootNode()?.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
+          {isReadOnly ? <button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button> : !informePanel && workStep <= 3 ? <><span className="dx-work-footer-status">{initialDataDirty ? 'Datos iniciales sin guardar' : selected.datos_iniciales_migracion_disponible === false ? 'Datos iniciales: —' : 'Datos del diagnóstico'}</span>{canEditInitialData && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveInitialData} disabled={!initialDataDirty || modalBusy}>{modalBusy ? 'Guardando…' : 'Guardar cambios'}</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={async () => { if (workStep === 3 && !(await saveInitialData())) return; setWorkStep(workStep + 1); }}>{workStep === 3 ? 'Siguiente: Hallazgos' : 'Siguiente'}</button></> : !informePanel && workStep === 4 && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={async () => { const saved = await saveAll(); if (saved) { setWorkStep(5); setHallazgoView('lista'); } }} disabled={modalBusy}>Siguiente: Trabajos</button></> : !informePanel && workStep === 4 ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : !informePanel && workStep === 5 ? <><button type="button" className="btn btn-secondary dx-action-44" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</button>{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}>{modalBusy ? 'Guardando…' : 'Guardar todo'}</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={goInforme}>Siguiente: Diagnóstico e informe</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(5); }}>← Volver a trabajos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={event => event.currentTarget.getRootNode()?.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
         </> : <>
           <div style={{ flex: 1 }}>
             {selected && cambiosCount > 0 && <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar{selected.tipo === 'mantenimiento' && Number(hallazgosDirtySummary.fotos || 0) > 0 ? ` · ${hallazgosDirtySummary.fotos} foto${hallazgosDirtySummary.fotos === 1 ? '' : 's'} pendiente${hallazgosDirtySummary.fotos === 1 ? '' : 's'}` : ''}</div>}
@@ -1286,71 +1277,46 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {equipoInicio?.activo.tipo_activo === 'maquinaria_completa' ? <section className="dx-initial-card"><span className="dx-ui-pill">Máquina completa</span><p>No hace falta elegir un tipo ahora: en cada hallazgo eliges qué componente evalúas.</p></section> : <section className="dx-initial-card"><h2>Tipo de componente</h2>{equipoInicio?.componente && !datosIniciales.corregirComponente ? <><span className="dx-ui-pill">Viene de la recepción</span><div className="dx-initial-component"><div className="dx-drawing-canvas dx-initial-thumb" dangerouslySetInnerHTML={{ __html: markupDibujoHallazgo(equipoInicio.componente.svg || '') }}/><strong>{equipoInicio.componente.nombre}</strong><button type="button" className="btn btn-secondary" onClick={() => setDatosIniciales(current => ({ ...current, corregirComponente: true }))}>Corregir tipo</button></div></> : <><p className="dx-initial-warning">{equipoInicio?.componente ? 'Elige el tipo correcto.' : 'Este equipo todavía no tiene tipo de componente. Se guarda en el equipo y las próximas recepciones y diagnósticos ya lo traen.'}</p><div className="dx-initial-component-grid">{componentesInicio.map(componente => <button type="button" key={componente.id} aria-pressed={datosIniciales.componente_catalogo_id === componente.id} className={datosIniciales.componente_catalogo_id === componente.id ? 'is-selected' : ''} onClick={async () => { setDatosIniciales(current => ({ ...current, componente_catalogo_id: componente.id })); try { await asignarComponenteCatalogoActivo(empresaId, equipoInicio.activo.id, componente.id); setEquipoInicio(current => current ? { ...current, componente } : current); setDatosIniciales(current => ({ ...current, corregirComponente: false })); } catch (saveError) { setDatosInicioError(errorMessage(saveError)); } }}><div className="dx-drawing-canvas dx-initial-thumb" dangerouslySetInnerHTML={{ __html: markupDibujoHallazgo(componente.svg || '') }}/><strong>{componente.nombre}</strong></button>)}<button type="button" onClick={async () => { setDatosIniciales(current => ({ ...current, componente_catalogo_id: 'otro' })); try { await asignarComponenteCatalogoActivo(empresaId, equipoInicio.activo.id, null); setEquipoInicio(current => current ? { ...current, componente: null } : current); setDatosIniciales(current => ({ ...current, corregirComponente: false })); } catch (saveError) { setDatosInicioError(errorMessage(saveError)); } }}>Otro tipo · sin dibujo</button></div></>}</section>}
           </div> : <div className="dx-initial-step">
             <section className="dx-initial-card"><div className="field"><label>Motivo o falla reportada por el cliente *</label><textarea className="input" rows="4" value={datosIniciales.motivo} onChange={event => setDatosIniciales(current => ({ ...current, motivo: event.target.value }))}/></div></section>
-            <section className="dx-initial-card"><strong>Trabajos a evaluar *</strong><div className="dx-initial-chips">{familiasInicio.map(familia => <button key={familia.id} type="button" aria-pressed={datosIniciales.trabajos_evaluar.includes(familia.id)} onClick={() => setDatosIniciales(current => ({ ...current, trabajos_evaluar: current.trabajos_evaluar.includes(familia.id) ? current.trabajos_evaluar.filter(id => id !== familia.id) : [...current.trabajos_evaluar, familia.id] }))}>{familia.nombre}</button>)}</div><small>Puedes marcar varios. Cada hallazgo se asocia a uno de ellos.</small></section>
             <section className="dx-initial-card dx-initial-grid"><div className="field"><label>Técnico responsable *</label><select className="input" value={datosIniciales.tecnico_id} onChange={event => setDatosIniciales(current => ({ ...current, tecnico_id: event.target.value }))}><option value="">Elige…</option>{tecnicosInicio.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}</select></div><div className="field"><label>Fecha de inspección</label><input className="input" type="date" value={datosIniciales.fecha_inspeccion} onChange={event => setDatosIniciales(current => ({ ...current, fecha_inspeccion: event.target.value }))}/></div></section>
           </div> : <div className="dx-initial-step"><div className="card-body dx-wizard-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 16 }}><div className="field"><label>Tipo</label><input className="input" value={typeLabel(form.tipo)} disabled /></div><ReferenceSelector tipo={form.tipo} value={selectedReference} search={search} references={references} loading={loadingReferences} disabled={false} onSearch={setSearch} onSelect={reference => { setForm(current => ({ ...current, referencia: reference })); setSearch(referenceLabel(reference)); }} /></div></div>}
           {datosInicioError && <div className="alert alert-error" role="alert">{datosInicioError}</div>}
         </form></div>}
         {selected && <div className={`dx-scope${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-editing-report' : ''}`}>
           {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico">
-            {[1, 2, 3].map((step, index) => <button key={step} className={workStep === step ? 'is-current' : workStep > step ? 'is-done' : ''} type="button" aria-current={workStep === step ? 'step' : undefined} onClick={() => { setWorkStep(step); setInformePanel(false); }}><i>{workStep > step ? '✓' : step}</i><span>{step} · {['Recepción', 'Equipo', 'Datos'][index]}</span></button>)}
-            <button className={workStep === 4 ? 'is-current' : workStep > 4 ? 'is-done' : ''} type="button" aria-current={workStep === 4 ? 'step' : undefined} onClick={() => { setWorkStep(4); setInformePanel(false); }}><i>4</i><span>Hallazgos ({selected.hallazgos?.length || 0})</span></button>
-            <button className={workStep === 5 ? 'is-current' : ''} type="button" aria-current={workStep === 5 ? 'step' : undefined} onClick={() => { if (!informePanel) goInforme(); }}><i>5</i><span>Informe</span></button>
+            {PASOS_MANTENIMIENTO.map((label, index) => <button key={label} className={workStep === index + 1 ? 'is-current' : workStep > index + 1 ? 'is-done' : ''} type="button" aria-current={workStep === index + 1 ? 'step' : undefined} onClick={async () => { const step = index + 1; if (step === 6) { await goInforme(); return; } setInformePanel(false); setWorkStep(step); }}><i>{workStep > index + 1 ? '✓' : index + 1}</i><span>{index + 1} · {label}</span></button>)}
           </nav></div>}
-          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(5); }}>Informe al cliente</button> : null} />}
-          {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(5); }}>Informe al cliente</button></div>}
-          <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>
+          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button> : null} />}
+          {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(6); }}>Informe al cliente</button></div>}
+          <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (workStep !== 5 || informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
           </div>
           {selected.tipo === 'mantenimiento' && workStep <= 3 && !informePanel && <div className="dx-initial-flow dx-existing-initial-flow">
             {workStep === 1 && <section className="dx-initial-card"><h2>Equipo recibido</h2><dl className="dx-work-reception-grid"><div><dt>Equipo</dt><dd>{form.referencia?.activo || selected.activo_nombre || '—'}</dd></div><div><dt>Cliente</dt><dd>{form.referencia?.cliente || '—'}</dd></div><div><dt>Marca / modelo</dt><dd>{[form.referencia?.marca, form.referencia?.modelo].filter(Boolean).join(' · ') || '—'}</dd></div><div><dt>Serie</dt><dd>{form.referencia?.numero_serie || form.referencia?.placa_serie || '—'}</dd></div><div><dt>Recepción</dt><dd>{form.referencia?.numero || '—'}</dd></div><div><dt>Fecha de ingreso</dt><dd>{form.referencia?.fecha_ingreso ? new Date(form.referencia.fecha_ingreso).toLocaleDateString('es-PE') : '—'}</dd></div></dl></section>}
             {workStep === 2 && <><section className="dx-initial-card"><h2>Equipo recibido</h2><dl className="dx-work-reception-grid"><div><dt>Equipo</dt><dd>{form.referencia?.activo || selected.activo_nombre || '—'}</dd></div><div><dt>Cliente</dt><dd>{form.referencia?.cliente || '—'}</dd></div><div><dt>Marca / modelo</dt><dd>{[form.referencia?.marca, form.referencia?.modelo].filter(Boolean).join(' · ') || '—'}</dd></div><div><dt>Serie</dt><dd>{form.referencia?.numero_serie || form.referencia?.placa_serie || '—'}</dd></div></dl></section><section className="dx-initial-card"><h2>Tipo de componente</h2>{selected.componente_nombre ? <div className="dx-initial-component"><div className="dx-drawing-canvas dx-initial-thumb" dangerouslySetInnerHTML={{ __html: markupDibujoHallazgo(selected.componente_svg || '') }} /><strong>{selected.componente_nombre}</strong></div> : <p>—</p>}</section></>}
-            {workStep === 3 && <><section className="dx-initial-card"><div className="field"><label>Motivo o falla reportada por el cliente</label><textarea className="input" rows="4" value={datosIniciales.motivo} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, motivo: event.target.value }))} placeholder="—" /></div></section><section className="dx-initial-card"><strong>Trabajos a evaluar</strong><div className="dx-initial-chips">{familiasInicio.map(familia => <button key={familia.id} type="button" aria-pressed={datosIniciales.trabajos_evaluar.includes(familia.id)} disabled={!canEditInitialData} onClick={() => setDatosIniciales(current => ({ ...current, trabajos_evaluar: current.trabajos_evaluar.includes(familia.id) ? current.trabajos_evaluar.filter(id => id !== familia.id) : [...current.trabajos_evaluar, familia.id] }))}>{familia.nombre}</button>)}{!familiasInicio.length && <span>—</span>}</div></section><section className="dx-initial-card dx-initial-grid"><div className="field"><label>Técnico responsable</label><select className="input" value={datosIniciales.tecnico_id} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, tecnico_id: event.target.value }))}><option value="">{selected.tecnico_nombre || '—'}</option>{tecnicosInicio.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}</select></div><div className="field"><label>Fecha de inspección</label><input className="input" type="date" value={datosIniciales.fecha_inspeccion} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, fecha_inspeccion: event.target.value }))} /></div></section></>}
+            {workStep === 3 && <><section className="dx-initial-card"><div className="field"><label>Motivo o falla reportada por el cliente</label><textarea className="input" rows="4" value={datosIniciales.motivo} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, motivo: event.target.value }))} placeholder="—" /></div></section><section className="dx-initial-card dx-initial-grid"><div className="field"><label>Técnico responsable</label><select className="input" value={datosIniciales.tecnico_id} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, tecnico_id: event.target.value }))}><option value="">{selected.tecnico_nombre || '—'}</option>{tecnicosInicio.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre}</option>)}</select></div><div className="field"><label>Fecha de inspección</label><input className="input" type="date" value={datosIniciales.fecha_inspeccion} disabled={!canEditInitialData} onChange={event => setDatosIniciales(current => ({ ...current, fecha_inspeccion: event.target.value }))} /></div></section></>}
           </div>}
-          <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && (informePanel || workStep <= 3) ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`} data-active-work-step={selected.tipo === 'mantenimiento' ? (workStep <= 3 ? 'summary' : 'findings') : undefined}>
+          <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && (informePanel || workStep <= 3) ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             {selected.tipo === 'mantenimiento' ? <>
-              <section className="dx-diagnostico-resumen-section dx-work-reception-summary" aria-labelledby="dx-recepcion-title">
-                <header className="dx-diagnostico-resumen-heading"><span>✓</span><div><h3 id="dx-recepcion-title">Recepción del equipo</h3><p>Datos registrados al recibir el activo.</p></div></header>
-                <dl className="dx-work-reception-grid">
-                  <div><dt>Activo</dt><dd>{form.referencia?.activo || 'Sin activo registrado'}</dd></div>
-                  <div><dt>Cliente</dt><dd>{form.referencia?.cliente || 'Sin cliente registrado'}</dd></div>
-                  <div><dt>Recepción</dt><dd>{form.referencia?.numero || referenceLabel(form.referencia)}</dd></div>
-                  <div><dt>Fecha de ingreso</dt><dd>{form.referencia?.fecha_ingreso ? new Date(form.referencia.fecha_ingreso).toLocaleDateString('es-PE') : 'Fecha pendiente'}</dd></div>
-                  <div><dt>Número de serie</dt><dd>{form.referencia?.numero_serie || 'Sin número de serie'}</dd></div>
-                  <div><dt>Técnico asignado</dt><dd>{form.referencia?.tecnico_asignado || form.referencia?.tecnico_nombre || form.referencia?.tecnico || 'Sin técnico asignado'}</dd></div>
-                  <div className="is-wide"><dt>Motivo / observaciones</dt><dd>{form.referencia?.motivo || form.referencia?.observaciones || form.referencia?.observacion || form.referencia?.descripcion || form.referencia?.detalle || 'Sin observaciones registradas'}</dd></div>
-                </dl>
-              </section>
-              <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
+              {workStep === 4 && <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
                   <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterAddHallazgo={add => { hallazgosAddRef.current = add; }} onRegisterAddOtro={add => { hallazgosAddOtroRef.current = add; }} onRegisterBackToList={back => { hallazgosBackRef.current = back; }} onViewChange={view => { setHallazgoView(view); setWorkStep(4); setInformePanel(false); }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
-              </section>
-              <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-diagnostico-resumen-title">
-                <header className="dx-diagnostico-resumen-heading"><span>2</span><div><h3 id="dx-diagnostico-resumen-title">Diagn&#xF3;stico</h3><p>Resumen de los hallazgos y sus acciones recomendadas. Es el mismo texto del informe al cliente.</p></div></header>
-                {resumenVisible || selected.resumen_origen === 'editado' ? <div className="dx-diagnostico-resumen-card">
-                  <textarea aria-label="Diagn&#xF3;stico" value={resumenVisible} disabled={!canEditLines || generandoResumenIA} onChange={event => cambiarResumen(event.target.value)} />
-                  <div className="dx-diagnostico-resumen-meta"><div><strong className={selected.resumen_origen === 'editado' ? 'is-edited' : 'is-auto'}>{selected.resumen_origen === 'editado' ? 'Editado' : 'Generado con IA'}</strong><small>{selected.resumen_origen === 'editado' ? 'Si generas de nuevo se reemplaza tu texto (se pide confirmación).' : 'Puedes editarlo. No cambia solo si cambian los hallazgos.'}</small></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-regenerate" onClick={() => selected.resumen_origen === 'editado' && resumenVisible.trim() ? setConfirmarRegenerarResumen(true) : generarResumenIA()} disabled={generandoResumenIA || !(selected.hallazgos || []).length || hallazgosIncompletosCount > 0} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar de nuevo con IA'}</button>}</div>
-                  {hallazgosIncompletosCount > 0 && <div className="dx-diagnostico-resumen-blocked">Completa o elimina los hallazgos incompletos. <button type="button" onClick={() => goToIncompleteHallazgoRef.current?.()}>Ir al hallazgo</button></div>}{confirmarRegenerarResumen && <div className="dx-diagnostico-resumen-confirm" role="dialog" aria-modal="true" aria-label="Confirmar generación del diagnóstico"><span>Se reemplazará tu texto editado. ¿Deseas continuar?</span><div><button type="button" onClick={generarResumenIA}>Generar de nuevo</button><button type="button" onClick={() => setConfirmarRegenerarResumen(false)}>Cancelar</button></div></div>}
-                  {errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}
-                  <div className="dx-diagnostico-resumen-report"><span aria-hidden="true">✓</span> Este texto también aparece en el Informe al cliente</div>
-                </div> : <div className="dx-diagnostico-resumen-empty"><p>Aún no hay diagnóstico. La IA lo redacta a partir de los hallazgos y sus acciones recomendadas, y luego puedes editarlo.</p><div><button type="button" className="dx-diagnostico-resumen-primary" onClick={generarResumenIA} disabled={!canEditLines || generandoResumenIA || !(selected.hallazgos || []).length || hallazgosIncompletosCount > 0} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar conclusión IA'}</button><button type="button" className="dx-diagnostico-resumen-regenerate" onClick={iniciarResumenManual} disabled={!canEditLines}>Escribir yo mismo</button></div>{hallazgosIncompletosCount > 0 && <div className="dx-diagnostico-resumen-blocked">Completa o elimina los hallazgos incompletos. <button type="button" onClick={() => goToIncompleteHallazgoRef.current?.()}>Ir al hallazgo</button></div>}{!(selected.hallazgos || []).length && <small>Registra al menos un hallazgo</small>}{errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}</div>}
-              </section>
-              <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-realizar-title">
-                <header className="dx-diagnostico-resumen-heading"><span>3</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajos'}</button>}</header>
+              </section>}
+              {workStep === 5 && <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-realizar-title">
+                <header className="dx-diagnostico-resumen-heading dx-work-step-heading"><span>5</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</button>}</header>
                 <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
                 {taskPanel && <DiagnosticoAgregarTareasPanel familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
                 <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
-                  {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <DiagnosticoLineasTabla lines={grupos.flatMap(group => group.lines)} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />}
+                  {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <div className="dx-work-family-groups">{grupos.map(group => { const byActivity = new Map(); group.lines.forEach(line => { const activity = catalogs.tipos.find(item => item.id === line.actividad_id); const key = line.actividad_id || "sin-actividad"; if (!byActivity.has(key)) byActivity.set(key, { activity, lines: [] }); byActivity.get(key).lines.push(line); }); return <section className="dx-work-family-group" key={group.familia.id}><header><h3>{group.familia.nombre}</h3><span>{group.lines.length} tarea{group.lines.length === 1 ? "" : "s"}</span></header>{[...byActivity.entries()].map(([key, activityGroup]) => <section className="dx-work-activity-group" key={key}><h4>{activityGroup.activity?.nombre || "Actividad pendiente"}</h4>{renderLineas(activityGroup.lines)}</section>)}</section>; })}</div>}
                 </div>
-              </section>
+              </section>}
             </> : <>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-fabricacion-title"><header className="dx-diagnostico-resumen-heading is-unumbered"><div><h3 id="dx-trabajos-fabricacion-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para este trabajo.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar tareas'}</button>}</header>
               {taskPanel && <DiagnosticoAgregarTareasPanel familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
               <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
-                {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <DiagnosticoLineasTabla lines={grupos.flatMap(group => group.lines)} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />}
+                {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <div className="dx-work-family-groups">{grupos.map(group => { const byActivity = new Map(); group.lines.forEach(line => { const activity = catalogs.tipos.find(item => item.id === line.actividad_id); const key = line.actividad_id || "sin-actividad"; if (!byActivity.has(key)) byActivity.set(key, { activity, lines: [] }); byActivity.get(key).lines.push(line); }); return <section className="dx-work-family-group" key={group.familia.id}><header><h3>{group.familia.nombre}</h3><span>{group.lines.length} tarea{group.lines.length === 1 ? "" : "s"}</span></header>{[...byActivity.entries()].map(([key, activityGroup]) => <section className="dx-work-activity-group" key={key}><h4>{activityGroup.activity?.nombre || "Actividad pendiente"}</h4>{renderLineas(activityGroup.lines)}</section>)}</section>; })}</div>}
               </div></section>
             </>}
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}

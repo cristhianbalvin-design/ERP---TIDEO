@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const page = await readFile(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
 const service = await readFile(new URL('../src/services/diagnosticoTecnicoService.js', import.meta.url), 'utf8');
+const flow = await readFile(new URL('../src/zahory-mock/pages/diagnosticoFlujo.js', import.meta.url), 'utf8');
 
 describe('Flujo de mantenimiento en página', () => {
   it('usa la ruta nueva y una página en vez del contenedor de diálogo', () => {
@@ -12,9 +13,11 @@ describe('Flujo de mantenimiento en página', () => {
     expect(page).not.toMatch(/key=\{selected\?\.id \|\| `nuevo-\$\{form\.tipo\}`\}/);
   });
 
-  it('no crea el borrador antes del paso 3 y valida los campos requeridos', () => {
+  it('no crea el borrador antes del paso 3 y valida motivo, técnico y fecha sin trabajos a evaluar', () => {
     expect(page).toMatch(/wizardStep < 3\) \{ event\.preventDefault\(\); setWizardStep/);
-    expect(page).toMatch(/datosIniciales\.motivo\.trim\(\) && datosIniciales\.trabajos_evaluar\.length && datosIniciales\.tecnico_id && datosIniciales\.fecha_inspeccion/);
+    expect(page).toContain('datosInicialesValidos(selectedReference, datosIniciales)');
+    expect(page).not.toContain('Trabajos a evaluar');
+    expect(service).not.toContain('p_trabajos_evaluar:');
     expect(page).toContain('Crear borrador y continuar');
     expect(service).toMatch(/rpc\('crear_diagnostico_tecnico_inicial'/);
   });
@@ -32,9 +35,11 @@ describe('Flujo de mantenimiento en página', () => {
     expect(page).toContain("estado === 'en_diagnostico' ? 'En diagn\u00f3stico'");
     expect(page).not.toContain('new Date().toISOString().slice(0, 10)');
   });
-  it('el borrador existente muestra una sola navegacion de cinco pasos', () => {
+  it('el borrador existente muestra una sola navegación de seis pasos', () => {
     expect(page).not.toContain("workStep === 3 ? 'is-current' : ''");
-    expect(page).toContain("[1, 2, 3].map((step, index)");
+    expect(page).toContain('PASOS_MANTENIMIENTO.map((label, index)');
+    expect(flow).toContain("'Trabajos a realizar'");
+    expect(flow).toContain("'Diagn\\u00f3stico e informe'");
   });
   it('restablece estado temporal del panel de tareas al abrir un borrador', () => {
     const start = page.indexOf('const openExisting = async diagnostico => {');

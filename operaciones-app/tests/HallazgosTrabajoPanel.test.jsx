@@ -135,14 +135,14 @@ describe('HallazgosTrabajoPanel', () => {
     expect(css).toContain('.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not([aria-labelledby="dx-hallazgos-title"]){display:none}');
   });
 
-  it('usa selectores explícitos para mostrar el resumen y los hallazgos del paso activo', () => {
+  it('usa una sola barra de seis pasos y muestra solo el paso activo', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
-    expect(css).toContain('.dx-body[data-active-work-step="summary"]>section[aria-labelledby="dx-recepcion-title"]{display:flex');
-    expect(css).toContain('.dx-body[data-active-work-step="findings"]>section[aria-labelledby="dx-hallazgos-title"]{display:block');
-    expect(source).toContain('data-active-work-step={selected.tipo === \'mantenimiento\' ? (workStep <= 3 ? \'summary\' : \'findings\')');
-    expect(css).not.toMatch(/\.dx-work-page[^{}]*>section:(?:first|nth)-child/);
-    expect(css).not.toContain('.dx-work-page .dx-scope>.dx-body>section:not(:first-child)');
+    expect(source).toContain('PASOS_MANTENIMIENTO.map((label, index)');
+    expect(source).toContain("workStep === 4 && <section");
+    expect(source).toContain("workStep === 5 && <section");
+    expect(source).toContain("informePanel && <>");
+    expect(css).toContain('.dx-work-steps{grid-template-columns:repeat(6,minmax(0,1fr))}');
   });
 
   it('muestra campos de hallazgo, matriz, mediciones y tareas, sin controles fuera de v1', async () => {
@@ -154,7 +154,7 @@ describe('HallazgosTrabajoPanel', () => {
     }]);
     await openEditor(renderer);
     const text = textOf(renderer.root);
-    expect(text).toContain('Hallazgos por trabajo');
+    expect(text).toContain('Trabajo que propones para repararlo');
     expect(text).toContain('Condición del componente');
     expect(text).toContain('MATRIZ v1');
     expect(text).toContain('P1 · 1');
@@ -163,8 +163,6 @@ describe('HallazgosTrabajoPanel', () => {
     expect(text).toContain('P4 · 0');
     expect(text).toContain('Mediciones');
     expect(text).toContain('Observaciones');
-    expect(text).not.toContain('Tareas relacionadas');
-    expect(text).not.toContain('Sin tareas relacionadas');
     expect(text).toContain('Fotos');
     expect(text).not.toContain('Aplicar una actividad completa');
     expect(text).not.toContain('Repuesto');
@@ -217,49 +215,52 @@ describe('HallazgosTrabajoPanel', () => {
     expect(textOf(renderer.root)).not.toContain('Aplicar una actividad completa');
   });
 
-  it('crea un grupo sin líneas desde una familia existente y permite agregarle un hallazgo', async () => {
-    const setExtra = vi.fn();
-    const { renderer, callbacks } = await renderPanel([], { lines: [], onExtraFamilyIdsChange: setExtra });
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
-    await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
-    await act(async () => familySelect.props.onChange({ target: { value: 'family-2' } }));
-    expect(setExtra).toHaveBeenCalled();
-    expect(textOf(renderer.root)).toContain('Trabajo 2');
-    await act(async () => callbacks.addHallazgo());
-    expect(textOf(renderer.root)).toContain('Nuevo hallazgo');
+  it('ordena los hallazgos en una lista plana por prioridad y permite asignar el trabajo en el editor', async () => {
+    const { renderer } = await renderPanel([
+      { ...baseHallazgo, id: 'low', componente_parte: 'Bajo', prioridad_efectiva: 'P4', prioridad_calculada: 'P4' },
+      { ...baseHallazgo, id: 'high', componente_parte: 'Alto', prioridad_efectiva: 'P1', prioridad_calculada: 'P1' },
+    ]);
+    const rows = renderer.root.findAll(node => node.props.className === 'dx-finding-list-row');
+    expect(rows).toHaveLength(2);
+    expect(textOf(rows[0])).toContain('Alto');
+    expect(textOf(rows[1])).toContain('Bajo');
+    await openEditor(renderer);
+    const work = renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' });
+    expect(work.props['data-required-field']).toBe('family');
   });
 
-  it('al elegir una familia que ya tiene grupo lo expande sin solicitar un grupo nuevo', async () => {
-    const setExtra = vi.fn();
-    const { renderer } = await renderPanel([], { onExtraFamilyIdsChange: setExtra });
-    const addFamily = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
-    await act(async () => addFamily.props.onClick());
-    const familySelect = renderer.root.findByProps({ 'aria-label': 'Elegir trabajo o componente' });
-    await act(async () => familySelect.props.onChange({ target: { value: 'family-1' } }));
-    expect(setExtra).not.toHaveBeenCalled();
-    expect(textOf(renderer.root)).toContain('Trabajo 1');
-  });
-
-  it('permite crear un trabajo o componente y agrega un hallazgo bajo el nuevo grupo', async () => {
+  it('crea un trabajo nuevo en l?nea desde el editor del hallazgo', async () => {
     const onCreateFamily = vi.fn().mockResolvedValue({ id: 'family-new', nombre: 'Cilindro' });
-    const { renderer } = await renderPanel([], { lines: [], onCreateFamily });
-    const open = renderer.root.findAllByType('button').find(button => button.children.join('').includes('Agregar trabajo o componente'));
-    await act(async () => open.props.onClick());
-    const name = renderer.root.findByProps({ 'aria-label': 'Crear trabajo o componente' });
+    const { renderer } = await renderPanel([baseHallazgo], { onCreateFamily });
+    await openEditor(renderer);
+    const work = renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' });
+    await act(async () => work.props.onChange({ target: { value: '__create__' } }));
+    const name = renderer.root.findByProps({ 'aria-label': 'Nombre del nuevo trabajo' });
     await act(async () => name.props.onChange({ target: { value: 'Cilindro' } }));
-    const form = renderer.root.findAllByType('form').find(node => node.props.onSubmit);
-    await act(async () => { form.props.onSubmit({ preventDefault() {} }); await Promise.resolve(); });
+    const form = renderer.root.findAllByType('form').find(node => node.props.className === 'hallazgos-inline-family-create');
+    await act(async () => form.props.onSubmit({ preventDefault() {} }));
     expect(onCreateFamily).toHaveBeenCalledWith('Cilindro');
-    expect(textOf(renderer.root)).toContain('Nuevo hallazgo');
+    expect(renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' }).props.value).toBe('family-new');
   });
 
-  it('muestra materiales de las tareas enlazadas en solo lectura', async () => {
+  it('no guarda el hallazgo si no tiene trabajo propuesto', async () => {
+    const { renderer, callbacks } = await renderPanel([]);
+    await act(async () => callbacks.addHallazgo());
+    const work = renderer.root.findByProps({ 'aria-label': 'Trabajo que propones para repararlo' });
+    await act(async () => work.props.onChange({ target: { value: '' } }));
+    let result;
+    await act(async () => { result = await callbacks.save(); });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Falta el trabajo');
+    expect(mocks.crearDiagnosticoHallazgo).not.toHaveBeenCalled();
+  });
+
+  it('mantiene el listado de hallazgos plano y deja los materiales en el paso de trabajos', async () => {
     const { renderer } = await renderPanel([{ ...baseHallazgo, lineas: [{ id: 'link-1', linea_id: 'line-1' }] }], {
       lines: [{ ...line, materiales: [{ id: 'mat-1', descripcion: 'Filtro', cantidad: 2, unidad: 'und' }] }],
     });
     const text = textOf(renderer.root);
-    expect(text).toContain('Filtro · 2 und');
+    expect(text).not.toContain('Filtro');
     expect(text).not.toContain('+ Repuesto');
   });
 

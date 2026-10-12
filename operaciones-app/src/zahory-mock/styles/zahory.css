@@ -2404,6 +2404,29 @@ a { color: var(--cyan); text-decoration: none; }
 .dx-work-steps button span{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dx-work-steps button.is-done i,.dx-work-steps button.is-current i{background:var(--dx-ui-cyan)}
 .dx-work-steps button.is-current span{color:var(--dx-ui-navy)}
+.dx-work-steps{grid-template-columns:repeat(6,minmax(0,1fr))}
+.dx-work-steps button span{white-space:normal;line-height:1.25}
+.dx-work-family-groups{display:grid;gap:14px}
+.dx-work-family-group,.dx-work-activity-group{min-width:0;border:1px solid var(--dx-ui-line);border-radius:12px;background:var(--dx-ui-card);overflow:hidden}
+.dx-work-family-group>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--dx-ui-head);border-bottom:1px solid var(--dx-ui-line)}
+.dx-work-family-group>header h3,.dx-work-activity-group>h4{margin:0;color:var(--dx-ui-violet);font:700 15px 'Sora',sans-serif}
+.dx-work-family-group>header span{color:var(--dx-ui-gray);font-size:12px}
+.dx-work-activity-group{margin:12px;padding:12px}
+.dx-work-activity-group>h4{margin-bottom:10px;color:var(--dx-ui-navy)}
+.dx-hallazgo-trabajo-propuesto{grid-column:1/-1}
+.hallazgos-inline-family-create{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.hallazgos-inline-family-create input{flex:1;min-width:180px}
+.hallazgos-inline-family-create button{min-height:38px;padding:0 11px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font-weight:700}
+.hallazgos-inline-family-create [role=alert]{flex-basis:100%;color:var(--dx-ui-red)}
+.dx-findings-priority-list .dx-finding-list-row{display:flex;align-items:center;gap:10px}
+.dx-findings-priority-list .dx-finding-list-open{flex:1;min-width:0}
+.dx-findings-priority-list .badge{flex:none}
+.dx-work-page .dx-wizard-footer .btn-primary,.dx-work-page .dx-action-44.btn-primary{background:var(--dx-ui-primary-bg);border-color:var(--dx-ui-primary-bg);color:var(--dx-ui-primary-fg)}
+.dx-work-page .dx-report-diagnosis-card{margin-inline:20px}
+.dx-inf-inline .dx-inf-layout{display:flex;flex-direction:column;gap:14px;padding-inline:20px}
+.dx-inf-inline .dx-inf-controls,.dx-inf-inline .dx-inf-preview{width:100%;max-width:100%}
+.dx-inf-inline .dx-inf-sheet{width:100%;max-width:100%}
+[data-theme=dark] .dx-work-page .dx-wizard-footer .btn-primary,[data-theme=dark] .dx-work-page .dx-action-44.btn-primary{background:#48D3E2;border-color:#48D3E2;color:#10212A}
 .dx-work-content{padding:16px 20px 24px;container-type:inline-size}
 .dx-work-hidden{display:none!important}
 .dx-wizard-footer{display:flex;align-items:center;gap:8px;width:100%}
@@ -2590,3 +2613,12 @@ a { color: var(--cyan); text-decoration: none; }
 @container (max-width:899px){.dx-inf-inline .dx-inf-layout{grid-template-columns:minmax(0,1fr);padding-inline:10px}.dx-inf-inline .dx-inf-preview{max-height:none;min-height:360px}}
 @media(max-width:900px){.dx-work-page .dx-work-identity.is-compact .dx-work-meta{gap:4px 9px}.dx-work-page .dx-work-identity.is-compact .dx-work-meta>span{font-size:11px}}
 @media(max-width:560px){.dx-work-page .dx-work-identity.is-compact .dx-work-meta{flex-wrap:wrap}.dx-work-page .dx-work-identity.is-compact .dx-work-meta>span{flex:1 1 100%}}
+.dx-work-page .dx-work-step-heading{display:flex!important;align-items:center}
+.dx-work-page .dx-work-step-heading h3{font:700 17px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-inf-inline .dx-inf-layout{display:flex!important;flex-direction:column;gap:14px;padding:0 20px 20px;width:100%;height:auto}
+.dx-inf-inline .dx-inf-controls,.dx-inf-inline .dx-inf-preview{width:100%;max-width:100%;min-width:0}
+.dx-inf-inline .dx-inf-sheet{width:100%;max-width:100%}
+.dx-work-page .dx-report-diagnosis-card{margin:0 20px 14px}
+.dx-work-page .dx-wizard-footer .btn-primary,.dx-work-page .dx-action-44.btn-primary{background:var(--dx-ui-primary-bg);border-color:var(--dx-ui-primary-bg);color:var(--dx-ui-primary-fg)}
+[data-theme=dark] .dx-work-page .dx-wizard-footer .btn-primary,[data-theme=dark] .dx-work-page .dx-action-44.btn-primary{background:#48D3E2;border-color:#48D3E2;color:#10212A}
+@container (max-width:760px){.dx-inf-inline .dx-inf-layout{padding:0 12px 12px}.dx-work-page .dx-report-diagnosis-card{margin:0 12px 12px}}

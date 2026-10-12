@@ -26,15 +26,16 @@ describe('HallazgoFotos', () => {
     renderer.unmount();
   });
 
-  it('en solo lectura conserva leyenda y checkbox, oculta subir y quitar; checkbox invierte exclusión', async () => {
+  it('en solo lectura conserva la vista previa y bloquea cambios de leyenda e inclusión', async () => {
     await render({ fotos: [foto], readOnly: true });
     expect(renderer.root.findAllByType('input').some(input => input.props.type === 'file')).toBe(false);
-    expect(renderer.root.findAllByType('button')).toHaveLength(0);
+    expect(renderer.root.findAllByType('button').every(button => button.props.className === 'dx-foto-preview-trigger')).toBe(true);
     expect(renderer.root.findAllByType('input').some(input => input.props.type === 'text' && input.props.value === 'Bomba')).toBe(true);
     const checkbox = renderer.root.findByProps({ type: 'checkbox' });
     expect(checkbox.props.checked).toBe(true);
-    await act(async () => { checkbox.props.onChange({ target: { checked: false } }); await Promise.resolve(); });
-    expect(api.actualizarFotoHallazgo).toHaveBeenCalledWith({ empresaId: 'e', id: 'f1', leyenda: 'Bomba', excluir_del_informe: true });
+    expect(checkbox.props.disabled).toBe(true);
+    expect(renderer.root.findAllByType('input').find(input => input.props.type === 'text').props.disabled).toBe(true);
+    expect(api.actualizarFotoHallazgo).not.toHaveBeenCalled();
     renderer.unmount();
   });
 

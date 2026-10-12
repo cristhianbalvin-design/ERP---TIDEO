@@ -229,14 +229,12 @@ export async function actualizarDatosInicialesDiagnostico(empresaId, diagnostico
   if (!String(datos?.motivo || '').trim()) throw new Error('El motivo es obligatorio.');
   if (!datos?.tecnico_id) throw new Error('Selecciona un técnico responsable.');
   if (!datos?.fecha_inspeccion) throw new Error('La fecha de inspección es obligatoria.');
-  if (!Array.isArray(datos?.trabajos_evaluar) || !datos.trabajos_evaluar.length) throw new Error('Selecciona al menos un trabajo a evaluar.');
   const { data, error } = await getSupabaseClient().from('diagnosticos_tecnicos').update({
     motivo: String(datos.motivo).trim(),
     tecnico_id: datos.tecnico_id,
     fecha_inspeccion: datos.fecha_inspeccion,
-    trabajos_evaluar: datos.trabajos_evaluar,
   }).eq('empresa_id', empresaId).eq('id', diagnosticoId).eq('estado', 'borrador')
-    .select('id,motivo,tecnico_id,fecha_inspeccion,trabajos_evaluar').single();
+    .select('id,motivo,tecnico_id,fecha_inspeccion').single();
   if (error) throw getError(error);
   return data;
 }
@@ -254,7 +252,9 @@ export async function listarCatalogosHallazgos(empresaId) {
   return data || [];
 }
 
-const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => ({
+const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => {
+  requireId(hallazgo?.familia_trabajo_id, 'Selecciona el trabajo que propones para reparar el hallazgo.');
+  return ({
   empresa_id: empresaId,
   diagnostico_id: diagnosticoId,
   familia_trabajo_id: hallazgo.familia_trabajo_id,
@@ -271,7 +271,8 @@ const hallazgoPayload = (empresaId, diagnosticoId, hallazgo) => ({
   atribuible_a: hallazgo.atribuible_a,
   observacion: hallazgo.observacion || null,
   incluir_en_informe: hallazgo.incluir_en_informe !== false,
-});
+  });
+};
 
 export async function crearDiagnosticoHallazgo(empresaId, diagnosticoId, hallazgo) {
   requireEmpresa(empresaId);
@@ -533,7 +534,6 @@ export async function crearDiagnosticoTecnico(empresaId, usuarioId, datos) {
     p_motivo: datos.tipo === 'mantenimiento' ? datos.motivo || null : null,
     p_tecnico_id: datos.tipo === 'mantenimiento' ? datos.tecnico_id || null : null,
     p_fecha_inspeccion: datos.tipo === 'mantenimiento' ? datos.fecha_inspeccion || null : null,
-    p_trabajos_evaluar: datos.tipo === 'mantenimiento' ? datos.trabajos_evaluar || [] : [],
   });
   if (error && isMissingMigrationRpc(error)) {
     const legacy = await supabase.from('diagnosticos_tecnicos').insert({

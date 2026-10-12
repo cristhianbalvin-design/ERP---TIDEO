@@ -124,7 +124,8 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
 
   return <section className="dx-foto-section" aria-label="Fotos del hallazgo">
     <div className="dx-foto-head"><strong>Fotos</strong><span>{total} de 3</span></div>
-    {!readOnly && <label className="dx-foto-upload">
+    {!hallazgo?.id && !readOnly && <p className="dx-foto-notice">Guarda el hallazgo para agregar fotos.</p>}
+    {hallazgo?.id && !readOnly && <label className="dx-foto-upload">
       <span>{uploading ? 'Subiendo fotos…' : 'Agregar fotos'}</span>
       <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
     </label>}
@@ -138,10 +139,10 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
     {fotos.length > 0 && <div className="dx-foto-grid">{fotos.map(foto => {
       const busy = busyId === foto.id;
       return <article className="dx-foto-card" key={foto.id}>
-        <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${foto.leyenda || 'foto del hallazgo'}`} onClick={() => setPreview({ url: foto.signedUrl, alt: foto.leyenda || 'Foto del hallazgo' })}><img src={foto.signedUrl} alt="" /></button>
+        <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${foto.leyenda || 'foto del hallazgo'}`} onClick={() => setPreview({ url: foto.signedUrl, alt: foto.leyenda || 'Foto del hallazgo' })}><img src={foto.signedUrl} alt={foto.leyenda || 'Foto del hallazgo'} /></button>
         <>
-          <label className="dx-foto-legend">Leyenda<input type="text" value={leyendas[foto.id] ?? foto.leyenda ?? ''} disabled={busy} onChange={event => setLeyendas(current => ({ ...current, [foto.id]: event.target.value }))} onBlur={event => { if (event.target.value !== (foto.leyenda || '')) updateFoto(foto, { leyenda: event.target.value }); }} /></label>
-          <label className="dx-foto-include"><input type="checkbox" checked={!(exclusiones[foto.id] ?? foto.excluir_del_informe)} disabled={busy} onChange={event => { const excluir = !event.target.checked; setExclusiones(current => ({ ...current, [foto.id]: excluir })); updateFoto(foto, { excluir_del_informe: excluir }); }} />Incluir en el informe</label>
+          <label className="dx-foto-legend">Leyenda<input type="text" value={leyendas[foto.id] ?? foto.leyenda ?? ''} disabled={busy || readOnly} onChange={event => setLeyendas(current => ({ ...current, [foto.id]: event.target.value }))} onBlur={event => { if (!readOnly && event.target.value !== (foto.leyenda || '')) updateFoto(foto, { leyenda: event.target.value }); }} /></label>
+          <label className="dx-foto-include"><input type="checkbox" checked={!(exclusiones[foto.id] ?? foto.excluir_del_informe)} disabled={busy || readOnly} onChange={event => { const excluir = !event.target.checked; setExclusiones(current => ({ ...current, [foto.id]: excluir })); updateFoto(foto, { excluir_del_informe: excluir }); }} />Incluir en el informe</label>
           {!readOnly && <div className="dx-foto-actions">{confirmId === foto.id ? <><span>¿Quitar esta foto?</span><button type="button" disabled={busy} onClick={() => removeFoto(foto)}>Confirmar</button><button type="button" disabled={busy} onClick={() => setConfirmId(null)}>Cancelar</button></> : <button type="button" disabled={busy} onClick={() => setConfirmId(foto.id)}>Quitar</button>}{busy && <span>Cargando…</span>}</div>}
         </>
       </article>;
