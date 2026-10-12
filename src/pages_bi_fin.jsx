@@ -1,30 +1,24 @@
-// BI Financiero — Rentabilidad · CxC/CxP · Flujo de Caja · Presupuesto vs Real
-// Datos reales: buildEstadoResultados, cxc, cxp, movimientosTesoreria
+// BI Financiero — Resultados · Cobranza · Pagos · Flujo de caja · Presupuesto vs Real
+// Estado de resultados servido por estadoResultadosService, igual que la pantalla Estado de Resultados
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { MOCK } from './data.js';
 import { useApp } from './context.jsx';
-import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
+import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultados, getEstadoResultadosPorScope } from './services/estadoResultadosService.js';
+import { isSupabaseMode } from './lib/dataMode.js';
+import { normalizarMonedaBI } from './biComercialMetrics.js';
+import {
+  calcularCajaNetaMes, calcularCxc, calcularCxcProximos30, calcularCxp,
+  calcularFacturacionPorCliente, calcularRetenciones, calcularSemanasCaja,
+  categoriasCostosResultados, crearCSVFinanciero, filasCSVFinanciero,
+  filasPresupuestoFinanciero, formatDateFinanciero, porcentajeDeIngresos,
+  serieResultados, tablaResultadosFinancieros, totalizar, variacionPorcentual,
+} from './biFinancieroMetrics.js';
 import { PERFIL_SOCIEDAD } from './services/sociedadesService.js';
 import { crearFilasRealPresupuestoCxp } from './services/presupuestoRealCxp.js';
 import { crearResumenRealPresupuesto, crearTotalesConsolidadosReferencialesPEN, normalizarMonedaPresupuesto, otCompatibleConPresupuesto } from './services/presupuestoReal.js';
 
-const S = (n) => n == null ? '—' : 'S/ ' + Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const P = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
-const vc = (v) => v >= 0 ? 'var(--green)' : 'var(--danger)';
-const vi = (v) => v >= 0 ? '▲' : '▼';
-const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-function KPI({ label, value, sub, subColor }) {
-  return (
-    <div className="kpi-card">
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value">{value}</div>
-      {sub && <div className="kpi-sub" style={{ color: subColor }}>{sub}</div>}
-    </div>
-  );
-}
-
 function BarH({ value, max, color = 'var(--cyan)' }) {
   const pct = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
@@ -67,264 +61,6 @@ function MultiSelect({ opts, sel, onSel, placeholder }) {
     </div>
   );
 }
-
-// ─── TAB 1: Rentabilidad ──────────────────────────────────────────────────────
-
-function TabRentabilidad({ data }) {
-  const maxFact = Math.max(1, ...data.margen_por_cliente.map(c => c.facturacion));
-  const maxEvol = Math.max(1, ...data.evolucion_margen.map(e => e.facturacion));
-  const rColor = { bajo: 'badge-green', medio: 'badge-yellow', alto: 'badge-red' };
-
-  return (
-    <div style={{ display: 'grid', gap: 24 }}>
-
-      {/* Evolución facturación + margen mensual */}
-      <div className="card">
-        <div className="card-header"><span className="card-title">Evolución Facturación y Margen (6 meses)</span></div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 160, padding: '8px 0' }}>
-          {data.evolucion_margen.map((e, i) => {
-            const isLast = i === data.evolucion_margen.length - 1;
-            const h = maxEvol > 0 ? Math.round((e.facturacion / maxEvol) * 120) : 4;
-            const hMargen = Math.round(h * (e.margen_pct || 0) / 100);
-            return (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{ fontSize: 10, color: isLast ? 'var(--green)' : 'var(--fg-subtle)', fontWeight: isLast ? 700 : 400 }}>{P(e.margen_pct)}</div>
-                <div style={{ width: '100%', height: Math.max(h, 4), background: isLast ? 'var(--cyan)' : 'var(--border)', borderRadius: '4px 4px 0 0', position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: hMargen, background: isLast ? 'var(--green)' : 'var(--fg-subtle)', opacity: 0.55 }} />
-                </div>
-                <div style={{ fontSize: 10, color: isLast ? 'var(--fg)' : 'var(--fg-muted)', fontWeight: isLast ? 700 : 400 }}>{e.mes}</div>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--fg-subtle)', paddingTop: 4 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: 'var(--border)', borderRadius: 2, display: 'inline-block' }} /> Facturación</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: 'var(--fg-subtle)', opacity: 0.55, borderRadius: 2, display: 'inline-block' }} /> Margen bruto</span>
-        </div>
-      </div>
-
-      {/* Rentabilidad por cliente */}
-      <div className="card">
-        <div className="card-header"><span className="card-title">Rentabilidad por Cliente</span></div>
-        {data.margen_por_cliente.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin datos de CxC u OTs para el período seleccionado</div>
-        ) : (
-          <table className="tbl">
-            <thead>
-              <tr><th>Cliente</th><th>Facturación</th><th>Costo</th><th>Margen S/</th><th>Margen %</th><th>OTs</th><th>Riesgo</th><th style={{ width: 100 }}>Ejecución</th></tr>
-            </thead>
-            <tbody>
-              {data.margen_por_cliente.map((c, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 600 }}>{c.nombre}</td>
-                  <td>{S(c.facturacion)}</td>
-                  <td style={{ color: 'var(--fg-subtle)' }}>{S(c.costo)}</td>
-                  <td style={{ color: c.margen >= 0 ? 'var(--green)' : 'var(--danger)', fontWeight: 600 }}>{S(c.margen)}</td>
-                  <td style={{ fontWeight: 700, color: c.margen_pct >= 40 ? 'var(--green)' : c.margen_pct >= 30 ? 'var(--warning)' : 'var(--danger)' }}>{P(c.margen_pct)}</td>
-                  <td>{c.ots}</td>
-                  <td><span className={'badge ' + rColor[c.riesgo]}>{c.riesgo}</span></td>
-                  <td><BarH value={c.facturacion} max={maxFact} color={c.margen_pct >= 40 ? 'var(--green)' : c.margen_pct >= 30 ? 'var(--warning)' : 'var(--danger)'} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Mix de costos por tipo */}
-      <div className="card">
-        <div className="card-header"><span className="card-title">Distribución de Costos por Categoría</span><span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>Ordenado por monto</span></div>
-        {data.margen_por_servicio.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin datos de gastos para el período seleccionado</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
-            {data.margen_por_servicio.map((s, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '200px 1fr 100px 70px', gap: 12, alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>{s.servicio}</span>
-                <BarH value={s.margen_pct} max={100} color={s.margen_pct >= 40 ? 'var(--cyan)' : s.margen_pct >= 20 ? 'var(--warning)' : 'var(--border)'} />
-                <span style={{ fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'right' }}>{S(s.facturacion)}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-muted)', textAlign: 'right' }}>{P(s.margen_pct)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── TAB 2: CxC / CxP ────────────────────────────────────────────────────────
-
-function TabCxCxP({ data }) {
-  const aging = data.cxc_antiguedad;
-  const buckets = [
-    { label: 'Vigente',  ...aging.vigente, color: 'var(--green)' },
-    { label: '1-30 d',  ...aging.d30,     color: 'var(--cyan)' },
-    { label: '31-60 d', ...aging.d60,     color: 'var(--warning)' },
-    { label: '61-90 d', ...aging.d90,     color: 'var(--orange, #f97316)' },
-    { label: '+90 d',   ...aging.mas90,   color: 'var(--danger)' },
-  ];
-  const total = buckets.reduce((s, b) => s + (b.monto || 0), 0);
-  const maxMonto = Math.max(1, ...buckets.map(b => b.monto || 0));
-
-  return (
-    <div style={{ display: 'grid', gap: 24 }}>
-
-      {/* Pirámide de antigüedad CxC */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Antigüedad de Saldos — CxC</span>
-          <span style={{ fontSize: 12, color: 'var(--fg-subtle)' }}>Total: {S(total)} · {buckets.reduce((s, b) => s + (b.clientes || 0), 0)} clientes</span>
-        </div>
-        {total === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin CxC activas registradas</div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', height: 140, padding: '8px 0' }}>
-              {buckets.map((b, i) => {
-                const h = Math.round(((b.monto || 0) / maxMonto) * 110);
-                return (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg)' }}>{S(b.monto)}</div>
-                    <div style={{ width: '100%', height: Math.max(h, 2), background: b.color, borderRadius: '4px 4px 0 0' }} />
-                    <div style={{ fontSize: 10, color: 'var(--fg-muted)', textAlign: 'center' }}>{b.label}</div>
-                    <div style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>{b.clientes} cli.</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
-              {buckets.map((b, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                  <span style={{ width: 10, height: 10, background: b.color, borderRadius: 2, display: 'inline-block' }} />
-                  <span style={{ color: 'var(--fg-subtle)' }}>{b.label}: <strong>{total > 0 ? P((b.monto || 0) / total * 100) : '0.0%'}</strong></span>
-                </div>
-              ))}
-            </div>
-            {(aging.mas90?.monto || 0) > 0 && (
-              <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(239,68,68,.08)', borderRadius: 8, borderLeft: '3px solid var(--danger)', fontSize: 13 }}>
-                ⚠ <strong>{S(aging.mas90.monto)}</strong> con más de 90 días — {aging.mas90.clientes} cliente(s). Revisar inmediatamente.
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* CxP próximos vencimientos */}
-      <div className="card">
-        <div className="card-header"><span className="card-title">CxP — Próximos Vencimientos</span></div>
-        {data.cxp_proximos.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin CxP con vencimientos pendientes</div>
-        ) : (
-          <table className="tbl">
-            <thead>
-              <tr><th>Proveedor</th><th>Categoría</th><th>Monto</th><th>Fecha vence</th><th>Días</th></tr>
-            </thead>
-            <tbody>
-              {data.cxp_proximos.map((p, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 600 }}>{p.proveedor}</td>
-                  <td>{p.categoria}</td>
-                  <td style={{ fontWeight: 600 }}>{S(p.monto)}</td>
-                  <td>{p.vence}</td>
-                  <td>
-                    <span className={'badge ' + (p.dias <= 5 ? 'badge-red' : p.dias <= 10 ? 'badge-yellow' : 'badge-green')}>
-                      {p.dias}d
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── TAB 3: Flujo de Caja ────────────────────────────────────────────────────
-
-function TabFlujoCaja({ data }) {
-  const semanas = data.flujo_caja;
-  const confirmados = semanas.filter(s => s.ing_real != null);
-  const ingConf  = confirmados.reduce((s, r) => s + (r.ing_real || 0), 0);
-  const egrConf  = confirmados.reduce((s, r) => s + (r.egr_real || 0), 0);
-
-  return (
-    <div style={{ display: 'grid', gap: 24 }}>
-      <div className="card">
-        <div className="card-header"><span className="card-title">Flujo de Caja — Movimientos Reales (últimas 8 semanas)</span></div>
-        {semanas.length === 0 ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Sin movimientos de tesorería registrados</div>
-        ) : (
-          <>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Semana</th>
-                    <th style={{ textAlign: 'right' }}>Ing. Real</th>
-                    <th style={{ textAlign: 'right' }}>Egr. Real</th>
-                    <th style={{ textAlign: 'right' }}>Neto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {semanas.map((s, i) => {
-                    const neto = s.ing_real != null && s.egr_real != null ? s.ing_real - s.egr_real : null;
-                    const pending = s.ing_real == null;
-                    return (
-                      <tr key={i} style={{ opacity: pending ? 0.5 : 1 }}>
-                        <td style={{ fontWeight: 600 }}>
-                          {s.semana}
-                          {pending && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>sin datos</span>}
-                        </td>
-                        <td style={{ textAlign: 'right', color: 'var(--green)', fontWeight: pending ? 400 : 600 }}>
-                          {s.ing_real != null ? S(s.ing_real) : '—'}
-                        </td>
-                        <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: pending ? 400 : 600 }}>
-                          {s.egr_real != null ? S(s.egr_real) : '—'}
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, color: neto != null ? vc(neto) : 'var(--fg-muted)' }}>
-                          {neto != null ? S(neto) : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ marginTop: 16, padding: '14px 0 4px', borderTop: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, textAlign: 'center' }}>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4 }}>Ingresos confirmados</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{S(ingConf)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4 }}>Egresos confirmados</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--danger)' }}>{S(egrConf)}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4 }}>Neto confirmado</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: vc(ingConf - egrConf) }}>{S(ingConf - egrConf)}</div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── TAB 4: Presupuesto vs Real (módulo completo) ────────────────────────────
-
-const CATEGORIAS_PRESUPUESTO = ['Materiales','Servicios terceros','Logística','Administrativos','Comerciales','Gastos financieros','Mano de obra'];
-
-const BADGE_PRE = {
-  borrador:      { label: 'Borrador',      color: 'var(--fg-muted)', bg: 'var(--bg-subtle)' },
-  en_aprobacion: { label: 'En aprobación', color: 'var(--warning)',  bg: 'rgba(245,158,11,.12)' },
-  aprobado:      { label: 'Aprobado',      color: 'var(--green)',    bg: 'rgba(34,197,94,.12)' },
-  rechazado:     { label: 'Rechazado',     color: 'var(--danger)',   bg: 'rgba(239,68,68,.12)' },
-  cerrado:       { label: 'Cerrado',       color: 'var(--fg-muted)', bg: 'var(--bg-subtle)' },
-};
 
 function BadgePre({ estado }) {
   const b = BADGE_PRE[estado] || BADGE_PRE.borrador;
@@ -829,374 +565,609 @@ function TabPresupuesto({ periodo, efectivoCecos }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function BIFinanciero() {
-  const [tab, setTab] = useState('rentabilidad');
-  const { comprasGastos, ots, empresa, centrosCosto, centrosBeneficio, cxc, cxp, cxpPagos, cuentas, movimientosTesoreria, facturas, perfilSociedad, sociedadActiva, sociedadesDisponibles } = useApp();
+const EMPTY_ARRAY = [];
 
+function Empty({ children = 'Sin datos para los filtros seleccionados.' }) {
+  return <div className="bic-empty">{children}</div>;
+}
+
+function Panel({ title, children }) {
+  return (
+    <section className="card bic-panel">
+      <div className="card-head"><h3>{title}</h3></div>
+      {children}
+    </section>
+  );
+}
+
+function Tooltip({ title, description, items, footer }) {
+  return (
+    <div className="bi-kpi-tooltip" role="tooltip">
+      <div className="bi-tooltip-title">{title}</div>
+      <div className="bi-tooltip-description">{description}</div>
+      <div className="bi-tooltip-separator" />
+      <div className="bi-tooltip-items">
+        {items.length ? items.map((row, index) => (
+          <div className="bi-tooltip-row" key={index}>
+            <span>{row.label}</span><strong>{row.value}</strong>
+          </div>
+        )) : (
+          <div className="bi-tooltip-row is-empty">
+            <span>Sin datos en el per?odo</span><strong>{'—'}</strong>
+          </div>
+        )}
+      </div>
+      <div className="bi-tooltip-separator" />
+      <div className="bi-tooltip-row bi-tooltip-result">
+        <span>Total</span><strong>{footer}</strong>
+      </div>
+    </div>
+  );
+}
+
+function rowsTable(headers, rows, empty) {
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead>
+          <tr>{headers.map(header => <th key={header}>{header}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.length ? rows : (
+            <tr><td colSpan={headers.length}><Empty>{empty}</Empty></td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function BIFinanciero() {
+  const [tab, setTab] = useState('resultados');
+  const {
+    comprasGastos = EMPTY_ARRAY,
+    ots = EMPTY_ARRAY,
+    empresa,
+    centrosCosto = EMPTY_ARRAY,
+    centrosBeneficio = EMPTY_ARRAY,
+    cxc = EMPTY_ARRAY,
+    cxp = EMPTY_ARRAY,
+    cxpPagos = EMPTY_ARRAY,
+    cuentas = EMPTY_ARRAY,
+    movimientosTesoreria = EMPTY_ARRAY,
+    facturas = EMPTY_ARRAY,
+    presupuestos = EMPTY_ARRAY,
+    presupuestoPartidas = EMPTY_ARRAY,
+    perfilSociedad,
+    sociedadActiva,
+    sociedadesDisponibles = EMPTY_ARRAY,
+  } = useApp();
   const now = new Date();
-  const [periodo, setPeriodo] = useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+  const hoy = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const [periodo, setPeriodo] = useState(hoy.slice(0, 7));
+  const monedaBase = normalizarMonedaBI(empresa?.moneda || empresa?.moneda_base || 'PEN');
+  const monedas = ['PEN', 'USD'];
+  const [moneda, setMoneda] = useState(monedaBase);
+
+  useEffect(() => {
+    if (!monedas.includes(moneda)) setMoneda(monedaBase);
+  }, [moneda, monedaBase]);
+
   const [cecosSel, setCecosSel] = useState([]);
   const [cebesSel, setCebesSel] = useState([]);
   const [scopeMode, setScopeMode] = useState(ER_SCOPE_MODE.SOCIEDAD);
-  const [scopeSociedadId, setScopeSociedadId] = useState(sociedadActiva?.id || '');
-  const [scopeErData, setScopeErData] = useState(null);
-
-  const periodoOpts = Array.from({length:12}, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    return { v:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, l:`${MESES[d.getMonth()]} ${d.getFullYear()}` };
-  });
-  const multisociedadActiva = Boolean(empresa?.multisociedad_habilitado && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD);
+  const [scopeSociedadId, setScopeSociedadId] = useState(
+    sociedadActiva?.id || sociedadesDisponibles[0]?.id || '',
+  );
+  const [resultados, setResultados] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const cache = useRef(new Map());
+  const supabaseMode = isSupabaseMode();
+  const multisociedadActiva = Boolean(
+    empresa?.multisociedad_habilitado
+      && perfilSociedad !== PERFIL_SOCIEDAD.SIN_MULTISOCIEDAD,
+  );
   const puedeComparar = multisociedadActiva && sociedadesDisponibles.length > 1;
-  const scopeSociedadIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
+  const scopeIds = scopeMode === ER_SCOPE_MODE.SOCIEDAD
     ? [scopeSociedadId || sociedadActiva?.id].filter(Boolean)
-    : sociedadesDisponibles.map(s => s.id);
+    : sociedadesDisponibles.map(sociedad => sociedad.id);
+  const cecosEmpresa = centrosCosto.filter(centro => (
+    centro.empresa_id === empresa?.id && centro.estado === 'activo'
+  ));
+  const cebesEmpresa = centrosBeneficio.filter(centro => (
+    centro.empresa_id === empresa?.id && centro.estado === 'activo'
+  ));
+  const cecosCebe = cebesSel.length
+    ? cecosEmpresa.filter(centro => cebesSel.includes(centro.cebe_id)).map(centro => centro.id)
+    : null;
+  const efectivoCecos = cecosSel.length && cecosCebe
+    ? cecosSel.filter(id => cecosCebe.includes(id))
+    : cecosSel.length ? cecosSel : cecosCebe;
+  const periods = useMemo(() => {
+    const [year, month] = periodo.split('-').map(Number);
+    return Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(year, month - 6 + index, 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    });
+  }, [periodo]);
+  const scopeIdsKey = scopeIds.slice().sort().join('|');
+  const cecosKey = cecosSel.slice().sort().join('|');
+  const cebesKey = cebesSel.slice().sort().join('|');
+  const sociedadesKey = sociedadesDisponibles.map(sociedad => sociedad.id).sort().join('|');
+  const queryKey = JSON.stringify([
+    periods,
+    supabaseMode,
+    empresa?.id,
+    multisociedadActiva,
+    scopeSociedadId,
+    scopeMode,
+    scopeIdsKey,
+    sociedadesKey,
+    cecosKey,
+    cebesKey,
+    comprasGastos.length,
+    ...(!supabaseMode ? [ots.length, centrosCosto.length, centrosBeneficio.length] : []),
+  ]);
 
   useEffect(() => {
-    if (!multisociedadActiva || puedeComparar || scopeMode === ER_SCOPE_MODE.SOCIEDAD) return;
-    setScopeMode(ER_SCOPE_MODE.SOCIEDAD);
-  }, [multisociedadActiva, puedeComparar, scopeMode]);
-
-  useEffect(() => {
-    if (!multisociedadActiva) {
-      setScopeErData(null);
+    if (!empresa?.id) {
+      setResultados([]);
       return;
     }
-    if (!sociedadesDisponibles.some(s => s.id === scopeSociedadId)) {
+    if (multisociedadActiva && !sociedadesDisponibles.some(sociedad => sociedad.id === scopeSociedadId)) {
       setScopeSociedadId(sociedadActiva?.id || sociedadesDisponibles[0]?.id || '');
       return;
     }
     let cancelled = false;
-    getEstadoResultadosPorScope({ empresaId: empresa.id, periodo, mode: scopeMode, sociedadIds: scopeSociedadIds, cecoIds: cecosSel, cebeIds: cebesSel })
-      .then(result => { if (!cancelled) setScopeErData(result); })
-      .catch(() => { if (!cancelled) setScopeErData(null); });
-    return () => { cancelled = true; };
-  }, [multisociedadActiva, empresa?.id, periodo, scopeMode, scopeSociedadId, sociedadesDisponibles, cecosSel, cebesSel]);
+    setLoading(true);
+    setError('');
+    let request = cache.current.get(queryKey);
 
-  // ── CECO/CEBE filter ────────────────────────────────────────────────────────
-  const cecosDeEmpresa = (centrosCosto || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
-  const cebesDeEmpresa = (centrosBeneficio || []).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo');
-
-  const cecosPorCebe = cebesSel.length > 0 ? cecosDeEmpresa.filter(c => cebesSel.includes(c.cebe_id)).map(c => c.id) : null;
-  let efectivoCecos = null;
-  if (cecosSel.length > 0 && cecosPorCebe != null) {
-    efectivoCecos = cecosSel.filter(id => cecosPorCebe.includes(id));
-  } else if (cecosSel.length > 0) {
-    efectivoCecos = cecosSel;
-  } else if (cecosPorCebe != null) {
-    efectivoCecos = cecosPorCebe;
-  }
-
-  const cgFiltrado = efectivoCecos ? (comprasGastos || []).filter(g => efectivoCecos.includes(g.centro_costo_id)) : (comprasGastos || []);
-  const otsFiltradas = efectivoCecos ? (ots || []).filter(o => efectivoCecos.includes(o.centro_costo_id)) : (ots || []);
-
-  // ── ER actual y anterior ────────────────────────────────────────────────────
-  const erLocal = buildEstadoResultados({
-    base: MOCK.estadoResultados,
-    comprasGastos: cgFiltrado,
-    ots: otsFiltradas,
-    centrosCosto,
-    centrosBeneficio,
-    ...(multisociedadActiva ? {
-      facturas,
-      sociedadIds: scopeSociedadIds,
-    } : {}),
-    empresa,
-    periodo,
-  });
-  const comparativoEr = scopeErData?.scopeMode === ER_SCOPE_MODE.COMPARATIVO
-    ? scopeErData.comparativo
-    : null;
-  const erResuelto = multisociedadActiva && scopeErData && !comparativoEr
-    ? scopeErData
-    : erLocal;
-  const { er, utilidadBruta, resultadoOp, resultadoNeto } = erResuelto;
-  const pen = totals => Number(totals?.PEN || 0);
-
-  const prevPeriodo = (() => {
-    const [y, m] = periodo.split('-').map(Number);
-    const d = new Date(y, m-2, 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  })();
-  const { er: erPrev, utilidadBruta: ubPrev } = buildEstadoResultados({
-    base: MOCK.estadoResultados,
-    comprasGastos: cgFiltrado,
-    ots: otsFiltradas,
-    centrosCosto,
-    centrosBeneficio,
-    ...(multisociedadActiva ? {
-      facturas,
-      sociedadIds: scopeSociedadIds,
-    } : {}),
-    empresa,
-    periodo: prevPeriodo,
-  });
-
-  // ── CxC helpers ─────────────────────────────────────────────────────────────
-  const today = new Date().toISOString().slice(0,10);
-  const saldoCxc = c => Number(c?.saldo ?? c?.monto_total ?? c?.total ?? 0);
-  const diasMoraCxc = c => {
-    if (saldoCxc(c) <= 0 || c?.estado === 'anulada') return 0;
-    const vence = c?.fecha_vencimiento || c?.vence;
-    if (!vence) return 0;
-    return Math.max(0, Math.floor((new Date(today) - new Date(vence)) / 86400000));
-  };
-  const cxcActivas = (cxc || []).filter(c => c.estado !== 'anulada' && saldoCxc(c) > 0);
-  const cxcTotal = cxcActivas.reduce((s,c) => s + saldoCxc(c), 0);
-  const cxcVencida = cxcActivas.filter(c => diasMoraCxc(c) > 0).reduce((s,c) => s + saldoCxc(c), 0);
-
-  // ── CxP helpers ─────────────────────────────────────────────────────────────
-  const saldoCxp = c => Number(c.monto_total || 0) - (cxpPagos || []).filter(p => p.cxp_id === c.id).reduce((s,p) => s+Number(p.monto||0), 0);
-  const cxpActivas = (cxp || []).filter(c => c.estado !== 'anulada' && saldoCxp(c) > 0);
-  const cxpTotal = cxpActivas.reduce((s,c) => s + saldoCxp(c), 0);
-  const cxpProximos30d = cxpActivas.filter(c => {
-    if (!c.fecha_vencimiento) return false;
-    const dias = Math.floor((new Date(c.fecha_vencimiento) - new Date(today)) / 86400000);
-    return dias >= 0 && dias <= 30;
-  }).reduce((s,c) => s + saldoCxp(c), 0);
-
-  // ── KPIs ────────────────────────────────────────────────────────────────────
-  const facturacionMes = pen(er.ingresos.total);
-  const utilidadBrutaPen = pen(utilidadBruta);
-  const resultadoNetoPen = pen(resultadoNeto);
-  const ingresosPrevPen = pen(erPrev.ingresos.total);
-  const margenBrutoPct = facturacionMes > 0 ? utilidadBrutaPen / facturacionMes * 100 : 0;
-  const margenNetoPct  = facturacionMes > 0 ? resultadoNetoPen / facturacionMes * 100 : 0;
-  const varFactPct     = ingresosPrevPen > 0 ? (facturacionMes - ingresosPrevPen) / ingresosPrevPen * 100 : 0;
-  const margenBrutoAntPct = ingresosPrevPen > 0 ? pen(ubPrev) / ingresosPrevPen * 100 : 0;
-
-  // ── Evolución margen 6 meses ─────────────────────────────────────────────────
-  const evolucionMargen = useMemo(() => {
-    const [y, m] = periodo.split('-').map(Number);
-    return Array.from({length:6}, (_, i) => {
-      const d = new Date(y, m-6+i, 1);
-      const p = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-      const cecosPorCebeM = cebesSel.length > 0 ? (centrosCosto||[]).filter(c => c.empresa_id === empresa?.id && c.estado === 'activo' && cebesSel.includes(c.cebe_id)).map(c => c.id) : null;
-      let efM = null;
-      if (cecosSel.length > 0 && cecosPorCebeM != null) { efM = cecosSel.filter(id => cecosPorCebeM.includes(id)); }
-      else if (cecosSel.length > 0) { efM = cecosSel; }
-      else if (cecosPorCebeM != null) { efM = cecosPorCebeM; }
-      const cgF = efM ? (comprasGastos||[]).filter(g => efM.includes(g.centro_costo_id)) : (comprasGastos||[]);
-      const otsF = efM ? (ots||[]).filter(o => efM.includes(o.centro_costo_id)) : (ots||[]);
-      const { er: erM, utilidadBruta: ubM } = buildEstadoResultados({
-        base: MOCK.estadoResultados,
-        comprasGastos: cgF,
-        ots: otsF,
-        centrosCosto,
-        centrosBeneficio,
-        ...(multisociedadActiva ? { facturas, sociedadIds: scopeSociedadIds } : {}),
-        empresa,
-        periodo: p,
-      });
-      const facturacion = pen(erM.ingresos.total);
-      return { mes: MESES_CORTOS[d.getMonth()], facturacion, margen_pct: facturacion > 0 ? Math.round(pen(ubM) / facturacion * 100) : 0 };
-    });
-  }, [comprasGastos, ots, cecosSel, cebesSel, centrosCosto, centrosBeneficio, empresa, periodo, facturas, multisociedadActiva, scopeMode, scopeSociedadId, sociedadesDisponibles]);
-
-  // ── Margen por cliente ───────────────────────────────────────────────────────
-  const margenPorCliente = (() => {
-    const byCliente = {};
-    (cxc || []).filter(c => (c.fecha_emision || c.fecha || '').slice(0,7) === periodo && c.empresa_id === empresa?.id).forEach(c => {
-      const id = c.cuenta_id || 'sin_cliente';
-      if (!byCliente[id]) byCliente[id] = { facturacion: 0, costo: 0, ots: 0 };
-      byCliente[id].facturacion += Number(c.monto_total || 0);
-    });
-    otsFiltradas.filter(o => (o.fecha_inicio || '').slice(0,7) === periodo).forEach(o => {
-      const id = o.cuenta_id || 'sin_cliente';
-      if (!byCliente[id]) byCliente[id] = { facturacion: 0, costo: 0, ots: 0 };
-      byCliente[id].costo += Number(o.costo_real || 0);
-      byCliente[id].ots++;
-    });
-    return Object.entries(byCliente).map(([id, d]) => {
-      const cuenta = (cuentas || []).find(x => x.id === id);
-      const margen = d.facturacion - d.costo;
-      const pct = d.facturacion > 0 ? margen / d.facturacion * 100 : 0;
-      return { nombre: cuenta?.razon_social || (id === 'sin_cliente' ? 'Sin cliente' : id), facturacion: d.facturacion, costo: d.costo, margen, margen_pct: Math.round(pct * 10)/10, ots: d.ots, riesgo: pct < 20 ? 'alto' : pct < 35 ? 'medio' : 'bajo' };
-    }).sort((a,b) => b.margen_pct - a.margen_pct);
-  })();
-
-  // ── Distribución de costos por categoría ────────────────────────────────────
-  const margenPorServicio = (() => {
-    const byCat = {};
-    cgFiltrado.filter(g => (g.fecha || '').slice(0,7) === periodo).forEach(g => {
-      const cat = g.categoria || 'Otros';
-      if (!byCat[cat]) byCat[cat] = 0;
-      byCat[cat] += Number(g.monto || 0);
-    });
-    otsFiltradas.filter(o => (o.fecha_inicio || '').slice(0,7) === periodo).forEach(o => {
-      if (Number(o.costo_real || 0) > 0) {
-        const serv = o.servicio || o.tipo || 'OTs / Mano de Obra';
-        if (!byCat[serv]) byCat[serv] = 0;
-        byCat[serv] += Number(o.costo_real || 0);
-      }
-    });
-    const totalCosto = Object.values(byCat).reduce((s,v) => s+v, 0);
-    return Object.entries(byCat).map(([cat, costo]) => ({ servicio: cat, facturacion: costo, margen_pct: totalCosto > 0 ? Math.round(costo / totalCosto * 100) : 0 })).sort((a,b) => b.facturacion - a.facturacion).slice(0, 8);
-  })();
-
-  // ── CxC aging ───────────────────────────────────────────────────────────────
-  const cxcAging = (() => {
-    const buckets = [
-      { key: 'vigente', min: -Infinity, max: 0 },
-      { key: 'd30',     min: 1,  max: 30  },
-      { key: 'd60',     min: 31, max: 60  },
-      { key: 'd90',     min: 61, max: 90  },
-      { key: 'mas90',   min: 91, max: Infinity },
-    ];
-    const result = {};
-    buckets.forEach(b => {
-      const items = cxcActivas.filter(c => { const d = diasMoraCxc(c); return d >= b.min && d <= b.max; });
-      result[b.key] = { monto: items.reduce((s,c) => s+saldoCxc(c), 0), clientes: items.length };
-    });
-    return result;
-  })();
-
-  // ── CxP próximos vencimientos ────────────────────────────────────────────────
-  const cxpProximosLista = cxpActivas
-    .filter(c => c.fecha_vencimiento)
-    .map(c => ({ proveedor: c.proveedores?.razon_social || c.proveedor || 'Proveedor', categoria: c.concepto || c.categoria || '—', monto: saldoCxp(c), vence: c.fecha_vencimiento, dias: Math.max(0, Math.floor((new Date(c.fecha_vencimiento) - new Date(today)) / 86400000)) }))
-    .sort((a,b) => a.dias - b.dias)
-    .slice(0, 10);
-
-  // ── Flujo de caja (movimientosTesoreria por semana) ──────────────────────────
-  const flujoCaja = (() => {
-    const weeks = [];
-    const base = new Date(today);
-    for (let i = 7; i >= 0; i--) {
-      const wStart = new Date(base);
-      const dow = wStart.getDay() === 0 ? 6 : wStart.getDay()-1;
-      wStart.setDate(base.getDate() - dow - 7*i);
-      const wEnd = new Date(wStart);
-      wEnd.setDate(wStart.getDate() + 6);
-      const ws = wStart.toISOString().slice(0,10);
-      const we = wEnd.toISOString().slice(0,10);
-      const movs = (movimientosTesoreria || []).filter(m => m.empresa_id === empresa?.id && m.fecha >= ws && m.fecha <= we);
-      const ingReal = movs.filter(m => m.tipo === 'ingreso' || m.tipo === 'credito').reduce((s,m) => s+Number(m.monto||0), 0);
-      const egrReal = movs.filter(m => m.tipo === 'egreso' || m.tipo === 'debito').reduce((s,m) => s+Number(m.monto||0), 0);
-      const hasDatos = ingReal > 0 || egrReal > 0;
-      weeks.push({ semana:`S${8-i} ${MESES_CORTOS[wStart.getMonth()]}`, ing_proy:ingReal, egr_proy:egrReal, ing_real: hasDatos ? ingReal : null, egr_real: hasDatos ? egrReal : null });
+    if (!request) {
+      request = Promise.all(periods.map(period => {
+        if (supabaseMode) {
+          return multisociedadActiva
+            ? getEstadoResultadosPorScope({
+              empresaId: empresa.id,
+              periodo: period,
+              mode: scopeMode,
+              sociedadIds: scopeIds,
+              cecoIds: cecosSel,
+              cebeIds: cebesSel,
+            })
+            : getEstadoResultados({
+              empresaId: empresa.id,
+              periodo: period,
+              cecoIds: cecosSel,
+              cebeIds: cebesSel,
+            });
+        }
+        const filteredCecos = cecosSel.length && cecosCebe
+          ? cecosSel.filter(id => cecosCebe.includes(id))
+          : cecosSel.length ? cecosSel : cecosCebe;
+        const cg = filteredCecos
+          ? comprasGastos.filter(gasto => filteredCecos.includes(gasto.centro_costo_id))
+          : comprasGastos;
+        const otRows = filteredCecos
+          ? ots.filter(ot => filteredCecos.includes(ot.centro_costo_id))
+          : ots;
+        return Promise.resolve(buildEstadoResultados({
+          base: MOCK.estadoResultados,
+          comprasGastos: cg,
+          ots: otRows,
+          centrosCosto,
+          centrosBeneficio,
+          empresa,
+          periodo: period,
+        }));
+      }));
+      cache.current.set(queryKey, request);
     }
-    return weeks;
-  })();
+    request
+      .then(rows => { if (!cancelled) setResultados(rows); })
+      .catch(err => {
+        if (!cancelled) {
+          setError(err?.message || 'No se pudo calcular el Estado de Resultados.');
+          setResultados([]);
+        }
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [queryKey]);
 
-  // ── Filtro label ─────────────────────────────────────────────────────────────
-  const [yy, mm] = periodo.split('-');
-  const periodoLabel = `${MESES_CORTOS[parseInt(mm)-1]} ${yy}`;
-  const filtroStr = [
-    cecosSel.length ? `CECO: ${cecosDeEmpresa.filter(c=>cecosSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
-    cebesSel.length ? `CEBE: ${cebesDeEmpresa.filter(c=>cebesSel.includes(c.id)).map(c=>c.nombre).join(', ')}` : '',
-  ].filter(Boolean).join(' / ');
-
-  // ── Retenciones SUNAT del período ────────────────────────────────────────────
-  const facturasRetencionPeriodo = (facturas || []).filter(f =>
-    f.empresa_id === empresa?.id &&
-    f.aplica_retencion &&
-    f.estado !== 'anulada' &&
-    (f.fecha_emision || '').startsWith(periodo)
-  );
-  const totalRetencionesPeriodo = facturasRetencionPeriodo.reduce((s, f) => s + Number(f.monto_retencion || 0), 0);
-  const clientesRetencionPeriodo = new Set(facturasRetencionPeriodo.map(f => f.cuenta_id)).size;
-
-  // ── Build data objects para tabs ─────────────────────────────────────────────
-  const data = {
-    periodo: `${MESES[parseInt(mm)-1]} ${yy}`,
-    evolucion_margen: evolucionMargen,
-    margen_por_cliente: margenPorCliente,
-    margen_por_servicio: margenPorServicio,
-    cxc_antiguedad: cxcAging,
-    cxp_proximos: cxpProximosLista,
-    flujo_caja: flujoCaja,
+  const serie = serieResultados(resultados, moneda);
+  const idx = serie.findIndex(row => row.periodo === periodo);
+  const actual = serie[idx] || null;
+  const anterior = serie[idx - 1] || null;
+  const er = actual?.source;
+  const comparativo = er?.scopeMode === ER_SCOPE_MODE.COMPARATIVO ? er.comparativo : null;
+  const sociedadLabel = id => sociedadesDisponibles.find(sociedad => sociedad.id === id)?.nombre || id;
+  const sociedadIds = multisociedadActiva ? scopeIds : EMPTY_ARRAY;
+  const cxcData = calcularCxc({
+    cxc, empresaId: empresa?.id, sociedadIds, multisociedad: multisociedadActiva, moneda, hoy,
+  });
+  const cxpData = calcularCxp({
+    cxp, cxpPagos, empresaId: empresa?.id, sociedadIds, multisociedad: multisociedadActiva, moneda, hoy,
+  });
+  const semanas = calcularSemanasCaja({
+    movimientos: movimientosTesoreria,
+    empresaId: empresa?.id,
+    sociedadIds,
+    multisociedad: multisociedadActiva,
+    moneda,
+    hoy,
+  });
+  const maxAcumulado = Math.max(1, ...semanas.map(row => Math.abs(row.acumulado)));
+  const cajaNeta = calcularCajaNetaMes({
+    movimientos: movimientosTesoreria,
+    periodo,
+    empresaId: empresa?.id,
+    sociedadIds,
+    multisociedad: multisociedadActiva,
+    moneda,
+  });
+  const cliente = row => {
+    const cuenta = cuentas.find(item => item.id === row.cuenta_id);
+    return cuenta?.razon_social || cuenta?.nombre_comercial || row.cliente || 'Sin cliente';
   };
-
-  const tabs = [
-    { key: 'rentabilidad', label: 'Rentabilidad' },
-    { key: 'cxcxp',        label: 'CxC / CxP' },
-    { key: 'flujo',        label: 'Flujo de Caja' },
-    { key: 'presupuesto',  label: 'Presupuesto vs Real' },
+  const proveedor = row => row.proveedores?.razon_social || row.proveedor || row.nombre_emisor || 'Proveedor';
+  const ventas = calcularFacturacionPorCliente({
+    facturas, cuentas, periodo, empresaId: empresa?.id, sociedadIds,
+    multisociedad: multisociedadActiva, moneda,
+  });
+  const retenciones = calcularRetenciones({
+    facturas, cuentas, periodo, empresaId: empresa?.id, sociedadIds,
+    multisociedad: multisociedadActiva, moneda,
+  });
+  const dinero = value => `${moneda === 'USD' ? 'US$' : 'S/'} ${Number(value || 0).toLocaleString('es-PE', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+  const compacto = value => {
+    const number = Number(value) || 0;
+    const unit = Math.abs(number) >= 1e6 ? 1e6 : Math.abs(number) >= 1e3 ? 1e3 : 1;
+    const formatted = unit === 1 ? number : (number / unit).toFixed(1).replace(/\.0$/, '');
+    return `${formatted}${unit === 1e6 ? 'M' : unit === 1e3 ? 'K' : ''}`;
+  };
+  const plural = (number, singular, pluralForm) => `${number} ${number === 1 ? singular : pluralForm}`;
+  const periodLabel = new Date(`${periodo}-01T00:00:00`)
+    .toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })
+    .replace(/^\w/, character => character.toUpperCase());
+  const ingresos = actual?.ingresos || 0;
+  const bruto = actual?.utilidadBruta || 0;
+  const neto = actual?.resultadoNeto || 0;
+  const margenBruto = porcentajeDeIngresos(bruto, ingresos);
+  const margenNeto = porcentajeDeIngresos(neto, ingresos);
+  const variacion = variacionPorcentual(ingresos, anterior?.ingresos || 0);
+  const tabla = tablaResultadosFinancieros(actual, anterior);
+  const costos = categoriasCostosResultados(er, moneda);
+  const totalCostos = totalizar(costos);
+  const exportData = {
+    tablaResultados: tabla.map(row => [
+      row.label,
+      row.value,
+      row.porcentaje.toFixed(1),
+      anterior ? row.previo : '',
+      anterior ? row.value - row.previo : '',
+    ]),
+    cxc: cxcData,
+    cxp: cxpData,
+    semanas,
+    cliente,
+    proveedor,
+    presupuestoRows: filasPresupuestoFinanciero({
+      presupuestos,
+      partidas: presupuestoPartidas,
+      empresaId: empresa?.id,
+      periodo,
+    }),
+  };
+  const exportar = () => {
+    const { headers, rows } = filasCSVFinanciero(tab, exportData);
+    const csv = crearCSVFinanciero(headers, rows);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bi-financiero-${tab}-${periodo}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const kpis = [
+    ['Ingresos', actual ? dinero(ingresos) : '—',
+      variacion == null ? 'Sin mes anterior comparable' : `${variacion >= 0 ? '▲' : '▼'} ${P(Math.abs(variacion))} vs. mes anterior`,
+      'Ingresos del Estado de Resultados.',
+      (er?.er?.ingresos?.items || []).map(item => ({ label: item.label, value: dinero(item.totals?.[moneda]) })),
+      dinero(ingresos)],
+    ['Resultado bruto', actual ? dinero(bruto) : '—', `${P(margenBruto)} de ingresos`,
+      'Ingresos menos costo de ventas.',
+      (er?.er?.costoVentas?.items || []).map(item => ({ label: item.label, value: dinero(item.totals?.[moneda]) })),
+      dinero(bruto)],
+    ['Resultado neto', actual ? dinero(neto) : '—', `${P(margenNeto)} de ingresos`,
+      'Resultado neto del Estado de Resultados.',
+      [...(er?.er?.gastosOp?.items || []), ...(er?.er?.gastosFin?.items || [])]
+        .map(item => ({ label: item.label, value: dinero(item.totals?.[moneda]) })),
+      dinero(neto)],
+    ['Por cobrar (CxC)', dinero(cxcData.total), `${dinero(cxcData.vencida)} vencida`,
+      'Saldos activos en la moneda elegida.',
+      cxcData.tramos.map(item => ({
+        label: `${item.label} · ${plural(item.cantidad, 'comprobante', 'comprobantes')}`,
+        value: dinero(item.monto),
+      })),
+      dinero(cxcData.total)],
+    ['Por pagar (CxP)', dinero(cxpData.total),
+      `${dinero(cxpData.vencida)} vencida · ${dinero(cxpData.proximos30)} en 30 días`,
+      'Saldo descontando pagos registrados.',
+      cxpData.tramos.map(item => ({
+        label: `${item.label} · ${plural(item.cantidad, 'comprobante', 'comprobantes')}`,
+        value: dinero(item.monto),
+      })),
+      dinero(cxpData.total)],
+    ['Caja neta del mes', dinero(cajaNeta), 'Ingresos menos egresos de tesorería',
+      'Neto de movimientos del mes elegido.',
+      semanas.map(item => ({
+        label: `${formatDateFinanciero(item.inicio)}–${formatDateFinanciero(item.fin)}`,
+        value: dinero(item.neto),
+      })),
+      dinero(cajaNeta)],
   ];
+  const chartMax = Math.max(1, ...serie.flatMap(row => [Math.abs(row.ingresos), Math.abs(row.resultadoNeto)]));
+  const chart = (
+    <div className="bic-bars bif-chart">
+      {serie.map(row => (
+        <div className="bic-bar-col" key={row.periodo}>
+          <strong title={`Ingresos ${dinero(row.ingresos)} · Neto ${dinero(row.resultadoNeto)}`}>
+            {compacto(row.ingresos)} / {compacto(row.resultadoNeto)}
+          </strong>
+          <div className="bif-chart-track">
+            <i className={row.periodo === periodo ? 'is-current' : ''}
+              style={{ height: `${Math.max(2, Math.abs(row.ingresos) / chartMax * 100)}%` }} />
+            <i className={`bif-net-bar ${row.resultadoNeto < 0 ? 'is-negative' : ''} ${row.periodo === periodo ? 'is-current' : ''}`}
+              style={{ height: `${Math.max(2, Math.abs(row.resultadoNeto) / chartMax * 100)}%` }} />
+          </div>
+          <span>{row.periodo.slice(5)}</span>
+        </div>
+      ))}
+    </div>
+  );
+  const tablaRows = tabla.map(row => (
+    <tr key={row.label}>
+      <td><strong>{row.label}</strong></td>
+      <td>{dinero(row.value)}</td>
+      <td>{P(row.porcentaje)}</td>
+      <td>{anterior ? dinero(row.previo) : '—'}</td>
+      <td>{anterior ? dinero(row.value - row.previo) : '—'}</td>
+    </tr>
+  ));
+  const ventasRows = ventas.map(row => (
+    <tr key={row.nombre}>
+      <td>{row.nombre}</td>
+      <td>{plural(row.cantidad, 'comprobante', 'comprobantes')}</td>
+      <td>{dinero(row.monto)}</td>
+    </tr>
+  ));
+  const cobranzaRows = cxcData.vencidas.map(row => (
+    <tr key={row.id}>
+      <td>{cliente(row)}</td>
+      <td>{row.numero || row.comprobante || row.id}</td>
+      <td>{formatDateFinanciero(row.fecha_vencimiento || row.vence)}</td>
+      <td>{plural(row.mora, 'día', 'días')}</td>
+      <td>{dinero(row.saldo)}</td>
+    </tr>
+  ));
+  const retencionRows = retenciones.map((row, index) => (
+    <tr key={`${row.comprobante}-${index}`}>
+      <td>{row.cliente}</td><td>{row.comprobante}</td><td>{dinero(row.monto)}</td>
+    </tr>
+  ));
+  const pagosRows = cxpData.urgentes.map(row => (
+    <tr key={row.id}>
+      <td>{proveedor(row)}</td>
+      <td>{row.concepto || row.categoria || row.factura_numero || 'Sin concepto'}</td>
+      <td>{formatDateFinanciero(row.fecha_vencimiento)}</td>
+      <td>{row.dias < 0 ? `Vencida ${Math.abs(row.dias)} d` : plural(row.dias, 'día', 'días')}</td>
+      <td>{dinero(row.saldo)}</td>
+    </tr>
+  ));
+  const cajaRows = semanas.map(row => (
+    <tr key={row.inicio}>
+      <td>{formatDateFinanciero(row.inicio)} {'·'} {formatDateFinanciero(row.fin)}</td>
+      <td>{dinero(row.ingresos)}</td><td>{dinero(row.egresos)}</td>
+      <td>{dinero(row.neto)}</td><td>{dinero(row.acumulado)}</td>
+    </tr>
+  ));
 
   return (
-    <div>
-      <div className="page-header">
+    <div className="bic-page bif-page">
+      <header className="bic-header">
         <div>
-          <div className="page-title">BI Financiero{filtroStr ? ` — ${filtroStr}` : ''}</div>
-          <div className="page-sub">Rentabilidad · Cobranza · Flujo · Presupuesto — {data.periodo}</div>
+          <h1>BI Financiero</h1>
+          <div className="page-sub">Resultados, cobranza, pagos y caja {'·'} {periodLabel} {'·'} {moneda}</div>
         </div>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <div className="bic-controls">
+          <div className="bic-segment" aria-label="Moneda">
+            {monedas.map(item => (
+              <button key={item} className={moneda === item ? 'active' : ''} onClick={() => setMoneda(item)}>
+                {item}
+              </button>
+            ))}
+          </div>
+          <input aria-label="Mes" className="input bic-month" type="month" value={periodo}
+            onChange={event => setPeriodo(event.target.value)} />
           {multisociedadActiva && (
-            <select className="select" style={{ width: 150 }} value={scopeMode} onChange={e => setScopeMode(e.target.value)}>
-              <option value={ER_SCOPE_MODE.SOCIEDAD}>Sociedad única</option>
+            <select className="select bif-scope-mode" aria-label="Alcance de sociedad" value={scopeMode}
+              onChange={event => setScopeMode(event.target.value)}>
+              <option value={ER_SCOPE_MODE.SOCIEDAD}>Sociedad {'única'}</option>
               {puedeComparar && <option value={ER_SCOPE_MODE.COMPARATIVO}>Comparativo</option>}
               {puedeComparar && <option value={ER_SCOPE_MODE.CONSOLIDADO}>Consolidado</option>}
             </select>
           )}
           {multisociedadActiva && scopeMode === ER_SCOPE_MODE.SOCIEDAD && (
-            <select className="select" style={{ width: 190 }} value={scopeSociedadId} onChange={e => setScopeSociedadId(e.target.value)}>
-              {sociedadesDisponibles.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+            <select className="select bif-society" aria-label="Sociedad" value={scopeSociedadId}
+              onChange={event => setScopeSociedadId(event.target.value)}>
+              {sociedadesDisponibles.map(sociedad => (
+                <option key={sociedad.id} value={sociedad.id}>
+                  {sociedad.nombre || sociedad.razon_social || sociedad.codigo}
+                </option>
+              ))}
             </select>
           )}
-          <select className="select" style={{ width: 160 }} value={periodo} onChange={e => setPeriodo(e.target.value)}>
-            {periodoOpts.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
-          </select>
-          <MultiSelect opts={cecosDeEmpresa} sel={cecosSel} onSel={setCecosSel} placeholder="CECO: Todos" />
-          <MultiSelect opts={cebesDeEmpresa} sel={cebesSel} onSel={setCebesSel} placeholder="CEBE: Todos" />
+          <MultiSelect opts={cecosEmpresa} sel={cecosSel} onSel={setCecosSel} placeholder="CECO: Todos" />
+          <MultiSelect opts={cebesEmpresa} sel={cebesSel} onSel={setCebesSel} placeholder="CEBE: Todos" />
+          <button className="btn btn-secondary" onClick={exportar}>Exportar CSV</button>
+          <small className="bif-filter-note">CECO y CEBE solo filtran Resultados.</small>
         </div>
-      </div>
-
-      {comparativoEr && (
-        <div className="card" style={{ marginBottom: 24, overflowX: 'auto' }}>
-          <div className="card-title" style={{ marginBottom: 12 }}>Estado de Resultados comparativo</div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Concepto</th>
-                {comparativoEr.map(item => <th key={item.sociedadId} className="num">{sociedadesDisponibles.find(s => s.id === item.sociedadId)?.nombre || item.sociedadId}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ['Ingresos', item => item.data.er.ingresos.total],
-                ['Costo de ventas', item => item.data.er.costoVentas.total],
-                ['Gastos operativos', item => item.data.er.gastosOp.total],
-                ['Gastos financieros', item => item.data.er.gastosFin.total],
-                ['Resultado neto', item => item.data.resultadoNeto],
-              ].map(([label, getter]) => (
-                <tr key={label}>
-                  <td><strong>{label}</strong></td>
-                  {comparativoEr.map(item => (
-                    <td key={item.sociedadId} className="num">
-                      <div>{S(pen(getter(item)))}</div>
-                      {Number(getter(item)?.USD || 0) !== 0 && <div className="text-muted">USD {Number(getter(item).USD).toLocaleString('es-PE')}</div>}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      </header>
+      {loading && <div className="card bif-status" role="status">Cargando Estado de Resultados{'…'}</div>}
+      {error && <div className="alert alert-error bif-status" role="alert">{error}</div>}
+      {comparativo && (
+        <div className="card bic-panel">
+          <div className="card-head"><h3>Estado de Resultados comparativo</h3></div>
+          {rowsTable(['Concepto', ...comparativo.map(item => sociedadLabel(item.sociedadId))], [
+            ['Ingresos', item => item.data.er.ingresos.total],
+            ['Costo de ventas', item => item.data.er.costoVentas.total],
+            ['Utilidad bruta', item => item.data.utilidadBruta],
+            ['Gastos operativos', item => item.data.er.gastosOp.total],
+            ['Gastos financieros', item => item.data.er.gastosFin.total],
+            ['Resultado neto', item => item.data.resultadoNeto],
+          ].map(([label, get]) => (
+            <tr key={label}>
+              <td><strong>{label}</strong></td>
+              {comparativo.map(item => <td key={item.sociedadId}>{dinero(get(item)?.[moneda] || 0)}</td>)}
+            </tr>
+          )), 'Sin datos comparativos.')}
         </div>
       )}
-
-      {!comparativoEr && <div className="kpi-grid" style={{ marginBottom: 24 }}>
-        <KPI label="Facturación Mes" value={S(facturacionMes)} sub={`${vi(varFactPct)} ${P(Math.abs(varFactPct))} vs mes ant.`} subColor={vc(varFactPct)} />
-        <KPI label="Margen Bruto" value={S(utilidadBrutaPen)} sub={P(margenBrutoPct) + ' del total'} subColor="var(--green)" />
-        <KPI label="Margen Neto" value={S(resultadoNetoPen)} sub={P(margenNetoPct) + ' del total'} subColor={vc(resultadoNetoPen)} />
-        <KPI label="CxC Total" value={S(cxcTotal)} sub={S(cxcVencida) + ' vencida'} subColor="var(--danger)" />
-        <KPI label="CxP Total" value={S(cxpTotal)} sub={S(cxpProximos30d) + ' próx. 30d'} subColor="var(--warning)" />
-        <KPI label="Δ Margen Bruto" value={`${margenBrutoPct >= margenBrutoAntPct ? '+' : ''}${P(margenBrutoPct - margenBrutoAntPct)}`} sub="vs mes anterior" subColor={margenBrutoPct >= margenBrutoAntPct ? 'var(--green)' : 'var(--danger)'} />
-        <KPI label="Retenciones SUNAT" value={S(totalRetencionesPeriodo)} sub={clientesRetencionPeriodo > 0 ? `${clientesRetencionPeriodo} cliente${clientesRetencionPeriodo > 1 ? 's' : ''} · crédito fiscal` : 'Sin retenciones en el período'} subColor={totalRetencionesPeriodo > 0 ? 'var(--cyan)' : 'var(--fg-muted)'} />
-      </div>}
-
-      <div className="tab-bar" style={{ marginBottom: 24 }}>
-        {tabs.map(t => (
-          <button key={t.key} className={'tab-btn ' + (tab === t.key ? 'active' : '')} onClick={() => setTab(t.key)}>
-            {t.label}
+      <div className="kpi-grid bic-kpis bif-kpis">
+        {kpis.map(([title, value, note, description, items, footer]) => (
+          <div className="kpi-card bi-kpi-card bic-kpi" key={title}>
+            <div className="kpi-label">
+              {title}
+              <span className="bic-tooltip-trigger" tabIndex="0" aria-label={`Detalle: ${title}`}>
+                {'ⓘ'}<Tooltip title={title} description={description} items={items} footer={footer} />
+              </span>
+            </div>
+            <div className="kpi-value">{value}</div><div className="kpi-sub">{note}</div>
+          </div>
+        ))}
+      </div>
+      <div className="tabs bic-tabs">
+        {[
+          ['resultados', 'Resultados'],
+          ['cobranza', 'Cobranza (CxC)'],
+          ['pagos', 'Pagos (CxP)'],
+          ['flujo', 'Flujo de caja'],
+          ['presupuesto', 'Presupuesto vs Real'],
+        ].map(([key, label]) => (
+          <button key={key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+            {label}
           </button>
         ))}
       </div>
-
-      {tab === 'rentabilidad' && <TabRentabilidad data={data} />}
-      {tab === 'cxcxp'        && <TabCxCxP data={data} />}
-      {tab === 'flujo'        && <TabFlujoCaja data={data} />}
-      {tab === 'presupuesto'  && <TabPresupuesto periodo={periodo} efectivoCecos={efectivoCecos} />}
+      {tab === 'resultados' && (
+        <div className="bic-content">
+          <Panel title="Estado de resultados">
+            {rowsTable(['Concepto', 'Mes', '% de ingresos', 'Mes anterior', 'Variación'], tablaRows,
+              'No hay resultados para este mes y moneda.')}
+          </Panel>
+          <div className="bic-grid">
+            <Panel title="Ingresos y resultado neto, últimos 6 meses">
+              <div className="bif-chart-legend">
+                <span><i />Ingresos</span><span><i className="is-net" />Resultado neto</span>
+              </div>
+              {chart}
+            </Panel>
+            <Panel title="Costos y gastos por categoría">
+              {costos.length ? (
+                <div className="bic-list">
+                  {costos.map((row, index) => (
+                    <div className="bic-list-row" key={`${row.nombre}-${index}`}>
+                      <span>{row.nombre}<small>{P(totalCostos ? row.monto / totalCostos * 100 : 0)}</small></span>
+                      <strong>{dinero(row.monto)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : <Empty>No hay costos ni gastos en este mes y moneda.</Empty>}
+            </Panel>
+          </div>
+          <Panel title="Facturación por cliente">
+            {rowsTable(['Cliente', 'Comprobantes', 'Subtotal sin IGV'], ventasRows,
+              'No hay facturas ni boletas en este mes y moneda.')}
+          </Panel>
+        </div>
+      )}
+      {tab === 'cobranza' && (
+        <div className="bic-content">
+          <Panel title="Antigüedad de cuentas por cobrar">
+            <div className="bic-series">
+              {cxcData.tramos.map(row => (
+                <div key={row.key}><span>{row.label}</span><b>{dinero(row.monto)}</b>
+                  <b>{plural(row.cantidad, 'comprobante', 'comprobantes')}</b></div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Facturas vencidas por cobrar">
+            {rowsTable(['Cliente', 'Comprobante', 'Vencimiento', 'Días de mora', 'Saldo'], cobranzaRows,
+              'No hay facturas vencidas por cobrar.')}
+          </Panel>
+          <Panel title="Retenciones SUNAT del mes">
+            {rowsTable(['Cliente', 'Comprobante', 'Monto de retención'], retencionRows,
+              'No hay retenciones en este mes y moneda.')}
+          </Panel>
+        </div>
+      )}
+      {tab === 'pagos' && (
+        <div className="bic-content">
+          <Panel title="Antigüedad de cuentas por pagar">
+            <div className="bic-series">
+              {cxpData.tramos.map(row => (
+                <div key={row.key}><span>{row.label}</span><b>{dinero(row.monto)}</b>
+                  <b>{plural(row.cantidad, 'comprobante', 'comprobantes')}</b></div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="Por cobrar vs. por pagar, próximos 30 días">
+            <div className="bic-compare bif-near-compare">
+              <div><span>CxC {'·'} próximos 30 días</span>
+                <strong>{dinero(calcularCxcProximos30(cxcData, hoy))}</strong></div>
+              <div><span>CxP {'·'} próximos 30 días</span><strong>{dinero(cxpData.proximos30)}</strong></div>
+            </div>
+            <p className="bif-overdue-note">CxP vencida: <strong>{dinero(cxpData.vencida)}</strong></p>
+          </Panel>
+          <Panel title="Pagos más urgentes">
+            {rowsTable(['Proveedor', 'Concepto', 'Vencimiento', 'Días', 'Saldo'], pagosRows,
+              'No hay cuentas por pagar pendientes.')}
+          </Panel>
+        </div>
+      )}
+      {tab === 'flujo' && (
+        <div className="bic-content">
+          <Panel title="Flujo de caja &#183; &uacute;ltimas 8 semanas">
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Semana</th><th>Ingresos</th><th>Egresos</th><th>Neto</th><th>Acumulado</th></tr></thead>
+                <tbody>{cajaRows}</tbody>
+              </table>
+            </div>
+          </Panel>
+          <Panel title="Flujo neto acumulado">
+            <div className="bic-bars bif-cumulative">
+              {semanas.map(row => (
+                <div className="bic-bar-col" key={row.inicio}>
+                  <strong title={dinero(row.acumulado)}>{compacto(row.acumulado)}</strong>
+                  <div className="bic-bar-track">
+                    <i className={`bif-cumulative-bar ${row.acumulado < 0 ? 'is-negative' : ''} ${row.inicio === semanas[7]?.inicio ? 'is-current' : ''}`}
+                      style={{ height: `${Math.max(3, Math.abs(row.acumulado) / maxAcumulado * 100)}%` }} />
+                  </div>
+                  <span>{row.inicio.slice(5)}</span>
+                </div>
+              ))}
+            </div>
+            <p className="bif-filter-note">Acumulado de netos semanales; no representa saldo bancario.</p>
+          </Panel>
+        </div>
+      )}
+      {tab === 'presupuesto' && <TabPresupuesto periodo={periodo} efectivoCecos={efectivoCecos} />}
     </div>
   );
 }
