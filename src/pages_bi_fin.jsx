@@ -8,7 +8,7 @@ import { ER_SCOPE_MODE, buildEstadoResultados, getEstadoResultados, getEstadoRes
 import { isSupabaseMode } from './lib/dataMode.js';
 import { normalizarMonedaBI } from './biComercialMetrics.js';
 import {
-  calcularCajaNetaMes, calcularCxc, calcularCxcProximos30, calcularCxp,
+  asignarSociedadMovimientos, calcularCajaNetaMes, calcularCxc, calcularCxcProximos30, calcularCxp,
   calcularFacturacionPorCliente, calcularRetenciones, calcularSemanasCaja,
   categoriasCostosResultados, crearCSVFinanciero, filasCSVFinanciero,
   filasPresupuestoFinanciero, formatDateFinanciero, porcentajeDeIngresos,
@@ -634,6 +634,7 @@ export function BIFinanciero() {
     cxp = EMPTY_ARRAY,
     cxpPagos = EMPTY_ARRAY,
     cuentas = EMPTY_ARRAY,
+    cuentasBancarias = EMPTY_ARRAY,
     movimientosTesoreria = EMPTY_ARRAY,
     facturas = EMPTY_ARRAY,
     presupuestos = EMPTY_ARRAY,
@@ -784,6 +785,16 @@ export function BIFinanciero() {
   const comparativo = er?.scopeMode === ER_SCOPE_MODE.COMPARATIVO ? er.comparativo : null;
   const sociedadLabel = id => sociedadesDisponibles.find(sociedad => sociedad.id === id)?.nombre || id;
   const sociedadIds = multisociedadActiva ? scopeIds : EMPTY_ARRAY;
+  const movimientosTesoreriaConSociedad = useMemo(
+    () => asignarSociedadMovimientos({
+      movimientos: movimientosTesoreria,
+      cuentasBancarias,
+      cxc,
+      cxp,
+      facturas,
+    }),
+    [movimientosTesoreria, cuentasBancarias, cxc, cxp, facturas],
+  );
   const cxcData = calcularCxc({
     cxc, empresaId: empresa?.id, sociedadIds, multisociedad: multisociedadActiva, moneda, hoy,
   });
@@ -791,7 +802,7 @@ export function BIFinanciero() {
     cxp, cxpPagos, empresaId: empresa?.id, sociedadIds, multisociedad: multisociedadActiva, moneda, hoy,
   });
   const semanas = calcularSemanasCaja({
-    movimientos: movimientosTesoreria,
+    movimientos: movimientosTesoreriaConSociedad,
     empresaId: empresa?.id,
     sociedadIds,
     multisociedad: multisociedadActiva,
@@ -800,7 +811,7 @@ export function BIFinanciero() {
   });
   const maxAcumulado = Math.max(1, ...semanas.map(row => Math.abs(row.acumulado)));
   const cajaNeta = calcularCajaNetaMes({
-    movimientos: movimientosTesoreria,
+    movimientos: movimientosTesoreriaConSociedad,
     periodo,
     empresaId: empresa?.id,
     sociedadIds,

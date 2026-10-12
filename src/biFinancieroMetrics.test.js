@@ -1,10 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  calcularCajaNetaMes, calcularCxc, calcularCxp, calcularFacturacionPorCliente,
+  asignarSociedadMovimientos, calcularCajaNetaMes, calcularCxc, calcularCxp, calcularFacturacionPorCliente,
   calcularRetenciones, calcularSemanasCaja, filasCSVFinanciero, filtrarPorMoneda,
   filasPresupuestoFinanciero, formatDateFinanciero, serieResultados,
 } from './biFinancieroMetrics.js';
+
+test('deduce sociedad de movimientos por cuenta, CxC, CxP y factura sin mutarlos', () => {
+  const movimientos = [
+    { id: 'cuenta', cuenta_bancaria_id: 'b1' },
+    { id: 'cxc', cxc_id: 'c1' },
+    { id: 'cxp', vinculo_tipo: 'cxp', vinculo_id: 'p1' },
+    { id: 'factura', vinculo_tipo: 'factura', vinculo_id: 'f1' },
+    { id: 'sin-origen' },
+  ];
+  const asignados = asignarSociedadMovimientos({
+    movimientos,
+    cuentasBancarias: [{ id: 'b1', sociedad_id: 's1' }],
+    cxc: [{ id: 'c1', sociedad_id: 's2' }],
+    cxp: [{ id: 'p1', sociedad_id: 's3' }],
+    facturas: [{ id: 'f1', sociedad_id: 's4' }],
+  });
+
+  assert.deepEqual(asignados.map(row => row.sociedad_id), ['s1', 's2', 's3', 's4', null]);
+  assert.equal(Object.hasOwn(movimientos[0], 'sociedad_id'), false);
+});
+
+test('caja mensual y semanal multisociedad usan la sociedad deducida', () => {
+  const movimientos = asignarSociedadMovimientos({
+    movimientos: [
+      { id: 's1-in', cuenta_bancaria_id: 'b1', empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-12', tipo: 'ingreso', monto: 100 },
+      { id: 's1-out', cxc_id: 'c1', empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-13', tipo: 'egreso', monto: 20 },
+      { id: 's2', cuenta_bancaria_id: 'b2', empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-14', tipo: 'ingreso', monto: 300 },
+      { id: 'sin-origen', empresa_id: 'e', moneda: 'PEN', fecha: '2026-10-14', tipo: 'ingreso', monto: 500 },
+    ],
+    cuentasBancarias: [
+      { id: 'b1', sociedad_id: 's1' },
+      { id: 'b2', sociedad_id: 's2' },
+    ],
+    cxc: [{ id: 'c1', sociedad_id: 's1' }],
+  });
+  const scope = { empresaId: 'e', sociedadIds: ['s1'], multisociedad: true, moneda: 'PEN' };
+
+  assert.equal(calcularCajaNetaMes({ movimientos, periodo: '2026-10', ...scope }), 80);
+  assert.equal(calcularSemanasCaja({ movimientos, hoy: '2026-10-14', ...scope })[7].neto, 80);
+});
 
 test('filtra por moneda normalizada y conserva nulos como cero', () => {
   const rows = [{ moneda: 'PEN', monto: 9 }, { moneda: '$', monto: 3 }, { moneda: 'USD', monto: null }];

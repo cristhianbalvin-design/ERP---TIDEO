@@ -22,6 +22,41 @@ export const formatDateFinanciero = formatearFechaBI;
 export const currencyAmount = amount;
 export const filtrarPorMoneda = (rows = [], moneda, key = 'moneda') => currencyRows(rows, normalizarMonedaBI(moneda), key);
 
+export function asignarSociedadMovimientos({
+  movimientos = [], cuentasBancarias = [], cxc = [], cxp = [], facturas = [],
+} = {}) {
+  const cuentasPorId = new Map(cuentasBancarias.map(row => [row.id, row]));
+  const cxcPorId = new Map(cxc.map(row => [row.id, row]));
+  const cxpPorId = new Map(cxp.map(row => [row.id, row]));
+  const facturasPorId = new Map(facturas.map(row => [row.id, row]));
+
+  return movimientos.map(movimiento => {
+    const vinculoTipo = String(
+      movimiento?.vinculo_tipo || movimiento?.vinculado_tipo || '',
+    ).trim().toLowerCase();
+    const vinculoId = movimiento?.vinculo_id || movimiento?.vinculado_id;
+    const cxcOrigen = cxcPorId.get(
+      movimiento?.cxc_id || (vinculoTipo === 'cxc' ? vinculoId : null),
+    );
+    const cxpOrigen = cxpPorId.get(
+      movimiento?.cxp_id || (vinculoTipo === 'cxp' ? vinculoId : null),
+    );
+    const facturaOrigen = facturasPorId.get(
+      movimiento?.factura_id
+      || cxcOrigen?.factura_id
+      || (vinculoTipo === 'factura' ? vinculoId : null),
+    );
+    const sociedadId = movimiento?.sociedad_id
+      || cuentasPorId.get(movimiento?.cuenta_bancaria_id)?.sociedad_id
+      || cxcOrigen?.sociedad_id
+      || cxpOrigen?.sociedad_id
+      || facturaOrigen?.sociedad_id
+      || null;
+
+    return { ...movimiento, sociedad_id: sociedadId };
+  });
+}
+
 export function calcularCxc({ cxc = [], empresaId, sociedadIds = [], multisociedad = false, moneda = 'PEN', hoy }) {
   const items = cxc.filter(row => row.empresa_id === empresaId && inSocietyScope(row, sociedadIds, multisociedad)
     && !['anulada', 'cancelada', 'cobrada'].includes(state(row)) && !row.fecha_cobro && normalizarMonedaBI(row.moneda) === normalizarMonedaBI(moneda))
