@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolidarStockPorMaterial, esTransferencia, etiquetaTipoMovimiento, etiquetaValorizacion, resolverEtiquetaUbicacionAlmacen } from '../src/zahory-mock/pages/inventarioKardexLogic.js';
+import { calcularStockMaterial, cantidadConSigno, claseTipoMovimiento, consolidarStockPorMaterial, esTransferencia, etiquetaMotivoKardex, etiquetaTipoMovimiento, etiquetaValorizacion, resolverEtiquetaUbicacionAlmacen } from '../src/zahory-mock/pages/inventarioKardexLogic.js';
 
 describe('lógica de Inventario & Kardex', () => {
   it('resta reservado y físico en cuarentena y merma del disponible', () => {
@@ -42,6 +42,11 @@ describe('lógica de Inventario & Kardex', () => {
   it('conserva anulados sin valorización y etiqueta como Anulado', () => {
     expect(etiquetaValorizacion({ anulado: true, valorizacion_estado: 'pendiente_factura' })).toBe('Anulado');
     expect(cantidadConSigno({ tipo: 'entrada', cantidad: 3, anulado: true })).toBe(3);
+  });
+
+  it('etiqueta el motivo de despacho de repuestos a taller', () => {
+    expect(etiquetaMotivoKardex('despacho_taller')).toBe('Despacho a taller');
+    expect(etiquetaTipoMovimiento('despacho_taller')).toBe('Despacho a taller');
   });
 
   it('identifica ambos asientos de transferencia', () => {

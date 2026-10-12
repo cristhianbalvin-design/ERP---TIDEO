@@ -72,7 +72,13 @@ const TIPOS = {
   transferencia_entrada: ['Transf. entrada', 'is-cyan'],
   transferencia_salida: ['Transf. salida', 'is-cyan'],
   ajuste: ['Ajuste', 'is-gray'],
+  despacho_taller: ['Despacho a taller', 'is-cyan'],
 };
+
+export function etiquetaMotivoKardex(motivo) {
+  if (motivo === 'despacho_taller') return TIPOS.despacho_taller[0];
+  return String(motivo || '').replaceAll('_', ' ').replace(/^\p{L}/u, letra => letra.toLocaleUpperCase('es-PE'));
+}
 
 export function etiquetaTipoMovimiento(tipo) {
   return TIPOS[tipo]?.[0] || String(tipo || 'Movimiento').replaceAll('_', ' ').replace(/^\p{L}/u, letra => letra.toLocaleUpperCase('es-PE'));

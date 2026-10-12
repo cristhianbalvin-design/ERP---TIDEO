@@ -8,6 +8,7 @@ const ETIQUETAS_MOTIVOS_LECTURA = Object.freeze({
   recepcion_oc: 'Recepción de OC',
   consumo_ot: 'Consumo de OT',
   despacho_guia: 'Despacho por guía',
+  despacho_taller: 'Despacho a taller',
   transferencia: 'Transferencia',
   oc_pendiente_factura: 'Ingreso pendiente de factura',
   anulacion_entrada: 'Anulación de entrada',
@@ -102,6 +103,7 @@ function filaUso(stock, stockId, ubicacionId) { return stock.find(item => item.i
 const MOTIVOS_ANULABLES = new Set(['saldo_inicial', 'ajuste_positivo', 'devolucion_ot', 'compra_directa_sin_oc', 'merma', 'robo', 'error_ingreso', 'ajuste_conteo', 'ajuste_manual']);
 export function motivoNoAnulable(movimiento, puedeEditar = true) {
   if (movimiento?.anulado) return 'Este movimiento ya fue anulado.';
+  if (movimiento?.motivo === 'despacho_taller') return 'El despacho a taller se corrige desde la OT.';
   if (movimiento?.motivo === 'anulacion' || movimiento?.referencia_tipo === 'anulacion') return 'Una anulación no se puede anular. Registra un nuevo movimiento si hace falta.';
   if (movimiento?.referencia_tipo === 'recepcion_oc' || movimiento?.motivo === 'recepcion_oc') return 'Las recepciones de OC se anulan desde Recepciones, porque también cambian el estado de la orden.';
   if (['transferencia', 'guia', 'guia_remision'].includes(movimiento?.referencia_tipo) || ['transferencia_entrada', 'transferencia_salida'].includes(movimiento?.tipo)) return 'Una transferencia se corrige con una transferencia inversa.';

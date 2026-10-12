@@ -65,3 +65,15 @@ test('mi portal y accesos alternativos conservan su comportamiento explicito', (
   assert.equal(puedeVerPantalla(role, 'mi_portal'), true);
   assert.equal(puedeVerPantalla(role, 'maestros', ['maestros', 'servicios']), true);
 });
+
+test('despacho y liberación se leen únicamente desde permisos_extra de inventario', () => {
+  const role = buildRoleDePermisos({ es_admin_empresa: false }, [
+    { pantalla: 'dashboard', permisos_extra: { puede_despachar: true, puede_liberar: true } },
+    { pantalla: 'inventario', permisos_extra: { puede_despachar: true, puede_liberar: false, puede_ver_precios: true } },
+  ]);
+  assert.equal(role.permisos.despachar, true);
+  assert.equal(role.permisos.liberar, false);
+  assert.equal(role.permisos.ver_precios, true);
+  assert.equal(buildRoleDePermisos({ es_admin_empresa: false }, [{ pantalla: 'inventario' }]).permisos.despachar, false);
+  assert.equal(buildRoleDePermisos({ es_admin_empresa: true }, []).permisos.liberar, true);
+});

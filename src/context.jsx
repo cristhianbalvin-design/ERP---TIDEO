@@ -17,7 +17,8 @@ import {
 import { clasificarCoincidenciasCargo, maestrosService, normalizarNombreCargo } from './services/maestrosService.js';
 import { CargoCreationDialog } from './components/CargoCreationDialog.jsx';
 import { cantidadRecibidaPorItemOc, comprasService, devolucionesService } from './services/comprasService.js';
-import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { registrarEntrada, registrarEntradaOcPendienteFactura, registrarSalida, registrarTransferencia, registrarAjuste, reservarStock, liberarReserva, getKardex, getStockCompleto, iniciarConteo, listarConteos, guardarAvanceConteo, cerrarConteo, getAnaliticaInventario, getMaterialesBajoReorden, listarEntradasOcPendientesValorizacion, conciliarCierreOT as conciliarCierreOTSvc, registrarConsumoOT as registrarConsumoOTSvc } from './services/inventarioService.js';
+import { restarDespachadoDelConsumo } from './services/consumoCierreOT.js';
 import { registrarTransferenciaIntercompania } from './services/transferenciasIntercompaniaService.js';
 import { rrhhService } from './services/rrhhService.js';
 import { reclutamientoService } from './services/reclutamientoService.js';
@@ -245,6 +246,8 @@ function rolesConPermisosAObjeto(rolesData = [], permisosData = []) {
         ver_costos: pRows.some(p => p.puede_ver_costos),
         ver_finanzas: pRows.some(p => p.puede_ver_finanzas),
         ver_precios: pRows.some(p => p.permisos_extra?.puede_ver_precios),
+        despachar: Boolean(esAdminRol || pRows.find(p => p.pantalla === 'inventario')?.permisos_extra?.puede_despachar === true),
+        liberar: Boolean(esAdminRol || pRows.find(p => p.pantalla === 'inventario')?.permisos_extra?.puede_liberar === true),
         ver_consolidado_grupo: Boolean(esAdminRol || especialesExtra.ver_consolidado_grupo === true),
         aprobar_descuentos: Boolean(esAdminRol || especialesExtra.aprobar_descuentos === true),
         anular_documentos: Boolean(esAdminRol || especialesExtra.anular_documentos === true),
@@ -4308,17 +4311,15 @@ export function AppProvider({ children }) {
     });
 
     if (itemsADescontar.length > 0) {
-      setInventario(prev => {
+      const aplicarConsumoLocal = items => setInventario(prev => {
         const asignadoPorId = new Map();
-        for (const desc of itemsADescontar) {
+        for (const desc of items) {
           let restante = Number(desc.cantidad) || 0;
-          const candidatas = prev.filter(i =>
-            i.material_id === desc.material_id &&
-            (!desc.almacen_id || i.almacen_id === desc.almacen_id) &&
-            (desc.lote == null || i.lote === desc.lote) &&
-            (desc.serie == null || i.serie === desc.serie) &&
-            (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)
-          ).slice().sort((a, b) => {
+          const candidatas = prev.filter(i => i.material_id === desc.material_id
+            && (!desc.almacen_id || i.almacen_id === desc.almacen_id)
+            && (desc.lote == null || i.lote === desc.lote)
+            && (desc.serie == null || i.serie === desc.serie)
+            && (sociedadOtId ? i.sociedad_id === sociedadOtId : !i.sociedad_id)).slice().sort((a, b) => {
             const fechaA = a.vencimiento ? Date.parse(a.vencimiento) : Infinity;
             const fechaB = b.vencimiento ? Date.parse(b.vencimiento) : Infinity;
             const av = Number.isFinite(fechaA) ? fechaA : Infinity;
@@ -4335,15 +4336,25 @@ export function AppProvider({ children }) {
         }
         return prev.map(i => {
           const desc = asignadoPorId.get(i.id) || 0;
-          if (!desc) return i;
-          return { ...i, disponible: Math.max(0, Number(i.disponible ?? i.stock_actual ?? 0) - desc), stock_actual: Math.max(0, Number(i.stock_actual ?? i.disponible ?? 0) - desc) };
+          return desc ? { ...i, disponible: Math.max(0, Number(i.disponible ?? i.stock_actual ?? 0) - desc), stock_actual: Math.max(0, Number(i.stock_actual ?? i.disponible ?? 0) - desc) } : i;
         });
       });
       if (isSupabaseConfigured()) {
-        getSupabaseClient().then(sb => registrarConsumoOTSvc(sb, empresa.id, itemsADescontar, otId, authUser?.id, sociedadOtId))
-          .then(() => getStockCompleto(empresa.id).then(inv => { if (inv?.length) setInventario(inv); }))
-          .catch(err => console.error('consumo OT inventario:', err));
-      }
+        getSupabaseClient().then(async sb => {
+          let itemsConsumo = itemsADescontar;
+          let yaConciliado = false;
+          try {
+            const { data, error } = await conciliarCierreOTSvc(sb, empresa.id, otId);
+            if (error) throw error;
+            itemsConsumo = restarDespachadoDelConsumo(itemsADescontar, data?.despachado || []);
+            yaConciliado = true;
+          } catch (err) { console.error('conciliación cierre OT inventario:', err); }
+          aplicarConsumoLocal(itemsConsumo);
+          await registrarConsumoOTSvc(sb, empresa.id, itemsConsumo, otId, authUser?.id, sociedadOtId, { yaConciliado });
+          const inv = await getStockCompleto(empresa.id);
+          if (inv?.length) setInventario(inv);
+        }).catch(err => console.error('consumo OT inventario:', err));
+      } else aplicarConsumoLocal(itemsADescontar);
     }
 
     addNotificacion(`Cierre Técnico registrado para la OT. Inventario consumido.`);
@@ -11138,7 +11149,13 @@ export function AppProvider({ children }) {
         puede_exportar: soloVer ? false : permisoPantallaActivo(permisos, 'exportar', p.key),
         puede_ver_costos: soloVer ? false : Boolean(permisos.ver_costos || permisos.todo),
         puede_ver_finanzas: soloVer ? false : Boolean(permisos.ver_finanzas || permisos.todo),
-        permisos_extra: { puede_ver_precios: soloVer ? false : Boolean(permisos.ver_precios || permisos.todo) },
+        permisos_extra: {
+          puede_ver_precios: soloVer ? false : Boolean(permisos.ver_precios || permisos.todo),
+          ...(p.key === 'inventario' ? {
+            puede_despachar: Boolean(permisos.despachar || permisos.todo),
+            puede_liberar: Boolean(permisos.liberar || permisos.todo),
+          } : {}),
+        },
       };
     }),
     {

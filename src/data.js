@@ -1027,7 +1027,7 @@ export const pantallasPermisos = [
   { key: 'partes', modulo: 'Operaciones', pantalla: 'Partes Diarios', acciones: ['ver','crear','editar','aprobar','costos'] },
   { key: 'cierre', modulo: 'Operaciones', pantalla: 'Cierre y Calidad', acciones: ['ver','editar','aprobar','exportar'] },
   { key: 'tickets', modulo: 'Operaciones', pantalla: 'Soporte y Tickets', acciones: ['ver','crear','editar','aprobar','exportar'] },
-  { key: 'inventario', modulo: 'Logistica', pantalla: 'Almacenes e Inventario', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
+  { key: 'inventario', modulo: 'Logistica', pantalla: 'Almacenes e Inventario', acciones: ['ver','crear','editar','aprobar','exportar','costos','despachar','liberar'] },
   { key: 'solpe', modulo: 'Logistica', pantalla: 'SOLPE Interna', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'remision', modulo: 'Logistica', pantalla: 'Transporte y Guias', acciones: ['ver','crear','editar','aprobar','exportar','costos'] },
   { key: 'proveedores', modulo: 'Compras', pantalla: 'Proveedores', acciones: ['ver','crear','editar','aprobar','exportar','costos','finanzas'] },
