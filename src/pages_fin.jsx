@@ -22,10 +22,13 @@ import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js
 import {
   CONDICION_PAGO_DEFECTO_CXC,
   calcularFechaVencimientoCxC,
+  calcularTotalesVentaPreview,
   finanzasService,
   revisarDuplicadoCxP,
   revisarDuplicadoFactura,
   resolverCondicionPagoCxC,
+  saldoVenta,
+  estadoVisibleVenta,
 } from './services/finanzasService.js';
 import { cajaChicaService } from './services/cajaChicaService.js';
 import { rrhhService } from './services/rrhhService.js';
@@ -4251,6 +4254,8 @@ function Resultados({ role }) {
   const comparativo = erData?.scopeMode === ER_SCOPE_MODE.COMPARATIVO ? erData.comparativo : null;
   const data = supabaseMode ? (comparativo ? null : erData) : mockErData;
   const er = data?.er || mockErData.er;
+  const ingresoDirecto = er.ingresos.items.find(item => item.label === 'Ingresos sin comprobante')?.totals || Object.fromEntries(ER_CURRENCIES.map(moneda => [moneda, 0]));
+  const ingresosFacturados = Object.fromEntries(ER_CURRENCIES.map(moneda => [moneda, erAmount(er.ingresos.total, moneda) - erAmount(ingresoDirecto, moneda)]));
   const utilidadBruta = data?.utilidadBruta || mockErData.utilidadBruta;
   const resultadoOp = data?.resultadoOp || mockErData.resultadoOp;
   const ebitda = data?.ebitda || mockErData.ebitda;
@@ -4373,7 +4378,8 @@ function Resultados({ role }) {
               </thead>
               <tbody>
                 {[
-                  ['Ingresos', d => d.er.ingresos.total],
+                  ['Ingresos facturados', d => Object.fromEntries(ER_CURRENCIES.map(moneda => [moneda, erAmount(d.er.ingresos.total, moneda) - erAmount(d.er.ingresos.items.find(item => item.label === 'Ingresos sin comprobante')?.totals, moneda)]))],
+                  ['Ingresos sin comprobante', d => d.er.ingresos.items.find(item => item.label === 'Ingresos sin comprobante')?.totals || {}],
                   ['Costo de ventas', d => d.er.costoVentas.total],
                   ['Utilidad bruta', d => d.utilidadBruta],
                   ['Gastos operativos', d => d.er.gastosOp.total],
@@ -4411,7 +4417,8 @@ function Resultados({ role }) {
           </div>
         ) : (
           <>
-            <Row label="INGRESOS" totals={er.ingresos.total} bold expandKey="ingresos" items={er.ingresos.items}/>
+            <Row label="INGRESOS FACTURADOS" totals={ingresosFacturados} bold expandKey="ingresos" items={er.ingresos.items.filter(item => item.label !== 'Ingresos sin comprobante')} />
+            <Row label="INGRESOS SIN COMPROBANTE" totals={ingresoDirecto} />
             <Row label="COSTO DE VENTAS" totals={er.costoVentas.total} bold neg expandKey="costo" items={er.costoVentas.items}/>
             <Row label="UTILIDAD BRUTA" totals={utilidadBruta} bold marginTotals={margenes.utilidadBruta}/>
             <Row label="GASTOS OPERATIVOS" totals={er.gastosOp.total} bold neg expandKey="gastos" items={er.gastosOp.items}/>
@@ -6578,423 +6585,161 @@ function Facturacion() {
 }
 
 // ============ VENTAS ============
-const VENTA_ESTADOS = [
-  ['borrador',   'Borrador'],
-  ['confirmada', 'Confirmada'],
-  ['facturada',  'Facturada'],
-  ['anulada',    'Anulada'],
-];
-const VENTA_FORM_INIT = {
-  fecha: new Date().toISOString().split('T')[0],
-  cuenta_id: '',
-  concepto: '',
-  monto_total: '',
-  moneda: 'PEN',
-  estado: 'borrador',
-  condicion_pago: 'contado',
-  dias_credito: 30,
-};
-const ventaEstadoLabel = estado => VENTA_ESTADOS.find(([k]) => k === estado)?.[1] || estado || 'Borrador';
-const ventaBadgeClass = estado => {
-  switch (estado) {
-    case 'borrador':   return 'badge-gray';
-    case 'confirmada': return 'badge-cyan';
-    case 'facturada':  return 'badge-green';
-    case 'anulada':    return 'badge-red';
-    default:           return 'badge-gray';
-  }
-};
-function ventaTransicionesValidas(estado) {
-  if (estado === 'borrador')   return [['borrador','Borrador'],['confirmada','Confirmada'],['anulada','Anulada']];
-  if (estado === 'confirmada') return [['confirmada','Confirmada'],['borrador','Borrador'],['anulada','Anulada']];
-  return [[estado, ventaEstadoLabel(estado)]];
-}
 const cuentaVentaNombre = cuenta => cuenta?.razon_social || cuenta?.nombre_comercial || cuenta?.cliente || cuenta?.nombre || '';
 const ventaClienteNombre = venta => venta?.cliente_nombre_snapshot || venta?.cliente || venta?.cuentas?.razon_social || '-';
 const ventaMonto = venta => Number(venta?.monto_total ?? venta?.monto ?? 0);
-const calcVentaFechaVencimiento = (fecha, diasCredito) => {
-  if (!fecha || !diasCredito || Number(diasCredito) <= 0) return '';
-  const d = new Date(`${fecha}T00:00:00`);
-  if (isNaN(d.getTime())) return '';
-  d.setDate(d.getDate() + Number(diasCredito));
-  return d.toISOString().split('T')[0];
-};
+const ventaMoneda = venta => venta?.moneda || 'PEN';
+const ventaFechaHoy = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const ventaEstadoLabel = estado => ({ borrador:'Borrador', confirmada:'Confirmada', facturada:'Facturada', anulada:'Anulada' }[estado] || estado || 'Borrador');
+const ventaEstadoClase = estado => ({ borrador:'is-amber', confirmada:'is-cyan', facturada:'is-green', anulada:'is-red' }[estado] || 'is-gray');
+const monedaVentaLabel = moneda => moneda === 'USD' ? 'US$' : 'S/';
+const nuevaVentaForm = () => ({ id:'', fecha:ventaFechaHoy(), cuenta_id:'', cliente_nombre_snapshot:'', concepto:'', moneda:'PEN', sociedad_id:'', condicion_pago:'contado', dias_credito:30, tipo_venta:'con_comprobante', tipo_comprobante_previsto:'factura', items:[{ descripcion:'', cantidad:1, precio_unitario:0, afecto_igv:true }] });
+const importeMonedaVenta = (value, moneda) => `${monedaVentaLabel(moneda)} ${Number(value || 0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
 function Ventas() {
-  const { empresa, authUser, addNotificacion, navigate, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
-  const modoVistaSociedadVentas = resolverFiltroSociedadesVista({
-    multisociedadHabilitado: empresa?.multisociedad_habilitado,
-    perfilSociedad,
-    sociedadActiva,
-    sociedadesIdsAlcance,
-    sociedadesDisponibles,
-  });
-  const mostrarBadgeSociedadVentas = mostrarBadgeEnVistaSociedad(empresa, modoVistaSociedadVentas);
-  const sociedadesIdsVistaVentasKey = modoVistaSociedadVentas.sociedadesIds.join('|');
+  const { empresa, addNotificacion, navigate, role, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [] } = useApp();
+  const modoVistaSociedadVentas = resolverFiltroSociedadesVista({ multisociedadHabilitado:empresa?.multisociedad_habilitado, perfilSociedad, sociedadActiva, sociedadesIdsAlcance, sociedadesDisponibles });
+  const vistaKey = modoVistaSociedadVentas.sociedadesIds.join('|');
   const supabaseMode = isSupabaseMode();
-  const puedeVerClientes = !supabaseMode || Boolean(role?.permisos?.todo) || Boolean(role?.permisos?.ver?.includes('cuentas'));
-  const [ventas, setVentas] = useState(() => supabaseMode ? [] : (MOCK.ventas || []));
-  const [clientes, setClientes] = useState(() => supabaseMode ? [] : (MOCK.cuentas || []));
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [panel, setPanel] = useState(false);
-  const [form, setForm] = useState(VENTA_FORM_INIT);
-  const [guardando, setGuardando] = useState(false);
-  const [actualizandoId, setActualizandoId] = useState(null);
-  const [selVenta, setSelVenta] = useState(null);
-  const ventasVista = useMemo(
-    () => filtrarPorVistaSociedad(ventas, modoVistaSociedadVentas),
-    [ventas, modoVistaSociedadVentas.sinFiltro, sociedadesIdsVistaVentasKey],
-  );
+  const permisos = role?.permisos || {};
+  const puedeVer = !supabaseMode || Boolean(permisos.todo || permisos.ver === true || permisos.ver?.includes?.('ventas'));
+  const puedeCrear = !supabaseMode || Boolean(permisos.todo || permisos.crear === true || permisos.crear?.includes?.('ventas'));
+  const puedeEditar = !supabaseMode || Boolean(permisos.todo || permisos.editar === true || permisos.editar?.includes?.('ventas'));
+  const puedeTesoreria = !supabaseMode || Boolean(permisos.todo || permisos.crear === true || permisos.crear?.includes?.('tesoreria'));
+  const [ventas,setVentas] = useState([]), [clientes,setClientes] = useState([]), [sociedades,setSociedades] = useState(sociedadesDisponibles), [cuentasBancarias,setCuentasBancarias] = useState([]);
+  const [loading,setLoading] = useState(false), [error,setError] = useState(''), [panel,setPanel] = useState(''), [seleccion,setSeleccion] = useState(null);
+  const [form,setForm] = useState(nuevaVentaForm), [cobro,setCobro] = useState({ monto:'', fecha:ventaFechaHoy(), cuenta_bancaria_id:'', referencia:'' });
+  const [busqueda,setBusqueda] = useState(''), [filtroEstado,setFiltroEstado] = useState(''), [filtroTipo,setFiltroTipo] = useState(''), [guardando,setGuardando] = useState(false);
+  const sociedadesVista = useMemo(() => filtrarPorVistaSociedad(ventas,modoVistaSociedadVentas),[ventas,modoVistaSociedadVentas.sinFiltro,vistaKey]);
+  const detalle = sociedadesVista.find(v => v.id === seleccion) || null;
+  const cuentasCobro = detalle ? cuentasBancarias.filter(c => c.estado === 'activo' && c.moneda === ventaMoneda(detalle) && !c.es_cuenta_detracciones && c.sociedad_id === detalle.sociedad_id) : [];
+  const totalesForm = calcularTotalesVentaPreview(form.items,form.tipo_venta);
+  const monedaActiva = [...new Set(sociedadesVista.map(ventaMoneda))].sort();
 
-  const fechaVencimientoCalc = calcVentaFechaVencimiento(form.fecha, form.dias_credito);
-
-  useEffect(() => {
-    if (!supabaseMode) {
-      setVentas(MOCK.ventas || []);
-      setClientes(MOCK.cuentas || []);
-      setLoading(false);
-      setError('');
-      return;
-    }
-    if (!empresa?.id) { setVentas([]); setClientes([]); return; }
-    let mounted = true;
-    setLoading(true);
-    setError('');
-    Promise.all([
-      finanzasService.getVentas(empresa.id),
-      finanzasService.getCuentasVentas(empresa.id),
-    ])
-      .then(([ventasData, cuentasData]) => {
-        if (!mounted) return;
-        setVentas(ventasData || []);
-        setClientes((cuentasData || []).filter(c => c.estado !== 'inactivo' && c.estado !== 'eliminado'));
-      })
-      .catch(err => { if (!mounted) return; setError(err?.message || 'No se pudieron cargar las ventas.'); setVentas([]); })
-      .finally(() => { if (mounted) setLoading(false); });
-    return () => { mounted = false; };
-  }, [supabaseMode, empresa?.id]);
-
-  const setF = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
-  const resetForm = () => setForm({ ...VENTA_FORM_INIT, fecha: new Date().toISOString().split('T')[0] });
-
-  const guardarVenta = async e => {
-    e.preventDefault();
-    setError('');
-    if (!puedeVerClientes) { setError('No tienes permiso para ver clientes. Solicita a tu administrador el permiso de la pantalla "Cuentas y Contactos".'); return; }
-    const cuenta = clientes.find(c => c.id === form.cuenta_id);
-    const monto = Number(form.monto_total);
-    if (!form.cuenta_id || !cuenta) { setError('Selecciona un cliente.'); return; }
-    if (!form.concepto.trim() || !(monto > 0)) { setError('Completa concepto y monto.'); return; }
-    if (form.condicion_pago === 'credito' && !(Number(form.dias_credito) > 0)) { setError('Ingresa los días de crédito.'); return; }
-
-    const estadoSeguro = ['borrador','confirmada'].includes(form.estado) ? form.estado : 'borrador';
-    const datos = {
-      fecha: form.fecha,
-      cuenta_id: form.cuenta_id,
-      cliente_nombre_snapshot: cuentaVentaNombre(cuenta),
-      concepto: form.concepto.trim(),
-      monto_total: monto,
-      moneda: form.moneda,
-      estado: estadoSeguro,
-      condicion_pago: form.condicion_pago || 'contado',
-      dias_credito: form.condicion_pago === 'credito' ? Number(form.dias_credito) : null,
-      fecha_vencimiento_pago: form.condicion_pago === 'credito' ? fechaVencimientoCalc : null,
-    };
-
-    if (!supabaseMode) {
-      const anio = new Date(`${datos.fecha}T00:00:00`).getFullYear();
-      const correlativo = (ventas || []).length + 1;
-      setVentas(prev => [{ id: `VEN-${anio}-${String(correlativo).padStart(4,'0')}`, ...datos, cliente: datos.cliente_nombre_snapshot }, ...prev]);
-      setPanel(false); resetForm(); return;
-    }
-
+  const cargar = async () => {
+    if (!supabaseMode) { setVentas((MOCK.ventas || []).map(v => ({...v, tipo_venta:v.tipo_venta || 'con_comprobante', items:v.items || [], cobros:v.cobros || []}))); setClientes(MOCK.cuentas || []); return; }
+    if (!empresa?.id) return;
+    setLoading(true); setError('');
+    try {
+      const [ventasData,cuentasData,sociedadesData,bancosData] = await Promise.all([finanzasService.getVentas(empresa.id),finanzasService.getCuentasVentas(empresa.id),finanzasService.getSociedadesVentas(empresa.id),finanzasService.getCuentasBancariasVentas(empresa.id)]);
+      setVentas(ventasData || []); setClientes((cuentasData || []).filter(c => !['inactivo','eliminado'].includes(c.estado))); setSociedades(sociedadesData || []); setCuentasBancarias(bancosData || []);
+    } catch(err) { setError(err?.message || 'No se pudieron cargar las ventas.'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { cargar(); },[supabaseMode,empresa?.id]);
+  const cambiarForm = (key,value) => setForm(prev => ({...prev,[key]:value}));
+  const cambiarItem = (index,key,value) => setForm(prev => ({...prev,items:prev.items.map((item,i) => i === index ? {...item,[key]:value} : item)}));
+  const abrirNueva = () => { setError(''); setForm(nuevaVentaForm()); setPanel('form'); };
+  const abrirEdicion = venta => { setError(''); setForm({...nuevaVentaForm(),...venta,items:(venta.items || []).length ? venta.items.map(i => ({ descripcion:i.descripcion,cantidad:i.cantidad,precio_unitario:i.precio_unitario,afecto_igv:i.afecto_igv })) : [{descripcion:'',cantidad:1,precio_unitario:0,afecto_igv:true}]}); setPanel('form'); };
+  const guardar = async (event,confirmar=false) => {
+    event?.preventDefault(); setError('');
+    const cliente = clientes.find(c => c.id === form.cuenta_id);
+    const clienteNombre = cuentaVentaNombre(cliente) || form.cliente_nombre_snapshot.trim();
+    const items = form.items.map(i => ({descripcion:i.descripcion.trim(),cantidad:Number(i.cantidad),precio_unitario:Number(i.precio_unitario),afecto_igv:form.tipo_venta === 'sin_comprobante' ? false : Boolean(i.afecto_igv)}));
+    if (!clienteNombre) { setError('El cliente es obligatorio.'); return; }
+    if (!form.concepto.trim()) { setError('El concepto es obligatorio.'); return; }
+    if (form.condicion_pago === 'credito' && !(Number(form.dias_credito) >= 1 && Number(form.dias_credito) <= 365)) { setError('El crédito requiere días de crédito entre 1 y 365.'); return; }
+    if (!(totalesForm.total > 0)) { setError('El total de la venta debe ser mayor a cero.'); return; }
     setGuardando(true);
     try {
-      const venta = await finanzasService.registrarVenta({ empresaId: empresa?.id, usuarioId: authUser?.id || null, datos });
-      setVentas(prev => [venta, ...prev]);
-      setPanel(false); resetForm();
-      addNotificacion?.(`Venta ${venta.numero || ''} registrada en estado ${ventaEstadoLabel(venta.estado)}.`);
-    } catch (err) {
-      setError(err?.message || 'No se pudo registrar la venta.');
-    } finally {
-      setGuardando(false);
-    }
+      const datos = { venta:{id:form.id || undefined,fecha:form.fecha,cuenta_id:form.cuenta_id || null,cliente_nombre_snapshot:clienteNombre,concepto:form.concepto.trim(),moneda:form.moneda,condicion_pago:form.condicion_pago,dias_credito:form.condicion_pago === 'credito' ? Number(form.dias_credito) : null,sociedad_id:form.sociedad_id || null,tipo_venta:form.tipo_venta,tipo_comprobante_previsto:form.tipo_venta === 'con_comprobante' ? form.tipo_comprobante_previsto : null},items};
+      let venta;
+      if (supabaseMode) venta = await finanzasService.registrarVenta({empresaId:empresa.id,datos});
+      else { venta={...datos.venta,id:form.id || `VEN-${Date.now()}`,estado:'borrador',monto_total:totalesForm.total,subtotal:totalesForm.subtotal,igv:totalesForm.igv,items,cobros:[]}; }
+      if (confirmar && supabaseMode) { const confirmada = await finanzasService.ventaConfirmar(empresa.id,venta.id); venta = {...venta,...confirmada,items:venta.items,cobros:venta.cobros}; }
+      else if (confirmar) venta={...venta,estado:'confirmada'};
+      setVentas(prev => [venta,...prev.filter(v => v.id !== venta.id)]); setSeleccion(venta.id); setPanel('detail');
+      addNotificacion?.(`Venta ${venta.numero || ''} ${confirmar ? 'confirmada' : 'guardada como borrador'}.`);
+    } catch(err) { setError(err?.message || 'No se pudo guardar la venta.'); }
+    finally { setGuardando(false); }
   };
-
-  const cambiarEstado = async (venta, nuevoEstado) => {
-    const prevEstado = venta.estado || 'borrador';
-    if (['facturada','anulada'].includes(prevEstado)) return;
-    if (prevEstado === nuevoEstado) return;
+  const confirmarVenta = async venta => {
+    setError(''); setGuardando(true);
+    try { const next = supabaseMode ? await finanzasService.ventaConfirmar(empresa.id,venta.id) : {...venta,estado:'confirmada'}; setVentas(prev => prev.map(v => v.id === venta.id ? {...v,...next} : v)); }
+    catch(err) { setError(err?.message || 'No se pudo confirmar la venta.'); }
+    finally { setGuardando(false); }
+  };
+  const anularVenta = async venta => {
+    const motivo = window.prompt('Indica el motivo de anulación (obligatorio):'); if (!motivo?.trim()) return;
     setError('');
-    setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado: nuevoEstado } : v));
-    if (!supabaseMode) return;
-    setActualizandoId(venta.id);
+    try { const next = supabaseMode ? await finanzasService.anularVenta(empresa.id,venta.id,motivo.trim()) : {...venta,estado:'anulada',motivo_anulacion:motivo.trim()}; setVentas(prev => prev.map(v => v.id === venta.id ? {...v,...next} : v)); }
+    catch(err) { setError(err?.message || 'No se pudo anular la venta.'); }
+  };
+  const abrirCobro = venta => { setCobro({monto:String(saldoVenta(venta).toFixed(2)),fecha:ventaFechaHoy(),cuenta_bancaria_id:'',referencia:''}); setError(''); setPanel('cobro'); };
+  const guardarCobro = async event => {
+    event.preventDefault(); setError('');
+    if (!cobro.cuenta_bancaria_id) { setError('Selecciona la cuenta bancaria donde ingresó el dinero.'); return; }
+    if (cobro.fecha > ventaFechaHoy()) { setError('La fecha del cobro no puede ser futura.'); return; }
+    setGuardando(true);
+    try { if (supabaseMode) await finanzasService.registrarCobroVenta(empresa.id,detalle.id,{...cobro,monto:Number(cobro.monto)}); else setVentas(prev=>prev.map(v=>v.id===detalle.id?{...v,monto_cobrado:Number(v.monto_cobrado||0)+Number(cobro.monto),cobros:[...(v.cobros||[]),{id:`cobro-${Date.now()}`,monto:Number(cobro.monto),fecha:cobro.fecha,estado:'vigente',cuenta_bancaria_id:cobro.cuenta_bancaria_id,referencia:cobro.referencia}]}:v));
+      if (supabaseMode) {
+        await cargar();
+      } else {
+        // El estado local del cobro ya se actualizó arriba.
+      }
+      setPanel('detail');
+    } catch(err) { setError(err?.message || 'No se pudo registrar el cobro.'); }
+    finally { setGuardando(false); }
+  };
+  const anularCobro = async item => {
+    const motivo = window.prompt('Indica el motivo de anulación del cobro (obligatorio):'); if (!motivo?.trim()) return;
+    setError('');
     try {
-      const actualizada = await finanzasService.actualizarEstadoVenta(venta.id, nuevoEstado);
-      setVentas(prev => prev.map(v => v.id === venta.id ? actualizada : v));
-      addNotificacion?.(`Venta ${actualizada.numero || ''} → ${ventaEstadoLabel(nuevoEstado)}.`);
-    } catch (err) {
-      setVentas(prev => prev.map(v => v.id === venta.id ? { ...v, estado: prevEstado } : v));
-      setError(err?.message || 'No se pudo actualizar el estado.');
-    } finally {
-      setActualizandoId(null);
+      if (supabaseMode) { await finanzasService.anularCobroVenta(empresa.id,item.id,motivo.trim()); await cargar(); }
+      else setVentas(prev=>prev.map(v=>v.id===detalle.id?{...v,monto_cobrado:Math.max(0,Number(v.monto_cobrado||0)-Number(item.monto)),cobros:(v.cobros||[]).map(c=>c.id===item.id?{...c,estado:'anulado',motivo_anulacion:motivo.trim()}:c)}:v));
     }
+    catch(err) { setError(err?.message || 'No se pudo anular el cobro.'); }
   };
+  const mostrarComprobante = venta => { setPanel(''); setSeleccion(null); navigate('facturacion',{mode:'venta',ventaSel:venta.id,cuenta_id:venta.cuenta_id,cliente_nombre:ventaClienteNombre(venta),concepto:venta.concepto,monto_total:ventaMonto(venta),moneda:ventaMoneda(venta),condicion_pago:venta.condicion_pago,dias_credito:venta.dias_credito}); };
 
-  const ventaDetalle = selVenta ? ventasVista.find(x => x.id === selVenta) : null;
+  const ventasFiltradas = sociedadesVista.filter(v => (!filtroEstado || v.estado === filtroEstado) && (!filtroTipo || (v.tipo_venta || 'con_comprobante') === filtroTipo) && `${v.numero||v.id} ${ventaClienteNombre(v)} ${v.concepto||''}`.toLocaleLowerCase('es-PE').includes(busqueda.toLocaleLowerCase('es-PE')));
+  const resumen = moneda => ({
+    porCobrar:sociedadesVista.filter(v=>v.tipo_venta==='sin_comprobante'&&v.estado==='confirmada'&&ventaMoneda(v)===moneda).reduce((s,v)=>s+saldoVenta(v),0),
+    cobrado:sociedadesVista.filter(v=>v.tipo_venta==='sin_comprobante'&&ventaMoneda(v)===moneda).reduce((s,v)=>s+Number(v.monto_cobrado||0),0),
+    borradores:sociedadesVista.filter(v=>v.estado==='borrador'&&ventaMoneda(v)===moneda).reduce((s,v)=>s+ventaMonto(v),0),
+    porFacturar:sociedadesVista.filter(v=>v.tipo_venta==='con_comprobante'&&v.estado==='confirmada'&&ventaMoneda(v)===moneda).reduce((s,v)=>s+ventaMonto(v),0),
+  });
+  const monedasResumen = monedaActiva.length ? monedaActiva : ['PEN'];
+  const pillEstado = estado => <span className={`dx-ui-pill ${ventaEstadoClase(estado)}`}><i />{ventaEstadoLabel(estado)}</span>;
+  const pillTipo = venta => <span className={`dx-ui-pill dx-ven-pill-type ${venta.tipo_venta==='sin_comprobante'?'is-direct':''}`}>{venta.tipo_venta==='sin_comprobante'?'Sin comprobante':'Con comprobante'}</span>;
+  const onFilaKey = (event,id) => { if(event.key==='Enter'||event.key===' '){event.preventDefault();setSeleccion(id);setPanel('detail');} };
+  if (!puedeVer) return <div className="alert alert-danger">No tienes permiso para ver Ventas.</div>;
 
-  const emitirComprobante = vd => {
-    setSelVenta(null);
-    navigate('facturacion', {
-      mode: 'venta',
-      ventaSel: vd.id,
-      cuenta_id: vd.cuenta_id,
-      cliente_nombre: ventaClienteNombre(vd),
-      concepto: vd.concepto,
-      monto_total: ventaMonto(vd),
-      moneda: vd.moneda || 'PEN',
-      condicion_pago: vd.condicion_pago,
-      dias_credito: vd.dias_credito,
-    });
-  };
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Ventas</h1>
-          <div className="page-sub">Pre-facturación con seguimiento — el ingreso en el ER lo registra la factura emitida</div>
-        </div>
-        <button className="btn btn-primary" data-local-form="true" onClick={() => { setError(''); setPanel(true); }}>{I.plus} Registrar Venta</button>
-      </div>
-      {error && <div className="alert alert-danger mt-4">{error}</div>}
-      <div className="card mt-6">
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>N° Venta</th>{mostrarBadgeSociedadVentas && <th>Sociedad</th>}<th>Fecha</th><th>Cliente</th><th>Concepto</th><th>Condición</th><th className="num">Monto</th><th>Estado</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={8 + (mostrarBadgeSociedadVentas ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>Cargando ventas...</td></tr>}
-              {!loading && ventasVista.length === 0 && <tr><td colSpan={8 + (mostrarBadgeSociedadVentas ? 1 : 0)} className="text-center text-muted" style={{padding:32}}>No hay ventas registradas.</td></tr>}
-              {!loading && ventasVista.map(v => {
-                const bloqueado = ['facturada','anulada'].includes(v.estado);
-                const transiciones = ventaTransicionesValidas(v.estado);
-                return (
-                  <tr key={v.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => setSelVenta(v.id)}>
-                    <td className="mono" style={{fontWeight:600}}>{v.numero || v.id}</td>
-                    {mostrarBadgeSociedadVentas && <td><SociedadBadge sociedadId={v.sociedad_id} /></td>}
-                    <td className="text-muted">{v.fecha}</td>
-                    <td style={{fontWeight:600,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ventaClienteNombre(v)}</td>
-                    <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{v.concepto}</td>
-                    <td>
-                      {v.condicion_pago === 'credito'
-                        ? <span className="badge badge-orange" style={{fontSize:11}}>{v.dias_credito || 30}d crédito</span>
-                        : <span className="badge badge-gray" style={{fontSize:11}}>Contado</span>}
-                    </td>
-                    <td className="num" onClick={e => e.stopPropagation()}>
-                      <strong>{money(ventaMonto(v), symOf(v.moneda || 'PEN'))}</strong>
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <select
-                        className={'badge ' + ventaBadgeClass(v.estado)}
-                        style={{border:0,cursor: bloqueado ? 'default' : 'pointer',fontFamily:'inherit'}}
-                        value={v.estado || 'borrador'}
-                        disabled={bloqueado || actualizandoId === v.id}
-                        onChange={e => cambiarEstado(v, e.target.value)}
-                      >
-                        {transiciones.map(([est, lbl]) => <option key={est} value={est}>{lbl.toUpperCase()}</option>)}
-                      </select>
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <button className="icon-btn" title="Ver detalle" onClick={() => setSelVenta(v.id)}>{I.eye}</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ─── Formulario Registrar Venta ─── */}
-      {panel && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => { setPanel(false); resetForm(); }}/>
-          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
-            <div className="side-panel-head">
-              <div><div className="eyebrow">Ventas</div><div className="font-display" style={{fontSize:20,fontWeight:700}}>Registrar venta</div></div>
-              <button className="icon-btn" onClick={() => { setPanel(false); resetForm(); }}>{I.x}</button>
-            </div>
-            <form className="side-panel-body" onSubmit={guardarVenta} style={{display:'flex',flexDirection:'column',gap:14}}>
-              <div className="input-group">
-                <label>Cliente <span style={{color:'var(--danger)'}}>*</span></label>
-                {!loading && clientes.length === 0 && !puedeVerClientes && (
-                  <div className="alert alert-danger" style={{marginBottom:8}}>
-                    No tienes permiso para ver el listado de clientes (pantalla "Cuentas y Contactos"). Solicita a tu administrador que te asigne ese permiso.
-                  </div>
-                )}
-                <select className="select" value={form.cuenta_id} onChange={e => setF('cuenta_id', e.target.value)} required disabled={!puedeVerClientes}>
-                  <option value="">Seleccionar cliente...</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{cuentaVentaNombre(c)}</option>)}
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Fecha <span style={{color:'var(--danger)'}}>*</span></label>
-                <input className="input" type="date" value={form.fecha} onChange={e => setF('fecha', e.target.value)} required/>
-              </div>
-              <div className="input-group">
-                <label>Concepto <span style={{color:'var(--danger)'}}>*</span></label>
-                <input className="input" value={form.concepto} onChange={e => setF('concepto', e.target.value)} placeholder="Servicio vendido" required/>
-              </div>
-              <div className="grid-2" style={{gap:12}}>
-                <div className="input-group">
-                  <label>Monto <span style={{color:'var(--danger)'}}>*</span></label>
-                  <input className="input" type="number" min="0.01" step="0.01" value={form.monto_total} onChange={e => setF('monto_total', e.target.value)} placeholder="0.00" required/>
-                </div>
-                <div className="input-group">
-                  <label>Moneda</label>
-                  <select className="select" value={form.moneda} onChange={e => setF('moneda', e.target.value)}>
-                    <option value="PEN">S/ Soles</option>
-                    <option value="USD">US$ Dólares</option>
-                  </select>
-                </div>
-              </div>
-              <div className="input-group">
-                <label>Condición de pago</label>
-                <select className="select" value={form.condicion_pago} onChange={e => setF('condicion_pago', e.target.value)}>
-                  <option value="contado">Contado</option>
-                  <option value="credito">Crédito</option>
-                </select>
-              </div>
-              {form.condicion_pago === 'credito' && (
-                <div className="grid-2" style={{gap:12}}>
-                  <div className="input-group">
-                    <label>Días de crédito <span style={{color:'var(--danger)'}}>*</span></label>
-                    <input className="input" type="number" min="1" step="1" value={form.dias_credito} onChange={e => setF('dias_credito', Number(e.target.value))} required/>
-                  </div>
-                  <div className="input-group">
-                    <label>Fecha de vencimiento</label>
-                    <input className="input" type="date" value={fechaVencimientoCalc} readOnly style={{background:'var(--bg-subtle)',color:'var(--fg-muted)',cursor:'default'}}/>
-                  </div>
-                </div>
-              )}
-              <div className="input-group">
-                <label>Estado inicial</label>
-                <select className="select" value={form.estado} onChange={e => setF('estado', e.target.value)}>
-                  <option value="borrador">Borrador</option>
-                  <option value="confirmada">Confirmada</option>
-                </select>
-              </div>
-              <div className="row mt-4" style={{justifyContent:'flex-end',gap:8}}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setPanel(false); resetForm(); }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" disabled={guardando || (supabaseMode && !empresa?.id)}>{guardando ? 'Guardando...' : 'Guardar venta'}</button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
-
-      {/* ─── Panel de detalle ─── */}
-      {ventaDetalle && (
-        <>
-          <div className="side-panel-backdrop" onClick={() => setSelVenta(null)}/>
-          <div className="side-panel" style={{width:'min(560px,96vw)'}}>
-            <div className="side-panel-head">
-              <div>
-                <div className="eyebrow">Venta</div>
-                <div className="font-display" style={{fontSize:20,fontWeight:700}}>{ventaDetalle.numero || ventaDetalle.id}</div>
-              </div>
-              <button className="icon-btn" onClick={() => setSelVenta(null)}>{I.x}</button>
-            </div>
-            <div className="side-panel-body" style={{display:'flex',flexDirection:'column',gap:14}}>
-
-              {/* Factura vinculada */}
-              {ventaDetalle.factura_id && (
-                <div style={{padding:'10px 14px',borderRadius:8,background:'color-mix(in srgb,var(--green) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--green) 30%,transparent)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                  <div style={{fontSize:13}}>
-                    <span className="badge badge-green" style={{marginRight:8}}>Facturada</span>
-                    <span style={{color:'var(--fg-muted)'}}>Comprobante emitido</span>
-                  </div>
-                  <button className="btn btn-ghost" style={{fontSize:12,color:'var(--cyan)',padding:0}} onClick={() => { setSelVenta(null); navigate('facturacion', { selFac: ventaDetalle.factura_id }); }}>
-                    Ver factura →
-                  </button>
-                </div>
-              )}
-
-              {/* Datos */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                {[
-                  ['Fecha', ventaDetalle.fecha],
-                  ['Cliente', ventaClienteNombre(ventaDetalle)],
-                  ['Concepto', ventaDetalle.concepto],
-                  ['Monto', money(ventaMonto(ventaDetalle), symOf(ventaDetalle.moneda || 'PEN'))],
-                  ['Moneda', ventaDetalle.moneda || 'PEN'],
-                  ['Condición', ventaDetalle.condicion_pago === 'credito' ? `Crédito ${ventaDetalle.dias_credito || 30} días` : 'Contado'],
-                ].map(([lbl, val]) => (
-                  <div key={lbl}>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:3}}>{lbl}</div>
-                    <div style={{fontWeight:600,fontSize:14}}>{val || '—'}</div>
-                  </div>
-                ))}
-                {ventaDetalle.condicion_pago === 'credito' && (ventaDetalle.fecha_vencimiento_pago || ventaDetalle.fecha_vencimiento) && (
-                  <div>
-                    <div style={{fontSize:11,color:'var(--fg-muted)',marginBottom:3}}>Fecha vencimiento pago</div>
-                    <div style={{fontWeight:600,fontSize:14}}>{ventaDetalle.fecha_vencimiento_pago || ventaDetalle.fecha_vencimiento}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Estado inline — solo si puede cambiar */}
-              {!['facturada','anulada'].includes(ventaDetalle.estado) && (
-                <div>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:6}}>Estado</div>
-                  <select
-                    className={'badge ' + ventaBadgeClass(ventaDetalle.estado)}
-                    style={{border:0,cursor:'pointer',fontFamily:'inherit',fontSize:13,padding:'6px 12px'}}
-                    value={ventaDetalle.estado || 'borrador'}
-                    disabled={actualizandoId === ventaDetalle.id}
-                    onChange={e => cambiarEstado(ventaDetalle, e.target.value)}
-                  >
-                    {ventaTransicionesValidas(ventaDetalle.estado).map(([est, lbl]) => (
-                      <option key={est} value={est}>{lbl}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {['facturada','anulada'].includes(ventaDetalle.estado) && (
-                <div>
-                  <div style={{fontSize:12,color:'var(--fg-muted)',marginBottom:6}}>Estado</div>
-                  <span className={'badge ' + ventaBadgeClass(ventaDetalle.estado)} style={{fontSize:13,padding:'6px 12px'}}>{ventaEstadoLabel(ventaDetalle.estado)}</span>
-                </div>
-              )}
-
-              {/* Botones de acción */}
-              {ventaDetalle.estado === 'borrador' && (
-                <button
-                  className="btn btn-secondary"
-                  disabled={actualizandoId === ventaDetalle.id}
-                  onClick={() => cambiarEstado(ventaDetalle, 'confirmada')}
-                >
-                  {actualizandoId === ventaDetalle.id ? 'Actualizando...' : 'Confirmar venta'}
-                </button>
-              )}
-              {ventaDetalle.estado === 'confirmada' && !ventaDetalle.factura_id && (
-                <button className="btn btn-primary" onClick={() => emitirComprobante(ventaDetalle)}>
-                  Emitir Comprobante
-                </button>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </>
-  );
+  return <section className="dx-ui dx-ven">
+    <header className="dx-ven-head"><div><div className="dx-ui-eyebrow">Finanzas</div><h1>Ventas</h1><p className="dx-ven-subtitle">Ventas confirmadas, cobros y comprobantes en un solo lugar.</p></div>{puedeCrear&&<div className="dx-ven-actions"><button className="dx-btn primary" onClick={abrirNueva}>{I.plus} Registrar venta</button></div>}</header>
+    {monedasResumen.map(moneda=>{const r=resumen(moneda);return <div className="dx-ui-summary" key={moneda} aria-label={`Resumen en ${moneda}`}><div className="dx-ui-chip"><b>{importeMonedaVenta(r.porCobrar,moneda)}</b><span>Por cobrar · sin comprobante</span></div><div className="dx-ui-chip"><b>{importeMonedaVenta(r.cobrado,moneda)}</b><span>Cobrado</span></div><div className="dx-ui-chip"><b>{importeMonedaVenta(r.borradores,moneda)}</b><span>Borradores</span></div><div className="dx-ui-chip"><b>{importeMonedaVenta(r.porFacturar,moneda)}</b><span>Por facturar</span></div></div>;})}
+    {error&&<div className="dx-ven-error" role="alert">{error}</div>}
+    <div className="dx-ui-tabs" role="group" aria-label="Filtrar ventas por estado">{[['','Todas'],['borrador','Borradores'],['confirmada','Confirmadas'],['facturada','Facturadas'],['anulada','Anuladas']].map(([value,label])=><button key={value} className={`dx-ui-tab ${filtroEstado===value?'on':''}`} onClick={()=>setFiltroEstado(value)}>{label}</button>)}</div>
+    <div className="dx-ui-card"><div className="dx-ui-toolbar dx-ven-toolbar"><h2>Listado de ventas</h2><span className="dx-ui-count">{ventasFiltradas.length} ventas</span><label className="dx-ui-search"><span aria-hidden="true">⌕</span><input aria-label="Buscar ventas" placeholder="Buscar número, cliente o concepto" value={busqueda} onChange={e=>setBusqueda(e.target.value)}/></label></div>
+      <div className="dx-ven-filters"><select className="dx-ven-select" aria-label="Filtrar por tipo de venta" value={filtroTipo} onChange={e=>setFiltroTipo(e.target.value)}><option value="">Todos los tipos</option><option value="con_comprobante">Con comprobante</option><option value="sin_comprobante">Sin comprobante</option></select><span className="dx-ui-count">Montos por moneda; PEN y USD se muestran por separado.</span></div>
+      <div className="dx-ui-head dx-ven-cols" aria-hidden="true"><span>Venta · cliente</span><span>Fecha</span><span>Estado y tipo</span><span className="num">Total</span><span>Sociedad</span><span /></div>
+      {loading?<div className="dx-ui-empty">Cargando ventas...</div>:ventasFiltradas.length===0?<div className="dx-ui-empty">{sociedadesVista.length?'No hay ventas con estos filtros.':'No hay ventas registradas.'}</div>:ventasFiltradas.map(v=>{const estado=estadoVisibleVenta(v);return <div key={v.id} className="dx-ui-row dx-ven-cols" role="button" tabIndex={0} aria-label={`Abrir venta ${v.numero||v.id}, ${ventaClienteNombre(v)}`} onClick={()=>{setSeleccion(v.id);setPanel('detail');}} onKeyDown={e=>onFilaKey(e,v.id)}><div className="dx-ven-main"><span className={`dx-ui-icon ${v.tipo_venta==='sin_comprobante'?'is-violet':'is-cyan'}`}>{v.tipo_venta==='sin_comprobante'?'$':'▤'}</span><span><b>{v.numero||v.id} · {ventaClienteNombre(v)}</b><small>{v.concepto||'Sin concepto'}</small></span></div><div className="dx-ven-date">{v.fecha||'—'}{estado.cobroParcial&&<small>Cobro parcial</small>}</div><div className="dx-ven-pills">{pillEstado(v.estado)}{pillTipo(v)}{estado.cobroParcial&&<span className="dx-ui-pill dx-ven-pill-partial">Parcial</span>}</div><div className="dx-ven-money">{importeMonedaVenta(ventaMonto(v),ventaMoneda(v))}{Number(v.monto_cobrado||0)>0&&<small>Cobrado {importeMonedaVenta(v.monto_cobrado,ventaMoneda(v))}</small>}</div><div>{sociedades.find(s=>s.id===v.sociedad_id)?.nombre||'—'}</div><span className="dx-ui-arrow" aria-hidden="true">›</span></div>;})}
+    </div>
+    {panel&&<div className="dx-ven-overlay"><button className="dx-ven-scrim" aria-label="Cerrar panel" onClick={()=>setPanel('')} />
+      {panel==='form'&&<aside className="dx-ven-panel" role="dialog" aria-modal="true" aria-label={form.id?'Editar borrador':'Registrar venta'}><div className="dx-ven-panel-head"><div><div className="dx-ui-eyebrow">Ventas</div><h2>{form.id?'Editar borrador':'Registrar venta'}</h2></div><button className="dx-ven-x" onClick={()=>setPanel('')} aria-label="Cerrar">×</button></div>
+        <form className="dx-ven-panel-body" onSubmit={e=>guardar(e,false)}>{error&&<div className="dx-ven-error" role="alert">{error}</div>}
+          <div className="dx-ven-grid2"><label>Cliente<select className="dx-ven-field" value={form.cuenta_id} onChange={e=>cambiarForm('cuenta_id',e.target.value)}><option value="">Cliente sin cuenta registrada</option>{clientes.map(c=><option key={c.id} value={c.id}>{cuentaVentaNombre(c)}</option>)}</select></label><label>Nombre del cliente<input className="dx-ven-field" value={form.cliente_nombre_snapshot||cuentaVentaNombre(clientes.find(c=>c.id===form.cuenta_id))} onChange={e=>cambiarForm('cliente_nombre_snapshot',e.target.value)} required /></label></div>
+          <div className="dx-ven-grid2"><label>Sociedad<select className="dx-ven-field" value={form.sociedad_id} onChange={e=>cambiarForm('sociedad_id',e.target.value)} required><option value="">Selecciona sociedad</option>{sociedades.map(s=><option key={s.id} value={s.id}>{s.codigo?`${s.codigo} · `:''}{s.nombre}</option>)}</select></label><label>Fecha<input className="dx-ven-field" type="date" value={form.fecha} onChange={e=>cambiarForm('fecha',e.target.value)} required /></label></div>
+          <label>Concepto<input className="dx-ven-field" value={form.concepto} onChange={e=>cambiarForm('concepto',e.target.value)} required /></label>
+          <div className="dx-ven-grid2"><label>Moneda<select className="dx-ven-field" value={form.moneda} onChange={e=>cambiarForm('moneda',e.target.value)}><option value="PEN">PEN · Soles</option><option value="USD">USD · Dólares</option></select></label><label>Tipo de venta<select className="dx-ven-field" value={form.tipo_venta} onChange={e=>cambiarForm('tipo_venta',e.target.value)}><option value="con_comprobante">Con comprobante</option><option value="sin_comprobante">Sin comprobante</option></select></label></div>
+          {form.tipo_venta==='con_comprobante'&&<label>Comprobante previsto<select className="dx-ven-field" value={form.tipo_comprobante_previsto} onChange={e=>cambiarForm('tipo_comprobante_previsto',e.target.value)}><option value="factura">Factura</option><option value="boleta">Boleta</option></select></label>}
+          <div><div className="dx-ven-sec">Ítems</div><div className="dx-ven-item-head"><span>Descripción</span><span>Cantidad</span><span>Precio unitario</span><span>IGV</span><span /></div><div className="dx-ven-items">{form.items.map((it,i)=><div className="dx-ven-item" key={i}><input className="dx-ven-field" aria-label={`Descripción del ítem ${i+1}`} placeholder="Descripción" value={it.descripcion} onChange={e=>cambiarItem(i,'descripcion',e.target.value)} required/><input className="dx-ven-field" aria-label="Cantidad" type="number" min="0.0001" step="0.0001" value={it.cantidad} onChange={e=>cambiarItem(i,'cantidad',e.target.value)}/><input className="dx-ven-field" aria-label="Precio unitario" type="number" min="0" step="0.0001" value={it.precio_unitario} onChange={e=>cambiarItem(i,'precio_unitario',e.target.value)}/><label><input type="checkbox" checked={form.tipo_venta==='con_comprobante'&&it.afecto_igv} disabled={form.tipo_venta==='sin_comprobante'} onChange={e=>cambiarItem(i,'afecto_igv',e.target.checked)}/> Afecto</label><button type="button" className="dx-ven-x" aria-label="Quitar ítem" disabled={form.items.length<=1} onClick={()=>cambiarForm('items',form.items.filter((_,index)=>index!==i))}>×</button></div>)}</div><button className="dx-btn" type="button" onClick={()=>cambiarForm('items',[...form.items,{descripcion:'',cantidad:1,precio_unitario:0,afecto_igv:true}])}>+ Agregar ítem</button></div>
+          <div className="dx-ven-sum"><div><span>Subtotal</span><span>{importeMonedaVenta(totalesForm.subtotal,form.moneda)}</span></div><div><span>IGV 18%</span><span>{form.tipo_venta==='sin_comprobante'?'Sin IGV':importeMonedaVenta(totalesForm.igv,form.moneda)}</span></div><div className="tot"><span>Total</span><span>{importeMonedaVenta(totalesForm.total,form.moneda)}</span></div></div>
+          <div className="dx-ven-grid2"><label>Condición de pago<select className="dx-ven-field" value={form.condicion_pago} onChange={e=>cambiarForm('condicion_pago',e.target.value)}><option value="contado">Contado</option><option value="credito">Crédito</option></select></label>{form.condicion_pago==='credito'&&<label>Días de crédito<input className="dx-ven-field" type="number" min="1" max="365" value={form.dias_credito} onChange={e=>cambiarForm('dias_credito',e.target.value)}/></label>}</div>
+          {form.tipo_venta==='sin_comprobante'&&<div className="dx-ven-alert"><b>Venta sin comprobante.</b> No calcula IGV; el ingreso del Estado de Resultados usa su subtotal.</div>}
+          <div className="dx-ven-panel-foot"><button className="dx-btn" type="submit" disabled={guardando||!(form.id?puedeEditar:puedeCrear)}>Guardar borrador</button><button className="dx-btn primary" type="button" disabled={guardando||!(form.id?puedeEditar:puedeCrear)} onClick={e=>guardar(e,true)}>Guardar y confirmar</button></div>
+        </form></aside>}
+      {panel==='cobro'&&detalle&&<aside className="dx-ven-panel" role="dialog" aria-modal="true" aria-label="Registrar cobro"><div className="dx-ven-panel-head"><div><div className="dx-ui-eyebrow">Venta {detalle.numero||detalle.id}</div><h2>Registrar cobro</h2></div><button className="dx-ven-x" onClick={()=>setPanel('detail')} aria-label="Cerrar">×</button></div><form className="dx-ven-panel-body" onSubmit={guardarCobro}>{error&&<div className="dx-ven-error" role="alert">{error}</div>}<div className="dx-ven-balance">Saldo pendiente: <b>{importeMonedaVenta(saldoVenta(detalle),ventaMoneda(detalle))}</b></div><label>Monto<input className="dx-ven-field" type="number" min="0.01" max={saldoVenta(detalle)} step="0.01" value={cobro.monto} onChange={e=>setCobro({...cobro,monto:e.target.value})} required /></label><label>Cuenta bancaria<select className="dx-ven-field" value={cobro.cuenta_bancaria_id} onChange={e=>setCobro({...cobro,cuenta_bancaria_id:e.target.value})} required><option value="">Seleccionar cuenta bancaria</option>{cuentasCobro.map(c=><option key={c.id} value={c.id}>{c.nombre} · {c.moneda}</option>)}</select></label>{!cuentasCobro.length&&<div className="dx-ven-alert">No hay cuentas activas compatibles con moneda y sociedad de esta venta.</div>}<div className="dx-ven-grid2"><label>Fecha<input className="dx-ven-field" type="date" max={ventaFechaHoy()} value={cobro.fecha} onChange={e=>setCobro({...cobro,fecha:e.target.value})} required /></label><label>Referencia<input className="dx-ven-field" value={cobro.referencia} onChange={e=>setCobro({...cobro,referencia:e.target.value})} /></label></div><div className="dx-ven-panel-foot"><button className="dx-btn" type="button" onClick={()=>setPanel('detail')}>Cancelar</button><button className="dx-btn primary" disabled={guardando||!puedeEditar||!puedeTesoreria||!cuentasCobro.length}>Registrar ingreso</button></div></form></aside>}
+      {panel==='detail'&&detalle&&<aside className="dx-ven-panel" role="dialog" aria-modal="true" aria-label={`Detalle de venta ${detalle.numero||detalle.id}`}><div className="dx-ven-panel-head"><div><div className="dx-ui-eyebrow">{detalle.numero||detalle.id}</div><h2>{detalle.concepto||'Venta'}</h2><div className="dx-ven-pills">{pillEstado(detalle.estado)}{pillTipo(detalle)}</div></div><button className="dx-ven-x" onClick={()=>setPanel('')} aria-label="Cerrar">×</button></div><div className="dx-ven-panel-body">{error&&<div className="dx-ven-error" role="alert">{error}</div>}
+        <div><div className="dx-ven-sec">Datos de la venta</div><div className="dx-ven-kv"><div><small>Cliente</small><b>{ventaClienteNombre(detalle)}</b></div><div><small>Sociedad</small><b>{sociedades.find(s=>s.id===detalle.sociedad_id)?.nombre||'—'}</b></div><div><small>Fecha</small><b>{detalle.fecha||'—'}</b></div><div><small>Condición</small><b>{detalle.condicion_pago==='credito'?`Crédito ${detalle.dias_credito||'—'} días`:'Contado'}</b></div></div></div>
+        <div><div className="dx-ven-sec">Importes</div><div className="dx-ven-sum"><div><span>Subtotal</span><span>{detalle.subtotal==null?'—':importeMonedaVenta(detalle.subtotal,ventaMoneda(detalle))}</span></div><div><span>IGV</span><span>{detalle.igv==null?'—':detalle.igv?importeMonedaVenta(detalle.igv,ventaMoneda(detalle)):'Sin IGV'}</span></div><div className="tot"><span>Total</span><span>{importeMonedaVenta(ventaMonto(detalle),ventaMoneda(detalle))}</span></div>{detalle.tipo_venta==='sin_comprobante'&&<><div><span>Cobrado</span><span>{importeMonedaVenta(detalle.monto_cobrado,ventaMoneda(detalle))}</span></div><div><span>Saldo</span><span>{importeMonedaVenta(saldoVenta(detalle),ventaMoneda(detalle))}</span></div></>}</div></div>
+        <div><div className="dx-ven-sec">Ítems</div>{detalle.items?.length?<div className="dx-ven-items">{detalle.items.map(item=><div className="dx-ven-kv" key={item.id}><div><small>{item.descripcion}</small><b>{item.cantidad} × {importeMonedaVenta(item.precio_unitario,ventaMoneda(detalle))}</b></div><div><small>Subtotal de línea</small><b>{importeMonedaVenta(item.subtotal,ventaMoneda(detalle))}</b></div></div>)}</div>:<div className="dx-ui-empty">Sin detalle de items</div>}</div>
+        {detalle.tipo_venta==='sin_comprobante'&&<div><div className="dx-ven-sec">Cobros</div>{detalle.cobros?.length?<ul className="dx-ven-timeline">{detalle.cobros.map(item=><li key={item.id}><i/><span><b>{importeMonedaVenta(item.monto,ventaMoneda(detalle))} · {item.estado==='anulado'?'Anulado':'Vigente'}</b><small>{item.fecha} · {cuentasBancarias.find(c=>c.id===item.cuenta_bancaria_id)?.nombre||'Cuenta bancaria'}{item.referencia?` · ${item.referencia}`:''}</small>{item.motivo_anulacion&&<small>Motivo: {item.motivo_anulacion}</small>}{item.estado==='vigente'&&puedeEditar&&puedeTesoreria&&<button className="dx-btn danger" type="button" onClick={()=>anularCobro(item)}>Anular cobro</button>}</span></li>)}</ul>:<div className="dx-ui-empty">Sin cobros registrados</div>}</div>}
+        {detalle.motivo_anulacion&&<div className="dx-ven-alert">Motivo de anulación: {detalle.motivo_anulacion}</div>}
+      </div><div className="dx-ven-panel-foot">{detalle.estado==='borrador'&&<>{puedeEditar&&<button className="dx-btn" onClick={()=>abrirEdicion(detalle)}>Editar</button>}{puedeEditar&&<button className="dx-btn primary" disabled={guardando} onClick={()=>confirmarVenta(detalle)}>Confirmar venta</button>}</>}{detalle.estado==='confirmada'&&<>{puedeEditar&&detalle.tipo_venta==='sin_comprobante'&&saldoVenta(detalle)>0&&<button className="dx-btn" disabled={!puedeTesoreria} onClick={()=>abrirCobro(detalle)}>Registrar cobro</button>}{puedeEditar&&detalle.tipo_venta==='con_comprobante'&&<button className="dx-btn primary" onClick={()=>mostrarComprobante(detalle)}>Emitir comprobante</button>}</>}{['borrador','confirmada'].includes(detalle.estado)&&puedeEditar&&<button className="dx-btn danger" onClick={()=>anularVenta(detalle)}>Anular venta</button>}</div></aside>}
+    </div>}
+  </section>;
 }
-
 // ============ CAJA CHICA ============
 // El módulo es ahora una vista de consulta. Los egresos se crean exclusivamente
 // a través de NuevoEgreso (método de pago "Caja chica"), que es el único flujo
