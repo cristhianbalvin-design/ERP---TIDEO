@@ -8,6 +8,7 @@ import {
   ESTADOS_CUSTODIA, actualizarEstadoCustodia, crearActivoClienteYRecepcion, crearRecepcion,
   listarActivosCliente, listarAlmacenes, listarClientes, listarRecepciones, listarEstadosDiagnosticoRecepcion,
 } from '../../services/recepcionesActivosClienteService.js';
+import { abrirInformePdfDeRecepcion, listarInformesEmitidosRecepcion } from '../../services/informePdfAcciones.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowTime = () => new Date().toTimeString().slice(0, 5);
@@ -30,13 +31,13 @@ const diagnosticUrl = row => row?.diagnostico_id
   : `/diagnostico-tecnico?nuevo=mantenimiento&recepcion=${encodeURIComponent(row?.id || '')}`;
 const diagnosticoEmitido = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'emitido';
 const diagnosticoBorrador = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'borrador';
-export function resolverAccionDiagnostico(estadoCustodia, diag) {
-  if (diagnosticoEmitido(diag)) return { tipo: 'ver' };
+export function resolverAccionDiagnostico(estadoCustodia, diag, informeEmitido = false) {
+  if (diagnosticoEmitido(diag)) return { tipo: informeEmitido ? 'ver-informe' : 'ver' };
   if (diagnosticoBorrador(diag)) return { tipo: ['recibido', 'en_diagnostico'].includes(estadoCustodia) ? 'continuar' : 'borrador-tardio' };
   return { tipo: ['recibido', 'en_diagnostico'].includes(estadoCustodia) ? 'iniciar' : 'ninguna' };
 }
 const idDiagnostico = diag => typeof diag === 'string' ? '' : (diag?.id || diag?.diagnostico_id || '');
-const nombreAccionDiagnostico = tipo => ({ iniciar: 'Iniciar diagnóstico', continuar: 'Continuar borrador', ver: 'Ver diagnóstico', 'borrador-tardio': 'Ver borrador' }[tipo] || '');
+const nombreAccionDiagnostico = tipo => ({ iniciar: 'Iniciar diagnóstico', continuar: 'Continuar borrador', ver: 'Ver diagnóstico', 'ver-informe': 'Ver informe PDF', 'borrador-tardio': 'Ver borrador' }[tipo] || '');
 const abrirDiagnostico = url => { window.location.hash = url; };
 
 function parsearObservaciones(value = '') {
@@ -65,6 +66,9 @@ export function RecepcionActivosClientePage() {
   const [almacenes, setAlmacenes] = useState([]);
   const [recepciones, setRecepciones] = useState([]);
   const [diagnosticos, setDiagnosticos] = useState({});
+  const [informesEmitidos, setInformesEmitidos] = useState({});
+  const [generandoInformeId, setGenerandoInformeId] = useState('');
+  const [errorInformePdf, setErrorInformePdf] = useState('');
   const [form, setForm] = useState(() => blankForm(sociedadId));
   const [assetSearch, setAssetSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,7 +97,10 @@ export function RecepcionActivosClientePage() {
     try {
       const [assets, accounts, warehouses, receipts] = await Promise.all([listarActivosCliente(empresaId, sociedadId), listarClientes(empresaId), listarAlmacenes(empresaId, sociedadId), listarRecepciones(empresaId, sociedadId)]);
       setActivos(assets); setClientes(accounts); setAlmacenes(warehouses); setRecepciones(receipts);
-      try { setDiagnosticos(await listarEstadosDiagnosticoRecepcion(empresaId, receipts.map(row => row.id))); } catch { setDiagnosticos({}); }
+      const receiptIds = receipts.map(row => row.id);
+      const [diagnosticosResult, informesResult] = await Promise.allSettled([listarEstadosDiagnosticoRecepcion(empresaId, receiptIds), listarInformesEmitidosRecepcion(empresaId, receiptIds)]);
+      setDiagnosticos(diagnosticosResult.status === 'fulfilled' ? diagnosticosResult.value : {});
+      setInformesEmitidos(informesResult.status === 'fulfilled' ? informesResult.value : {});
     } catch (loadError) { setError(loadError?.message || 'No se pudo cargar la recepción de activos.'); }
     finally { setLoading(false); }
   }, [empresaId, sociedadId, sesion.estado]);
@@ -224,15 +231,25 @@ export function RecepcionActivosClientePage() {
   const openDetail = row => { setSelectedId(row.id); setBanner(null); setError(''); setView('detail'); };
   const toList = () => { setView('list'); setBanner(null); setError(''); };
   const currentDiag = recepcion ? diagnosticos[recepcion.id] : null;
+  const ejecutarInformePdf = async row => {
+    const win = window.open('', '_blank');
+    setErrorInformePdf('');
+    setGenerandoInformeId(row.id);
+    try { await abrirInformePdfDeRecepcion(row.id, win); }
+    catch (pdfError) { setErrorInformePdf(pdfError?.message || 'No se pudo generar el PDF del informe.'); }
+    finally { setGenerandoInformeId(''); }
+  };
   const diagnosticAction = row => {
     const diag = diagnosticos[row.id];
-    const action = resolverAccionDiagnostico(row.estado_custodia || 'recibido', diag);
+    const informe = informesEmitidos[row.id];
+    const action = resolverAccionDiagnostico(row.estado_custodia || 'recibido', diag, Boolean(informe));
     if (action.tipo === 'ninguna') return <span className="dx-recact-diagnosis-empty">Sin diagnóstico registrado</span>;
     const diagnosticId = idDiagnostico(diag);
     const url = action.tipo === 'iniciar' ? diagnosticUrl(row) : diagnosticUrl({ id: row.id, diagnostico_id: diagnosticId });
     const label = nombreAccionDiagnostico(action.tipo);
-    const className = action.tipo === 'ver' ? 'dx-ui-pill is-green dx-recact-inline-pill' : 'dx-recact-link';
-    return <button type="button" className={className} onClick={event => { event.stopPropagation(); abrirDiagnostico(url); }}>{action.tipo === 'ver' ? <>Diagnóstico emitido · {label}</> : <>{label} →</>}</button>;
+    const className = ['ver', 'ver-informe'].includes(action.tipo) ? 'dx-ui-pill is-green dx-recact-inline-pill' : 'dx-recact-link';
+    const pill = action.tipo === 'ver-informe' ? <>Informe emitido · {label}</> : action.tipo === 'ver' ? <>Diagnóstico emitido · {label}</> : <>{label} →</>;
+    return <button type="button" className={className} disabled={action.tipo === 'ver-informe' && generandoInformeId === row.id} onClick={event => { event.stopPropagation(); if (action.tipo === 'ver-informe') ejecutarInformePdf(row); else abrirDiagnostico(url); }}>{action.tipo === 'ver-informe' && generandoInformeId === row.id ? 'Generando PDF…' : pill}</button>;
   };
   const missing = [!form.cliente_id && 'cliente', !form.almacen_id && 'almacén', !(form.activo_id || (altaActivoForm && !altaActivoAbierta)) && 'activo', !form.fecha_ingreso && 'fecha de ingreso', altaActivoAbierta && 'datos del activo nuevo'].filter(Boolean);
   const bloqueada = !sociedadId || !sesion.permiteEscritura;
@@ -244,6 +261,7 @@ export function RecepcionActivosClientePage() {
       {!sesion.permiteEscritura && sociedadId && <div className="dx-recact-alert">Vista consolidada o de solo lectura: no se permite crear ni editar recepciones.</div>}
       {!puedeCrear && sesion.estado === 'listo' && <div className="dx-recact-alert is-error">No tienes permiso para crear recepciones de activos de cliente.</div>}
       {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}
+      {errorInformePdf && <div className="dx-recact-alert is-error" role="alert">{errorInformePdf}</div>}
       <div className="dx-ui-summary"><div className="dx-ui-chip"><b>{resumen.total}</b><span>Recepciones</span></div><div className="dx-ui-chip"><b>{resumen.diagnosticar}</b><span>Por diagnosticar</span></div><div className="dx-ui-chip"><b>{resumen.diagnostico}</b><span>En diagnóstico</span></div><div className="dx-ui-chip"><b>{resumen.taller}</b><span>En taller o listos</span></div></div>
       <div className="dx-ui-card dx-recact-card"><div className="dx-ui-toolbar"><h2>Recepciones de activos</h2><span className="dx-ui-count">{loading ? 'Cargando…' : `${filtradas.length} de ${recepciones.length}`}</span><label className="dx-ui-search"><span aria-hidden="true">⌕</span><input aria-label="Buscar por recepción, activo o cliente" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar recepción, activo o cliente" /></label></div>
         <div className="dx-recact-tabs" role="tablist" aria-label="Filtrar por custodia">{[['todos', 'Todas'], ...ESTADOS_CUSTODIA.map(state => [state, ESTADO_LABELS[state]])].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={filter === key} className={filter === key ? 'is-active' : ''} onClick={() => setFilter(key)}>{label}<small>{conteos[key]}</small></button>)}</div>
@@ -262,8 +280,9 @@ export function RecepcionActivosClientePage() {
       <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Detalle de recepción</div><h1>{recepcion.numero || recepcion.id} · Caso {recepcion.numero_caso || '—'}</h1><p>{nombreActivo(activoDetalle)} · {nombreCliente(clientesPorId.get(activoDetalle?.cliente_propietario_id))}</p></div><span className={`dx-ui-pill ${estadoCustodiaClass(recepcion.estado_custodia)}`}><i />{ESTADO_LABELS[recepcion.estado_custodia] || 'Recibido'}</span></header>
       {banner && (() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', diagnosticos[recepcion.id]); return <div className="dx-recact-banner">{banner.text}<button type="button" className="btn btn-primary" onClick={() => abrirDiagnostico(diagnosticUrl({ id: recepcion.id }))}>{nombreAccionDiagnostico(action.tipo)}</button></div>; })()}
       {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}
+      {errorInformePdf && <div className="dx-recact-alert is-error" role="alert">{errorInformePdf}</div>}
       <div className="dx-recact-steps" aria-label="Pasos de custodia">{ESTADOS_CUSTODIA.map((state, index) => <button key={state} type="button" className={`${state === recepcion.estado_custodia ? 'is-current' : index < ESTADOS_CUSTODIA.indexOf(recepcion.estado_custodia) ? 'is-done' : ''}`} disabled={!puedeEditar || !sesion.permiteEscritura} onClick={() => cambiarEstado(recepcion.id, state)}><b>{index + 1}</b>{ESTADO_LABELS[state]}</button>)}</div>
-      <div className="dx-recact-detail"><div className="dx-recact-diagnosis-strip"><div><b>Diagnóstico técnico</b><span>{(() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', currentDiag); return action.tipo === 'ver' ? 'El diagnóstico técnico ya fue emitido para esta recepción.' : action.tipo === 'continuar' || action.tipo === 'borrador-tardio' ? 'Hay un diagnóstico en borrador asociado a esta recepción.' : action.tipo === 'ninguna' ? 'Sin diagnóstico registrado' : 'Inicia el diagnóstico técnico para esta recepción.'; })()}</span></div>{(() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', currentDiag); if (action.tipo === 'ninguna') return null; const diagnosticId = idDiagnostico(currentDiag); const url = action.tipo === 'iniciar' ? diagnosticUrl({ id: recepcion.id }) : diagnosticUrl({ id: recepcion.id, diagnostico_id: diagnosticId }); return <button type="button" className={action.tipo === 'ver' ? 'dx-ui-pill is-green dx-recact-inline-pill' : 'dx-recact-link'} onClick={() => abrirDiagnostico(url)}>{nombreAccionDiagnostico(action.tipo)}{action.tipo !== 'ver' && ' →'}</button>; })()}</div>
+      <div className="dx-recact-detail"><div className="dx-recact-diagnosis-strip"><div><b>Diagnóstico técnico</b><span>{(() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', currentDiag, Boolean(informesEmitidos[recepcion.id])); return action.tipo === 'ver-informe' ? 'Diagnóstico emitido. Informe al cliente v' + informesEmitidos[recepcion.id].version + ' disponible.' : action.tipo === 'ver' ? 'Diagnóstico emitido. El informe al cliente aún no está emitido.' : action.tipo === 'continuar' || action.tipo === 'borrador-tardio' ? 'Hay un diagnóstico en borrador asociado a esta recepción.' : action.tipo === 'ninguna' ? 'Sin diagnóstico registrado' : 'Inicia el diagnóstico técnico para esta recepción.'; })()}</span></div>{(() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', currentDiag, Boolean(informesEmitidos[recepcion.id])); if (action.tipo === 'ninguna') return null; const diagnosticId = idDiagnostico(currentDiag); const url = action.tipo === 'iniciar' ? diagnosticUrl({ id: recepcion.id }) : diagnosticUrl({ id: recepcion.id, diagnostico_id: diagnosticId }); if (action.tipo === 'ver-informe') return <div className="dx-recact-report-actions"><button type="button" className="btn btn-primary" disabled={generandoInformeId === recepcion.id} onClick={() => ejecutarInformePdf(recepcion)}>{generandoInformeId === recepcion.id ? 'Generando PDF…' : 'Ver informe PDF'}</button><button type="button" className="dx-recact-secondary-link" onClick={() => abrirDiagnostico(url)}>Abrir diagnóstico</button></div>; if (action.tipo === 'ver') return <button type="button" className="dx-ui-pill is-green dx-recact-inline-pill" onClick={() => abrirDiagnostico(url)}>Ver diagnóstico</button>; return <button type="button" className="dx-recact-link" onClick={() => abrirDiagnostico(url)}>{nombreAccionDiagnostico(action.tipo)} →</button>; })()}</div>
         <section className="dx-recact-section"><header><h2>Datos de ingreso</h2></header><dl><div><dt>Cliente</dt><dd>{nombreCliente(clientesPorId.get(activoDetalle?.cliente_propietario_id))}</dd></div><div><dt>Almacén</dt><dd>{almacenesPorId.get(recepcion.almacen_id)?.nombre || '—'}</dd></div><div><dt>Activo</dt><dd>{activoDetalle?.codigo || recepcion.activo_id} · {nombreActivo(activoDetalle)}</dd></div><div><dt>Ingreso</dt><dd>{dateLabel(recepcion.fecha_ingreso)}{recepcion.hora_ingreso ? ` · ${String(recepcion.hora_ingreso).slice(0, 5)}` : ''}</dd></div><div><dt>Guía</dt><dd>{recepcion.guia_ingreso || '—'}</dd></div>{recepcion.lectura_valor != null && <div><dt>Horómetro / lectura</dt><dd>{recepcion.lectura_valor} {recepcion.lectura_unidad || 'h'}</dd></div>}</dl></section>
         <section className="dx-recact-section"><header><h2>Condición inicial</h2></header><div className="dx-recact-section-body">{(() => { const parsed = parsearObservaciones(recepcion.observaciones); return <><div className="dx-recact-checks">{CHECKLIST_ITEMS.map(([key, label]) => <span key={key} className={`dx-recact-check ${parsed.checklist[key] ? 'is-yes' : 'is-no'}`}><b>{parsed.checklist[key] === undefined ? '—' : parsed.checklist[key] ? 'Sí' : 'No registrado'}</b>{label}</span>)}</div><div className="dx-recact-free"><b>Observaciones</b><p>{parsed.observaciones || 'Sin observaciones registradas.'}</p></div></>; })()}</div></section>
         <section className="dx-recact-section"><header><h2>Evidencia fotográfica</h2><span>{adjuntos.length} imagen{adjuntos.length === 1 ? '' : 'es'}</span></header><div className="dx-recact-section-body">{adjuntosLoading ? <div className="dx-ui-empty">Cargando fotografías…</div> : adjuntosError ? <div className="dx-ui-empty" role="alert">{adjuntosError}</div> : !adjuntos.length ? <div className="dx-ui-empty">No hay fotografías cargadas.</div> : <div className="dx-recact-photos">{adjuntos.map((item, index) => <a key={item.id || item.storage_path} href={item.vistaUrl} target="_blank" rel="noreferrer"><img src={item.vistaUrl} alt={`Evidencia fotográfica ${index + 1}`} /></a>)}</div>}</div></section>

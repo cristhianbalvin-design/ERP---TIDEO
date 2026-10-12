@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   sesion: { empresaId: 'empresa-test', sociedadId: 'sociedad-test', estado: 'listo', permiteEscritura: true, sociedadActiva: { nombre: 'Sociedad de prueba' }, usuario: { id: 'usuario-test' } },
   rpc: vi.fn(),
+  informeEmitidos: vi.fn(),
+  abrirInformePdf: vi.fn(),
   activos: vi.fn(), clientes: vi.fn(), almacenes: vi.fn(), recepciones: vi.fn(), diagnosticos: vi.fn(),
   cambiarEstado: vi.fn(), crearRecepcion: vi.fn(), crearActivoRecepcion: vi.fn(), asignarComponente: vi.fn(),
   subir: vi.fn(), adjuntos: vi.fn(), urlAdjunto: vi.fn(),
@@ -16,6 +18,7 @@ vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc
 vi.mock('../../src/services/storageService.js', () => ({ subirAdjunto: mocks.subir, cargarAdjuntosPorEntidades: mocks.adjuntos, obtenerUrlAdjunto: mocks.urlAdjunto }));
 vi.mock('../../src/services/catalogoComponentesService.js', () => ({ catalogoComponentesService: { listar: mocks.listarComponentes } }));
 vi.mock('../src/services/diagnosticoTecnicoService.js', () => ({ asignarComponenteCatalogoActivo: mocks.asignarComponente }));
+vi.mock('../src/services/informePdfAcciones.js', () => ({ abrirInformePdfDeRecepcion: mocks.abrirInformePdf, listarInformesEmitidosRecepcion: mocks.informeEmitidos }));
 vi.mock('../src/services/recepcionesActivosClienteService.js', () => ({
   ESTADOS_CUSTODIA: ['recibido', 'en_diagnostico', 'en_reparacion', 'listo_entrega', 'entregado'],
   listarActivosCliente: mocks.activos, listarClientes: mocks.clientes, listarAlmacenes: mocks.almacenes,
@@ -43,13 +46,15 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  globalThis.window = { location: { hash: '' }, setTimeout, clearTimeout };
+  globalThis.window = { location: { hash: '' }, setTimeout, clearTimeout, open: vi.fn(() => ({ closed: false, location: {}, close: vi.fn() })) };
   mocks.sesion = { empresaId: 'empresa-test', sociedadId: 'sociedad-test', estado: 'listo', permiteEscritura: true, sociedadActiva: { nombre: 'Sociedad de prueba' }, usuario: { id: 'usuario-test' } };
   mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
   mocks.activos.mockReset().mockResolvedValue(['a1', 'a2', 'a3'].map((id, index) => ({ id, codigo: `ACT-${index + 1}`, nombre: `Equipo ${index + 1}`, cliente_propietario_id: 'c1', tipo_activo: 'componente' })));
   mocks.clientes.mockReset().mockResolvedValue([{ id: 'c1', razon_social: 'Cliente de prueba' }]);
   mocks.almacenes.mockReset().mockResolvedValue([{ id: 'w1', nombre: 'Almacén de prueba' }]);
   mocks.recepciones.mockReset().mockResolvedValue(receiptRows);
+  mocks.informeEmitidos.mockReset().mockResolvedValue({});
+  mocks.abrirInformePdf.mockReset().mockResolvedValue({ version: 3, warnings: [] });
   mocks.diagnosticos.mockReset().mockResolvedValue({ 'r-draft': { estado: 'borrador', id: 'd-draft', diagnostico_id: 'd-draft' }, 'r-issued': { estado: 'emitido', id: 'd-issued', diagnostico_id: 'd-issued' }, 'r-late-draft': { estado: 'borrador', id: 'd-late-draft', diagnostico_id: 'd-late-draft' } });
   mocks.cambiarEstado.mockReset().mockImplementation(async (_id, estado) => ({ estado_custodia: estado }));
   mocks.crearRecepcion.mockReset().mockResolvedValue({ ...receiptRows[0], id: 'r-created', numero: 'RAC-2026-00004', numero_caso: 4, activo_id: 'a1' });
@@ -114,6 +119,24 @@ describe('RecepcionActivosClientePage', () => {
     expect(window.location.hash).toContain('trabajo=d-draft');
     await act(async () => findButton(root, 'Ver diagnóstico').props.onClick({ stopPropagation: vi.fn() }));
     expect(window.location.hash).toContain('trabajo=d-issued');
+  });
+
+  it('abre el PDF del informe cuando el diagn\u00f3stico y el informe est\u00e1n emitidos', async () => {
+    mocks.informeEmitidos.mockResolvedValue({ 'r-issued': { version: 3 } });
+    const root = await renderPage();
+    const pdfButton = findButton(root, 'Informe emitido');
+    expect(textOf(pdfButton)).toContain('Ver informe PDF');
+    await act(async () => pdfButton.props.onClick({ stopPropagation: vi.fn() }));
+    expect(mocks.abrirInformePdf).toHaveBeenCalledWith('r-issued', expect.objectContaining({ closed: false }));
+  });
+
+  it('muestra la alerta si falla la generaci\u00f3n del PDF', async () => {
+    mocks.informeEmitidos.mockResolvedValue({ 'r-issued': { version: 3 } });
+    mocks.abrirInformePdf.mockRejectedValue(new Error('Fall\u00f3 la generaci\u00f3n'));
+    const root = await renderPage();
+    await act(async () => findButton(root, 'Informe emitido').props.onClick({ stopPropagation: vi.fn() }));
+    const alert = root.root.findByProps({ role: 'alert' });
+    expect(textOf(alert)).toContain('Fall\u00f3 la generaci\u00f3n');
   });
 
   it('muestra detalle, parsea checklist y observaciones, carga miniaturas y respeta permisos', async () => {

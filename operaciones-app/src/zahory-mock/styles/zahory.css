@@ -3091,3 +3091,8 @@ textarea.dx-recact-control { height:auto; min-height:92px; padding:10px 12px; re
 .dx-recact-diagnosis-strip .dx-recact-link,.dx-recact-diagnosis-strip .dx-ui-pill { flex:none; }
 @container (max-width:760px) { .dx-recact-detail { grid-template-columns:minmax(0,1fr); } .dx-recact-detail>.dx-recact-section:nth-of-type(3) { grid-column:auto; } }
 @container (max-width:520px) { .dx-recact-diagnosis-strip { align-items:stretch; flex-direction:column; gap:8px; } .dx-recact-diagnosis-strip .dx-recact-link,.dx-recact-diagnosis-strip .dx-ui-pill { align-self:flex-start; } }
+
+.dx-recact-report-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; min-width:150px; }
+.dx-recact-secondary-link { min-height:32px; padding:0 8px; border:0; background:transparent; color:var(--dx-ui-cyan-fg); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
+.dx-recact-secondary-link:hover { text-decoration:underline; }
+.dx-recact-report-actions .btn:disabled { opacity:.65; cursor:wait; }
