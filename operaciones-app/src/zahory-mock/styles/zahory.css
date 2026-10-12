@@ -3093,6 +3093,11 @@ textarea.dx-recact-control { height:auto; min-height:92px; padding:10px 12px; re
 @container (max-width:520px) { .dx-recact-diagnosis-strip { align-items:stretch; flex-direction:column; gap:8px; } .dx-recact-diagnosis-strip .dx-recact-link,.dx-recact-diagnosis-strip .dx-ui-pill { align-self:flex-start; } }
 
 .dx-recact-report-actions { display:flex; flex-direction:column; align-items:stretch; gap:8px; min-width:150px; }
+.dx-recact-diagnosis-actions { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; max-width:100%; }
+.dx-recact-diagnosis-actions .dx-recact-secondary-link { max-width:100%; min-height:28px; padding:0; text-align:left; white-space:normal; }
+.dx-recact-diagnosis-actions .dx-recact-secondary-link:disabled,.dx-recact-secondary-report:disabled { opacity:.65; cursor:wait; }
+.dx-recact-secondary-report { white-space:normal; }
+@container (max-width:760px) { .dx-recact-diagnosis { min-width:0; max-width:100%; } .dx-recact-diagnosis-actions { align-items:flex-end; } .dx-recact-diagnosis-actions .dx-recact-secondary-link { text-align:right; } }
 .dx-recact-secondary-link { min-height:32px; padding:0 8px; border:0; background:transparent; color:var(--dx-ui-cyan-fg); font:600 13px 'DM Sans',sans-serif; cursor:pointer; }
 .dx-recact-secondary-link:hover { text-decoration:underline; }
 .dx-recact-report-actions .btn:disabled { opacity:.65; cursor:wait; }

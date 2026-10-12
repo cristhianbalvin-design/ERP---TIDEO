@@ -130,6 +130,40 @@ describe('RecepcionActivosClientePage', () => {
     expect(mocks.abrirInformePdf).toHaveBeenCalledWith('r-issued', expect.objectContaining({ closed: false }));
   });
 
+  it('muestra informe secundario junto al borrador en diagnostico y no navega al pulsarlo', async () => {
+    mocks.informeEmitidos.mockResolvedValue({ 'r-draft': { version: 2 } });
+    const root = await renderPage();
+    expect(findButton(root, 'Continuar borrador')).toBeTruthy();
+    const secondary = findButton(root, 'Ver informe PDF (v2)');
+    expect(secondary).toBeTruthy();
+    const stopPropagation = vi.fn();
+    await act(async () => secondary.props.onClick({ stopPropagation }));
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(window.location.hash).toBe('');
+    expect(mocks.abrirInformePdf).toHaveBeenCalledWith('r-draft', expect.objectContaining({ closed: false }));
+  });
+
+  it('muestra informe secundario junto al borrador tardio en reparacion', async () => {
+    mocks.informeEmitidos.mockResolvedValue({ 'r-late-draft': { version: 2 } });
+    const root = await renderPage();
+    expect(findButton(root, 'Ver borrador')).toBeTruthy();
+    expect(findButton(root, 'Ver informe PDF (v2)')).toBeTruthy();
+  });
+
+  it('no muestra el enlace secundario cuando no hay informe emitido', async () => {
+    const root = await renderPage();
+    expect(findButton(root, 'Ver informe PDF (v')).toBeUndefined();
+  });
+
+  it('muestra informe secundario en detalle y conserva la disponibilidad del informe', async () => {
+    mocks.informeEmitidos.mockResolvedValue({ 'r-draft': { version: 2 } });
+    const root = await renderPage();
+    const row = root.root.findAll(node => node.props.className?.includes('dx-ui-row')).find(node => textOf(node).includes('RAC-2026-00002'));
+    await act(async () => row.props.onClick());
+    expect(rootText(root)).toContain('Hay un diagnóstico en borrador asociado a esta recepción. Informe al cliente v2 disponible.');
+    expect(findButton(root, 'Ver informe PDF (v2)')).toBeTruthy();
+  });
+
   it('muestra la alerta si falla la generaci\u00f3n del PDF', async () => {
     mocks.informeEmitidos.mockResolvedValue({ 'r-issued': { version: 3 } });
     mocks.abrirInformePdf.mockRejectedValue(new Error('Fall\u00f3 la generaci\u00f3n'));
