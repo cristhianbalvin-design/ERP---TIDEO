@@ -764,6 +764,15 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     expect(workSteps).toHaveLength(5);
     expect(workSteps.slice(0, 3).every(button => button.props.className === 'is-done')).toBe(true);
     expect(workSteps[3].props.className).toBe('is-current');
+    expect(workSteps.slice(0, 3).every(button => button.props.disabled !== true)).toBe(true);
+    await act(async () => workSteps[0].props.onClick());
+    expect(renderer.root.findByProps({ 'data-active-work-step': 'summary' })).toBeTruthy();
+    expect(textOf(renderer.root)).toContain('Recepción del equipo');
+    expect(textOf(renderer.root)).toContain('Cliente');
+    await act(async () => workSteps[1].props.onClick());
+    expect(renderer.root.findByProps({ 'data-active-work-step': 'summary' })).toBeTruthy();
+    await act(async () => workSteps[3].props.onClick());
+    expect(renderer.root.findByProps({ 'data-active-work-step': 'findings' })).toBeTruthy();
     expect(renderer.root.findAll(node => node.props.className?.split(' ').includes('dx-work-page'))).toHaveLength(1);
     expect(renderer.root.findAll(node => node.props.className === 'ops-modal-backdrop')).toHaveLength(0);
     expect(dispatch.mock.calls.some(([event]) => event.type === 'dx-diagnostico-work-mode' && event.detail?.active)).toBe(true);

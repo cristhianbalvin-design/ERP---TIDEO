@@ -453,6 +453,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [taskPanel, setTaskPanel] = useState(false);
   const [taskPanelHasSelection, setTaskPanelHasSelection] = useState(false);
   const [informePanel, setInformePanel] = useState(false);
+  const [workStep, setWorkStep] = useState(4);
   const [hallazgoView, setHallazgoView] = useState('lista');
   const [informeAccess, setInformeAccess] = useState({ ver: false, editar: false, aprobar: false });
   const [plantillasActividad, setPlantillasActividad] = useState([]);
@@ -497,6 +498,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   useEffect(() => {
     setHallazgoView('lista');
     setInformePanel(false);
+    setWorkStep(4);
   }, [selected?.id]);
 
   const cargarLista = useCallback(async () => {
@@ -860,9 +862,9 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   };
 
   const goInforme = async () => {
-    if (!canEditLines) { setInformePanel(true); return; }
+    if (!canEditLines) { setInformePanel(true); setWorkStep(5); return; }
     const saved = await saveAll();
-    if (saved) setInformePanel(true);
+    if (saved) { setInformePanel(true); setWorkStep(5); }
   };
 
   const deleteLine = async line => {
@@ -1052,7 +1054,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
 
   return (
     <main className="ops-page" style={{ padding: 24, width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div className={selected?.tipo === 'mantenimiento' ? 'dx-list-work-hidden' : ''} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
         <div>
           <div className="ops-eyebrow">Taller & Operaciones</div>
           <h1 style={{ margin: '4px 0 6px' }}>Diagnóstico Técnico</h1>
@@ -1149,7 +1151,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
             {error && <div className="alert alert-error">{error}</div>}
           </div>
-          {!informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => hallazgosBackRef.current?.()}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => document.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
+          {!informePanel && workStep < 4 ? <><span className="dx-work-footer-status">Resumen de recepción · solo lectura</span><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={() => setWorkStep(4)}>Ir a hallazgos</button></> : !informePanel && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={goInforme} disabled={modalBusy}>Siguiente: informe</button></> : !informePanel ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => hallazgosBackRef.current?.()}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddOtroRef.current?.()}>＋ Otro daño en este componente</button><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={event => event.currentTarget.getRootNode()?.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
         </> : <>
           <div style={{ flex: 1 }}>
             {selected && cambiosCount > 0 && <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar{selected.tipo === 'mantenimiento' && Number(hallazgosDirtySummary.fotos || 0) > 0 ? ` · ${hallazgosDirtySummary.fotos} foto${hallazgosDirtySummary.fotos === 1 ? '' : 's'} pendiente${hallazgosDirtySummary.fotos === 1 ? '' : 's'}` : ''}</div>}
@@ -1176,19 +1178,35 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           </div> : form.tipo === 'mantenimiento' && wizardStep === 2 ? <div className="card-body dx-wizard-body"><h3>Equipo recibido</h3>{selectedReference ? <div className="dx-wizard-summary"><strong>{selectedReference.activo || 'Activo sin descripción'}</strong><span>Recepción {referenceLabel(selectedReference)}</span>{selectedReference.cliente && <span>Cliente · {selectedReference.cliente}</span>}{selectedReference.numero_serie && <span>Serie · {selectedReference.numero_serie}</span>}</div> : <div role="alert" className="alert alert-warning">Primero selecciona la recepción.</div>}</div> : form.tipo === 'mantenimiento' ? <div className="card-body dx-wizard-body"><h3>Revisa los datos</h3><p>Se creará un borrador directamente para continuar con los hallazgos.</p><div className="dx-wizard-summary"><strong>{selectedReference?.activo || 'Activo'}</strong><span>Recepción {referenceLabel(selectedReference)}</span><span>{selectedReference?.cliente || 'Cliente sin dato'}</span><span>Estado inicial · Borrador</span></div></div> : null}
         </form>}
         {selected && <div className={`dx-scope${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-editing-report' : ''}`}>
-          {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico"><button className="is-done" type="button" disabled><i>✓</i><span>1 · Recepción</span></button><button className="is-done" type="button" disabled><i>✓</i><span>2 · Equipo</span></button><button className="is-done" type="button" disabled><i>✓</i><span>3 · Datos</span></button><button className={!informePanel ? 'is-current' : 'is-done'} type="button" onClick={() => setInformePanel(false)}><i>4</i><span>Hallazgos ({selected.hallazgos?.length || 0})</span></button><button className={informePanel ? 'is-current' : ''} type="button" onClick={() => informePanel ? null : goInforme()}><i>5</i><span>Informe</span></button></nav></div>}
-          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button> : null} />}
-          {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => setInformePanel(true)}>Informe al cliente</button></div>}
+          {selected.tipo === 'mantenimiento' && <div className="dx-work-page-head"><nav className="dx-work-steps" aria-label="Pasos del diagnóstico">
+            {[1, 2, 3].map((step, index) => <button key={step} className={workStep === step ? 'is-current' : workStep > step ? 'is-done' : ''} type="button" aria-current={workStep === step ? 'step' : undefined} onClick={() => { setWorkStep(step); setInformePanel(false); }}><i>{workStep > step ? '✓' : step}</i><span>{step} · {['Recepción', 'Equipo', 'Datos'][index]}</span></button>)}
+            <button className={workStep === 4 ? 'is-current' : workStep > 4 ? 'is-done' : ''} type="button" aria-current={workStep === 4 ? 'step' : undefined} onClick={() => { setWorkStep(4); setInformePanel(false); }}><i>4</i><span>Hallazgos ({selected.hallazgos?.length || 0})</span></button>
+            <button className={workStep === 5 ? 'is-current' : ''} type="button" aria-current={workStep === 5 ? 'step' : undefined} onClick={() => { if (!informePanel) goInforme(); }}><i>5</i><span>Informe</span></button>
+          </nav></div>}
+          {access.ver && <DiagnosticoEstadoPanel empresaId={empresaId} diagnostico={selected} puedeAprobar={access.aprobar} permiteEscritura={Boolean(sesion.permiteEscritura)} cambiosSinGuardar={cambiosSinGuardar} onCambioCompleto={recargarEstadoDiagnostico} informeAction={informeAccess.ver && selected.tipo === 'mantenimiento' ? <button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(5); }}>Informe al cliente</button> : null} />}
+          {!access.ver && informeAccess.ver && selected.tipo === 'mantenimiento' && <div className="dx-inf-open-row"><button type="button" className="btn btn-secondary" onClick={() => { setInformePanel(true); setWorkStep(5); }}>Informe al cliente</button></div>}
           <div className="dx-summary" style={selected.tipo === 'mantenimiento' && (informePanel || hallazgoView === 'editor') ? { display: 'none' } : undefined}>
             <div className="dx-summary-chips"><span><b>{grupos.length}</b> trabajos</span><span><b>{lineasActuales.length}</b> tareas</span><span><b>{totalHH.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-hombre</span><span><b>{totalHM.toLocaleString('es-PE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h</b> horas-máquina</span></div>
           </div>
-          <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`}>
+          <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && informePanel ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`} data-active-work-step={selected.tipo === 'mantenimiento' ? (workStep <= 3 ? 'summary' : 'findings') : undefined}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             {selected.tipo === 'mantenimiento' ? <>
+              <section className="dx-diagnostico-resumen-section dx-work-reception-summary" aria-labelledby="dx-recepcion-title">
+                <header className="dx-diagnostico-resumen-heading"><span>✓</span><div><h3 id="dx-recepcion-title">Recepción del equipo</h3><p>Datos registrados al recibir el activo.</p></div></header>
+                <dl className="dx-work-reception-grid">
+                  <div><dt>Activo</dt><dd>{form.referencia?.activo || 'Sin activo registrado'}</dd></div>
+                  <div><dt>Cliente</dt><dd>{form.referencia?.cliente || 'Sin cliente registrado'}</dd></div>
+                  <div><dt>Recepción</dt><dd>{form.referencia?.numero || referenceLabel(form.referencia)}</dd></div>
+                  <div><dt>Fecha de ingreso</dt><dd>{form.referencia?.fecha_ingreso ? new Date(form.referencia.fecha_ingreso).toLocaleDateString('es-PE') : 'Fecha pendiente'}</dd></div>
+                  <div><dt>Número de serie</dt><dd>{form.referencia?.numero_serie || 'Sin número de serie'}</dd></div>
+                  <div><dt>Técnico asignado</dt><dd>{form.referencia?.tecnico_asignado || form.referencia?.tecnico_nombre || form.referencia?.tecnico || 'Sin técnico asignado'}</dd></div>
+                  <div className="is-wide"><dt>Motivo / observaciones</dt><dd>{form.referencia?.motivo || form.referencia?.observaciones || form.referencia?.observacion || form.referencia?.descripcion || form.referencia?.detalle || 'Sin observaciones registradas'}</dd></div>
+                </dl>
+              </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
-                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterAddHallazgo={add => { hallazgosAddRef.current = add; }} onRegisterAddOtro={add => { hallazgosAddOtroRef.current = add; }} onRegisterBackToList={back => { hallazgosBackRef.current = back; }} onViewChange={setHallazgoView} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
+                  <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterAddHallazgo={add => { hallazgosAddRef.current = add; }} onRegisterAddOtro={add => { hallazgosAddOtroRef.current = add; }} onRegisterBackToList={back => { hallazgosBackRef.current = back; }} onViewChange={view => { setHallazgoView(view); setWorkStep(4); setInformePanel(false); }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
               </section>
               <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-diagnostico-resumen-title">
@@ -1230,7 +1248,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
               if (!result?.ok) throw new Error(result?.error || 'No se pudieron guardar los hallazgos.');
             }
             if (summaryDirty) await guardarResumenParaInforme();
-          }} onClose={() => setInformePanel(false)} />}
+          }} onClose={() => { setInformePanel(false); setWorkStep(4); }} />}
         </div>}
       </ModalShell>}
     </main>

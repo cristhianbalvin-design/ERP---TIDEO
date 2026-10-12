@@ -116,6 +116,16 @@ describe('HallazgosTrabajoPanel', () => {
     expect(css).toContain('.dx-hallazgo-editor-mode>.dx-diagnostico-resumen-section:not([aria-labelledby="dx-hallazgos-title"]){display:none}');
   });
 
+  it('usa selectores explícitos para mostrar el resumen y los hallazgos del paso activo', () => {
+    const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
+    expect(css).toContain('.dx-body[data-active-work-step="summary"]>section[aria-labelledby="dx-recepcion-title"]{display:flex');
+    expect(css).toContain('.dx-body[data-active-work-step="findings"]>section[aria-labelledby="dx-hallazgos-title"]{display:block');
+    expect(source).toContain('data-active-work-step={selected.tipo === \'mantenimiento\' ? (workStep <= 3 ? \'summary\' : \'findings\')');
+    expect(css).not.toMatch(/\.dx-work-page[^{}]*>section:(?:first|nth)-child/);
+    expect(css).not.toContain('.dx-work-page .dx-scope>.dx-body>section:not(:first-child)');
+  });
+
   it('muestra campos de hallazgo, matriz, mediciones y tareas, sin controles fuera de v1', async () => {
     const { renderer } = await renderPanel([{
       id: 'hallazgo-1', familia_trabajo_id: 'family-1', componente_parte: 'Vástago', tipo_dano_codigo: 'desgaste',
