@@ -3957,3 +3957,5 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 @media (pointer:coarse){.dx-work-page .dx-inf-inline .dx-inf-controls button,.dx-work-page .dx-inf-inline .dx-report-diagnosis-card button{min-height:44px}}
 [data-theme='dark'] .dx-work-page .dx-inf-inline .dx-inf-controls{background:var(--dx-ui-card);color:var(--dx-ui-ink);border-color:var(--dx-ui-line)}
 [data-theme='dark'] .dx-work-page .dx-inf-inline .dx-inf-preview{background:var(--dx-ui-bg);border-color:var(--dx-ui-line)}
+.dx-mov-disabled-reason { max-width:150px; color:var(--dx-ui-gray); font-size:10px; line-height:1.3; text-align:right; }
+@media(max-width:600px){.dx-mov-disabled-reason{text-align:left}}

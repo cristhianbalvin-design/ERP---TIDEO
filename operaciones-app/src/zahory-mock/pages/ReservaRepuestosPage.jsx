@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
-import { despacharReservaOT, liberarReservaOT, listarReservasOT } from '../../services/reservasRepuestosService.js';
+import { despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespachoOT } from '../../services/reservasRepuestosService.js';
 import { DespachoPanel } from './DespachoPanel.jsx';
 import { LiberarReservaPanel } from './LiberarReservaPanel.jsx';
+import { RevertirDespachoPanel } from './RevertirDespachoPanel.jsx';
 import { estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoLinea, etiquetaEstadoOT, mapearErrorReserva, puedeOperarLinea, textoUbicacionOrigen, tonoEstadoLinea } from './reservasRepuestosLogic.js';
 
 const num = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
@@ -59,8 +60,9 @@ export function ReservaRepuestosPage() {
     envioRef.current = true; setEnviando(true); setErrorAccion('');
     try {
       if (panel.tipo === 'despachar') await despacharReservaOT({ empresa_id: empresaId, ot_id: panel.ot.id, lineas: [{ ot_segmento_repuesto_id: panel.linea.id, cantidad: datos.cantidad }], recibe_en_taller: datos.recibe_en_taller, observacion: datos.observacion });
+      else if (panel.tipo === 'revertir') await revertirDespachoOT({ empresa_id: empresaId, ot_id: panel.ot.id, lineas: [{ ot_segmento_repuesto_id: panel.linea.id, cantidad: datos.cantidad }], motivo: datos.motivo, observacion: datos.observacion });
       else await liberarReservaOT({ empresa_id: empresaId, ot_segmento_repuesto_id: panel.linea.id, cantidad: datos.cantidad, motivo: datos.motivo, observacion: datos.observacion });
-      setAviso(panel.tipo === 'despachar' ? 'Despacho registrado. Kardex actualizado.' : 'Reserva liberada. La cantidad vuelve a Disponible.');
+      setAviso(panel.tipo === 'despachar' ? 'Despacho registrado. Kardex actualizado.' : panel.tipo === 'revertir' ? 'Despacho revertido. La cantidad vuelve a la reserva de la OT.' : 'Reserva liberada. La cantidad vuelve a Disponible.');
       setPanel(null);
       await recargar(panel.ot.id);
       requestAnimationFrame(() => {
@@ -96,8 +98,9 @@ export function ReservaRepuestosPage() {
       <div className="dx-ui-card"><div className="dx-ui-toolbar"><h2>Repuestos reservados</h2><span className="dx-ui-count">{etiquetaConteoLineas(ordenSeleccionada.lineas?.length || 0)} · {ordenSeleccionada.estado}</span></div>
         <div className="dx-desp-line-head" aria-hidden="true"><span>Material</span><span>Estimado</span><span>Reservado</span><span>Despachado</span><span>Pendiente</span><span>Estado</span><span>Acciones</span></div>
         {(ordenSeleccionada.lineas || []).length === 0 ? <div className="dx-ui-empty">Esta OT no tiene líneas de repuesto.</div> : ordenSeleccionada.lineas.map(linea => {
-          const despacho = canOperate(ordenSeleccionada, linea, 'despachar'); const liberar = canOperate(ordenSeleccionada, linea, 'liberar');
+          const despacho = canOperate(ordenSeleccionada, linea, 'despachar'); const liberar = canOperate(ordenSeleccionada, linea, 'liberar'); const revertir = canOperate(ordenSeleccionada, linea, 'revertir');
           const sinPermisoDespacho = permisos?.despachar !== true; const sinPermisoLiberar = permisos?.liberar !== true;
+          const motivoReversa = sinPermisoDespacho ? 'Sin permiso para revertir' : Number(linea.despachado || 0) <= 0 ? 'Nada despachado' : !['programada', 'ejecucion'].includes(ordenSeleccionada.estado) ? 'OT cerrada' : '';
           const origenes = linea.origenes || [];
           const origenTexto = origenes.map(textoUbicacionOrigen).join(' · ') || 'Sin ubicación (sin stock reservado)';
           return <div className="dx-desp-line-row" key={linea.id}>
@@ -108,15 +111,17 @@ export function ReservaRepuestosPage() {
               {linea.solpe_id && Number(linea.reservado) === 0 && <small className="dx-desp-warn">SOLPE en curso</small>}
               {despacho ? <button type="button" className="dx-btn primary" onClick={evento => abrirPanel('despachar', ordenSeleccionada, linea, evento)}>Despachar</button> : <span><button type="button" className="dx-btn primary" disabled title={sinPermisoDespacho ? 'Tu rol no tiene permiso para despachar.' : 'No hay cantidad pendiente o la OT no está programada o en ejecución.'} aria-label={`Despachar deshabilitado: ${sinPermisoDespacho ? 'sin permiso' : 'sin cantidad pendiente o estado no operativo'}`}>Despachar</button>{sinPermisoDespacho && <small className="dx-desp-disabled-reason">Sin permiso de despacho</small>}</span>}
               {liberar ? <button type="button" className="dx-btn" onClick={evento => abrirPanel('liberar', ordenSeleccionada, linea, evento)}>Liberar</button> : <span><button type="button" className="dx-btn" disabled title={sinPermisoLiberar ? 'Tu rol no tiene permiso para liberar reservas.' : 'No hay cantidad pendiente o la OT no está programada o en ejecución.'} aria-label={`Liberar deshabilitado: ${sinPermisoLiberar ? 'sin permiso' : 'sin cantidad pendiente o estado no operativo'}`}>Liberar</button>{sinPermisoLiberar && <small className="dx-desp-disabled-reason">Sin permiso para liberar</small>}</span>}
+              {revertir ? <button type="button" className="dx-btn" onClick={evento => abrirPanel('revertir', ordenSeleccionada, linea, evento)}>Revertir</button> : <span><button type="button" className="dx-btn" disabled title={motivoReversa} aria-label={motivoReversa}>Revertir</button><small className="dx-desp-disabled-reason">{motivoReversa}</small></span>}
             </div>
           </div>;
         })}
       </div>
       <div className="dx-ui-card dx-desp-history"><div className="dx-ui-toolbar"><h2>Historial de acciones</h2><span className="dx-ui-count">{ordenSeleccionada.acciones?.length || 0} acciones</span></div>
-        {!ordenSeleccionada.acciones?.length ? <div className="dx-ui-empty">Aún no hay despachos ni liberaciones para esta OT.</div> : <ol>{ordenSeleccionada.acciones.map(accion => <li key={accion.id}><b>{accion.tipo === 'despacho' ? 'Despacho a taller' : accion.tipo === 'liberacion' ? 'Liberación de reserva' : 'Cierre técnico'}</b><span>{num(accion.cantidad)} · {accion.motivo || accion.recibe_en_taller || '—'}</span><small>{fecha(accion.created_at)}{accion.observacion ? ` · ${accion.observacion}` : ''}</small></li>)}</ol>}
+        {!ordenSeleccionada.acciones?.length ? <div className="dx-ui-empty">Aún no hay despachos ni liberaciones para esta OT.</div> : <ol>{ordenSeleccionada.acciones.map(accion => <li key={accion.id}><b>{accion.tipo === 'despacho' ? 'Despacho a taller' : accion.tipo === 'liberacion' ? 'Liberación de reserva' : accion.tipo === 'reversa_despacho' ? 'Reversa de despacho' : 'Cierre técnico'}</b><span>{num(accion.cantidad)} · {accion.motivo || accion.recibe_en_taller || '—'}</span><small>{fecha(accion.created_at)}{accion.observacion ? ` · ${accion.observacion}` : ''}</small></li>)}</ol>}
       </div>
     </>}
     {panel?.tipo === 'despachar' && <DespachoPanel ot={panel.ot} linea={panel.linea} enviando={enviando} error={errorAccion} onClose={cerrarPanel} onSubmit={enviarAccion} />}
     {panel?.tipo === 'liberar' && <LiberarReservaPanel ot={panel.ot} linea={panel.linea} enviando={enviando} error={errorAccion} onClose={cerrarPanel} onSubmit={enviarAccion} />}
+    {panel?.tipo === 'revertir' && <RevertirDespachoPanel ot={panel.ot} linea={panel.linea} enviando={enviando} error={errorAccion} onClose={cerrarPanel} onSubmit={enviarAccion} />}
   </section>;
 }
