@@ -1168,3 +1168,40 @@ Deno.test("Top N de clientes y materiales consulta cortes actuales sin fechas", 
     assert(!("p_desde" in rpc.args) && !("p_hasta" in rpc.args) && !("p_periodo" in rpc.args));
   }
 });
+
+Deno.test("alertas valida tipo, días exclusivos y límite", () => {
+  const spec = TOOL_SPECS.find(tool => tool.name === "asistente_alertas")!;
+  equal(validateArgs(spec, { tipo: "cxp_por_vencer" })?.p_tipo, "cxp_por_vencer");
+  equal(validateArgs(spec, { tipo: "otra" }), null);
+  equal(validateArgs(spec, { tipo: "cxp_por_vencer", dias: 0 }), null);
+  equal(validateArgs(spec, { tipo: "cxc_por_vencer", dias: 31 }), null);
+  equal(validateArgs(spec, { tipo: "stock_bajo", dias: 7 }), null);
+  equal(validateArgs(spec, { tipo: "stock_bajo", limite: 101 }), null);
+  equal(validateArgs(spec, { tipo: "stock_bajo", limite: 100 })?.p_limite, 100);
+});
+
+Deno.test("alertas publica tipos y mapea parámetros al RPC con sociedad del servidor", async () => {
+  const tool = OPENAI_TOOLS.find((candidate: any) => candidate.function.name === "asistente_alertas") as any;
+  equal(JSON.stringify(tool.function.parameters.properties.tipo.enum), JSON.stringify(["cxp_por_vencer", "cxc_por_vencer", "ordenes_compra_pendientes_recepcion", "stock_bajo"]));
+  equal(tool.function.parameters.properties.dias.maximum, 30);
+  equal(tool.function.parameters.properties.limite.maximum, 100);
+  assert(!("sociedad_id" in tool.function.parameters.properties));
+  let n = 0;
+  const x = setup({ now: () => Date.parse("2026-10-11T12:00:00Z"), ai: async () => ++n === 1
+    ? completion({ role: "assistant", tool_calls: [{ id: "a", type: "function", function: { name: "asistente_alertas", arguments: JSON.stringify({ tipo: "cxp_por_vencer", dias: 5, limite: 8 }) } }] })
+    : completion({ role: "assistant", content: "Listo." }) });
+  equal((await x.handler(x.request({ pregunta: "¿Qué alertas debo revisar?", empresa_id: EMPRESA, sociedad_id: SOCIEDAD }))).status, 200);
+  const rpc = x.calls.find(call => call.name === "asistente_alertas")!;
+  equal(rpc.args.p_empresa_id, EMPRESA); equal(rpc.args.p_sociedad_id, SOCIEDAD);
+  equal(rpc.args.p_tipo, "cxp_por_vencer"); equal(rpc.args.p_dias, 5); equal(rpc.args.p_limite, 8);
+});
+
+Deno.test("cobertura temática de alertas incluye CxP/CxC, recepción y reposición", () => {
+  equal(topicsWithoutCoverage("¿Qué vence esta semana?", []).join(","), "cuentas por pagar,cuentas por cobrar");
+  equal(topicsWithoutCoverage("OC pendientes de recepción", []).join(","), "órdenes de compra pendientes de recepción");
+  assert(topicsWithoutCoverage("¿Qué materiales están bajo el punto de reorden?", []).includes("stock bajo y reposición"));
+  assert(!topicsWithoutCoverage("¿Qué materiales están bajo el punto de reorden?", ["asistente_alertas"]).includes("stock bajo y reposición"));
+  equal(topicsWithoutCoverage("OC pendientes de recepción", ["asistente_alertas"]).length, 0);
+  equal(topicsWithoutCoverage("materiales con mayor stock", []).includes("stock bajo y reposición"), false);
+  equal(SYSTEM_PROMPT.length, 3178);
+});
