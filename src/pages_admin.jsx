@@ -9226,7 +9226,7 @@ const NAV_SECTION_LABELS = {
   administracion: 'Administración',
   customer_success: 'Customer Success',
   inteligencia_artificial: 'Inteligencia Artificial',
-  campo_movil: 'Campo Móvil',
+  campo_movil: 'Versión Móvil',
   configuracion: 'Configuración',
 };
 

@@ -105,10 +105,10 @@ const SIDEBAR = [
     { key: 'bi_cs', label: 'BI Customer Success', icon: I.trend },
   ]},
   { section: 'Aria', standalone: true, items: [
-    { key: 'aria', action: 'openAria', label: 'Aria', icon: <IconoAria size={20} /> },
+    { key: 'aria', action: 'openAria', label: 'Aria - Asistente IA', ariaLabel: 'Preguntar a Aria', icon: <IconoAria size={20} /> },
   ]},
-  { section: 'Campo Movil', items: [
-    { key: 'campo', label: 'Vistas de Campo', icon: I.mobile },
+  { section: 'Version Movil', standalone: true, items: [
+    { key: 'campo', label: 'Versión Móvil', icon: I.mobile },
   ]},
   { section: 'Configuracion', items: [
     { key: 'usuarios', label: 'Usuarios', icon: I.users },
@@ -144,7 +144,6 @@ const SECTION_ICONS = {
   Compras: I.cart,
   Administracion: I.bank,
   'Customer Success': I.target,
-  'Campo Movil': I.mobile,
   Configuracion: I.settings,
 };
 
@@ -379,7 +378,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
-  const [flyoutTop, setFlyoutTop] = useState(0);
+  const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
   const [busquedaModulo, setBusquedaModulo] = useState('');
   const effectiveCollapsed = collapsed || isMobileNav;
   const badges = useMemo(() => buildSidebarBadges(app), [
@@ -456,6 +455,27 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     });
   }, [activeGroupKey]);
 
+  useEffect(() => {
+    if (!flyoutKey) return;
+    const closeFlyout = () => setFlyoutKey(null);
+    const initialWidth = window.innerWidth;
+    const closeFlyoutOnWidthResize = () => {
+      if (window.innerWidth !== initialWidth) closeFlyout();
+    };
+    const closeFlyoutOnPageScroll = event => {
+      if (event.target?.closest?.('.sidebar-flyout')) return;
+      closeFlyout();
+    };
+    window.addEventListener('resize', closeFlyoutOnWidthResize);
+    window.addEventListener('orientationchange', closeFlyout);
+    window.addEventListener('scroll', closeFlyoutOnPageScroll, true);
+    return () => {
+      window.removeEventListener('resize', closeFlyoutOnWidthResize);
+      window.removeEventListener('orientationchange', closeFlyout);
+      window.removeEventListener('scroll', closeFlyoutOnPageScroll, true);
+    };
+  }, [flyoutKey]);
+
   const toggleCollapsed = () => {
     setCollapsed(prev => {
       const next = !prev;
@@ -488,16 +508,23 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     }
     handleNav(item.key);
   };
-  const toggleFlyout = (event, key) => {
+  const toggleFlyout = (event, key, itemCount) => {
     if (flyoutKey === key) {
       setFlyoutKey(null);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const nextTop = isMobileNav
-      ? Math.max(8, Math.min(rect.top, window.innerHeight - 280))
-      : 0;
-    setFlyoutTop(nextTop);
+    const viewportHeight = window.innerHeight;
+    const below = Math.max(0, viewportHeight - rect.top - 8);
+    const above = Math.max(0, rect.bottom - 8);
+    const estimatedHeight = 52 + itemCount * 36;
+    const openDown = below >= estimatedHeight;
+    const maxHeight = openDown ? below : above;
+    setFlyoutPosition({
+      top: openDown ? rect.top : 'auto',
+      bottom: openDown ? 'auto' : Math.max(0, viewportHeight - rect.bottom),
+      maxHeight,
+    });
     setFlyoutKey(key);
   };
 
@@ -562,21 +589,21 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                 <>
                   <button
                     type="button"
-                    className="sidebar-area-btn"
-                    onClick={event => toggleFlyout(event, group.key)}
+                    className={'sidebar-area-btn ' + (active === group.items[0].key ? 'active' : '')}
+                    onClick={event => toggleFlyout(event, group.key, group.items.length)}
                     title={group.items[0].label}
-                    aria-label={group.items[0].label}
+                    aria-label={group.items[0].ariaLabel || group.items[0].label}
                   >{group.items[0].icon}</button>
                   {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
+                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.items[0].label}</div>
-                      {group.items.map(it => <button type="button" key={it.key} className="sidebar-flyout-item" onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
+                      {group.items.map(it => <button type="button" key={it.key} className={'sidebar-flyout-item ' + (active === it.key ? 'active' : '')} onClick={() => handleItem(it)}>{it.icon}<span>{it.label}</span></button>)}
                     </div>
                   )}
                 </>
               ) : group.standalone ? (
                 <div
-                  className="sidebar-item"
+                  className={'sidebar-item ' + (active === group.items[0].key ? 'active' : '')}
                   onClick={() => handleItem(group.items[0])}
                   style={{padding:'8px 10px', fontSize:12, borderRadius:8}}
                   onKeyDown={event => {
@@ -587,7 +614,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-label="Preguntar a Aria"
+                  aria-label={group.items[0].ariaLabel || group.items[0].label}
                 >
                   {group.items[0].icon}<span style={{fontWeight:500}}>{group.items[0].label}</span>
                 </div>
@@ -596,7 +623,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                   <button
                     type="button"
                     className={'sidebar-area-btn ' + (group.active ? 'active' : '')}
-                    onClick={(event) => toggleFlyout(event, group.key)}
+                    onClick={(event) => toggleFlyout(event, group.key, group.items.length)}
                     title={group.section}
                     aria-label={group.section}
                   >
@@ -604,7 +631,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
                     {group.items.some(it => it.badge) && <span className="sidebar-area-dot" />}
                   </button>
                   {flyoutKey === group.key && (
-                    <div className="sidebar-flyout" style={isMobileNav ? { top: flyoutTop } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
+                    <div className="sidebar-flyout" style={isMobileNav ? { position: 'fixed', top: flyoutPosition.top, bottom: flyoutPosition.bottom, maxHeight: flyoutPosition.maxHeight } : undefined} onMouseLeave={() => setFlyoutKey(null)}>
                       <div className="sidebar-flyout-title">{group.section}</div>
                       {group.items.map(it => (
                         <button
