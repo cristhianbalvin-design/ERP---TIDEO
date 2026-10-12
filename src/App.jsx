@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context.jsx';
 import { AuthGate } from './AuthGate.jsx';
 import { Sidebar, Header, SIDEBAR } from './shell.jsx';
+import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { ApplicationWelcome } from './ApplicationWelcome.jsx';
 import { puedeVerPantalla, tieneAccesoTotal } from './access/roleAccess.js';
 import { AsistenteErpProvider } from './context/AsistenteErpContext.jsx';
@@ -14,6 +15,7 @@ import { AsistenteErpPanel } from './components/AsistenteErpPanel.jsx';
 // Core CRM / BI
 const OrganigramaV2 = lazy(() => import('./pages_organigrama_v2.jsx'));
 const Dashboard       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Dashboard })));
+const DashboardsPage   = lazy(() => import('./pages_dashboards.jsx'));
 const Leads           = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Leads })));
 const Pipeline        = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Pipeline })));
 const Actividades     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Actividades })));
@@ -22,8 +24,6 @@ const OSCliente       = lazy(() => import('./pages_core.jsx').then(m => ({ defau
 const PanelProduccionOSCliente = lazy(() => import('./pages_produccion_os_cliente.jsx').then(m => ({ default: m.PanelProduccionOSCliente })));
 const EquiposClientes = lazy(() => import('./pages_equipos_clientes.jsx').then(m => ({ default: m.EquiposClientes })));
 const Marketing       = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.Marketing })));
-const BIComercial     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIComercial })));
-const BIOperativo     = lazy(() => import('./pages_core.jsx').then(m => ({ default: m.BIOperativo })));
 
 // Operaciones
 const Cuentas             = lazy(() => import('./pages_ops.jsx').then(m => ({ default: m.Cuentas })));
@@ -93,7 +93,6 @@ const CosteoVariables = lazy(() => import('./pages_costeo_variables.jsx'));
 
 // Módulos secundarios
 const MobileFieldView   = lazy(() => import('./pages_mobile.jsx').then(m => ({ default: m.MobileFieldView })));
-const BIFinanciero      = lazy(() => import('./pages_bi_fin.jsx').then(m => ({ default: m.BIFinanciero })));
 const IAComercial       = lazy(() => import('./pages_ia.jsx').then(m => ({ default: m.IAComercial })));
 const IAOperativa       = lazy(() => import('./pages_ia.jsx').then(m => ({ default: m.IAOperativa })));
 const IAFinanciera      = lazy(() => import('./pages_ia.jsx').then(m => ({ default: m.IAFinanciera })));
@@ -280,7 +279,7 @@ function ToastContainer() {
 
 function MainLayout({ onShowApplicationWelcome }) {
   const {
-    active, navigate, role, roleKey, setRoleKey, isSuperadmin,
+    active, activeParams, navigate, role, roleKey, setRoleKey, isSuperadmin,
     empresa, setEmpresa, dark, setDark, mobileMode, setMobileMode,
     mobileProfile, setMobileProfile
   } = useApp();
@@ -290,7 +289,7 @@ function MainLayout({ onShowApplicationWelcome }) {
   const activeAllowed = active === 'costeo_variables'
     ? Boolean(role?.permisos?.todo || role?.permisos?.ver_costos)
     : puedeVerPantalla(role, active,
-      active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'sourcing_bandeja' ? ['ordenes_compra'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
+      active === 'dashboard' ? DASHBOARDS_ACCESS_ANY_OF : active === 'maestros' ? ['servicios'] : active === 'hoja_costeo_wizard' ? ['hoja_costeo'] : active === 'sourcing_bandeja' ? ['ordenes_compra'] : ['panel_produccion', 'equipos_clientes'].includes(active) ? ['os_cliente'] : []);
   const routeAllowed = activeAllowed && (isSuperadmin || !PLATFORM_PAGES.has(active));
 
   useEffect(() => {
@@ -304,7 +303,7 @@ function MainLayout({ onShowApplicationWelcome }) {
     }
     if (!activeAllowed) {
       let fallback = 'mi_portal';
-      if (puedeVerPantalla(role, 'dashboard')) {
+      if (puedeVerPantalla(role, 'dashboard', DASHBOARDS_ACCESS_ANY_OF)) {
         fallback = 'dashboard';
       } else if (!tieneAccesoTotal(role) && pantallasPermitidas.length > 0) {
         // Encontrar el primer modulo permitido de acuerdo al orden del SIDEBAR
@@ -340,9 +339,7 @@ function MainLayout({ onShowApplicationWelcome }) {
     }
 
     switch (active) {
-      case 'dashboard':        return <Dashboard role={role}/>;
-      case 'bi_comercial':     return <BIComercial />;
-      case 'bi_operativo':     return <BIOperativo />;
+      case 'dashboard':        return <DashboardsPage role={role} activeParams={activeParams} onTabChange={pestana => navigate('dashboard', { pestana })} />;
       case 'marketing':        return <Marketing />;
       case 'planner':          return <Planner />;
       case 'mi_portal':        return <MiPortal />;
@@ -422,7 +419,6 @@ function MainLayout({ onShowApplicationWelcome }) {
       case 'ia_comercial':     return <IAComercial/>;
       case 'ia_operativa':     return <IAOperativa/>;
       case 'ia_financiera':    return <IAFinanciera/>;
-      case 'bi_financiero':    return <BIFinanciero/>;
       default:                 return <Dashboard role={role}/>;
     }
   };

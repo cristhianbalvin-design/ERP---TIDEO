@@ -7,6 +7,7 @@ import { useApp } from './context.jsx';
 import { useTenantNavLabels } from './services/navLabelsService.js';
 import { PERFIL_SOCIEDAD, SOCIEDAD_TODAS_ID, debeMostrarSelectorSociedad } from './services/sociedadesService.js';
 import { puedeVerPantalla } from './access/roleAccess.js';
+import { DASHBOARDS_ACCESS_ANY_OF } from './dashboardsTabs.js';
 import { useAsistenteErp } from './context/AsistenteErpContext.jsx';
 
 function IconoAria({ size = 20 }) {
@@ -15,11 +16,8 @@ function IconoAria({ size = 20 }) {
 
 
 const SIDEBAR = [
-  { section: 'Business Intelligence', items: [
-    { key: 'dashboard', label: 'Dashboard General', icon: I.dashboard },
-    { key: 'bi_comercial', label: 'BI Comercial', icon: I.trend },
-    { key: 'bi_operativo', label: 'BI Operativo', icon: I.trend },
-    { key: 'bi_financiero', label: 'BI Financiero', icon: I.trend },
+  { section: 'Dashboards', standalone: true, items: [
+    { key: 'dashboard', label: 'Dashboards', fixedLabel: true, icon: I.dashboard, accessAnyOf: DASHBOARDS_ACCESS_ANY_OF },
   ]},
   { section: 'Plataforma', plataforma: true, items: [
     { key: 'tenants', label: 'Empresas / Tenants', icon: I.building },
@@ -134,7 +132,6 @@ if (import.meta.env.DEV) {
 }
 
 const SECTION_ICONS = {
-  'Business Intelligence': I.dashboard,
   Plataforma: I.building,
   'CRM & Marketing': I.users,
   Comercial: I.file,
@@ -155,7 +152,7 @@ const normalizarBusqueda = value => String(value || '')
   .toLowerCase()
   .trim();
 const SEARCH_ALIASES = {
-  dashboard: 'inicio principal resumen',
+  dashboard: 'dashboards general comercial operativo financiero bi inicio principal resumen',
   inventario: 'producto productos stock materiales existencias almacen',
   recepciones: 'recepcion productos producto ingreso compras conformidad proveedor',
   ordenes_compra: 'oc orden compra proveedor adquisiciones',
@@ -172,10 +169,6 @@ const SEARCH_ALIASES = {
 };
 
 const NAV_MODULE_KEYS = {
-  dashboard: 'bi.dashboard_general',
-  bi_comercial: 'bi.comercial',
-  bi_operativo: 'bi.operativo',
-  bi_financiero: 'bi.financiero',
   tenants: 'plataforma.tenants',
   planes: 'plataforma.planes',
   metricas_saas: 'plataforma.metricas_saas',
@@ -398,7 +391,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
         : puedeVerPantalla(role, it.key, it.accessAnyOf || []))
       .map(it => {
         const navKey = it.action ? it.key : (NAV_MODULE_KEYS[it.key] || it.key);
-        return { ...it, navKey, label: it.action ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
+        return { ...it, navKey, label: it.action || it.fixedLabel ? it.label : getLabel(navKey, it.label), badge: capBadge(badges[it.key]) };
       });
     if (visibleItems.length === 0) return null;
     const key = sectionKey(group.section);
@@ -798,7 +791,7 @@ export function Header({ active, empresa, setEmpresa, role, setRoleKey, roleKey,
     return () => media.removeEventListener?.('change', onChange);
   }, []);
 
-  const title = SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
+  const title = active === 'dashboard' ? 'Dashboards' : SIDEBAR.flatMap(g => g.items).find(i => i.key === active)?.label || 'Dashboard';
 
   const isSupabase = dataMode === 'supabase';
   const canSwitchCompany = isSupabase ? todasMembresias.length > 1 : Boolean(role.permisos?.plataforma);
