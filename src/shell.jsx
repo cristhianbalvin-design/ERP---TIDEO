@@ -377,11 +377,12 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const { solicitarApertura } = useAsistenteErp();
   const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
+  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutTop, setFlyoutTop] = useState(0);
   const [busquedaModulo, setBusquedaModulo] = useState('');
-  const effectiveCollapsed = collapsed || isMobileNav;
+  const effectiveCollapsed = collapsed || isMobileNav || diagnosticoWorkMode;
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -446,6 +447,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   }, []);
 
   useEffect(() => {
+    const onWorkMode = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
+    window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
+    if (document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true') setDiagnosticoWorkMode(true);
+    return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
+  }, []);
+
+  useEffect(() => {
     if (!activeGroupKey) return;
     setOpenSections(prev => {
       if (prev.has(activeGroupKey)) return prev;
@@ -502,7 +510,7 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   };
 
   return (
-    <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '')}>
+    <aside className={'sidebar ' + (effectiveCollapsed ? 'collapsed' : '') + (diagnosticoWorkMode ? ' diagnostico-work-mode' : '')}>
       <button
         type="button"
         className="sidebar-logo"
