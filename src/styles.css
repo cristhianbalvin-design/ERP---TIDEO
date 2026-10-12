@@ -4230,11 +4230,9 @@ body {
     margin-bottom: 7px;
   }
   .sidebar-flyout {
-    position: absolute;
+    position: fixed;
     left: 58px;
-    top: 0 !important;
     width: min(250px, calc(100vw - 78px));
-    max-height: min(420px, calc(100vh - 24px));
   }
   .main-col { min-width: 0; width: calc(100vw - 66px); overflow-x: hidden; }
   .header { height: 52px; }
