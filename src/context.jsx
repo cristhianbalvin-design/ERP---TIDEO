@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { MOCK, PLATFORM_PERMISSION_SCREENS } from './data.js';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
 import { TIPO_DOCUMENTO_DNI, TIPO_DOCUMENTO_RUC } from './lib/formValidators.js';
+import { normalizeDashboardRoute } from './dashboardsTabs.js';
 import { marcarRecepcionActivoClienteCotizada } from './services/recepcionesActivosClienteService.js';
 import { getDataMode } from './lib/dataMode.js';
 import { loadCrmFromSupabase, loadCsFromSupabase, persistirLead, actualizarLead, eliminarLead as eliminarLeadSvc, persistirCuenta, actualizarCuenta as svcActualizarCuenta, eliminarCuenta as eliminarCuentaSvc, persistirContacto, actualizarContacto, persistirOportunidad, actualizarOportunidad, persistirHojaCosteo, crearHojaCosteoRpc, crearHojaCosteoSociedadRpc, aprobarHojaCosteoRpc, aprobarHojaCosteoSociedadRpc, actualizarHojaCosteoSvc, persistirCotizacion, actualizarCotizacion as svcActualizarCotizacion, subirArchivoSustento, siguienteNumeroOSCliente as siguienteNumeroOSClienteRpc, persistirOSCliente, actualizarOSCliente as svcActualizarOSCliente, eliminarOSClienteReabrirCotizacion, persistirAgendaEvento, actualizarAgendaEventoSvc, eliminarAgendaEventoSvc, persistirActividadComercial, actualizarActividadComercial, subirLogoCuenta, insertarNotificacionesSistema, cargarNotificacionesSistema, marcarNotificacionLeida, marcarNotificacionesLeidas, insertarHistorialAcuerdo, cargarHistorialAcuerdo } from './services/crmService.js';
@@ -285,17 +286,19 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
   { id: 'dic_tercera_factura', categoria: 'Facturacion', clave: 'Tercera factura', texto: 'Tercera factura', estado: 'activo' },
 ];
 
-function getInitialActivePage() {
-  if (typeof window === 'undefined') return 'dashboard';
+function getInitialNavigation() {
+  if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
   const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  return hashPage || queryPage || savedPage || 'dashboard';
+  const initial = normalizeDashboardRoute(hashPage || queryPage || savedPage || 'dashboard');
+  return { pagina: initial.pagina || 'dashboard', params: initial.pestana ? { pestana: initial.pestana } : {} };
 }
 
 export function AppProvider({ children }) {
-  const [active, setActive] = useState(getInitialActivePage);
-  const [activeParams, setActiveParams] = useState({});
+  const [initialNavigation] = useState(getInitialNavigation);
+  const [active, setActive] = useState(initialNavigation.pagina);
+  const [activeParams, setActiveParams] = useState(initialNavigation.params);
   const [roleKey, setRoleKey] = useState('admin');
   const [empresa, setEmpresa] = useState(() => {
     if (isSupabaseConfigured()) return MOCK.empresas[0];
@@ -1820,13 +1823,35 @@ export function AppProvider({ children }) {
     });
   };
 
+  useEffect(() => {
+    const currentHash = window.location.hash.replace(/^#\/?/, '').trim();
+    const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
+    const savedPage = localStorage.getItem('tideo_active_page')?.trim();
+    const source = currentHash || queryPage || savedPage || '';
+    const normalized = normalizeDashboardRoute(source);
+    if (normalized.pagina !== 'dashboard') return;
+    const canonicalHash = normalized.pestana ? `dashboard/${normalized.pestana}` : 'dashboard';
+    if (source && currentHash !== canonicalHash) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${canonicalHash}`);
+    }
+    if (source) {
+      try { localStorage.setItem('tideo_active_page', 'dashboard'); } catch {}
+    }
+  }, []);
+
   const navigate = (page, params = {}) => {
-    setActive(page);
-    setActiveParams(params);
+    const normalized = normalizeDashboardRoute(page);
+    const nextPage = normalized.pagina || 'dashboard';
+    const nextParams = { ...params };
+    if (nextPage === 'dashboard' && normalized.pestana) nextParams.pestana = normalized.pestana;
+    const tabRoute = nextPage === 'dashboard' ? (nextParams.pestana || '') : '';
+    const hashPage = nextPage === 'dashboard' && tabRoute ? `dashboard/${tabRoute}` : nextPage;
+    setActive(nextPage);
+    setActiveParams(nextParams);
     try {
-      localStorage.setItem('tideo_active_page', page);
-      if (window.location.hash.replace(/^#\/?/, '') !== page) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${page}`);
+      localStorage.setItem('tideo_active_page', nextPage === 'dashboard' ? 'dashboard' : nextPage);
+      if (window.location.hash.replace(/^#\/?/, '') !== hashPage) {
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hashPage}`);
       }
     } catch { /* navegacion local: no bloquear si el storage no esta disponible */ }
   };
