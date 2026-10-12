@@ -73,6 +73,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   { name: "asistente_buscar_gastos", desc: "Busca gastos y compras registrados en Compras/Gastos (facturas, boletas, egresos directos); monto = importe exacto, monto_min/monto_max = rango; ultimos_meses admite 1–36 y se usa solo si no envías desde/hasta; moneda PEN (soles) o USD (dólares); origen campo o backoffice; devuelve total filtrado por moneda.", params: [s("texto", 200, true), m("monto", true), m("monto_min", true), m("monto_max", true), e("moneda", ["PEN", "USD"], true), s("estado_pago", 80, true), e("origen", ["campo", "backoffice"], true), s("ceco", 100, true), s("proveedor", 200, true), d("desde", true), d("hasta", true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, n("limite", true), society()] },
   { name: "asistente_resumen_mensual", desc: "Resume por mes y moneda gastos, órdenes de compra, CxP o caja chica, con totales y promedios; úsala para totales, promedios, consultas 'por mes' y para saber de qué meses hay datos. Para CxP úsala solo para 'qué vence cada mes' o 'vencimientos por mes': agrupa por MES DE VENCIMIENTO y solo incluye documentos abiertos con saldo; aclara que son vencimientos por mes de vencimiento, no el total que debo pagar ni un histórico de compras. Para cuánto debo/tengo que pagar usa asistente_resumen_cxp, que incluye todo el pendiente, también lo vencido. Para órdenes de compra agrupa por fecha de emisión. Al responder, indica cuántos meses tuvieron datos y cuáles meses no tuvieron datos. No la uses para buscar un registro concreto; para eso usa la búsqueda de la entidad. Admite periodo o ultimos_meses (1–36), o desde y hasta explícitos (máximo 36 meses; si se indican fechas, estas prevalecen). Si no se indica rango, usa los últimos 6 meses. moneda es opcional (PEN o USD). Para comparar periodos usa asistente_comparar_periodos.", params: [e("entidad", ["gastos", "ordenes_compra", "cxp", "caja_chica"]), society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true), e("moneda", ["PEN", "USD"], true)] },
   { name: "asistente_comparar_periodos", desc: "Compara gastos, órdenes de compra o caja chica del periodo actual hasta hoy contra el mismo tramo del periodo anterior: comparacion=mes compara del día 1 de este mes hasta hoy con el día 1 al mismo día del mes anterior (ajustado al último día si hace falta); comparacion=anio compara del 1 de enero hasta hoy con el 1 de enero hasta el mismo día del año anterior (ajustado si hace falta). Úsala para 'este mes vs el anterior', 'este año vs el pasado' y 'cuánto más o menos gasté'. Devuelve diferencia y variación porcentual por moneda; explica siempre los tramos comparados y nunca sumes monedas. Si sin_base es true, explica que no hay base para calcular el porcentaje. No usar para CxP.", params: [e("entidad", ["gastos", "ordenes_compra", "caja_chica"]), e("comparacion", ["mes", "anio"]), society(), e("moneda", ["PEN", "USD"], true)] },
+  { name: "asistente_top_n", desc: "Ranking Top N. Úsala cuando pidan top, mayores o un ranking: proveedores con más gastos, categorías con más gastos, cuentas/clientes con mayor saldo por cobrar o materiales con más stock/valor. Top clientes significa mayor saldo CxC, incluidos prospectos con facturas. Proveedores y categorías admiten periodo/ultimos_meses o desde/hasta (máximo 36 meses); CxC y stock son cortes actuales. No sumes monedas; indica total de moneda, porcentaje de participación y elementos fuera del Top N si están disponibles.", params: [e("ranking", ["proveedores_gasto", "categorias_gasto", "clientes_cxc", "materiales_stock"]), { name: "n", kind: "integer", max: 40, optional: true }, society(), e("periodo", ["mes_actual", "mes_anterior", "trimestre_actual", "anio_actual", "ultimos_meses"], true), { name: "ultimos_meses", kind: "integer", max: 36, optional: true }, d("desde", true), d("hasta", true)] },
   { name: "asistente_consultar_manual", desc: "Usa siempre e inmediatamente esta herramienta, sin preguntar antes, para preguntas de cómo, cuándo, dónde o en qué momento se hace algo en el ERP, y para explicar pantallas o procesos. Usa la pantalla del contexto si existe. Responde en dos partes: (i) lo que dice el manual; (ii) una línea final que empiece exactamente 'Buena práctica:' con orientación general de gestión, no una regla del sistema. Si el manual no cubre el tema, dilo claramente y ofrece solo esa orientación general. Esa orientación nunca inventa pantallas, botones, permisos ni pasos del ERP. Nunca la uses para consultar datos del ERP.", params: [s("texto", 300, true), s("pantalla", 100, true), n("limite", true)] },
   { name: "asistente_detalle_orden_compra", params: [id("oc_id"), society()] },
   { name: "asistente_buscar_recepciones", params: [id("orden_compra_id", true), d("desde", true), d("hasta", true), n("limite", true), society()] },
@@ -151,6 +152,10 @@ export const TOPIC_COVERAGE = [
   { name: "tesorería/bancos", question: /\b(?:bancos?|tesoreria|saldo\s+(?:en|de)\s+cuentas?)\b/iu, tools: ["asistente_resumen_tesoreria", "asistente_buscar_movimientos_tesoreria"] },
   { name: "cuentas por cobrar", question: /\b(?:por\s+cobrar|cxc)\b/iu, tools: ["asistente_resumen_cxc", "asistente_buscar_cxc"] },
   { name: "caja chica", question: /\bcaja\s+chica\b/iu, tools: ["asistente_resumen_caja_chica", "asistente_buscar_caja_chica", "asistente_resumen_mensual", "asistente_comparar_periodos"] },
+  { name: "gastos por proveedor", question: /\b(?:top|mayores?|ranking)\b.{0,50}\bproveedor(?:es)?\b|\bproveedor(?:es)?\b.{0,50}\b(?:top|mayores?|ranking|gastos)\b|\bgastos?\s+por\s+proveedor(?:es)?\b|\bproveedor(?:es)?\s+por\s+gastos?\b/iu, tools: ["asistente_top_n", "asistente_buscar_gastos", "asistente_resumen_mensual"] },
+  { name: "categorías de gasto", question: /\bcategorias?\s+de\s+gastos?\b|\bgastos?\s+por\s+categorias?\b|\btop\s+categorias?\b/iu, tools: ["asistente_top_n", "asistente_buscar_gastos", "asistente_resumen_mensual"] },
+  { name: "clientes con mayor saldo por cobrar", question: /\b(?:clientes?|cuentas?)\b.{0,60}\b(?:mayor(?:es)?\s+saldo|saldo\s+mayor|top|ranking)\b.{0,35}\b(?:cobrar|cxc|saldo)?\b|\b(?:top|ranking)\s+(?:clientes?|cuentas?)\b/iu, tools: ["asistente_top_n", "asistente_resumen_cxc", "asistente_buscar_cxc"] },
+  { name: "materiales por stock o valor", question: /\b(?:top|ranking|mayores?)\b.{0,50}\bmaterial(?:es)?\b|\bmaterial(?:es)?\b.{0,50}\b(?:top|ranking|mayores?|stock|valor|mas\s+(?:stock|valor))\b/iu, tools: ["asistente_top_n", "asistente_resumen_stock", "asistente_consultar_stock"] },
 ] as const;
 const normalizeTopicText = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 export function topicsWithoutCoverage(question: string, toolsUsed: string[]): string[] {
@@ -287,6 +292,13 @@ export function validateArgs(spec: ToolSpec, args: unknown, sociedadId?: string)
   if (spec.name === "asistente_resumen_mensual") {
     const hasDesde = input.desde !== undefined && input.desde !== null;
     const hasHasta = input.hasta !== undefined && input.hasta !== null;
+    if (hasDesde !== hasHasta || (hasDesde && !rangeWithin36Months(String(input.desde), String(input.hasta)))) return null;
+  }
+  if (spec.name === "asistente_top_n") {
+    const gasto = input.ranking === "proveedores_gasto" || input.ranking === "categorias_gasto";
+    const hasDesde = input.desde !== undefined && input.desde !== null;
+    const hasHasta = input.hasta !== undefined && input.hasta !== null;
+    if (!gasto && (hasDesde || hasHasta || input.periodo != null || input.ultimos_meses != null)) return null;
     if (hasDesde !== hasHasta || (hasDesde && !rangeWithin36Months(String(input.desde), String(input.hasta)))) return null;
   }
   return mapped;
@@ -473,6 +485,14 @@ export function createHandler(deps: HandlerDeps) {
               p_hasta_anterior: ranges.anterior.hasta,
             });
             delete mapped.p_comparacion;
+          } else if (spec.name === "asistente_top_n" && (toolArgs.ranking === "proveedores_gasto" || toolArgs.ranking === "categorias_gasto")) {
+            const hasExplicitRange = toolArgs.desde != null && toolArgs.hasta != null;
+            const period = typeof toolArgs.periodo === "string" ? toolArgs.periodo : "ultimos_meses";
+            const months = Number.isInteger(toolArgs.ultimos_meses) ? toolArgs.ultimos_meses as number : period === "ultimos_meses" ? 6 : 1;
+            const range = hasExplicitRange ? { desde: toolArgs.desde as string, hasta: toolArgs.hasta as string } : relativeDateRange(today, months, period);
+            Object.assign(mapped, { p_desde: range.desde, p_hasta: range.hasta });
+            delete mapped.p_periodo;
+            delete mapped.p_ultimos_meses;
           }
           toolsUsed.push(spec.name);
           const rpcArgs = { p_empresa_id: body.empresa_id, ...mapped };
