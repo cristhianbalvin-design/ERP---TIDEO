@@ -907,7 +907,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
         : 'Falló el guardado de tareas. Corrige las tareas con error antes de volver a guardar.');
       return false;
     }
-    if (selected.tipo === 'mantenimiento' && hallazgosDirty) {
+    if (selected.tipo === 'mantenimiento' && (hallazgosDirty || Number(hallazgosDirtySummary.cambios || 0) > 0)) {
       const result = await hallazgosSaveRef.current?.();
       if (result && !result.ok) {
         setError(`Se guardaron las tareas pero fallaron los hallazgos: ${result.error}`);
@@ -1300,12 +1300,12 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           <div className={`${selected.tipo === 'fabricacion' ? 'dx-body dx-body-fabricacion' : 'dx-body'}${selected.tipo === 'mantenimiento' && (informePanel || workStep <= 3) ? ' dx-work-hidden' : ''}${selected.tipo === 'mantenimiento' && hallazgoView === 'editor' ? ' dx-hallazgo-editor-mode' : ''}`}>
             {selected.tipo === 'mantenimiento' && form.referencia?.activo && <div className="dx-muted">Activo: {form.referencia.activo}</div>}
             {selected.tipo === 'mantenimiento' ? <>
-              {workStep === 4 && <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-hallazgos-title">
+              <section className="dx-diagnostico-resumen-section" style={workStep === 4 ? undefined : { display: 'none' }} aria-labelledby="dx-hallazgos-title">
                 <header className="dx-diagnostico-resumen-heading"><span>1</span><div><h3 id="dx-hallazgos-title">Hallazgos</h3><p>Registra las condiciones encontradas y las acciones recomendadas.</p></div></header>
                 <div className="dx-hallazgos">
                   <HallazgosTrabajoPanel empresaId={empresaId} diagnostico={selected} lines={selected.lineas || []} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} extraFamilyIds={extraFamilyIds} onExtraFamilyIdsChange={setExtraFamilyIds} onCreateFamily={crearFamilia} onRemoveFamilyLines={queueFamilyLineDeletes} canEdit={canEditLines} readOnly={isReadOnly} onRegisterSave={saveFunction => { hallazgosSaveRef.current = saveFunction; }} onRegisterAddHallazgo={add => { hallazgosAddRef.current = add; }} onRegisterAddOtro={add => { hallazgosAddOtroRef.current = add; }} onRegisterBackToList={back => { hallazgosBackRef.current = back; }} onViewChange={view => { setHallazgoView(view); setWorkStep(4); setInformePanel(false); }} onRegisterGoToIncomplete={goTo => { goToIncompleteHallazgoRef.current = goTo; }} onDirtyChange={setHallazgosDirty} onDirtySummary={setHallazgosDirtySummary} onItemsChange={items => setSelected(current => current?.id === selected.id ? { ...current, hallazgos: items } : current)} onSavingChange={setHallazgosSaving} onError={message => setError(message || '')} onNotice={setNotice} />
                 </div>
-              </section>}
+              </section>
               {workStep === 5 && <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-realizar-title">
                 <header className="dx-diagnostico-resumen-heading dx-work-step-heading"><span>5</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</button>}</header>
                 <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>

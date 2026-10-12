@@ -139,7 +139,8 @@ describe('HallazgosTrabajoPanel', () => {
     const css = readFileSync(new URL('../src/zahory-mock/styles/zahory.css', import.meta.url), 'utf8');
     const source = readFileSync(new URL('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx', import.meta.url), 'utf8');
     expect(source).toContain('PASOS_MANTENIMIENTO.map((label, index)');
-    expect(source).toContain("workStep === 4 && <section");
+    expect(source).toContain("style={workStep === 4 ? undefined : { display: 'none' }}");
+    expect(source).toContain('<HallazgosTrabajoPanel empresaId={empresaId}');
     expect(source).toContain("workStep === 5 && <section");
     expect(source).toContain("informePanel && <>");
     expect(css).toContain('.dx-work-steps{grid-template-columns:repeat(6,minmax(0,1fr))}');

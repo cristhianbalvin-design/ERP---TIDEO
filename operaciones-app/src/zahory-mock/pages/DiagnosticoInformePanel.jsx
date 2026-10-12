@@ -366,7 +366,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
           {isEditable && motivoEmision && <p className="dx-inf-emit-help" role="status">{motivoEmision}</p>}
           {isEditable && !motivoEmision && motivoCambiosSinGuardar && <p className="dx-inf-emit-help" role="status">{motivoCambiosSinGuardar}</p>}
           {seleccionVersion?.estado === 'emitido' && seleccionVersion?.snapshot && <button type="button" className="dx-inf-save" onClick={descargarPdf} disabled={generandoPdf}>{generandoPdf ? 'Generando PDF\u2026' : 'Descargar PDF'}</button>}
-          {confirmarEmision && isEditable && <section className="dx-informe-emitir-panel" aria-label="Confirmar emisi\u00f3n">
+          {confirmarEmision && isEditable && <section className="dx-informe-emitir-panel" aria-label="Confirmar emisión">
             {emisoresPersona.length > 0 ? <>
               <label htmlFor="dx-inf-emisor-persona">Persona que firma</label>
               <EmisorPersonaSelector personas={emisoresPersona} value={emisorPersonaId} onChange={setEmisorPersonaId} disabled={emitiendo} />
