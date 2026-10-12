@@ -1,0 +1,308 @@
+﻿<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mock Almacén WMS — Transferencias y reubicación</title><style>
+/* Variables copiadas de zahory.css, sección DX-UI base */
+.dx-ui{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',system-ui,sans-serif;
+}
+[data-theme='dark'] .dx-ui{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
+[data-theme='dark'] body{background:#020617}
+.mock-shell{display:flex;min-height:100vh}
+.mock-side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.mock-side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.mock-side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.mock-side span.on{background:rgba(255,255,255,.12);color:#fff}
+.mock-side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.mock-main{flex:1;min-width:0;padding:24px 28px}
+@media (max-width:900px){.mock-side{display:none}.mock-main{padding:16px}}
+
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-card);border-color:var(--dx-ui-navy)}
+[data-theme='dark'] .dx-btn.primary{color:#0F172A}
+.dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-btn[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line);cursor:not-allowed}
+
+.dx-ui-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.dx-ui-tab{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--dx-ui-line);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-ui-tab.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:transparent}
+
+/* Base compartida (copia de zahory.css) */
+.dx-ui-summary { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.dx-ui-chip { display:flex; align-items:baseline; gap:8px; padding:8px 16px; border:1px solid var(--dx-ui-line); border-radius:10px; background:var(--dx-ui-card); }
+.dx-ui-chip b { color:var(--dx-ui-navy); font:700 20px 'Sora',sans-serif; }
+.dx-ui-chip span { color:var(--dx-ui-gray); font-size:12px; }
+.dx-ui-card { container-type:inline-size; overflow:hidden; width:100%; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 1px 2px rgba(15,27,48,.04); margin-bottom:16px; }
+.dx-ui-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-ui-toolbar h2 { margin:0 auto 0 0; color:var(--dx-ui-navy); font:700 16px/1.4 'Sora',sans-serif; }
+.dx-ui-count { color:var(--dx-ui-gray); font-size:12px; white-space:nowrap; }
+.dx-ui-search { display:flex; align-items:center; gap:8px; width:340px; max-width:100%; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-gray); }
+.dx-ui-search:focus-within { border-color:var(--dx-ui-cyan); box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent); }
+.dx-ui-search input { flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-ui-head,.dx-ui-row { display:grid; grid-template-columns:var(--dx-ui-cols,minmax(0,1fr)); column-gap:16px; align-items:center; padding-inline:20px; }
+.dx-ui-head { min-height:38px; border-bottom:1px solid var(--dx-ui-line); background:var(--dx-ui-head); color:var(--dx-ui-gray); font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.dx-ui-row { min-height:68px; border-bottom:1px solid var(--dx-ui-line-soft); cursor:pointer; transition:background .12s; }
+.dx-ui-row:last-child { border-bottom:0; }
+.dx-ui-row:hover { background:var(--dx-ui-hover); }
+.dx-ui-row:hover .dx-ui-arrow { color:var(--dx-ui-navy); transform:translateX(2px); }
+.dx-ui-row:focus-visible { position:relative; z-index:1; outline:2px solid var(--dx-ui-cyan); outline-offset:-2px; }
+.dx-ui-icon { display:flex; flex:none; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; }
+.dx-ui-icon.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-icon.is-violet { background:var(--dx-ui-violet-bg); color:var(--dx-ui-violet); }
+.dx-ui-pill { display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; white-space:nowrap; }
+.dx-ui-pill i { width:6px; height:6px; flex:none; border-radius:50%; background:currentColor; }
+.dx-ui-pill.is-amber { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
+.dx-ui-pill.is-amber i { background:var(--dx-ui-amber-dot); }
+.dx-ui-pill.is-green { background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-ui-pill.is-red { background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
+.dx-ui-pill.is-red i { background:var(--dx-ui-red-dot); }
+.dx-ui-pill.is-gray { background:var(--dx-ui-gray-bg); color:var(--dx-ui-gray-fg); }
+.dx-ui-pill.is-gray i { background:var(--dx-ui-gray-dot); }
+.dx-ui-pill.is-cyan { background:var(--dx-ui-cyan-bg); color:var(--dx-ui-cyan-fg); }
+.dx-ui-arrow { color:#9AA3B2; transition:.12s; }
+.dx-ui-empty { padding:48px 20px; color:var(--dx-ui-gray); text-align:center; }
+@container (max-width:760px) {
+  .dx-ui-head { display:none; }
+  .dx-ui-row { row-gap:8px; padding:14px 16px; }
+}
+/* Reglas propias: Stock y Kardex (dx-stk-) */
+.dx-stk-cols { --dx-ui-cols:minmax(0,1fr) 84px 96px 104px 116px 124px 20px; }
+.dx-stk-main{display:flex;align-items:center;gap:12px;min-width:0}
+.dx-stk-main > span:last-child{min-width:0}
+.dx-stk-main b{display:block;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dx-stk-main small{display:block;color:var(--dx-ui-gray);font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+@container (max-width:860px){.dx-stk-kcols .dx-stk-main b,.dx-stk-kcols .dx-stk-main small,.dx-stk-dcols .dx-stk-main b,.dx-stk-dcols .dx-stk-main small{white-space:normal}}
+.dx-stk-n{font:600 14px 'Sora',sans-serif;color:var(--dx-ui-navy);text-align:right;white-space:nowrap}
+.dx-stk-n small{display:block;font:500 11px 'DM Sans',sans-serif;color:var(--dx-ui-gray)}
+.dx-stk-n.is-low{color:var(--dx-ui-amber-fg)}
+.dx-stk-n.is-out{color:var(--dx-ui-red-fg)}
+.dx-stk-lbl{display:none;color:var(--dx-ui-gray);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-stk-filters{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-stk-sel{height:36px;min-width:170px;padding:0 12px;border-radius:999px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-ink);font:600 13px 'DM Sans',sans-serif}
+.dx-stk-sel:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-stk-note{margin-bottom:16px;padding:12px 16px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:13px}
+.dx-stk-chip-hl b{color:var(--dx-ui-cyan-fg)}
+.dx-stk-chip-warn b{color:var(--dx-ui-amber-fg)}
+.dx-stk-chip-bad b{color:var(--dx-ui-red-fg)}
+@container (max-width:860px){
+  .dx-stk-cols { --dx-ui-cols:repeat(3,minmax(0,1fr)) auto; grid-template-areas:"main main main pill" "fis disp val val"; }
+  .dx-stk-cols > :nth-child(1){grid-area:main}
+  .dx-stk-cols > :nth-child(2){grid-area:fis}
+  .dx-stk-cols > :nth-child(3){grid-area:disp}
+  .dx-stk-cols > :nth-child(4){display:none}
+  .dx-stk-cols > :nth-child(5){grid-area:val}
+  .dx-stk-cols > :nth-child(6){grid-area:pill;justify-self:end}
+  .dx-stk-cols > .dx-ui-arrow{display:none}
+  .dx-stk-cols .dx-stk-n{text-align:left}
+  .dx-stk-cols .dx-stk-lbl{display:block}
+}
+/* Kardex global */
+.dx-stk-kcols { --dx-ui-cols:96px minmax(0,1fr) 132px 84px 96px 84px 20px; }
+.dx-stk-date{color:var(--dx-ui-gray);font-size:13px;white-space:nowrap}
+.dx-stk-qty{font:700 14px 'Sora',sans-serif;text-align:right;white-space:nowrap}
+.dx-stk-qty.in{color:var(--dx-ui-green-fg)}
+.dx-stk-qty.out{color:var(--dx-ui-amber-fg)}
+.dx-stk-kcols.is-void{opacity:.5}
+.dx-stk-kcols.is-void .dx-stk-main b{text-decoration:line-through}
+@container (max-width:860px){
+  .dx-stk-kcols { --dx-ui-cols:repeat(3,minmax(0,1fr)); grid-template-areas:"main main main" "date pill pill" "cost qty bal"; }
+  .dx-stk-kcols > :nth-child(1){grid-area:date}
+  .dx-stk-kcols > :nth-child(2){grid-area:main}
+  .dx-stk-kcols > :nth-child(3){grid-area:pill;justify-self:end}
+  .dx-stk-kcols > :nth-child(4){grid-area:qty;justify-self:center}
+  .dx-stk-kcols > :nth-child(5){grid-area:cost}
+  .dx-stk-kcols > :nth-child(6){grid-area:bal;justify-self:end}
+  .dx-stk-kcols > .dx-ui-arrow{display:none}
+  .dx-stk-kcols .dx-stk-n{text-align:left}
+  .dx-stk-kcols > :nth-child(6).dx-stk-n{text-align:right}
+}
+/* Detalle de material */
+.dx-stk-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:12px;color:var(--dx-ui-cyan-fg);font-weight:600;cursor:pointer;background:none;border:0;padding:0;font-family:inherit;font-size:14px}
+.dx-stk-back:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-stk-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:16px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-stk-meta div small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-stk-meta div span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@container (max-width:860px){.dx-stk-meta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dx-stk-wcols { --dx-ui-cols:minmax(0,1fr) 120px 96px 76px 84px; cursor:default; }
+.dx-stk-wcols.dx-ui-row{cursor:default;min-height:60px}
+.dx-stk-wcols.dx-ui-row:hover{background:transparent}
+@container (max-width:860px){
+  .dx-stk-wcols { --dx-ui-cols:minmax(0,1fr) minmax(0,1fr); grid-template-areas:"main main" "uso lote" "fis res"; }
+  .dx-stk-wcols > :nth-child(1){grid-area:main}
+  .dx-stk-wcols > :nth-child(2){grid-area:uso}
+  .dx-stk-wcols > :nth-child(3){grid-area:lote}
+  .dx-stk-wcols > :nth-child(4){grid-area:fis}
+  .dx-stk-wcols > :nth-child(5){grid-area:res}
+  .dx-stk-wcols .dx-stk-n{text-align:left}
+  .dx-stk-wcols .dx-stk-lbl{display:block}
+}
+.dx-stk-dcols { --dx-ui-cols:96px 132px minmax(0,1fr) 84px 96px 84px; cursor:default; }
+.dx-stk-dcols.dx-ui-row{cursor:default;min-height:60px}
+.dx-stk-dcols.dx-ui-row:hover{background:transparent}
+.dx-stk-dcols.is-void{opacity:.5}
+@container (max-width:860px){
+  .dx-stk-dcols { --dx-ui-cols:repeat(3,minmax(0,1fr)); grid-template-areas:"main main main" "date pill pill" "cost qty bal"; }
+  .dx-stk-dcols > :nth-child(1){grid-area:date}
+  .dx-stk-dcols > :nth-child(2){grid-area:pill;justify-self:end}
+  .dx-stk-dcols > :nth-child(3){grid-area:main}
+  .dx-stk-dcols > :nth-child(4){grid-area:qty;justify-self:center}
+  .dx-stk-dcols > :nth-child(5){grid-area:cost}
+  .dx-stk-dcols > :nth-child(6){grid-area:bal;justify-self:end}
+  .dx-stk-dcols .dx-stk-n{text-align:left}
+  .dx-stk-dcols > :nth-child(6).dx-stk-n{text-align:right}
+}
+@container (max-width:860px){
+  .dx-ui-head.dx-stk-cols,.dx-ui-head.dx-stk-kcols,.dx-ui-head.dx-stk-wcols,.dx-ui-head.dx-stk-dcols{display:none}
+  .dx-ui-row.dx-stk-cols,.dx-ui-row.dx-stk-kcols,.dx-ui-row.dx-stk-wcols,.dx-ui-row.dx-stk-dcols{row-gap:8px;padding:14px 16px}
+}
+.theme-toggle{position:fixed;right:14px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+/* ===== Fase 2b-A: movimientos (dx-mov-) ===== */
+.dx-mov-overlay{position:fixed;inset:0;z-index:40;background:rgba(15,27,48,.45)}
+.dx-mov-panel{position:fixed;top:0;right:0;bottom:0;z-index:41;display:flex;flex-direction:column;width:min(480px,100vw);background:var(--dx-ui-card);box-shadow:-8px 0 30px rgba(15,27,48,.25);color:var(--dx-ui-ink)}
+.dx-mov-panel header,.dx-mov-panel footer{display:flex;flex:0 0 auto;align-items:center;gap:10px;padding:16px 20px}
+.dx-mov-panel header{border-bottom:1px solid var(--dx-ui-line)}
+.dx-mov-panel header h2{flex:1;min-width:0;margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif;overflow-wrap:anywhere}
+.dx-mov-panel footer{justify-content:flex-end;border-top:1px solid var(--dx-ui-line)}
+.dx-mov-x{width:36px;height:36px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font-size:20px;cursor:pointer}
+.dx-mov-x:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-mov-body{flex:1 1 auto;min-height:0;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+.dx-mov-f label{display:block;margin-bottom:6px;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-f small{display:block;margin-top:6px;color:var(--dx-ui-gray);font-size:12px}
+.dx-mov-f small.bad{color:var(--dx-ui-red-fg)}
+.dx-mov-field{width:100%;min-width:0;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+textarea.dx-mov-field{height:auto;min-height:72px;padding:10px 12px;resize:vertical}
+.dx-mov-field:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-mov-field.is-bad{border-color:var(--dx-ui-red-dot)}
+.dx-mov-field[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)}
+.dx-mov-row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.dx-mov-ro{padding:10px 12px;border-radius:8px;background:var(--dx-ui-gray-bg);color:var(--dx-ui-navy);font-weight:600}
+.dx-mov-seg{display:flex;gap:6px}
+.dx-mov-seg button{flex:1;height:40px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-mov-seg button.on{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);border-color:var(--dx-ui-cyan)}
+.dx-mov-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-mov-sum{padding:12px 14px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-mov-sum small{display:block;margin-bottom:4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-sum div{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
+.dx-mov-sum b{font-family:'Sora',sans-serif}
+.dx-mov-warn{padding:12px 14px;border-radius:10px;background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg);font-size:13px}
+.dx-mov-alert{padding:12px 14px;border-radius:10px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);font-size:13px}
+.dx-mov-toast{margin-bottom:12px;padding:10px 16px;border-radius:10px;background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg);font-size:13px;font-weight:600}
+.dx-stk-dcols.dx-ui-row.dx-mov-click{cursor:pointer}
+.dx-stk-dcols.dx-ui-row.dx-mov-click:hover{background:var(--dx-ui-hover)}
+.dx-stk-dcols.dx-ui-row.dx-mov-click:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-mov-dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.dx-mov-dl small{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-mov-dl span{display:block;margin-top:2px;color:var(--dx-ui-navy);font-weight:600;overflow-wrap:anywhere}
+.dx-mov-confirm{position:fixed;z-index:23;top:50%;left:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:22px;border-radius:14px;background:var(--dx-ui-card);box-shadow:0 12px 40px rgba(15,27,48,.35);color:var(--dx-ui-ink)}
+.dx-mov-confirm h2{margin:0 0 8px;color:var(--dx-ui-navy);font:700 17px 'Sora',sans-serif}
+.dx-mov-confirm p{margin:0 0 14px;color:var(--dx-ui-gray)}
+.dx-mov-confirm-f{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.dx-btn.danger{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot)}
+.dx-btn.danger[disabled]{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);border-color:var(--dx-ui-line)}
+.mock-toggle2{position:fixed;right:150px;bottom:14px;z-index:5;height:40px;padding:0 14px;border-radius:999px;border:1px solid #C9CFD8;background:#fff;color:#1A2B4A;font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+@media (max-width:520px){.dx-mov-row2,.dx-mov-dl{grid-template-columns:minmax(0,1fr)}.mock-toggle2{right:14px;bottom:62px}}
+
+/* Transferencias: panel accesible y superficies de detalle */
+.dx-mov-panel,.dx-mov-detail{margin:0}
+#detailOverlay{z-index:42}.dx-mov-detail,.dx-mov-confirm{z-index:43}
+.dx-mov-panel[hidden],.dx-mov-overlay[hidden],.dx-mov-confirm[hidden]{display:none}
+.dx-mov-overlay{z-index:40}.dx-mov-panel{z-index:41}
+.dx-mov-panel header,.dx-mov-panel footer{min-height:68px}
+.dx-mov-body{overscroll-behavior:contain}
+.dx-mov-body .dx-mov-f{display:block}
+.dx-mov-body .dx-mov-f label{color:var(--dx-ui-gray)}
+.dx-mov-shortcut{min-height:44px;margin-top:7px;padding:0 12px;border:1px solid var(--dx-ui-cyan);border-radius:8px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+.dx-mov-shortcut:focus-visible,.dx-mov-panel button:focus-visible,.dx-mov-confirm button:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-mov-hint{padding:10px 12px;border-radius:8px;background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg);font-size:12px}
+.dx-mov-row-actions{display:flex;align-items:center;justify-content:flex-end}
+.dx-mov-row-actions .dx-btn{min-height:44px}
+.dx-mov-disabled{display:inline-flex;align-items:center;min-height:44px;color:var(--dx-ui-gray);font-size:12px}
+.dx-mov-status{margin:12px 0;padding:12px 14px;border:1px solid var(--dx-ui-red-dot);border-radius:10px;background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)}
+.dx-mov-detail{position:fixed;z-index:23;inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:20px;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 12px 40px rgba(15,27,48,.35);color:var(--dx-ui-ink)}
+.dx-mov-detail[hidden]{display:none}.dx-mov-detail h2{margin:0;color:var(--dx-ui-navy);font:700 18px 'Sora',sans-serif}
+.dx-mov-detail header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.dx-mov-detail header .dx-mov-x{margin-left:auto;min-width:44px;min-height:44px}
+.dx-mov-detail .dx-mov-dl{margin:14px 0}
+.dx-mov-detail footer{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.dx-mov-link{color:var(--dx-ui-cyan-fg);font-weight:600}
+.dx-ui-row.dx-stk-wcols{grid-template-columns:minmax(0,1fr) 120px 96px 76px 84px auto;gap:10px}
+@media(max-width:600px){
+ .dx-mov-row2,.dx-mov-dl{grid-template-columns:minmax(0,1fr)}
+ .mock-toggle2{right:14px;bottom:62px}
+ .dx-mov-panel{width:100vw}
+ .dx-mov-panel header,.dx-mov-panel footer{padding:12px 16px}
+ .dx-mov-body{padding:16px}
+ .dx-mov-panel footer .dx-btn{flex:1;min-height:48px}.dx-mov-panel .dx-mov-x{min-width:44px;min-height:44px}
+ .dx-mov-detail{width:calc(100vw - 16px);max-height:calc(100vh - 16px);padding:16px}
+ .dx-ui-row.dx-stk-wcols{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:'main main' 'uso lote' 'fis res' 'actions actions'}
+ .dx-ui-row.dx-stk-wcols>:nth-child(1){grid-area:main}.dx-ui-row.dx-stk-wcols>:nth-child(2){grid-area:uso}.dx-ui-row.dx-stk-wcols>:nth-child(3){grid-area:lote}.dx-ui-row.dx-stk-wcols>:nth-child(4){grid-area:fis}.dx-ui-row.dx-stk-wcols>:nth-child(5){grid-area:res}.dx-ui-row.dx-stk-wcols>:nth-child(6){grid-area:actions}
+}</style></head><body><div class="mock-shell">
+  <aside class="mock-side"><b>TIDEO · Operaciones</b><small>ALMACÉN</small><span class="on">Inventario &amp; Kardex</span><span>Entradas &amp; Salidas</span><span>Recepciones</span><span>Ubicaciones</span><span>Reserva de Repuestos</span><span>Stock Mínimos &amp; Alertas</span></aside>
+  <main class="mock-main"><section class="dx-ui dx-stk" id="root">
+    <div class="dx-ui-head-page"><div><div class="dx-ui-eyebrow">Almacén · WMS · Fase 2b-B</div><h1 class="dx-ui-title" id="pageTitle">Inventario &amp; Kardex</h1><p class="dx-ui-sub" id="pageSub">Consulta stock y registra transferencias atómicas entre ubicaciones y almacenes.</p></div><div class="dx-ui-actions" id="pageActions"></div></div>
+    <div class="dx-ui-tabs" role="tablist" id="tabs"><button class="dx-ui-tab on" role="tab" data-view="stock">Stock</button><button class="dx-ui-tab" role="tab" data-view="kardex">Kardex</button></div><div id="view"></div>
+  </section></main>
+</div>
+<button class="mock-toggle2" id="rolBtn" aria-label="Cambiar el rol simulado">Rol: Almacenero (crear)</button><button class="theme-toggle" id="themeBtn" aria-label="Cambiar tema claro u oscuro">Modo oscuro</button>
+<div class="dx-mov-overlay" id="overlay" hidden></div>
+<section class="dx-ui dx-stk dx-mov-panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="panelTitle" hidden></section>
+<div class="dx-mov-overlay" id="detailOverlay" hidden></div><section class="dx-ui dx-stk dx-mov-detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="detailTitle" hidden></section>
+<script>
+const ALMACENES=[{id:'ALM-001',nombre:'Almacén Central',soc:'TIDEO'},{id:'ALM-002',nombre:'Almacén Taller',soc:'TIDEO'},{id:'ALM-003',nombre:'Almacén Externo',soc:'TERCERA'}];
+const UB={GEN:{n:'General',uso:'almacenaje',act:true},R01:{n:'Rack 01 · Posición 01',uso:'almacenaje',act:true},CUA:{n:'Cuarentena · en revisión',uso:'cuarentena',act:true},MER:{n:'Zona de merma',uso:'merma',act:true},INACT:{n:'Rack 99 · inactivo',uso:'almacenaje',act:false}};
+const MATS=[
+{id:'M1',cod:'MAT-001245',nombre:'Filtro de aceite hidráulico HF-220',cat:'Filtros',und:'und',ctl:'Por lote',cp:85.81,stock:[{alm:'ALM-001',ubi:'R01',lote:'L-1001',serie:'',fis:6,res:3},{alm:'ALM-001',ubi:'CUA',lote:'L-0888',serie:'',fis:14,res:0},{alm:'ALM-002',ubi:'GEN',lote:'—',serie:'',fis:7,res:0}]},
+{id:'M2',cod:'MAT-000455',nombre:'Grasa de litio EP2 cartucho 400 g',cat:'Lubricantes',und:'und',ctl:'Por lote',cp:17.99,stock:[{alm:'ALM-001',ubi:'GEN',lote:'L-0911',serie:'',fis:393,res:0}]},
+{id:'M3',cod:'MAT-000873',nombre:'Rodamiento rígido 6205-2RS (serie)',cat:'Rodamientos',und:'und',ctl:'Por serie',cp:14.2,stock:[{alm:'ALM-001',ubi:'R01',lote:'—',serie:'SR-00081',fis:1,res:0}]},
+{id:'M4',cod:'MAT-000099',nombre:'Tambor lubricante 200 L',cat:'Lubricantes',und:'und',ctl:'Por lote',cp:1150,stock:[{alm:'ALM-001',ubi:'MER',lote:'L-0930',serie:'',fis:5,res:0}]}
+];
+let K=[],kid=0,view='stock',matSel=null,role=true,query='',selectedMove=null,focusReturn=null,panelMode='new',serverFail=false;
+const $=s=>document.querySelector(s), money=n=>'S/ '+Number(n).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}), int=n=>Number(n).toLocaleString('es-PE'), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const alm=id=>ALMACENES.find(x=>x.id===id), loc=x=>`${UB[x.ubi].n} · ${alm(x.alm).nombre}`, item=id=>MATS.find(m=>m.id===id);
+const ICON='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>';
+function pill(t,cls='is-cyan'){return `<span class="dx-ui-pill ${cls}"><i></i>${t}</span>`}
+function sortedK(){return [...K].sort((a,b)=>b.id-a.id)}
+function render(){document.querySelectorAll('#tabs .dx-ui-tab').forEach(t=>t.classList.toggle('on',t.dataset.view===view));$('#tabs').style.display=matSel?'none':'';matSel?renderDetailStock():view==='kardex'?renderKardex():renderStock()}
+function renderStock(){ $('#pageTitle').textContent='Inventario & Kardex';$('#pageSub').textContent='Consulta stock y registra transferencias atómicas entre ubicaciones y almacenes.';$('#pageActions').innerHTML=role?'<button class="dx-btn primary" id="transferTop">Transferir</button>':'<span class="dx-mov-disabled" title="Tu rol no tiene permiso crear" aria-label="Transferir oculto: tu rol no tiene permiso crear">Rol sin permiso crear</span>';const rows=MATS.filter(m=>(m.nombre+m.cod).toLowerCase().includes(query.toLowerCase())).map(m=>{let fis=m.stock.reduce((a,s)=>a+s.fis,0),free=m.stock.reduce((a,s)=>a+s.fis-s.res,0);return `<div class="dx-ui-row dx-stk-cols" role="button" tabindex="0" data-mat="${m.id}" aria-label="Abrir ${esc(m.nombre)}"><div class="dx-stk-main"><span class="dx-ui-icon is-cyan">${ICON}</span><span><b>${esc(m.nombre)}</b><small>${m.cod} · ${m.cat}</small></span></div><div class="dx-stk-n"><span class="dx-stk-lbl">Físico</span>${int(fis)} ${m.und}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Disponible</span>${int(free)}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Costo prom.</span>${money(m.cp)}</div><div class="dx-stk-n">${money(fis*m.cp)}</div><span>${pill(free?'Disponible':'Agotado',free?'is-green':'is-red')}</span>${ICON}</div>`}).join('');$('#view').innerHTML=`<div class="dx-ui-summary"><div class="dx-ui-chip"><b>${MATS.length}</b><span>Materiales de ejemplo</span></div><div class="dx-ui-chip"><b>${K.length}</b><span>Asientos kardex</span></div><div class="dx-ui-chip"><b>${money(MATS.reduce((n,m)=>n+m.stock.reduce((a,s)=>a+s.fis,0)*m.cp,0))}</b><span>Valor ilustrativo</span></div></div><div class="dx-stk-note">Este mock mantiene cada transferencia como dos asientos enlazados. El lote o número de serie acompaña al stock; lo reservado permanece en origen.</div><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Materiales</h2><label class="dx-ui-search">⌕ <input id="q" placeholder="Buscar material o código" value="${esc(query)}" aria-label="Buscar material"></label></div><div class="dx-ui-head dx-stk-cols"><span>Material</span><span>Físico</span><span>Disponible</span><span>Costo prom.</span><span>Valor</span><span>Estado</span><span></span></div>${rows}</div>`;$('#transferTop')?.addEventListener('click',()=>openPanel({}));$('#q').addEventListener('input',e=>{query=e.target.value;renderStock();$('#q').focus()});document.querySelectorAll('[data-mat]').forEach(n=>{n.onclick=()=>{matSel=n.dataset.mat;render()};n.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();matSel=n.dataset.mat;render()}}}) }
+function renderDetailStock(){let m=item(matSel);$('#pageTitle').textContent=m.nombre;$('#pageSub').textContent=m.cod+' · '+m.cat;$('#pageActions').innerHTML='';let rows=m.stock.map((s,i)=>`<div class="dx-ui-row dx-stk-wcols"><div class="dx-stk-main"><span><b>${UB[s.ubi].n}</b><small>${alm(s.alm).nombre}</small></span></div><span>${pill(UB[s.ubi].uso==='almacenaje'?'Almacenaje':UB[s.ubi].uso,'is-amber')}</span><div class="dx-stk-n"><span class="dx-stk-lbl">Lote / serie</span>${esc(s.lote==='—'?s.serie:s.lote)}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Físico</span>${s.fis}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Reservado</span>${s.res}</div><div class="dx-mov-row-actions">${role?`<button class="dx-btn" data-move="${i}">Mover</button>`:'<span class="dx-mov-disabled" title="Tu rol no tiene permiso crear" aria-label="Mover oculto: tu rol no tiene permiso crear">Rol sin permiso crear</span>'}</div></div>`).join('');$('#view').innerHTML=`<button class="dx-stk-back" id="back">← Volver a Stock</button><div class="dx-ui-summary"><div class="dx-ui-chip"><b>${m.stock.reduce((a,s)=>a+s.fis,0)}</b><span>Físico (${m.und})</span></div><div class="dx-ui-chip"><b>${m.stock.reduce((a,s)=>a+s.res,0)}</b><span>Reservado</span></div><div class="dx-ui-chip"><b>${money(m.cp)}</b><span>Costo promedio</span></div></div><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Dónde está</h2><span class="dx-ui-count">${m.stock.length} ubicación(es)</span></div><div class="dx-ui-head dx-stk-wcols"><span>Ubicación</span><span>Uso</span><span>Lote / serie</span><span>Físico</span><span>Reservado</span><span>Acción</span></div>${rows}</div><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Kardex del material</h2></div>${sortedK().filter(k=>k.mat===m.id).map(krow).join('')||'<div class="dx-ui-empty">Aún no hay movimientos.</div>'}</div>`;$('#back').onclick=()=>{matSel=null;render()};document.querySelectorAll('[data-move]').forEach(b=>b.onclick=()=>{let s=m.stock[+b.dataset.move];openPanel({mat:m.id,src:s,qty:s.fis-s.res})});document.querySelectorAll('[data-k]').forEach(b=>{b.onclick=()=>openMoveDetail(+b.dataset.k);b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMoveDetail(+b.dataset.k)}}}) }
+function krow(k){let m=item(k.mat),src={alm:k.almS,ubi:k.ubiS},dst={alm:k.almD,ubi:k.ubiD};let detail=k.tipo==='transferencia_salida'?'→ '+loc(dst):k.tipo==='transferencia_entrada'?'← '+loc(src):'';return `<div class="dx-ui-row dx-stk-dcols dx-mov-click" role="button" tabindex="0" data-k="${k.id}"><span class="dx-stk-date">${k.fecha}</span><span>${pill('Transferencia')}</span><span class="dx-stk-main"><span><b>${k.tipo==='transferencia_salida'?'Transferencia · salida':'Transferencia · entrada'} · ${k.ref}</b><small>${esc(detail)} · ${esc(m.nombre)} · ${esc(k.lote||k.serie||'')}</small></span></span><div class="dx-stk-qty ${k.tipo==='transferencia_entrada'?'in':'out'}">${k.tipo==='transferencia_entrada'?'+':'−'}${k.cant}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Costo unit.</span>${money(k.costo)}</div><div class="dx-stk-n"><span class="dx-stk-lbl">Cantidad</span>${k.cant}</div></div>`}
+function renderKardex(){$('#pageTitle').textContent='Kardex';$('#pageSub').textContent='Cada transferencia crea salida y entrada con la misma referencia.';$('#pageActions').innerHTML=role?'<button class="dx-btn primary" id="transferTop">Transferir</button>':'<span class="dx-mov-disabled" title="Tu rol no tiene permiso crear" aria-label="Transferir oculto: tu rol no tiene permiso crear">Rol sin permiso crear</span>';$('#view').innerHTML=`<div class="dx-ui-summary"><div class="dx-ui-chip"><b>${K.length}</b><span>Asientos</span></div><div class="dx-ui-chip"><b>${new Set(K.map(k=>k.ref)).size}</b><span>Referencias</span></div></div><div class="dx-ui-card"><div class="dx-ui-toolbar"><h2>Movimientos enlazados</h2></div><div class="dx-ui-head dx-stk-dcols"><span>Fecha</span><span>Tipo</span><span>Detalle</span><span>Cant.</span><span>Costo unit.</span><span>Saldo</span></div>${sortedK().map(krow).join('')||'<div class="dx-ui-empty">Sin movimientos.</div>'}</div>`;$('#transferTop')?.addEventListener('click',()=>openPanel({}));document.querySelectorAll('[data-k]').forEach(b=>{b.onclick=()=>openMoveDetail(+b.dataset.k);b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMoveDetail(+b.dataset.k)}}})}
+function openPanel(seed={},mode='new'){if(!role)return;focusReturn=document.activeElement;panelMode=mode;let m=item(seed.mat)||MATS[0];let source=seed.src||m.stock.find(s=>s.fis>s.res)||m.stock[0];let same=!!seed.src;let defaults=`<option value="">Selecciona ubicación…</option>`+Object.entries(UB).map(([id,u])=>`<option value="${id}" ${id===source?.ubi?'selected':''}>${u.n}${u.act?'':' (inactivo)'}</option>`).join('');let destAlm=seed.dst?.alm||source?.alm||'ALM-001';$('#panel').innerHTML=`<header><h2 id="panelTitle">${mode==='inverse'?'Revertir con transferencia inversa':'Transferir stock'}</h2><button class="dx-mov-x" id="closePanel" aria-label="Cerrar panel">×</button></header><div class="dx-mov-body"><div class="dx-mov-f"><label for="pMat">Material</label><select class="dx-mov-field" id="pMat">${MATS.map(x=>`<option value="${x.id}" ${x.id===m.id?'selected':''}>${x.cod} · ${esc(x.nombre)}</option>`)}</select><small>${m.ctl==='Por serie'?'Control por serie: la serie viaja con el stock y la cantidad debe ser 1.':'Control '+m.ctl.toLowerCase()+': lote '+esc(source?.lote||'—')+' viaja con el stock.'}</small></div><div class="dx-mov-row2"><div class="dx-mov-f"><label for="srcLoc">Origen · lote · libres</label><select class="dx-mov-field" id="srcLoc">${m.stock.map((s,i)=>`<option value="${i}" ${s===source?'selected':''}>${UB[s.ubi].n} · ${s.lote==='—'?s.serie:s.lote} · ${Math.max(0,s.fis-s.res)} libres · ${s.res} reservadas</option>`).join('')}</select><small id="reserved"></small></div><div class="dx-mov-f"><label for="pQty">Cantidad (${m.und})</label><input class="dx-mov-field" id="pQty" type="number" min="1" step="1" value="${seed.qty||1}"><button class="dx-mov-shortcut" id="allQty" type="button">Todo lo disponible</button><small id="qtyError" class="bad" role="alert"></small></div></div><div class="dx-mov-row2"><div class="dx-mov-f"><label for="destWh">Destino · almacén</label><select class="dx-mov-field" id="destWh">${ALMACENES.map(a=>`<option value="${a.id}" ${a.id===destAlm?'selected':''}>${a.nombre} · ${a.soc}</option>`).join('')}</select></div><div class="dx-mov-f"><label for="destLoc">Destino · ubicación</label><select class="dx-mov-field" id="destLoc">${defaults}</select></div></div><div id="warning"></div><div class="dx-mov-sum" aria-live="polite"><small>Resumen en vivo</small><div><span id="sumLine">Sale de … · Entra en …</span></div><div><span>Cantidad</span><b id="sumQty">—</b></div><div><span>Costo promedio que viaja</span><b id="sumCost">${money(m.cp)}</b></div></div><div class="dx-mov-f"><label for="obs">Observación opcional</label><textarea class="dx-mov-field" id="obs" placeholder="Motivo o referencia interna"></textarea></div><label class="dx-mov-hint"><input type="checkbox" id="failNext"> Simular error de servidor en el próximo intento. No se aplicará ningún asiento.</label><div id="formError" role="alert" aria-live="assertive"></div></div><footer><button class="dx-btn" id="cancelPanel">Cancelar</button><button class="dx-btn primary" id="submitMove">${mode==='inverse'?'Revertir con transferencia inversa':'Transferir'}</button></footer>`;$('#panel').hidden=false;$('#overlay').hidden=false;fillDest(seed.dst?.ubi||(source?.ubi==='GEN'?'R01':'GEN'));if(seed.dst){$('#destWh').value=seed.dst.alm;fillDest(seed.dst.ubi)};$('#pMat').onchange=()=>{m=item($('#pMat').value);rebuildSources();update()};function rebuildSources(){let ss=m.stock;$('#srcLoc').innerHTML=ss.map((s,i)=>`<option value="${i}">${UB[s.ubi].n} · ${s.lote==='—'?s.serie:s.lote} · ${s.fis-s.res} libres · ${s.res} reservadas</option>`).join('');update()}$('#srcLoc').onchange=update;$('#destWh').onchange=()=>{fillDest();update()};$('#destLoc').onchange=update;$('#pQty').oninput=update;$('#allQty').onclick=()=>{$('#pQty').value=Math.max(0,available()).toString();update()};$('#failNext').onchange=e=>serverFail=e.target.checked;$('#submitMove').onclick=submit;$('#closePanel').onclick=closePanel;$('#cancelPanel').onclick=closePanel;$('#panel').hidden=false;update();$('#pMat').focus()}
+function fillDest(selected){let warehouse=$('#destWh').value,src=getSource();$('#destLoc').innerHTML=Object.entries(UB).map(([id,u])=>`<option value="${id}" ${id===(selected||(src?.ubi==='GEN'?'R01':'GEN'))?'selected':''}>${u.n}${u.act?'':' (inactivo)'}</option>`).join('')}
+function getSource(){let m=item($('#pMat').value);return m.stock[+$('#srcLoc').value]}
+function available(){let s=getSource();return Math.max(0,s.fis-s.res)}
+function update(){if(!$('#pMat'))return;let m=item($('#pMat').value),s=getSource(),d={alm:$('#destWh').value,ubi:$('#destLoc').value},q=Number($('#pQty').value),max=available(),samewh=s.alm===d.alm,title=samewh?'Reubicar':'Transferir';$('#panelTitle').textContent=panelMode==='inverse'?'Revertir con transferencia inversa':title+' stock';$('#submitMove').textContent=panelMode==='inverse'?'Revertir con transferencia inversa':title;$('#reserved').textContent=`${s.fis} físicas · ${max} libres · ${s.res} reservadas (las unidades reservadas no se mueven).`;$('#sumLine').textContent=`Sale de ${loc(s)} · Entra en ${UB[d.ubi]?.n||'…'} · ${alm(d.alm).nombre}`;$('#sumQty').textContent=Number.isFinite(q)&&q>0?int(q)+' '+m.und:'—';let err=[];if(!Number.isInteger(q)||q<1)err.push('Ingresa una cantidad entera mayor que cero.');if(q>max)err.push(`La cantidad supera las ${max} unidades disponibles. Hay ${s.res} reservadas y no se mueven.`);if(m.ctl==='Por serie'&&q!==1)err.push('El material controlado por serie se transfiere de una unidad por operación.');$('#qtyError').textContent=err.join(' ');let warning='';if(UB[s.ubi].uso!=='almacenaje')warning='<div class="dx-mov-alert" role="alert">Desde cuarentena/merma no se transfiere. Para sacar stock de cuarentena se usará la acción Liberar, aún no disponible; solo se podrá mermar o devolver al proveedor desde Movimientos.</div>';else if(UB[d.ubi]?.uso!=='almacenaje')warning='<div class="dx-mov-warn" role="alert">Aviso: entra como físico y no queda disponible.</div>';$('#warning').innerHTML=warning;let form=[];if(s.alm===d.alm&&s.ubi===d.ubi)form.push('El destino debe ser distinto del origen.');if(!UB[d.ubi]?.act)form.push('El destino debe estar activo; esta ubicación está inactiva.');if(alm(s.alm).soc!==alm(d.alm).soc)form.push('No se transfiere entre sociedades distintas. El origen y el destino pertenecen a sociedades diferentes.');if(UB[s.ubi].uso!=='almacenaje')form.push('El origen está en cuarentena o merma y no se puede transferir.');$('#formError').innerHTML=form.length?`<div class="dx-mov-alert" role="alert">${form.join(' ')}</div>`:'';$('#submitMove').disabled=err.length>0||form.length>0}
+function submit(){if($('#submitMove').disabled)return;if($('#failNext').checked){serverFail=false;$('#formError').innerHTML='<div class="dx-mov-alert" role="alert">Error del servidor simulado: no se registró la salida ni la entrada. Nada cambió; ambos asientos se aplican o ninguno.</div>';$('#failNext').checked=false;return}let m=item($('#pMat').value),s=getSource(),dest={alm:$('#destWh').value,ubi:$('#destLoc').value},q=Number($('#pQty').value),existing=m.stock.find(x=>x.alm===dest.alm&&x.ubi===dest.ubi&&x.lote===s.lote&&x.serie===s.serie);if(!existing){existing={alm:dest.alm,ubi:dest.ubi,lote:s.lote,serie:s.serie,fis:0,res:0};m.stock.push(existing)}let ref='TR-'+String(Date.now()).slice(-6),fecha=new Date().toISOString().slice(0,10),common={ref,mat:m.id,cant:q,costo:m.cp,fecha,lote:s.lote,serie:s.serie,obs:$('#obs').value,almS:s.alm,ubiS:s.ubi,almD:dest.alm,ubiD:dest.ubi};s.fis-=q;existing.fis+=q;K.push({...common,id:++kid,tipo:'transferencia_salida'});K.push({...common,id:++kid,tipo:'transferencia_entrada'});closePanel();matSel=m.id;render();$('#view').scrollIntoView({block:'start'});}
+function openMoveDetail(id){let k=K.find(x=>x.id===id);if(!k)return;selectedMove=k;focusReturn=document.activeElement;$('#detail').innerHTML=`<header><h2 id="detailTitle">Detalle de transferencia</h2><button class="dx-mov-x" id="closeDetail" aria-label="Cerrar detalle">×</button></header>${pill('Transferencia')}<div class="dx-mov-dl"><div><small>Referencia</small><span>${k.ref}</span></div><div><small>Material</small><span>${esc(item(k.mat).nombre)}</span></div><div><small>Origen</small><span>${loc({alm:k.almS,ubi:k.ubiS})}</span></div><div><small>Destino</small><span>${loc({alm:k.almD,ubi:k.ubiD})}</span></div><div><small>Cantidad</small><span>${k.cant} · ${esc(k.lote||k.serie||'')}</span></div><div><small>Costo promedio que viaja</small><span>${money(k.costo)}</span></div></div><p class="dx-mov-warn">Una transferencia se corrige con una transferencia inversa.</p><footer><button class="dx-btn primary" id="inverse">Revertir con transferencia inversa</button></footer>`;$('#detail').hidden=false;$('#detailOverlay').hidden=false;$('#closeDetail').onclick=closeDetail;$('#inverse').onclick=()=>{let inverseSource=item(k.mat).stock.find(s=>s.alm===k.almD&&s.ubi===k.ubiD&&s.lote===k.lote&&s.serie===k.serie);let inv={mat:k.mat,src:inverseSource,qty:k.cant,dst:{alm:k.almS,ubi:k.ubiS}};closeDetail();openPanel(inv,'inverse')};$('#closeDetail').focus()}
+function closeDetail(){$('#detail').hidden=true;$('#detailOverlay').hidden=true;focusReturn?.focus()}
+function closePanel(){$('#panel').hidden=true;$('#overlay').hidden=true;focusReturn?.focus()}
+function trap(e,dlg,closer){if(e.key==='Escape'){e.preventDefault();closer();return}if(e.key!=='Tab')return;let els=[...dlg.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')];if(!els.length)return;let first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}
+$('#panel').addEventListener('keydown',e=>trap(e,$('#panel'),closePanel));$('#detail').addEventListener('keydown',e=>trap(e,$('#detail'),closeDetail));$('#overlay').onclick=closePanel;$('#detailOverlay').onclick=closeDetail;
+document.querySelectorAll('#tabs .dx-ui-tab').forEach(t=>t.onclick=()=>{view=t.dataset.view;matSel=null;render()});$('#themeBtn').onclick=()=>{let d=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',d?'light':'dark');$('#themeBtn').textContent=d?'Modo oscuro':'Modo claro'};$('#rolBtn').onclick=()=>{role=!role;$('#rolBtn').textContent=role?'Rol: Almacenero (crear)':'Rol: Consulta (sin crear)';render()};render();
+</script></body></html>
+
+
+
+
+
