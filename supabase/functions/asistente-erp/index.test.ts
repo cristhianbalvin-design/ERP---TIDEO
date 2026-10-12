@@ -1215,6 +1215,24 @@ Deno.test("facturación y OS cliente publican las cuatro herramientas y amplían
   for (const name of names) assert(!("sociedad_id" in (OPENAI_TOOLS.find((tool: any) => tool.function.name === name) as any).function.parameters.properties));
 });
 
+Deno.test("descripciones de facturas y OS distinguen estados y totales de saldo CxC", () => {
+  const description = (name: string): string => {
+    const tool = TOOL_SPECS.find(candidate => candidate.name === name);
+    if (!tool) throw new Error(`tool ${name} is missing`);
+    if (typeof tool.desc !== "string") throw new Error(`description for ${name} is missing`);
+    return tool.desc;
+  };
+  const buscarOs = description("asistente_buscar_os_clientes");
+  const resumenOs = description("asistente_resumen_os_clientes");
+  for (const desc of [buscarOs, resumenOs]) {
+    assert(desc.includes("en_ejecucion"));
+    assert(!desc.includes("son estados equivalentes"));
+  }
+  const facturas = description("asistente_buscar_facturas");
+  assert(facturas.includes("no saldo por cobrar"));
+  assert(facturas.includes("asistente_resumen_cxc"));
+});
+
 Deno.test("facturas y resumen de facturación validan enums, límites y rangos", () => {
   const facturas = TOOL_SPECS.find(tool => tool.name === "asistente_buscar_facturas")!;
   const resumen = TOOL_SPECS.find(tool => tool.name === "asistente_resumen_facturacion")!;
