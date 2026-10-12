@@ -9,7 +9,7 @@ import { getSupabaseClient } from '../../lib/supabaseClient.js';
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
-export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, puedeEmitirDiagnostico = false, firmaUrl = null, onEmitirDiagnostico, onRecargarDiagnostico, cambiosSinGuardar = false, resumenPendiente = false, onResumenChange, onGuardarResumen, onGuardarDiagnosticoPendiente, onClose, inline = false }) {
+export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, puedeVer = true, puedeEditar = false, puedeEmitirDiagnostico = false, firmaUrl = null, onEmitirDiagnostico, onRecargarDiagnostico, cambiosSinGuardar = false, resumenPendiente = false, onResumenChange, onGuardarResumen, onGuardarDiagnosticoPendiente, onClose, inline = false, encabezadoControles = null }) {
   const [informe, setInforme] = useState(null);
   const [borrador, setBorrador] = useState(null);
   const [emitidos, setEmitidos] = useState([]);
@@ -335,6 +335,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
   return <div className={`dx-inf-overlay${inline ? ' dx-inf-inline' : ''}`} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={inline ? 'Informe al cliente' : undefined} aria-labelledby={inline ? undefined : 'dx-inf-panel-title'}>
     <div className="dx-inf-layout">
       <aside className="dx-inf-controls">
+        {inline && encabezadoControles}
         {!inline && <header className="dx-inf-controls-head"><div><h2 id="dx-inf-panel-title">Informe al cliente</h2><p>Lo emite Comercial. Solo lectura sobre el diagnóstico. Sin precios.</p></div><button type="button" aria-label="Cerrar" onClick={onClose}>×</button></header>}
         {informe && <div className={`dx-inf-status ${informe.estado === 'emitido' ? 'is-issued' : ''}`}>{informe.estado === 'emitido' ? `Emitido · v${informe.version}` : 'Borrador'}</div>}
         {cargando ? <p role="status">Cargando informe…</p> : error && !informe ? <div className="dx-inf-error" role="alert">{error}</div> : !informe ? <div className="dx-inf-empty">No hay borrador ni versiones emitidas para esta recepción.</div> : <>

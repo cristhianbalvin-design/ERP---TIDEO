@@ -40,7 +40,7 @@ import { generarConclusionIA, obtenerOCrearBorrador, usuarioPuedeInforme } from 
 import { validarBorradorDiagnostico } from '../../services/validarBorradorDiagnostico.js';
 import { markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
 import { fechaLocalISO } from './fechaLocal.js';
-import { agruparLineasPorTrabajo, datosInicialesValidos, PASOS_MANTENIMIENTO } from './diagnosticoFlujo.js';
+import { agruparLineasPorTrabajo, datosInicialesValidos, PASOS_MANTENIMIENTO, trabajosSinTareas } from './diagnosticoFlujo.js';
 
 const EMPTY_FORM = { tipo: '', referencia: null };
 const EMPTY_LINE = {
@@ -466,6 +466,9 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [notice, setNotice] = useState('');
   const [catalogs, setCatalogs] = useState({ familias: [], tipos: [], cargos: [], activos: [], hallazgos: { tipo_dano: [], causa_probable: [], unidad_medicion: [] } });
   const [extraFamilyIds, setExtraFamilyIds] = useState([]);
+  const [mostrarTrabajosIncompletos, setMostrarTrabajosIncompletos] = useState(false);
+  const [confirmarQuitarTrabajoId, setConfirmarQuitarTrabajoId] = useState('');
+  const firstIncompleteWorkRef = useRef(null);
   const [taskPanel, setTaskPanel] = useState(false);
   const [taskPanelFamiliaId, setTaskPanelFamiliaId] = useState('');
   const [taskPanelHasSelection, setTaskPanelHasSelection] = useState(false);
@@ -926,6 +929,14 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   };
 
   const goInforme = async () => {
+    if (canEditLines && selected?.tipo === 'mantenimiento') {
+      const incompletos = trabajosSinTareas(grupos);
+      if (incompletos.length) {
+        setError(`Hay trabajos sin actividades ni tareas: ${incompletos.map(group => group.familia.nombre).join(', ')}. Agrega una actividad o quita el trabajo para continuar.`);
+        setMostrarTrabajosIncompletos(true);
+        return;
+      }
+    }
     if (!canEditLines) { setInformePanel(true); setWorkStep(6); return; }
     const saved = await saveAll();
     if (saved) { setInformePanel(true); setWorkStep(6); }
@@ -1117,6 +1128,23 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     finally { setGenerandoResumenIA(false); }
   };
   const iniciarResumenManual = () => { cambiarResumen('', 'editado'); setErrorResumenIA(''); };
+  useLayoutEffect(() => {
+    const groupsById = new Map(agruparLineasPorTrabajo(selected?.lineas || [], catalogs.familias).map(group => [group.familia.id, group]));
+    [...extraFamilyIds, ...(selected?.hallazgos || []).map(item => item.familia_trabajo_id).filter(Boolean)].forEach(id => {
+      if (!groupsById.has(id) && catalogs.familias.some(family => family.id === id)) {
+        groupsById.set(id, { familia: catalogs.familias.find(family => family.id === id), lines: [] });
+      }
+    });
+    const incomplete = trabajosSinTareas([...groupsById.values()]);
+    if (!incomplete.length) {
+      if (mostrarTrabajosIncompletos) setMostrarTrabajosIncompletos(false);
+      return;
+    }
+    if (!mostrarTrabajosIncompletos) return;
+    firstIncompleteWorkRef.current?.focus();
+    firstIncompleteWorkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [mostrarTrabajosIncompletos, selected?.lineas, selected?.hallazgos, catalogs.familias, extraFamilyIds]);
+
   const readOnlyReason = !sesion.permiteEscritura
     ? 'Selecciona una sociedad concreta en la barra superior para poder editar.'
     : !selected && !canCreate
@@ -1145,7 +1173,41 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     if (!gruposMap.has(id) && familiasPorId.has(id)) gruposMap.set(id, { familia: familiasPorId.get(id), lines: [] });
   });
   const grupos = [...gruposMap.values()];
+  const trabajosIncompletos = trabajosSinTareas(grupos);
+  const firstIncompleteFamilyId = trabajosIncompletos[0]?.familia.id;
+  const quitarTrabajo = (familyId, nombre) => {
+    queueFamilyLineDeletes(familyId);
+    setExtraFamilyIds(current => current.filter(id => id !== familyId));
+    if (taskPanelFamiliaId === familyId) {
+      setTaskPanel(false);
+      setTaskPanelFamiliaId('');
+      setTaskPanelHasSelection(false);
+    }
+    setConfirmarQuitarTrabajoId('');
+    setNotice(`Trabajo \"${nombre}\" quitado. Guarda para aplicar los cambios.`);
+  };
   const renderLineas = lines => <DiagnosticoLineasTabla lines={lines} catalogs={catalogs} canEdit={canEditLines} Selector={CatalogSelector} onDelete={deleteLine} validationErrors={lineValidationErrors} onChange={(line, changes) => { if (!line) { setSelected(current => ({ ...current, lineas: [...(current.lineas || []), changes] })); return; } patchLine(line, changes); const key = lineKey(line); setLineValidationErrors(current => { const next = { ...current }; delete next[key]; return next; }); }} onError={lineError => setError(errorMessage(lineError))} />;
+  const renderFamilyGroup = group => {
+    const familyId = group.familia.id;
+    const nombre = group.familia.nombre;
+    const byActivity = new Map();
+    group.lines.forEach(line => {
+      const activity = catalogs.tipos.find(item => item.id === line.actividad_id);
+      const key = line.actividad_id || 'sin-actividad';
+      if (!byActivity.has(key)) byActivity.set(key, { activity, lines: [] });
+      byActivity.get(key).lines.push(line);
+    });
+    const hallazgosCount = (selected?.hallazgos || []).filter(item => item.familia_trabajo_id === familyId).length;
+    const incompleto = group.lines.length === 0;
+    const lockedTitle = `Lo usan ${hallazgosCount} hallazgo(s). Cámbialo en el paso Hallazgos para poder quitarlo.`;
+    return <section className={`dx-work-family-group${mostrarTrabajosIncompletos && incompleto ? ' is-incomplete' : ''}`} key={familyId} tabIndex={mostrarTrabajosIncompletos && incompleto ? -1 : undefined} ref={element => { if (familyId === firstIncompleteFamilyId) firstIncompleteWorkRef.current = element; }}>
+      <header><h3>{nombre}</h3><div className="dx-work-family-header-actions"><span>{group.lines.length} tarea{group.lines.length === 1 ? '' : 's'}</span>{canEditLines && <><button type="button" className="dx-work-delete-button" aria-label={`Quitar trabajo ${nombre}`} title={hallazgosCount ? lockedTitle : undefined} disabled={hallazgosCount > 0} onClick={() => group.lines.length ? setConfirmarQuitarTrabajoId(familyId) : quitarTrabajo(familyId, nombre)}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></button>{confirmarQuitarTrabajoId === familyId && group.lines.length > 0 && <span className="dx-work-delete-confirm"><span>¿Quitar este trabajo y sus {group.lines.length} tareas?</span><button type="button" className="dx-work-delete-confirm-action" onClick={() => setConfirmarQuitarTrabajoId('')}>Cancelar</button><button type="button" className="dx-work-delete-confirm-action" onClick={() => quitarTrabajo(familyId, nombre)}>Confirmar</button></span>}</>}</div></header>
+      {hallazgosCount > 0 && canEditLines && <p className="dx-work-delete-locked-note">Lo usan {hallazgosCount} hallazgo(s). Cámbialo en el paso Hallazgos para poder quitarlo.</p>}
+      {byActivity.size ? [...byActivity.entries()].map(([key, activityGroup]) => <section className="dx-work-activity-group" key={key}><h4>{activityGroup.activity?.nombre || 'Actividad pendiente'}</h4>{renderLineas(activityGroup.lines)}</section>) : <p className={`dx-work-family-empty${mostrarTrabajosIncompletos && incompleto ? ' is-incomplete' : ''}`}>Aún sin actividades. Agrega una actividad del maestro.</p>}
+      {canEditLines && <button type="button" className="dx-work-add-activity" aria-expanded={taskPanel && taskPanelFamiliaId === familyId} onClick={() => taskPanel && taskPanelFamiliaId === familyId ? closeTaskPanel() : openActivityPanel(familyId)}>＋ Agregar actividad</button>}
+      {taskPanel && taskPanelFamiliaId === familyId && <DiagnosticoAgregarTareasPanel key={`family-${familyId}`} initialFamiliaId={familyId} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
+    </section>;
+  };
   const totalHH = lineasActuales.reduce((sum, line) => sum + Number(line.horas_mano_obra || 0), 0);
   const totalHM = lineasActuales.reduce((sum, line) => sum + Number(line.horas_maquina || 0), 0);
   const dirtyLineCount = lineasActuales.filter(line => line._dirty).length + pendingLineDeletes.length;
@@ -1321,7 +1383,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
                 <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
                 {taskPanel && !taskPanelFamiliaId && <DiagnosticoAgregarTareasPanel key="extra-work-panel" familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
                 <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
-                  {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <div className="dx-work-family-groups">{grupos.map(group => { const byActivity = new Map(); group.lines.forEach(line => { const activity = catalogs.tipos.find(item => item.id === line.actividad_id); const key = line.actividad_id || "sin-actividad"; if (!byActivity.has(key)) byActivity.set(key, { activity, lines: [] }); byActivity.get(key).lines.push(line); }); return <section className="dx-work-family-group" key={group.familia.id}><header><h3>{group.familia.nombre}</h3><span>{group.lines.length} tarea{group.lines.length === 1 ? "" : "s"}</span></header>{byActivity.size ? [...byActivity.entries()].map(([key, activityGroup]) => <section className="dx-work-activity-group" key={key}><h4>{activityGroup.activity?.nombre || "Actividad pendiente"}</h4>{renderLineas(activityGroup.lines)}</section>) : <p className="dx-work-family-empty">Aún sin actividades. Agrega una actividad del maestro.</p>}{canEditLines && <button type="button" className="dx-work-add-activity" aria-expanded={taskPanel && taskPanelFamiliaId === group.familia.id} onClick={() => taskPanel && taskPanelFamiliaId === group.familia.id ? closeTaskPanel() : openActivityPanel(group.familia.id)}>＋ Agregar actividad</button>}{taskPanel && taskPanelFamiliaId === group.familia.id && <DiagnosticoAgregarTareasPanel key={`family-${group.familia.id}`} initialFamiliaId={group.familia.id} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}</section>; })}</div>}
+                  {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <div className="dx-work-family-groups">{grupos.map(renderFamilyGroup)}</div>}
                 </div>
               </section>}
             </> : <>
@@ -1334,15 +1396,14 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             {isReadOnly && <div className="muted" style={{ marginTop: 12 }}>Los diagnósticos emitidos son de solo lectura.</div>}
           </div>
           {informePanel && <>
-          <section className="dx-diagnostico-resumen-section dx-report-diagnosis-card" aria-labelledby="dx-report-diagnosis-title">
+          <DiagnosticoInformePanel encabezadoControles={<section className="dx-diagnostico-resumen-section dx-report-diagnosis-card" aria-labelledby="dx-report-diagnosis-title">
             <header className="dx-diagnostico-resumen-heading"><span>2</span><div><h3 id="dx-report-diagnosis-title">Diagnóstico</h3><p>{isReadOnly ? 'Diagnóstico emitido. Texto de solo lectura.' : 'Redacta y guarda el diagnóstico antes de emitir el informe al cliente.'}</p></div></header>
             <div className="dx-diagnostico-resumen-card">
               <textarea aria-label="Diagnóstico" value={resumenVisible} disabled={!canEditLines || generandoResumenIA} onChange={event => cambiarResumen(event.target.value)} placeholder="Describe la evaluación, causa y conclusión técnica…" />
               <div className="dx-diagnostico-resumen-meta"><div><strong className={selected.resumen_origen === 'editado' ? 'is-edited' : 'is-auto'}>{selected.resumen_origen === 'editado' ? 'Editado' : 'Generado con IA'}</strong><small>Este texto se incluirá en el informe al cliente.</small></div><div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-regenerate" onClick={() => selected.resumen_origen === 'editado' && resumenVisible.trim() ? setConfirmarRegenerarResumen(true) : generarResumenIA()} disabled={generandoResumenIA || !(selected.hallazgos || []).length || hallazgosIncompletosCount > 0} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar con IA'}</button>}<button type="button" className="dx-diagnostico-resumen-regenerate" onClick={guardarResumenParaInforme} disabled={!canEditLines || !summaryDirty}>Guardar diagnóstico</button></div></div>
               {errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}
             </div>
-          </section>
-          <DiagnosticoInformePanel diagnostico={{ ...selected, resumen_diagnostico: resumenVisible }} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} puedeEmitirDiagnostico={access.aprobar && Boolean(sesion.permiteEscritura)} firmaUrl={sesion.sociedadActiva?.firma_url || null} onEmitirDiagnostico={async () => {
+          </section>} diagnostico={{ ...selected, resumen_diagnostico: resumenVisible }} catalogos={{ ...catalogs, tipos_dano: catalogs.hallazgos.tipo_dano, causas_probables: catalogs.hallazgos.causa_probable }} cabecera={{ recepcion_id: form.referencia?.id || selected.recepcion_id, numero_recepcion: form.referencia?.numero || null, fecha_recepcion: form.referencia?.fecha_ingreso || null, activo_nombre: form.referencia?.activo || null, cliente_razon_social: form.referencia?.cliente || null, numero_serie: form.referencia?.numero_serie || null, horometro: null }} puedeVer={informeAccess.ver} puedeEditar={informeAccess.editar && access.editar && Boolean(sesion.permiteEscritura)} puedeEmitirDiagnostico={access.aprobar && Boolean(sesion.permiteEscritura)} firmaUrl={sesion.sociedadActiva?.firma_url || null} onEmitirDiagnostico={async () => {
             const resultado = await emitirDiagnosticoTecnico(selected.id);
             try { await recargarEstadoDiagnostico(resultado); } catch { /* La emisión ya terminó; se vuelve a cargar al completar el flujo. */ }
             return resultado;

@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { getIncompleteHallazgos } from '../src/zahory-mock/pages/hallazgosValidation.js';
-import { agruparLineasPorTrabajo, datosInicialesValidos, ordenarHallazgosPorPrioridad, PASOS_MANTENIMIENTO } from '../src/zahory-mock/pages/diagnosticoFlujo.js';
+import { agruparLineasPorTrabajo, datosInicialesValidos, ordenarHallazgosPorPrioridad, PASOS_MANTENIMIENTO, trabajosSinTareas } from '../src/zahory-mock/pages/diagnosticoFlujo.js';
 
 const matriz = { conforme: { monitorear: 'P4' }, falla_funcional: { inmediato: 'P1' } };
 
@@ -43,5 +43,16 @@ describe('flujo de diagnóstico técnico de mantenimiento', () => {
       { id: 'alto', condicion: 'falla_funcional', riesgo: 'inmediato' },
     ], matriz);
     expect(ordered.map(row => row.id)).toEqual(['alto', 'bajo']);
+  });
+});
+
+describe('trabajosSinTareas', () => {
+  it('devuelve los trabajos sin tareas y trata lines ausente como vacio', () => {
+    const vacio = { familia: { id: 'f1', nombre: 'Inspeccion' }, lines: [] };
+    const lleno = { familia: { id: 'f2', nombre: 'Reparacion' }, lines: [{ id: 'l1' }] };
+    const sinLines = { familia: { id: 'f3' } };
+    expect(trabajosSinTareas([vacio, lleno, sinLines])).toEqual([vacio, sinLines]);
+    expect(trabajosSinTareas([lleno])).toEqual([]);
+    expect(trabajosSinTareas()).toEqual([]);
   });
 });

@@ -653,6 +653,7 @@ export async function listarCargosEmpresa(empresaId) {
     .select(CARGO_COLUMNS)
     .eq('empresa_id', empresaId)
     .eq('estado', 'activo')
+    .eq('tipo', 'Operativo')
     .order('nombre');
   if (error) throw error;
   return data || [];

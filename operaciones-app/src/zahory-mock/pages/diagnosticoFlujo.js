@@ -27,6 +27,10 @@ export function agruparLineasPorTrabajo(lineas = [], familias = []) {
   return [...grupos.values()];
 }
 
+export function trabajosSinTareas(grupos = []) {
+  return grupos.filter(grupo => (grupo.lines || []).length === 0);
+}
+
 const PRIORITY_RANK = { P4: 1, P3: 2, P2: 3, P1: 4 };
 export function ordenarHallazgosPorPrioridad(hallazgos = [], matriz = {}) {
   return hallazgos.slice().sort((left, right) => {

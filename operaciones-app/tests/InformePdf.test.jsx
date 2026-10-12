@@ -61,6 +61,7 @@ describe('InformePdf', () => {
               "paddingBottom": 30,
               "paddingHorizontal": 38,
               "paddingTop": 30,
+              "textTransform": "uppercase",
             }
           }
         >
@@ -1043,8 +1044,8 @@ describe('InformePdf', () => {
             <View
               style={
                 {
-                  "flexDirection": "row",
-                  "gap": 8,
+                  "flexDirection": "column",
+                  "gap": 6,
                   "marginTop": 5,
                 }
               }
@@ -1052,38 +1053,50 @@ describe('InformePdf', () => {
               <View
                 style={
                   {
-                    "alignItems": "center",
-                    "width": "32%",
+                    "flexDirection": "row",
+                    "gap": 6,
+                    "width": "100%",
                   }
                 }
+                wrap={false}
               >
-                <Image
-                  src="data:image/jpeg;base64,foto"
-                  style={
-                    [
-                      {
-                        "maxWidth": "100%",
-                        "objectFit": "contain",
-                      },
-                      {
-                        "height": 95,
-                        "width": 142.5,
-                      },
-                    ]
-                  }
-                />
-                <Text
+                <View
                   style={
                     {
-                      "color": "#667085",
-                      "fontSize": 7,
-                      "marginTop": 2,
-                      "textAlign": "center",
+                      "alignItems": "stretch",
+                      "flexBasis": 0,
+                      "flexGrow": 1,
                     }
                   }
                 >
-                  Vista frontal
-                </Text>
+                  <Image
+                    src="data:image/jpeg;base64,foto"
+                    style={
+                      [
+                        {
+                          "borderRadius": 4,
+                          "objectFit": "contain",
+                          "width": "100%",
+                        },
+                        {
+                          "height": 260,
+                        },
+                      ]
+                    }
+                  />
+                  <Text
+                    style={
+                      {
+                        "color": "#667085",
+                        "fontSize": 7,
+                        "marginTop": 2,
+                        "textAlign": "center",
+                      }
+                    }
+                  >
+                    Vista frontal
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -1334,6 +1347,19 @@ describe('InformePdf', () => {
                   }
                 }
               >
+                Emitido por 
+                Ana Pérez
+                , Jefa técnica
+              </Text>
+              <Text
+                style={
+                  {
+                    "color": "#667085",
+                    "fontSize": 8,
+                    "marginTop": 3,
+                  }
+                }
+              >
                 7/10/2026
               </Text>
             </View>
@@ -1389,6 +1415,7 @@ describe('InformePdf', () => {
               "paddingBottom": 30,
               "paddingHorizontal": 38,
               "paddingTop": 30,
+              "textTransform": "uppercase",
             }
           }
         >

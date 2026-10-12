@@ -23,12 +23,14 @@ describe('Flujo de mantenimiento en página', () => {
   });
 
   it('permite redactar y guardar el diagnóstico antes del panel Informe', () => {
-    const card = page.indexOf('dx-report-diagnosis-card');
-    const report = page.indexOf('<DiagnosticoInformePanel', card);
-    expect(card).toBeGreaterThanOrEqual(0);
-    expect(report).toBeGreaterThan(card);
-    expect(page.slice(card, report)).toContain('aria-label="Diagnóstico"');
-    expect(page.slice(card, report)).toContain('onClick={guardarResumenParaInforme}');
+    const report = page.indexOf('<DiagnosticoInformePanel');
+    const card = page.indexOf('dx-report-diagnosis-card', report);
+    const cardEnd = page.indexOf('</section>}', card);
+    expect(report).toBeGreaterThanOrEqual(0);
+    expect(card).toBeGreaterThan(report);
+    expect(page.slice(report, card)).toContain('encabezadoControles={');
+    expect(page.slice(card, cardEnd)).toContain('aria-label="Diagnóstico"');
+    expect(page.slice(card, cardEnd)).toContain('onClick={guardarResumenParaInforme}');
     expect(page).toContain('inline onClose=');
     expect(page).toContain('markupDibujoHallazgo(selected.componente_svg ||');
     expect(page).toContain("borradores.length === 1 ? 'borrador' : 'borradores'");
