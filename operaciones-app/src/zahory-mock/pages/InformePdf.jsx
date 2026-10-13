@@ -5,7 +5,7 @@ import { agruparFotosEnFilas } from '../../services/informeFotosFilas.js';
 import { etiquetaCondicion, etiquetaResultado } from './informeEtiquetas.js';
 
 const S = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 30 },
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: '#172033', paddingTop: 30, paddingHorizontal: 38, paddingBottom: 30, textTransform: 'uppercase' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#d9e0e8', paddingBottom: 10, marginBottom: 10 },
   logo: { width: 125, height: 48, objectFit: 'contain' }, company: { maxWidth: 300, textAlign: 'right' }, companyName: { fontFamily: 'Helvetica-Bold', fontSize: 11 }, muted: { fontSize: 8, color: '#667085', marginTop: 3 },
   title: { fontFamily: 'Helvetica-Bold', fontSize: 15, color: '#1a2b4a', textAlign: 'center', marginBottom: 5 }, titleMeta: { textAlign: 'center', fontSize: 8, color: '#667085', marginBottom: 13 },
@@ -31,6 +31,15 @@ const capitalize = value => {
 };
 const priorities = [['P1', 'Atención antes de operar'], ['P2', 'Atención prioritaria'], ['P3', 'Próximo mantenimiento'], ['P4', 'Monitorear'], ['conformes', 'Conformes']];
 const field = (label, value) => present(value) ? <View key={label} style={S.info}><Text style={S.label}>{label}</Text><Text style={S.value}>{fmt(value)}</Text></View> : null;
+const PDF_PAGE_WIDTH = 595.28;
+const FINDING_CONTENT_WIDTH = PDF_PAGE_WIDTH - 38 * 2 - 7 * 2 - 1 * 2;
+const PHOTO_ROW_GAP = 6;
+const photoHeight = (photo, count) => {
+  const width = Number(photo.width || photo.ancho) > 0 ? Number(photo.width || photo.ancho) : 1500;
+  const height = Number(photo.height || photo.alto) > 0 ? Number(photo.height || photo.alto) : 1000;
+  const columnWidth = (FINDING_CONTENT_WIDTH - PHOTO_ROW_GAP * (count - 1)) / count;
+  return Math.min(columnWidth * height / width, width >= height ? 260 : 300);
+};
 
 function TablaMediciones({ mediciones }) {
   if (!mediciones.length) return null;
@@ -105,8 +114,9 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
           .filter((value, i, all) => present(value) && all.indexOf(value) === i).join(', ');
         const relatedTaskLines = relatedTaskNames ? estimateLines(`Tareas relacionadas: ${relatedTaskNames}`) : 0;
         const estimatedHeight = 32 + (estimatedTextLines + relatedTaskLines) * 12 + (measures.length ? 22 + measures.length * 24 : 0) + (item.dibujo?.svg ? 195 + (item.dibujo.medidas?.length || 0) * 22 : 0) + photoRows.reduce((height, row) => {
-          const imageHeight = row.orientacion === 'horizontal' ? 112 : 145;
-          return height + imageHeight + (row.fotos.some(photo => present(photo.leyenda)) ? 16 : 0) + 5;
+          const imageHeight = Math.max(...row.fotos.map(photo => photoHeight(photo, row.fotos.length)));
+          const captionHeight = row.fotos.some(photo => present(photo.leyenda)) ? 16 : 0;
+          return height + imageHeight + captionHeight + 11;
         }, 0);
         return <View key={item.hallazgo_id || index} style={S.finding} wrap={estimatedHeight <= 700 ? false : true}>
           <View style={S.findingHead}><Text style={S.findingTitle}>{fmt(item.componente_parte)}</Text><Text style={S.priority}>{fmt(item.prioridad)}</Text></View>
@@ -116,7 +126,7 @@ export default function InformePdf({ snapshot, imagenes = {} }) {
           {item.dibujo?.svg && imagenes.dibujos?.[item.hallazgo_id] ? <><Text style={[S.label, { marginTop: 5, fontFamily: 'Helvetica-Bold' }]}>Dibujo · {fmt(item.dibujo.componente_nombre)}</Text><Image src={imagenes.dibujos[item.hallazgo_id]} style={S.drawing} />{(item.dibujo.zonas || []).length ? <Text style={S.drawingLegend}>{item.dibujo.zonas.map((zone, zi) => `${zi + 1}. ${fmt(zone.nombre)}${present(zone.nota) ? ` · ${fmt(zone.nota)}` : ''}`).join('   ')}</Text> : null}{(item.dibujo.medidas || []).length ? <TablaMediciones mediciones={item.dibujo.medidas.map(measure => ({ ...measure, parametro: fmt(measure.nombre), resultado: etiquetaResultado(measure.resultado) || '' }))} /> : null}</> : null}
           {photoRows.length ? <View style={S.photos}>{photoRows.map((row, ri) => <View style={S.photoRow} wrap={false} key={`fila-${ri}`}>
             {row.fotos.map((photo, pi) => <View style={S.photoBox} key={`${photo.ruta_storage}-${pi}`}>
-              <Image src={photo.uri} style={[S.photo, { height: row.orientacion === 'horizontal' ? 112 : 145 }]} />
+              <Image src={photo.uri} style={[S.photo, { height: photoHeight(photo, row.fotos.length) }]} />
               {present(photo.leyenda) ? <Text style={S.caption}>{photo.leyenda}</Text> : null}
             </View>)}
           </View>)}</View> : null}

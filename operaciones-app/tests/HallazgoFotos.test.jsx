@@ -10,13 +10,50 @@ const foto = { id: 'f1', signedUrl: 'https://signed/f1', ruta_storage: 'e/d/h/f1
 const getText = node => node?.children?.map(child => typeof child === 'string' ? child : getText(child)).join('') || '';
 let renderer;
 const render = async props => { await act(async () => { renderer = create(<HallazgoFotos empresaId="e" diagnosticoId="d" hallazgo={{ id: 'h' }} {...props} />); await Promise.resolve(); }); };
-beforeEach(() => { vi.clearAllMocks(); api.actualizarFotoHallazgo.mockImplementation(async values => values); api.borrarFotoHallazgo.mockResolvedValue({ huerfana: false }); });
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubGlobal('window', { matchMedia: vi.fn().mockReturnValue({ matches: false }) });
+  api.actualizarFotoHallazgo.mockImplementation(async values => values);
+  api.borrarFotoHallazgo.mockResolvedValue({ huerfana: false });
+});
 
 describe('HallazgoFotos', () => {
-  it('deshabilita agregar cuando el hallazgo no tiene id', async () => {
+  it('permite agregar fotos a un hallazgo nuevo y muestra la nota de guardado', async () => {
     await render({ hallazgo: {} });
-    expect(getText(renderer.root)).toContain('Guarda el hallazgo para agregar fotos');
-    expect(renderer.root.findAllByType('input').filter(input => input.props.type === 'file')).toHaveLength(0);
+    expect(getText(renderer.root)).toContain('Las fotos se subirán al guardar el hallazgo.');
+    expect(getText(renderer.root)).not.toContain('Guarda el hallazgo para agregar fotos');
+    expect(renderer.root.findAllByType('input').filter(input => input.props.type === 'file')).toHaveLength(1);
+    renderer.unmount();
+  });
+
+  it('envía la foto seleccionada como pendiente cuando el hallazgo no tiene id', async () => {
+    const onFotosPendientesChange = vi.fn();
+    await render({ hallazgo: {}, onFotosPendientesChange });
+    const input = renderer.root.findAllByType('input').find(node => node.props.type === 'file');
+    const file = new File(['imagen'], 'foto.jpg', { type: 'image/jpeg' });
+    await act(async () => input.props.onChange({ target: { files: [file], value: 'foto.jpg' }, currentTarget: { blur() {} } }));
+    expect(onFotosPendientesChange).toHaveBeenCalledTimes(1);
+    expect(onFotosPendientesChange.mock.calls[0][0][0].archivo).toBe(file);
+    renderer.unmount();
+  });
+
+  it('en táctil muestra cámara y galería con atributos de selección adecuados', async () => {
+    window.matchMedia.mockReturnValue({ matches: true });
+    await render({ hallazgo: {} });
+    const inputs = renderer.root.findAllByType('input').filter(input => input.props.type === 'file');
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0].props['aria-label']).toBe('Tomar foto del hallazgo');
+    expect(inputs[0].props.capture).toBe('environment');
+    expect(inputs[0].props.accept).toBe('image/*');
+    expect(inputs[0].props.multiple).toBeUndefined();
+    expect(inputs[1].props['aria-label']).toBe('Agregar fotos al hallazgo');
+    expect(inputs[1].props.multiple).toBe(true);
+    renderer.unmount();
+  });
+
+  it('en escritorio muestra un solo input para agregar fotos', async () => {
+    await render({ hallazgo: {} });
+    expect(renderer.root.findAllByType('input').filter(input => input.props.type === 'file')).toHaveLength(1);
     renderer.unmount();
   });
 

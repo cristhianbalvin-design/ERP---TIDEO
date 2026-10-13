@@ -57,7 +57,7 @@ export function InformeHoja({ snapshot, borrador = true, identidadEmpresa = null
               const key = `${item.hallazgo_id || index}:${foto.url}:${fotoIndex}`;
               return { foto, fotoIndex, key, ...(dimensionesFotos[key] || { width: foto.ancho, height: foto.alto }) };
             });
-            return agruparFotosEnFilas(fotos).map((fila, filaIndex) => <div className={`dx-informe-fila dx-informe-fila-${fila.orientacion}`} key={`${item.hallazgo_id || index}-fila-${filaIndex}`}>
+            return agruparFotosEnFilas(fotos).map((fila, filaIndex) => <div className={`dx-informe-fila dx-informe-fila-${fila.orientacion}`} style={{ gridTemplateColumns: `repeat(${fila.fotos.length}, minmax(0, 1fr))` }} key={`${item.hallazgo_id || index}-fila-${filaIndex}`}>
               {fila.fotos.map(({ foto, fotoIndex, key }) => <figure className="dx-informe-foto" key={key}><img src={foto.url} alt={foto.leyenda || 'Foto del hallazgo'} onLoad={event => {
                 const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
                 if (width && height) setDimensionesFotos(current => current[key]?.width === width && current[key]?.height === height ? current : { ...current, [key]: { width, height } });

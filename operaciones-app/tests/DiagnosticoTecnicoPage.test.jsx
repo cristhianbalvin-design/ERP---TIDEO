@@ -32,7 +32,7 @@ vi.mock('../src/services/diagnosticoInformeService.js', () => ({
   obtenerOCrearBorrador: mocks.getDraft,
 }));
 vi.mock('../src/zahory-mock/pages/DiagnosticoInformePanel.jsx', () => ({
-  DiagnosticoInformePanel: props => <div className="mock-report-panel"><button type="button" className="dx-informe-emitir" onClick={async () => { const result = await props.onEmitirDiagnostico?.(); await props.onRecargarDiagnostico?.(result); }}>Emitir informe</button></div>,
+  DiagnosticoInformePanel: props => <div className="mock-report-panel">{props.encabezadoControles}<button type="button" className="dx-informe-emitir" onClick={async () => { const result = await props.onEmitirDiagnostico?.(); await props.onRecargarDiagnostico?.(result); }}>Emitir informe</button></div>,
 }));
 
 import { CatalogSelector, DiagnosticoTecnicoPage, ReferenceSelector } from '../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx';
@@ -1078,7 +1078,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
 
   it('genera el diagnóstico IA desde los hallazgos del estado actual y lo deja editable', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({
-      ...detail('two', 'mantenimiento'),
+      ...detail('two', 'mantenimiento', [{ id: 'line-report', familia_trabajo_id: 'fam-1', actividad_id: 'activity-1', tarea_id: 'task-1', materiales: [] }]),
       resumen_diagnostico: null,
       resumen_origen: 'auto',
       hallazgos: [{ id: 'h1', familia_trabajo_id: 'fam-1', componente_parte: 'Bomba', condicion: 'falla_funcional', riesgo: 'antes_de_operar', accion_recomendada: 'reparar', tipo_dano_codigo: 'danio', causa_probable_codigo: 'causa', atribuible_a: 'cliente', mediciones: [], lineas: [] }],
@@ -1097,7 +1097,7 @@ describe('Diagnostico Tecnico - Etapa B', () => {
 
   it('no invoca la IA y explica cuando el borrador pertenece a otro diagnóstico', async () => {
     mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue({
-      ...detail('two', 'mantenimiento'),
+      ...detail('two', 'mantenimiento', [{ id: 'line-report', familia_trabajo_id: 'fam-1', actividad_id: 'activity-1', tarea_id: 'task-1', materiales: [] }]),
       hallazgos: [{ id: 'h1', familia_trabajo_id: 'fam-1', componente_parte: 'Bomba', condicion: 'falla_funcional', riesgo: 'antes_de_operar', accion_recomendada: 'reparar', tipo_dano_codigo: 'danio', causa_probable_codigo: 'causa', atribuible_a: 'cliente', mediciones: [], lineas: [] }],
     });
     mocks.getDraft.mockResolvedValue({ id: 'informe-one', estado: 'borrador', diagnostico_id: 'one' });
