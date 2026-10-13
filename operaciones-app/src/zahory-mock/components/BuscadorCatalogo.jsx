@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 export function BuscadorCatalogo({ label, options = [], value, onSelect, search, sections, placeholder = 'Buscar…', disabled = false, allowCreate = false, createAction, className = '', requiredKey, clearable = false }) {
   const rootRef = useRef(null);
   const inputRef = useRef(null);
+  const sheetSearchRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -13,11 +14,21 @@ export function BuscadorCatalogo({ label, options = [], value, onSelect, search,
   const flat = groups.flatMap(group => group.items);
   useEffect(() => {
     if (!open) return undefined;
-    const outside = event => { if (!rootRef.current?.contains(event.target)) setOpen(false); };
+    const outside = event => {
+      const root = rootRef.current;
+      const path = event.composedPath?.();
+      const inside = path?.length ? path.includes(root) : root?.contains(event.target);
+      if (!inside) setOpen(false);
+    };
     const escape = event => { if (event.key === 'Escape') { event.preventDefault(); setOpen(false); inputRef.current?.focus({ preventScroll: true }); } };
     globalThis.document?.addEventListener?.('pointerdown', outside);
     globalThis.document?.addEventListener?.('keydown', escape);
     return () => { globalThis.document?.removeEventListener?.('pointerdown', outside); globalThis.document?.removeEventListener?.('keydown', escape); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const compact = globalThis.window?.matchMedia?.('(max-width: 700px), (max-height: 520px)').matches;
+    if (compact) sheetSearchRef.current?.focus?.({ preventScroll: true });
   }, [open]);
   const openMenu = event => {
     if (disabled) return;
@@ -47,12 +58,12 @@ export function BuscadorCatalogo({ label, options = [], value, onSelect, search,
   return <div ref={rootRef} className={`field dx-tipo-dano dx-buscador-catalogo ${className}`.trim()}>
     <label>{label}</label>
     <div className="dx-buscador-input-wrap">
-      <input ref={inputRef} data-required-field={requiredKey} className="input" role="combobox" aria-label={label} aria-autocomplete="list" aria-controls={`catalogo-${requiredKey || label.replace(/\W/g, '-')}`} aria-expanded={open} aria-haspopup="listbox" aria-activedescendant={open && flat[activeIndex] ? `opcion-${requiredKey || 'catalogo'}-${flat[activeIndex].codigo}` : undefined} value={open ? query : selected?.etiqueta || value || ''} disabled={disabled} placeholder={placeholder} onFocus={openMenu} onClick={event => { if (!open) openMenu(event); }} onChange={event => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} />
+      <input ref={inputRef} data-required-field={requiredKey} className="input" role="combobox" aria-label={label} aria-autocomplete="list" aria-controls={`catalogo-${requiredKey || label.replace(/\W/g, '-')}`} aria-expanded={open} aria-haspopup="listbox" aria-activedescendant={open && flat[activeIndex] ? `opcion-${requiredKey || 'catalogo'}-${flat[activeIndex].codigo}` : undefined} value={open ? query : selected?.etiqueta || value || ''} disabled={disabled} placeholder={placeholder} onFocus={event => { if (!open) openMenu(event); }} onClick={event => { if (!open) openMenu(event); }} onChange={event => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} />
       {clearable && value && !disabled && <button className="dx-buscador-clear" type="button" aria-label={`Limpiar ${label}`} onMouseDown={event => event.preventDefault()} onClick={() => { select(null); inputRef.current?.focus({ preventScroll: true }); }}>×</button>}
     </div>
     {open && <div id={`catalogo-${requiredKey || label.replace(/\W/g, '-')}`} role="listbox" aria-label={label} className={`dx-tipo-dano-menu${opensUp ? ' is-up' : ''}`} onKeyDown={keyDown}>
       <header><strong>{label}</strong><button type="button" aria-label={`Cerrar ${label}`} onClick={() => setOpen(false)}>×</button></header>
-      <input className="dx-tipo-dano-sheet-search" type="search" aria-label={`Buscar ${label}`} placeholder={placeholder} value={query} onChange={event => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} />
+      <input ref={sheetSearchRef} className="dx-tipo-dano-sheet-search" type="search" aria-label={`Buscar ${label}`} placeholder={placeholder} value={query} onChange={event => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={keyDown} />
       {renderGroups()}
       {!flat.length && <p className="dx-tipo-dano-similar">Sin coincidencias.</p>}
       {allowCreate && createAction?.(query, results, () => setOpen(false))}

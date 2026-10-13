@@ -236,6 +236,8 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     if (nextView === 'editor' && typeof window !== 'undefined') {
       const scrollTop = () => {
         const workCard = typeof document !== 'undefined' ? document.querySelector?.('.dx-work-card') : null;
+        const inner = workCard?.querySelector?.(':scope > .dx-scope');
+        inner?.scrollTo?.({ top: 0, behavior: 'smooth' });
         if (workCard?.scrollTo) workCard.scrollTo({ top: 0, behavior: 'smooth' });
         else window.scrollTo?.({ top: 0, behavior: 'smooth' });
       };
