@@ -30,7 +30,7 @@ const dateLabel = value => value ? new Date(`${value}T00:00:00`).toLocaleDateStr
 const previewUrl = file => { try { return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : ''; } catch { return ''; } };
 const estadoCustodiaClass = estado => ({ recibido: 'is-amber', en_diagnostico: 'is-cyan', en_reparacion: 'is-violet', listo_entrega: 'is-green', entregado: 'is-gray' }[estado] || 'is-gray');
 const diagnosticUrl = row => row?.diagnostico_id
-  ? `/diagnostico-tecnico?nuevo=mantenimiento&trabajo=${encodeURIComponent(row.diagnostico_id)}`
+  ? `/diagnostico-tecnico?trabajo=${encodeURIComponent(row.diagnostico_id)}`
   : `/diagnostico-tecnico?nuevo=mantenimiento&recepcion=${encodeURIComponent(row?.id || '')}`;
 const diagnosticoEmitido = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'emitido';
 const diagnosticoBorrador = diag => (typeof diag === 'string' ? diag : diag?.estado) === 'borrador';
