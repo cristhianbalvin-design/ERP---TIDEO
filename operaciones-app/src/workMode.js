@@ -19,3 +19,11 @@ export function openWorkNav() {
     window.dispatchEvent(event);
   }
 }
+
+export function requestWorkBack() {
+  if (typeof window !== 'undefined') {
+    const EventConstructor = window.CustomEvent || globalThis.CustomEvent;
+    const event = typeof EventConstructor === 'function' ? new EventConstructor('dx-work-back') : { type: 'dx-work-back' };
+    window.dispatchEvent(event);
+  }
+}

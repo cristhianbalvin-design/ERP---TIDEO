@@ -5,7 +5,9 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const css = read('../src/zahory-mock/styles/zahory.css');
 const shellCss = read('../src/styles.css');
 const pageJsx = read('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx');
+const appJsx = read('../src/OperationalApp.jsx');
 const movil = css.slice(css.indexOf('/* movil: diagnostico y recepcion */'));
+const compact = css.slice(css.indexOf('/* Compact work mode refinements */'));
 
 describe('movil diagnostico y recepcion', () => {
   it('el bloque movil existe y no crea contenedores ni reglas globales fuera de media queries', () => {
@@ -36,13 +38,15 @@ describe('movil diagnostico y recepcion', () => {
     expect(movil).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card[^}]*height:100dvh !important/);
     expect(movil).toMatch(/\.dx-work-page \.dx-work-identity-status strong \{ display:none/);
     expect(movil).toMatch(/\.dx-work-card \.alert:not\(\.dx-footer-floating-alert\) \{ font-size:12px; line-height:1\.3; padding:6px 10px; margin-block:6px; border-radius:8px/);
-    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn[^}]*min-height:40px; height:40px; padding:0 10px; font-size:13px/);
+    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn[^}]*min-height:40px; height:40px; padding:0 8px; font-size:12px/);
     expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn-primary[^}]*flex:1 1 auto; overflow:hidden; text-overflow:ellipsis/);
     expect(movil).toMatch(/\.dx-footer-floating-alert[^}]*max-height:72px[^}]*font-size:12px/);
   });
 
   it('corrige hallazgos, segmented, gutters y scroll compacto', () => {
-    expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; padding-bottom:var\(--dx-footer-h\)/);
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; \}/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; \}/);
+    expect(movil).not.toMatch(/\.dx-work-page(?: \.dx-scope|\.dx-scope)\s*\{[^}]*padding-bottom:var\(--dx-footer-h\)/);
     expect(movil).toMatch(/\.dx-work-page \.dx-body \{ padding:8px; gap:8px/);
     expect(movil).toMatch(/\.dx-work-page \.dx-findings-list-group \{ padding:8px/);
     expect(movil).toMatch(/\.hallazgo-grid[^}]*grid-template-columns:minmax\(0,1fr\) !important/);
@@ -65,5 +69,23 @@ describe('movil diagnostico y recepcion', () => {
     expect(pageJsx).toMatch(/setMetaOpen\(open => !open\)/);
     expect(pageJsx).toContain('Paso {workStep} de 6');
     expect(pageJsx).toMatch(/aria-label=\{`Paso \$\{index \+ 1\}: \$\{label\}`\}/);
+  });
+
+  it('el footer compacto conserva una sola fila y los nombres completos para accesibilidad', () => {
+    expect(compact).toMatch(/\.dx-work-card>\.diagnostico-modal-footer,\.dx-wizard-footer \{[^}]*flex-wrap:nowrap/);
+    expect(compact).toMatch(/\.dx-footer-label-compact::after \{ content:attr\(data-label\); \}/);
+    expect(pageJsx).toContain('data-label="Trabajos →"');
+    expect(pageJsx).toContain('data-label="Informe →"');
+    expect(pageJsx).toContain("? 'Cerrar' : '+ Trabajo'");
+    expect(pageJsx).toContain('aria-label="Siguiente: Trabajos"');
+    expect(pageJsx).toContain('aria-label="Siguiente: Diagnóstico e informe"');
+  });
+
+  it('el retorno desde el cajón comparte el evento de vuelta con las dos pantallas', () => {
+    expect(appJsx).toContain('requestWorkBack(); setNavOpen(false);');
+    expect(pageJsx).toContain("window.addEventListener('dx-work-back', handleWorkBack)");
+    const receptionPage = read('../src/zahory-mock/pages/RecepcionActivosClientePage.jsx');
+    expect(receptionPage).toContain("window.addEventListener('dx-work-back', handleWorkBack)");
+    expect(receptionPage).toContain('aria-label="Volver a recepciones"');
   });
 });

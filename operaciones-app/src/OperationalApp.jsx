@@ -6,6 +6,7 @@ import { OperationalHeader } from './OperationalHeader.jsx';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
 import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
+import { requestWorkBack } from './workMode.js';
 import {
   findAreaForRoute,
   findGroupForRoute,
@@ -280,6 +281,7 @@ export function OperationalApp() {
     <div className="ops-shell">
       {workCompact && navOpen && <button type="button" className="ops-drawer-backdrop" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <aside className={`ops-sidebar${workCompact ? ` is-work-drawer${navOpen ? ' is-open' : ''}` : workMode ? ' is-diagnostico-rail' : ''}${sidebarCollapsed ? ' is-collapsed' : ''}`} aria-hidden={workCompact && !navOpen ? 'true' : undefined} inert={workCompact && !navOpen ? '' : undefined}>
+        {workCompact && <button type="button" className="ops-work-drawer-back" onClick={() => { requestWorkBack(); setNavOpen(false); }}>← Volver a la bandeja</button>}
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={operaIsotipo} alt="OPERA" />

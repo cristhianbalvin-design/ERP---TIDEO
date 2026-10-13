@@ -241,7 +241,13 @@ export function RecepcionActivosClientePage() {
   };
 
   const openDetail = row => { setSelectedId(row.id); setBanner(null); setError(''); setView('detail'); };
-  const toList = () => { setView('list'); setBanner(null); setError(''); };
+  const toList = useCallback(() => { setView('list'); setBanner(null); setError(''); }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.addEventListener) return undefined;
+    const handleWorkBack = () => toList();
+    window.addEventListener('dx-work-back', handleWorkBack);
+    return () => window.removeEventListener('dx-work-back', handleWorkBack);
+  }, [toList]);
   const currentDiag = recepcion ? diagnosticos[recepcion.id] : null;
   const ejecutarInformePdf = async row => {
     const win = window.open('', '_blank');
