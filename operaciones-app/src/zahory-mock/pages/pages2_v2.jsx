@@ -1193,6 +1193,12 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     setAbierto(false);
     onSelect({ material_id:material.id, material_codigo:material.codigo || '', descripcion:material.descripcion || '', unidad:material.unidad || 'und' });
   };
+  useEffect(() => {
+    if (!crearAbierto) return undefined;
+    const cerrarConEscape = evento => { if (evento.key === 'Escape' && !guardando) setCrearAbierto(false); };
+    window.addEventListener('keydown', cerrarConEscape);
+    return () => window.removeEventListener('keydown', cerrarConEscape);
+  }, [crearAbierto, guardando]);
   const guardar = async () => {
     if (!form.grupo_id || !form.familia_id || !form.subfamilia_id || !form.descripcion.trim() || !form.unidad.trim()) {
       setError('Grupo, familia, subfamilia, descripción y unidad son obligatorios.');
@@ -1208,41 +1214,47 @@ const SelectorMaterialSolpe = ({ item, materiales, puedeCrearMaterial, empresaId
     } finally { setGuardando(false); }
   };
   return <>
-    <div style={{ position:'relative', width:'100%', minWidth:0 }}>
-      <input className="input" style={{ width:'100%' }} value={texto} placeholder="Buscar por código o descripción" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
+    <div className="dx-solpe-pop">
+      <input className="dx-solpe-in" aria-label="Buscar material por código o descripción" value={texto} placeholder="Buscar por código o descripción" autoComplete="off" onFocus={() => setAbierto(true)} onChange={event => { setTexto(event.target.value); setResultadosRemotos([]); setAbierto(true); }} />
       {abierto && texto.trim().length >= 2 && (
-        <div style={{ position:'absolute', zIndex:40, top:'100%', left:0, right:0, maxHeight:240, overflowY:'auto', background:'var(--white)', border:'1px solid var(--card-border)', borderRadius:6, boxShadow:'0 6px 18px rgba(0,0,0,.14)', marginTop:2 }}>
-          {buscando && <div className="hint" style={{ padding:'8px' }}>Buscando materiales...</div>}
-          {!buscando && resultados.map(material => <button key={material.id} type="button" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)} style={{ display:'block', width:'100%', border:0, background:'transparent', textAlign:'left', padding:'8px', cursor:'pointer' }}><b>{material.codigo}</b> · {material.descripcion}<span className="muted" style={{ marginLeft:5 }}>{material.unidad || 'und'}</span></button>)}
-          {!buscando && resultados.length === 0 && <div className="hint" style={{ padding:'8px' }}>{busquedaError || 'Sin materiales coincidentes.'}</div>}
-          {puedeCrearMaterial && <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { setForm(actual => ({ ...actual, descripcion:texto })); setCrearAbierto(true); setAbierto(false); }} style={{ display:'block', width:'100%', border:0, borderTop:'1px solid var(--card-border)', background:'var(--orange-soft)', textAlign:'left', padding:'8px', cursor:'pointer', fontWeight:600 }}>+ Crear material: “{texto}”</button>}
+        <div className="dx-solpe-drop" role="listbox" aria-label="Resultados de materiales">
+          {buscando && <div className="dx-solpe-hint">Buscando materiales...</div>}
+          {!buscando && resultados.map(material => <button key={material.id} type="button" className="dx-solpe-opt" role="option" onMouseDown={event => event.preventDefault()} onClick={() => seleccionar(material)}><span className="dx-ui-icon is-cyan dx-solpe-opt-icon" aria-hidden="true"><Icon name="box" size={15}/></span><span><b>{material.descripcion}</b><small>{material.codigo || 'Sin código'} · {material.unidad || 'und'}</small></span></button>)}
+          {!buscando && resultados.length === 0 && <div className="dx-solpe-hint">{busquedaError || 'Sin materiales coincidentes.'}</div>}
+          {puedeCrearMaterial && <button type="button" className="dx-solpe-opt dx-solpe-new" onMouseDown={event => event.preventDefault()} onClick={() => { setForm(actual => ({ ...actual, descripcion:texto })); setCrearAbierto(true); setAbierto(false); }}>＋ Crear material «{texto.length > 28 ? `${texto.slice(0, 28)}…` : texto}»</button>}
         </div>
       )}
     </div>
-    {crearAbierto && <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}><div className="card" style={{ width:'min(760px, 100%)' }}>
-      <div className="card-header"><h3>Nuevo material</h3><div className="spacer"/><button className="icon-btn" onClick={() => setCrearAbierto(false)}><Icon name="x" size={16}/></button></div>
-      <div className="card-body ot-form-grid dbs">
-        {error && <div style={{ gridColumn:'1/-1', color:'var(--text-danger)' }}>{error}</div>}
-        <div className="input-group"><label>Grupo *</label><select className="select" value={form.grupo_id} onChange={event => setForm(actual => ({ ...actual, grupo_id:event.target.value, familia_id:'', subfamilia_id:'' }))}><option value="">Seleccionar...</option>{grupos.map(grupo => <option key={grupo.id} value={grupo.id}>{grupo.codigo} - {grupo.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Familia *</label><select className="select" value={form.familia_id} disabled={!form.grupo_id} onChange={event => setForm(actual => ({ ...actual, familia_id:event.target.value, subfamilia_id:'' }))}><option value="">Seleccionar...</option>{familiasFiltradas.map(familia => <option key={familia.id} value={familia.id}>{familia.codigo} - {familia.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Subfamilia *</label><select className="select" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Código · Auto</label><input className="input" readOnly value={codigoSugerido || 'Selecciona subfamilia'} style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
-        <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Descripción *</label><input className="input" value={form.descripcion} onChange={event => setForm(actual => ({ ...actual, descripcion:event.target.value }))}/></div>
-        <div className="input-group"><label>UM *</label><select className="select" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))}><option value="">Seleccionar...</option>{unidadesOpciones.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select></div>
-        <div className="input-group"><label>Nro. parte</label><input className="input" value={form.nro_parte} onChange={event => setForm(actual => ({ ...actual, nro_parte:event.target.value }))}/></div>
-        <div className="input-group"><label>Unidades contenidas</label><input className="input" type="number" min="0.01" step="0.01" value={form.unidades_contenidas} onChange={event => setForm(actual => ({ ...actual, unidades_contenidas:event.target.value }))}/></div>
-        <div className="input-group"><label>Almacén por defecto</label><select className="select" value={form.almacen_id} onChange={event => setForm(actual => ({ ...actual, almacen_id:event.target.value }))}><option value="">Sin asignar</option>{almacenes.map(almacen => <option key={almacen.id} value={almacen.id}>{almacen.nombre}</option>)}</select></div>
-        <div className="input-group"><label>Ubicación</label><input className="input" value={form.ubicacion} onChange={event => setForm(actual => ({ ...actual, ubicacion:event.target.value }))} placeholder="Ej: Pasillo A, Estante 3"/></div>
-        <div className="input-group"><label>Precio referencial general (PEN)</label><input className="input" type="number" min="0" step="0.01" value={form.precio_unitario} onChange={event => setForm(actual => ({ ...actual, precio_unitario:event.target.value }))}/></div>
-        <div className="input-group"><label>Stock mínimo</label><input className="input" type="number" min="0" step="0.01" value={form.stock_minimo} onChange={event => setForm(actual => ({ ...actual, stock_minimo:event.target.value }))}/></div>
-        <div className="input-group"><label>Punto de reorden</label><input className="input" type="number" min="0" step="0.01" value={form.punto_reorden} onChange={event => setForm(actual => ({ ...actual, punto_reorden:event.target.value }))}/></div>
-        <div className="input-group"><label>Stock máximo</label><input className="input" type="number" min="0" step="0.01" value={form.stock_maximo} onChange={event => setForm(actual => ({ ...actual, stock_maximo:event.target.value }))}/></div>
-        <div className="input-group"><label>Stock de seguridad</label><input className="input" type="number" min="0" step="0.01" value={form.stock_seguridad} onChange={event => setForm(actual => ({ ...actual, stock_seguridad:event.target.value }))}/></div>
-        <div className="input-group"><label>Estado</label><input className="input" readOnly value="Activo" style={{ background:'var(--bg-subtle)', color:'var(--fg-muted)' }}/></div>
-        <div className="input-group" style={{ gridColumn:'1/-1' }}><label>Observación</label><input className="input" value={form.observacion} onChange={event => setForm(actual => ({ ...actual, observacion:event.target.value }))}/></div>
-        <div style={{ gridColumn:'1/-1', display:'flex', justifyContent:'flex-end', gap:8 }}><button className="btn btn-secondary" onClick={() => setCrearAbierto(false)}>Cancelar</button><button className="btn btn-primary" disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : 'Guardar y seleccionar'}</button></div>
+    {crearAbierto && <div className="dx-solpe-scrim dx-solpe-scrim-material" onMouseDown={event => { if (event.target === event.currentTarget && !guardando) setCrearAbierto(false); }}><section className="dx-solpe-modal" role="dialog" aria-modal="true" aria-label="Nuevo material">
+      <div className="dx-solpe-mhead"><div><div className="dx-ui-eyebrow">Catálogo de materiales</div><h2>Nuevo material</h2></div><button type="button" className="dx-solpe-x" aria-label="Cerrar" onClick={() => setCrearAbierto(false)}><Icon name="x" size={18}/></button></div>
+      <div className="dx-solpe-mbody">
+        {error && <div className="dx-solpe-error" role="alert">{error}</div>}
+        <section className="dx-solpe-mgrp"><h3 className="dx-solpe-subh">Clasificación</h3><div className="dx-solpe-grid dx-solpe-grid-3">
+          <div className="dx-solpe-f"><label>Grupo *</label><select className="dx-solpe-in" value={form.grupo_id} onChange={event => setForm(actual => ({ ...actual, grupo_id:event.target.value, familia_id:'', subfamilia_id:'' }))}><option value="">Seleccionar...</option>{grupos.map(grupo => <option key={grupo.id} value={grupo.id}>{grupo.codigo} - {grupo.nombre}</option>)}</select></div>
+          <div className="dx-solpe-f"><label>Familia *</label><select className="dx-solpe-in" value={form.familia_id} disabled={!form.grupo_id} onChange={event => setForm(actual => ({ ...actual, familia_id:event.target.value, subfamilia_id:'' }))}><option value="">Seleccionar...</option>{familiasFiltradas.map(familia => <option key={familia.id} value={familia.id}>{familia.codigo} - {familia.nombre}</option>)}</select></div>
+          <div className="dx-solpe-f"><label>Subfamilia *</label><select className="dx-solpe-in" value={form.subfamilia_id} disabled={!form.familia_id} onChange={event => setForm(actual => ({ ...actual, subfamilia_id:event.target.value }))}><option value="">Seleccionar...</option>{subfamiliasFiltradas.map(subfamilia => <option key={subfamilia.id} value={subfamilia.id}>{subfamilia.codigo} - {subfamilia.nombre}</option>)}</select></div>
+          <div className="dx-solpe-f dx-solpe-full"><label>Código · automático</label><div className={`dx-solpe-code-box${codigoSugerido ? '' : ' dx-solpe-code-empty'}`}>{codigoSugerido || 'Selecciona una subfamilia para generar el código'}</div></div>
+        </div></section>
+        <section className="dx-solpe-mgrp"><h3 className="dx-solpe-subh">Datos del material</h3><div className="dx-solpe-grid">
+          <div className="dx-solpe-f dx-solpe-full"><label>Descripción *</label><input className="dx-solpe-in" value={form.descripcion} onChange={event => setForm(actual => ({ ...actual, descripcion:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Unidad de medida *</label><select className="dx-solpe-in" value={form.unidad} onChange={event => setForm(actual => ({ ...actual, unidad:event.target.value }))}><option value="">Seleccionar...</option>{unidadesOpciones.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select></div>
+          <div className="dx-solpe-f"><label>Nro. de parte</label><input className="dx-solpe-in" value={form.nro_parte} onChange={event => setForm(actual => ({ ...actual, nro_parte:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Unidades contenidas</label><input className="dx-solpe-in" type="number" min="0.01" step="0.01" value={form.unidades_contenidas} onChange={event => setForm(actual => ({ ...actual, unidades_contenidas:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Precio referencial (PEN)</label><input className="dx-solpe-in" type="number" min="0" step="0.01" value={form.precio_unitario} onChange={event => setForm(actual => ({ ...actual, precio_unitario:event.target.value }))}/></div>
+          <div className="dx-solpe-f dx-solpe-full"><label>Observación</label><input className="dx-solpe-in" value={form.observacion} onChange={event => setForm(actual => ({ ...actual, observacion:event.target.value }))}/></div>
+        </div></section>
+        <section className="dx-solpe-mgrp"><h3 className="dx-solpe-subh">Almacén y stock</h3><div className="dx-solpe-grid">
+          <div className="dx-solpe-f"><label>Almacén por defecto</label><select className="dx-solpe-in" value={form.almacen_id} onChange={event => setForm(actual => ({ ...actual, almacen_id:event.target.value }))}><option value="">Sin asignar</option>{almacenes.map(almacen => <option key={almacen.id} value={almacen.id}>{almacen.nombre}</option>)}</select></div>
+          <div className="dx-solpe-f"><label>Ubicación</label><input className="dx-solpe-in" value={form.ubicacion} onChange={event => setForm(actual => ({ ...actual, ubicacion:event.target.value }))} placeholder="Ej. Pasillo A, estante 3"/></div>
+        </div><div className="dx-solpe-grid dx-solpe-grid-4 dx-solpe-stock">
+          <div className="dx-solpe-f"><label>Stock mínimo</label><input className="dx-solpe-in" type="number" min="0" step="0.01" value={form.stock_minimo} onChange={event => setForm(actual => ({ ...actual, stock_minimo:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Punto de reorden</label><input className="dx-solpe-in" type="number" min="0" step="0.01" value={form.punto_reorden} onChange={event => setForm(actual => ({ ...actual, punto_reorden:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Stock máximo</label><input className="dx-solpe-in" type="number" min="0" step="0.01" value={form.stock_maximo} onChange={event => setForm(actual => ({ ...actual, stock_maximo:event.target.value }))}/></div>
+          <div className="dx-solpe-f"><label>Stock de seguridad</label><input className="dx-solpe-in" type="number" min="0" step="0.01" value={form.stock_seguridad} onChange={event => setForm(actual => ({ ...actual, stock_seguridad:event.target.value }))}/></div>
+        </div></section>
       </div>
-    </div></div>}
+      <div className="dx-solpe-mfoot"><span className="dx-solpe-miss">Se crea como material activo.</span><button type="button" className="dx-btn" onClick={() => setCrearAbierto(false)}>Cancelar</button><button type="button" className="dx-btn primary" disabled={guardando} onClick={guardar}>{guardando ? 'Guardando...' : 'Guardar y seleccionar'}</button></div>
+    </section></div>}
   </>;
 };
 
@@ -1250,6 +1262,9 @@ export const SolicitudesPage = ({ onNav }) => {
   const { empresaId, estado: estadoSesion, usuario } = useSesionOperativa();
   const [solpes, setSolpes] = useS2([]);
   const [pestana, setPestana] = useS2('todos');
+  const [busquedaSolpe, setBusquedaSolpe] = useS2('');
+  const [fechaSolpe, setFechaSolpe] = useS2('');
+  const [filtroUrgencia, setFiltroUrgencia] = useS2('todas');
   const [solpeAtendiendo, setSolpeAtendiendo] = useS2(null);
   const [modalAtenderAbierto, setModalAtenderAbierto] = useS2(false);
   const [cargando, setCargando] = useS2(true);
@@ -1385,6 +1400,13 @@ export const SolicitudesPage = ({ onNav }) => {
   useEffect(() => { cargarDatosFormulario(); }, [cargarDatosFormulario]);
 
   useEffect(() => {
+    if (!detalleAbierto && !modalAtenderAbierto) return undefined;
+    const cerrarConEscape = evento => { if (evento.key === 'Escape') { if (modalAtenderAbierto) { if (!guardando) setModalAtenderAbierto(false); } else setDetalleAbierto(null); } };
+    window.addEventListener('keydown', cerrarConEscape);
+    return () => window.removeEventListener('keydown', cerrarConEscape);
+  }, [detalleAbierto, modalAtenderAbierto, guardando]);
+
+  useEffect(() => {
     if (!detalleAbierto?.id || !empresaId) return undefined;
     let vigente = true;
     const cargarSeguimiento = async () => {
@@ -1466,207 +1488,151 @@ export const SolicitudesPage = ({ onNav }) => {
     } finally { setGuardando(false); }
   };
 
-  const solpesVisibles = solpes.filter(solpe => pestana === 'todos' || solpe.estado === pestana);
+  const normalizarSolpe = texto => String(texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const origenSolpe = solpe => solpe.origen_tipo === 'ot' && solpe.ot_id
+    ? (solpe.otNumero || solpe.ot_id)
+    : solpe.origen === 'automatico' ? 'Reorden automático' : 'Manual';
   const etiquetaEstado = estado => ({
-    solicitada: ['orange', 'Solicitada'],
-    aprobada: ['cyan', 'Aprobada'],
-    oc_generada: ['green', 'OC generada'],
-    borrador: ['gray', 'Borrador'],
-  }[estado] || ['gray', estado || 'Sin estado']);
-
+    solicitada: ['is-amber', 'Solicitada'],
+    aprobada: ['is-cyan', 'Aprobada'],
+    oc_generada: ['is-green', 'OC generada'],
+    borrador: ['is-gray', 'Borrador'],
+  }[estado] || ['is-gray', estado || 'Sin estado']);
+  const fechaDeSolpe = solpe => String(solpe.fecha || solpe.fecha_requerida || '—').slice(0, 10);
+  const buscarEnSolpe = solpe => normalizarSolpe([
+    solpe.codigo, solpe.descripcionVisible, solpe.itemCodigo, solpe.solicitante,
+    origenSolpe(solpe), solpe.origen === 'automatico' ? 'Stock mínimo' : solpe.ubicacion, fechaDeSolpe(solpe), etiquetaEstado(solpe.estado)[1],
+    solpe.urgenciaVisible, ...(Array.isArray(solpe.items) ? solpe.items.flatMap(item => [item?.descripcion, item?.nombre, item?.codigo, item?.material_codigo]) : []),
+  ].filter(Boolean).join(' '));
+  const terminosSolpe = normalizarSolpe(busquedaSolpe).split(/\s+/).filter(Boolean);
+  const baseFiltrada = solpes.filter(solpe => (pestana === 'todos' || solpe.estado === pestana)
+    && (!fechaSolpe || fechaDeSolpe(solpe) === fechaSolpe)
+    && terminosSolpe.every(termino => buscarEnSolpe(solpe).includes(termino)));
+  const solpesVisibles = baseFiltrada.filter(solpe => filtroUrgencia === 'todas' || solpe.urgenciaVisible === (filtroUrgencia === 'urgentes' ? 'urgente' : 'normal'));
+  const conteoEstado = estado => solpes.filter(solpe => solpe.estado === estado).length;
+  const filasEstado = [
+    ['todos', 'Todos', solpes.length], ['solicitada', 'Solicitada', conteoEstado('solicitada')],
+    ['aprobada', 'Aprobada', conteoEstado('aprobada')], ['oc_generada', 'OC generada', conteoEstado('oc_generada')],
+  ];
+  const textoVacio = error && solpes.length > 0 ? solpesVisibles.length === 0 ? 'No hay solicitudes con estos filtros.' : ''
+    : cargando ? 'Cargando solicitudes SOLPE...'
+    : solpes.length === 0 ? error || 'Aún no hay solicitudes SOLPE. Crea la primera con «Nueva SOLPE».'
+    : solpesVisibles.length === 0 ? 'No hay solicitudes con estos filtros.' : '';
+  const resumenSolpe = [
+    [conteoEstado('solicitada'), 'por atender'],
+    [solpes.filter(solpe => solpe.estado === 'solicitada' && solpe.urgenciaVisible === 'urgente').length, 'urgentes por atender'],
+    [conteoEstado('aprobada'), 'aprobadas'], [conteoEstado('oc_generada'), 'con OC generada'],
+  ];
+  const fmtFecha = valor => valor ? String(valor).slice(0, 10) : '—';
+  const detenerFila = evento => evento.stopPropagation();
+  const tipoEtiqueta = tipo => tipo === 'servicio' ? 'Servicio' : tipo === 'bien' ? 'Bien' : tipo || '';
+  const detalleItems = detalleAbierto?.items?.length ? detalleAbierto.items : [{
+    material_codigo: detalleAbierto?.itemCodigo, descripcion: detalleAbierto?.descripcionVisible,
+    cantidad: detalleAbierto?.cantidadVisible, unidad: detalleAbierto?.unidadVisible, observacion: '',
+  }];
   return (
-    <div className="page">
+    <section className="dx-ui dx-solpe">
       {!formularioAbierto && <>
-      <div className="page-header">
-        <div><h1>Solicitudes SOLPE</h1><div className="sub">Pedidos desde mina y taller — para pasar a compras</div></div>
-        <div className="spacer"/>
-        <button className="btn btn-primary" disabled={!puedeCrearSolpe} onClick={() => setFormularioAbierto(true)}><Icon name="plus" size={13}/> Nueva SOLPE</button>
-      </div>
-      <div className="toolbar">
-        <div className="seg">
-          {[['todos', 'Todos'], ['solicitada', 'Solicitada'], ['aprobada', 'Aprobada'], ['oc_generada', 'OC Generada']].map(([estado, etiqueta]) => (
-            <button key={estado} className={pestana === estado ? 'active' : ''} onClick={() => setPestana(estado)}>{etiqueta}</button>
-          ))}
+        <header className="dx-solpe-head">
+          <div><div className="dx-ui-eyebrow">Almacén y repuestos</div><h1 className="dx-ui-title">Solicitudes SOLPE</h1><p className="dx-ui-sub">Pedidos desde mina y taller — para pasar a compras</p></div>
+          <div className="dx-solpe-actions"><button type="button" className="dx-btn primary" disabled={!puedeCrearSolpe} onClick={() => { setError(null); setFormularioAbierto(true); }}><Icon name="plus" size={15}/> Nueva SOLPE</button></div>
+        </header>
+        <div className="dx-ui-summary" aria-label="Resumen de solicitudes">{resumenSolpe.map(([cantidad, etiqueta]) => <div className="dx-ui-chip" key={etiqueta}><b>{cantidad}</b><span>{etiqueta}</span></div>)}</div>
+        <div className="dx-ui-tabs" role="group" aria-label="Estado de la solicitud">{filasEstado.map(([estado, etiqueta, cantidad]) => <button key={estado} type="button" className={`dx-ui-tab${pestana === estado ? ' on' : ''}`} aria-pressed={pestana === estado} onClick={() => setPestana(estado)}>{etiqueta} · {cantidad}</button>)}</div>
+        {error && solpes.length > 0 && <div className="dx-solpe-error dx-solpe-list-error" role="alert">{error}</div>}
+        <div className="dx-ui-card dx-solpe-list-card">
+          <div className="dx-ui-toolbar"><h2>Solicitudes</h2><span className="dx-ui-count">{cargando ? '0 solicitudes' : solpesVisibles.length === solpes.length ? `${solpes.length} solicitudes` : `${solpesVisibles.length} de ${solpes.length} solicitudes`}</span>
+            <label className="dx-ui-search"><span aria-hidden="true"><Icon name="search" size={16}/></span><input type="search" aria-label="Buscar solicitud" placeholder="Código, material, solicitante, OT o ubicación" value={busquedaSolpe} onChange={evento => setBusquedaSolpe(evento.target.value)}/></label>
+            <label className="dx-solpe-datef" title="Fecha exacta"><span aria-hidden="true"><Icon name="calendar" size={16}/></span><input type="date" aria-label="Filtrar por fecha exacta" value={fechaSolpe} onChange={evento => setFechaSolpe(evento.target.value)}/>{fechaSolpe && <button type="button" aria-label="Quitar fecha" onClick={() => setFechaSolpe('')}><Icon name="x" size={12}/></button>}</label>
+          </div>
+          <div className="dx-solpe-filters" role="group" aria-label="Filtrar por urgencia">{[
+            ['todas', 'Todas', baseFiltrada.length],
+            ['urgentes', 'Urgentes', baseFiltrada.filter(solpe => solpe.urgenciaVisible === 'urgente').length],
+            ['normales', 'Normales', baseFiltrada.filter(solpe => solpe.urgenciaVisible !== 'urgente').length],
+          ].map(([clave, etiqueta, cantidad]) => <button key={clave} type="button" className={`dx-solpe-chipbtn${filtroUrgencia === clave ? ' on' : ''}`} aria-pressed={filtroUrgencia === clave} onClick={() => setFiltroUrgencia(clave)}>{etiqueta} <b>{cantidad}</b></button>)}</div>
+          <div className="dx-ui-head dx-solpe-cols" aria-hidden="true"><span>Solicitud</span><span>Cant.</span><span>Origen</span><span>Fecha</span><span>Estado</span><span/></div>
+          {textoVacio && <div className={`dx-ui-empty${error && solpes.length === 0 ? ' dx-solpe-error' : ''}`} role={error && solpes.length === 0 ? 'alert' : undefined}>{textoVacio}</div>}
+          {!textoVacio && solpesVisibles.map(solpe => {
+            const [estadoClase, estadoTexto] = etiquetaEstado(solpe.estado);
+            const urgente = solpe.urgenciaVisible === 'urgente';
+            const origen = origenSolpe(solpe);
+            const fecha = fechaDeSolpe(solpe);
+            const cantidad = solpe.cantidadVisible ?? '—';
+            const abrirDetalle = () => { setSeguimientoCompra({ ocs:[], recepciones:[], error:null }); setDetalleAbierto(solpe); };
+            return <div key={solpe.id} className="dx-ui-row dx-solpe-cols" role="button" tabIndex={0} aria-label={`Ver SOLPE ${solpe.codigo || solpe.id}: ${solpe.descripcionVisible}`} onClick={abrirDetalle} onKeyDown={evento => { if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); abrirDetalle(); } }}>
+              <div className="dx-solpe-main dx-solpe-c-main"><span className={`dx-ui-icon ${urgente ? 'is-red' : 'is-cyan'}`} aria-hidden="true"><Icon name="box" size={17}/></span><span><b>{solpe.descripcionVisible}</b><span className="dx-solpe-sub"><span className="dx-solpe-code">{solpe.codigo || solpe.itemCodigo || '—'}{solpe.itemCodigo && solpe.codigo ? ` · ${solpe.itemCodigo}` : ''}</span>{urgente && <span className="dx-solpe-flag">Urgente</span>}<span className="dx-solpe-by">{solpe.solicitante ? `· ${solpe.solicitante}` : ''}</span></span></span></div>
+              <div className="dx-solpe-cell dx-solpe-c-qty"><span className="dx-solpe-lbl">Cantidad</span><span className="dx-solpe-qty">{cantidad}<small>{solpe.unidadVisible}</small></span></div>
+              <div className="dx-solpe-cell dx-solpe-org dx-solpe-c-org"><span className="dx-solpe-lbl">Origen</span>{solpe.origen_tipo === 'ot' && solpe.ot_id ? <><button type="button" className="dx-solpe-ot" aria-label={`Abrir orden de trabajo ${solpe.otNumero || solpe.ot_id}`} onClick={evento => { detenerFila(evento); if (onNav) onNav('ots'); }}>{solpe.otNumero || solpe.ot_id}</button><small>{solpe.ubicacion || 'Orden de trabajo'}</small></> : <><b className="dx-solpe-plain">{origen}</b><small>{solpe.origen === 'automatico' ? 'Stock mínimo' : solpe.ubicacion && solpe.ubicacion !== '—' ? solpe.ubicacion : 'Manual'}</small></>}</div>
+              <div className="dx-solpe-cell dx-solpe-c-date"><span className="dx-solpe-lbl">Fecha</span><span className="dx-solpe-date">{fecha}</span></div>
+              <div className="dx-solpe-cell dx-solpe-c-st"><span className="dx-solpe-lbl">Estado</span><span className={`dx-ui-pill ${estadoClase}`}><i/>{estadoTexto}</span></div>
+              <div className="dx-solpe-act dx-solpe-c-act">{solpe.estado === 'solicitada' && <button type="button" className="dx-btn primary dx-solpe-btn-sm" aria-label={`Atender ${solpe.codigo || solpe.id}`} onClick={evento => { detenerFila(evento); handleAtender(solpe); }}>Atender</button>}<button type="button" className="dx-btn dx-solpe-btn-sm dx-solpe-btn-ghost" aria-label={`Ver ${solpe.codigo || solpe.id}`} onClick={evento => { detenerFila(evento); abrirDetalle(); }}>Ver</button></div>
+            </div>;
+          })}
         </div>
-      </div>
-      {error && <div className="card" style={{ padding:'12px 16px', marginBottom:'12px', color:'var(--text-danger)', border:'1px solid var(--border-danger)' }}>{error}</div>}
-      <div className="card">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Tipo</th>
-              <th>Descripción</th>
-              <th className="num">Cant.</th>
-              <th>Solicitado por</th>
-              <th>Origen</th>
-              <th>Ubicación</th>
-              <th>Fecha</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cargando && <tr><td colSpan="9" style={{ textAlign:'center', color:'var(--text-muted)', padding:'28px' }}>Cargando solicitudes SOLPE...</td></tr>}
-            {!cargando && solpesVisibles.length === 0 && <tr><td colSpan="9" style={{ textAlign:'center', color:'var(--text-muted)', padding:'28px' }}>No hay solicitudes en esta pestaña.</td></tr>}
-            {!cargando && solpesVisibles.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  {s.urgenciaVisible === 'urgente'
-                    ? <span style={{ background:'var(--red)', color:'white', fontWeight:700,
-                                     fontSize:'10px', padding:'2px 8px', borderRadius:'5px' }}>URGENTE</span>
-                    : <span style={{ background:'var(--info-soft-bg)', color:'var(--info-fg)',
-                                     fontSize:'10px', padding:'2px 8px', borderRadius:'5px' }}>NORMAL</span>
-                  }
-                </td>
-                <td>
-                  <div style={{ fontWeight:600, fontSize:'13px', color:'var(--text)' }}>{s.descripcionVisible}</div>
-                  {s.itemCodigo && (
-                    <div style={{ fontSize:'10px', fontFamily:'monospace', color:'var(--orange)', marginTop:'2px' }}>
-                      {s.itemCodigo}
-                    </div>
-                  )}
-                </td>
-                <td className="num mono">{s.cantidadVisible ?? '—'} {s.unidadVisible}</td>
-                <td>{s.solicitante || '—'}</td>
-                <td>
-                  {s.origen_tipo === 'ot' && s.ot_id ? (
-                    <div>
-                      <span style={{ fontSize:'10px', color:'var(--info-fg)', fontFamily:'monospace',
-                                     cursor:'pointer', display:'block' }}
-                        role="link" tabIndex={0}
-                        onClick={() => onNav && onNav('ots')}
-                        onKeyDown={event => { if (event.key === 'Enter') onNav && onNav('ots'); }}>
-                        {s.otNumero}
-                      </span>
-                      <span style={{ fontSize:'9px', color:'var(--text-strong-muted)' }}>Orden de Trabajo</span>
-                    </div>
-                  ) : s.origen === 'automatico' ? (
-                    <div><span style={{ fontSize:'11px', color:'var(--text-strong-muted)' }}>Reorden automático</span><div style={{ fontSize:'9px', color:'var(--text-strong-muted)' }}>Stock mínimo</div></div>
-                  ) : (
-                    <span style={{ color:'var(--text-strong-muted)', fontSize:'11px' }}>Manual</span>
-                  )}
-                </td>
-                <td>
-                  <div style={{ fontSize:'12px', color:'var(--text-muted)' }}>{s.ubicacion}</div>
-                </td>
-                <td style={{ fontSize:'12px', color:'var(--text-muted)', fontFamily:'monospace' }}>{s.fecha || s.fecha_requerida || '—'}</td>
-                <td>
-                  {(() => { const [color, etiqueta] = etiquetaEstado(s.estado); return <span className={`badge ${color}`}><span className="dot"/>{etiqueta}</span>; })()}
-                </td>
-                <td>
-                  <div style={{ display:'flex', gap:6 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDetalleAbierto(s)}>Ver</button>
-                    {s.estado === 'solicitada' && <button className="btn btn-ghost btn-sm" onClick={() => handleAtender(s)}>Atender</button>}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
       </>}
 
-      {formularioAbierto && <div>
-        <div className="page-header">
-          <div><div className="ops-eyebrow">Almacén y repuestos</div><h1>Nueva SOLPE</h1><div className="sub">Solicitud para seguimiento por Compras</div></div>
-          <div className="spacer"/><button className="btn btn-secondary" onClick={() => setFormularioAbierto(false)}>Volver a solicitudes</button>
+      {formularioAbierto && <>
+        <button type="button" className="dx-solpe-back" onClick={() => { setError(null); setFormularioAbierto(false); }}><span aria-hidden="true"><Icon name="back" size={16}/></span> Volver a solicitudes</button>
+        <header className="dx-solpe-head"><div><div className="dx-ui-eyebrow">Almacén y repuestos</div><h1 className="dx-ui-title">Nueva SOLPE</h1><p className="dx-ui-sub">Solicitud para seguimiento por Compras</p></div></header>
+        <div className="dx-ui-card dx-solpe-form-card">
+          {error && <div className="dx-solpe-form-error" role="alert">{error}</div>}
+          <section className="dx-solpe-sec"><div className="dx-solpe-sech"><span className="dx-solpe-num">1</span><h3>Necesidad</h3></div><div className="dx-solpe-grid"><div className="dx-solpe-f dx-solpe-full"><label>Descripción de la necesidad</label><textarea className="dx-solpe-in" rows={3} value={formSolpe.descripcion} onChange={evento => setFormSolpe(actual => ({ ...actual, descripcion:evento.target.value }))} placeholder="Ej. Repuestos para la cabecera de la línea B"/></div></div></section>
+          <section className="dx-solpe-sec"><div className="dx-solpe-sech"><span className="dx-solpe-num">2</span><h3>Ítems solicitados</h3><button type="button" className="dx-btn sm" onClick={() => setFormSolpe(actual => ({ ...actual, items:[...actual.items, nuevaLineaSolpe()] }))}><Icon name="plus" size={13}/> Agregar ítem</button></div>
+            <div className="dx-solpe-lines-head dx-solpe-lines"><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
+            {formSolpe.items.map(linea => <div key={linea.id} className="dx-solpe-lines dx-solpe-line">
+              <div className="dx-solpe-pop"><span className="dx-solpe-mlabel">Material</span><SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} unidadesMedida={unidadesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/></div>
+              <div className="dx-solpe-f"><span className="dx-solpe-mlabel">Cantidad</span><input aria-label="Cantidad" className="dx-solpe-in" type="number" min="0" step="any" value={linea.cantidad} onChange={evento => actualizarLinea(linea.id, { cantidad:evento.target.value })}/></div>
+              <div className="dx-solpe-f"><span className="dx-solpe-mlabel">Unidad</span><select aria-label="Unidad" className="dx-solpe-in" value={linea.unidad} onChange={evento => actualizarLinea(linea.id, { unidad:evento.target.value })}>{unidadesMaterial.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select></div>
+              <div className="dx-solpe-f dx-solpe-observacion"><span className="dx-solpe-mlabel">Observación</span><input aria-label="Observación" className="dx-solpe-in" value={linea.observacion} onChange={evento => actualizarLinea(linea.id, { observacion:evento.target.value })} placeholder="Opcional"/></div>
+              <button type="button" className="dx-solpe-rm" aria-label="Quitar ítem" onClick={() => setFormSolpe(actual => ({ ...actual, items:actual.items.filter(item => item.id !== linea.id) }))}><Icon name="x" size={16}/></button>
+            </div>)}
+            {!puedeCrearMaterial && <p className="dx-solpe-helper">Tu rol puede seleccionar materiales existentes, pero no crear materiales nuevos.</p>}
+          </section>
+          <section className="dx-solpe-sec"><div className="dx-solpe-sech"><span className="dx-solpe-num">3</span><h3>Datos de la solicitud</h3></div><div className="dx-solpe-grid">
+            <div className="dx-solpe-f"><label>Tipo</label><div className="dx-solpe-segb" role="group" aria-label="Tipo"><button type="button" className={formSolpe.tipo === 'bien' ? 'on' : ''} aria-pressed={formSolpe.tipo === 'bien'} onClick={() => setFormSolpe(actual => ({ ...actual, tipo:'bien' }))}>Bien</button><button type="button" className={formSolpe.tipo === 'servicio' ? 'on' : ''} aria-pressed={formSolpe.tipo === 'servicio'} onClick={() => setFormSolpe(actual => ({ ...actual, tipo:'servicio' }))}>Servicio</button></div></div>
+            <div className="dx-solpe-f"><label>Urgencia</label><div className="dx-solpe-segb" role="group" aria-label="Urgencia"><button type="button" className={formSolpe.prioridad === 'normal' ? 'on' : ''} aria-pressed={formSolpe.prioridad === 'normal'} onClick={() => setFormSolpe(actual => ({ ...actual, prioridad:'normal' }))}>Normal</button><button type="button" className={formSolpe.prioridad === 'urgente' ? 'on is-red' : ''} aria-pressed={formSolpe.prioridad === 'urgente'} onClick={() => setFormSolpe(actual => ({ ...actual, prioridad:'urgente' }))}>Urgente</button><button type="button" className={formSolpe.prioridad === 'critica' ? 'on is-red' : ''} aria-pressed={formSolpe.prioridad === 'critica'} onClick={() => setFormSolpe(actual => ({ ...actual, prioridad:'critica' }))}>Crítica</button></div></div>
+            <div className="dx-solpe-f"><label>Área solicitante</label><select className="dx-solpe-in" value={formSolpe.solicitante} onChange={evento => setFormSolpe(actual => ({ ...actual, solicitante:evento.target.value }))}><option value="">Seleccionar...</option>{areasFormulario.map(area => <option key={area.id} value={area.nombre}>{area.nombre}</option>)}</select></div>
+            <div className="dx-solpe-f"><label>OT asociada</label><select className="dx-solpe-in" value={formSolpe.ot_id} onChange={evento => setFormSolpe(actual => ({ ...actual, ot_id:evento.target.value }))}><option value="">Sin OT</option>{otsFormulario.map(ot => <option key={ot.id} value={ot.id}>{ot.numero || ot.id}</option>)}</select></div>
+            <div className="dx-solpe-f dx-solpe-full"><label>Centro de costo (CECO)</label><select className="dx-solpe-in" value={formSolpe.centro_costo_id} onChange={evento => setFormSolpe(actual => ({ ...actual, centro_costo_id:evento.target.value }))}><option value="">Seleccionar...</option>{cecosFormulario.map(ceco => <option key={ceco.id} value={ceco.id}>{ceco.codigo} - {ceco.nombre}</option>)}</select></div>
+          </div></section>
+          <div className="dx-solpe-foot"><span className="dx-solpe-miss">{!formSolpe.descripcion.trim() ? 'Falta: descripción.' : formSolpe.tipo === 'bien' && !formSolpe.items.some(item => item.material_id && Number(item.cantidad) > 0) ? 'Falta: un material con cantidad.' : !formSolpe.centro_costo_id ? 'Falta: CECO.' : 'Todo listo para crear la solicitud.'}</span><button type="button" className="dx-btn" onClick={() => { setError(null); setFormularioAbierto(false); }}>Cancelar</button><button type="button" className="dx-btn primary" disabled={guardando} onClick={crearSolicitud}>{guardando ? 'Creando...' : 'Crear SOLPE'}</button></div>
         </div>
-        <div className="card">
-          <div className="card-body" style={{ display:'grid', gap:14 }}>
-            <section className="ot-form-section">
-              <div className="ot-form-section-title">1. Necesidad</div>
-              <div className="ot-form-grid dbs"><div className="ot-form-field ot-form-full"><div className="label">Descripción de la necesidad</div><textarea className="input" rows={3} value={formSolpe.descripcion} onChange={event => setFormSolpe(actual => ({ ...actual, descripcion:event.target.value }))} placeholder="Describe el requerimiento..."/></div></div>
-            </section>
-            <section className="ot-form-section ot-form-section-popover">
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}><div className="ot-form-section-title" style={{ margin:0 }}>2. Ítems solicitados</div><button className="btn btn-secondary btn-sm" onClick={() => setFormSolpe(actual => ({ ...actual, items:[...actual.items, nuevaLineaSolpe()] }))}>+ Agregar ítem</button></div>
-              <div className="table-wrap" style={{ overflow:'visible' }}><div style={{ minWidth:720 }}>
-                <div style={{ display:'grid', gridTemplateColumns:'minmax(420px, 3fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, padding:'0 0 6px', fontSize:11, color:'var(--text-muted)' }}><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span><span/></div>
-              {formSolpe.items.map(linea => <div key={linea.id} style={{ display:'grid', gridTemplateColumns:'minmax(420px, 3fr) minmax(100px, .65fr) minmax(130px, .8fr) minmax(220px, 1.25fr) 34px', gap:10, alignItems:'end', padding:'10px 0', borderTop:'1px solid var(--card-border)' }}>
-                <SelectorMaterialSolpe item={linea} materiales={catalogoMateriales} puedeCrearMaterial={puedeCrearMaterial} empresaId={empresaId} usuarioId={usuario?.id} grupos={gruposMaterial} familias={familiasMaterial} subfamilias={subfamiliasMaterial} almacenes={almacenesMaterial} unidadesMedida={unidadesMaterial} onSelect={cambios => actualizarLinea(linea.id, cambios)}/>
-                <input aria-label="Cantidad" className="input" type="number" min="0" step="any" value={linea.cantidad} onChange={event => actualizarLinea(linea.id, { cantidad:event.target.value })}/>
-                <select aria-label="Unidad" className="select" value={linea.unidad} onChange={event => actualizarLinea(linea.id, { unidad:event.target.value })}>{unidadesMaterial.map(unidad => <option key={unidad} value={unidad}>{unidad}</option>)}</select>
-                <input aria-label="Observación" className="input" value={linea.observacion} onChange={event => actualizarLinea(linea.id, { observacion:event.target.value })}/>
-                <button className="icon-btn" title="Eliminar ítem" onClick={() => setFormSolpe(actual => ({ ...actual, items:actual.items.filter(item => item.id !== linea.id) }))}><Icon name="x" size={15}/></button>
-              </div>)}
-              </div></div>
-              {!puedeCrearMaterial && <div className="hint" style={{ marginTop:6 }}>Tu rol puede seleccionar materiales existentes, pero no crear materiales nuevos.</div>}
-            </section>
-            <section className="ot-form-section"><div className="ot-form-section-title">3. Datos de la solicitud</div><div className="ot-form-grid dbs">
-              <div className="ot-form-field"><div className="label">Tipo</div><select className="select" value={formSolpe.tipo} onChange={event => setFormSolpe(actual => ({ ...actual, tipo:event.target.value }))}><option value="bien">Bien</option><option value="servicio">Servicio</option></select></div>
-              <div className="ot-form-field"><div className="label">Urgencia</div><select className="select" value={formSolpe.prioridad} onChange={event => setFormSolpe(actual => ({ ...actual, prioridad:event.target.value }))}><option value="normal">Normal</option><option value="urgente">Urgente</option><option value="critica">Crítica</option></select></div>
-              <div className="ot-form-field"><div className="label">Área solicitante</div><select className="select" value={formSolpe.solicitante} onChange={event => setFormSolpe(actual => ({ ...actual, solicitante:event.target.value }))}><option value="">Seleccionar...</option>{areasFormulario.map(area => <option key={area.id} value={area.nombre}>{area.nombre}</option>)}</select></div>
-              <div className="ot-form-field"><div className="label">OT asociada</div><select className="select" value={formSolpe.ot_id} onChange={event => setFormSolpe(actual => ({ ...actual, ot_id:event.target.value }))}><option value="">Sin OT</option>{otsFormulario.map(ot => <option key={ot.id} value={ot.id}>{ot.numero || ot.id}</option>)}</select></div>
-              <div className="ot-form-field ot-form-full"><div className="label">Centro de costo (CECO)</div><select className="select" value={formSolpe.centro_costo_id} onChange={event => setFormSolpe(actual => ({ ...actual, centro_costo_id:event.target.value }))}><option value="">Seleccionar...</option>{cecosFormulario.map(ceco => <option key={ceco.id} value={ceco.id}>{ceco.codigo} - {ceco.nombre}</option>)}</select></div>
-            </div></section>
-            <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}><button className="btn btn-secondary" onClick={() => setFormularioAbierto(false)}>Cancelar</button><button className="btn btn-primary" disabled={guardando} onClick={crearSolicitud}>{guardando ? 'Creando...' : 'Crear SOLPE'}</button></div>
+      </>}
+
+      {toast && <div className="dx-solpe-toast" role="status"><span aria-hidden="true"><Icon name="check" size={18}/></span>{toast}</div>}
+      {detalleAbierto && <div className="dx-solpe-scrim dx-solpe-scrim-detail" onMouseDown={evento => { if (evento.target === evento.currentTarget) setDetalleAbierto(null); }}><section className="dx-solpe-modal" role="dialog" aria-modal="true" aria-label={`Detalle de SOLPE ${detalleAbierto.codigo || detalleAbierto.id}`}>
+        <div className="dx-solpe-mhead"><div><div className="dx-ui-eyebrow">Detalle de SOLPE</div><h2>{detalleAbierto.codigo || detalleAbierto.id}</h2></div><div className="dx-solpe-mhead-tags"><span className={`dx-ui-pill ${etiquetaEstado(detalleAbierto.estado)[0]}`}><i/>{etiquetaEstado(detalleAbierto.estado)[1]}</span>{detalleAbierto.urgenciaVisible === 'urgente' && <span className="dx-ui-pill is-red"><i/>Urgente</span>}</div><button type="button" className="dx-solpe-x" aria-label="Cerrar" onClick={() => setDetalleAbierto(null)}><Icon name="x" size={18}/></button></div>
+        <div className="dx-solpe-mbody">
+          <div className="dx-solpe-meta">
+            {detalleAbierto.solicitante && <div><small>Solicitante</small><span>{detalleAbierto.solicitante}</span></div>}
+            {(detalleAbierto.otNumero || detalleAbierto.origen) && <div><small>Origen</small><span>{origenSolpe(detalleAbierto)}</span></div>}
+            {detalleAbierto.ubicacion && detalleAbierto.ubicacion !== '—' && <div><small>Ubicación</small><span>{detalleAbierto.ubicacion}</span></div>}
+            {(detalleAbierto.fecha || detalleAbierto.fecha_requerida) && <div><small>Fecha</small><span>{fmtFecha(detalleAbierto.fecha || detalleAbierto.fecha_requerida)}</span></div>}
+            {detalleAbierto.tipo && <div><small>Tipo</small><span>{tipoEtiqueta(detalleAbierto.tipo)}</span></div>}
+            {detalleAbierto.ceco && <div><small>CECO</small><span>{detalleAbierto.ceco}</span></div>}
+          </div>
+          <div><span className="dx-solpe-h">Descripción</span><p className="dx-solpe-desc">{detalleAbierto.descripcionVisible}</p></div>
+          <div><span className="dx-solpe-h">Ítems solicitados</span><div className="dx-solpe-box"><div className="dx-ui-head dx-solpe-items" aria-hidden="true"><span>Material</span><span>Cantidad</span><span>Unidad</span><span>Observación</span></div>
+            {detalleItems.map((item, index) => <div className="dx-ui-row dx-solpe-items" key={item.id || index}><div className="dx-solpe-it-main"><b>{item.descripcion || item.nombre || '—'}</b><div className="dx-solpe-code">{item.material_codigo || item.codigo || (index === 0 ? detalleAbierto.itemCodigo : '') || '—'}</div></div><div className="dx-solpe-qty">{item.cantidad ?? item.cantidad_solicitada ?? (index === 0 ? detalleAbierto.cantidadVisible : null) ?? '—'}</div><div>{item.unidad || (index === 0 ? detalleAbierto.unidadVisible : '') || '—'}</div><div className="dx-solpe-item-obs">{item.observacion || '—'}</div></div>)}
+          </div></div>
+          <div><span className="dx-solpe-h">Seguimiento de compra</span><ol className="dx-solpe-steps">{[
+            ['Solicitada', ['solicitada', 'aprobada', 'oc_generada'].includes(detalleAbierto.estado)],
+            ['Aprobada', ['aprobada', 'oc_generada'].includes(detalleAbierto.estado)],
+            ['OC generada', detalleAbierto.estado === 'oc_generada' || seguimientoCompra.ocs.length > 0],
+            ['Recibida', seguimientoCompra.recepciones.length > 0],
+          ].map(([etiqueta, activo]) => <li key={etiqueta} className={activo ? 'on' : ''}>{etiqueta}</li>)}</ol>
+            {seguimientoCompra.error ? <div className="dx-solpe-error" role="alert">{seguimientoCompra.error}</div> : seguimientoCompra.ocs.length ? <div className="dx-solpe-box"><div className="dx-ui-head dx-solpe-oc-cols"><span>OC</span><span>Estado</span><span>Recepciones</span></div>{seguimientoCompra.ocs.map(oc => <div className="dx-ui-row dx-solpe-oc-cols" key={oc.id}><span>{oc.codigo || oc.id}</span><span>{oc.estado || '—'}</span><span>{seguimientoCompra.recepciones.filter(recepcion => recepcion.oc_id === oc.id).length}</span></div>)}</div> : <p className="dx-solpe-seg">Sin OC vinculada todavía.</p>}
           </div>
         </div>
-      </div>}
-
-      {detalleAbierto && <div style={{ position:'fixed', inset:0, zIndex:210, background:'rgba(15,23,42,.65)', display:'grid', placeItems:'center', padding:20 }}>
-        <div className="card" style={{ width:'min(760px, 100%)', maxHeight:'calc(100vh - 40px)', overflowY:'auto' }}>
-          <div className="card-header"><div><h3>{detalleAbierto.codigo || detalleAbierto.id}</h3><div className="sub">Detalle de SOLPE</div></div><div className="spacer"/><button className="icon-btn" onClick={() => setDetalleAbierto(null)}><Icon name="x" size={16}/></button></div>
-          <div className="card-body" style={{ display:'grid', gap:16 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:10 }}><div><small>Solicitante</small><div>{detalleAbierto.solicitante || '—'}</div></div><div><small>OT</small><div>{detalleAbierto.otNumero || '—'}</div></div><div><small>Ubicación</small><div>{detalleAbierto.ubicacion || '—'}</div></div><div><small>Estado</small><div>{etiquetaEstado(detalleAbierto.estado)[1]}</div></div></div>
-            <div><b>Descripción</b><div>{detalleAbierto.descripcionVisible}</div></div>
-            <div><b>Ítems solicitados</b><table className="tbl" style={{ marginTop:8 }}><thead><tr><th>Material</th><th>Cantidad</th><th>Unidad</th><th>Observación</th></tr></thead><tbody>{(detalleAbierto.items || []).map((item, index) => <tr key={item.id || index}><td>{item.material_codigo && <span className="mono">{item.material_codigo} · </span>}{item.descripcion || '—'}</td><td>{item.cantidad || '—'}</td><td>{item.unidad || '—'}</td><td>{item.observacion || '—'}</td></tr>)}</tbody></table></div>
-            <div><b>Seguimiento de compra</b>{seguimientoCompra.error ? <div className="hint" style={{ marginTop:6 }}>{seguimientoCompra.error}</div> : seguimientoCompra.ocs.length ? <table className="tbl" style={{ marginTop:8 }}><thead><tr><th>OC</th><th>Estado</th><th>Recepciones</th></tr></thead><tbody>{seguimientoCompra.ocs.map(oc => <tr key={oc.id}><td>{oc.codigo || oc.id}</td><td>{oc.estado || '—'}</td><td>{seguimientoCompra.recepciones.filter(recepcion => recepcion.oc_id === oc.id).length}</td></tr>)}</tbody></table> : <div className="hint" style={{ marginTop:6 }}>Sin OC vinculada todavía.</div>}</div>
-          </div>
-        </div>
-      </div>}
-
-      {/* Modal Atender SOLPE */}
-      {modalAtenderAbierto && solpeAtendiendo && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,0.65)',
-                      zIndex:200, display:'grid', placeItems:'center', padding:20 }}>
-          <div className="card" style={{ width:'100%', maxWidth:480 }}>
-            <div className="card-header" style={{ background:'var(--navy)', color:'white', borderRadius:'8px 8px 0 0' }}>
-              <h3>Atender SOLPE — {solpeAtendiendo.codigo || solpeAtendiendo.id}</h3>
-              <div className="spacer"/>
-              <button className="icon-btn" onClick={() => setModalAtenderAbierto(false)}
-                style={{ color:'white' }}><Icon name="x" size={16}/></button>
-            </div>
-            <div className="card-body" style={{ padding:'20px' }}>
-              <div style={{ marginBottom:'16px' }}>
-                <div style={{ fontWeight:600, fontSize:'14px', color:'#1F2937' }}>
-                  {solpeAtendiendo.descripcionVisible}
-                </div>
-                {solpeAtendiendo.itemCodigo && (
-                  <div style={{ fontSize:'11px', fontFamily:'monospace', color:'#f59e0b', marginTop:'3px' }}>
-                    {solpeAtendiendo.itemCodigo} · {solpeAtendiendo.cantidadVisible} {solpeAtendiendo.unidadVisible}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ background:'rgba(59,130,246,0.08)', border:'1px solid rgba(59,130,246,0.2)', borderRadius:'8px', padding:'12px', marginBottom:'16px', color:'#475569', fontSize:'12px', lineHeight:1.45 }}>
-                Atender aprueba la SOLPE y registra quién la aprobó. Despachar y generar la OC se gestionan en flujos separados.
-              </div>
-              <div style={{ display:'flex', justifyContent:'flex-end', gap:'8px' }}>
-                <button onClick={() => setModalAtenderAbierto(false)} disabled={guardando}
-                  style={{ padding:'10px 20px', background:'none', border:'1px solid #E4E7EB', borderRadius:'6px', color:'#64748b', cursor:'pointer', fontSize:'13px' }}>
-                  Cancelar
-                </button>
-                <button className="btn btn-primary" onClick={confirmarAtencion} disabled={guardando}>
-                  {guardando ? 'Aprobando...' : 'Aprobar SOLPE'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
-          background:'#1A2B4A', color:'#f8fafc', padding:'10px 20px',
-          borderRadius:'8px', fontSize:'13px', fontWeight:500, zIndex:500,
-          boxShadow:'0 4px 20px rgba(0,0,0,0.3)'
-        }}>{toast}</div>
-      )}
-
+        <div className="dx-solpe-mfoot"><button type="button" className="dx-btn" onClick={() => setDetalleAbierto(null)}>Cerrar</button>{detalleAbierto.estado === 'solicitada' && <button type="button" className="dx-btn primary" onClick={() => { setSolpeAtendiendo(detalleAbierto); setDetalleAbierto(null); setModalAtenderAbierto(true); }}>Atender</button>}</div>
+      </section></div>}
+      {modalAtenderAbierto && solpeAtendiendo && <div className="dx-solpe-scrim dx-solpe-scrim-attend" onMouseDown={evento => { if (evento.target === evento.currentTarget && !guardando) setModalAtenderAbierto(false); }}><section className="dx-solpe-modal dx-solpe-sm" role="dialog" aria-modal="true" aria-label={`Atender SOLPE ${solpeAtendiendo.codigo || solpeAtendiendo.id}`}>
+        <div className="dx-solpe-mhead"><div><div className="dx-ui-eyebrow">Atender SOLPE</div><h2>{solpeAtendiendo.codigo || solpeAtendiendo.id}</h2></div><button type="button" className="dx-solpe-x" aria-label="Cerrar" onClick={() => setModalAtenderAbierto(false)}><Icon name="x" size={18}/></button></div>
+        <div className="dx-solpe-mbody"><div className="dx-solpe-sum"><b>{solpeAtendiendo.descripcionVisible}</b><span className="dx-solpe-code">{solpeAtendiendo.itemCodigo || '—'} · {solpeAtendiendo.cantidadVisible ?? '—'} {solpeAtendiendo.unidadVisible}</span></div><p className="dx-solpe-note"><Icon name="alert" size={16}/><span>Atender aprueba la SOLPE y registra quién la aprobó. Despachar y generar la OC se gestionan en flujos separados.</span></p></div>
+        <div className="dx-solpe-mfoot"><button type="button" className="dx-btn" onClick={() => setModalAtenderAbierto(false)} disabled={guardando}>Cancelar</button><button type="button" className="dx-btn primary" onClick={confirmarAtencion} disabled={guardando}>{guardando ? 'Aprobando...' : 'Aprobar SOLPE'}</button></div>
+      </section></div>}
       <FooterBrand/>
-    </div>
+    </section>
   );
 };
 
