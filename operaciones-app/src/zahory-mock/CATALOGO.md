@@ -59,7 +59,6 @@ Fuente: `navigation.js`, `components/shell.jsx` (sidebar) y los tres archivos en
 | Taller & Operaciones | Órdenes de Trabajo | Partes Taller | `#/taller` | `pages/pages3.jsx` — `ParteTallerPage` | A |
 | Taller & Operaciones | Órdenes de Trabajo | Reportes Mina | `#/partes-mina` | `pages/pages2_v2.jsx` — `HistorialMinaPage` | A |
 | Taller & Operaciones | Órdenes de Trabajo | Cierre & Conformidad | `#/cierre-conformidad` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `cierre`); referencia mock intacta: `pages/pages2_v2.jsx` — `CierreConformidad` | B1 |
-| Taller & Operaciones | Órdenes de Trabajo | Scheduler · Despacho | `#/scheduler-despacho` | `pages/TransportePages.jsx` — `SchedulerDespacho` | A |
 | Taller & Operaciones | HSE — Seguridad | Dashboard HSE | `#/hse-dashboard` | `pages/HSEPage.jsx` — `HSEDashboard` | C |
 | Taller & Operaciones | HSE — Seguridad | Permisos de Trabajo | `#/permisos-trabajo` | `pages/HSEPage.jsx` — `PermisosTrabajoHSE` | A |
 | Taller & Operaciones | HSE — Seguridad | Registro de Incidentes | `#/registro-incidentes` | `pages/HSEPage.jsx` — `RegistroIncidentes` | A |

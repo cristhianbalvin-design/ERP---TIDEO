@@ -202,7 +202,7 @@ export const SIDEBAR_ZONES = [
           { id: 'taller',             label: 'Partes Taller',         icon: 'workshop', roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'partes-mina',        label: 'Reportes Mina',         icon: 'mine',     roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'cierre-conformidad', label: 'Cierre & Conformidad',  icon: 'check',    roles: ['gerente', 'supervisor'] },
-          { id: 'scheduler-despacho', label: 'Scheduler · Despacho',  icon: 'calendar', roles: ['gerente', 'supervisor'] },
+          { id: 'scheduler-despacho', label: 'Planner',  icon: 'calendar', roles: ['gerente', 'supervisor'] },
         ],
       },
       {
