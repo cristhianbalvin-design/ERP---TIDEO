@@ -109,6 +109,15 @@ const materialValidationError = material => {
 };
 const SLOW_SAVE_WARNING = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
 const dispatchDiagnosticoWorkMode = active => setWorkMode(active);
+const diagnosticoHash = params => `/diagnostico-tecnico${params ? `?${params}` : ''}`;
+const replaceDiagnosticoHash = params => {
+  if (typeof window === 'undefined' || !window.location) return;
+  const hash = `#${diagnosticoHash(params)}`;
+  if (window.history?.replaceState) {
+    window.history.replaceState(null, '', `${window.location.pathname || '/'}${window.location.search || ''}${hash}`);
+    window.dispatchEvent?.(new Event('hashchange'));
+  } else window.location.hash = diagnosticoHash(params);
+};
 const observeSaveStep = (step, operation, onSlow) => {
   const startedAt = Date.now();
   let settled = false;
@@ -679,7 +688,14 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setHallazgosSaving(false);
     hallazgosSaveRef.current = null;
     setError('');
-    if (tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location) window.location.hash = `/diagnostico-tecnico?nuevo=mantenimiento${routeParams.recepcion ? `&recepcion=${encodeURIComponent(routeParams.recepcion)}` : ''}`;
+    if (tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location) {
+      const query = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      if (query.get('nuevo') !== 'mantenimiento') {
+        query.set('nuevo', 'mantenimiento');
+        if (routeParams.recepcion) query.set('recepcion', routeParams.recepcion);
+        window.location.hash = diagnosticoHash(query.toString());
+      }
+    }
   };
 
   const openExisting = async diagnostico => {
@@ -718,9 +734,13 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
       setWorkStep(detail.tipo === 'mantenimiento' ? 1 : 4);
       if (detail.tipo === 'mantenimiento' && typeof window !== 'undefined' && window.location?.hash !== undefined) {
         const query = new URLSearchParams(window.location?.hash?.split('?')[1] || '');
-        if (query.get('trabajo') !== detail.id) {
+        if (query.get('trabajo') !== detail.id || query.has('nuevo')) {
           query.set('trabajo', detail.id);
-          window.location.hash = `/diagnostico-tecnico?${query}`;
+          const wasNewEntry = query.has('nuevo');
+          query.delete('nuevo');
+          const hash = diagnosticoHash(query.toString());
+          if (wasNewEntry) replaceDiagnosticoHash(query.toString());
+          else window.location.hash = hash;
         }
       }
       setPendingLineDeletes([]);
@@ -1037,14 +1057,19 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     ? 'No se pudo identificar la empresa operativa del usuario.'
     : sesion.error || `La sesión operativa no está lista (estado: ${sesion.estado}).`;
 
-  const closeDetail = () => {
+  const closeDetail = ({ syncUrl = true } = {}) => {
     openRequestRef.current += 1;
     modalSessionRef.current += 1;
     setSaving(false);
     setSavingLine(null);
     setSlowSaveWarning('');
     setSelected(null);
-    if (typeof window !== 'undefined' && window.location?.hash) { const query = new URLSearchParams(window.location.hash.split('?')[1] || ''); if (query.has('trabajo') || query.has('nuevo')) window.location.hash = '/diagnostico-tecnico'; }
+    routeOpenIdRef.current = '';
+    routeReceptionIdRef.current = '';
+    if (syncUrl && typeof window !== 'undefined' && window.location?.hash) {
+      const query = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      if (query.has('trabajo') || query.has('nuevo')) replaceDiagnosticoHash('');
+    }
     setPendingLineDeletes([]);
     setInformePanel(false);
     setTaskPanel(false);
@@ -1100,6 +1125,26 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const modalBusy = saving || Boolean(savingLine) || (selected?.tipo === 'mantenimiento' && hallazgosSaving);
   const canEditInitialData = canEditLines && selected?.datos_iniciales_migracion_disponible !== false;
   const cambiosSinGuardar = Boolean(selected && !isReadOnly && ((selected.lineas || []).some(line => line._dirty) || pendingLineDeletes.length > 0 || (selected.tipo === 'mantenimiento' && (hallazgosDirty || initialDataDirty)) || summaryDirty));
+  useEffect(() => {
+    if (routeParams.trabajo || routeParams.nuevo || (!selected && !form.tipo) || (selected?.tipo !== 'mantenimiento' && form.tipo !== 'mantenimiento')) return;
+    if (typeof window === 'undefined' || !window.location) return;
+    if (window.location?.hash) {
+      const currentRoute = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      if (currentRoute.has('trabajo') || currentRoute.has('nuevo')) return;
+    }
+    if (cambiosSinGuardar || initialDataDirty || hallazgosDirty || Number(hallazgosDirtySummary.cambios || 0) > 0 || (!selected && form.tipo === 'mantenimiento' && Boolean(form.referencia))) {
+      const query = new URLSearchParams();
+      if (selected?.id) query.set('trabajo', selected.id);
+      else {
+        query.set('nuevo', 'mantenimiento');
+        if (selectedReference?.id) query.set('recepcion', selectedReference.id);
+      }
+      replaceDiagnosticoHash(query.toString());
+      workBackRequestRef.current?.();
+      return;
+    }
+    closeDetail({ syncUrl: false });
+  }, [routeParams.trabajo, routeParams.nuevo, selected?.id, form.tipo, cambiosSinGuardar, initialDataDirty, hallazgosDirty, hallazgosDirtySummary.cambios, selectedReference?.id]);
   const recargarEstadoDiagnostico = async resultado => {
     const diagnosticoId = selected?.id;
     if (!diagnosticoId) return;

@@ -44,6 +44,13 @@ describe('movil diagnostico y recepcion', () => {
     expect(movil).toMatch(/\.dx-footer-floating-alert[^}]*max-height:72px[^}]*font-size:12px/);
   });
 
+  it('apila el estado y conserva botones legibles en el pie del panel de tareas compacto', () => {
+    expect(movil).toMatch(/\.dx-work-page \.dx-agregar-inline-foot \{ display:flex; flex-direction:column; align-items:stretch/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-agregar-inline-foot>\[role='status'\] \{ flex:0 0 auto; width:100%; min-width:0/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-agregar-inline-foot>div \{ display:grid; grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-agregar-inline-foot>div button \{ box-sizing:border-box; min-width:0; min-height:44px/);
+  });
+
   it('corrige hallazgos, segmented, gutters y scroll compacto', () => {
     expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow:hidden; \}/);
     expect(movil).toMatch(/\.dx-work-page \.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; \}/);

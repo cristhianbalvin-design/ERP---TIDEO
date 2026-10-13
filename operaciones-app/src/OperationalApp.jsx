@@ -175,7 +175,8 @@ export function OperationalApp() {
   useEffect(() => {
     const updateRoute = () => setLocation(readLocation());
     window.addEventListener('hashchange', updateRoute);
-    return () => window.removeEventListener('hashchange', updateRoute);
+    window.addEventListener('popstate', updateRoute);
+    return () => { window.removeEventListener('hashchange', updateRoute); window.removeEventListener('popstate', updateRoute); };
   }, []);
 
   useEffect(() => {
