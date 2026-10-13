@@ -4264,6 +4264,85 @@ body {
   to { width: 100%; }
 }
 
+/* Hoja de Costeo: modo de trabajo para tablets y pantallas compactas. */
+html:not([data-dx-work-mode="true"]) .hcw-work-topbar,
+html:not([data-dx-work-mode="true"]) .hcw-action-bar,
+html:not([data-dx-work-mode="true"]) .hcw-catalog-search { display: none; }
+html[data-dx-work-mode="true"], html[data-dx-work-mode="true"] body { overflow: hidden; }
+html[data-dx-work-mode="true"] .app-shell { height: 100dvh; min-height: 0; }
+html[data-dx-work-mode="true"] .main-col { min-width: 0; width: 100%; flex: 1; }
+html[data-dx-work-mode="true"] .main { min-width: 0; height: 100%; min-height: 0; padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+html[data-dx-work-mode="true"] .main > .suspense-fallback,
+html[data-dx-work-mode="true"] .header,
+html[data-dx-work-mode="true"] .dx-asis-fab,
+html[data-dx-work-mode="true"] .dx-asis-hint,
+html[data-dx-work-mode="true"] .dx-asis-backdrop,
+html[data-dx-work-mode="true"] .dx-asis-panel { display: none !important; }
+html[data-dx-work-mode="true"] .sidebar { position: fixed; z-index: 1001; inset: 0 auto 0 0; width: min(300px, 86vw) !important; min-width: 0 !important; max-width: 300px !important; height: 100dvh; overflow: auto !important; transform: translateX(-105%); transition: transform .2s ease; box-shadow: var(--shadow-lg); }
+html[data-dx-work-mode="true"] .sidebar.collapsed { width: min(300px, 86vw) !important; max-width: 300px !important; }
+html[data-dx-work-mode="true"][data-dx-work-nav-open="true"] .sidebar { transform: translateX(0); }
+html[data-dx-work-mode="true"] .sidebar-logo-text,
+html[data-dx-work-mode="true"] .sidebar-logo-sub,
+html[data-dx-work-mode="true"] .sidebar-section,
+html[data-dx-work-mode="true"] .sidebar-section-toggle,
+html[data-dx-work-mode="true"] .sidebar-item,
+html[data-dx-work-mode="true"] .sidebar-collapse { display: initial !important; }
+html[data-dx-work-mode="true"] .sidebar-nav,
+html[data-dx-work-mode="true"] .sidebar.collapsed .sidebar-nav { overflow-y: auto; }
+html[data-dx-work-mode="true"] .hcw-root { width: 100%; height: 100dvh; min-height: 0; display: flex; flex-direction: column; gap: 0; padding: 0; overflow: hidden; }
+html[data-dx-work-mode="true"] .hcw-work-topbar { min-height: 54px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--surface); }
+html[data-dx-work-mode="true"] .hcw-menu-button,
+html[data-dx-work-mode="true"] .hcw-back-button { min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: var(--fg); font: inherit; font-weight: 700; cursor: pointer; }
+html[data-dx-work-mode="true"] .hcw-menu-button { width: 44px; flex: 0 0 44px; font-size: 20px; }
+html[data-dx-work-mode="true"] .hcw-back-button { padding: 0 8px; color: var(--cyan-dk); }
+html[data-dx-work-mode="true"] .hcw-title-toggle { min-width: 0; margin-left: auto; overflow: hidden; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+html[data-dx-work-mode="true"] .hcw-currency { color: var(--fg-muted); font-size: 12px; font-weight: 700; }
+html[data-dx-work-mode="true"] .hcw-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 12px 14px 16px; overscroll-behavior: contain; }
+html[data-dx-work-mode="true"] .hcw-desktop-heading { display: none; }
+html[data-dx-work-mode="true"] .hcw-steps { display: flex !important; gap: 4px !important; margin: 0 0 14px !important; overflow: visible !important; }
+html[data-dx-work-mode="true"] .hcw-steps button { min-width: 0; min-height: 44px; flex: 1 1 0; justify-content: center !important; padding: 5px 3px; border-radius: 7px; font-size: 11px; white-space: normal !important; }
+html[data-dx-work-mode="true"] .hcw-steps button span { margin-right: 3px; }
+html[data-dx-work-mode="true"] .hcw-content-grid { display: block !important; }
+html[data-dx-work-mode="true"] .hcw-content-grid > aside { display: none; }
+html[data-dx-work-mode="true"] .hcw-summary-actions { display: none !important; }
+html[data-dx-work-mode="true"] .hcw-root .table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+html[data-dx-work-mode="true"] .hcw-root .tbl { min-width: 650px; }
+html[data-dx-work-mode="true"] .hcw-root form div[style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
+html[data-dx-work-mode="true"] .hcw-root form div[style*="grid-column"] { grid-column: auto !important; }
+html[data-dx-work-mode="true"] .hcw-root input,
+html[data-dx-work-mode="true"] .hcw-root select,
+html[data-dx-work-mode="true"] .hcw-root textarea,
+html[data-dx-work-mode="true"] .hcw-root .input,
+html[data-dx-work-mode="true"] .hcw-root .select { min-height: 44px; }
+html[data-dx-work-mode="true"] .hcw-root input[type="number"] { font-size: 16px; }
+html[data-dx-work-mode="true"] .hcw-root .btn { min-height: 44px; }
+html[data-dx-work-mode="true"] .hcw-action-bar { min-height: 58px; flex: 0 0 auto; display: flex; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 7px 12px calc(7px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); background: var(--surface); }
+html[data-dx-work-mode="true"] .hcw-action-bar .btn { min-width: 88px; min-height: 44px; padding-inline: 12px; }
+html[data-dx-work-mode="true"] .hcw-readonly-note { margin-right: auto; color: var(--fg-muted); font-size: 12px; }
+html[data-dx-work-mode="true"] .hcw-drawer-backdrop { position: fixed; z-index: 1000; inset: 0; border: 0; background: rgba(2, 6, 23, .48); }
+html[data-dx-work-mode="true"] .hcw-root .modal-overlay,
+html[data-dx-work-mode="true"] .hcw-root [role="dialog"] { max-width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; }
+html[data-dx-work-mode="true"] .modal-backdrop { align-items: flex-end; padding: 10px; }
+html[data-dx-work-mode="true"] .modal { width: 100%; max-width: 640px; max-height: calc(100dvh - 20px); border-radius: 14px 14px 8px 8px; }
+html[data-dx-work-mode="true"] .modal-head { padding: 14px 16px; }
+html[data-dx-work-mode="true"] .modal-body { padding: 14px 16px; }
+html[data-dx-work-mode="true"] .hcw-root .autocomplete-menu-inline { position: fixed; z-index: 1200; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); left: 0; width: 100% !important; max-height: min(45dvh, 360px) !important; margin: 0; border-radius: 14px 14px 0 0; box-shadow: 0 -8px 28px rgba(15, 27, 48, .22); }
+html[data-dx-work-mode="true"] .hcw-catalog-native { display: none; }
+html[data-dx-work-mode="true"] .hcw-catalog-search { position: relative; display: block; width: 100%; }
+html[data-dx-work-mode="true"] .hcw-catalog-menu { position: fixed; z-index: 1200; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); left: 0; max-height: min(45dvh, 360px); overflow-y: auto; border: 1px solid var(--border); border-radius: 14px 14px 0 0; background: var(--surface); box-shadow: 0 -8px 28px rgba(15, 27, 48, .22); }
+html[data-dx-work-mode="true"] .hcw-catalog-menu button { display: block; width: 100%; min-height: 48px; padding: 10px 16px; border: 0; border-bottom: 1px solid var(--border-subtle); background: transparent; color: var(--fg); text-align: left; font: inherit; }
+html[data-dx-work-mode="true"] .hcw-catalog-menu button[aria-selected="true"] { background: var(--cyan-lt); }
+html[data-dx-work-mode="true"] .hcw-catalog-empty { padding: 18px 16px; color: var(--fg-muted); }
+html.dark[data-dx-work-mode="true"] .hcw-back-button { color: var(--cyan); }
+@media (max-width: 700px), (max-height: 520px) {
+  html[data-dx-work-mode="true"] .hcw-scroll { padding: 10px 10px 12px; }
+  html[data-dx-work-mode="true"] .hcw-work-topbar { min-height: 50px; padding-inline: 8px; }
+  html[data-dx-work-mode="true"] .hcw-back-button { padding-inline: 3px; font-size: 12px; }
+  html[data-dx-work-mode="true"] .hcw-action-bar { min-height: 54px; padding-inline: 8px; }
+  html[data-dx-work-mode="true"] .hcw-action-bar .btn { min-width: 78px; min-height: 40px; padding-inline: 9px; }
+  html[data-dx-work-mode="true"] .hcw-steps button { min-height: 40px; font-size: 10px; }
+}
+
 @keyframes progress-indeterminate {
   0% { left: -35%; width: 35%; }
   60% { left: 100%; width: 35%; }

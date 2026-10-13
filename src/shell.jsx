@@ -370,11 +370,12 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
   const { getLabel, getSectionLabel } = useTenantNavLabels(app.empresa?.id || app.authUser?.empresa_id);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('tideo_sidebar_collapsed') === 'true');
   const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true');
+  const [costeoWorkMode, setCosteoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset?.dxCosteoWorkMode === 'true');
   const [isMobileNav, setIsMobileNav] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
   const [flyoutKey, setFlyoutKey] = useState(null);
   const [flyoutPosition, setFlyoutPosition] = useState({ top: 8, bottom: 'auto', maxHeight: 0 });
   const [busquedaModulo, setBusquedaModulo] = useState('');
-  const effectiveCollapsed = collapsed || isMobileNav || diagnosticoWorkMode;
+  const effectiveCollapsed = costeoWorkMode ? false : collapsed || isMobileNav || diagnosticoWorkMode;
   const badges = useMemo(() => buildSidebarBadges(app), [
     app.leads, app.oportunidades, app.actividades, app.agendaEventos, app.hojasCosteo,
     app.cotizaciones, app.osClientes, app.backlog, app.ots, app.partes, app.solpes,
@@ -443,6 +444,13 @@ export function Sidebar({ active, onNav, role, isSuperadmin, onBrandClick }) {
     window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
     if (document.documentElement?.dataset?.dxDiagnosticoWorkMode === 'true') setDiagnosticoWorkMode(true);
     return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
+  }, []);
+
+  useEffect(() => {
+    const onWorkMode = event => setCosteoWorkMode(Boolean(event.detail?.active));
+    window.addEventListener('dx-costeo-work-mode', onWorkMode);
+    if (document.documentElement?.dataset?.dxCosteoWorkMode === 'true') setCosteoWorkMode(true);
+    return () => window.removeEventListener('dx-costeo-work-mode', onWorkMode);
   }, []);
 
   useEffect(() => {

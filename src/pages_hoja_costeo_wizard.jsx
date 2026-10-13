@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { I, moneyD } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -6,13 +6,14 @@ import { actualizarHojaCosteoSvc } from './services/crmService.js';
 import { CotizacionesGeneradasHojaCosteo, listarCotizacionesGeneradasPorHojaCosteo } from './components/CotizacionesGeneradasHojaCosteo.jsx';
 import { SelectorTipoCotizacion } from './components/SelectorTipoCotizacion.jsx';
 import { MaterialAutocomplete } from './pages_core.jsx';
+import { mountCosteoWorkMode, openCosteoWorkNav } from './costeoWorkMode.js';
 
 const STEPS = [
-  { id: 'mano_obra', label: 'Mano de obra' },
-  { id: 'materiales', label: 'Materiales' },
-  { id: 'terceros', label: 'Terceros / Logística' },
-  { id: 'activos', label: 'Activos' },
-  { id: 'resumen', label: 'Resumen' },
+  { id: 'mano_obra', label: 'Mano de obra', shortLabel: 'Mano obra' },
+  { id: 'materiales', label: 'Materiales', shortLabel: 'Material' },
+  { id: 'terceros', label: 'Terceros / Logística', shortLabel: 'Terceros' },
+  { id: 'activos', label: 'Activos', shortLabel: 'Activos' },
+  { id: 'resumen', label: 'Resumen', shortLabel: 'Resumen' },
 ];
 
 const UNIDADES_MEDIDA_COMUNES = [
@@ -61,6 +62,47 @@ function SelectorUnidadMedida({ value, onChange, disabled }) {
       <option value="">Selecciona una unidad</option>
       {opciones.map(([codigo, etiqueta]) => <option key={codigo} value={codigo}>{etiqueta}</option>)}
     </select>
+  );
+}
+
+function SelectorCatalogoCosteo({ value, options, disabled, placeholder, onChange }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selected = options.find(option => option.value === value);
+  const results = options.filter(option => option.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).slice(0, 80);
+
+  useEffect(() => { setQuery(selected?.label || ''); }, [selected?.label]);
+  useEffect(() => {
+    const closeOutside = event => { if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false); };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, []);
+
+  return (
+    <>
+      <select className="select hcw-catalog-native" disabled={disabled} value={value} onChange={onChange}>
+        <option value="">{placeholder}</option>
+        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+      <div className="hcw-catalog-search" ref={rootRef}>
+        <input className="input" type="search" disabled={disabled} value={open ? query : selected?.label || ''} placeholder={placeholder}
+          aria-label={placeholder} aria-expanded={open} aria-controls="hcw-catalog-results" role="combobox" autoComplete="off"
+          onFocus={event => { setQuery(''); setOpen(true); event.currentTarget.select(); }}
+          onChange={event => { setQuery(event.target.value); setOpen(true); }}
+          onKeyDown={event => {
+            if (event.key === 'Escape') setOpen(false);
+            if (event.key === 'Enter' && results[0]) { event.preventDefault(); onChange({ target: { value: results[0].value } }); setQuery(results[0].label); setOpen(false); }
+          }} />
+        {open && <div className="hcw-catalog-menu" id="hcw-catalog-results" role="listbox">
+          {results.length ? results.map(option => <button key={option.value} type="button" role="option" aria-selected={option.value === value}
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => { onChange({ target: { value: option.value } }); setQuery(option.label); setOpen(false); }}>
+            {option.label}
+          </button>) : <div className="hcw-catalog-empty">Sin resultados</div>}
+        </div>}
+      </div>
+    </>
   );
 }
 
@@ -116,6 +158,51 @@ export default function HojaCosteoWizard() {
   const [cotizacionesVinculadas, setCotizacionesVinculadas] = useState([]);
   const [cotizacionesVerificadas, setCotizacionesVerificadas] = useState(false);
   const [puedeCrearMaterial, setPuedeCrearMaterial] = useState(false);
+  const [modoTrabajo, setModoTrabajo] = useState(false);
+  const [navAbierto, setNavAbierto] = useState(false);
+  const [cabeceraExpandida, setCabeceraExpandida] = useState(false);
+  const workBackStateRef = useRef(null);
+  const navigateRef = useRef(navigate);
+  workBackStateRef.current = { navAbierto, trabajoNuevo, form, formMaterial, formActivo, formServicioTercero, formLogistica };
+  navigateRef.current = navigate;
+
+  useEffect(() => {
+    return mountCosteoWorkMode(setModoTrabajo, window);
+  }, []);
+
+  useEffect(() => {
+    if (!modoTrabajo) return undefined;
+    const abrir = () => { setNavAbierto(true); openCosteoWorkNav(true); };
+    const cerrar = () => { setNavAbierto(false); openCosteoWorkNav(false); };
+    const manejarTecla = event => { if (event.key === 'Escape' && workBackStateRef.current?.navAbierto) cerrar(); };
+    const manejarPopState = () => {
+      const current = workBackStateRef.current || {};
+      if (current.navAbierto) {
+        cerrar();
+        navigateRef.current('hoja_costeo_wizard', { hojaId });
+        return;
+      }
+      const formularioPendiente = Boolean(current.trabajoNuevo.trim() || Object.values(current.form).some(Boolean)
+        || Object.values(current.formMaterial).some(Boolean) || Object.values(current.formActivo).some(Boolean)
+        || Object.values(current.formServicioTercero).some(Boolean) || Object.values(current.formLogistica).some(Boolean));
+      if (formularioPendiente && !window.confirm('Hay datos sin agregar en el formulario. ¿Salir del costeo?')) {
+        navigateRef.current('hoja_costeo_wizard', { hojaId });
+        return;
+      }
+      navigateRef.current('hoja_costeo');
+    };
+    window.addEventListener('dx-open-nav', abrir);
+    window.addEventListener('dx-work-back', cerrar);
+    window.addEventListener('keydown', manejarTecla);
+    window.addEventListener('popstate', manejarPopState);
+    return () => {
+      window.removeEventListener('dx-open-nav', abrir);
+      window.removeEventListener('dx-work-back', cerrar);
+      window.removeEventListener('keydown', manejarTecla);
+      window.removeEventListener('popstate', manejarPopState);
+      openCosteoWorkNav(false);
+    };
+  }, [modoTrabajo, hojaId]);
 
   const tarifaPorCargo = useMemo(() => new Map(
     tarifas
@@ -938,10 +1025,9 @@ export default function HojaCosteoWizard() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
             <div className="input-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
               <label>Activo</label>
-              <select className="select" disabled={bloqueada || cargando} value={formActivo.activo_id} onChange={e => seleccionarActivo(e.target.value)}>
-                <option value="">Seleccionar activo...</option>
-                {activos.map(item => <option key={item.activo_id} value={item.activo_id}>{item.nombre}{item.estado === 'en_mantenimiento' ? ' — En mantenimiento' : ''}</option>)}
-              </select>
+              <SelectorCatalogoCosteo disabled={bloqueada || cargando} value={formActivo.activo_id} placeholder="Buscar activo..."
+                options={activos.map(item => ({ value: item.activo_id, label: `${item.nombre}${item.estado === 'en_mantenimiento' ? ' — En mantenimiento' : ''}` }))}
+                onChange={e => seleccionarActivo(e.target.value)} />
               {activoSeleccionado?.estado === 'en_mantenimiento' && <div style={{ marginTop: 7 }}><span className="badge badge-orange">En mantenimiento</span></div>}
             </div>
             {activoSeleccionado && <>
@@ -1054,7 +1140,7 @@ export default function HojaCosteoWizard() {
             <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}><div className="eyebrow">Precio sugerido sin IGV</div><strong className="num" style={{ display: 'block', fontSize: 22, marginTop: 6 }}>{precioSugeridoSinIgv == null ? '—' : money(precioSugeridoSinIgv)}</strong></div>
             <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8 }}><div className="eyebrow">Precio sugerido con IGV</div><strong className="num" style={{ display: 'block', fontSize: 22, marginTop: 6, color: 'var(--cyan)' }}>{precioSugeridoTotal == null ? '—' : money(precioSugeridoTotal)}</strong></div>
           </div>
-          {!bloqueada && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 20 }}>
+          {!bloqueada && <div className="hcw-summary-actions" style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 20 }}>
             <button className="btn btn-secondary" type="button" disabled={guardandoResumen || aprobando} onClick={() => guardarResumen()}>Guardar parámetros</button>
             {hoja.estado === 'borrador'
               ? <button className="btn btn-primary" type="button" disabled={guardandoResumen || aprobando || divisorPrecio <= 0} onClick={enviarARevision}>Enviar a revisión</button>
@@ -1099,10 +1185,9 @@ export default function HojaCosteoWizard() {
               </div>
               <div className="input-group" style={{ margin: 0 }}>
                 <label>Actividad</label>
-                <select className="select" disabled={bloqueada || cargando} value={form.actividad_id} onChange={e => setForm(prev => ({ ...prev, actividad_id: e.target.value }))}>
-                  <option value="">Seleccionar actividad...</option>
-                  {actividades.map(item => <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} — ` : ''}{item.nombre}</option>)}
-                </select>
+                <SelectorCatalogoCosteo disabled={bloqueada || cargando} value={form.actividad_id} placeholder="Buscar actividad..."
+                  options={actividades.map(item => ({ value: item.id, label: `${item.codigo ? `${item.codigo} — ` : ''}${item.nombre}` }))}
+                  onChange={e => setForm(prev => ({ ...prev, actividad_id: e.target.value }))} />
               </div>
               <div className="input-group" style={{ margin: 0 }}>
                 <label>Cargo</label>
@@ -1176,9 +1261,31 @@ export default function HojaCosteoWizard() {
     );
   };
 
+  const solicitarSalida = () => {
+    const formularioPendiente = Boolean(trabajoNuevo.trim() || Object.values(form).some(Boolean)
+      || Object.values(formMaterial).some(Boolean) || Object.values(formActivo).some(Boolean)
+      || Object.values(formServicioTercero).some(Boolean) || Object.values(formLogistica).some(Boolean));
+    if (formularioPendiente && !window.confirm('Hay datos sin agregar en el formulario. ¿Volver a la bandeja?')) return;
+    openCosteoWorkNav(false);
+    navigate('hoja_costeo');
+  };
+  const indicePaso = STEPS.findIndex(item => item.id === paso);
+
   return (
-    <div className="page-content">
-      <div className="page-header" style={{ borderBottom: 'none', paddingBottom: 8 }}>
+    <section className={`page-content hcw-root${modoTrabajo ? ' hcw-work-active' : ''}`} data-hcw-work-mode={modoTrabajo ? 'true' : 'false'} onFocusCapture={event => {
+      if (modoTrabajo && event.target.matches?.('input[type="number"]') && typeof event.target.select === 'function') {
+        requestAnimationFrame(() => event.target.select());
+      }
+    }}>
+      {navAbierto && <button className="hcw-drawer-backdrop" type="button" aria-label="Cerrar menú" onClick={() => { setNavAbierto(false); openCosteoWorkNav(false); }} />}
+      <div className="hcw-work-topbar">
+        <button className="hcw-menu-button" type="button" aria-label="Abrir menú" onClick={() => { setNavAbierto(true); openCosteoWorkNav(true); }}>☰</button>
+        <button className="hcw-back-button" type="button" onClick={solicitarSalida}>← <span>Volver a la bandeja</span></button>
+        <button className="hcw-title-toggle" type="button" aria-expanded={cabeceraExpandida} onClick={() => setCabeceraExpandida(value => !value)}>{hoja.numero} <span aria-hidden="true">{cabeceraExpandida ? '⌃' : '⌄'}</span></button>
+        {cabeceraExpandida && <><span className={`badge ${bloqueada ? 'badge-green' : 'badge-gray'}`}>{hoja.estado || 'borrador'}</span><span className="hcw-currency">{monedaHoja}</span></>}
+      </div>
+      <div className="hcw-scroll">
+      <div className="page-header hcw-desktop-heading" style={{ borderBottom: 'none', paddingBottom: 8 }}>
         <div>
           <button className="btn btn-ghost" onClick={() => navigate('hoja_costeo', { detail: hoja.id })} style={{ marginBottom: 10, padding: 0, color: 'var(--cyan)' }}>← Volver a la hoja</button>
           <h1 className="page-title">{hoja.numero} · Wizard de Costeo</h1>
@@ -1195,15 +1302,15 @@ export default function HojaCosteoWizard() {
 
       <CotizacionesGeneradasHojaCosteo hojaCosteoId={hoja.id} navigate={navigate} />
 
-      <nav aria-label="Pasos del wizard" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))', gap: 8, margin: '12px 0 20px', overflowX: 'auto' }}>
+      <nav className="hcw-steps" aria-label="Pasos del wizard" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(110px, 1fr))', gap: 8, margin: '12px 0 20px', overflowX: 'auto' }}>
         {STEPS.map((item, index) => (
           <button key={item.id} className={paso === item.id ? 'btn btn-primary' : 'btn btn-secondary'} type="button" onClick={() => setPaso(item.id)} style={{ justifyContent: 'flex-start', whiteSpace: 'nowrap' }}>
-            <span style={{ opacity: 0.8 }}>{index + 1}.</span> {item.label}
+            <span style={{ opacity: 0.8 }}>{index + 1}.</span> {modoTrabajo ? item.shortLabel : item.label}
           </button>
         ))}
       </nav>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)', gap: 20, alignItems: 'start' }}>
+      <div className="hcw-content-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 320px)', gap: 20, alignItems: 'start' }}>
         <div>{renderPaso()}</div>
         <aside style={{ position: 'sticky', top: 16 }}>
           <div className="card" style={{ padding: 20 }}>
@@ -1233,6 +1340,16 @@ export default function HojaCosteoWizard() {
         onCancel={() => setSelectorTipoCotizacion(false)}
         onError={mensaje => addToast(mensaje, 'error')}
       />}
-    </div>
+      </div>
+      <footer className="hcw-action-bar" aria-label="Acciones del wizard">
+        {indicePaso > 0 && <button className="btn btn-secondary" type="button" onClick={() => setPaso(STEPS[indicePaso - 1].id)}>Anterior</button>}
+        {indicePaso < STEPS.length - 1 ? <button className="btn btn-primary" type="button" onClick={() => setPaso(STEPS[indicePaso + 1].id)}>Siguiente</button> : !bloqueada ? <>
+          <button className="btn btn-secondary" type="button" disabled={guardandoResumen || aprobando} onClick={() => guardarResumen()}>Guardar</button>
+          {hoja.estado === 'borrador'
+            ? <button className="btn btn-primary" type="button" disabled={guardandoResumen || aprobando || divisorPrecio <= 0} onClick={enviarARevision}>Enviar</button>
+            : <button className="btn btn-primary" type="button" disabled={guardandoResumen || aprobando || divisorPrecio <= 0} onClick={solicitarAprobacion}>Aprobar</button>}
+        </> : <span className="hcw-readonly-note">Solo lectura</span>}
+      </footer>
+    </section>
   );
 }
