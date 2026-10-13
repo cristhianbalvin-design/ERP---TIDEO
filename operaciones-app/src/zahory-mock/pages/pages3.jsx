@@ -7,10 +7,11 @@ import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageS
 import { pedirRepuestosParte } from '../../services/reservasRepuestosService.js';
 import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
 import { armarLineasPedido, describirResultadoLinea, validarPedidosParte } from './pedidoRepuestosParteLogic.js';
-import { armarMaterialesConsumidos, calcularTotalRepuestos, estadoInicialConsumos, resolverTecnicoAlCambiarOT } from './parteTallerLogic.js';
+import { armarMaterialesConsumidos, calcularTotalRepuestos, estadoInicialConsumos, resolverTecnicoAlCambiarOT, validarConsumosParte } from './parteTallerLogic.js';
 
 const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const generarIdActividad = () => `act_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
+const generarIdRepuestoConsumido = () => `cons_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const crearActividad = (valores = {}) => ({
   id: generarIdActividad(),
   descripcion: '',
@@ -1036,8 +1037,9 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const guardarParteReal = async () => {
     if (!sesionOperativa.permiteEscritura || guardandoParte) return;
     const errorPedidos = validarPedidosParte(formData.pedidos);
-    if (errorPedidos) {
-      setErrorGuardadoParte(errorPedidos);
+    const errorConsumos = validarConsumosParte(formData.repuestos_consumidos);
+    if (errorPedidos || errorConsumos) {
+      setErrorGuardadoParte(errorPedidos || errorConsumos);
       return;
     }
 
@@ -1427,12 +1429,10 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
 
         {/* Repuestos */}
         <Accordion title="Repuestos, materiales e insumos" icon="box">
-          <input type="text" className="input" placeholder="Buscar repuesto por código o descripción..." style={{ marginBottom: 12, width: '100%' }} />
           <table className="tbl">
             <thead>
               <tr>
-                <th>Código</th>
-                <th>Descripción</th>
+                <th>Material</th>
                 <th>Und</th>
                 <th className="num">Cant</th>
                 <th className="num">Costo Unit.</th>
@@ -1442,31 +1442,57 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
             </thead>
             <tbody>
               {formData.repuestos_consumidos.length === 0 && (
-                <tr><td colSpan={7} className="muted">Sin repuestos consumidos registrados</td></tr>
+                <tr><td colSpan={6} className="muted">Sin repuestos consumidos registrados</td></tr>
               )}
               {formData.repuestos_consumidos.map((rep, idx) => (
-                <tr key={idx}>
-                  <td style={{ fontFamily:'monospace', fontSize:'11px' }}>{rep.item_id}</td>
-                  <td>{rep.descripcion}</td>
+                <tr key={rep.uid}>
+                  <td>
+                    <MaterialAutocomplete
+                      key={`${rep.uid}-${rep.material_id || 'nuevo'}`}
+                      item={{ material_id: rep.material_id, material_codigo: rep.item_id, material_descripcion: rep.descripcion }}
+                      empresaId={sesionOperativa.empresaId}
+                      sociedadId={sesionOperativa.sociedadId}
+                      disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)}
+                      onSelect={material => setFormData(prev => ({ ...prev, repuestos_consumidos: prev.repuestos_consumidos.map((item, i) => i === idx ? {
+                        ...item,
+                        material_id: material.material_id,
+                        item_id: material.codigo,
+                        descripcion: material.descripcion,
+                        unidad: material.unidad,
+                        costo_unitario: Number.isFinite(Number(material.precio_unitario)) ? Number(material.precio_unitario) : 0,
+                        disponible: material.disponible,
+                      } : item) }))}
+                      onClear={() => setFormData(prev => ({ ...prev, repuestos_consumidos: prev.repuestos_consumidos.map((item, i) => i === idx ? {
+                        ...item, material_id: null, item_id: '', descripcion: '', unidad: '', costo_unitario: 0, disponible: 0,
+                      } : item) }))}
+                    />
+                    {rep.material_id && <div className="hint" style={{ fontSize: 10, marginTop: 3 }}>Disp. {Number(rep.disponible || 0).toLocaleString()} {rep.unidad || 'und'}</div>}
+                  </td>
                   <td>{rep.unidad}</td>
                   <td>
-                    <input type="number" className="input" value={rep.cantidad}
-                      onChange={e => actualizarRepuesto(idx,'cantidad', Number(e.target.value) || 0)}
+                    <input type="number" className="input" aria-label={`Cantidad repuesto ${idx + 1}`} min="0.01" step="0.01" value={rep.cantidad}
+                      disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)}
+                      onChange={e => actualizarRepuesto(idx,'cantidad', e.target.value)}
                       style={{ width:'60px', padding:'4px' }}
                     />
                   </td>
-                  <td className="num" style={{ color:'#64748b' }}>${rep.costo_unitario.toFixed(2)}</td>
+                  <td className="num" style={{ color:'#64748b' }}>${(Number(rep.costo_unitario) || 0).toFixed(2)}</td>
                   <td className="num" style={{ fontWeight:600, color:'#f8fafc' }}>
-                    ${(rep.cantidad * rep.costo_unitario).toFixed(2)}
+                    ${((Number(String(rep.cantidad ?? '').replace(',', '.')) || 0) * (Number(rep.costo_unitario) || 0)).toFixed(2)}
                   </td>
                   <td>
-                    <button onClick={() => eliminarRepuesto(idx)}
+                    <button type="button" className="btn btn-secondary btn-sm" aria-label={`Quitar repuesto ${idx + 1}`} disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)} onClick={() => eliminarRepuesto(idx)}
                       style={{ color:'#ef4444', background:'none', border:'none', cursor:'pointer' }}>✕</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <button type="button" className="btn btn-secondary btn-sm mt-md" disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)} onClick={() => setFormData(prev => ({
+            ...prev, repuestos_consumidos: [...prev.repuestos_consumidos, { uid: generarIdRepuestoConsumido(), material_id: null, item_id: '', descripcion: '', unidad: '', cantidad: '', costo_unitario: 0, disponible: 0 }],
+          }))}>
+            <Icon name="plus" size={12}/> + Agregar repuesto
+          </button>
           <div style={{ textAlign:'right', fontWeight:700, color:'#f8fafc', marginTop: 12 }}>
             Total repuestos: ${totalRepuestos.toFixed(2)}
           </div>
