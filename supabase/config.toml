@@ -29,6 +29,9 @@ verify_jwt = true
 [functions.mejorar-redaccion]
 verify_jwt = true
 
+[functions.transcribir-audio]
+verify_jwt = true
+
 [functions.aceptar-cotizacion]
 enabled = true
 verify_jwt = false

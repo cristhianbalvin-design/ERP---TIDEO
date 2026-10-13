@@ -314,8 +314,10 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     const damageOption = renderer.root.findAllByType('button').find(button => button.children.join('') === 'Desgaste');
     await act(async () => damageOption.props.onClick());
-    const cause = renderer.root.findAllByType('select').find(select => select.props['aria-label'] === 'Causa probable');
-    await act(async () => cause.props.onChange({ target: { value: 'desgaste_normal' } }));
+    const cause = renderer.root.findByProps({ role: 'combobox', 'aria-label': 'Causa probable' });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     mocks.crearDiagnosticoHallazgo.mockResolvedValue({ id: 'hallazgo-new', prioridad_calculada: 'P4', prioridad_efectiva: 'P4' });
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).toHaveBeenCalled();
@@ -338,8 +340,10 @@ describe('HallazgosTrabajoPanel', () => {
     const result = await callbacks.save();
     expect(result.error).toContain('Falta la causa probable.');
     expect(mocks.actualizarDiagnosticoHallazgo).not.toHaveBeenCalled();
-    const cause = renderer.root.findAllByType('select').find(select => select.props['aria-label'] === 'Causa probable');
-    await act(async () => cause.props.onChange({ target: { value: 'desgaste_normal' } }));
+    const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     expect(callbacks.error).toBe('');
     renderer.unmount();
   });

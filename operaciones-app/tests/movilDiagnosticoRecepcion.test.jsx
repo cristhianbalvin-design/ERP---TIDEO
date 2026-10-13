@@ -45,7 +45,7 @@ describe('movil diagnostico y recepcion', () => {
   });
 
   it('corrige hallazgos, segmented, gutters y scroll compacto', () => {
-    expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; \}/);
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow:hidden; \}/);
     expect(movil).toMatch(/\.dx-work-page \.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; \}/);
     expect(movil).not.toMatch(/\.dx-work-page(?: \.dx-scope|\.dx-scope)\s*\{[^}]*padding-bottom:var\(--dx-footer-h\)/);
     expect(movil).toMatch(/\.dx-work-page \.dx-body \{ padding:8px; gap:8px/);
@@ -58,6 +58,14 @@ describe('movil diagnostico y recepcion', () => {
     expect(movil).toMatch(/\.dx-work-page \.hallazgo-measurement-table,\.dx-work-page \.hallazgo-task-table \{ display:block; width:100%; min-width:0/);
     expect(movil).toMatch(/\.ot-form-grid\.commercial[^}]*grid-template-columns:minmax\(0,1fr\)/);
   });
+  it('fija la seccion al viewport compacto y deja el scroll solo en el contenido interior', () => {
+    expect(compact).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card \{ position:fixed; inset:0; z-index:900; width:100vw; height:100dvh !important/);
+    expect(compact).toMatch(/\.dx-work-page > \.dx-scope \{ flex:1 1 0%; min-height:0; overflow-x:hidden; overflow-y:auto; padding:0; \}/);
+    expect(compact).toMatch(/\.dx-work-page > \.diagnostico-modal-footer \{ position:static; bottom:auto; z-index:auto; flex:none; margin-top:0; \}/);
+    expect(compact).toMatch(/\.dx-work-page > \.ops-modal-confirm-backdrop \{ z-index:20001; \}/);
+    expect(compact).not.toMatch(/\.dx-work-page(?: >)? \.dx-scope \{[^}]*padding-bottom:var\(--dx-footer-h\)/);
+  });
+
   it('el shell compacta menu y cabecera solo en modo diagnostico', () => {
     expect(shellCss).toMatch(/\.ops-sidebar\.is-work-drawer \{[^}]*width:min\(84vw,320px\)/);
     expect(shellCss).toMatch(/height:48px/);
