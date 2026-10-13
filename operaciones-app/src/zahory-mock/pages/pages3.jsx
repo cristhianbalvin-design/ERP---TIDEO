@@ -7,6 +7,7 @@ import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageS
 import { pedirRepuestosParte } from '../../services/reservasRepuestosService.js';
 import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
 import { armarLineasPedido, describirResultadoLinea, validarPedidosParte } from './pedidoRepuestosParteLogic.js';
+import { armarMaterialesConsumidos, calcularTotalRepuestos, estadoInicialConsumos, resolverTecnicoAlCambiarOT } from './parteTallerLogic.js';
 
 const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const generarIdActividad = () => `act_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
@@ -667,12 +668,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
       crearActividad({ descripcion: 'Desmontaje de sistema hidráulico. Cambio de sellos internos y prueba de presión.', hora_inicio: '08:00', hora_fin: '11:30', horometro_inicio: 3450, horometro_fin: 3453 }),
       crearActividad({ descripcion: 'Engrase general del equipo. Limpieza de filtros y reemplazo de bandas.', hora_inicio: '13:00', hora_fin: '17:00', horometro_inicio: 3453, horometro_fin: 3458 }),
     ],
-    repuestos_consumidos: [
-      { item_id: 'REP-CAT-0441', descripcion: 'Sello hidráulico kit completo', cantidad: 2, unidad: 'kit', costo_unitario: 145.00 }
-    ],
-    fluidos_consumidos: [
-      { tipo: 'Motor 15W40', motivo: 'Cambio', cantidad: 5, unidad: 'L' }
-    ],
+    ...estadoInicialConsumos(),
     pedidos: [],
     trabajos_pendientes: '',
     observaciones: '',
@@ -713,9 +709,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     setFormData(prev => ({
       ...prev,
       ot_id: otId,
-      tarea_id: '',
-      tecnico_id: '',
-      tecnico_nombre: '',
+      ...resolverTecnicoAlCambiarOT(prev),
       contrato_id: ot?.contrato_alquiler_id || '',
       centro_costo: ot?.centro_costo_id || '',
       equipo_id: ot?.equipo_id || '',
@@ -911,7 +905,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const totalHoras = calcularTotalHoras(formData.actividades);
   const costoHoraTecnico = getCostoHora(formData.tecnico_id);
   const costoMOTotal = totalHoras * costoHoraTecnico;
-  const totalRepuestos = formData.repuestos_consumidos.reduce((acc, r) => acc + (r.cantidad * r.costo_unitario), 0);
+  const totalRepuestos = calcularTotalRepuestos(formData.repuestos_consumidos);
 
   const actualizarActividad = (idx, campo, valor) => {
     const newAct = [...formData.actividades];
@@ -1078,16 +1072,7 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
       ].filter(Boolean).join(' ')),
       formData.observaciones?.trim() ? `Observaciones: ${formData.observaciones.trim()}` : '',
     ].filter(Boolean).join('\n');
-    const materiales = [
-      ...formData.repuestos_consumidos.map(item => ({
-        tipo: 'repuesto', item_id: item.item_id, descripcion: item.descripcion,
-        cantidad: Number(item.cantidad || 0), unidad: item.unidad, costo_unitario: Number(item.costo_unitario || 0),
-      })),
-      ...formData.fluidos_consumidos.map(item => ({
-        tipo: 'fluido', descripcion: item.tipo, motivo: item.motivo,
-        cantidad: Number(item.cantidad || 0), unidad: item.unidad,
-      })),
-    ];
+    const materiales = armarMaterialesConsumidos(formData.repuestos_consumidos, formData.fluidos_consumidos);
     const actividadesDetalle = formData.actividades.map(item => ({
       id: item.id,
       descripcion: item.descripcion?.trim() || '',
@@ -1456,6 +1441,9 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
               </tr>
             </thead>
             <tbody>
+              {formData.repuestos_consumidos.length === 0 && (
+                <tr><td colSpan={7} className="muted">Sin repuestos consumidos registrados</td></tr>
+              )}
               {formData.repuestos_consumidos.map((rep, idx) => (
                 <tr key={idx}>
                   <td style={{ fontFamily:'monospace', fontSize:'11px' }}>{rep.item_id}</td>
