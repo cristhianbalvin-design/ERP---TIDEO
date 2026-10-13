@@ -41,9 +41,17 @@ beforeEach(() => {
 });
 
 describe('DiagnosticoAgregarTareasPanel', () => {
+  it('muestra las familias propuestas en hallazgos con su recuento y conserva el catálogo completo', () => {
+    renderer = renderPanel({ initialFamiliaId: '', familias: [...familias, { id: 'fam-2', nombre: 'Bomba' }], suggestedFamilies: [{ familia: familias[0], count: 2 }, { familia: { id: 'fam-2', nombre: 'Bomba' }, count: 1 }] });
+    expect(text(renderer.root)).toContain('Propuestos en hallazgos');
+    expect(text(renderer.root)).toContain('2 hallazgos');
+    expect(text(renderer.root)).toContain('1 hallazgo');
+    expect(renderer.root.findAllByProps({ role: 'listbox', 'aria-label': 'Trabajo o componente' })).toHaveLength(1);
+  });
   it('preselecciona el trabajo y presenta la cascada Trabajo > Actividad > Tarea', () => {
     renderer = renderPanel();
     expect(text(renderer.root)).toContain('Motor');
+    expect(renderer.root.findByProps({ className: 'dx-cascada-cols has-initial-family' })).toBeTruthy();
     expect(text(renderer.root)).toContain('Inspección');
     expect(renderer.root.findAll(node => node.props['aria-current'] === 'step').map(text)).toContain('2Actividad');
     expect(renderer.root.findAllByProps({ role: 'listbox', 'aria-label': 'Trabajo o componente' })).toHaveLength(1);

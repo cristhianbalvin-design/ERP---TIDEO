@@ -51,6 +51,18 @@ describe('HallazgoFotos', () => {
     renderer.unmount();
   });
 
+  it('capture el scroll al abrir el selector y mantenga el input oculto fuera del foco', async () => {
+    window.matchMedia.mockReturnValue({ matches: true });
+    await render({ hallazgo: {} });
+    const input = renderer.root.findAllByType('input').find(node => node.props.type === 'file');
+    expect(input.props.tabIndex).toBe(-1);
+    const scrollable = { scrollHeight: 900, clientHeight: 400, scrollTop: 230, scrollLeft: 0, parentElement: null, getRootNode: () => ({ host: null }) };
+    await act(async () => input.props.onClick({ currentTarget: scrollable }));
+    await act(async () => input.props.onChange({ target: { files: [], value: '' }, currentTarget: { blur() {} } }));
+    expect(scrollable.scrollTop).toBe(230);
+    renderer.unmount();
+  });
+
   it('en escritorio muestra un solo input para agregar fotos', async () => {
     await render({ hallazgo: {} });
     expect(renderer.root.findAllByType('input').filter(input => input.props.type === 'file')).toHaveLength(1);

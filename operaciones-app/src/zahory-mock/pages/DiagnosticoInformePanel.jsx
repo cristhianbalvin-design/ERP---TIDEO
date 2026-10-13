@@ -6,6 +6,7 @@ import { firmarRutasFotosHallazgos, listarFotosHallazgos } from '../../services/
 import { ejecutarEmisionInformeDosPasos, obtenerMotivoEmisionInforme } from '../../services/emisionInformeFlujo.js';
 import { listarEmisoresConFirma, obtenerFirmaPersonaParaVista, preseleccionarPersonaVinculada, seleccionarEmisorPersona } from '../../services/emisorPersonal.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
+import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
 
 const normalize = options => ({ ...OPCIONES_INFORME_POR_DEFECTO, ...(options || {}) });
 
@@ -351,6 +352,7 @@ export function DiagnosticoInformePanel({ diagnostico, catalogos, cabecera, pued
             if (changed && opciones.conclusion_origen === 'ia') setOpciones(current => ({ ...current, conclusion_origen: 'ia_editada' }));
             else if (changed && opciones.conclusion_origen !== 'ia_editada') setOpciones(current => ({ ...current, conclusion_origen: 'manual' }));
           }} /><div className="dx-inf-counter">{textoConclusion.length}/2000</div>
+            {!esMantenimiento && isEditable && <MejorarRedaccionIA diagnosticoId={diagnostico?.id} texto={textoConclusion} disabled={!isEditable || guardando} onApply={value => { patch('conclusion', value); setOpciones(current => ({ ...current, conclusion_confirmada: false, conclusion_origen: current.conclusion_origen === 'ia' ? 'ia_editada' : 'manual' })); }} />}
             {(opciones.conclusion_origen === 'ia' || opciones.conclusion_origen === 'ia_editada') && <small className="dx-inf-ai-label">Generado por IA, requiere revisión</small>}
             {esMantenimiento && <small className="dx-inf-ai-label">Este texto se edita en el Diagnóstico</small>}
             {esMantenimiento && !String(textoConclusion).trim() && <small className="dx-inf-missing-diagnosis" role="status">Primero redacta el diagn&#xF3;stico en la pantalla del diagn&#xF3;stico</small>}

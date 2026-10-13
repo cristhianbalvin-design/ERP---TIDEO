@@ -46,7 +46,8 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  globalThis.window = { location: { hash: '' }, setTimeout, clearTimeout, open: vi.fn(() => ({ closed: false, location: {}, close: vi.fn() })) };
+  globalThis.window = { location: { hash: '' }, setTimeout, clearTimeout, open: vi.fn(() => ({ closed: false, location: {}, close: vi.fn() })), matchMedia: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })), dispatchEvent: vi.fn() };
+  globalThis.document = { documentElement: { dataset: {} } };
   mocks.sesion = { empresaId: 'empresa-test', sociedadId: 'sociedad-test', estado: 'listo', permiteEscritura: true, sociedadActiva: { nombre: 'Sociedad de prueba' }, usuario: { id: 'usuario-test' } };
   mocks.rpc.mockReset().mockResolvedValue({ data: true, error: null });
   mocks.activos.mockReset().mockResolvedValue(['a1', 'a2', 'a3'].map((id, index) => ({ id, codigo: `ACT-${index + 1}`, nombre: `Equipo ${index + 1}`, cliente_propietario_id: 'c1', tipo_activo: 'componente' })));
@@ -67,6 +68,23 @@ beforeEach(() => {
 });
 
 describe('RecepcionActivosClientePage', () => {
+  it('activa el modo de trabajo solo en vistas no-lista y viewport compacto', async () => {
+    const media = { matches: false, addEventListener: vi.fn((_name, listener) => { media.onChange = listener; }), removeEventListener: vi.fn() };
+    window.matchMedia = vi.fn(() => media);
+    const root = await renderPage();
+    expect(window.matchMedia).toHaveBeenCalledWith('(max-width:680px), (max-height:520px)');
+    const row = root.root.findAll(node => node.props.className?.includes('dx-ui-row'))[0];
+    await act(async () => row.props.onClick());
+    expect(document.documentElement.dataset.dxWorkMode).toBe('false');
+
+    media.matches = true;
+    await act(async () => media.onChange({ matches: true }));
+    expect(document.documentElement.dataset.dxWorkMode).toBe('true');
+
+    await act(async () => root.unmount());
+    expect(document.documentElement.dataset.dxWorkMode).toBe('false');
+    expect(media.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+  });
   it('resuelve las acciones de diagnostico segun custodia y estado', () => {
     expect(resolverAccionDiagnostico('recibido', null)).toEqual({ tipo: 'iniciar' });
     expect(resolverAccionDiagnostico('en_reparacion', null)).toEqual({ tipo: 'ninguna' });

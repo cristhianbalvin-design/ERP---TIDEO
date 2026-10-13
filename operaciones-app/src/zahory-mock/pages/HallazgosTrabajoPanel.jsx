@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
+import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
+import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import {
   actualizarDiagnosticoHallazgo,
   actualizarDiagnosticoMedicion,
@@ -122,7 +124,7 @@ function MeasurementTable({ item, catalogs, componentes = [], canEdit, update, r
     const tone = result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'is-out' : result === 'dentro' ? 'is-in' : 'is-none';
     return <article className={`dx-measure-card${measurement.cota ? ' has-drawing-cota' : ''}`} key={measurement.id || measurement._key}>
       <div className="dx-measure-title"><strong>{measurement.parametro || 'Medici\u00f3n'}</strong>{measurement.cota && <span>cota en el dibujo</span>}</div>
-      <div className="dx-measure-values">{[['nominal','Nominal (mm)'],['minimo','M\u00ednimo (mm)'],['maximo','M\u00e1ximo (mm)'],['medido','Medido (mm)']].map(([field,label]) => <label key={field}>{label}<input aria-label={label} className="input" type="number" step="any" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<span className={`dx-measure-result ${tone}`}>{result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'Fuera de tolerancia' : result === 'dentro' ? 'Dentro' : 'Sin evaluar'}</span></div>
+      <div className="dx-measure-values">{[['nominal','Nominal (mm)'],['minimo','M\u00ednimo (mm)'],['maximo','M\u00e1ximo (mm)'],['medido','Medido (mm)']].map(([field,label]) => <label key={field}>{label}<input aria-label={label} className="input" type="number" step="any" value={measurement[field] ?? ''} disabled={!canEdit} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<span className={`dx-measure-result ${tone}`}>{result === 'fuera' || measurement.resultado_calculado === 'fuera_de_rango' ? 'Fuera de tolerancia' : result === 'dentro' ? 'Dentro' : 'Sin evaluar'}</span></div>
       {measurement.referencia && <details className="dx-measure-reference"><summary>Referencia t&#237;pica</summary><p>{measurement.referencia}</p></details>}
       {canEdit && <button type="button" className="dx-measure-remove" aria-label={`Eliminar ${measurement.parametro || 'medici\u00f3n'}`} onClick={() => remove(measurement)}>&#215;</button>}
     </article>;
@@ -130,21 +132,23 @@ function MeasurementTable({ item, catalogs, componentes = [], canEdit, update, r
   return <section className="hallazgo-section hallazgo-measurements">
     <div className="hallazgo-section-head"><div><h4>Mediciones <span className="dx-new-tag">NUEVO</span></h4></div><span className="hint">Seg&#250;n las zonas marcadas</span></div>
     {groups.map(group => <section className="dx-measure-zone" key={group.zonaId}><h5><b>{group.orden}</b>{group.nombre}</h5>{group.medidas.map(renderMeasure)}</section>)}
-    {(item.mediciones || []).some(measurement => !measurement.medida_id) && <section className="dx-other-measures"><h5>Otras mediciones</h5>{(item.mediciones || []).filter(measurement => !measurement.medida_id).map(measurement => <div className="dx-other-measure-row" key={measurement.id || measurement._key}><label>Par&#225;metro<input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} /></label><label>Unidad<select className="select" value={measurement.unidad || ''} disabled={!canEdit} onChange={event => patch(measurement, { unidad: event.target.value })}><option value="">&#8212;</option>{(catalogs.unidad_medicion || []).map(option => <option key={option.codigo} value={option.codigo}>{option.etiqueta}</option>)}</select></label>{['nominal','minimo','maximo','medido'].map(field => <label key={field}>{field}<input className="input" type="number" value={measurement[field] ?? ''} disabled={!canEdit} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<button type="button" onClick={() => remove(measurement)}>&#215;</button></div>)}</section>}
+    {(item.mediciones || []).some(measurement => !measurement.medida_id) && <section className="dx-other-measures"><h5>Otras mediciones</h5>{(item.mediciones || []).filter(measurement => !measurement.medida_id).map(measurement => <div className="dx-other-measure-row" key={measurement.id || measurement._key}><label>Par&#225;metro<input className="input" value={measurement.parametro || ''} disabled={!canEdit} onChange={event => patch(measurement, { parametro: event.target.value })} /></label><label>Unidad<select className="select" value={measurement.unidad || ''} disabled={!canEdit} onChange={event => patch(measurement, { unidad: event.target.value })}><option value="">&#8212;</option>{(catalogs.unidad_medicion || []).map(option => <option key={option.codigo} value={option.codigo}>{option.etiqueta}</option>)}</select></label>{['nominal','minimo','maximo','medido'].map(field => <label key={field}>{field}<input className="input" type="number" value={measurement[field] ?? ''} disabled={!canEdit} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => patch(measurement, { [field]: event.target.value })} /></label>)}<button type="button" onClick={() => remove(measurement)}>&#215;</button></div>)}</section>}
     {canEdit && <button type="button" className="dx-measure-add" onClick={add}>+ Medici&#243;n</button>}
   </section>;
 }
-function ObservationField({ item, disabled, onChange }) {
+function ObservationField({ item, disabled, diagnosticoId, onChange }) {
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [speechMessage, setSpeechMessage] = useState('');
+  const speechSessionRef = useRef(null);
   useEffect(() => {
     setSupported(Boolean(typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)));
     return () => recognitionRef.current?.stop?.();
   }, []);
   const stop = () => {
+    if (speechSessionRef.current) speechSessionRef.current.stopped = true;
     recognitionRef.current?.stop?.();
     setListening(false);
   };
@@ -157,40 +161,46 @@ function ObservationField({ item, disabled, onChange }) {
     recognition.lang = 'es-PE';
     recognition.interimResults = true;
     recognition.continuous = true;
-    let insertAt = textareaRef.current?.selectionStart ?? String(item.observacion || '').length;
+    const base = String(textareaRef.current?.value ?? item.observacion ?? '').slice(0, 1000);
+    const session = { base, insertAt: textareaRef.current?.selectionStart ?? base.length, finals: [], interims: [], stopped: false };
+    speechSessionRef.current = session;
     let triedFallback = false;
     recognition.onstart = () => { setListening(true); setSpeechMessage(''); };
     recognition.onresult = event => {
-      let finalText = '';
-      let interimText = '';
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const phrase = event.results[index][0]?.transcript || '';
-        if (event.results[index].isFinal) finalText += phrase;
-        else interimText += phrase;
+        if (event.results[index].isFinal) { session.finals[index] = phrase; session.interims[index] = ''; }
+        else session.interims[index] = phrase;
       }
-      if (finalText) {
-        const current = textareaRef.current?.value ?? String(item.observacion || '');
-        const separator = insertAt > 0 && !/\s$/.test(current.slice(0, insertAt)) ? ' ' : '';
-        const next = `${current.slice(0, insertAt)}${separator}${finalText}${current.slice(insertAt)}`.slice(0, 1000);
-        insertAt = Math.min(next.length, insertAt + separator.length + finalText.length);
-        onChange(next);
-        requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(insertAt, insertAt); });
-      }
+      // Android puede reenviar el mismo resultIndex: se sobrescribe el buffer y se recompone desde la base.
+      const transcript = Array.from({ length: Math.max(session.finals.length, session.interims.length) }, (_, index) => session.finals[index] || session.interims[index] || '').join('');
+      const separator = transcript && session.insertAt > 0 && !/\s$/.test(session.base.slice(0, session.insertAt)) && !/^\s/.test(transcript) ? ' ' : '';
+      const next = `${session.base.slice(0, session.insertAt)}${separator}${transcript}${session.base.slice(session.insertAt)}`.slice(0, 1000);
+      const caret = Math.min(next.length, session.insertAt + separator.length + transcript.length);
+      onChange(next);
+      requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(caret, caret); });
+      const interimText = session.interims.map((value, index) => session.finals[index] ? '' : value || '').join('');
       setSpeechMessage(interimText ? `Escuchando: ${interimText}` : '');
     };
+    recognition.onend = () => { if (!session.stopped) setListening(false); };
     recognition.onerror = event => {
       if (event.error === 'language-not-supported' && !triedFallback) {
         triedFallback = true;
         recognition.lang = 'es-ES';
         try { recognition.start(); return; } catch { /* Se muestra el mensaje genérico abajo. */ }
       }
+      session.stopped = true;
       const message = event.error === 'not-allowed' || event.error === 'service-not-allowed'
         ? 'Permiso de micrófono denegado. Habilita el micrófono en el navegador e inténtalo de nuevo.'
         : 'No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.';
       setSpeechMessage(message);
       setListening(false);
     };
-    recognition.onend = () => { setListening(false); recognitionRef.current = null; };
+    recognition.onend = () => {
+      if (session.stopped) { setListening(false); recognitionRef.current = null; return; }
+      // Chrome Android corta sesiones continuas en pausas: reiniciar conserva el buffer indexado.
+      try { recognition.start(); } catch { setListening(false); recognitionRef.current = null; }
+    };
     try { recognition.start(); }
     catch { setListening(false); setSpeechMessage('No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.'); }
   };
@@ -199,6 +209,7 @@ function ObservationField({ item, disabled, onChange }) {
     <textarea ref={textareaRef} id={`hallazgo-observaciones-${item._key}`} className="input" rows={3} maxLength={1000} value={item.observacion || ''} disabled={disabled} onChange={event => onChange(event.target.value)} onBlur={stop} />
     <div className="hallazgo-observation-tools">
       {supported && <button type="button" className={`hallazgo-dictation-button${listening ? ' is-listening' : ''}`} aria-label="Dictar observaciones" aria-pressed={listening} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={toggleDictation}><Icon name="mic" size={16} />{listening ? 'Detener dictado' : 'Dictar'}</button>}
+      <MejorarRedaccionIA diagnosticoId={diagnosticoId} texto={item.observacion || ''} disabled={disabled || listening} compact onApply={onChange} />
       {!supported && <span className="hint">Tu navegador no admite dictado; usa el dictado del sistema (Windows: tecla Windows + H)</span>}
       {speechMessage && <span role="status">{speechMessage}</span>}
     </div>
@@ -263,6 +274,15 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const [activoRecepcion, setActivoRecepcion] = useState(null);
   const [busquedaDano, setBusquedaDano] = useState('');
   const [tipoDanoAbierto, setTipoDanoAbierto] = useState(null);
+  const [tipoDanoAbreArriba, setTipoDanoAbreArriba] = useState(false);
+  useEffect(() => {
+    if (!tipoDanoAbierto) return undefined;
+    const outside = event => { if (!(event.composedPath?.() || []).some(node => node?.classList?.contains('dx-tipo-dano'))) setTipoDanoAbierto(null); };
+    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); setTipoDanoAbierto(null); } };
+    globalThis.document?.addEventListener?.('pointerdown', outside);
+    globalThis.document?.addEventListener?.('keydown', escape);
+    return () => { globalThis.document?.removeEventListener?.('pointerdown', outside); globalThis.document?.removeEventListener?.('keydown', escape); };
+  }, [tipoDanoAbierto]);
   const [puedeEditarMaestros, setPuedeEditarMaestros] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState(() => new Set());
@@ -727,7 +747,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       <div className="hallazgo-grid">
         <div className="field dx-hallazgo-trabajo-propuesto"><label>Trabajo que propones para repararlo <span className="required">*</span></label><select data-required-field="family" className="select" aria-label="Trabajo que propones para repararlo" value={item.familia_trabajo_id || ''} disabled={!canEdit} onChange={event => { if (event.target.value === '__create__') { setFamiliaEnCreacion(keyFor(item)); setNombreFamiliaNueva(''); setErrorFamiliaNueva(''); return; } updateItem(item, { familia_trabajo_id: event.target.value || null }); }}><option value="">Elige un trabajo</option>{familias.map(familia => <option key={familia.id} value={familia.id}>{familia.nombre}</option>)}{canEdit && <option value="__create__">+ Crear trabajo nuevo…</option>}</select>{familiaEnCreacion === keyFor(item) && <form className="hallazgos-inline-family-create" onSubmit={async event => { event.preventDefault(); const nombre = nombreFamiliaNueva.trim(); if (!nombre || !onCreateFamily || creandoFamiliaEditor) return; setCreandoFamiliaEditor(true); setErrorFamiliaNueva(''); try { const created = await onCreateFamily(nombre); updateItem(item, { familia_trabajo_id: created.id }); setFamiliaEnCreacion(null); setNombreFamiliaNueva(''); } catch (error) { setErrorFamiliaNueva(error?.message || 'No se pudo crear el trabajo.'); } finally { setCreandoFamiliaEditor(false); } }}><input className="input" aria-label="Nombre del nuevo trabajo" value={nombreFamiliaNueva} onChange={event => setNombreFamiliaNueva(event.target.value)} placeholder="Nombre del trabajo" /><button type="submit" disabled={creandoFamiliaEditor || !nombreFamiliaNueva.trim()}>{creandoFamiliaEditor ? 'Creando…' : 'Crear trabajo'}</button><button type="button" onClick={() => setFamiliaEnCreacion(null)}>Cancelar</button>{errorFamiliaNueva && <span role="alert">{errorFamiliaNueva}</span>}</form>}</div>
         {!inheritedComponent && !item.componente_catalogo_id && <div className="field"><label>Componente / parte *</label><input data-required-field="component-text" className="input" aria-label="Componente / parte" value={item.componente_parte || ''} disabled={!canEdit} onChange={event => updateItem(item, { componente_parte: event.target.value })} /></div>}
-        <div className="field dx-tipo-dano"><label>{CATALOG_LABELS.tipo_dano}</label><input data-required-field="damage" className="input" role="combobox" aria-expanded={tipoDanoAbierto === keyFor(item)} aria-label="Tipo de daño" value={tipoDanoAbierto === keyFor(item) ? busquedaDano : catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || ''} disabled={!canEdit} placeholder="Buscar tipo de daño…" onFocus={() => { setBusquedaDano(''); setTipoDanoAbierto(keyFor(item)); }} onChange={event => setBusquedaDano(event.target.value)} onBlur={() => window.setTimeout(() => setTipoDanoAbierto(null), 120)} />{tipoDanoAbierto === keyFor(item) && <div className="dx-tipo-dano-menu">{agruparTiposDano(damageOptions).map(group => <div key={group.id}><small>{group.label}</small>{group.items.map(option => <button type="button" key={`${group.id}-${option.codigo}`} onMouseDown={event => event.preventDefault()} onClick={() => { updateItem(item, { tipo_dano_codigo: option.codigo }); setTipoDanoAbierto(null); }}>{option.etiqueta}</button>)}</div>)}{!damageExact && busquedaDano.trim() && <p className="dx-tipo-dano-similar">Parecidos: {damageOptions.slice(0, 3).map(option => option.etiqueta).join(' · ') || 'sin coincidencias'}</p>}{!damageExact && canEdit && puedeEditarMaestros && busquedaDano.trim() && <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const result = await crearTipoDanoDiagnostico(empresaId, busquedaDano.trim()); const rows = result.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: result.valor.codigo }); setTipoDanoAbierto(null); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{busquedaDano.trim()}»</button>}</div>}</div>
+        <div className="field dx-tipo-dano"><label>{CATALOG_LABELS.tipo_dano}</label><input data-required-field="damage" className="input" role="combobox" aria-expanded={tipoDanoAbierto === keyFor(item)} aria-label="Tipo de daño" value={tipoDanoAbierto === keyFor(item) ? busquedaDano : catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || ''} disabled={!canEdit} placeholder="Buscar tipo de daño…" onFocus={event => { setBusquedaDano(''); setTipoDanoAbierto(keyFor(item)); const rect = event?.currentTarget?.getBoundingClientRect?.(); if (!rect) return; const height = window.visualViewport?.height || window.innerHeight; setTipoDanoAbreArriba(height - rect.bottom < Math.min(320, height * .45) && rect.top > height - rect.bottom); }} onChange={event => setBusquedaDano(event.target.value)} />{tipoDanoAbierto === keyFor(item) && <div className={`dx-tipo-dano-menu${tipoDanoAbreArriba ? ' is-up' : ''}`} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setTipoDanoAbierto(null); } }}><header><strong>Tipo de daño</strong><button type="button" aria-label="Cerrar tipo de daño" onClick={() => setTipoDanoAbierto(null)}>×</button></header><input className="dx-tipo-dano-sheet-search" type="search" aria-label="Buscar tipo de dano" placeholder="Buscar tipo de dano?" value={busquedaDano} onChange={event => setBusquedaDano(event.target.value)} />{agruparTiposDano(damageOptions).map(group => <div key={group.id}><small>{group.label}</small>{group.items.map(option => <button type="button" key={`${group.id}-${option.codigo}`} onMouseDown={event => event.preventDefault()} onClick={() => { updateItem(item, { tipo_dano_codigo: option.codigo }); setTipoDanoAbierto(null); }}>{option.etiqueta}</button>)}</div>)}{!damageExact && busquedaDano.trim() && <p className="dx-tipo-dano-similar">Parecidos: {damageOptions.slice(0, 3).map(option => option.etiqueta).join(' · ') || 'sin coincidencias'}</p>}{!damageExact && canEdit && puedeEditarMaestros && busquedaDano.trim() && <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const result = await crearTipoDanoDiagnostico(empresaId, busquedaDano.trim()); const rows = result.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: result.valor.codigo }); setTipoDanoAbierto(null); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{busquedaDano.trim()}»</button>}</div>}</div>
         <SelectField label={CATALOG_LABELS.causa_probable} requiredKey="cause" value={item.causa_probable_codigo} options={[...catalogs.causa_probable, ...(item.causa_probable_codigo && !catalogs.causa_probable.some(row => row.codigo === item.causa_probable_codigo) ? [{ codigo: item.causa_probable_codigo, etiqueta: item.causa_probable_codigo, inactivo: true }] : [])]} allowInactive onChange={value => updateItem(item, { causa_probable_codigo: value })} disabled={!canEdit} />
         <ChoiceButtons label="Condición del componente" requiredKey="condition" value={item.condicion} options={Object.entries(CONDITION_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { condicion: value })} />
         <ChoiceButtons label="Riesgo si no se atiende" requiredKey="risk" value={item.riesgo} options={Object.entries(RISK_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { riesgo: value })} />
@@ -736,7 +756,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         {item.prioridad_override && <div className="field"><label>Motivo del override *</label><input data-required-field="override_reason" className="input" value={item.prioridad_override_motivo || ''} disabled={!canEdit} onChange={event => updateItem(item, { prioridad_override_motivo: event.target.value })} /></div>}
         <ChoiceButtons label="Acción recomendada" requiredKey="action" value={item.accion_recomendada} options={ACTIONS} disabled={!canEdit} onChange={value => updateItem(item, { accion_recomendada: value })} />
         <ChoiceButtons label="Atribuible a" hint="para garantía y cargo" requiredKey="attribution" value={item.atribuible_a} options={ATTRIBUTIONS} disabled={!canEdit} onChange={value => updateItem(item, { atribuible_a: value })} />
-        <ObservationField item={item} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
+        <ObservationField item={item} diagnosticoId={diagnostico?.id} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
       </div>
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
       <MeasurementTable item={item} catalogs={catalogs} componentes={componentes} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />

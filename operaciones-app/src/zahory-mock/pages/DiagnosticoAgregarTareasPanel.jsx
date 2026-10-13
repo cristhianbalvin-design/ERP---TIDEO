@@ -1,9 +1,10 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
 const num = value => Number(value) || 0;
 
-export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], initialFamiliaId = '', onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
+export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargos = [], activos = [], plantillas = [], tipoDiagnostico, lineas = [], initialFamiliaId = '', suggestedFamilies = [], onClose, onAdd, onCreateFamily, onCreateType, onSelectionChange }) {
   const [familiaId, setFamiliaId] = useState(initialFamiliaId);
   const [actividadId, setActividadId] = useState('');
   const [query, setQuery] = useState(['', '', '']);
@@ -41,7 +42,7 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   }, [familiaId, actividadId, selected, soloActividad, onSelectionChange]);
 
   useEffect(() => {
-    searchRefs[0].current?.focus();
+    (initialFamiliaId ? searchRefs[1] : searchRefs[0]).current?.focus();
   }, []);
 
   const setSearch = (index, value) => setQuery(current => current.map((item, i) => i === index ? value : item));
@@ -85,9 +86,9 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
     return <>
       <div className="dx-cascada-fields">
         <label>Cargo<select aria-label="Cargo" value={line.cargo_id || ''} onChange={event => updateLine(key, { cargo_id: event.target.value })}><option value="">Sin cargo</option>{cargos.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
-        <label>H-H<input aria-label="Horas-hombre" type="number" min="0" step="0.25" value={line.horas_mano_obra ?? 0} onChange={event => updateLine(key, { horas_mano_obra: event.target.value })} /></label>
+        <label>H-H<input aria-label="Horas-hombre" type="number" min="0" step="0.25" value={line.horas_mano_obra ?? 0} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => updateLine(key, { horas_mano_obra: event.target.value })} /></label>
         <label>Equipo<select aria-label="Equipo" value={line.activo_id || ''} onChange={event => updateLine(key, { activo_id: event.target.value, ...(!event.target.value ? { horas_maquina: 0 } : {}) })}><option value="">Sin equipo</option>{activos.map(item => <option key={item.id} value={item.id}>{item.codigo} · {item.nombre}</option>)}</select></label>
-        <label>H-equipo<input aria-label="Horas de equipo" type="number" min="0" step="0.25" value={line.horas_maquina ?? 0} disabled={!line.activo_id} onChange={event => updateLine(key, { horas_maquina: event.target.value })} /></label>
+        <label>H-equipo<input aria-label="Horas de equipo" type="number" min="0" step="0.25" value={line.horas_maquina ?? 0} disabled={!line.activo_id} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => updateLine(key, { horas_maquina: event.target.value })} /></label>
       </div>
       {showDeviation && <span className={`dx-cascada-dev ${changed ? 'is-changed' : 'is-same'}`}>{changed ? 'Valores ajustados respecto a la receta' : 'Igual a la receta'}</span>}
     </>;
@@ -136,8 +137,8 @@ export function DiagnosticoAgregarTareasPanel({ familias = [], tipos = [], cargo
   return <section className="dx-agregar-inline-panel dx-cascada-panel" role="region" aria-labelledby={titleId} onKeyDown={handleKeyDown}>
     <header className="dx-agregar-inline-head dx-cascada-head"><div><h2 id={titleId}>{title}</h2><p>Elige el trabajo, la actividad y ajusta las tareas de la receta.</p></div></header>
       <div className="dx-cascada-steps" role="group" aria-label="Pasos"><div className={`dx-cascada-step${family ? ' is-done' : ' is-current'}`} aria-current={!family ? 'step' : undefined}><b aria-hidden="true">{family ? '✓' : '1'}</b><span>{family?.nombre || 'Trabajo o componente'}</span></div><div className={`dx-cascada-step${actividad ? ' is-done' : family ? ' is-current' : ''}`} aria-current={family && !actividad ? 'step' : undefined}><b aria-hidden="true">{actividad ? '✓' : '2'}</b><span>{actividad?.nombre || 'Actividad'}</span></div><div className={`dx-cascada-step${actividad ? ' is-current' : ''}`} aria-current={actividad ? 'step' : undefined}><b aria-hidden="true">3</b><span>Tarea</span></div></div>
-      <div className="dx-cascada-cols">
-        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3><input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => { const n = activitiesFor(item.id).length; return `${n} ${n === 1 ? 'actividad' : 'actividades'}`; }, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
+      <div className={`dx-cascada-cols${initialFamiliaId ? ' has-initial-family' : ''}`}>
+        <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Trabajo o componente</h3>{suggestedFamilies.length > 1 && <><h4 className="dx-cascada-task-group">Propuestos en hallazgos</h4><div className="dx-cascada-list" role="listbox" aria-label="Propuestos en hallazgos">{suggestedFamilies.map(({ familia: item, count }) => item && <button type="button" role="option" aria-selected={familiaId === item.id} key={item.id} className={`dx-cascada-row${familiaId === item.id ? ' is-selected' : ''}`} onClick={() => { setFamiliaId(item.id); setActividadId(''); setSelected({}); setSoloActividad(false); }}><span>{item.nombre}<small>{count} hallazgo{count === 1 ? '' : 's'}</small></span><b aria-hidden="true">›</b></button>)}</div></>}<input ref={searchRefs[0]} type="search" aria-label="Buscar trabajo o componente" placeholder="Buscar" value={query[0]} onChange={event => setSearch(0, event.target.value)} /></div>{result(familias, 0, 'Trabajo o componente', familiaId, item => { const n = activitiesFor(item.id).length; return `${n} ${n === 1 ? 'actividad' : 'actividades'}`; }, item => item.rol === 'componente' ? 'Componente' : 'Trabajo')}{creationBox(1)}</section>
         <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Actividad</h3><input ref={searchRefs[1]} type="search" aria-label="Buscar actividad" placeholder="Buscar" disabled={!family} value={query[1]} onChange={event => setSearch(1, event.target.value)} /></div>{family ? result(activities, 1, 'Actividad', actividadId, item => { const n = plantillas.filter(row => row.actividad_id === item.id && row.tarea_id).length; return `${item.codigo ? `${item.codigo} · ` : ''}${n ? `${n} tareas en receta` : 'sin receta'}`; }) : <div className="dx-cascada-empty">Primero elige un trabajo o componente.</div>}{family && creationBox(2)}</section>
         <section className="dx-cascada-col"><div className="dx-cascada-coltop"><h3>Tarea</h3>{actividad && (!isFab || !recipe.length) && <input ref={searchRefs[2]} type="search" aria-label="Buscar tarea" placeholder="Buscar tarea" value={query[2]} onChange={event => setSearch(2, event.target.value)} />}</div>
           {!actividad ? <div className="dx-cascada-empty">Primero elige una actividad.</div> : <>
