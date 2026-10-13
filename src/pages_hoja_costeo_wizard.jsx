@@ -78,6 +78,17 @@ function SelectorCatalogoCosteo({ value, options, disabled, placeholder, onChang
     document.addEventListener('mousedown', closeOutside);
     return () => document.removeEventListener('mousedown', closeOutside);
   }, []);
+  useEffect(() => {
+    if (!open || document.documentElement.dataset.dxWorkMode !== 'true') return undefined;
+    const ajustarHoja = () => {
+      const menu = rootRef.current?.querySelector('.hcw-catalog-menu');
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      if (menu) menu.style.maxHeight = `${Math.min(360, viewportHeight * 0.45)}px`;
+    };
+    ajustarHoja();
+    window.visualViewport?.addEventListener('resize', ajustarHoja);
+    return () => window.visualViewport?.removeEventListener('resize', ajustarHoja);
+  }, [open]);
 
   return (
     <>
@@ -88,7 +99,21 @@ function SelectorCatalogoCosteo({ value, options, disabled, placeholder, onChang
       <div className="hcw-catalog-search" ref={rootRef}>
         <input className="input" type="search" disabled={disabled} value={open ? query : selected?.label || ''} placeholder={placeholder}
           aria-label={placeholder} aria-expanded={open} aria-controls="hcw-catalog-results" role="combobox" autoComplete="off"
-          onFocus={event => { setQuery(''); setOpen(true); event.currentTarget.select(); }}
+          onFocus={event => {
+            setQuery('');
+            setOpen(true);
+            event.currentTarget.select();
+            if (document.documentElement.dataset.dxWorkMode === 'true') {
+              const input = event.currentTarget;
+              requestAnimationFrame(() => {
+                const scroller = input.closest('.hcw-scroll');
+                if (!scroller) return;
+                const inputTop = input.getBoundingClientRect().top;
+                const scrollTop = scroller.getBoundingClientRect().top;
+                scroller.scrollTo({ top: scroller.scrollTop + inputTop - scrollTop - 12, behavior: 'smooth' });
+              });
+            }
+          }}
           onChange={event => { setQuery(event.target.value); setOpen(true); }}
           onKeyDown={event => {
             if (event.key === 'Escape') setOpen(false);
@@ -939,7 +964,7 @@ export default function HojaCosteoWizard() {
         {cargando ? <div className="text-muted" style={{ padding: 16 }}>Cargando materiales...</div> : lineasMateriales.length === 0 ? (
           <div className="text-muted" style={{ padding: '12px 0', fontSize: 13 }}>Aún no hay líneas de materiales.</div>
         ) : (
-          <div className="table-wrap"><table className="tbl">
+          <div className="table-wrap"><table className="tbl hcw-lines-table">
             <thead><tr><th>Material</th><th className="num">Cantidad</th><th className="num">Costo unitario</th><th>Origen</th><th className="num">Subtotal</th>{!bloqueada && <th />}</tr></thead>
             <tbody>{lineasMateriales.map(linea => {
               const material = materialPorId.get(linea.material_id);
@@ -979,7 +1004,7 @@ export default function HojaCosteoWizard() {
           </div>
         </form>
         {lineasJson.length === 0 ? <div className="text-muted" style={{ padding: '12px 0', fontSize: 13 }}>Aún no hay líneas en esta sección.</div> : (
-          <div className="table-wrap"><table className="tbl">
+          <div className="table-wrap"><table className="tbl hcw-lines-table">
             <thead><tr><th>Descripción</th><th className="num">Cantidad</th><th>Unidad</th><th className="num">Costo unitario</th><th className="num">Subtotal</th>{!bloqueada && <th />}</tr></thead>
             <tbody>{lineasJson.map(linea => (
               <tr key={linea.id}>
@@ -1071,7 +1096,7 @@ export default function HojaCosteoWizard() {
         {cargando ? <div className="text-muted" style={{ padding: 16 }}>Cargando activos...</div> : lineasActivos.length === 0 ? (
           <div className="text-muted" style={{ padding: '12px 0', fontSize: 13 }}>Aún no hay líneas de activos.</div>
         ) : (
-          <div className="table-wrap"><table className="tbl">
+          <div className="table-wrap"><table className="tbl hcw-lines-table">
             <thead><tr><th>Activo</th><th>Estado</th><th className="num">Horas</th><th>Origen</th><th className="num">Depreciación asignada</th>{!bloqueada && <th />}</tr></thead>
             <tbody>{lineasActivos.map(linea => {
               const activo = activoPorId.get(linea.activo_id);
@@ -1237,7 +1262,7 @@ export default function HojaCosteoWizard() {
             <div className="text-muted" style={{ padding: '12px 0', fontSize: 13 }}>Aún no hay líneas de mano de obra.</div>
           ) : (
             <div className="table-wrap">
-              <table className="tbl">
+              <table className="tbl hcw-lines-table">
                 <thead><tr><th>Trabajo</th><th>Actividad</th><th>Cargo</th><th className="num">Horas</th><th className="num">Costo/hora</th><th>Método</th><th className="num">Subtotal</th>{!bloqueada && <th />}</tr></thead>
                 <tbody>
                   {lineas.map(linea => (

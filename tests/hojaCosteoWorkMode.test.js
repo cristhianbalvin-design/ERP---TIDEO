@@ -44,4 +44,27 @@ describe('modo de trabajo de Hoja de Costeo', () => {
     expect(context).toContain("window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hashPage}`)");
     expect(context).not.toContain('window.history.pushState');
   });
+
+  it('restaura displays del cajon y conserva sus elementos apilados', () => {
+    expect(styles).toContain('html[data-dx-work-mode="true"] .sidebar-logo-sub { display: block !important; }');
+    expect(styles).toContain('html[data-dx-work-mode="true"] .sidebar-section { display: block !important; }');
+    expect(styles).toMatch(/html\[data-dx-work-mode="true"\] \.sidebar-section-toggle,\s*html\[data-dx-work-mode="true"\] \.sidebar-item \{ display: flex !important; \}/);
+    expect(styles).not.toContain('html[data-dx-work-mode="true"] .sidebar-collapse { display: initial');
+    expect(styles).toContain('.sidebar.collapsed .sidebar-nav { padding: 10px 12px 24px !important;');
+  });
+
+  it('aplica ancho minimo solo a tablas de lineas, no al resumen', () => {
+    expect(styles).toContain('html[data-dx-work-mode="true"] .hcw-root .hcw-lines-table { min-width: 650px; }');
+    expect(styles).not.toContain('html[data-dx-work-mode="true"] .hcw-root .tbl { min-width: 650px; }');
+    expect((wizard.match(/className="tbl hcw-lines-table"/g) || []).length).toBe(4);
+    expect(wizard).toContain('<table className="tbl"><tbody>');
+  });
+
+  it('desplaza el contenedor al enfocar el buscador y adapta la hoja al viewport visible', () => {
+    expect(wizard).toContain("if (document.documentElement.dataset.dxWorkMode === 'true') {");
+    expect(wizard).toContain("const scroller = input.closest('.hcw-scroll');");
+    expect(wizard).toContain("scroller.scrollTo({ top: scroller.scrollTop + inputTop - scrollTop - 12, behavior: 'smooth' });");
+    expect(wizard).toContain("window.visualViewport?.addEventListener('resize', ajustarHoja)");
+    expect(styles).toContain('max-height: min(45dvh, 360px)');
+  });
 });
