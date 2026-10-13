@@ -1,8 +1,9 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { actualizarFotoHallazgo, borrarFotoHallazgo, listarFotosHallazgos, subirFotoHallazgo } from '../../services/diagnosticoHallazgoFotosService.js';
 
 const errorText = error => error?.message || 'No se pudo completar la operación.';
 const TIPOS_IMAGEN = ['image/jpeg', 'image/png', 'image/webp'];
+const nextFrame = callback => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : setTimeout(callback, 0);
 
 export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, fotos = [], fotosPendientes = [], readOnly = false, onFotosChange, onFotosPendientesChange }) {
   const [uploading, setUploading] = useState(false);
@@ -14,6 +15,7 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
   const [exclusiones, setExclusiones] = useState({});
   const [preview, setPreview] = useState(null);
   const scrollBeforePicker = useRef(null);
+  const restoreJobs = useRef([]);
   const publish = next => onFotosChange?.(next);
   const total = fotos.length + fotosPendientes.length;
   const isCoarsePointer = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -21,31 +23,54 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
     : false;
 
   const capturePickerScroll = event => {
+    restoreJobs.current.forEach(job => job()); restoreJobs.current = [];
     const ancestors = [];
     let node = event.currentTarget;
     while (node) {
-      if (node.scrollHeight > node.clientHeight) ancestors.push([node, node.scrollTop, node.scrollLeft]);
+      const overflow = typeof getComputedStyle === 'function' ? getComputedStyle(node).overflowY : '';
+      if (node.scrollHeight > node.clientHeight || /auto|scroll|overlay/.test(overflow) || node.matches?.('.dx-work-page,.dx-scope')) ancestors.push([node, node.scrollTop, node.scrollLeft]);
       node = node.parentElement;
     }
     const shadowHost = event.currentTarget.getRootNode?.().host;
     for (node = shadowHost; node; node = node.parentElement) {
       if (node.scrollHeight > node.clientHeight && !ancestors.some(([ancestor]) => ancestor === node)) ancestors.push([node, node.scrollTop, node.scrollLeft]);
     }
-    scrollBeforePicker.current = { windowY: window.scrollY, windowX: window.scrollX, ancestors };
+    scrollBeforePicker.current = { windowY: window.scrollY, windowX: window.scrollX, ancestors, canceled: false };
   };
   const restorePickerScroll = () => {
     const snapshot = scrollBeforePicker.current;
-    if (!snapshot) return;
-    requestAnimationFrame(() => {
-      window.scrollTo(snapshot.windowX, snapshot.windowY);
+    if (!snapshot || snapshot.canceled) return;
+    const restore = () => {
+      if (snapshot.canceled || scrollBeforePicker.current !== snapshot) return;
+      window.scrollTo?.(snapshot.windowX, snapshot.windowY);
       snapshot.ancestors.forEach(([node, top, left]) => { if (node.isConnected) { node.scrollTop = top; node.scrollLeft = left; } });
-      requestAnimationFrame(() => {
-        window.scrollTo(snapshot.windowX, snapshot.windowY);
-        snapshot.ancestors.forEach(([node, top, left]) => { if (node.isConnected) { node.scrollTop = top; node.scrollLeft = left; } });
-        if (scrollBeforePicker.current === snapshot) scrollBeforePicker.current = null;
-      });
+    };
+    [0, 150, 400].forEach(delay => {
+      const timeout = setTimeout(() => { restore(); restoreJobs.current = restoreJobs.current.filter(cancel => cancel !== cancelJob); }, delay);
+      const frame = nextFrame(restore);
+      const cancelJob = () => { clearTimeout(timeout); if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame); };
+      restoreJobs.current.push(cancelJob);
     });
   };
+
+  useEffect(() => {
+    const cancelOnManualScroll = () => {
+      const snapshot = scrollBeforePicker.current;
+      if (snapshot) { snapshot.canceled = true; scrollBeforePicker.current = null; restoreJobs.current.forEach(job => job()); restoreJobs.current = []; }
+    };
+    const restore = () => restorePickerScroll();
+    globalThis.window?.addEventListener?.('focus', restore);
+    globalThis.document?.addEventListener?.('visibilitychange', restore);
+    globalThis.window?.addEventListener?.('resize', restore);
+    globalThis.window?.visualViewport?.addEventListener('resize', restore);
+    ['wheel', 'touchmove', 'keydown'].forEach(name => globalThis.window?.addEventListener?.(name, cancelOnManualScroll, { passive: true }));
+    return () => {
+      globalThis.window?.removeEventListener?.('focus', restore); globalThis.document?.removeEventListener?.('visibilitychange', restore);
+      globalThis.window?.removeEventListener?.('resize', restore); globalThis.window?.visualViewport?.removeEventListener('resize', restore);
+      ['wheel', 'touchmove', 'keydown'].forEach(name => globalThis.window?.removeEventListener?.(name, cancelOnManualScroll));
+      restoreJobs.current.forEach(job => job());
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (scrollBeforePicker.current) restorePickerScroll();
@@ -68,6 +93,7 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
 
   const uploadFiles = async event => {
     event.currentTarget.blur();
+    restorePickerScroll();
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (!files.length) { restorePickerScroll(); return; }
@@ -129,20 +155,20 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
     <div className="dx-foto-head"><strong>Fotos</strong><span>{total} de 3</span></div>
     {!hallazgo?.id && !readOnly && <p className="dx-foto-notice">Las fotos se subirán al guardar el hallazgo.</p>}
     {!readOnly && <div className="dx-foto-controls">{isCoarsePointer ? <>
-      <label className="dx-foto-upload">
+      <label className="dx-foto-upload" onClick={capturePickerScroll} onPointerDown={capturePickerScroll}>
         <span>Tomar foto</span>
-        <input type="file" aria-label="Tomar foto del hallazgo" accept="image/*" capture="environment" disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
+        <input type="file" tabIndex={-1} aria-label="Tomar foto del hallazgo" accept="image/*" capture="environment" disabled={uploading || total >= 3} onPointerDown={capturePickerScroll} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
       </label>
-      <label className="dx-foto-upload">
+      <label className="dx-foto-upload" onClick={capturePickerScroll} onPointerDown={capturePickerScroll}>
         <span>Elegir de la galería</span>
-        <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
+        <input type="file" tabIndex={-1} aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onPointerDown={capturePickerScroll} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
       </label>
-    </> : <label className="dx-foto-upload">
+    </> : <label className="dx-foto-upload" onClick={capturePickerScroll} onPointerDown={capturePickerScroll}>
       <span>{uploading ? 'Subiendo fotos…' : 'Agregar fotos'}</span>
-      <input type="file" aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
+      <input type="file" tabIndex={-1} aria-label="Agregar fotos al hallazgo" accept="image/jpeg,image/png,image/webp" multiple disabled={uploading || total >= 3} onPointerDown={capturePickerScroll} onClick={capturePickerScroll} onCancel={restorePickerScroll} onChange={uploadFiles} />
     </label>}</div>}
     {fotosPendientes.length > 0 && <div className="dx-foto-grid">{fotosPendientes.map(pending => <article className="dx-foto-card dx-foto-card-pending" key={pending.id}>
-      <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${pending.archivo.name || 'foto pendiente'}`} onClick={() => setPreview({ url: pending.previewUrl, alt: pending.archivo.name || 'Foto pendiente' })}><img src={pending.previewUrl} alt="" /></button>
+      <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${pending.archivo.name || 'foto pendiente'}`} onClick={() => setPreview({ url: pending.previewUrl, alt: pending.archivo.name || 'Foto pendiente' })}><img src={pending.previewUrl} alt="" onLoad={restorePickerScroll} /></button>
       <span className="dx-foto-pending-label" role="status">Pendiente de guardar</span>
       <span className="dx-foto-filename">{pending.archivo.name}</span>
       <div className="dx-foto-actions"><button type="button" onClick={() => removePending(pending)}>Quitar</button></div>
@@ -151,7 +177,7 @@ export default function HallazgoFotos({ empresaId, diagnosticoId, hallazgo, foto
     {fotos.length > 0 && <div className="dx-foto-grid">{fotos.map(foto => {
       const busy = busyId === foto.id;
       return <article className="dx-foto-card" key={foto.id}>
-        <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${foto.leyenda || 'foto del hallazgo'}`} onClick={() => setPreview({ url: foto.signedUrl, alt: foto.leyenda || 'Foto del hallazgo' })}><img src={foto.signedUrl} alt={foto.leyenda || 'Foto del hallazgo'} /></button>
+        <button type="button" className="dx-foto-preview-trigger" aria-label={`Ampliar ${foto.leyenda || 'foto del hallazgo'}`} onClick={() => setPreview({ url: foto.signedUrl, alt: foto.leyenda || 'Foto del hallazgo' })}><img src={foto.signedUrl} alt={foto.leyenda || 'Foto del hallazgo'} onLoad={restorePickerScroll} /></button>
         <>
           <label className="dx-foto-legend">Leyenda<input type="text" value={leyendas[foto.id] ?? foto.leyenda ?? ''} disabled={busy || readOnly} onChange={event => setLeyendas(current => ({ ...current, [foto.id]: event.target.value }))} onBlur={event => { if (!readOnly && event.target.value !== (foto.leyenda || '')) updateFoto(foto, { leyenda: event.target.value }); }} /></label>
           <label className="dx-foto-include"><input type="checkbox" checked={!(exclusiones[foto.id] ?? foto.excluir_del_informe)} disabled={busy || readOnly} onChange={event => { const excluir = !event.target.checked; setExclusiones(current => ({ ...current, [foto.id]: excluir })); updateFoto(foto, { excluir_del_informe: excluir }); }} />Incluir en el informe</label>

@@ -1,4 +1,5 @@
 import React, { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import { Icon } from '../components/shell.jsx';
 import { setWorkMode } from '../../workMode.js';
 import { ModalShell } from '../components/ModalShell.jsx';
@@ -404,9 +405,9 @@ function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validat
           <CatalogSelector label="Cargo" kind="cargo" value={selected(catalogs.cargos, line.cargo_id, 'cargo')} options={catalogs.cargos} disabled={!canEdit} placeholder="Buscar cargo..." clearable onSelect={item => patch({ cargo_id: item?.id || null })} onError={onError} />
         </div>
         <div className="diagnostico-line-grid diagnostico-line-grid-three">
-          <div className="field"><label>Horas-hombre</label><input className="input" type="number" min="0" step="0.01" value={line.horas_mano_obra ?? 0} disabled={!canEdit} onChange={event => patch({ horas_mano_obra: event.target.value })} /></div>
+          <div className="field"><label>Horas-hombre</label><input className="input" type="number" min="0" step="0.01" value={line.horas_mano_obra ?? 0} disabled={!canEdit} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => patch({ horas_mano_obra: event.target.value })} /></div>
           <CatalogSelector label="Activo propio" kind="activo" value={activo} options={catalogs.activos} disabled={!canEdit} placeholder="Buscar activo propio..." clearable onSelect={item => patch({ activo_id: item?.id || null, horas_maquina: item?.id ? line.horas_maquina : 0 })} onError={onError} />
-          <div className="field"><label>Horas-máquina</label><input className="input" type="number" min="0" step="0.01" value={line.horas_maquina ?? 0} disabled={!canEdit || !line.activo_id} onChange={event => patch({ horas_maquina: event.target.value })} /></div>
+          <div className="field"><label>Horas-máquina</label><input className="input" type="number" min="0" step="0.01" value={line.horas_maquina ?? 0} disabled={!canEdit || !line.activo_id} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => patch({ horas_maquina: event.target.value })} /></div>
         </div>
         <div className="field diagnostico-line-full"><label>Hallazgo</label><textarea className="input" rows="3" value={line.hallazgo || ''} disabled={!canEdit} onChange={event => patch({ hallazgo: event.target.value })} /></div>
       </div>
@@ -420,7 +421,7 @@ function LineEditor({ line, catalogs, canEdit, canCreateCatalog, saving, validat
             <tbody>{line.materiales.map((material, index) => <Fragment key={materialKey(material)}>
               <tr>
                 <td><input className="input" value={material.descripcion || ''} disabled={!canEdit} onChange={event => updateMaterial(materialKey(material), { descripcion: event.target.value })} /></td>
-                <td><input className="input" type="number" min="0.0001" step="0.0001" value={material.cantidad ?? 1} disabled={!canEdit} onChange={event => updateMaterial(materialKey(material), { cantidad: event.target.value })} /></td>
+                <td><input className="input" type="number" min="0.0001" step="0.0001" value={material.cantidad ?? 1} disabled={!canEdit} onFocus={seleccionarAlEnfocar} onPointerUp={seleccionarAlPulsar} onInput={marcarEdicionNumerica} onBlur={limpiarSeleccionAlDesenfocar} onChange={event => updateMaterial(materialKey(material), { cantidad: event.target.value })} /></td>
                 <td><input className="input" value={material.unidad || 'und'} disabled={!canEdit} onChange={event => updateMaterial(materialKey(material), { unidad: event.target.value })} /></td>
                 <td>{canEdit && <button type="button" className="btn btn-danger" onClick={() => removeMaterial(materialKey(material))}>Quitar</button>}</td>
               </tr>
@@ -477,6 +478,8 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const firstIncompleteWorkRef = useRef(null);
   const [taskPanel, setTaskPanel] = useState(false);
   const [taskPanelFamiliaId, setTaskPanelFamiliaId] = useState('');
+  const [taskPanelInitialFamiliaId, setTaskPanelInitialFamiliaId] = useState('');
+  const [taskPanelSuggestedFamilies, setTaskPanelSuggestedFamilies] = useState([]);
   const [taskPanelHasSelection, setTaskPanelHasSelection] = useState(false);
   const [informePanel, setInformePanel] = useState(false);
   const [workStep, setWorkStep] = useState(4);
@@ -1056,10 +1059,16 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
     setHallazgosSaving(false);
     hallazgosSaveRef.current = null;
   };
-  const closeTaskPanel = () => { setTaskPanel(false); setTaskPanelFamiliaId(''); setTaskPanelHasSelection(false); };
+  const closeTaskPanel = () => { setTaskPanel(false); setTaskPanelFamiliaId(''); setTaskPanelInitialFamiliaId(''); setTaskPanelSuggestedFamilies([]); setTaskPanelHasSelection(false); };
   const toggleTaskPanel = () => {
     if (taskPanel) closeTaskPanel();
-    else { setTaskPanelHasSelection(false); setTaskPanelFamiliaId(''); setTaskPanel(true); }
+    else {
+      const counts = new Map();
+      (selected?.hallazgos || []).forEach(row => { if (row.familia_trabajo_id) counts.set(row.familia_trabajo_id, (counts.get(row.familia_trabajo_id) || 0) + 1); });
+      const proposed = [...counts].map(([id, count]) => ({ familia: catalogs.familias.find(row => row.id === id), count })).filter(row => row.familia);
+      setTaskPanelHasSelection(false); setTaskPanelFamiliaId(''); setTaskPanelSuggestedFamilies(proposed);
+      setTaskPanelInitialFamiliaId(proposed.length === 1 ? proposed[0].familia.id : ''); setTaskPanel(true);
+    }
   };
   const openActivityPanel = familyId => { setTaskPanelHasSelection(false); setTaskPanelFamiliaId(familyId); setTaskPanel(true); };
   const appendCascadeLines = rows => {
@@ -1389,7 +1398,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
               {workStep === 5 && <section className="dx-diagnostico-resumen-section" aria-labelledby="dx-trabajos-realizar-title">
                 <header className="dx-diagnostico-resumen-heading dx-work-step-heading"><span>5</span><div><h3 id="dx-trabajos-realizar-title">Trabajos a realizar</h3><p>Define las tareas, recursos y tiempos para atender los hallazgos.</p></div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-add" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</button>}</header>
                 <div className="dx-info">Cada tarea lleva sus propias horas: <b>horas-hombre</b> (trabajo del cargo elegido) y <b>horas-máquina</b> (uso del activo propio, si aplica).</div>
-                {taskPanel && !taskPanelFamiliaId && <DiagnosticoAgregarTareasPanel key="extra-work-panel" familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
+                {taskPanel && !taskPanelFamiliaId && <DiagnosticoAgregarTareasPanel key="extra-work-panel" initialFamiliaId={taskPanelInitialFamiliaId} suggestedFamilies={taskPanelSuggestedFamilies} familias={catalogs.familias} tipos={catalogs.tipos} cargos={catalogs.cargos} activos={catalogs.activos} plantillas={plantillasActividad} tipoDiagnostico={selected.tipo} lineas={selected.lineas || []} onClose={closeTaskPanel} onSelectionChange={setTaskPanelHasSelection} onAdd={(rows, duplicates = 0) => { appendCascadeLines(rows); setNotice(`${rows.length ? `Se agregaron ${rows.length} tarea${rows.length === 1 ? '' : 's'}` : 'No se agregaron tareas'}${duplicates ? `; ${duplicates} duplicada${duplicates === 1 ? '' : 's'} omitida${duplicates === 1 ? '' : 's'}` : ''}.`); window.requestAnimationFrame(() => (tableAnchorRef.current?.focus({ preventScroll: true }), tableAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }))); }} onCreateFamily={crearFamilia} onCreateType={crearTipo} />}
                 <div ref={tableAnchorRef} className="dx-agregar-inline-table-anchor" tabIndex="-1" aria-label="Líneas del diagnóstico">
                   {loadingCatalogs ? <div className="dx-empty">Cargando catálogos...</div> : catalogError ? <div className="dx-empty" role="alert">No se pudieron cargar los catálogos: {catalogError}</div> : !grupos.length ? <div className="dx-empty">Aún no hay trabajos</div> : <div className="dx-work-family-groups">{grupos.map(renderFamilyGroup)}</div>}
                 </div>
