@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
-import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
+import { BuscadorCatalogo } from '../components/BuscadorCatalogo.jsx';
+import ObservationField from '../components/ObservationField.jsx';
 import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import {
   actualizarDiagnosticoHallazgo,
@@ -25,6 +26,7 @@ import { asignarComponenteActivo, usuarioPuedeEditarRecepcionActivosCliente } fr
 import { getIncompleteHallazgos } from './hallazgosValidation.js';
 import { agruparMedicionesPorZona, buscarTiposDano, resultadoMedicion } from './dibujoHallazgoLogic.js';
 import { agruparTiposDano, markupDibujoHallazgo } from './diagnosticoFase2Ui.js';
+import { agruparCausasProbables, buscarCausasProbables } from './causasProbables.js';
 import { ordenarHallazgosPorPrioridad } from './diagnosticoFlujo.js';
 
 const CATALOG_LABELS = {
@@ -136,86 +138,6 @@ function MeasurementTable({ item, catalogs, componentes = [], canEdit, update, r
     {canEdit && <button type="button" className="dx-measure-add" onClick={add}>+ Medici&#243;n</button>}
   </section>;
 }
-function ObservationField({ item, disabled, diagnosticoId, onChange }) {
-  const textareaRef = useRef(null);
-  const recognitionRef = useRef(null);
-  const [supported, setSupported] = useState(false);
-  const [listening, setListening] = useState(false);
-  const [speechMessage, setSpeechMessage] = useState('');
-  const speechSessionRef = useRef(null);
-  useEffect(() => {
-    setSupported(Boolean(typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)));
-    return () => recognitionRef.current?.stop?.();
-  }, []);
-  const stop = () => {
-    if (speechSessionRef.current) speechSessionRef.current.stopped = true;
-    recognitionRef.current?.stop?.();
-    setListening(false);
-  };
-  const toggleDictation = () => {
-    if (listening) { stop(); return; }
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) { setSupported(false); return; }
-    const recognition = new Recognition();
-    recognitionRef.current = recognition;
-    recognition.lang = 'es-PE';
-    recognition.interimResults = true;
-    recognition.continuous = true;
-    const base = String(textareaRef.current?.value ?? item.observacion ?? '').slice(0, 1000);
-    const session = { base, insertAt: textareaRef.current?.selectionStart ?? base.length, finals: [], interims: [], stopped: false };
-    speechSessionRef.current = session;
-    let triedFallback = false;
-    recognition.onstart = () => { setListening(true); setSpeechMessage(''); };
-    recognition.onresult = event => {
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const phrase = event.results[index][0]?.transcript || '';
-        if (event.results[index].isFinal) { session.finals[index] = phrase; session.interims[index] = ''; }
-        else session.interims[index] = phrase;
-      }
-      // Android puede reenviar el mismo resultIndex: se sobrescribe el buffer y se recompone desde la base.
-      const transcript = Array.from({ length: Math.max(session.finals.length, session.interims.length) }, (_, index) => session.finals[index] || session.interims[index] || '').join('');
-      const separator = transcript && session.insertAt > 0 && !/\s$/.test(session.base.slice(0, session.insertAt)) && !/^\s/.test(transcript) ? ' ' : '';
-      const next = `${session.base.slice(0, session.insertAt)}${separator}${transcript}${session.base.slice(session.insertAt)}`.slice(0, 1000);
-      const caret = Math.min(next.length, session.insertAt + separator.length + transcript.length);
-      onChange(next);
-      requestAnimationFrame(() => { textareaRef.current?.focus({ preventScroll: true }); textareaRef.current?.setSelectionRange(caret, caret); });
-      const interimText = session.interims.map((value, index) => session.finals[index] ? '' : value || '').join('');
-      setSpeechMessage(interimText ? `Escuchando: ${interimText}` : '');
-    };
-    recognition.onend = () => { if (!session.stopped) setListening(false); };
-    recognition.onerror = event => {
-      if (event.error === 'language-not-supported' && !triedFallback) {
-        triedFallback = true;
-        recognition.lang = 'es-ES';
-        try { recognition.start(); return; } catch { /* Se muestra el mensaje genérico abajo. */ }
-      }
-      session.stopped = true;
-      const message = event.error === 'not-allowed' || event.error === 'service-not-allowed'
-        ? 'Permiso de micrófono denegado. Habilita el micrófono en el navegador e inténtalo de nuevo.'
-        : 'No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.';
-      setSpeechMessage(message);
-      setListening(false);
-    };
-    recognition.onend = () => {
-      if (session.stopped) { setListening(false); recognitionRef.current = null; return; }
-      // Chrome Android corta sesiones continuas en pausas: reiniciar conserva el buffer indexado.
-      try { recognition.start(); } catch { setListening(false); recognitionRef.current = null; }
-    };
-    try { recognition.start(); }
-    catch { setListening(false); setSpeechMessage('No se pudo iniciar el dictado. Revisa el micrófono e inténtalo de nuevo.'); }
-  };
-  return <div className="field hallazgo-observation-field">
-    <label htmlFor={`hallazgo-observaciones-${item._key}`}>Observaciones</label>
-    <textarea ref={textareaRef} id={`hallazgo-observaciones-${item._key}`} className="input" rows={3} maxLength={1000} value={item.observacion || ''} disabled={disabled} onChange={event => onChange(event.target.value)} onBlur={stop} />
-    <div className="hallazgo-observation-tools">
-      {supported && <button type="button" className={`hallazgo-dictation-button${listening ? ' is-listening' : ''}`} aria-label="Dictar observaciones" aria-pressed={listening} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={toggleDictation}><Icon name="mic" size={16} />{listening ? 'Detener dictado' : 'Dictar'}</button>}
-      <MejorarRedaccionIA diagnosticoId={diagnosticoId} texto={item.observacion || ''} disabled={disabled || listening} compact onApply={onChange} />
-      {!supported && <span className="hint">Tu navegador no admite dictado; usa el dictado del sistema (Windows: tecla Windows + H)</span>}
-      {speechMessage && <span role="status">{speechMessage}</span>}
-    </div>
-  </div>;
-}
-
 function TaskLinks({ item, lines, tipos, cargos, activos, canEdit, update, remove }) {
   const [query, setQuery] = useState('');
   const visible = lines.filter(line => {
@@ -272,17 +194,6 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
   const [catalogError, setCatalogError] = useState('');
   const [componentes, setComponentes] = useState([]);
   const [activoRecepcion, setActivoRecepcion] = useState(null);
-  const [busquedaDano, setBusquedaDano] = useState('');
-  const [tipoDanoAbierto, setTipoDanoAbierto] = useState(null);
-  const [tipoDanoAbreArriba, setTipoDanoAbreArriba] = useState(false);
-  useEffect(() => {
-    if (!tipoDanoAbierto) return undefined;
-    const outside = event => { if (!(event.composedPath?.() || []).some(node => node?.classList?.contains('dx-tipo-dano'))) setTipoDanoAbierto(null); };
-    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); setTipoDanoAbierto(null); } };
-    globalThis.document?.addEventListener?.('pointerdown', outside);
-    globalThis.document?.addEventListener?.('keydown', escape);
-    return () => { globalThis.document?.removeEventListener?.('pointerdown', outside); globalThis.document?.removeEventListener?.('keydown', escape); };
-  }, [tipoDanoAbierto]);
   const [puedeEditarMaestros, setPuedeEditarMaestros] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState(() => new Set());
@@ -711,8 +622,6 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
     const selectedComponent = componentes.find(component => component.id === item.componente_catalogo_id);
     const inheritedComponent = activoRecepcion?.tipo_activo !== 'maquinaria_completa' && activoRecepcion?.componente_catalogo_id ? componentes.find(component => component.id === activoRecepcion.componente_catalogo_id) : null;
     const drawingSvg = selectedComponent?.svg || selectedComponent?.dibujo_svg || '';
-    const damageOptions = buscarTiposDano(catalogs.tipo_dano, busquedaDano).items;
-    const damageExact = buscarTiposDano(catalogs.tipo_dano, busquedaDano).exacta;
     const drawingMarkup = drawingSvg ? markupDibujoHallazgo(drawingSvg, item.zonas || [], {}, item.mediciones || []) : '';
     const expanded = expandedKeys.has(keyFor(item));
     const toggle = () => setExpandedKeys(current => { const next = new Set(current); if (next.has(keyFor(item))) next.delete(keyFor(item)); else next.add(keyFor(item)); return next; });
@@ -747,8 +656,9 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
       <div className="hallazgo-grid">
         <div className="field dx-hallazgo-trabajo-propuesto"><label>Trabajo que propones para repararlo <span className="required">*</span></label><select data-required-field="family" className="select" aria-label="Trabajo que propones para repararlo" value={item.familia_trabajo_id || ''} disabled={!canEdit} onChange={event => { if (event.target.value === '__create__') { setFamiliaEnCreacion(keyFor(item)); setNombreFamiliaNueva(''); setErrorFamiliaNueva(''); return; } updateItem(item, { familia_trabajo_id: event.target.value || null }); }}><option value="">Elige un trabajo</option>{familias.map(familia => <option key={familia.id} value={familia.id}>{familia.nombre}</option>)}{canEdit && <option value="__create__">+ Crear trabajo nuevo…</option>}</select>{familiaEnCreacion === keyFor(item) && <form className="hallazgos-inline-family-create" onSubmit={async event => { event.preventDefault(); const nombre = nombreFamiliaNueva.trim(); if (!nombre || !onCreateFamily || creandoFamiliaEditor) return; setCreandoFamiliaEditor(true); setErrorFamiliaNueva(''); try { const created = await onCreateFamily(nombre); updateItem(item, { familia_trabajo_id: created.id }); setFamiliaEnCreacion(null); setNombreFamiliaNueva(''); } catch (error) { setErrorFamiliaNueva(error?.message || 'No se pudo crear el trabajo.'); } finally { setCreandoFamiliaEditor(false); } }}><input className="input" aria-label="Nombre del nuevo trabajo" value={nombreFamiliaNueva} onChange={event => setNombreFamiliaNueva(event.target.value)} placeholder="Nombre del trabajo" /><button type="submit" disabled={creandoFamiliaEditor || !nombreFamiliaNueva.trim()}>{creandoFamiliaEditor ? 'Creando…' : 'Crear trabajo'}</button><button type="button" onClick={() => setFamiliaEnCreacion(null)}>Cancelar</button>{errorFamiliaNueva && <span role="alert">{errorFamiliaNueva}</span>}</form>}</div>
         {!inheritedComponent && !item.componente_catalogo_id && <div className="field"><label>Componente / parte *</label><input data-required-field="component-text" className="input" aria-label="Componente / parte" value={item.componente_parte || ''} disabled={!canEdit} onChange={event => updateItem(item, { componente_parte: event.target.value })} /></div>}
-        <div className="field dx-tipo-dano"><label>{CATALOG_LABELS.tipo_dano}</label><input data-required-field="damage" className="input" role="combobox" aria-expanded={tipoDanoAbierto === keyFor(item)} aria-label="Tipo de daño" value={tipoDanoAbierto === keyFor(item) ? busquedaDano : catalogs.tipo_dano.find(row => row.codigo === item.tipo_dano_codigo)?.etiqueta || ''} disabled={!canEdit} placeholder="Buscar tipo de daño…" onFocus={event => { setBusquedaDano(''); setTipoDanoAbierto(keyFor(item)); const rect = event?.currentTarget?.getBoundingClientRect?.(); if (!rect) return; const height = window.visualViewport?.height || window.innerHeight; setTipoDanoAbreArriba(height - rect.bottom < Math.min(320, height * .45) && rect.top > height - rect.bottom); }} onChange={event => setBusquedaDano(event.target.value)} />{tipoDanoAbierto === keyFor(item) && <div className={`dx-tipo-dano-menu${tipoDanoAbreArriba ? ' is-up' : ''}`} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setTipoDanoAbierto(null); } }}><header><strong>Tipo de daño</strong><button type="button" aria-label="Cerrar tipo de daño" onClick={() => setTipoDanoAbierto(null)}>×</button></header><input className="dx-tipo-dano-sheet-search" type="search" aria-label="Buscar tipo de dano" placeholder="Buscar tipo de dano?" value={busquedaDano} onChange={event => setBusquedaDano(event.target.value)} />{agruparTiposDano(damageOptions).map(group => <div key={group.id}><small>{group.label}</small>{group.items.map(option => <button type="button" key={`${group.id}-${option.codigo}`} onMouseDown={event => event.preventDefault()} onClick={() => { updateItem(item, { tipo_dano_codigo: option.codigo }); setTipoDanoAbierto(null); }}>{option.etiqueta}</button>)}</div>)}{!damageExact && busquedaDano.trim() && <p className="dx-tipo-dano-similar">Parecidos: {damageOptions.slice(0, 3).map(option => option.etiqueta).join(' · ') || 'sin coincidencias'}</p>}{!damageExact && canEdit && puedeEditarMaestros && busquedaDano.trim() && <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const result = await crearTipoDanoDiagnostico(empresaId, busquedaDano.trim()); const rows = result.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: result.valor.codigo }); setTipoDanoAbierto(null); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{busquedaDano.trim()}»</button>}</div>}</div>
-        <SelectField label={CATALOG_LABELS.causa_probable} requiredKey="cause" value={item.causa_probable_codigo} options={[...catalogs.causa_probable, ...(item.causa_probable_codigo && !catalogs.causa_probable.some(row => row.codigo === item.causa_probable_codigo) ? [{ codigo: item.causa_probable_codigo, etiqueta: item.causa_probable_codigo, inactivo: true }] : [])]} allowInactive onChange={value => updateItem(item, { causa_probable_codigo: value })} disabled={!canEdit} />
+        <BuscadorCatalogo label={CATALOG_LABELS.tipo_dano} requiredKey="damage" options={catalogs.tipo_dano} value={item.tipo_dano_codigo} disabled={!canEdit} placeholder="Buscar tipo de daño…" search={buscarTiposDano} sections={items => agruparTiposDano(items)} onSelect={codigo => updateItem(item, { tipo_dano_codigo: codigo })} allowCreate createAction={(query, result, close) => !result.exacta && canEdit && puedeEditarMaestros && query.trim() ? <button type="button" className="dx-tipo-dano-create" onMouseDown={event => event.preventDefault()} onClick={async () => { try { const created = await crearTipoDanoDiagnostico(empresaId, query.trim()); const rows = created.catalog.filter(row => row.catalogo === 'tipo_dano'); setCatalogs(current => ({ ...current, tipo_dano: rows })); updateItem(item, { tipo_dano_codigo: created.valor.codigo }); close(); } catch (error) { onError?.(errorMessage(error)); } }}>＋ Crear «{query.trim()}»</button> : null} />
+        <BuscadorCatalogo label={CATALOG_LABELS.causa_probable} requiredKey="cause" options={[...catalogs.causa_probable, ...(item.causa_probable_codigo && !catalogs.causa_probable.some(row => row.codigo === item.causa_probable_codigo) ? [{ codigo: item.causa_probable_codigo, etiqueta: item.causa_probable_codigo, inactivo: true }] : [])]} value={item.causa_probable_codigo} disabled={!canEdit} placeholder="Buscar causa probable…" search={buscarCausasProbables} sections={agruparCausasProbables} onSelect={codigo => updateItem(item, { causa_probable_codigo: codigo })} clearable />
+
         <ChoiceButtons label="Condición del componente" requiredKey="condition" value={item.condicion} options={Object.entries(CONDITION_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { condicion: value })} />
         <ChoiceButtons label="Riesgo si no se atiende" requiredKey="risk" value={item.riesgo} options={Object.entries(RISK_LABELS)} disabled={!canEdit} onChange={value => updateItem(item, { riesgo: value })} />
         <div className="field hallazgo-priority-field"><label>PRIORIDAD AUTOMÁTICA</label><strong className={`hallazgo-priority-large priority-${calculated.toLowerCase()}`}>{calculated}</strong><span className="hint">Condición × riesgo. Se puede subir, con motivo.</span></div>

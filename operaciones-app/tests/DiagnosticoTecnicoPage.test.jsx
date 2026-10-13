@@ -504,7 +504,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
@@ -533,7 +535,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
@@ -564,7 +568,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
