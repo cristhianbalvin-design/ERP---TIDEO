@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
+import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
 import { limpiarSeleccionAlDesenfocar, marcarEdicionNumerica, seleccionarAlEnfocar, seleccionarAlPulsar } from '../utils/seleccionarAlEnfocar.js';
 import {
   actualizarDiagnosticoHallazgo,
@@ -135,7 +136,7 @@ function MeasurementTable({ item, catalogs, componentes = [], canEdit, update, r
     {canEdit && <button type="button" className="dx-measure-add" onClick={add}>+ Medici&#243;n</button>}
   </section>;
 }
-function ObservationField({ item, disabled, onChange }) {
+function ObservationField({ item, disabled, diagnosticoId, onChange }) {
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
   const [supported, setSupported] = useState(false);
@@ -208,6 +209,7 @@ function ObservationField({ item, disabled, onChange }) {
     <textarea ref={textareaRef} id={`hallazgo-observaciones-${item._key}`} className="input" rows={3} maxLength={1000} value={item.observacion || ''} disabled={disabled} onChange={event => onChange(event.target.value)} onBlur={stop} />
     <div className="hallazgo-observation-tools">
       {supported && <button type="button" className={`hallazgo-dictation-button${listening ? ' is-listening' : ''}`} aria-label="Dictar observaciones" aria-pressed={listening} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={toggleDictation}><Icon name="mic" size={16} />{listening ? 'Detener dictado' : 'Dictar'}</button>}
+      <MejorarRedaccionIA diagnosticoId={diagnosticoId} texto={item.observacion || ''} disabled={disabled || listening} compact onApply={onChange} />
       {!supported && <span className="hint">Tu navegador no admite dictado; usa el dictado del sistema (Windows: tecla Windows + H)</span>}
       {speechMessage && <span role="status">{speechMessage}</span>}
     </div>
@@ -754,7 +756,7 @@ export function HallazgosTrabajoPanel({ empresaId, diagnostico, lines = [], fami
         {item.prioridad_override && <div className="field"><label>Motivo del override *</label><input data-required-field="override_reason" className="input" value={item.prioridad_override_motivo || ''} disabled={!canEdit} onChange={event => updateItem(item, { prioridad_override_motivo: event.target.value })} /></div>}
         <ChoiceButtons label="Acción recomendada" requiredKey="action" value={item.accion_recomendada} options={ACTIONS} disabled={!canEdit} onChange={value => updateItem(item, { accion_recomendada: value })} />
         <ChoiceButtons label="Atribuible a" hint="para garantía y cargo" requiredKey="attribution" value={item.atribuible_a} options={ATTRIBUTIONS} disabled={!canEdit} onChange={value => updateItem(item, { atribuible_a: value })} />
-        <ObservationField item={item} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
+        <ObservationField item={item} diagnosticoId={diagnostico?.id} disabled={!canEdit} onChange={value => updateItem(item, { observacion: value.slice(0, 1000) })} />
       </div>
       <div className="hallazgo-matrix"><div><strong>PRIORIDAD AUTOMÁTICA · MATRIZ v{item.matriz_version || 1}</strong><span>La prioridad oficial se confirma en el servidor.</span></div><div className="hallazgo-matrix-grid"><span /><span>Monit.</span><span>Próx.</span><span>Antes</span><span>Inmed.</span>{Object.entries(CONDITION_LABELS).flatMap(([condition, conditionLabel]) => [<span key={`${condition}-label`}>{conditionLabel}</span>, ...Object.entries(RISK_LABELS).map(([risk], index) => <span key={`${condition}-${risk}`} className={`matrix-cell ${condition === item.condicion && risk === item.riesgo ? 'is-active' : ''}`}>{MATRIX[condition][risk]}</span>)])}</div>{item.prioridad_override && <small>Override: {item.prioridad_override} {item.prioridad_override_motivo ? `· ${item.prioridad_override_motivo}` : '· falta motivo'}</small>}</div>
       <MeasurementTable item={item} catalogs={catalogs} componentes={componentes} canEdit={canEdit} update={changes => updateItem(item, changes)} remove={measurement => removeMeasurement(item, measurement)} />

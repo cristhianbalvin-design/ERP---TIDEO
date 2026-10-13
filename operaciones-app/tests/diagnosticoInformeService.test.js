@@ -53,6 +53,16 @@ describe('diagnosticoInformeService', () => {
     await expect(generarConclusionIA('diag-1')).rejects.toThrow('El identificador del diagn\u00f3stico no es v\u00e1lido.');
   });
 
+  it('invoca mejorar-redaccion con id y texto y traduce cuota y validación', async () => {
+    supabase.functions = { invoke: vi.fn().mockResolvedValue({ data: { ok: true, texto_original: 'texto', texto_mejorado: 'Texto.', sin_cambios: false }, error: null }) };
+    const { mejorarRedaccion } = await import('../src/services/diagnosticoInformeService.js');
+    await expect(mejorarRedaccion({ diagnosticoId: 'diag-1', texto: 'texto' })).resolves.toMatchObject({ texto_mejorado: 'Texto.' });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('mejorar-redaccion', { body: { diagnostico_id: 'diag-1', texto: 'texto' } });
+    supabase.functions.invoke.mockResolvedValueOnce({ data: null, error: { context: { status: 429 } } });
+    await expect(mejorarRedaccion({ diagnosticoId: 'diag-1', texto: 'texto' })).rejects.toThrow(/cuota diaria/i);
+    await expect(mejorarRedaccion({ diagnosticoId: 'diag-1', texto: 'x'.repeat(4001) })).rejects.toThrow(/4000 caracteres/i);
+  });
+
   it('lee identidad con columnas explícitas y devuelve null ante errores', async () => {
     const chain = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn() };
     chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain); chain.maybeSingle.mockResolvedValue({ data: { logo_url: '/logo.png', razon_social: 'Tideo', ruc: '201' }, error: null });

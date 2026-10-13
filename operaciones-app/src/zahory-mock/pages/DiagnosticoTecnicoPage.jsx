@@ -10,6 +10,7 @@ import { DiagnosticoEstadoPanel } from './DiagnosticoEstadoPanel.jsx';
 import { DiagnosticoLineasTabla } from './DiagnosticoLineasTabla.jsx';
 import { DiagnosticoAgregarTareasPanel } from './DiagnosticoAgregarTareasPanel.jsx';
 import { DiagnosticoInformePanel } from './DiagnosticoInformePanel.jsx';
+import { MejorarRedaccionIA } from '../components/MejorarRedaccionIA.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import {
   buscarOCrearFamiliaTrabajo,
@@ -1417,6 +1418,7 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
             <header className="dx-diagnostico-resumen-heading"><span>2</span><div><h3 id="dx-report-diagnosis-title">Diagnóstico</h3><p>{isReadOnly ? 'Diagnóstico emitido. Texto de solo lectura.' : 'Redacta y guarda el diagnóstico antes de emitir el informe al cliente.'}</p></div></header>
             <div className="dx-diagnostico-resumen-card">
               <textarea aria-label="Diagnóstico" value={resumenVisible} disabled={!canEditLines || generandoResumenIA} onChange={event => cambiarResumen(event.target.value)} placeholder="Describe la evaluación, causa y conclusión técnica…" />
+              <MejorarRedaccionIA diagnosticoId={selected?.id} texto={resumenVisible} disabled={!canEditLines || generandoResumenIA} compact onApply={value => cambiarResumen(value, 'editado')} />
               <div className="dx-diagnostico-resumen-meta"><div><strong className={selected.resumen_origen === 'editado' ? 'is-edited' : 'is-auto'}>{selected.resumen_origen === 'editado' ? 'Editado' : 'Generado con IA'}</strong><small>Este texto se incluirá en el informe al cliente.</small></div><div>{canEditLines && <button type="button" className="dx-diagnostico-resumen-regenerate" onClick={() => selected.resumen_origen === 'editado' && resumenVisible.trim() ? setConfirmarRegenerarResumen(true) : generarResumenIA()} disabled={generandoResumenIA || !(selected.hallazgos || []).length || hallazgosIncompletosCount > 0} aria-busy={generandoResumenIA}>{generandoResumenIA ? 'Generando…' : 'Generar con IA'}</button>}<button type="button" className="dx-diagnostico-resumen-regenerate" onClick={guardarResumenParaInforme} disabled={!canEditLines || !summaryDirty}>Guardar diagnóstico</button></div></div>
               {errorResumenIA && <div className="dx-diagnostico-resumen-error" role="alert">{errorResumenIA}</div>}
             </div>
