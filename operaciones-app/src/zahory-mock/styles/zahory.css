@@ -3960,7 +3960,7 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-mov-disabled-reason { max-width:150px; color:var(--dx-ui-gray); font-size:10px; line-height:1.3; text-align:right; }
 @media(max-width:600px){.dx-mov-disabled-reason{text-align:left}}
 /* Solicitudes SOLPE */
-.dx-ui.dx-solpe { position:relative; min-height:100%; padding:24px 28px 60px; background:var(--dx-ui-bg); color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',sans-serif; }
+.dx-ui.dx-solpe { position:relative; padding:24px 28px 60px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',sans-serif; }
 .dx-solpe,.dx-solpe * { box-sizing:border-box; }
 .dx-solpe svg { flex:none; }
 .dx-solpe button,.dx-solpe input,.dx-solpe select,.dx-solpe textarea { font-family:'DM Sans',sans-serif; }
