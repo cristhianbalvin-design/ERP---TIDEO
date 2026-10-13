@@ -17,26 +17,27 @@ describe('movil diagnostico y recepcion', () => {
   });
 
   it('pasos, barra inferior, formularios y fotos tienen reglas para telefono', () => {
-    expect(movil).toMatch(/@media \(max-width:700px\)[\s\S]*\.dx-work-mobile-step \{ display:block/);
+    expect(movil).toMatch(/@media \(max-width:700px\), \(max-height:520px\)[\s\S]*\.dx-work-mobile-step \{ display:flex/);
     expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer,\.dx-wizard-footer \{[^}]*display:flex; flex-wrap:wrap/);
     expect(movil).toMatch(/env\(safe-area-inset-bottom\)/);
     expect(movil).toMatch(/\.dx-recact-form-grid[^{]*\{ grid-template-columns:minmax\(0,1fr\)/);
     expect(movil).toMatch(/\.dx-foto-grid \{ grid-template-columns:repeat\(2/);
-    expect(movil).toMatch(/\.dx-work-page \*,\.dx-recact \* \{ box-sizing:border-box; min-width:0/);
+    expect(movil).toMatch(/\.dx-work-page,\.dx-recact,\.dx-work-page :is\(input,select,textarea,\.dx-ui-card\),\.dx-recact :is\(input,select,textarea,\.dx-recact-field,\.dx-recact-control\) \{ box-sizing:border-box; min-width:0; max-width:100%; \}/);
   });
 
   it('la tarjeta del diagnostico cabe bajo el shell compacto', () => {
-    expect(movil).toMatch(/\.dx-work-card \{ max-height:calc\(100dvh - 104px\) !important/);
-    expect(movil).toMatch(/\.ops-page:has\(\.dx-work-card\) \{ height:calc\(100dvh - 104px\)/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-work-card,\.dx-work-card \{ max-height:calc\(100dvh - 48px\) !important/);
+    expect(movil).toMatch(/\.ops-page:has\(\.dx-work-card\),\.ops-page:has\(\.dx-recact\) \{ height:calc\(100dvh - 48px\)/);
   });
 
   it('el shell compacta menu y cabecera solo en modo diagnostico', () => {
-    expect(shellCss).toMatch(/\.ops-sidebar\.is-diagnostico-rail \{[^}]*height:52px/);
-    expect(shellCss).toMatch(/html\[data-dx-diagnostico-work-mode='true'\] \.header \{[^}]*height:52px/);
+    expect(shellCss).toMatch(/\.ops-sidebar\.is-work-drawer \{[^}]*width:min\(84vw,320px\)/);
+    expect(shellCss).toMatch(/height:48px/);
+    expect(shellCss).not.toMatch(/is-diagnostico-rail \{ display:flex/);
   });
 
   it('el JSX expone Detalles colapsable e indicador Paso N de 6 con segmentos accesibles', () => {
-    expect(pageJsx).toMatch(/className="dx-work-meta-toggle" aria-expanded=\{metaOpen\}/);
+    expect(pageJsx).toMatch(/className="dx-work-meta-toggle" aria-label="Detalles" aria-expanded=\{metaOpen\}/);
     expect(pageJsx).toMatch(/setMetaOpen\(open => !open\)/);
     expect(pageJsx).toContain('Paso {workStep} de 6');
     expect(pageJsx).toMatch(/aria-label=\{`Paso \$\{index \+ 1\}: \$\{label\}`\}/);

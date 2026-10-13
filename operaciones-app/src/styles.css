@@ -491,21 +491,16 @@ body {
   .ops-main { padding: 30px 18px; }
 }
 
-@media (max-width: 680px) {
-  .ops-sidebar.is-diagnostico-rail { display:flex; flex-direction:row; align-items:center; gap:8px; width:100%; height:52px; min-height:52px; padding:0 12px; }
-  .ops-sidebar.is-diagnostico-rail .ops-brand { flex:0 0 32px; width:32px; height:32px; padding:0; border:0; }
-  .ops-sidebar.is-diagnostico-rail .ops-brand-logo-box { width:32px; height:32px; }
-  .ops-sidebar.is-diagnostico-rail .ops-nav { flex:1 1 auto; align-items:center; min-width:0; height:44px; margin:0; overflow-x:auto; overflow-y:hidden; }
-  .ops-sidebar.is-diagnostico-rail .ops-nav-zone { flex:0 0 auto; margin:0; }
-  .ops-sidebar.is-diagnostico-rail .ops-nav-entry,
-  .ops-sidebar.is-diagnostico-rail .ops-nav-group-head { flex:0 0 40px; }
-  .ops-sidebar.is-diagnostico-rail .ops-sidebar-collapse { display:none; }
-  html[data-dx-diagnostico-work-mode='true'] .header { height:52px; min-height:52px; max-height:52px; overflow:hidden; padding-inline:12px; gap:8px; }
-  html[data-dx-diagnostico-work-mode='true'] .header-title { min-width:0; max-width:calc(100vw - 170px)!important; flex:1 1 auto!important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  html[data-dx-diagnostico-work-mode='true'] .header-spacer { display:none; }
-  html[data-dx-diagnostico-work-mode='true'] .header .row > button[title='Dark mode'],
-  html[data-dx-diagnostico-work-mode='true'] .header .row > button[title='Modo campo'] { display:none; }
-  html[data-dx-diagnostico-work-mode='true'] .header > div:has(> button[title^='Sociedad']) { display:none; }
-  html[data-dx-diagnostico-work-mode='true'] .header .icon-btn { flex:0 0 36px; }
-  html[data-dx-diagnostico-work-mode='true'] .header .user-zone { flex:0 0 auto; }
+@media (max-width: 680px), (max-height: 520px) {
+  .ops-shell:has(.ops-sidebar.is-work-drawer) { display:block; }
+  .ops-sidebar.is-work-drawer { position:fixed; inset:0 auto 0 0; z-index:1001; width:min(84vw,320px); max-width:320px; height:100dvh; min-height:0; padding:16px 8px; transform:translateX(-105%); transition:transform .18s ease; overflow-y:auto; box-shadow:0 12px 32px color-mix(in srgb,var(--navy) 30%,transparent); }
+  .ops-sidebar.is-work-drawer.is-open { transform:translateX(0); }
+  .ops-drawer-backdrop { position:fixed; inset:0; z-index:1000; border:0; background:color-mix(in srgb,var(--navy) 48%,transparent); }
+  .ops-work-menu-button { display:inline-grid; flex:0 0 44px; width:44px; height:44px; place-items:center; border:0; border-radius:8px; background:transparent; color:inherit; font-size:22px; cursor:pointer; }
+  .ops-work-menu-button:focus-visible,.ops-drawer-backdrop:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+  .header:has(.ops-work-menu-button) { height:48px; min-height:48px; max-height:48px; overflow:hidden; gap:6px; padding-inline:8px !important; }
+  .header:has(.ops-work-menu-button) .header-title { flex:1 1 auto !important; min-width:0; max-width:none !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .header:has(.ops-work-menu-button) .header-spacer,.header:has(.ops-work-menu-button) .row > button[title='Dark mode'],.header:has(.ops-work-menu-button) .row > button[title='Modo campo'],.header:has(.ops-work-menu-button) > div:has(> button[title^='Sociedad']),.header:has(.ops-work-menu-button) > button[title='Cerrar sesión'] { display:none !important; }
+  .header:has(.ops-work-menu-button) .icon-btn { flex:0 0 40px; width:40px; height:40px; }
+  .header:has(.ops-work-menu-button) .user-zone { flex:0 0 40px; width:40px; overflow:hidden; }
 }

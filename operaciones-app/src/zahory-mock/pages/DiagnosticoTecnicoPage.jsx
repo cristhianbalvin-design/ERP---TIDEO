@@ -1,5 +1,6 @@
 import React, { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../components/shell.jsx';
+import { setWorkMode } from '../../workMode.js';
 import { ModalShell } from '../components/ModalShell.jsx';
 import { HallazgosTrabajoPanel } from './HallazgosTrabajoPanel.jsx';
 import { getIncompleteHallazgos } from './hallazgosValidation.js';
@@ -104,12 +105,7 @@ const materialValidationError = material => {
   return '';
 };
 const SLOW_SAVE_WARNING = 'El guardado est\u00e1 tardando m\u00e1s de lo normal. No pulses Guardar de nuevo; cierra y reabre el diagn\u00f3stico para comprobar si la l\u00ednea se guard\u00f3.';
-const dispatchDiagnosticoWorkMode = active => {
-  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.dataset.dxDiagnosticoWorkMode = active ? 'true' : 'false';
-  const detail = { active };
-  const event = typeof CustomEvent === 'function' ? new CustomEvent('dx-diagnostico-work-mode', { detail }) : { type: 'dx-diagnostico-work-mode', detail };
-  window.dispatchEvent(event);
-};
+const dispatchDiagnosticoWorkMode = active => setWorkMode(active);
 const observeSaveStep = (step, operation, onSlow) => {
   const startedAt = Date.now();
   let settled = false;
@@ -461,6 +457,8 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
   const [saving, setSaving] = useState(false);
   const [savingLine, setSavingLine] = useState(null);
   const [error, setError] = useState('');
+  const [dismissedFooterMessage, setDismissedFooterMessage] = useState(false);
+  useEffect(() => { setDismissedFooterMessage(false); }, [error]);
   const [referenceError, setReferenceError] = useState('');
   const [catalogError, setCatalogError] = useState('');
   const [notice, setNotice] = useState('');
@@ -1316,12 +1314,12 @@ export function DiagnosticoTecnicoPage({ routeParams = {} } = {}) {
           const tecnico = selected.tecnico_nombre || reference.tecnico_asignado || reference.tecnico_nombre || reference.tecnico || 'Sin asignar';
           const fecha = selected.fecha_inspeccion ? new Date(`${selected.fecha_inspeccion}T12:00:00`).toLocaleDateString('es-PE') : reference.fecha_ingreso ? new Date(reference.fecha_ingreso).toLocaleDateString('es-PE') : '—';
           const componente = selected.componente_nombre || reference.componente_nombre || reference.tipo_componente || selected.hallazgos?.[0]?.componente_parte || '—';
-          return <><header className={`dx-work-identity${informePanel || workStep >= 4 ? ' is-compact' : ''}`}><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" onClick={requestClose}>← Diagnósticos</button><h1>{title}</h1></div><div className="dx-work-identity-status"><strong>{reference.numero || referenceLabel(reference)}</strong><span className={`dx-ui-pill ${selected.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(selected.estado)}</span></div><button type="button" className="dx-work-meta-toggle" aria-expanded={metaOpen} onClick={() => setMetaOpen(open => !open)}>Detalles</button><div className={`dx-work-meta${metaOpen ? ' is-open' : ''}`}><span title={motivo}><b>Motivo</b> {motivo}</span><span title={`Técnico: ${tecnico}${fecha ? ` · ${fecha}` : ''}`}><b>Técnico:</b> {tecnico}{fecha ? ` · ${fecha}` : ''}</span><span title={componente}><b>Componente</b> {componente}</span></div></header></>;
+          return <><header className={`dx-work-identity${informePanel || workStep >= 4 ? ' is-compact' : ''}`}><div className="dx-work-identity-title"><button type="button" className="dx-work-back-link" aria-label="Volver a diagnosticos" onClick={requestClose}><span aria-hidden="true">←</span><span className="dx-work-back-label"> Diagnósticos</span></button><h1>{title}</h1></div><div className="dx-work-identity-status"><strong>{reference.numero || referenceLabel(reference)}</strong><span className={`dx-ui-pill ${selected.estado === 'emitido' ? 'is-green' : 'is-amber'}`}><i />{statusLabel(selected.estado)}</span></div><button type="button" className="dx-work-meta-toggle" aria-label="Detalles" aria-expanded={metaOpen} onClick={() => setMetaOpen(open => !open)}>i</button><div className={`dx-work-meta${metaOpen ? ' is-open' : ''}`}><span title={motivo}><b>Motivo</b> {motivo}</span><span title={`Técnico: ${tecnico}${fecha ? ` · ${fecha}` : ''}`}><b>Técnico:</b> {tecnico}{fecha ? ` · ${fecha}` : ''}</span><span title={componente}><b>Componente</b> {componente}</span></div></header></>;
         } : null}
         footer={requestClose => selected?.tipo === 'mantenimiento' ? <>
           <div className="dx-work-footer-status">
+            {error && !dismissedFooterMessage && <div className="alert alert-error dx-footer-floating-alert" role="alert"><span>{error}</span><button type="button" className="dx-footer-alert-close" aria-label="Descartar aviso" onClick={() => setDismissedFooterMessage(true)}>×</button></div>}
             {isReadOnly ? <span role="status">Informe emitido</span> : cambiosSinGuardar ? <div className="dx-dirty-count"><i />{cambiosCount} cambio{cambiosCount === 1 ? '' : 's'} sin guardar</div> : <span role="status">{notice || 'Borrador guardado'}</span>}
-            {error && <div className="alert alert-error">{error}</div>}
           </div>
           {isReadOnly ? <button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button> : !informePanel && workStep <= 3 ? <><span className="dx-work-footer-status">{initialDataDirty ? 'Datos iniciales sin guardar' : selected.datos_iniciales_migracion_disponible === false ? 'Datos iniciales: —' : 'Datos del diagnóstico'}</span>{canEditInitialData && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveInitialData} disabled={!initialDataDirty || modalBusy}>{modalBusy ? 'Guardando…' : 'Guardar cambios'}</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={async () => { if (workStep === 3 && !(await saveInitialData())) return; setWorkStep(workStep + 1); }}>{workStep === 3 ? 'Siguiente: Hallazgos' : 'Siguiente'}</button></> : !informePanel && workStep === 4 && hallazgoView === 'lista' ? <><button type="button" className="btn btn-secondary dx-action-44" disabled={!canEditLines || modalBusy} onClick={() => hallazgosAddRef.current?.()}>＋ Agregar hallazgo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={async () => { const saved = await saveAll(); if (saved) { setWorkStep(5); setHallazgoView('lista'); } }} disabled={modalBusy}>Siguiente: Trabajos</button></> : !informePanel && workStep === 4 ? <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setWorkStep(4); hallazgosBackRef.current?.(); }}>← Volver a hallazgos</button><button type="button" className="btn btn-secondary dx-action-44" onClick={() => window.dispatchEvent(new CustomEvent('dx-show-hallazgo-drawing'))}>Ver dibujo</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={!canEditLines || modalBusy} onClick={async () => { const result = await hallazgosSaveRef.current?.(); if (result?.ok) setNotice('Hallazgo guardado.'); }}>{modalBusy ? 'Guardando…' : 'Guardar hallazgo'}</button></> : !informePanel && workStep === 5 ? <><button type="button" className="btn btn-secondary dx-action-44" aria-expanded={Boolean(taskPanel)} onClick={toggleTaskPanel}>{taskPanel ? 'Cerrar panel' : 'Agregar trabajo'}</button>{canEditLines && <button type="button" className="btn btn-secondary dx-action-44" onClick={saveAll} disabled={!cambiosSinGuardar || modalBusy}>{modalBusy ? 'Guardando…' : 'Guardar todo'}</button>}<span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" disabled={modalBusy} onClick={goInforme}>Siguiente: Diagnóstico e informe</button></> : <><button type="button" className="btn btn-secondary dx-action-44" onClick={() => { setInformePanel(false); setWorkStep(5); }}>← Volver a trabajos</button><span className="dx-work-spacer" /><button type="button" className="btn btn-primary dx-action-44" onClick={event => event.currentTarget.getRootNode()?.querySelector('.dx-informe-emitir')?.click()}>Emitir informe</button></>}
         </> : <>

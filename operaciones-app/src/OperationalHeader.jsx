@@ -105,7 +105,7 @@ export function SociedadSelector({
   );
 }
 
-export function OperationalHeader({ title, sesionOperativa }) {
+export function OperationalHeader({ title, sesionOperativa, workCompact = false, onMenu, navOpen = false }) {
   const [compOpen, setCompOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
@@ -224,6 +224,7 @@ export function OperationalHeader({ title, sesionOperativa }) {
         gap: isCompactHeader ? 10 : 20,
       }}
     >
+      {workCompact && <button type="button" className="ops-work-menu-button" aria-label="Abrir menu" aria-expanded={navOpen} onClick={onMenu}>☰</button>}
       <div
         className="header-title font-display"
         style={{
