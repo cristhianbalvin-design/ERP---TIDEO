@@ -4,6 +4,9 @@ import { etiquetaEstadoLinea, tonoEstadoLinea, estadoAgregadoOT, etiquetaConteoL
 describe('reservasRepuestosLogic', () => {
   it('etiqueta y tono traducen estados de reserva', () => {
     expect(etiquetaEstadoLinea('despachado_parcial')).toBe('Despachado parcial');
+    expect(etiquetaEstadoLinea('reservado_parcial_solpe', { reservado: 0 })).toBe('Sin stock · SOLPE en curso');
+    expect(etiquetaEstadoLinea('reservado_parcial_solpe', { reservado: 1 })).toBe('Reservado parcial + SOLPE');
+    expect(etiquetaEstadoLinea('reservado_parcial_solpe')).toBe('Reservado parcial + SOLPE');
     expect(tonoEstadoLinea('reservado_parcial_solpe')).toBe('is-amber');
     expect(etiquetaEstadoLinea('liberado')).toBe('Liberado');
     expect(etiquetaEstadoLinea('despachado_liberado')).toBe('Despachado y liberado');

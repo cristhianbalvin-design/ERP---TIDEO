@@ -4,6 +4,9 @@ import { ZAHORY_SAC_DATA as MOCK } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import { eliminarAdjunto, subirAdjunto } from '../../../../src/services/storageService.js';
+import { pedirRepuestosParte } from '../../services/reservasRepuestosService.js';
+import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
+import { armarLineasPedido, describirResultadoLinea, validarPedidosParte } from './pedidoRepuestosParteLogic.js';
 
 const generarIdParte = () => `pd_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
 const generarIdActividad = () => `act_${globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.floor(Math.random() * 1000000)}`}`;
@@ -689,6 +692,8 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
   const [errorFotoActividad, setErrorFotoActividad] = useS3('');
   const [errorGuardadoParte, setErrorGuardadoParte] = useS3('');
   const [parteGuardado, setParteGuardado] = useS3(null);
+  const [resultadoPedidoRepuestos, setResultadoPedidoRepuestos] = useS3(null);
+  const [errorPedidoRepuestos, setErrorPedidoRepuestos] = useS3('');
   const [showBacklogModal, setShowBacklogModal] = useS3(false);
   const [nuevoBacklog, setNuevoBacklog] = useS3({});
 
@@ -1012,8 +1017,42 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     setShowBacklogModal(true);
   };
 
+  const procesarPedidoRepuestos = async (parte) => {
+    if (!formData.pedidos.length) return true;
+    setGuardandoParte(true);
+    setErrorPedidoRepuestos('');
+    setResultadoPedidoRepuestos(null);
+    try {
+      const resultado = await pedirRepuestosParte({
+        empresa_id: sesionOperativa.empresaId,
+        ot_id: parte.orden_trabajo_id || formData.ot_id,
+        parte_id: parte.id,
+        lineas: armarLineasPedido(formData.pedidos),
+      });
+      setResultadoPedidoRepuestos(resultado);
+      return true;
+    } catch (error) {
+      setErrorPedidoRepuestos(error?.message || 'No se pudo procesar el pedido de repuestos.');
+      return false;
+    } finally {
+      setGuardandoParte(false);
+    }
+  };
+
   const guardarParteReal = async () => {
     if (!sesionOperativa.permiteEscritura || guardandoParte) return;
+    const errorPedidos = validarPedidosParte(formData.pedidos);
+    if (errorPedidos) {
+      setErrorGuardadoParte(errorPedidos);
+      return;
+    }
+
+    setErrorGuardadoParte('');
+    setErrorPedidoRepuestos('');
+    if (parteGuardado) {
+      if (formData.pedidos.length) await procesarPedidoRepuestos(parteGuardado);
+      return;
+    }
     if (!formData.ot_id || !formData.tecnico_id || !formData.fecha) {
       setErrorGuardadoParte('Selecciona una OT, un técnico y la fecha del parte antes de enviarlo.');
       return;
@@ -1066,8 +1105,6 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
     }));
 
     setGuardandoParte(true);
-    setErrorGuardadoParte('');
-    setParteGuardado(null);
     try {
       const supabase = getSupabaseClient();
       const { data: numeroGenerado, error: errorNumero } = await supabase
@@ -1097,8 +1134,10 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
       };
       const { data, error } = await supabase.from('partes_diarios').insert(payload).select('id,numero').single();
       if (error) throw error;
-      setParteGuardado(data || payload);
-      setFormData(prev => ({ ...prev, id: data?.id || prev.id }));
+      const guardado = { ...(data || payload), orden_trabajo_id: formData.ot_id };
+      setParteGuardado(guardado);
+      setFormData(prev => ({ ...prev, id: guardado.id || prev.id }));
+      await procesarPedidoRepuestos(guardado);
     } catch (error) {
       setErrorGuardadoParte(error?.message || 'No se pudo guardar el parte diario.');
     } finally {
@@ -1446,33 +1485,52 @@ export const ParteTallerPage = ({ onNav, routeParams = {} }) => {
         </Accordion>
 
         {/* Pedidos */}
-        <Accordion title="Pedido de repuestos" icon="parts" badge={<IndicadorPendienteConexion/>}>
-          {formData.pedidos.length === 0 ? (
-            <div className="muted" style={{ fontSize: 12 }}>No hay pedidos registrados. Usa "+ Agregar pedido" cuando necesites solicitar stock.</div>
-          ) : (
-            <table className="tbl">
-              <thead><tr><th>N° Parte / Código</th><th>Descripción</th><th className="num">Cant</th><th>OT Origen</th><th>Urgencia</th></tr></thead>
-              <tbody>
-                {formData.pedidos.map((p, i) => (
-                  <tr key={i}>
-                    <td><input className="input" value={p.codigo} placeholder="N° Parte" onChange={e => { const newP = [...formData.pedidos]; newP[i].codigo = e.target.value; setFormData({...formData, pedidos: newP}) }}/></td>
-                    <td><input className="input" value={p.descripcion} placeholder="Descripción del repuesto" onChange={e => { const newP = [...formData.pedidos]; newP[i].descripcion = e.target.value; setFormData({...formData, pedidos: newP}) }}/></td>
-                    <td><input className="input" type="number" value={p.cantidad} style={{width:60}} onChange={e => { const newP = [...formData.pedidos]; newP[i].cantidad = e.target.value; setFormData({...formData, pedidos: newP}) }}/></td>
-                    <td><input className="input" value={formData.ot_id} readOnly style={{ background: "rgba(255,255,255,0.04)" }}/></td>
-                    <td>
-                      <select className="select" value={p.urgente ? 'urgente' : 'normal'} onChange={e => { const newP = [...formData.pedidos]; newP[i].urgente = e.target.value === 'urgente'; setFormData({...formData, pedidos: newP}) }}>
-                        <option value="normal">Normal</option>
-                        <option value="urgente">Urgente</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <button className="btn btn-secondary btn-sm mt-md" onClick={() => setFormData({...formData, pedidos: [...formData.pedidos, { codigo: '', descripcion: '', cantidad: 1, urgente: false }]})}>
-            <Icon name="plus" size={12}/> Agregar pedido
+        <Accordion title="Pedido de repuestos" icon="parts">
+          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+            Se pide material adicional a la OT. Almacén valida, reserva lo disponible y genera una SOLPE por lo que falte.
+          </div>
+          {formData.pedidos.map((pedido, indice) => (
+            <div key={`${pedido.material_id || 'nuevo'}-${indice}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 100px auto', gap: 8, alignItems: 'start', marginBottom: 8 }}>
+              <div>
+                <MaterialAutocomplete
+                  item={{ material_id: pedido.material_id, material_codigo: pedido.codigo, material_descripcion: pedido.descripcion }}
+                  empresaId={sesionOperativa.empresaId}
+                  sociedadId={sesionOperativa.sociedadId}
+                  disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)}
+                  onSelect={material => setFormData(prev => ({ ...prev, pedidos: prev.pedidos.map((item, i) => i === indice ? {
+                    material_id: material.material_id, codigo: material.codigo, descripcion: material.descripcion,
+                    unidad: material.unidad, disponible: material.disponible, cantidad: item.cantidad,
+                  } : item) }))}
+                  onClear={() => setFormData(prev => ({ ...prev, pedidos: prev.pedidos.map((item, i) => i === indice ? {
+                    ...item, material_id: null, codigo: '', descripcion: '', unidad: '', disponible: 0,
+                  } : item) }))}
+                />
+                {pedido.material_id && <div className="hint" style={{ fontSize: 10, marginTop: 3 }}>Disp. {Number(pedido.disponible || 0).toLocaleString()} {pedido.unidad || 'und'}</div>}
+              </div>
+              <input className="input" aria-label={`Cantidad repuesto ${indice + 1}`} type="number" min="0.01" step="0.01" value={pedido.cantidad}
+                disabled={Boolean(parteGuardado)} onChange={evento => setFormData(prev => ({ ...prev, pedidos: prev.pedidos.map((item, i) => i === indice ? { ...item, cantidad: evento.target.value } : item) }))} />
+              <button type="button" className="btn btn-secondary btn-sm" aria-label={`Quitar repuesto ${indice + 1}`} disabled={Boolean(parteGuardado)} onClick={() => setFormData(prev => ({ ...prev, pedidos: prev.pedidos.filter((_, i) => i !== indice) }))}>Quitar</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-secondary btn-sm mt-md" disabled={!sesionOperativa.permiteEscritura || Boolean(parteGuardado)} onClick={() => setFormData(prev => ({
+            ...prev, pedidos: [...prev.pedidos, { material_id: null, codigo: '', descripcion: '', unidad: '', disponible: 0, cantidad: 1 }],
+          }))}>
+            <Icon name="plus" size={12}/> + Agregar repuesto
           </button>
+          {errorPedidoRepuestos && <div role="alert" style={{ color: '#b91c1c', fontSize: 12, marginTop: 10 }}>{errorPedidoRepuestos}</div>}
+          {errorPedidoRepuestos && parteGuardado && <button type="button" className="btn btn-secondary btn-sm mt-md" disabled={guardandoParte} onClick={() => procesarPedidoRepuestos(parteGuardado)}>Reintentar pedido de repuestos</button>}
+          {resultadoPedidoRepuestos?.lineas?.length > 0 && (
+            <div className="card" style={{ marginTop: 12, padding: 12 }}>
+              <strong>Resultado del pedido de repuestos</strong>
+              {resultadoPedidoRepuestos.lineas.map((linea, indice) => {
+                const descripcion = describirResultadoLinea(linea);
+                return <div key={linea.linea_id || `${linea.material_id}-${indice}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 8 }}>
+                  <span>{linea.codigo || formData.pedidos[indice]?.codigo || 'Material'} · {Number(linea.cantidad_pedida || 0)} {formData.pedidos[indice]?.unidad || ''}</span>
+                  <span className={`dx-ui-pill ${descripcion.tono}`}>{descripcion.texto}</span>
+                </div>;
+              })}
+            </div>
+          )}
         </Accordion>
 
         <Accordion title="Trabajos pendientes y observaciones" icon="edit">

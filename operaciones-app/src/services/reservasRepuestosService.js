@@ -14,6 +14,12 @@ export function listarReservasOT({ empresa_id, ot_id = null }) {
   return ejecutarRpc('wms_reservas_ot', { p_empresa_id: empresa_id, p_ot_id: ot_id });
 }
 
+export function pedirRepuestosParte({ empresa_id, ot_id, parte_id, lineas }) {
+  return ejecutarRpc('wms_pedir_repuestos_parte', {
+    p_empresa_id: empresa_id, p_ot_id: ot_id, p_parte_id: parte_id, p_lineas: lineas,
+  });
+}
+
 export function despacharReservaOT({ empresa_id, ot_id, lineas, recibe_en_taller = null, observacion = null }) {
   return ejecutarRpc('wms_despachar_reserva_ot', {
     p_empresa_id: empresa_id, p_ot_id: ot_id, p_lineas: lineas,
