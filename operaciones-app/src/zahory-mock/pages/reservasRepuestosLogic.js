@@ -7,7 +7,10 @@ const ESTADOS_LINEA = Object.freeze({
 });
 const numero = valor => Number(valor || 0);
 
-export function etiquetaEstadoLinea(estado) { return ESTADOS_LINEA[estado]?.[0] || 'Sin estado'; }
+export function etiquetaEstadoLinea(estado, linea) {
+  if (estado === 'reservado_parcial_solpe' && linea && typeof linea === 'object' && numero(linea.reservado) === 0) return 'Sin stock · SOLPE en curso';
+  return ESTADOS_LINEA[estado]?.[0] || 'Sin estado';
+}
 export function tonoEstadoLinea(estado) { return ESTADOS_LINEA[estado]?.[1] || 'is-gray'; }
 export function estadoAgregadoOT(ot) {
   const lineas = ot?.lineas || [];

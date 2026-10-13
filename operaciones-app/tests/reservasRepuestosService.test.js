@@ -2,10 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpc = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/supabaseClient.js', () => ({ getSupabaseClient: () => ({ rpc }) }));
-import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespachoOT } from '../src/services/reservasRepuestosService.js';
+import { conciliarCierreOT, despacharReservaOT, liberarReservaOT, listarReservasOT, pedirRepuestosParte, revertirDespachoOT } from '../src/services/reservasRepuestosService.js';
 
 describe('reservasRepuestosService', () => {
   beforeEach(() => { rpc.mockReset().mockResolvedValue({ data: { ok: true }, error: null }); });
+
+  it('llama pedirRepuestosParte con los parámetros exactos del RPC', async () => {
+    const lineas = [{ material_id: 'material-1', cantidad: 1.5 }];
+    await pedirRepuestosParte({ empresa_id: 'empresa-1', ot_id: 'ot-1', parte_id: 'parte-1', lineas });
+    expect(rpc).toHaveBeenCalledWith('wms_pedir_repuestos_parte', {
+      p_empresa_id: 'empresa-1', p_ot_id: 'ot-1', p_parte_id: 'parte-1', p_lineas: lineas,
+    });
+  });
 
   it('llama listarReservasOT con nombre RPC y parámetros exactos', async () => {
     await listarReservasOT({ empresa_id: 'empresa-1', ot_id: 'ot-1' });

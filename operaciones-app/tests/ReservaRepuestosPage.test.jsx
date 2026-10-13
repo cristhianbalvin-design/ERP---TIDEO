@@ -134,8 +134,14 @@ describe('ReservaRepuestosPage', () => {
   });
 
   it('muestra SOLPE en curso cuando la línea tiene SOLPE y no hay cantidad reservada', async () => {
-    mocks.listar.mockResolvedValue(resultado({ ...otBase, lineas: [{ ...lineaBase, solpe_id: 'solpe-1', reservado: 0 }] }));
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, lineas: [{ ...lineaBase, estado: 'reservado_parcial_solpe', solpe_id: 'solpe-1', reservado: 0 }] }));
     const root = await renderPage(); await openDetail(root);
+    expect(root.root.findAll(node => node.type === 'i' && node.children.includes('Sin stock · SOLPE en curso'))).toHaveLength(1);
     expect(root.root.findAll(node => node.children?.join('') === 'SOLPE en curso')).toHaveLength(1);
+
+    root.unmount();
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, lineas: [{ ...lineaBase, estado: 'reservado_parcial_solpe', solpe_id: 'solpe-1', reservado: 1 }] }));
+    const rootConReserva = await renderPage(); await openDetail(rootConReserva);
+    expect(rootConReserva.root.findAll(node => node.type === 'i' && node.children.includes('Reservado parcial + SOLPE'))).toHaveLength(1);
   });
 });
