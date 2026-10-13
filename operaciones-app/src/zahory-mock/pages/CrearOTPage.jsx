@@ -214,13 +214,12 @@ const ClienteSearchSelect = ({ clientes, value, onChange, error, disabled = fals
 
 const BacklogDrawer = ({ open, equipo, selected, onClose, onToggle }) => {
   const rows = D.backlog.filter(b => !equipo || b.eq === equipo);
-  if (!open) return null;
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', zIndex: 40, display: 'flex', justifyContent: 'flex-end' }}>
-      <aside className="card" style={{ width: 460, maxWidth: '96vw', height: '100vh', borderRadius: 0, overflow: 'auto' }}>
+    <div className="dx-ot-backdrop" hidden={!open} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', zIndex: 40, display: 'flex', justifyContent: 'flex-end' }}>
+      <aside className="card" style={{ width: 460, maxWidth: '96vw', minWidth: 0, height: '100vh', borderRadius: 0, overflow: 'auto' }}>
         <div className="card-header" style={{ position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
           <h3>Vincular Hallazgos / Backlog</h3>
-          <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}><Icon name="x" size={12}/></button>
+          <button type="button" className="btn btn-ghost btn-sm" aria-label="Cerrar panel de hallazgos y backlog" style={{ marginLeft: 'auto' }} onClick={onClose}><Icon name="x" size={12}/></button>
         </div>
         <div style={{ padding: 14 }}>
           <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
@@ -696,6 +695,7 @@ const CC_DESC = {
 
 export const CrearOTPage = ({ onNav }) => {
   const sesionOperativa = useSesionOperativa();
+  const [pasoActual, setPasoActual] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [segmentos, setSegmentos] = useState([makeSegmento()]);
   const [backlogs, setBacklogs] = useState([]);
@@ -762,6 +762,11 @@ export const CrearOTPage = ({ onNav }) => {
     centro_beneficio_id: null,
     horometroApertura: '',
   });
+
+  const irAPaso = (paso) => {
+    setPasoActual(paso);
+    document.querySelector('.dx-ot-steps')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   // Preservar contexto de navegación desde Backlog / Bandeja
   useEffect(() => {
@@ -1554,9 +1559,6 @@ export const CrearOTPage = ({ onNav }) => {
 
   const toggleBacklog = (bkl) =>
     setBacklogs(list => list.includes(bkl) ? list.filter(x => x !== bkl) : [...list, bkl]);
-  const registrarAprobacion = () =>
-    set('fechaAprobacionComercial', new Date().toISOString().slice(0, 16));
-
   const addSegmento    = () => setSegmentos(list => [...list, makeSegmento(list.length + 1)]);
   const removeSegmento = (i) => setSegmentos(list => list.filter((_, idx) => idx !== i));
   const patchSegmento  = (i, patch) =>
@@ -1590,6 +1592,33 @@ export const CrearOTPage = ({ onNav }) => {
     !horometroRaizEquipoValido
       && '- El horómetro actual es obligatorio y no puede ser negativo para una OT bajo contrato, sobre equipo interno o desde una OS con equipo asociado.',
   ].filter(Boolean);
+
+  const pendientesPorPaso = () => {
+    const pendientes = [[], [], [], [], []];
+    const pasoPorCampo = {
+      lineaNegocio: 1, clienteId: 1, contratoId: 1, equipo: 1,
+      lugarEjecucion: 2, unidadMinera: 2,
+      tipoTrabajo: 3, tipoCargo: 3, motivoRetrabajo: 3, segmentos: 3,
+      tecnico: 4, fechaProgramadaInicio: 4, descripcion: 5,
+    };
+    Object.entries(fieldErrors).forEach(([campo, mensajes]) => {
+      (mensajes || []).forEach(mensaje => pendientes[(pasoPorCampo[campo] || 5) - 1].push(mensaje));
+    });
+    if (!hasCentroCosto) pendientes[0].push('Seleccione el objeto de costo raíz para heredar o definir el centro de costo.');
+    if (!horometroRaizEquipoValido || (form.lugarEjecucion === 'Campo_Mina' && !form.horometroApertura)) {
+      pendientes[1].push('Complete el horómetro requerido según el lugar y objeto de costo.');
+    }
+    if (errorDBS) pendientes[2].push(`Combinación DBS no permitida: ${errorDBS}`);
+    return pendientes;
+  };
+  const pendientesPaso = pendientesPorPaso();
+  const pasosWizard = [
+    ['Contexto', 'Define la línea de negocio y el objeto de costo raíz.'],
+    ['Lugar', 'Indica dónde se ejecutará el trabajo y registra el horómetro.'],
+    ['Matriz DBS', 'Clasifica el trabajo y completa segmentos, mano de obra y repuestos.'],
+    ['Responsable', 'Asigna responsable, fechas y datos financieros.'],
+    ['Revisión', 'Revisa el resumen y agrega la descripción técnica antes de crear la OT.'],
+  ];
 
   const guardarOT = async () => {
     if (guardando || !valid) return;
@@ -1732,8 +1761,8 @@ export const CrearOTPage = ({ onNav }) => {
 
   if (sesionOperativa.cargando) {
     return (
-      <div className="page">
-        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24, textAlign: 'center' }}>
+      <div className="page dx-ui dx-ot-wiz">
+        <div className="card dx-ot-state-card" style={{ maxWidth: 560, margin: '60px auto', padding: 24, textAlign: 'center' }}>
           Cargando la sesión operativa…
         </div>
         <FooterBrand/>
@@ -1743,8 +1772,8 @@ export const CrearOTPage = ({ onNav }) => {
 
   if (!sesionOperativa.usuario || !sesionOperativa.empresaId) {
     return (
-      <div className="page">
-        <div className="card" style={{ maxWidth: 560, margin: '60px auto', padding: 24 }}>
+      <div className="page dx-ui dx-ot-wiz">
+        <div className="card dx-ot-state-card" style={{ maxWidth: 560, margin: '60px auto', padding: 24 }}>
           <h2>Sesión administrativa requerida</h2>
           <p className="sub">
             Inicia sesión en Administrativo para cargar los datos de empresa y sociedad antes de crear una OT.
@@ -1769,8 +1798,8 @@ export const CrearOTPage = ({ onNav }) => {
       ? [centroCostoCreado.codigo, centroCostoCreado.nombre].filter(Boolean).join(' - ')
       : 'Centro de costo no disponible';
     return (
-      <div className="page">
-        <div style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center' }}>
+      <div className="page dx-ui dx-ot-wiz">
+        <div className="dx-ot-success" style={{ maxWidth: 560, margin: '60px auto', textAlign: 'center' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#E8F5E9', display: 'grid', placeItems: 'center', margin: '0 auto 16px', color: 'var(--green)' }}>
             <Icon name="check" size={28}/>
           </div>
@@ -1815,41 +1844,53 @@ export const CrearOTPage = ({ onNav }) => {
   const needsCliente  = objetoCostoTipo !== 'equipo_interno';
 
   return (
-    <div className="page">
+    <div className="page dx-ui dx-ot-wiz">
       <div className="page-header">
-        <div>
-          <h1>Nueva Orden de Trabajo</h1>
+        <button type="button" className="dx-ot-back" onClick={() => onNav('ots')}>
+          Volver a la bandeja
+        </button>
+        <div className="dx-ot-heading">
+          <div className="dx-ot-eyebrow">Taller y operaciones</div>
+          <h1>Nueva orden de trabajo</h1>
           <div className="sub">Creacion directa DBS · Tipo de Trabajo × Cargo Financiero</div>
         </div>
-        <div className="spacer"/>
-        <button className="btn btn-secondary" onClick={registrarAprobacion} disabled={!sesionOperativa.permiteEscritura || !creada || guardando} title="Disponible después de guardar la OT">
-          <Icon name="check" size={13}/> Registrar Aprobacion Comercial
-        </button>
       </div>
 
       {!sesionOperativa.permiteEscritura && (
-        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
+        <div className="card dx-ot-alert" style={{ marginBottom: 12, padding: 14, color: '#b45309' }}>
           Vista consolidada de grupo: no se permite crear ni editar OTs hasta seleccionar una sociedad operativa.
         </div>
       )}
       {errorGuardado && (
-        <div className="card" style={{ marginBottom: 12, padding: 14, color: '#b91c1c', borderColor: '#fecaca' }}>
+        <div className="card dx-ot-alert dx-ot-alert-error" style={{ marginBottom: 12, padding: 14, color: '#b91c1c', borderColor: '#fecaca' }}>
           No se pudo guardar la OT: {errorGuardado}
         </div>
       )}
+      <nav className="dx-ot-steps" aria-label="Pasos para crear una orden de trabajo">
+        {pasosWizard.map(([nombre], indice) => (
+          <button key={nombre} type="button" className="dx-ot-step" aria-current={pasoActual === indice + 1 ? 'step' : undefined}
+            aria-pressed={pasoActual === indice + 1} onClick={() => irAPaso(indice + 1)}>
+            <span className="dx-ot-step-number">{indice + 1}</span><span className="dx-ot-step-name">{nombre}</span>
+          </button>
+        ))}
+        <div className="dx-ot-step-compact">Paso {pasoActual} de 5 · {pasosWizard[pasoActual - 1][0]}</div>
+      </nav>
       <fieldset disabled={!sesionOperativa.permiteEscritura} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div>
 
         {/* ── Cabecera DBS ── */}
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card dx-ot-form-card" style={{ marginBottom: 12 }}>
           <div className="card-header">
             <h3>Cabecera DBS</h3>
             <span className="hint">Jerarquia comercial · Matriz Trabajo × Cargo</span>
           </div>
           <div className="ot-form-body">
 
+            <section className="dx-ot-step-panel" hidden={pasoActual !== 1}>
+              <div className="dx-ot-step-heading"><h2>{pasosWizard[0][0]}</h2><p>{pasosWizard[0][1]}</p></div>
+
             {/* Sección 0 — Línea de negocio */}
-            <section className="ot-form-section" style={{ marginBottom: 10 }}>
+            <section className="ot-form-section dx-ot-section" style={{ marginBottom: 10 }}>
               <div className="ot-form-section-title">0. Línea de negocio</div>
               <div style={{ padding: '10px 12px' }}>
                 <div className="label" style={{ fontSize: 12, marginBottom: 4 }}>Línea de negocio *</div>
@@ -1868,7 +1909,7 @@ export const CrearOTPage = ({ onNav }) => {
             </section>
 
             {/* Sección 1 — Contexto comercial (C1 + C6) */}
-            <section className="ot-form-section ot-form-section-popover">
+            <section className="ot-form-section ot-form-section-popover dx-ot-section">
               <div className="ot-form-section-title">1. Contexto comercial</div>
               <div style={{ padding: '12px 12px 4px' }}>
 
@@ -1887,6 +1928,8 @@ export const CrearOTPage = ({ onNav }) => {
                       { key: 'equipo_interno', label: 'Equipo interno de plataforma', desc: 'OT interna sin contrato — overhaul, preparación' },
                     ].map(opt => (
                       <button key={opt.key} type="button"
+                        className="dx-ot-object-choice"
+                        aria-pressed={objetoCostoTipo === opt.key}
                         onClick={() => changeObjetoCostoTipo(opt.key)}
                         style={{
                           flex: 1, padding: '10px', textAlign: 'left', cursor: 'pointer',
@@ -2152,8 +2195,12 @@ export const CrearOTPage = ({ onNav }) => {
               </div>
             </section>
 
+            </section>
+
             {/* Sección 2 — Lugar de ejecución + Horómetro (C2) */}
-            <section className="ot-form-section">
+            <section className="dx-ot-step-panel" hidden={pasoActual !== 2}>
+            <div className="dx-ot-step-heading"><h2>{pasosWizard[1][0]}</h2><p>{pasosWizard[1][1]}</p></div>
+            <section className="ot-form-section dx-ot-section">
               <div className="ot-form-section-title">2. Lugar de ejecución</div>
               <div className="ot-form-grid execution">
                 <div className="ot-form-field">
@@ -2261,18 +2308,22 @@ export const CrearOTPage = ({ onNav }) => {
                 )}
               </div>
             </section>
+            </section>
 
             {/* Sección 3 — Matriz DBS (C3 + C4 + C5) */}
-            <section className="ot-form-section">
+            <section className="dx-ot-step-panel" hidden={pasoActual !== 3}>
+            <div className="dx-ot-step-heading"><h2>{pasosWizard[2][0]}</h2><p>{pasosWizard[2][1]}</p></div>
+            <section className="ot-form-section dx-ot-section">
               <div className="ot-form-section-title">3. Matriz DBS</div>
               <div className="ot-form-grid dbs">
                 <div className="ot-form-field">
                   <div className="label" style={{ fontSize: 12 }}>Tipo de Trabajo *</div>
-                  <select className="input" value={form.tipoTrabajo}
-                    onChange={e => handleTipoChange(e.target.value)}
-                    style={{ marginTop: 4 }}>
-                    {TIPO_TRABAJO.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-                  </select>
+                  <div className="dx-ot-choice-group" role="group" aria-label="Tipo de trabajo">
+                    {TIPO_TRABAJO.map(([v, label]) => (
+                      <button key={v} type="button" className="dx-ot-choice" aria-pressed={form.tipoTrabajo === v}
+                        onClick={() => handleTipoChange(v)}>{label}</button>
+                    ))}
+                  </div>
                 </div>
                 {/* C3 — Label renombrado */}
                 <div className="ot-form-field">
@@ -2282,18 +2333,17 @@ export const CrearOTPage = ({ onNav }) => {
                       ¿Quién absorbe el costo de esta OT?
                     </span>
                   </div>
-                  <select className="input" value={form.tipoCargo}
-                    onChange={e => handleCargoChange(e.target.value)}
-                    style={{ marginTop: 4, borderColor: fieldErrors.tipoCargo ? '#E53935' : undefined }}>
+                  <div className="dx-ot-choice-group" role="group" aria-label="Cargo financiero" aria-invalid={Boolean(fieldErrors.tipoCargo)}>
                     {TIPO_CARGO.map(([v, label]) => {
                       const reason = getBlockedCargoReason(form.tipoTrabajo, v);
                       return (
-                        <option key={v} value={v} disabled={Boolean(reason)} title={reason}>
+                        <button key={v} type="button" className="dx-ot-choice" aria-pressed={form.tipoCargo === v}
+                          disabled={Boolean(reason)} title={reason || undefined} onClick={() => handleCargoChange(v)}>
                           {label}{reason ? ' — bloqueado' : ''}
-                        </option>
+                        </button>
                       );
                     })}
-                  </select>
+                  </div>
                   {fieldErrors.tipoCargo?.[0] && (
                     <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.tipoCargo[0]}</div>
                   )}
@@ -2353,9 +2403,12 @@ export const CrearOTPage = ({ onNav }) => {
                 </div>
               )}
             </section>
+            </section>
 
             {/* Sección 4 — Responsable y fechas */}
-            <section className="ot-form-section">
+            <section className="dx-ot-step-panel" hidden={pasoActual !== 4}>
+            <div className="dx-ot-step-heading"><h2>{pasosWizard[3][0]}</h2><p>{pasosWizard[3][1]}</p></div>
+            <section className="ot-form-section dx-ot-section">
               <div className="ot-form-section-title">4. Responsable y fechas</div>
               <div className="ot-form-grid operations">
                 <div className="ot-form-field">
@@ -2405,28 +2458,44 @@ export const CrearOTPage = ({ onNav }) => {
                 </div>
               </div>
             </section>
+            </section>
 
             {/* Sección 5 — Descripción técnica */}
-            <section className="ot-form-section">
+            <section className="dx-ot-step-panel" hidden={pasoActual !== 5}>
+            <div className="dx-ot-step-heading"><h2>{pasosWizard[4][0]}</h2><p>{pasosWizard[4][1]}</p></div>
+            <section className="ot-form-section dx-ot-section">
               <div className="ot-form-section-title">5. Descripción técnica</div>
               <div style={{ padding: 12 }}>
                 <textarea className="input" rows={4} value={form.descripcion}
                   onChange={e => set('descripcion', e.target.value)}
                   style={{ resize: 'vertical', width: '100%' }}
                   placeholder={equipo ? `Describe el trabajo sobre ${equipo.codigo || equipo.cod}...` : 'Selecciona un equipo y describe el trabajo...'} />
-                <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }}
-                  disabled={!form.equipo}
-                  onClick={() => setDrawerOpen(true)}>
-                  <Icon name="orders" size={12}/> Vincular Hallazgos/Backlog{backlogs.length ? ` (${backlogs.length})` : ''}
-                </button>
               </div>
+            </section>
+
+            <div className="dx-ot-review">
+              <div className="dx-ot-review-title">Resumen de la orden</div>
+              {[
+                ['Contexto', `Línea: ${LINEA_NEGOCIO_LABELS[form.lineaNegocio] || 'Pendiente'} · Raíz: ${{ contrato: 'Contrato', os_cliente: 'OS Cliente', equipo_interno: 'Equipo interno' }[objetoCostoTipo]} · ${nombreCliente(cliente) || 'Sin cliente'} · ${contrato?.numero || 'Sin contrato'} · ${equipo?.codigo || equipo?.cod || 'Sin equipo'} · CC ${form.centro_costo || form.centro_beneficio_id || 'sin centro'}`, 1],
+                ['Lugar', `${form.lugarEjecucion || 'Sin definir'} · ${form.unidadMinera || 'Sin unidad minera'} · Horómetro ${form.horometroApertura || 'sin registrar'}`, 2],
+                ['Matriz DBS', `${trabajoLabel(form.tipoTrabajo)} · ${cargoLabel(form.tipoCargo)} · ${segmentos.length} segmento(s): ${segmentos.map(s => s.descripcion || s.codigo).join(', ')} · ${backlogs.length} backlog(s)`, 3],
+                ['Responsable', `${tecnicosReales.find(t => t.id === form.tecnico)?.nombre || 'Sin responsable'} · Inicio ${form.fechaProgramadaInicio || 'sin fecha'} · Aprobación ${form.fechaAprobacionComercial || 'sin fecha'} · Ingreso USD ${noFacturable(form.tipoCargo) ? '0' : form.ingreso || '0'}`, 4],
+                ['Descripción técnica', form.descripcion || 'Sin descripción técnica', 5],
+              ].map(([titulo, detalle, paso]) => (
+                <div className="dx-ot-review-row" key={titulo}>
+                  <div><strong>{titulo}</strong><span>{detalle}</span></div>
+                  <button type="button" className="dx-ot-edit" onClick={() => irAPaso(paso)}>Editar</button>
+                </div>
+              ))}
+            </div>
             </section>
 
           </div>
         </div>
 
         {/* ── Estructura del trabajo ── */}
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="dx-ot-step-panel" hidden={pasoActual !== 3}>
+        <div className="card dx-ot-structure" style={{ marginBottom: 12 }}>
           <div className="card-header">
             <h3>Estructura del trabajo</h3>
             <span className="hint">Segmentos → Operaciones + estimación MO / Repuestos / Terceros</span>
@@ -2455,13 +2524,20 @@ export const CrearOTPage = ({ onNav }) => {
             <button className="btn btn-secondary btn-sm" onClick={addSegmento}>
               <Icon name="plus" size={12}/> Agregar Segmento
             </button>
+            <button className="btn btn-secondary btn-sm" style={{ marginLeft: 8 }} disabled={!form.equipo}
+              onClick={() => setDrawerOpen(true)}>
+              <Icon name="orders" size={12}/> Vincular Hallazgos/Backlog{backlogs.length ? ` (${backlogs.length})` : ''}
+            </button>
           </div>
+        </div>
         </div>
 
       </div>
 
+      </fieldset>
+
       {/* Lista de validaciones al guardar (C5 + C1 + C2) */}
-      {(!valid || extraErrors.length > 0) && (
+      {pasoActual === 5 && (!valid || extraErrors.length > 0) && (
         <div style={{ color: '#E53935', fontSize: 12, marginTop: 12 }}>
           <Icon name="alert" size={12}/> Completa los campos obligatorios y las validaciones DBS.
           {validation.issues.map((issue, i) => (
@@ -2473,20 +2549,21 @@ export const CrearOTPage = ({ onNav }) => {
         </div>
       )}
 
-      <div style={{ height: 88 }} />
-
-      {/* C7 — StickyTotals con CC y objeto de costo */}
-      <StickyTotals
-        segmentos={segmentos}
-        tipoCargo={form.tipoCargo}
-        ingreso={form.ingreso}
-        centroCosto={form.centro_costo}
-        objetoCostoId={form.objeto_costo_id}
-        valid={valid}
-        guardando={guardando}
-        onCancel={() => onNav('ots')}
-        onSave={guardarOT}
-      />
+      <div className="dx-ot-bottom-space" />
+      <div className="dx-ot-foot">
+        <div className="dx-ot-foot-cost"><span>Costo estimado</span><strong>${calcOTTotals(segmentos).total.toFixed(0)}</strong></div>
+        <div className="dx-ot-foot-pending" aria-live="polite">
+          {pendientesPaso[pasoActual - 1].length ? `Falta: ${pendientesPaso[pasoActual - 1][0]}` : 'Paso completo'}
+        </div>
+        <div className="dx-ot-foot-actions">
+          <button type="button" className="dx-ot-foot-back" onClick={() => irAPaso(Math.max(1, pasoActual - 1))} disabled={pasoActual === 1}>Atrás</button>
+          {pasoActual < 5 ? (
+            <button type="button" className="dx-ot-foot-next" onClick={() => irAPaso(pasoActual + 1)} disabled={pendientesPaso[pasoActual - 1].length > 0}>Continuar</button>
+          ) : (
+            <button type="button" className="dx-ot-foot-next" onClick={guardarOT} disabled={!valid || guardando}>{guardando ? 'Guardando…' : 'Crear OT'}</button>
+          )}
+        </div>
+      </div>
       <BacklogDrawer
         open={drawerOpen}
         equipo={form.equipo}
@@ -2494,7 +2571,6 @@ export const CrearOTPage = ({ onNav }) => {
         onToggle={toggleBacklog}
         onClose={() => setDrawerOpen(false)}
       />
-      </fieldset>
     </div>
   );
 };

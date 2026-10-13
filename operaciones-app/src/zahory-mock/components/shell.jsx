@@ -195,8 +195,7 @@ export const SIDEBAR_ZONES = [
         id: 'ordenes-trabajo', label: 'Órdenes de Trabajo', emoji: '🔧',
         roles: ['gerente', 'supervisor', 'tecnico'], groupBadge: 'DIARIO',
         items: [
-          { id: 'ots',                label: 'Bandeja Maestra',      icon: 'orders',   roles: ['gerente', 'supervisor', 'tecnico'] },
-          { id: 'crear-ot',           label: 'Nueva OT · DBS',       icon: 'plus',     roles: ['gerente', 'supervisor', 'tecnico'] },
+          { id: 'ots',                label: 'Bandeja de OTs',      icon: 'orders',   roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'recepcion-activos',  label: 'Recepción de Activos',  icon: 'box',      roles: ['gerente', 'supervisor', 'tecnico', 'almacenero'] },
           { id: 'diagnostico-tecnico', label: 'Diagnóstico Técnico',     icon: 'report',  roles: ['gerente', 'supervisor', 'tecnico'] },
           { id: 'taller',             label: 'Partes Taller',         icon: 'workshop', roles: ['gerente', 'supervisor', 'tecnico'] },
