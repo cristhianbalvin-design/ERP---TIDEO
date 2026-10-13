@@ -4048,3 +4048,14 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 }
 @media (max-height:520px) { .dx-work-mobile-step { padding-top:2px; } .dx-work-mobile-segments button,.dx-work-page .dx-work-back-link,.dx-recact-action-bar button { min-height:40px; } .dx-work-page .dx-work-meta-toggle { width:44px; height:44px; } .dx-work-card>.diagnostico-modal-footer>.btn,.dx-wizard-footer>.btn { min-height:40px; } .dx-work-card>.diagnostico-modal-footer { flex-wrap:nowrap; align-items:center; } .dx-work-card>.diagnostico-modal-footer .dx-work-footer-status { flex:1 1 auto; width:auto; max-width:none; } .dx-work-card>.diagnostico-modal-footer>.btn { flex:0 0 auto; min-height:40px; padding-inline:10px; } .dx-work-card>.diagnostico-modal-footer .dx-work-spacer { display:none; } .dx-recact-action-bar { padding:6px; } }
 @media (max-width:560px), (max-height:520px) { .dx-work-page .dx-findings-priority-list .dx-finding-list-row { grid-template-columns:auto minmax(0,1fr) minmax(0,1fr); } .dx-work-page .dx-findings-priority-list .dx-finding-list-row>.badge,.dx-work-page .dx-findings-priority-list .dx-finding-list-row>.btn { grid-row:2; } }
+@media (max-width:700px), (max-height:520px) {
+  .dx-work-page.dx-scope.dx-work-card { height:calc(100dvh - 48px) !important; min-height:0 !important; }
+  .dx-work-page .dx-work-identity-status strong { display:none; }
+  .dx-work-card .alert:not(.dx-footer-floating-alert) { font-size:12px; line-height:1.3; padding:6px 10px; margin-block:6px; border-radius:8px; }
+}
+@media (max-width:700px) and (min-height:521px) {
+  .dx-work-card>.diagnostico-modal-footer .dx-work-footer-status { flex:1 0 100%; width:100%; max-width:100%; height:18px; line-height:18px; }
+  .dx-work-card>.diagnostico-modal-footer .dx-work-footer-status :is(span,.dx-dirty-count) { height:18px; line-height:18px; }
+  .dx-work-card>.diagnostico-modal-footer>.btn { flex:1 1 calc(50% - 3px); min-width:0; }
+  .dx-work-card>.diagnostico-modal-footer>.btn-primary { flex-grow:1.15; }
+}

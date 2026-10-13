@@ -30,6 +30,14 @@ describe('movil diagnostico y recepcion', () => {
     expect(movil).toMatch(/\.ops-page:has\(\.dx-work-card\),\.ops-page:has\(\.dx-recact\) \{ height:calc\(100dvh - 48px\)/);
   });
 
+  it('ajusta alto, identidad, avisos y footer del diagnostico en compacto', () => {
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card \{ height:calc\(100dvh - 48px\) !important/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-work-identity-status strong \{ display:none/);
+    expect(movil).toMatch(/\.dx-work-card \.alert:not\(\.dx-footer-floating-alert\) \{ font-size:12px; line-height:1\.3; padding:6px 10px; margin-block:6px; border-radius:8px/);
+    expect(movil).toMatch(/@media \(max-width:700px\) and \(min-height:521px\)[\s\S]*\.dx-work-footer-status \{ flex:1 0 100%;[^}]*height:18px/);
+    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn \{ flex:1 1 calc\(50% - 3px\)/);
+    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn-primary \{ flex-grow:1\.15/);
+  });
   it('el shell compacta menu y cabecera solo en modo diagnostico', () => {
     expect(shellCss).toMatch(/\.ops-sidebar\.is-work-drawer \{[^}]*width:min\(84vw,320px\)/);
     expect(shellCss).toMatch(/height:48px/);
