@@ -135,11 +135,11 @@ export function OperationalApp() {
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
   const [workMode, setWorkModeActive] = useState(() => typeof document !== 'undefined' && (document.documentElement?.dataset.dxWorkMode === 'true' || document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true'));
-  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width:680px), (max-height:520px)').matches);
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width:700px), (max-height:520px)').matches);
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => {
     const onWorkMode = event => setWorkModeActive(Boolean(event.detail?.active));
-    const media = window.matchMedia('(max-width:680px), (max-height:520px)');
+    const media = window.matchMedia('(max-width:700px), (max-height:520px)');
     const onCompact = event => setCompact(event.matches);
     window.addEventListener('dx-work-mode', onWorkMode);
     window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
@@ -149,9 +149,11 @@ export function OperationalApp() {
   const workCompact = workMode && compact;
   useEffect(() => {
     if (!workCompact) { setNavOpen(false); return undefined; }
+    const openNav = () => setNavOpen(true);
     const closeOnEscape = event => { if (event.key === 'Escape') setNavOpen(false); };
+    window.addEventListener('dx-open-nav', openNav);
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    return () => { window.removeEventListener('dx-open-nav', openNav); window.removeEventListener('keydown', closeOnEscape); };
   }, [workCompact]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {

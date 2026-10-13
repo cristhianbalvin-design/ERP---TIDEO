@@ -11,3 +11,11 @@ export function setWorkMode(active) {
     }
   }
 }
+
+export function openWorkNav() {
+  if (typeof window !== 'undefined') {
+    const EventConstructor = window.CustomEvent || globalThis.CustomEvent;
+    const event = typeof EventConstructor === 'function' ? new EventConstructor('dx-open-nav') : { type: 'dx-open-nav' };
+    window.dispatchEvent(event);
+  }
+}

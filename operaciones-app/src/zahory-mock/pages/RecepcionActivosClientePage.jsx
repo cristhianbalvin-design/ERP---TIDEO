@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
 import { setWorkMode } from '../../workMode.js';
+import { WorkMenuButton } from '../components/WorkMenuButton.jsx';
 import { subirAdjunto, cargarAdjuntosPorEntidades, obtenerUrlAdjunto } from '../../../../src/services/storageService.js';
 import { catalogoComponentesService } from '../../../../src/services/catalogoComponentesService.js';
 import { asignarComponenteCatalogoActivo } from '../../services/diagnosticoTecnicoService.js';
@@ -288,6 +289,7 @@ export function RecepcionActivosClientePage() {
     </>}
 
     {view === 'detail' && recepcion && <>
+      <div className="dx-recact-mobile-heading"><WorkMenuButton /><button type="button" className="dx-recact-mobile-back" aria-label="Volver a recepciones" onClick={toList}>←</button><strong>Detalle de recepción</strong></div>
       <button type="button" className="dx-recact-back" onClick={toList}>← Volver a recepciones</button>
       <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Detalle de recepción</div><h1>{recepcion.numero || recepcion.id} · Caso {recepcion.numero_caso || '—'}</h1><p>{nombreActivo(activoDetalle)} · {nombreCliente(clientesPorId.get(activoDetalle?.cliente_propietario_id))}</p></div><span className={`dx-ui-pill ${estadoCustodiaClass(recepcion.estado_custodia)}`}><i />{ESTADO_LABELS[recepcion.estado_custodia] || 'Recibido'}</span></header>
       {banner && (() => { const action = resolverAccionDiagnostico(recepcion.estado_custodia || 'recibido', diagnosticos[recepcion.id]); return <div className="dx-recact-banner">{banner.text}<button type="button" className="btn btn-primary" onClick={() => abrirDiagnostico(diagnosticUrl({ id: recepcion.id }))}>{nombreAccionDiagnostico(action.tipo)}</button></div>; })()}
@@ -302,6 +304,7 @@ export function RecepcionActivosClientePage() {
     </>}
 
     {view === 'new' && <>
+      <div className="dx-recact-mobile-heading"><WorkMenuButton /><button type="button" className="dx-recact-mobile-back" aria-label="Volver a recepciones" onClick={toList}>←</button><strong>Nueva recepción</strong></div>
       <button type="button" className="dx-recact-back" onClick={toList}>← Volver a recepciones</button>
       <header className="dx-recact-header"><div><div className="dx-recact-eyebrow">Taller · Almacén</div><h1>Nueva recepción</h1><p>El número y el número de caso se asignan al guardar.</p></div></header>
       {error && <div className="dx-recact-alert is-error" role="alert">{error}</div>}

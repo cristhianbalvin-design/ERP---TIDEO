@@ -25,23 +25,39 @@ describe('movil diagnostico y recepcion', () => {
     expect(movil).toMatch(/\.dx-work-page,\.dx-recact,\.dx-work-page :is\(input,select,textarea,\.dx-ui-card\),\.dx-recact :is\(input,select,textarea,\.dx-recact-field,\.dx-recact-control\) \{ box-sizing:border-box; min-width:0; max-width:100%; \}/);
   });
 
-  it('la tarjeta del diagnostico cabe bajo el shell compacto', () => {
-    expect(movil).toMatch(/\.dx-work-page \.dx-work-card,\.dx-work-card \{ max-height:calc\(100dvh - 48px\) !important/);
-    expect(movil).toMatch(/\.ops-page:has\(\.dx-work-card\),\.ops-page:has\(\.dx-recact\) \{ height:calc\(100dvh - 48px\)/);
+  it('la tarjeta ocupa el viewport y no conserva offsets de cabecera en compacto', () => {
+    expect(movil).not.toMatch(/calc\(100dvh - (48|68)px\)/);
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card[^}]*height:100dvh !important/);
+    expect(movil).toMatch(/\.ops-page:has\(\.dx-work-card\) \{ height:100dvh !important/);
+    expect(movil).toMatch(/\.ops-page:has\(\.dx-recact\) \{ height:auto !important; min-height:100dvh/);
   });
 
   it('ajusta alto, identidad, avisos y footer del diagnostico en compacto', () => {
-    expect(movil).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card \{ height:calc\(100dvh - 48px\) !important/);
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope\.dx-work-card[^}]*height:100dvh !important/);
     expect(movil).toMatch(/\.dx-work-page \.dx-work-identity-status strong \{ display:none/);
     expect(movil).toMatch(/\.dx-work-card \.alert:not\(\.dx-footer-floating-alert\) \{ font-size:12px; line-height:1\.3; padding:6px 10px; margin-block:6px; border-radius:8px/);
-    expect(movil).toMatch(/@media \(max-width:700px\) and \(min-height:521px\)[\s\S]*\.dx-work-footer-status \{ flex:1 0 100%;[^}]*height:18px/);
-    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn \{ flex:1 1 calc\(50% - 3px\)/);
-    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn-primary \{ flex-grow:1\.15/);
+    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn[^}]*min-height:40px; height:40px; padding:0 10px; font-size:13px/);
+    expect(movil).toMatch(/\.dx-work-card>\.diagnostico-modal-footer>\.btn-primary[^}]*flex:1 1 auto; overflow:hidden; text-overflow:ellipsis/);
+    expect(movil).toMatch(/\.dx-footer-floating-alert[^}]*max-height:72px[^}]*font-size:12px/);
+  });
+
+  it('corrige hallazgos, segmented, gutters y scroll compacto', () => {
+    expect(movil).toMatch(/\.dx-work-page\.dx-scope \{ padding:0; overflow-x:hidden; overflow-y:auto; padding-bottom:var\(--dx-footer-h\)/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-body \{ padding:8px; gap:8px/);
+    expect(movil).toMatch(/\.dx-work-page \.dx-findings-list-group \{ padding:8px/);
+    expect(movil).toMatch(/\.hallazgo-grid[^}]*grid-template-columns:minmax\(0,1fr\) !important/);
+    expect(movil).toMatch(/\.dx-recact-segmented \{ display:flex; flex-wrap:wrap/);
+    expect(movil).toMatch(/\.dx-recact \{ min-height:100dvh; padding:8px/);
+    expect(movil).toMatch(/\.dx-recact-form-body[^}]*padding:12px/);
+    expect(movil).toMatch(/--dx-footer-h:64px/);
+    expect(movil).toMatch(/\.dx-work-page \.hallazgo-measurement-table,\.dx-work-page \.hallazgo-task-table \{ display:block; width:100%; min-width:0/);
+    expect(movil).toMatch(/\.ot-form-grid\.commercial[^}]*grid-template-columns:minmax\(0,1fr\)/);
   });
   it('el shell compacta menu y cabecera solo en modo diagnostico', () => {
     expect(shellCss).toMatch(/\.ops-sidebar\.is-work-drawer \{[^}]*width:min\(84vw,320px\)/);
     expect(shellCss).toMatch(/height:48px/);
     expect(shellCss).not.toMatch(/is-diagnostico-rail \{ display:flex/);
+    expect(shellCss).toMatch(/\.header:has\(\.ops-work-menu-button\) \{ display:none !important/);
   });
 
   it('el JSX expone Detalles colapsable e indicador Paso N de 6 con segmentos accesibles', () => {
