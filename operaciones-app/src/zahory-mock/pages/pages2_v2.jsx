@@ -507,7 +507,7 @@ const construirConsultaBandejaOT = ({ supabase, empresaId, sociedadId, vistaCons
 
 const consultaAuxiliarOT = (consulta, ids) => ids.length ? consulta.in('id', ids) : Promise.resolve({ data: [], error: null });
 
-export const OTsListadoPage = () => {
+export const OTsListadoPage = ({ onNav }) => {
   const sesionOperativa = useSesionOperativa();
   const { empresaId, sociedadId, vistaConsolidada, sociedadesIdsAlcance, permiteEscritura, cargando: cargandoSesion, estado: estadoSesion } = sesionOperativa;
   const [filtros, setFiltros] = useS2({ numero: '', estado: '', tecnicoId: '', retrabajos: false });
@@ -686,109 +686,107 @@ export const OTsListadoPage = () => {
   };
 
   return (
-    <div className="page">
-      <div className="page-header">
+    <section className="dx-ui dx-ot">
+      <header className="dx-ot-head">
         <div>
-          <h1>Bandeja Maestra</h1>
-          <div className="sub">Órdenes de trabajo reales · {total} resultado{total === 1 ? '' : 's'}</div>
+          <div className="dx-ui-eyebrow">Taller y operaciones</div>
+          <h1 className="dx-ui-title">Bandeja de OTs</h1>
+          <p className="dx-ui-sub">Órdenes de trabajo reales · {total} resultado{total === 1 ? '' : 's'}</p>
         </div>
-      </div>
+        <button type="button" className="dx-btn primary dx-ot-new" onClick={() => onNav?.('crear-ot')}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          Nueva OT
+        </button>
+      </header>
 
-      {cargandoSesion && <div className="alert alert-info">Cargando el contexto de sesión operativa…</div>}
-      {sinSesion && <div className="alert alert-warning">No hay una sesión operativa válida para consultar órdenes de trabajo.</div>}
-      {estadoSesion === 'listo' && vistaConsolidada && <div className="alert alert-info">Vista consolidada: se muestran las OTs de las sociedades permitidas.</div>}
+      {cargandoSesion && <div className="dx-ot-alert">Cargando el contexto de sesión operativa…</div>}
+      {sinSesion && <div className="dx-ot-alert">No hay una sesión operativa válida para consultar Órdenes de trabajo.</div>}
+      {estadoSesion === 'listo' && vistaConsolidada && <div className="dx-ot-alert">Vista consolidada: se muestran las OTs de las sociedades permitidas.</div>}
 
       {estadoSesion === 'listo' && (
         <>
-          <div className="report-toolbar">
-            <div className="report-tabs">
-              <button className={'report-tab' + (!filtros.retrabajos ? ' active' : '')} onClick={() => actualizarFiltro('retrabajos', false)}>Todas ({total})</button>
-              <button className={'report-tab' + (filtros.retrabajos ? ' active' : '')} onClick={() => actualizarFiltro('retrabajos', true)}>Retrabajos</button>
+          <div className="dx-ot-tabs" role="group" aria-label="Tipo de Órdenes">
+            <button type="button" className={'dx-ot-tab' + (!filtros.retrabajos ? ' dx-ot-on' : '')} aria-pressed={!filtros.retrabajos} onClick={() => actualizarFiltro('retrabajos', false)}>Todas</button>
+            <button type="button" className={'dx-ot-tab' + (filtros.retrabajos ? ' dx-ot-on' : '')} aria-pressed={filtros.retrabajos} onClick={() => actualizarFiltro('retrabajos', true)}>Retrabajos</button>
+          </div>
+
+          {errorTecnicos && <div className="dx-ot-alert">No se pudo cargar el filtro de técnicos: {errorTecnicos}</div>}
+          {error && <div className="dx-ot-alert dx-ot-alert-error">No se pudo cargar la Bandeja de OTs: {error}</div>}
+
+          <section className="dx-ot-card" aria-label="Órdenes de trabajo">
+            <div className="dx-ot-toolbar">
+              <h2>Órdenes de trabajo</h2>
+              <span className="dx-ot-count">{total} resultado{total === 1 ? '' : 's'}</span>
+              <label className="dx-ot-search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                <input type="search" aria-label="Buscar por número de OT" placeholder="Buscar por número de OT…" value={filtros.numero}
+                  onChange={event => actualizarFiltro('numero', event.target.value)} />
+              </label>
             </div>
-            <div className="report-filters">
-              <input className="input" placeholder="Buscar por número de OT…" value={filtros.numero}
-                onChange={event => actualizarFiltro('numero', event.target.value)} style={{ width: 220 }} />
-              <select className="select" value={filtros.estado} onChange={event => actualizarFiltro('estado', event.target.value)} style={{ width: 180 }}>
-                <option value="">Estado: Todos</option>
-                {estados.map(estado => <option key={estado} value={estado}>{etiquetaEstadoOT(estado)}</option>)}
-              </select>
-              <select className="select" value={filtros.tecnicoId} onChange={event => actualizarFiltro('tecnicoId', event.target.value)} style={{ width: 190 }}>
+            <div className="dx-ot-filters" role="group" aria-label="Filtrar por estado">
+              <button type="button" className={'dx-ot-filter' + (!filtros.estado ? ' dx-ot-on' : '')} aria-pressed={!filtros.estado} onClick={() => actualizarFiltro('estado', '')}>Todos</button>
+              {estados.map(estado => <button key={estado} type="button" className={'dx-ot-filter' + (filtros.estado === estado ? ' dx-ot-on' : '')} aria-pressed={filtros.estado === estado} onClick={() => actualizarFiltro('estado', estado)}>{etiquetaEstadoOT(estado)}</button>)}
+              <select className="dx-ot-select" aria-label="Filtrar por técnico" value={filtros.tecnicoId} onChange={event => actualizarFiltro('tecnicoId', event.target.value)}>
                 <option value="">Técnico: Todos</option>
                 {tecnicos.map(tecnico => <option key={tecnico.id} value={tecnico.id}>{tecnico.nombre || tecnico.codigo || tecnico.id}</option>)}
               </select>
             </div>
-          </div>
-          {errorTecnicos && <div className="alert alert-warning">No se pudo cargar el filtro de técnicos: {errorTecnicos}</div>}
-
-          {error && <div className="alert alert-danger">No se pudo cargar la Bandeja Maestra: {error}</div>}
-          <div className="card">
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr>
-                  <th>OT / Fecha</th><th>Equipo / Cliente</th><th>Raíz de costo</th><th>Tipo & Cargo</th>
-                  <th>Estado</th><th>Técnico</th><th>Ubicación</th><th style={{ textAlign: 'right' }}>Costo</th><th>Avance</th><th>Acciones</th>
-                </tr></thead>
-                <tbody>
-                  {!cargando && !error && filas.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No hay OTs para los filtros seleccionados.</td></tr>}
-                  {filas.map(ot => {
-                    const etiquetaEquipo = ot.equipo
-                      ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
-                      : ot.equipo_id || 'Sin equipo';
-                    const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
-                    const estaIniciando = iniciandoId === ot.id;
-                    const inicioSoloLectura = !permiteEscritura;
-                    const tituloInicio = inicioSoloLectura
-                      ? 'La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.'
-                      : !ot.tecnico_responsable_id
-                        ? 'Asigna un técnico responsable antes de iniciar la OT.'
-                        : !ot.centro_costo_id
-                          ? 'Asigna un centro de costo antes de iniciar la OT.'
-                          : 'Iniciar esta OT.';
-                    return <tr key={ot.id} className="clickable" aria-disabled="true" title="El detalle real estará disponible próximamente."
-                      style={{ cursor: 'not-allowed' }} onClick={mostrarAvisoDetalle}>
-                      <td><div className="ot-code">{ot.numero}</div><div className="muted" style={{ fontSize: 11 }}>{formatoFechaOT(ot.fecha_programada)}</div></td>
-                      <td><strong>{etiquetaEquipo}</strong><div className="muted" style={{ fontSize: 11 }}>{nombreCuentaOT(ot.cliente)}</div>{ot.horometro_actual != null && <div className="mono" style={{ fontSize: 10 }}>Horóm.: {Number(ot.horometro_actual).toLocaleString()} h</div>}</td>
-                      <td><div style={{ fontSize: 12 }}>{raiz}</div>{ot.centroCosto && <div className="muted" style={{ fontSize: 10 }}>{ot.centroCosto.codigo} · {ot.centroCosto.nombre}</div>}</td>
-                      <td><div>{ot.tipo_trabajo || 'Sin clasificar'}</div><div className="muted" style={{ fontSize: 11 }}>{ot.cargo_financiero || 'Sin cargo financiero'}</div>{ot.motivo_rework && <div className="muted" style={{ fontSize: 10 }} title={ot.motivo_rework}>Rework con motivo</div>}</td>
-                      <td><span className="badge slate">{etiquetaEstadoOT(ot.estado)}</span></td>
-                      <td>{ot.tecnico?.nombre || ot.tecnico_responsable_id || 'Sin asignar'}</td>
-                      <td>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</td>
-                      <td style={{ textAlign: 'right' }}><strong>{formatoMontoOT(ot.costo_real)}</strong><div className="muted" style={{ fontSize: 10 }}>est. {formatoMontoOT(ot.costo_estimado)}</div></td>
-                      <td>{Number(ot.avance_pct || 0).toFixed(0)}%</td>
-                      <td onClick={event => event.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {ot.estado === 'programada' && <span title={tituloInicio}>
-                            <button
-                              className="btn btn-primary btn-sm"
-                              disabled={inicioSoloLectura || estaIniciando}
-                              title={tituloInicio}
-                              onClick={() => iniciarOT(ot)}
-                            >{estaIniciando ? 'Iniciando…' : 'Iniciar OT'}</button>
-                          </span>}
-                          <button className="btn btn-secondary btn-sm" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button>
-                        </div>
-                      </td>
-                    </tr>;
-                  })}
-                </tbody>
-              </table>
+            <div className="dx-ot-grid dx-ot-grid-head" aria-hidden="true">
+              <span>OT · Equipo</span><span>Raíz de costo · Cargo</span><span>Técnico · Ubicación</span><span>Estado</span><span>Costo · Avance</span><span className="dx-ot-actions-head">Acciones</span>
             </div>
-            {cargando && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Cargando órdenes de trabajo…</div>}
-          </div>
-
-          {!error && total > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
-            <span className="muted" style={{ fontSize: 12 }}>Mostrando {(pagina - 1) * OT_PAGE_SIZE + 1}–{Math.min(pagina * OT_PAGE_SIZE, total)} de {total}</span>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button className="btn btn-secondary btn-sm" disabled={pagina === 1 || cargando} onClick={() => setPagina(actual => actual - 1)}>← Ant.</button>
-              <span className="muted" style={{ fontSize: 12 }}>Pág. {pagina} / {totalPaginas}</span>
-              <button className="btn btn-secondary btn-sm" disabled={pagina === totalPaginas || cargando} onClick={() => setPagina(actual => actual + 1)}>Sig. →</button>
-            </div>
-          </div>}
+            {!cargando && !error && filas.length === 0 && <div className="dx-ot-empty">No hay OTs para los filtros seleccionados.</div>}
+            {filas.map(ot => {
+              const etiquetaEquipo = ot.equipo
+                ? [ot.equipo.codigo, ot.equipo.nombre].filter(Boolean).join(' - ')
+                : ot.equipo_id || 'Sin equipo';
+              const raiz = ot.contrato ? `Contrato ${ot.contrato.numero}` : ot.osCliente ? `OS ${ot.osCliente.numero}` : ot.equipo_id ? `Equipo interno ${etiquetaEquipo}` : 'Sin raíz registrada';
+              const estaIniciando = iniciandoId === ot.id;
+              const inicioSoloLectura = !permiteEscritura;
+              const tituloInicio = inicioSoloLectura
+                ? 'La vista actual es solo lectura. Selecciona una sociedad operativa para iniciar la OT.'
+                : !ot.tecnico_responsable_id
+                  ? 'Asigna un técnico responsable antes de iniciar la OT.'
+                  : !ot.centro_costo_id
+                    ? 'Asigna un centro de costo antes de iniciar la OT.'
+                    : 'Iniciar esta OT.';
+              const avance = Math.max(0, Math.min(100, Number(ot.avance_pct || 0)));
+              return (
+                <article key={ot.id} className="dx-ot-grid dx-ot-row" aria-disabled="true" title="El detalle real estará disponible próximamente." onClick={mostrarAvisoDetalle}>
+                  <div className="dx-ot-main">
+                    <span className="dx-ot-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg></span>
+                    <div className="dx-ot-main-copy">
+                      <b>{etiquetaEquipo}</b>
+                      <div className="dx-ot-subline"><span>{ot.numero}</span><small>{formatoFechaOT(ot.fecha_programada)}</small></div>
+                      <small>{nombreCuentaOT(ot.cliente)}{ot.horometro_actual != null ? ` · Horóm. ${Number(ot.horometro_actual).toLocaleString()} h` : ''}</small>
+                    </div>
+                  </div>
+                  <div className="dx-ot-cell dx-ot-root"><span className="dx-ot-label">Raíz de costo · Cargo</span><b>{raiz}</b>
+                    {ot.centroCosto && <small>{ot.centroCosto.codigo} · {ot.centroCosto.nombre}</small>}
+                    <small className="dx-ot-type">{ot.tipo_trabajo || 'Sin clasificar'} · {ot.cargo_financiero || 'Sin cargo financiero'}{ot.motivo_rework ? ` · ${ot.motivo_rework}` : ''}</small>
+                  </div>
+                  <div className="dx-ot-cell dx-ot-tech"><span className="dx-ot-label">Técnico · ubicación</span><b>{ot.tecnico?.nombre || ot.tecnico_responsable_id || 'Sin asignar'}</b><small>{ot.sede?.nombre || ot.direccion_ejecucion || 'Sin ubicación'}</small></div>
+                  <div className="dx-ot-cell dx-ot-state"><span className="dx-ot-label">Estado</span><span className={'dx-ot-status' + (ot.estado === 'programada' ? ' dx-ot-status-amber' : ['cerrada', 'valorizada'].includes(ot.estado) ? ' dx-ot-status-green' : '')}><i aria-hidden="true" />{etiquetaEstadoOT(ot.estado)}</span></div>
+                  <div className="dx-ot-cell dx-ot-cost"><span className="dx-ot-label">Costo · avance</span><b>{formatoMontoOT(ot.costo_real)} <small>est. {formatoMontoOT(ot.costo_estimado)}</small></b><div className="dx-ot-progress" role="img" aria-label={`Avance ${avance.toFixed(0)} por ciento`}><i style={{ width: `${avance}%` }} /></div><small>{avance.toFixed(0)}%</small></div>
+                  <div className="dx-ot-actions" onClick={event => event.stopPropagation()}>
+                    {ot.estado === 'programada' && <button type="button" className="dx-btn primary" disabled={inicioSoloLectura || estaIniciando} title={tituloInicio} onClick={() => iniciarOT(ot)}>{estaIniciando ? 'Iniciando…' : 'Iniciar OT'}</button>}
+                    <button type="button" className="dx-btn" disabled title="El detalle real de OT estará disponible próximamente.">Ver detalle</button>
+                  </div>
+                </article>
+              );
+            })}
+            {cargando && <div className="dx-ot-loading" role="status">Cargando Órdenes de trabajo…</div>}
+            {!error && total > 0 && <footer className="dx-ot-pager">
+              <span>Mostrando {(pagina - 1) * OT_PAGE_SIZE + 1}–{Math.min(pagina * OT_PAGE_SIZE, total)} de {total}</span>
+              <div><button type="button" className="dx-btn" disabled={pagina === 1 || cargando} onClick={() => setPagina(actual => actual - 1)}>← Ant.</button>
+                <span>Pág. {pagina} / {totalPaginas}</span>
+                <button type="button" className="dx-btn" disabled={pagina === totalPaginas || cargando} onClick={() => setPagina(actual => actual + 1)}>Sig. →</button></div>
+            </footer>}
+          </section>
         </>
       )}
-      {aviso && <div className="alert alert-info" style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 1000 }}>{aviso}</div>}
-      <FooterBrand/>
-    </div>
+      {aviso && <div className="dx-ot-toast" role="status">{aviso}</div>}
+      <FooterBrand />
+    </section>
   );
 };
 
