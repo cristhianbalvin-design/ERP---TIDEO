@@ -6,8 +6,9 @@ const css = read('../src/zahory-mock/styles/zahory.css');
 const shellCss = read('../src/styles.css');
 const pageJsx = read('../src/zahory-mock/pages/DiagnosticoTecnicoPage.jsx');
 const appJsx = read('../src/OperationalApp.jsx');
-const movil = css.slice(css.indexOf('/* movil: diagnostico y recepcion */'));
-const compact = css.slice(css.indexOf('/* Compact work mode refinements */'));
+const endOwnCss = css.includes('/* Solicitudes SOLPE */') ? css.indexOf('/* Solicitudes SOLPE */') : css.length;
+const movil = css.slice(css.indexOf('/* movil: diagnostico y recepcion */'), endOwnCss);
+const compact = css.slice(css.indexOf('/* Compact work mode refinements */'), endOwnCss);
 
 describe('movil diagnostico y recepcion', () => {
   it('el bloque movil existe y no crea contenedores ni reglas globales fuera de media queries', () => {
