@@ -4136,3 +4136,55 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-solpe .dx-solpe-datef { width:100%; }
   .dx-solpe .dx-solpe-datef input { flex:1; width:auto; }
 }
+
+/* Minas y proyectos · WMS */
+.dx-minas { min-width:0; }
+.dx-min-grid { display:grid; grid-template-columns:minmax(260px,340px) minmax(0,1fr); gap:16px; align-items:start; }
+@media (max-width:900px) { .dx-min-grid { grid-template-columns:minmax(0,1fr); } }
+.dx-min-item { display:flex; width:100%; min-width:0; align-items:center; gap:12px; padding:14px 16px; border:0; border-bottom:1px solid var(--dx-ui-line-soft); background:transparent; color:var(--dx-ui-ink); text-align:left; cursor:pointer; }
+.dx-min-item:last-child { border-bottom:0; }
+.dx-min-item:hover,.dx-min-item.on { background:var(--dx-ui-hover); }
+.dx-min-item.on { background:var(--dx-ui-cyan-bg); }
+.dx-min-item>span:nth-child(2) { min-width:0; flex:1; }
+.dx-min-item b,.dx-min-prow b,.dx-min-alm b { display:block; color:var(--dx-ui-navy); font-weight:600; overflow-wrap:anywhere; }
+.dx-min-item small,.dx-min-prow small { display:block; color:var(--dx-ui-gray); font-size:12px; }
+.dx-min-sec { min-width:0; padding:16px 20px; border-bottom:1px solid var(--dx-ui-line); }
+.dx-min-sec:last-child { border-bottom:0; }
+.dx-min-sec h3 { margin:0 0 4px; color:var(--dx-ui-navy); font:700 14px 'Sora',sans-serif; }
+.dx-min-sec p { margin:0 0 12px; color:var(--dx-ui-gray); font-size:13px; }
+.dx-min-prow { display:flex; min-width:0; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--dx-ui-line-soft); }
+.dx-min-prow:last-of-type { border-bottom:0; }
+.dx-min-prow>span:first-child { min-width:0; overflow-wrap:anywhere; }
+.dx-min-prow .sp { margin-left:auto; }
+.dx-min-alm { display:flex; min-width:0; align-items:center; gap:12px; margin-top:8px; padding:12px 14px; border:1px solid var(--dx-ui-line); border-radius:10px; }
+.dx-min-alm>span:nth-child(2) { min-width:0; flex:1; overflow-wrap:anywhere; }
+.dx-min-alm .dx-btn { flex:none; }
+.dx-min-field { display:grid; gap:6px; margin-bottom:12px; }
+.dx-min-field label { color:var(--dx-ui-gray); font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.dx-min-field input,.dx-min-field select { width:100%; min-width:0; height:40px; padding:0 12px; border:1px solid var(--dx-ui-border); border-radius:8px; background:var(--dx-ui-card); color:var(--dx-ui-ink); font:14px 'DM Sans',sans-serif; }
+.dx-min-field input:focus,.dx-min-field select:focus { outline:2px solid var(--dx-ui-cyan); outline-offset:1px; }
+.dx-min-hint { color:var(--dx-ui-gray); font-size:12px; }
+.dx-min-empty { padding:20px 12px; }
+.dx-min-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.dx-min-sin-mina { margin-top:16px; }
+.dx-min-sin-mina .dx-min-prow { padding:12px 20px; }
+.dx-min-sin-mina .dx-min-prow>span:first-child { min-width:0; }
+.dx-min-readonly,.dx-min-alert { margin:0 0 12px; padding:10px 12px; border:1px solid var(--dx-ui-line); border-radius:8px; background:var(--dx-ui-head); color:var(--dx-ui-gray); }
+.dx-min-alert { border-color:var(--dx-ui-red-dot); background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); overflow-wrap:anywhere; }
+.dx-min-alert .dx-btn { margin-left:8px; }
+.dx-min-overlay { position:fixed; z-index:1000; inset:0; display:grid; place-items:center; overflow:auto; padding:16px; background:rgba(15,23,42,.52); }
+.dx-min-modal { width:min(100%,520px); max-height:calc(100vh - 32px); overflow:auto; padding:20px; border:1px solid var(--dx-ui-line); border-radius:14px; background:var(--dx-ui-card); box-shadow:0 12px 32px rgba(15,27,48,.18); }
+.dx-min-modal h3 { margin:0 0 14px; color:var(--dx-ui-navy); font:700 16px 'Sora',sans-serif; }
+.dx-min-modal-actions { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin-top:16px; }
+.dx-min-divider { margin:12px 0; color:var(--dx-ui-gray); text-align:center; font-size:12px; }
+@media (max-width:480px) {
+  .dx-min-sec { padding-inline:14px; }
+  .dx-min-item { padding-inline:14px; }
+  .dx-min-alm { align-items:flex-start; flex-wrap:wrap; }
+  .dx-min-alm>span:nth-child(2) { flex-basis:calc(100% - 50px); }
+  .dx-min-alm .dx-btn { width:100%; }
+  .dx-min-prow { flex-wrap:wrap; }
+  .dx-min-prow .sp { margin-left:0; }
+  .dx-min-overlay { place-items:start center; }
+  .dx-min-modal { margin-block:auto; padding:16px; }
+}
