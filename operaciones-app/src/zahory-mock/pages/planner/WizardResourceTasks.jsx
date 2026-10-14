@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { maquinaAfin } from './plannerAffinity.js';
 
 const asignacionVacia = {
@@ -17,6 +18,7 @@ export function WizardResourceTasks({
   changeAssignment,
   disabled,
 }) {
+  const [machineWarnings, setMachineWarnings] = useState({});
   return tasks.map(task => {
     const assignment = { ...asignacionVacia, ...assignments[task.id] };
     const positionsForTask = affinityPositions(task);
@@ -100,10 +102,23 @@ export function WizardResourceTasks({
           <select
             disabled={disabled}
             value={assignment.puestoId}
-            onChange={event => changeAssignment(task.id, {
-              puestoId: event.target.value,
-              maquinaIds: [],
-            })}
+            onChange={event => {
+              const puestoId = event.target.value;
+              const position = positions.find(item => item.id === puestoId);
+              const validMachineIds = new Set(datos.maquinas.filter(machine => (
+                machine.estado === 'disponible'
+                  && (!position || machine.bahia_id === position.bahia_id)
+              )).map(machine => machine.id));
+              const maquinaIds = assignment.maquinaIds.filter(id => validMachineIds.has(id));
+              const removed = maquinaIds.length !== assignment.maquinaIds.length;
+              setMachineWarnings(current => ({
+                ...current,
+                [task.id]: removed
+                  ? 'Se quitaron máquinas que no pertenecen a este puesto o no están disponibles.'
+                  : '',
+              }));
+              changeAssignment(task.id, { puestoId, maquinaIds });
+            }}
           >
             <option value="">Sin puesto</option>
             {positionsForTask.map(position => (
@@ -131,6 +146,9 @@ export function WizardResourceTasks({
             ))}
           </select>
         </label>
+        {machineWarnings[task.id] && <p className="dx-planner-field-note" role="status">
+          {machineWarnings[task.id]}
+        </p>}
         <label>
           Horas por máquina
           <input

@@ -6,6 +6,9 @@ import { Wizard } from '../src/zahory-mock/pages/planner/Wizard.jsx';
 import { WizardStepper } from '../src/zahory-mock/pages/planner/WizardStepper.jsx';
 import { WizardSteps } from '../src/zahory-mock/pages/planner/WizardSteps.jsx';
 import { WizardStepDemanda } from '../src/zahory-mock/pages/planner/WizardStepDemanda.jsx';
+import { WizardResourceTasks } from '../src/zahory-mock/pages/planner/WizardResourceTasks.jsx';
+import { WizardSide } from '../src/zahory-mock/pages/planner/WizardSide.jsx';
+import { WizardSummary } from '../src/zahory-mock/pages/planner/WizardSummary.jsx';
 
 const tarea = {
   id: 'T-1',
@@ -63,6 +66,55 @@ describe('vista del asistente de planificación', () => {
     expect(html).toContain('class="is-done"');
     expect(html).toContain('class="is-pending"');
     expect(html).toContain('Demanda heredada');
+  });
+
+  it('conserva máquinas válidas al cambiar puesto y avisa las descartadas', () => {
+    const puestos = [
+      { id: 'P-A', bahia_id: 'B-A', nombre: 'Puesto A' },
+      { id: 'P-B', bahia_id: 'B-B', nombre: 'Puesto B' },
+    ];
+    const maquinaDatos = {
+      ...datos,
+      puestos,
+      bahias: [{ id: 'B-A', nombre: 'Bahía A' }, { id: 'B-B', nombre: 'Bahía B' }],
+      maquinas: [
+        { id: 'M-A', nombre: 'Máquina A', estado: 'disponible', bahia_id: 'B-A' },
+        { id: 'M-B', nombre: 'Máquina B', estado: 'disponible', bahia_id: 'B-B' },
+      ],
+    };
+    const changeAssignment = vi.fn();
+    const assignment = { puestoId: 'P-B', maquinaIds: ['M-A', 'M-B'] };
+    let renderer;
+    act(() => { renderer = create(createElement(WizardResourceTasks, {
+      tasks: [tarea], assignments: { [tarea.id]: assignment }, datos: maquinaDatos,
+      positions: puestos, affinityPositions: () => puestos, changeAssignment, disabled: false,
+    })); });
+    const puesto = renderer.root.findAllByType('select')[2];
+    act(() => puesto.props.onChange({ target: { value: 'P-A' } }));
+    expect(changeAssignment).toHaveBeenCalledWith('T-1', {
+      puestoId: 'P-A', maquinaIds: ['M-A'],
+    });
+    expect(renderer.root.findByProps({ role: 'status' }).children.join(''))
+      .toContain('Se quitaron máquinas');
+    renderer.unmount();
+  });
+
+  it('usa estado neutro sin compromiso en impacto y resumen', () => {
+    const otSinCompromiso = { ...ot, orden_servicio: {} };
+    const side = renderToStaticMarkup(createElement(WizardSide, {
+      ot: otSinCompromiso, plans: [], forecast: null, p50: null, conservative: null,
+    }));
+    expect(side).toContain('is-neutral');
+    expect(side).toContain('Sin fecha de compromiso');
+    expect(side).not.toContain('Dentro del compromiso');
+
+    const summary = renderToStaticMarkup(createElement(WizardSummary, {
+      ot: otSinCompromiso, forecast: null, taskPlans: [], lastP50: null,
+      lastConservative: null, startDate: '2026-10-14',
+    }));
+    expect(summary).toContain('is-neutral');
+    expect(summary).toContain('Sin fecha de compromiso');
+    expect(summary).not.toContain('A tiempo estimado');
   });
 
   it('deshabilita Siguiente si no se eligió una OT', () => {

@@ -21,8 +21,8 @@ export function WizardSide({ ot, plans, forecast, p50, conservative }) {
     {ot ? <>
       <b>OT {ot.numero || ot.id}</b>
       <span>{ot.equipo?.nombre || ot.equipo_nombre || 'Equipo no informado'}</span>
-      <span className={`dx-planner-status ${late ? 'is-risk' : 'is-safe'}`}>
-        {late ? 'Riesgo de atraso' : 'Dentro del compromiso'}</span>
+      <span className={`dx-planner-status ${!commitment ? 'is-neutral' : late ? 'is-risk' : 'is-safe'}`}>
+        {!commitment ? 'Sin fecha de compromiso' : late ? 'Riesgo de atraso' : 'Dentro del compromiso'}</span>
       <strong>{forecast?.horasPendientes || 0} h pendientes</strong>
       <dl>
         <dt>Compromiso OS</dt><dd>{fecha(commitment)}</dd>

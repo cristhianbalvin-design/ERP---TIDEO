@@ -31,8 +31,8 @@ export function WizardSummary({ ot, forecast, taskPlans, lastP50, lastConservati
     <article className="dx-planner-box">
       <h3>Entrega de OT {ot.numero || ot.id}</h3>
       <div className="dx-planner-pills">
-        <span className={`dx-planner-status ${late ? 'is-risk' : 'is-safe'}`}>
-          {late ? 'Riesgo de atraso' : 'A tiempo estimado'}</span>
+        <span className={`dx-planner-status ${!commitment ? 'is-neutral' : late ? 'is-risk' : 'is-safe'}`}>
+          {!commitment ? 'Sin fecha de compromiso' : late ? 'Riesgo de atraso' : 'A tiempo estimado'}</span>
         <span className="dx-ui-pill">P50 · {fecha(lastP50)}</span>
         <span className="dx-ui-pill">Conservadora (+25%) · {fecha(lastConservative)}</span>
       </div>

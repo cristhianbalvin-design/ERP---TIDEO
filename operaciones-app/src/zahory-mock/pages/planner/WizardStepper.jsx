@@ -9,7 +9,7 @@ export function WizardStepper({ steps, current }) {
             <span className="dx-planner-step-dot" aria-hidden="true">
               {number < current ? '✓' : number}
             </span>
-            <span>{label}</span>
+            <span className="dx-planner-step-label">{label}</span>
           </li>
         );
       })}
