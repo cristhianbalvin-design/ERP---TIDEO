@@ -160,7 +160,7 @@
   .dx-personal-list-row { padding-inline:16px; }
 }
 @container (max-width:320px) {
-  .dx-personal-row { grid-template-columns:minmax(0,1fr) auto; }
+  .dx-personal-row { grid-template-columns:minmax(0,1fr); }
   .dx-personal-who { grid-column:1 / -1; grid-row:auto; }
   .dx-personal-block-acciones { grid-column:1 / -1; grid-row:auto; }
 }
