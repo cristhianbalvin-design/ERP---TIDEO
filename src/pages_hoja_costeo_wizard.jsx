@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { I, moneyD } from './icons.jsx';
 import { useApp } from './context.jsx';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient.js';
@@ -259,6 +259,52 @@ export default function HojaCosteoWizard() {
     }
   };
 
+  const valoracionHecha = useRef('');
+  const valorarPendientes = async () => {
+    const pendientesMo = lineas.filter(linea => linea.pendiente_valoracion);
+    const pendientesActivos = lineasActivos.filter(linea => linea.pendiente_valoracion);
+    if (!pendientesMo.length && !pendientesActivos.length) return;
+    const sb = await getSupabaseClient();
+    const lineasNuevas = [...lineas];
+    const activosNuevos = [...lineasActivos];
+    let cambios = 0;
+    for (const linea of pendientesMo) {
+      const costoBase = configuracionPorCargo.get(linea.cargo_id)?.costo_hora_manual ?? tarifaPorCargo.get(linea.cargo_id) ?? null;
+      const costoHora = costoBase != null ? numero(convertirUsdAMonedaHoja(costoBase)) : 0;
+      if (!linea.cargo_id || costoHora <= 0) continue;
+      const payload = { costo_hora_snapshot: costoHora, subtotal: numero(linea.horas) * costoHora, metodo_usado: tarifaPorCargo.has(linea.cargo_id) && configuracionPorCargo.get(linea.cargo_id)?.costo_hora_manual == null ? 'planilla' : 'manual', pendiente_valoracion: false };
+      const { data, error } = await sb.from('hoja_costeo_lineas_mano_obra').update(payload).eq('id', linea.id).select().single();
+      if (error) throw error;
+      lineasNuevas[lineasNuevas.findIndex(item => item.id === linea.id)] = { ...linea, ...data };
+      cambios += 1;
+    }
+    for (const linea of pendientesActivos) {
+      const costoHora = numero(convertirUsdAMonedaHoja(activoPorId.get(linea.activo_id)?.costo_hora_activo_usd));
+      if (costoHora <= 0) continue;
+      const lineaMo = lineasNuevas.find(item => item.id === linea.linea_mano_obra_id)
+        || lineasNuevas.find(item => item.diagnostico_linea_id && item.diagnostico_linea_id === linea.diagnostico_linea_id);
+      const payload = { costo_hora_equipo: costoHora, depreciacion_asignada: numero(linea.horas_uso_estimadas) * costoHora, linea_mano_obra_id: linea.linea_mano_obra_id || lineaMo?.id || null, pendiente_valoracion: false };
+      const { data, error } = await sb.from('hoja_costeo_lineas_activos').update(payload).eq('id', linea.id).select().single();
+      if (error) throw error;
+      activosNuevos[activosNuevos.findIndex(item => item.id === linea.id)] = { ...linea, ...data };
+      cambios += 1;
+    }
+    if (!cambios) return;
+    setLineas(lineasNuevas);
+    setLineasActivos(activosNuevos);
+    await sincronizarTotales({
+      manoObra: lineasNuevas.reduce((total, linea) => total + numero(linea.subtotal), 0),
+      activos: activosNuevos.reduce((total, linea) => total + numero(linea.depreciacion_asignada), 0),
+    });
+  };
+  useEffect(() => {
+    if (cargando || bloqueada || !hoja?.id || valoracionHecha.current === hoja.id) return;
+    if (monedaHoja === 'PEN' && !(numero(tipoCambioPenUsd) > 0)) return;
+    if (!lineas.some(linea => linea.pendiente_valoracion) && !lineasActivos.some(linea => linea.pendiente_valoracion)) return;
+    valoracionHecha.current = hoja.id;
+    valorarPendientes().catch(error => addToast(`No se pudieron valorar las líneas del diagnóstico: ${error.message || error}`, 'error'));
+  }, [cargando, bloqueada, hoja?.id, lineas, lineasActivos, tipoCambioPenUsd]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { cargarDatos(); }, [hoja?.id, hoja?.moneda, empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -429,6 +475,7 @@ export default function HojaCosteoWizard() {
         horas,
         costo_hora_snapshot: costoHora,
         subtotal: lineaActualizada.subtotal,
+        pendiente_valoracion: false,
       }).eq('id', linea.id).select().single();
       if (error) throw error;
 
@@ -442,6 +489,7 @@ export default function HojaCosteoWizard() {
           horas_uso_estimadas: horasMaquina,
           costo_hora_equipo: costoActivo,
           depreciacion_asignada: horasMaquina * numero(costoActivo),
+          pendiente_valoracion: false,
         };
         if (activoAnterior?.id) {
           const result = await sb.from('hoja_costeo_lineas_activos').update(activoPayload).eq('id', activoAnterior.id).select().single();
@@ -1378,7 +1426,7 @@ export default function HojaCosteoWizard() {
         const manoObra = grupo.tareas.reduce((sum, item) => sum + numero(item.subtotal_mano_obra), 0);
         const maquina = grupo.tareas.reduce((sum, item) => sum + numero(item.subtotal_maquina), 0);
         const horas = grupo.tareas.reduce((sum, item) => sum + numero(item.horas), 0);
-        const horasMaquina = grupo.tareas.reduce((sum, item) => sum + numero(lineasActivos.find(asset => asset.linea_mano_obra_id === item.id)?.horas_uso_estimadas), 0);
+        const horasMaquina = grupo.tareas.reduce((sum, item) => sum + numero((lineasActivos.find(asset => asset.linea_mano_obra_id === item.id) || lineasActivos.find(asset => !asset.linea_mano_obra_id && asset.tarea_id === item.tarea_id))?.horas_uso_estimadas), 0);
         return <section className="hcx-work" key={`${grupo.familia_trabajo_id}:${grupo.actividad_id}`}>
           <header className="hcx-workhead"><button className="hcx-collapse" type="button" aria-label="Contraer trabajo">⌄</button><div><div className="hcx-worktitle"><span className="hcx-workname">{familiaPorId.get(grupo.familia_trabajo_id)?.nombre || 'Sin trabajo'}</span><span className="hcx-pill">Actividad: {actividad?.nombre || 'Sin actividad'}</span></div><div className="hcx-workmeta">{grupo.tareas.length} tareas · {horas.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-hombre · {horasMaquina.toLocaleString('es-PE', { maximumFractionDigits: 1 })} h-máquina</div></div><span className="hcx-money">{money(manoObra + maquina)}<small>mano de obra + máquina</small></span><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => aplicarActividad(grupo)}>Aplicar actividad</button><button className="hcx-btn" type="button" disabled={bloqueada} onClick={() => abrirBuscadorTarea(grupo)}>{I.plus} Agregar tareas</button></header>
           <div className="hcx-grid hcx-tablehead"><div>Tarea</div><div className="hcx-category">MANO DE OBRA</div><div className="hcx-category machine">MÁQUINA</div><div>Detalle</div></div>
@@ -1393,7 +1441,7 @@ export default function HojaCosteoWizard() {
               <div className="hcx-taskname"><b>{nombreTareaLinea(linea)}</b><small>{tareaPorId.get(linea.tarea_id)?.codigo || linea.tarea_id || 'Sin código'}</small></div>
               <select className="hcx-cell" disabled={bloqueada || guardandoTareaId === linea.id} value={linea.cargo_id || ''} onChange={event => actualizarTarea(linea, { cargo_id: event.target.value })}><option value="">Sin cargo</option>{cargos.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select>
               <input className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" min="0" step="0.1" defaultValue={linea.horas ?? ''} onBlur={guardarHoras} />
-              <div className="hcx-cost"><b>{money(linea.subtotal_mano_obra)}</b><small>{money(linea.costo_hora_snapshot)} / h</small></div>
+              <div className="hcx-cost"><b>{money(linea.subtotal_mano_obra)}</b><small>{linea.pendiente_valoracion ? 'Sin tarifa: revisa el cargo' : `${money(linea.costo_hora_snapshot)} / h`}</small></div>
               <select className="hcx-cell" disabled={bloqueada || guardandoTareaId === linea.id} value={activoLinea?.activo_id || ''} onChange={event => actualizarTarea(linea, { activo_id: event.target.value })}><option value="">Sin activo</option>{activos.map(item => <option key={item.activo_id} value={item.activo_id}>{item.nombre}</option>)}</select>
               <input className="hcx-cell num" disabled={bloqueada || guardandoTareaId === linea.id} type="number" min="0" step="0.1" defaultValue={activoLinea?.horas_uso_estimadas ?? 0} onBlur={guardarHorasMaquina} />
               <div className={`hcx-cost ${!activoLinea ? 'muted' : ''}`}><b>{activoLinea ? money(linea.subtotal_maquina) : '—'}</b>{activoLinea && <small>{money(activoLinea.costo_hora_equipo)} / h</small>}</div>
