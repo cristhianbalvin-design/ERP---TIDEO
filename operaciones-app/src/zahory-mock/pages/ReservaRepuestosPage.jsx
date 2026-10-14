@@ -4,7 +4,7 @@ import { despacharReservaOT, liberarReservaOT, listarReservasOT, revertirDespach
 import { DespachoPanel } from './DespachoPanel.jsx';
 import { LiberarReservaPanel } from './LiberarReservaPanel.jsx';
 import { RevertirDespachoPanel } from './RevertirDespachoPanel.jsx';
-import { estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoLinea, etiquetaEstadoOT, mapearErrorReserva, puedeOperarLinea, textoUbicacionOrigen, tonoEstadoLinea } from './reservasRepuestosLogic.js';
+import { cantidadPorTrasladar, estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoLinea, etiquetaEstadoOT, mapearErrorReserva, puedeOperarLinea, textoUbicacionOrigen, tonoEstadoLinea } from './reservasRepuestosLogic.js';
 
 const num = valor => Number(valor || 0).toLocaleString('es-PE', { maximumFractionDigits: 2 });
 const fecha = valor => valor ? new Date(valor).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -103,8 +103,9 @@ export function ReservaRepuestosPage() {
           const motivoReversa = sinPermisoDespacho ? 'Sin permiso para revertir' : Number(linea.despachado || 0) <= 0 ? 'Nada despachado' : !['programada', 'ejecucion'].includes(ordenSeleccionada.estado) ? 'OT cerrada' : '';
           const origenes = linea.origenes || [];
           const origenTexto = origenes.map(textoUbicacionOrigen).join(' · ') || 'Sin ubicación (sin stock reservado)';
+          const porTrasladar = cantidadPorTrasladar(ordenSeleccionada, linea);
           return <div className="dx-desp-line-row" key={linea.id}>
-            <div className="dx-desp-material"><b>{linea.descripcion}</b><small>{linea.codigo || '—'} · {linea.unidad || 'und'} · {origenTexto}</small></div>
+            <div className="dx-desp-material"><b>{linea.descripcion}</b><small>{linea.codigo || '—'} · {linea.unidad || 'und'} · {origenTexto}</small>{porTrasladar > 0 && <span className="dx-ui-pill is-amber"><i />Por trasladar a {ordenSeleccionada.mina_nombre}: {num(porTrasladar)} {linea.unidad || 'und'}</span>}</div>
             <div className="dx-desp-n"><small>Estimado</small>{num(linea.cantidad_estimada)} {linea.unidad}</div><div className="dx-desp-n"><small>Reservado</small>{num(linea.reservado)} {linea.unidad}</div><div className="dx-desp-n"><small>Despachado</small>{num(linea.despachado)} {linea.unidad}</div><div className="dx-desp-n"><small>Pendiente</small>{num(linea.pendiente)} {linea.unidad}</div>
             <span className="dx-desp-state"><i className={`dx-ui-pill ${tonoEstadoLinea(linea.estado)}`}><i />{etiquetaEstadoLinea(linea.estado, linea)}</i></span>
             <div className="dx-desp-actions">
