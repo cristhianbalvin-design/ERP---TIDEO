@@ -84,10 +84,6 @@ export function PlannerPage() {
     cargar();
   }, [sesion.empresaId, sesion.sociedadId, sesion.cargando]);
 
-  useEffect(() => {
-    setAviso('');
-  }, [vista]);
-
   const ots = datos?.ots || [];
   const recursos = obtenerRecursos(datos);
   const acciones = usePlannerActions({

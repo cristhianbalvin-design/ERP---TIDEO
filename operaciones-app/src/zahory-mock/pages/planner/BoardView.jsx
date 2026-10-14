@@ -210,7 +210,7 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
         event.dataTransfer.setData('text/plain', bloque.clave);
       }}
       onDragEnd={() => { arrastre.current = null; }}
-      onClick={() => ot && onSelect({ ot, tareaId: bloque.tareaId })}
+      onClick={() => ot && onSelect({ ot, tareaId: bloque.tareaId, tecnicoId: tabla === 'persona' ? recursoId : null })}
       style={{
         '--c': tono,
         left: `calc(${bloque.s} * var(--dw) + 3px)`,

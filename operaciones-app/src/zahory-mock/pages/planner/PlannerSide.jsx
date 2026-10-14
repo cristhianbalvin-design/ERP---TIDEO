@@ -39,6 +39,7 @@ export function PlannerSide({
           cargos={cargos}
           hoy={hoy}
           tareaId={seleccion.tareaId}
+          tecnicoId={seleccion.tecnicoId}
           bloqueado={!permiteEscritura || guardando}
           onPlanificar={onPlanificar}
           onConfigurar={onConfigurar}
@@ -174,7 +175,7 @@ function ListaTareas({ datos, info, cargos, elegida, onSelect }) {
 }
 
 function AsignarTarea({
-  datos, info, cargos, hoy, tareaId, bloqueado, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto,
+  datos, info, cargos, hoy, tareaId, tecnicoId, bloqueado, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto,
 }) {
   const tarea = tareaElegida(info, tareaId);
   if (!tarea) return null;
@@ -196,7 +197,7 @@ function AsignarTarea({
     );
   }
   const sinPlan = !resumen.personas.length;
-  const primario = resumen.tecnicos[0]?.id || null;
+  const primario = resumen.tecnicos.some(item => item.id === tecnicoId) ? tecnicoId : resumen.tecnicos[0]?.id || null;
   const opciones = opcionesResponsable(datos, resumen, primario);
   const mismas = opciones.filter(item => item.misma || item.actual);
   const otras = opciones.filter(item => !item.misma && !item.actual);

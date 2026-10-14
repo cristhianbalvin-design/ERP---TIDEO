@@ -17,7 +17,11 @@ export const fmtDia = iso => (iso ? `${DIAS[aFecha(iso).getDay()]} ${aFecha(iso)
 export const fmtCorto = iso => (iso ? `${aFecha(iso).getDate()} ${MESES[aFecha(iso).getMonth()]}` : '—');
 export const diaSemana = iso => DIAS[aFecha(iso).getDay()];
 export const horas = valor => `${(Math.round((Number(valor) || 0) * 10) / 10).toString().replace('.', ',')} h`;
-export const numeroOT = ot => (ot ? `OT ${ot.numero || ot.id}` : 'OT');
+export const numeroOT = ot => {
+  const valor = String(ot?.numero || ot?.id || '');
+  if (!valor) return 'OT';
+  return /^OT[-\s]/i.test(valor) ? valor : `OT ${valor}`;
+};
 
 export function sumarHabiles(iso, cantidad) {
   let fecha = iso;
