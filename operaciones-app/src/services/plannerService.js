@@ -67,9 +67,11 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
       .neq('estado', 'cancelado')),
     leer(ordenesQuery),
     leer(sb.from('familia_trabajo').select('id,nombre').eq('empresa_id', empresaId).eq('activo', true)),
+    leer(sb.from('tipos_servicio_interno').select('id,nombre').eq('empresa_id', empresaId)),
+    leer(sb.from('cargos_empresa').select('id,nombre').eq('empresa_id', empresaId)),
   ]);
   const [bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ordenes,
-    familiasTrabajo] = consultas;
+    familiasTrabajo, actividades, cargos] = consultas;
   const osIds = [...new Set(ordenes.map(ot => ot.os_cliente_id).filter(Boolean))];
   let ordenesServicio = [];
   if (osIds.length) {
@@ -81,17 +83,21 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
   }
   const osPorId = new Map(ordenesServicio.map(os => [os.id, os]));
   const familiaPorId = new Map(familiasTrabajo.map(familia => [familia.id, familia]));
+  const actividadPorId = new Map(actividades.map(actividad => [actividad.id, actividad]));
+  const cargoPorId = new Map(cargos.map(cargo => [cargo.id, cargo]));
   const ots = ordenes.map(ot => ({
     ...ot,
     orden_servicio: osPorId.get(ot.os_cliente_id) || null,
     ot_tareas: (ot.ot_tareas || []).map(tarea => ({
       ...tarea,
       familia_trabajo: familiaPorId.get(tarea.familia_trabajo_id) || null,
+      actividad: actividadPorId.get(tarea.actividad_id) || null,
+      cargo: cargoPorId.get(tarea.cargo_id) || null,
     })),
   }));
   return {
     bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ots,
-    ordenesServicio, familiasTrabajo,
+    ordenesServicio, familiasTrabajo, actividades, cargos,
   };
 }
 

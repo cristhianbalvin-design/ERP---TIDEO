@@ -15,7 +15,7 @@ vi.mock('../src/lib/supabaseClient.js', () => ({
 }));
 
 const { actualizarFechaAsignacion, guardarBahia, guardarPuesto, mensajeErrorPlanner,
-  sincronizarOcupacionesOT } =
+  sincronizarOcupacionesOT, cargarPlanner } =
   await import('../src/services/plannerService.js');
 
 describe('RPC transaccionales del Planner', () => {
@@ -115,5 +115,47 @@ describe('RPC transaccionales del Planner', () => {
       id: 'as-1',
       fecha: '2026-10-14',
     })).rejects.toThrow('El puesto no tiene capacidad disponible el 2026-10-14');
+  });
+});
+
+describe('nombres de demanda del Planner', () => {
+  it('resuelve actividad y cargo con catálogos de la empresa', async () => {
+    const filas = {
+      ordenes_trabajo: [{
+        id: 'OT-1',
+        ot_tareas: [{
+          id: 'T-1', familia_trabajo_id: 'F-1', actividad_id: 'A-1', cargo_id: 'C-1',
+        }],
+      }],
+      familia_trabajo: [{ id: 'F-1', nombre: 'Mecánica' }],
+      tipos_servicio_interno: [{ id: 'A-1', nombre: 'Inspección' }],
+      cargos_empresa: [{ id: 'C-1', nombre: 'Técnico mecánico' }],
+    };
+    const consultas = [];
+    from.mockImplementation(tabla => {
+      const consulta = {
+        select: vi.fn(() => consulta),
+        eq: vi.fn(() => consulta),
+        in: vi.fn(() => consulta),
+        order: vi.fn(() => consulta),
+        neq: vi.fn(() => consulta),
+        then: (resolve, reject) => Promise.resolve({
+          data: filas[tabla] || [], error: null,
+        }).then(resolve, reject),
+      };
+      consultas.push({ tabla, consulta });
+      return consulta;
+    });
+
+    const datos = await cargarPlanner({ empresaId: 'E-1' });
+    expect(datos.ots[0].ot_tareas[0]).toMatchObject({
+      familia_trabajo: { nombre: 'Mecánica' },
+      actividad: { nombre: 'Inspección' },
+      cargo: { nombre: 'Técnico mecánico' },
+    });
+    ['tipos_servicio_interno', 'cargos_empresa'].forEach(tabla => {
+      const consulta = consultas.find(item => item.tabla === tabla).consulta;
+      expect(consulta.eq).toHaveBeenCalledWith('empresa_id', 'E-1');
+    });
   });
 });

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Wizard } from '../src/zahory-mock/pages/planner/Wizard.jsx';
 import { WizardStepper } from '../src/zahory-mock/pages/planner/WizardStepper.jsx';
 import { WizardSteps } from '../src/zahory-mock/pages/planner/WizardSteps.jsx';
+import { WizardStepDemanda } from '../src/zahory-mock/pages/planner/WizardStepDemanda.jsx';
 
 const tarea = {
   id: 'T-1',
@@ -13,7 +14,8 @@ const tarea = {
   horas_reales: 2,
   familia_trabajo: { nombre: 'Mecánica' },
   actividad_id: 'ACT-1',
-  cargo: 'Técnico mecánico',
+  actividad: { id: 'ACT-1', nombre: 'Inspección' },
+  cargo: { id: 'CARGO-1', nombre: 'Técnico mecánico' },
 };
 const ot = {
   id: 'OT-1',
@@ -128,10 +130,30 @@ describe('vista del asistente de planificación', () => {
       busy: false,
     }));
     expect(html).toContain('Mecánica');
-    expect(html).toContain('ACT-1');
+    expect(html).toContain('Inspección');
+    expect(html).toContain('Técnico mecánico');
+    expect(html).not.toContain('ACT-1');
     expect(html).toContain('Revisar bomba');
     expect(html).toContain('8 h estimadas');
     expect(html).toContain('2 h reales');
+  });
+
+  it('usa nombres resueltos y fallbacks neutros sin mostrar identificadores', () => {
+    const ids = ['FAM-PRIVATE', 'ACT-PRIVATE', 'CARGO-PRIVATE'];
+    const html = renderToStaticMarkup(createElement(WizardStepDemanda, {
+      ot: {},
+      tareas: [{
+        id: 'T-PRIVATE',
+        familia_trabajo_id: ids[0],
+        actividad_id: ids[1],
+        cargo_id: ids[2],
+        titulo: 'Tarea',
+      }],
+    }));
+    expect(html).toContain('Sin trabajo definido');
+    expect(html).toContain('Sin actividad definida');
+    expect(html).toContain('Cargo sin definir');
+    ids.forEach(id => expect(html).not.toContain(id));
   });
 
   it('deshabilita los controles en modo de solo lectura', () => {
