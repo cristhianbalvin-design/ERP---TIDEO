@@ -44,3 +44,7 @@ export function revertirDespachoOT({ empresa_id, ot_id, lineas, motivo, observac
 export function conciliarCierreOT({ empresa_id, ot_id }) {
   return ejecutarRpc('wms_conciliar_cierre_ot', { p_empresa_id: empresa_id, p_ot_id: ot_id });
 }
+
+export function trasladarReservaOT({ empresa_id, ot_id }) {
+  return ejecutarRpc('wms_trasladar_reserva_ot', { p_empresa_id: empresa_id, p_ot_id: ot_id });
+}
