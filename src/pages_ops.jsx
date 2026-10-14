@@ -83,6 +83,7 @@ import { RutasPanel } from './components/RutasPanel.jsx';
 import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.jsx';
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 import './compras_gastos.css';
+import './personal_operativo.css';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -22559,6 +22560,38 @@ function CargaMasivaOpPanel({ onClose, turnosOptions, cargosOperativosOptions, e
   );
 }
 
+function PersonalOperativoAcciones({ descargarExcel, abrirCargaMasiva, abrirTiposDocumento, abrirRequisitos, visibleCols, setVisibleCols, columnas }) {
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const menuRef = useRef(null);
+  const menuButtonRef = useRef(null);
+  useEffect(() => {
+    if (!menuAbierto) return undefined;
+    const cerrarFuera = e => { if (!menuRef.current?.contains(e.target)) setMenuAbierto(false); };
+    const cerrarEscape = e => { if (e.key === 'Escape') { setMenuAbierto(false); menuButtonRef.current?.focus(); } };
+    document.addEventListener('mousedown', cerrarFuera);
+    document.addEventListener('keydown', cerrarEscape);
+    return () => {
+      document.removeEventListener('mousedown', cerrarFuera);
+      document.removeEventListener('keydown', cerrarEscape);
+    };
+  }, [menuAbierto]);
+  const ejecutar = accion => { setMenuAbierto(false); accion(); };
+  return (
+    <div className="dx-personal-actions">
+      <ColumnFilter columns={columnas} visibleCols={visibleCols} onChange={setVisibleCols} />
+      <div className="dx-personal-menu-wrap" ref={menuRef}>
+        <button ref={menuButtonRef} type="button" className="dx-personal-btn" aria-haspopup="menu" aria-expanded={menuAbierto} onClick={() => setMenuAbierto(v => !v)}>Más acciones <span aria-hidden="true">⌄</span></button>
+        {menuAbierto && <div className="dx-personal-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => ejecutar(descargarExcel)}>Descargar Excel</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirCargaMasiva)}>Carga masiva</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirTiposDocumento)}>Tipos de Documento</button>
+          <button type="button" role="menuitem" onClick={() => ejecutar(abrirRequisitos)}>Requisitos por Cargo</button>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 function RRHH_Operativo() {
   const { turnos, tiposContrato = [], cargos = [], especialidades = [], sedes = [], areasEmpresa = [], role, personalOperativo, partes = [], crearTecnicoCtx, actualizarTecnicoCtx, eliminarTecnicoCtx, empresa, empresaConfig = {}, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], usuarios = [], addNotificacion, centrosCosto, solicitudesRRHH = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, plannerAsignaciones = [], cxp = [], cxpPagos = [], activeParams, crearCargo, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx, afpParametros = [], crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, roles: rolesCtx = {}, portalDatosSolicitudes = [], portalConstanciasTrabajo = [], resolverSolicitudDatosPortalCtx, resolverConstanciaPortalCtx, posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion } = useApp();
   const canFinanzas = Boolean(role?.permisos?.ver_finanzas || role?.permisos?.todo);
@@ -23508,6 +23541,7 @@ function RRHH_Operativo() {
   });
 
   const estBadge = e => e==='disponible'?'badge-green':e==='ocupado'?'badge-cyan':'badge-gray';
+  const badgeToPill = badge => ({'badge-green':'is-green','badge-cyan':'is-cyan','badge-orange':'is-amber','badge-red':'is-red','badge-gray':'is-gray'}[badge] || 'is-gray');
   const portalDatosPendientes = portalDatosSolicitudes.filter(s => s.estado === 'pendiente');
   const portalConstanciasPendientes = portalConstanciasTrabajo.filter(c => c.estado === 'solicitada');
   const portalPersonaNombre = id => personal.find(p => p.id === id)?.nombre || id;
@@ -25747,227 +25781,94 @@ function RRHH_Operativo() {
       {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
       {showCargaMasivaOp && <CargaMasivaOpPanel onClose={() => setShowCargaMasivaOp(false)} turnosOptions={turnosOptions} cargosOperativosOptions={cargosOperativosOptions} especialidadesOptions={especialidadesOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearTecnicoCtx={crearTecnicoCtx} addNotificacion={addNotificacion} personalOperativo={personalOperativo} />}
 
-      <div className="page-header">
-        <div><h1 className="page-title">RRHH Operativo</h1><div className="page-sub">{operativosActivos} técnicos activos</div></div>
-        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
-          <div style={{display:'flex', gap:8}}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
-            <button className="btn btn-secondary btn-sm" onClick={descargarPersonalOperativoExcel} title="Descargar todos los registros de personal operativo en Excel">{I.download} Descargar Excel</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowCargaMasivaOp(true)} title="Carga masiva de técnicos">{I.upload} Carga masiva</button>
-            <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
-          </div>
-          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
-        </div>
-      </div>
-
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Técnicos activos</div><div className="kpi-value">{operativosActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Habilitación crítica</div><div className="kpi-value" style={{color:kpiDocumental.vencidos>0?'var(--danger)':kpiDocumental.faltan>0?'var(--orange)':'inherit'}}>{kpiDocumental.vencidos + kpiDocumental.faltan}</div><div className={'kpi-icon '+(kpiDocumental.vencidos+kpiDocumental.faltan>0?'red':'green')}>{I.shield}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencerOp.length}</div><div className="kpi-icon orange">{I.alert}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{docsVencidosPorVencerOp}</div><div className="kpi-icon red">{I.shield}</div></div>
-      </div>
-
-      <div className="tabs" style={{marginTop: 24}}>
-        <div className={'tab '+(tab==='personal'?'active':'')} onClick={()=>setTab('personal')}>Personal</div>
-        <div className={'tab '+(tab==='reportes'?'active':'')} onClick={()=>setTab('reportes')}>Reportes</div>
-      </div>
-
-      {tab === 'personal' && (
-        <div className="card">
-          <div className="card-head row" style={{gap:12}}>
-            <input className="input" placeholder="Buscar personal..." value={filtroPersonal} onChange={e=>setFiltroPersonal(e.target.value)} style={{flex:'1 1 200px'}} />
-            <select className="input" value={filtroEstado} onChange={e=>setFiltroEstado(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todos los estados</option>
-              <option value="activo">Activo (Disponible)</option>
-              <option value="no_disponible">No Disponible</option>
-              <option value="bloqueado">Bloqueado</option>
-              <option value="inactivo">Inactivo / Cesado</option>
-            </select>
-            <select className="input" value={filtroModalidad} onChange={e=>setFiltroModalidad(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todas las modalidades</option>
-              <option value="planilla">Planilla</option>
-              <option value="honorarios">Honorarios</option>
-            </select>
-            <ColumnFilter columns={COLUMNAS_DEFAULT_OPS} visibleCols={visibleCols} onChange={setVisibleCols} />
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr>
-                {visibleCols.includes('codigo') && <th>Código</th>}
-                {visibleCols.includes('tecnico') && <th>Técnico</th>}
-                {mostrarBadgeSociedadPersonal && <th>Sociedad</th>}
-                {visibleCols.includes('cargo') && <th>Cargo</th>}
-                {visibleCols.includes('unidad') && <th>Unidad organizacional</th>}
-                {visibleCols.includes('sede') && <th>Sede</th>}
-                {visibleCols.includes('turno') && <th>Turno</th>}
-                {visibleCols.includes('jornada') && <th>Jornada</th>}
-                {visibleCols.includes('contrato') && <th>Contrato</th>}
-                {visibleCols.includes('modalidad') && <th>Modalidad</th>}
-                {visibleCols.includes('vacaciones') && <th>Vacaciones Disp.</th>}
-                {visibleCols.includes('estado') && <th>Estado</th>}
-                {visibleCols.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
-              </tr></thead>
-              <tbody>
-                {personal.length === 0 && <tr><td colSpan={12 + (mostrarBadgeSociedadPersonal ? 1 : 0)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal operativo registrado.</td></tr>}
-                {personal.filter(p => {
-                  if (filtroEstado && p.estado !== filtroEstado) return false;
-                  if (filtroModalidad) {
-                    const esHon = esModalidadHonorarios(p);
-                    if (filtroModalidad === 'honorarios' && !esHon) return false;
-                    if (filtroModalidad === 'planilla' && esHon) return false;
-                  }
-                  if (filtroPersonal) {
-                    const q = filtroPersonal.toLowerCase();
-                    if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false;
-                  }
-                  return true;
-                }).map(p => {
-                  const esHon = esModalidadHonorarios(p);
-                  const turnoNombre = workerTurno(turnosOptions, p).nombre;
-                  const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
-                  const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
-                  return (
-                    <tr key={p.id} className="hover-row" style={{cursor:'pointer'}} onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>
-                      {visibleCols.includes('codigo') && <td className="mono text-muted">{p.codigo || '—'}</td>}
-                      {visibleCols.includes('tecnico') && <td>
-                        <div className="row">
-                          <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                          <div>
-                            <strong>{p.nombre}</strong>
-                            <div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div>
-                            {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && (
-                              <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>}
-                      {mostrarBadgeSociedadPersonal && <td>
-                        <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
-                          {(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => (
-                            <SociedadBadge key={sociedadId} sociedadId={sociedadId} />
-                          ))}
-                          {resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="badge badge-orange">Sin contrato vigente</span>}
-                        </div>
-                      </td>}
-                      {visibleCols.includes('cargo') && <td>{p.cargo}</td>}
-                      {visibleCols.includes('unidad') && <td>{resolverUnidadOrganizacional(p) || <span className="text-subtle">Sin posición</span>}</td>}
-                      {visibleCols.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
-                      {visibleCols.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnoNombre || 'Sin turno'}</span>}</td>}
-                      {visibleCols.includes('jornada') && <td><span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></td>}
-                      {visibleCols.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`} style={{fontSize:11}}>{contratoInfoFila.texto}</span>}</td>}
-                      {visibleCols.includes('modalidad') && <td><span className={'badge '+(esHon ? 'badge-gray' : 'badge-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></td>}
-                      {visibleCols.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</td>}
-                      {visibleCols.includes('estado') && <td>
-                        <span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span>
-                        {!esHon && !p.sede && !p.turno_id && <span className="badge badge-gray" style={{fontSize:10, marginLeft:4}}>Ficha incompleta</span>}
-                      </td>}
-                      {visibleCols.includes('acciones') && <td>
-                        <div style={{display:'flex', gap:4, justifyContent:'flex-end'}} onClick={e => e.stopPropagation()}>
-                          <button className="btn btn-sm btn-ghost" onClick={() => { setSelTecnico(p); setFichaTab('ficha'); }}>Ver ficha</button>
-                          <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={() => abrirEditarTecnico(p)}>{I.edit}</button>
-                          <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
-                        </div>
-                      </td>}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-
-      {tab === 'reportes' && (
-        <div style={{display:'grid', gap:24}}>
-          <div className="card">
-            <div className="card-head"><h3>Headcount por Especialidad</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {personal.length} técnicos</span></div>
-            {Object.keys(porEspecialidad).length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos.</div>
-            ) : (
-              <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
-                {Object.entries(porEspecialidad).sort((a,b)=>b[1]-a[1]).map(([esp, cnt]) => (
-                  <div key={esp} style={{display:'grid', gridTemplateColumns:'160px 1fr 40px', gap:12, alignItems:'center'}}>
-                    <span style={{fontSize:13, fontWeight:500}}>{esp}</span>
-                    <div style={{background:'var(--bg-subtle)', borderRadius:4, height:10}}>
-                      <div style={{width:Math.round(cnt/maxEsp*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
-                    </div>
-                    <span style={{fontSize:13, fontWeight:700, textAlign:'right'}}>{cnt}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{padding:'0 20px 16px', display:'flex', gap:24, fontSize:12, color:'var(--fg-subtle)'}}>
-              <span>Planilla: <strong>{countPlanilla}</strong></span>
-              <span>Honorarios: <strong>{countHonorarios}</strong></span>
+      <div className="dx-personal">
+        <div className="dx-personal-in">
+          <header className="dx-personal-top">
+            <div><div className="dx-personal-eyebrow">RRHH</div><h1 className="dx-personal-title">Personal Operativo</h1><p className="dx-personal-sub">{operativosActivos} técnicos activos</p></div>
+            <div className="dx-personal-head-actions">
+              <PersonalOperativoAcciones columnas={COLUMNAS_DEFAULT_OPS} visibleCols={visibleCols} setVisibleCols={setVisibleCols} descargarExcel={descargarPersonalOperativoExcel} abrirCargaMasiva={() => setShowCargaMasivaOp(true)} abrirTiposDocumento={() => setShowTiposDocumentoRRHH(true)} abrirRequisitos={() => setShowRequisitosRRHH(true)} />
+              <button type="button" className="dx-personal-btn is-primary" data-local-form="true" onClick={abrirNuevoTecnico} disabled={!turnosOptions.length}>{I.plus} Nuevo Colaborador</button>
             </div>
+          </header>
+          {!turnosOptions.length && <p className="dx-personal-warn">Crea un turno en Turnos y Horarios para habilitar esta opción.</p>}
+
+          <section className="dx-personal-kpis" aria-label="Resumen de personal operativo">
+            <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Técnicos activos</span><span className="dx-personal-ico is-cyan">{I.users}</span></div><strong className="dx-personal-kpi-val">{operativosActivos}</strong><span className="dx-personal-kpi-note">de {personal.length} registrados</span></div>
+            <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Habilitación crítica</span><span className={'dx-personal-ico '+(kpiDocumental.vencidos + kpiDocumental.faltan > 0 ? (kpiDocumental.vencidos > 0 ? 'is-red' : 'is-amber') : 'is-green')}>{I.shield}</span></div><strong className={'dx-personal-kpi-val '+(kpiDocumental.vencidos > 0 ? 'is-red' : kpiDocumental.faltan > 0 ? 'is-amber' : '')}>{kpiDocumental.vencidos + kpiDocumental.faltan}</strong><span className="dx-personal-kpi-note">Documentos vencidos o faltantes</span></div>
+            <div className="dx-personal-kpi is-amber"><div className="dx-personal-kpi-top"><span>Contratos por vencer</span><span className="dx-personal-ico is-amber">{I.alert}</span></div><strong className="dx-personal-kpi-val">{contratosVencerOp.length}</strong><span className="dx-personal-kpi-note">Próximos 30 días</span></div>
+            <div className="dx-personal-kpi is-red"><div className="dx-personal-kpi-top"><span>Docs vencidos / por vencer</span><span className="dx-personal-ico is-red">{I.shield}</span></div><strong className="dx-personal-kpi-val">{docsVencidosPorVencerOp}</strong><span className="dx-personal-kpi-note">Vencidos, por vencer o rechazados</span></div>
+          </section>
+
+          <div className="dx-personal-tabs" role="tablist" aria-label="Secciones de personal operativo">
+            <button type="button" role="tab" aria-selected={tab === 'personal'} className={'dx-personal-tab'+(tab === 'personal' ? ' is-on' : '')} onClick={() => setTab('personal')}>Personal</button>
+            <button type="button" role="tab" aria-selected={tab === 'reportes'} className={'dx-personal-tab'+(tab === 'reportes' ? ' is-on' : '')} onClick={() => setTab('reportes')}>Reportes</button>
           </div>
 
-          <div className="card">
-            <div className="card-head"><h3>Técnicos sin Turno Asignado</h3>{sinTurno.length > 0 && <span className="badge badge-orange">{sinTurno.length}</span>}</div>
-            {sinTurno.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Todos los técnicos tienen turno asignado.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Cargo</th><th>Especialidad</th><th>Modalidad</th></tr></thead>
-                <tbody>
-                  {sinTurno.map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{p.nombre}</td>
-                      <td>{p.cargo}</td>
-                      <td>{p.especialidad}</td>
-                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {tab === 'personal' && <section className="dx-personal-card" aria-label="Listado de personal">
+            <div className="dx-personal-toolbar">
+              <h2>Personal</h2><span className="dx-personal-count">{personal.length} registros</span>
+              <label className="dx-personal-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar por nombre o cargo…" value={filtroPersonal} onChange={e => setFiltroPersonal(e.target.value)} aria-label="Buscar personal por nombre o cargo" /></label>
+              <select className="dx-personal-select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado"><option value="">Todos los estados</option><option value="activo">Activo (Disponible)</option><option value="no_disponible">No Disponible</option><option value="bloqueado">Bloqueado</option><option value="inactivo">Inactivo / Cesado</option></select>
+              <select className="dx-personal-select" value={filtroModalidad} onChange={e => setFiltroModalidad(e.target.value)} aria-label="Filtrar por modalidad"><option value="">Todas las modalidades</option><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select>
+            </div>
+            <div className="dx-personal-table-head" style={{gridTemplateColumns:['minmax(220px, 2fr)', ...['cargo','unidad','sede','turno','jornada','contrato','modalidad','vacaciones','estado','acciones'].filter(key => visibleCols.includes(key)).map(key => key === 'acciones' ? '112px' : 'minmax(0, 1fr)')].join(' ')}}>
+              <span>Técnico</span>{[['cargo','Cargo'],['unidad','Unidad organizacional'],['sede','Sede'],['turno','Turno'],['jornada','Jornada'],['contrato','Contrato'],['modalidad','Modalidad'],['vacaciones','Vacaciones'],['estado','Estado'],['acciones','Acciones']].filter(([key]) => visibleCols.includes(key)).map(([key,label]) => <span key={key}>{label}</span>)}
+            </div>
+            {personal.length === 0 ? <div className="dx-personal-empty">Sin personal operativo registrado.</div> : personal.filter(p => {
+              if (filtroEstado && p.estado !== filtroEstado) return false;
+              if (filtroModalidad) { const esHon = esModalidadHonorarios(p); if (filtroModalidad === 'honorarios' && !esHon) return false; if (filtroModalidad === 'planilla' && esHon) return false; }
+              if (filtroPersonal) { const q = filtroPersonal.toLowerCase(); if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false; }
+              return true;
+            }).map(p => {
+              const esHon = esModalidadHonorarios(p);
+              const turnoNombre = workerTurno(turnosOptions, p).nombre;
+              const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
+              const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
+              const abrirFicha = () => { setSelTecnico(p); setFichaTab('ficha'); };
+              const campos = ['codigo', 'cargo', 'unidad', 'sede', 'turno', 'jornada', 'contrato', 'modalidad', 'vacaciones', 'estado', 'acciones'];
+              const visibles = campos.filter(key => key !== 'codigo' && visibleCols.includes(key));
+              const gridTemplateColumns = ['minmax(220px, 2fr)', ...visibles.map(key => key === 'acciones' ? '112px' : 'minmax(0, 1fr)')].join(' ');
+              return <div key={p.id} className="dx-personal-row" style={{gridTemplateColumns}} role="group" tabIndex={0} aria-label={`Abrir ficha de ${p.nombre}`} onClick={abrirFicha} onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFicha(); } }}>
+                <div className="dx-personal-cell dx-personal-who"><span className="dx-personal-avatar">{p.nombre.split(' ').map(x => x[0]).slice(0, 2).join('')}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">DNI {p.dni || p.documento || '—'}{visibleCols.includes('codigo') && <> · <span className="dx-personal-mono">{p.codigo || '—'}</span></>}</span>
+                  {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}
+                  {mostrarBadgeSociedadPersonal && <span className="dx-personal-pills">{(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => <SociedadBadge key={sociedadId} sociedadId={sociedadId} />)}{resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}</span>}
+                </div></div>
+                {visibleCols.includes('cargo') && <div className="dx-personal-cell"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo || '—'}</span></div>}
+                {visibleCols.includes('unidad') && <div className="dx-personal-cell"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{resolverUnidadOrganizacional(p) || <span className="dx-personal-muted">Sin posición</span>}</span></div>}
+                {visibleCols.includes('sede') && <div className="dx-personal-cell"><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray">{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
+                {visibleCols.includes('turno') && <div className="dx-personal-cell"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{esHon ? '—' : turnoNombre || 'Sin turno'}</span></div>}
+                {visibleCols.includes('jornada') && <div className="dx-personal-cell"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></div>}
+                {visibleCols.includes('contrato') && <div className="dx-personal-cell"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))}>{contratoInfoFila.texto}</span>}</div>}
+                {visibleCols.includes('modalidad') && <div className="dx-personal-cell"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(esHon ? 'is-gray' : 'is-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></div>}
+                {visibleCols.includes('vacaciones') && <div className="dx-personal-cell"><span className="dx-personal-label">Vacaciones</span><span className="dx-personal-t1">{esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</span></div>}
+                {visibleCols.includes('estado') && <div className="dx-personal-cell"><span className="dx-personal-label">Estado</span><span className="dx-personal-pills"><span className={'dx-personal-pill '+(badgeToPill(estBadge(p.estado)))}><i />{p.estado.toUpperCase()}</span>{!esHon && !p.sede && !p.turno_id && <span className="dx-personal-pill is-gray">Ficha incompleta</span>}</span></div>}
+                {visibleCols.includes('acciones') && <div className="dx-personal-cell dx-personal-row-actions" onClick={e => e.stopPropagation()}>
+                  <button type="button" className="dx-personal-icon-btn" aria-label={`Ver ficha de ${p.nombre}`} title="Ver ficha" onClick={abrirFicha}><span aria-hidden="true">{I.eye}</span></button>
+                  <button type="button" className="dx-personal-icon-btn" aria-label={`Editar a ${p.nombre}`} title="Editar colaborador" onClick={() => abrirEditarTecnico(p)}><span aria-hidden="true">{I.edit}</span></button>
+                  <button type="button" className="dx-personal-icon-btn is-delete" aria-label={`Eliminar a ${p.nombre}`} title="Eliminar colaborador" onClick={() => eliminarTecnico(p)}><span aria-hidden="true">{I.trash}</span></button>
+                </div>}
+              </div>;
+            })}
+          </section>}
 
-          <div className="card">
-            <div className="card-head"><h3>Documentos por Vencer (≤30 días)</h3>{docsPorVencer.length > 0 && <span className="badge badge-orange">{docsPorVencer.length} docs</span>}</div>
-            {docsPorVencer.length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin documentos por vencer próximamente.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Documento</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {docsPorVencer.map((d, i) => (
-                    <tr key={i}>
-                      <td style={{fontWeight:600}}>{d.tecnico}</td>
-                      <td style={{textTransform:'capitalize'}}>{d.doc}</td>
-                      <td><span className="badge badge-orange">Por vencer</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-head"><h3>Ranking por Costo/Hora — Top técnicos activos</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Partes diarios disponibles en módulo Partes</span></div>
-            {personal.filter(p=>p.estado!=='inactivo').length === 0 ? (
-              <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin datos de personal activo.</div>
-            ) : (
-              <table className="tbl">
-                <thead><tr><th>Técnico</th><th>Especialidad</th><th>Costo/Hora</th><th>Modalidad</th><th>Estado</th></tr></thead>
-                <tbody>
-                  {[...personal].filter(p=>p.estado!=='inactivo').sort((a,b)=>Number(b.tarifa_hora??b.costo??b.costo_hora_real??0)-Number(a.tarifa_hora??a.costo??a.costo_hora_real??0)).slice(0,10).map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{p.nombre}</td>
-                      <td>{p.especialidad}</td>
-                      <td className="num" style={{fontWeight:700}}>{money(p.tarifa_hora??p.costo??p.costo_hora_real??0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr</td>
-                      <td><span className={'badge '+(esModalidadHonorarios(p)?'badge-gray':'badge-green')}>{esModalidadHonorarios(p)?'Honorarios':'Planilla'}</span></td>
-                      <td><span className={'badge '+estBadge(p.estado)}>{p.estado.toUpperCase()}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {tab === 'reportes' && <div className="dx-personal-reports">
+            <section className="dx-personal-card" aria-label="Headcount por especialidad">
+              <div className="dx-personal-report-head"><h2>Headcount por Especialidad</h2><span className="dx-personal-count">Total: {personal.length} técnicos</span></div>
+              {Object.keys(porEspecialidad).length === 0 ? <div className="dx-personal-report-empty">Sin datos.</div> : <div className="dx-personal-bars">{Object.entries(porEspecialidad).sort((a, b) => b[1] - a[1]).map(([esp, cnt]) => <div key={esp} className="dx-personal-bar-row"><span>{esp}</span><div className="dx-personal-track"><div className="dx-personal-fill" style={{width:Math.round(cnt / maxEsp * 100) + '%'}} /></div><b>{cnt}</b></div>)}</div>}
+              <div className="dx-personal-report-foot"><span>Planilla: <b>{countPlanilla}</b></span><span>Honorarios: <b>{countHonorarios}</b></span></div>
+            </section>
+            <section className="dx-personal-card" aria-label="Técnicos sin turno asignado"><div className="dx-personal-report-head"><h2>Técnicos sin Turno Asignado</h2>{sinTurno.length > 0 && <span className="dx-personal-pill is-amber">{sinTurno.length}</span>}</div>
+              {sinTurno.length === 0 ? <div className="dx-personal-report-empty">Todos los técnicos tienen turno asignado.</div> : sinTurno.map(p => <div className="dx-personal-list-row" key={p.id}><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{p.cargo} · {p.especialidad}</span></div><span className={'dx-personal-pill '+(esModalidadHonorarios(p) ? 'is-gray' : 'is-green')}>{esModalidadHonorarios(p) ? 'Honorarios' : 'Planilla'}</span></div>)}
+            </section>
+            <section className="dx-personal-card" aria-label="Documentos por vencer"><div className="dx-personal-report-head"><h2>Documentos por Vencer (≤30 días)</h2>{docsPorVencer.length > 0 && <span className="dx-personal-pill is-amber">{docsPorVencer.length} docs</span>}</div>
+              {docsPorVencer.length === 0 ? <div className="dx-personal-report-empty">Sin documentos por vencer próximamente.</div> : docsPorVencer.map((d, i) => <div className="dx-personal-list-row" key={i}><div className="dx-personal-name"><strong className="dx-personal-report-doc">{d.doc}</strong><span className="dx-personal-meta">{d.tecnico}</span></div><span className="dx-personal-pill is-amber"><i />Por vencer</span></div>)}
+            </section>
+            <section className="dx-personal-card" aria-label="Ranking por costo por hora"><div className="dx-personal-report-head"><h2>Ranking por Costo/Hora — Top técnicos activos</h2><span className="dx-personal-count">Partes diarios disponibles en módulo Partes</span></div>
+              {personal.filter(p => p.estado !== 'inactivo').length === 0 ? <div className="dx-personal-report-empty">Sin datos de personal activo.</div> : [...personal].filter(p => p.estado !== 'inactivo').sort((a, b) => Number(b.tarifa_hora ?? b.costo ?? b.costo_hora_real ?? 0) - Number(a.tarifa_hora ?? a.costo ?? a.costo_hora_real ?? 0)).slice(0, 10).map((p, idx) => <div className="dx-personal-list-row" key={p.id}><div className="dx-personal-rank"><span className="dx-personal-rank-n">{idx + 1}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{p.especialidad} · <span className={'dx-personal-status-text '+(badgeToPill(estBadge(p.estado)))}>{p.estado.toUpperCase()}</span></span></div></div><div className="dx-personal-cost">{money(p.tarifa_hora ?? p.costo ?? p.costo_hora_real ?? 0, p.moneda === 'USD' ? 'US$' : 'S/')}/hr<span className={'dx-personal-pill '+(esModalidadHonorarios(p) ? 'is-gray' : 'is-green')}>{esModalidadHonorarios(p) ? 'Honorarios' : 'Planilla'}</span></div></div>)}
+            </section>
+          </div>}
         </div>
-      )}
+      </div>
 
       {panelAlta && <>
         <div className="side-panel-backdrop" onClick={cerrarPanelTecnico}/>
