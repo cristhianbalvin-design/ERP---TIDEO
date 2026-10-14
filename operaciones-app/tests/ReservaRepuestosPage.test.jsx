@@ -50,6 +50,23 @@ describe('ReservaRepuestosPage', () => {
     expect(root.root.findAll(node => node.children?.join('') === 'SOLPE en curso')).toHaveLength(0);
   });
 
+  it('marca cantidad central por trasladar a la mina y omite periferia o OT sin mina', async () => {
+    const lineaConCentral = { ...lineaBase, origenes: [{ almacen_clase: 'central', pendiente: 2 }] };
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [lineaConCentral] }));
+    const conMina = await renderPage(); await openDetail(conMina);
+    expect(conMina.root.findAll(node => node.props.className === 'dx-ui-pill is-amber' && node.children.join('').includes('Por trasladar a Mina Norte: 2 und'))).toHaveLength(1);
+    conMina.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: null, mina_nombre: null, lineas: [lineaConCentral] }));
+    const sinMina = await renderPage(); await openDetail(sinMina);
+    expect(sinMina.root.findAll(node => node.children?.join('').includes('Por trasladar a'))).toHaveLength(0);
+    sinMina.unmount();
+
+    mocks.listar.mockResolvedValue(resultado({ ...otBase, mina_id: 'mina-1', mina_nombre: 'Mina Norte', lineas: [{ ...lineaBase, origenes: [{ almacen_clase: 'periferico', almacen_mina_id: 'mina-1', pendiente: 2 }] }] }));
+    const periferico = await renderPage(); await openDetail(periferico);
+    expect(periferico.root.findAll(node => node.children?.join('').includes('Por trasladar a'))).toHaveLength(0);
+  });
+
   it('muestra solo la etiqueta de líneas en el chip y conserva el conteo del encabezado', async () => {
     const root = await renderPage(); await openDetail(root);
     const chipResumen = root.root.find(node => node.props.className === 'dx-ui-summary').findAllByType('span')[0];

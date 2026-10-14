@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { etiquetaEstadoLinea, tonoEstadoLinea, estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoOT, validarCantidadReserva, validarLiberacion, textoUbicacionOrigen, mapearErrorReserva, puedeOperarLinea } from '../src/zahory-mock/pages/reservasRepuestosLogic.js';
+import { cantidadPorTrasladar, etiquetaEstadoLinea, tonoEstadoLinea, estadoAgregadoOT, etiquetaConteoLineas, etiquetaEstadoOT, validarCantidadReserva, validarLiberacion, textoUbicacionOrigen, mapearErrorReserva, puedeOperarLinea } from '../src/zahory-mock/pages/reservasRepuestosLogic.js';
 
 describe('reservasRepuestosLogic', () => {
+  it('suma solo pendientes positivos de almacenes centrales para OT con mina', () => {
+    const ot = { mina_id: 'mina-1' };
+    expect(cantidadPorTrasladar(ot, { origenes: [{ almacen_clase: 'central', pendiente: 2 }, { almacen_clase: 'central', pendiente: '1.5' }] })).toBe(3.5);
+    expect(cantidadPorTrasladar({ mina_id: null }, { origenes: [{ almacen_clase: 'central', pendiente: 2 }] })).toBe(0);
+    expect(cantidadPorTrasladar(ot, { origenes: [{ almacen_clase: 'periferico', pendiente: 2 }] })).toBe(0);
+    expect(cantidadPorTrasladar(ot, { origenes: [{ pendiente: 2 }] })).toBe(0);
+    expect(cantidadPorTrasladar(ot, { origenes: [{ almacen_clase: 'central', pendiente: 0 }, { almacen_clase: 'central', pendiente: -1 }, { almacen_clase: 'central', pendiente: 'x' }] })).toBe(0);
+    expect(cantidadPorTrasladar(ot, { origenes: [{ almacen_clase: 'periferico', pendiente: 4 }, { almacen_clase: 'central', pendiente: 3 }] })).toBe(3);
+  });
   it('etiqueta y tono traducen estados de reserva', () => {
     expect(etiquetaEstadoLinea('despachado_parcial')).toBe('Despachado parcial');
     expect(etiquetaEstadoLinea('reservado_parcial_solpe', { reservado: 0 })).toBe('Sin stock · SOLPE en curso');
