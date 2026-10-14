@@ -182,3 +182,39 @@
 @media (prefers-reduced-motion: reduce) {
   .dx-personal *, .dx-personal *::before, .dx-personal *::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; }
 }
+
+/* RRHH Administrativo: alerta documental, pills de sociedad y filas de reporte */
+.dx-personal-menu button > span[aria-hidden="true"] { display:inline-flex; width:18px; height:18px; flex:none; align-items:center; justify-content:center; margin-right:8px; }
+.dx-personal-menu button > span[aria-hidden="true"] svg { width:16px; height:16px; }
+.dx-personal-alert { display:flex; min-width:0; gap:12px; margin:0 0 16px; padding:14px 16px; border:1px solid var(--dx-personal-red-fg); border-radius:12px; background:var(--dx-personal-red-bg); color:var(--dx-personal-ink); }
+.dx-personal-alert-ico { display:flex; width:24px; height:24px; flex:none; align-items:center; justify-content:center; color:var(--dx-personal-red-fg); }
+.dx-personal-alert-ico svg { width:20px; height:20px; stroke-width:2; }
+.dx-personal-alert-content { min-width:0; flex:1; }
+.dx-personal-alert-content h2 { margin:0 0 8px; color:var(--dx-personal-red-fg); font:700 14px/1.4 'Sora',sans-serif; }
+.dx-personal-alert-chips { display:flex; min-width:0; align-items:center; gap:6px; flex-wrap:wrap; }
+.dx-personal-alert-chip { display:block; min-width:0; max-width:min(100%,360px); overflow:hidden; padding:4px 9px; border:1px solid color-mix(in srgb,var(--dx-personal-red-fg) 24%,transparent); border-radius:999px; background:var(--dx-personal-card); color:var(--dx-personal-red-fg); font-size:12px; font-weight:600; }
+.dx-personal-alert-chip > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dx-personal-alert-more { min-height:28px; padding:3px 9px; border:1px solid var(--dx-personal-red-fg); border-radius:999px; background:var(--dx-personal-card); color:var(--dx-personal-red-fg); font-size:12px; font-weight:700; }
+.dx-personal-alert-more:hover { background:var(--dx-personal-hover); }
+.dx-personal-society-pills { margin-top:4px; }
+.dx-personal-progress { display:block; width:100%; height:10px; overflow:hidden; appearance:none; border:0; border-radius:999px; background:var(--dx-personal-gray-bg); }
+.dx-personal-progress::-webkit-progress-bar { border-radius:999px; background:var(--dx-personal-gray-bg); }
+.dx-personal-progress::-webkit-progress-value { border-radius:999px; background:var(--dx-personal-cyan); }
+.dx-personal-progress::-moz-progress-bar { border-radius:999px; background:var(--dx-personal-cyan); }
+.dx-personal-report-row { display:grid; grid-template-columns:minmax(160px,1fr) auto auto auto; }
+.dx-personal-report-row > .dx-personal-name { min-width:0; }
+.dx-personal-report-row > .dx-personal-pill { justify-self:start; }
+.dx-personal-report-date, .dx-personal-report-number { color:var(--dx-personal-gray); font-size:12px; white-space:nowrap; }
+.dx-personal-request-row { grid-template-columns:minmax(0,1fr) auto; }
+.dx-personal-request-row .dx-personal-meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@container (max-width:959px) {
+  .dx-personal-alert { padding:12px; }
+  .dx-personal-report-row { grid-template-columns:minmax(0,1fr) auto; }
+  .dx-personal-report-row > .dx-personal-name { grid-column:1/-1; }
+  .dx-personal-report-date, .dx-personal-report-number { white-space:normal; }
+}
+@container (max-width:520px) {
+  .dx-personal-alert { gap:8px; }
+  .dx-personal-alert-chip { max-width:100%; }
+  .dx-personal-report-row { column-gap:8px; row-gap:6px; padding-inline:12px; }
+}
