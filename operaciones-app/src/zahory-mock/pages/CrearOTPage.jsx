@@ -4,6 +4,8 @@ import { ZAHORY_SAC_DATA } from '../data.js';
 import { getSupabaseClient } from '../../lib/supabaseClient.js';
 import { MaterialAutocomplete } from './MaterialAutocomplete.jsx';
 import { useSesionOperativa } from '../../lib/sesionOperativa.js';
+import { listarProyectosOT } from '../../services/minasService.js';
+import { filtrarProyectosPorCliente } from './proyectosOtLogic.js';
 import {
   NON_BILLABLE_CARGOS,
   getBlockedCargoReason,
@@ -707,6 +709,8 @@ export const CrearOTPage = ({ onNav }) => {
   const [errorDBS, setErrorDBS] = useState(null);
   const [horometroSugerido, setHorometroSugerido] = useState(null);
   const [clientesReales, setClientesReales] = useState([]);
+  const [proyectosOt, setProyectosOt] = useState([]);
+  const [cargandoProyectosOt, setCargandoProyectosOt] = useState(false);
   const [osClientesReales, setOsClientesReales] = useState([]);
   const [contratosAlquilerReales, setContratosAlquilerReales] = useState([]);
   const [centrosCostoReales, setCentrosCostoReales] = useState([]);
@@ -745,6 +749,7 @@ export const CrearOTPage = ({ onNav }) => {
   const [form, setForm] = useState({
     lineaNegocio: '',
     clienteId: '',
+    proyectoId: '',
     contratoId: '',
     equipo: '',
     objeto_costo_id: null,
@@ -762,6 +767,18 @@ export const CrearOTPage = ({ onNav }) => {
     centro_beneficio_id: null,
     horometroApertura: '',
   });
+  const proyectosOtCliente = useMemo(() => filtrarProyectosPorCliente(proyectosOt, form.clienteId), [proyectosOt, form.clienteId]);
+
+  useEffect(() => {
+    let vigente = true;
+    if (!sesionOperativa.empresaId) { setProyectosOt([]); return () => { vigente = false; }; }
+    setCargandoProyectosOt(true);
+    listarProyectosOT({ empresa_id: sesionOperativa.empresaId })
+      .then(data => { if (vigente) setProyectosOt(Array.isArray(data) ? data : []); })
+      .catch(() => { if (vigente) setProyectosOt([]); })
+      .finally(() => { if (vigente) setCargandoProyectosOt(false); });
+    return () => { vigente = false; };
+  }, [sesionOperativa.empresaId]);
 
   const irAPaso = (paso) => {
     setPasoActual(paso);
@@ -1434,7 +1451,7 @@ export const CrearOTPage = ({ onNav }) => {
     setPropietarioEquipoOS('cliente');
     setForm(f => ({
       ...f, objeto_costo_tipo: tipo, objeto_costo_id: null,
-      clienteId: '', contratoId: '', equipo: '',
+      clienteId: '', proyectoId: '', contratoId: '', equipo: '',
       unidadMinera: '', centro_costo: null, centro_beneficio_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
@@ -1444,6 +1461,7 @@ export const CrearOTPage = ({ onNav }) => {
   const setCliente = (clienteId) => {
     setForm(f => ({
       ...f, clienteId, contratoId: '', equipo: '',
+      proyectoId: '',
       unidadMinera: '', centro_costo: null, centro_beneficio_id: null, objeto_costo_id: null, horometroApertura: '',
     }));
     setHorometroSugerido(null);
@@ -1635,6 +1653,7 @@ export const CrearOTPage = ({ onNav }) => {
       contrato_alquiler_id: objetoCostoTipo === 'contrato' ? form.contratoId : null,
       equipo_id: ['contrato', 'equipo_interno', 'os_cliente'].includes(objetoCostoTipo) ? form.equipo : null,
       cuenta_id: form.clienteId || null,
+      proyecto_id: form.proyectoId || null,
       // ordenes_trabajo.servicio es NOT NULL y el formulario no tiene un campo
       // separado: la descripción técnica es el servicio registrado en esta fase.
       servicio: form.descripcion.trim(),
@@ -1974,6 +1993,13 @@ export const CrearOTPage = ({ onNav }) => {
                       {fieldErrors.clienteId?.[0] && (
                         <div style={{ fontSize: 11, color: '#E53935', marginTop: 4 }}>{fieldErrors.clienteId[0]}</div>
                       )}
+                    </div>
+                    <div className="ot-form-field">
+                      <div className="label" style={{ fontSize: 12 }}>Proyecto (opcional)</div>
+                      <select className="input" value={form.proyectoId} disabled={!form.clienteId || cargandoProyectosOt || !sesionOperativa.permiteEscritura} onChange={e => set('proyectoId', e.target.value)} style={{ marginTop: 4 }}>
+                        <option value="">{!form.clienteId ? 'Seleccione primero un cliente' : cargandoProyectosOt ? 'Cargando proyectos…' : 'Sin proyecto'}</option>
+                        {proyectosOtCliente.map(proyecto => <option key={proyecto.id} value={proyecto.id}>{proyecto.mina_nombre ? `${proyecto.mina_nombre} · ` : ''}{proyecto.codigo} · {proyecto.nombre}</option>)}
+                      </select>
                     </div>
                     <div className="ot-form-field">
                       <div className="label" style={{ fontSize: 12 }}>
