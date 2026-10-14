@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Hoja de Costeo: paso 4 resumen y precio</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./dx.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div class="shell">
+  <div class="modal">
+    <div class="mh">
+      <div>
+        <div class="l"><h1>Costeo · Cilindro hidráulico CH-120</h1><span class="bdg gr">Aprobada</span><span class="bdg cy">Cotización especial</span></div>
+        <div class="s">Hoja HC-2026-0147 · Minera Andes Sur S.A. · Aprobada por Gerencia Comercial</div>
+      </div>
+      <button type="button" class="xbtn" aria-label="Cerrar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#1A2B4A" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2L2 12"/></svg></button>
+    </div>
+    <div class="sumbar">
+      <div class="sc"><b>S/ 4,861.10</b><span>costo directo</span></div>
+      <div class="sc"><b>8,0 %</b><span>gasto administrativo</span></div>
+      <div class="sc"><b>20,0 %</b><span>margen</span></div>
+      <div class="sp"></div>
+      <div class="sc hi"><b>S/ 7,966.81</b><span>precio con IGV</span></div>
+    </div>
+    <div class="stp w4">
+      <div class="dn"><b>✓</b><span>Trabajos</span><small>S/ 2,016.50</small></div>
+      <div class="dn"><b>✓</b><span>Materiales</span><small>S/ 1,514.60</small></div>
+      <div class="dn"><b>✓</b><span>Terceros y logística</span><small>S/ 1,330.00</small></div>
+      <div class="on"><b>4</b><span>Resumen y precio</span><small>S/ 7,966.81</small></div>
+    </div>
+
+    <div class="body">
+      <div class="pgrid" style="padding:0;grid-template-columns:minmax(0,1fr) 340px">
+        <section class="sec">
+          <div class="sech"><span class="nm">Costo por trabajo</span><div class="sp"></div><span class="hint">Mano de obra, máquina y materiales de cada trabajo</span></div>
+          <table class="tbl">
+            <thead><tr><th>Trabajo</th><th class="r">Mano de obra</th><th class="r">Máquina</th><th class="r">Materiales</th><th class="r">Total</th></tr></thead>
+            <tbody>
+              <tr><td><b style="color:#1A2B4A">Tapa</b><br><span class="hint">Fabricación de tapa</span></td><td class="r">312.00</td><td class="r">271.50</td><td class="r">214.60</td><td class="r"><b style="color:#1A2B4A">798.10</b></td></tr>
+              <tr><td><b style="color:#1A2B4A">Camisa</b><br><span class="hint">Fabricación de camisa</span></td><td class="r">586.00</td><td class="r">573.00</td><td class="r">960.00</td><td class="r"><b style="color:#1A2B4A">2,119.00</b></td></tr>
+              <tr><td><b style="color:#1A2B4A">Vástago</b><br><span class="hint">Sin actividad</span></td><td class="r">164.00</td><td class="r">110.00</td><td class="r">340.00</td><td class="r"><b style="color:#1A2B4A">614.00</b></td></tr>
+              <tr><td><b style="color:#1A2B4A">Terceros y logística</b></td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r"><b style="color:#1A2B4A">1,330.00</b></td></tr>
+              <tr style="background:#F8F9FA"><td><b style="color:#1A2B4A">Costo directo</b></td><td class="r"><b>1,062.00</b></td><td class="r"><b>954.50</b></td><td class="r"><b>1,514.60</b></td><td class="r"><b style="color:#1A2B4A;font-size:15px">4,861.10</b></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="pbig">
+            <small>Precio sugerido con IGV</small>
+            <b>S/ 7,966.81</b>
+            <div class="prow"><span>Costo directo</span><b>S/ 4,861.10</b></div>
+            <div class="prow"><span>Gasto adm. (8 %)</span><b>S/ 540.12</b></div>
+            <div class="prow"><span>Margen (20 %)</span><b>S/ 1,350.31</b></div>
+            <div class="prow"><span>Precio sin IGV</span><b>S/ 6,751.53</b></div>
+            <div class="prow" style="border-bottom:0"><span>IGV (18 %)</span><b>S/ 1,215.28</b></div>
+          </div>
+          <div class="sec" style="padding:14px 16px">
+            <span class="lb" style="font-size:12px;font-weight:600;color:#6B7280;display:block;margin-bottom:8px">Camino a la cotización</span>
+            <div class="prow"><span>Borrador</span><span class="bdg gr">Listo</span></div>
+            <div class="prow"><span>En revisión</span><span class="bdg gr">Listo</span></div>
+            <div class="prow"><span>Aprobada</span><span class="bdg gr">Listo</span></div>
+            <div class="prow" style="border-bottom:0"><span>Cotización especial</span><span class="bdg am">Falta generarla</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="info">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#0B4F5A" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4M8 4.8v.2"/></svg>
+        <span>La hoja está aprobada y bloqueada. La cotización especial se genera con este precio y queda enlazada a la hoja.</span>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="warn" style="color:#14633A"><i style="background:#14633A"></i>Hoja aprobada, sin cambios</span>
+      <div class="sp"></div>
+      <div class="pr"><small>Precio con IGV</small><b>S/ 7,966.81</b></div>
+      <button type="button" class="b">‹ Terceros y logística</button>
+      <button type="button" class="b">Descargar PDF</button>
+      <button type="button" class="b p">Generar cotización especial</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
