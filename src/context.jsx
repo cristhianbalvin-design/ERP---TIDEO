@@ -291,11 +291,14 @@ const DICCIONARIO_COMERCIAL_DEFAULT = [
 
 function getInitialNavigation() {
   if (typeof window === 'undefined') return { pagina: 'dashboard', params: {} };
-  const hashPage = window.location.hash.replace(/^#\/?/, '').trim();
+  const [hashRoute = '', hashQuery = ''] = window.location.hash.replace(/^#\/?/, '').trim().split('?');
   const queryPage = new URLSearchParams(window.location.search).get('pantalla')?.trim();
   const savedPage = localStorage.getItem('tideo_active_page')?.trim();
-  const initial = normalizeDashboardRoute(hashPage || queryPage || savedPage || 'dashboard');
-  return { pagina: initial.pagina || 'dashboard', params: initial.pestana ? { pestana: initial.pestana } : {} };
+  const initial = normalizeDashboardRoute(hashRoute || queryPage || savedPage || 'dashboard');
+  return {
+    pagina: initial.pagina || 'dashboard',
+    params: { ...(initial.pestana ? { pestana: initial.pestana } : {}), ...Object.fromEntries(new URLSearchParams(hashQuery)) },
+  };
 }
 
 export function AppProvider({ children }) {
