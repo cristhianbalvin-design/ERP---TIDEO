@@ -129,7 +129,7 @@
 }
 @container (min-width:960px) and (max-width:1100px) {
   .dx-personal-table-head, .dx-personal-row { grid-template-columns:var(--dx-personal-cols-compact); }
-  .dx-personal-head-turno { display:none; }
+  .dx-personal-head-turno, .dx-personal-block-turno { display:none; }
   .dx-personal-row-actions .dx-personal-icon-btn { width:28px; height:28px; }
 }
 @container (max-width:959px) {
