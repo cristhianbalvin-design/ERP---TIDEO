@@ -25813,13 +25813,13 @@ function RRHH_Operativo() {
             </div>
             {(() => {
               const bloquesVisibles = [
-                {id:'tecnico', title:'Técnico', keys:['tecnico'], width:'minmax(0, 2.1fr)', compact:'minmax(0, 2fr)'},
-                {id:'cargo', title:'Cargo / unidad', keys:['cargo','unidad','sede'], width:'minmax(0, 1.4fr)', compact:'minmax(0, 1.3fr)'},
-                {id:'turno', title:'Turno / jornada', keys:['turno','jornada'], width:'minmax(0, 1.3fr)', compact:null},
-                {id:'contrato', title:'Contrato', keys:['contrato'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
-                {id:'vacaciones', title:'Vacaciones / modalidad', keys:['vacaciones','modalidad'], width:'minmax(0, .9fr)', compact:'minmax(0, .8fr)'},
-                {id:'estado', title:'Estado', keys:['estado'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
-                {id:'acciones', title:'Acciones', keys:['acciones'], width:'112px', compact:'100px'}
+                {id:'tecnico', title:'Técnico', keys:['tecnico'], width:'minmax(174px, 2.1fr)', compact:'minmax(174px, 2.1fr)'},
+                {id:'cargo', title:'Cargo / unidad', keys:['cargo','unidad','sede'], width:'minmax(150px, 1.4fr)', compact:'minmax(150px, 1.4fr)'},
+                {id:'turno', title:'Turno / jornada', keys:['turno','jornada'], width:'minmax(120px, 1.3fr)', compact:null},
+                {id:'contrato', title:'Contrato', keys:['contrato'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'vacaciones', title:'Vacaciones / modalidad', keys:['vacaciones','modalidad'], width:'minmax(150px, .9fr)', compact:'minmax(150px, .9fr)'},
+                {id:'estado', title:'Estado', keys:['estado'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'acciones', title:'Acciones', keys:['acciones'], width:'112px', compact:'112px'}
               ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
               const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
               const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
@@ -25839,13 +25839,13 @@ function RRHH_Operativo() {
               const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
               const abrirFicha = () => { setSelTecnico(p); setFichaTab('ficha'); };
               const bloquesVisibles = [
-                {id:'tecnico', keys:['tecnico'], width:'minmax(0, 2.1fr)', compact:'minmax(0, 2fr)'},
-                {id:'cargo', keys:['cargo','unidad','sede'], width:'minmax(0, 1.4fr)', compact:'minmax(0, 1.3fr)'},
-                {id:'turno', keys:['turno','jornada'], width:'minmax(0, 1.3fr)', compact:null},
-                {id:'contrato', keys:['contrato'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
-                {id:'vacaciones', keys:['vacaciones','modalidad'], width:'minmax(0, .9fr)', compact:'minmax(0, .8fr)'},
-                {id:'estado', keys:['estado'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
-                {id:'acciones', keys:['acciones'], width:'112px', compact:'100px'}
+                {id:'tecnico', keys:['tecnico'], width:'minmax(174px, 2.1fr)', compact:'minmax(174px, 2.1fr)'},
+                {id:'cargo', keys:['cargo','unidad','sede'], width:'minmax(150px, 1.4fr)', compact:'minmax(150px, 1.4fr)'},
+                {id:'turno', keys:['turno','jornada'], width:'minmax(120px, 1.3fr)', compact:null},
+                {id:'contrato', keys:['contrato'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'vacaciones', keys:['vacaciones','modalidad'], width:'minmax(150px, .9fr)', compact:'minmax(150px, .9fr)'},
+                {id:'estado', keys:['estado'], width:'minmax(132px, 1.1fr)', compact:'minmax(132px, 1.1fr)'},
+                {id:'acciones', keys:['acciones'], width:'112px', compact:'112px'}
               ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
               const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
               const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
@@ -25858,13 +25858,13 @@ function RRHH_Operativo() {
                 {visibleCols.some(key => ['cargo','unidad','sede'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-cargo">
                   {visibleCols.includes('cargo') && <div className="dx-personal-fragment"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo || '—'}</span></div>}
                   {visibleCols.includes('unidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{resolverUnidadOrganizacional(p) || <span className="dx-personal-muted">Sin posición</span>}</span></div>}
-                  {visibleCols.includes('sede') && <div className="dx-personal-fragment"><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray">{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
+                  {visibleCols.includes('sede') && <div className="dx-personal-fragment"><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray" title={p.sede}>{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
                 </div>}
                 {visibleCols.some(key => ['turno','jornada'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-turno">
                   {visibleCols.includes('turno') && <div className="dx-personal-fragment"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{esHon ? '—' : turnoNombre || 'Sin turno'}</span></div>}
                   {visibleCols.includes('jornada') && <div className="dx-personal-fragment"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></div>}
                 </div>}
-                {visibleCols.includes('contrato') && <div className="dx-personal-cell dx-personal-block dx-personal-block-contrato"><div className="dx-personal-fragment"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))}>{contratoInfoFila.texto}</span>}</div></div>}
+                {visibleCols.includes('contrato') && <div className="dx-personal-cell dx-personal-block dx-personal-block-contrato"><div className="dx-personal-fragment"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))} title={contratoInfoFila.texto}>{contratoInfoFila.texto}</span>}</div></div>}
                 {visibleCols.some(key => ['vacaciones','modalidad'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-vacaciones">
                   {visibleCols.includes('vacaciones') && <div className="dx-personal-fragment"><span className="dx-personal-label">Vacaciones</span><span className="dx-personal-t1">{esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</span></div>}
                   {visibleCols.includes('modalidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(esHon ? 'is-gray' : 'is-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></div>}
