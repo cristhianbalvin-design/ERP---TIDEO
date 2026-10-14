@@ -60,10 +60,15 @@ export function PlannerPage() {
     cargar();
   }, [sesion.empresaId, sesion.sociedadId, sesion.cargando]);
 
+  useEffect(() => {
+    setAviso('');
+  }, [vista]);
+
   const ots = datos?.ots || [];
   const recursos = obtenerRecursos(datos);
   const acciones = usePlannerActions({
     sesion,
+    aviso,
     datos,
     ots,
     recursos,
@@ -86,7 +91,7 @@ export function PlannerPage() {
       <PlannerHeader
         vista={vista}
         permiteEscritura={sesion.permiteEscritura}
-        onChangeVista={setVista}
+        onChangeVista={acciones.cambiarVista}
         onSimulate={acciones.simular}
         onPlanificar={acciones.abrirWizard}
       />
@@ -95,8 +100,8 @@ export function PlannerPage() {
           {error}<button onClick={() => cargar()}>Reintentar</button>
         </div>
       )}
-      {!sesion.permiteEscritura
-        ? <p className="dx-planner-notice" role="status">{AVISO_VISTA_CONSOLIDADA}</p>
+      {sesion.vistaConsolidada && sesion.empresaId && !sesion.cargando
+        ? <p className="dx-planner-notice is-warning" role="status">{AVISO_VISTA_CONSOLIDADA}</p>
         : aviso && <p className="dx-planner-notice" role="status">{aviso}</p>}
       {simulacion && (
         <SimulacionView

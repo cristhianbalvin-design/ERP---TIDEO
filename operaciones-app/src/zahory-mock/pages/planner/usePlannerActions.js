@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   asignarEquipo,
   asignarPersona,
@@ -15,6 +16,7 @@ import { crearAccionesSimulacion } from './plannerSimulationActions.js';
 
 export function usePlannerActions({
   sesion,
+  aviso,
   datos,
   ots,
   recursos,
@@ -31,6 +33,12 @@ export function usePlannerActions({
   setSeleccion,
   setSimulacion,
 }) {
+  useEffect(() => {
+    if (!aviso) return undefined;
+    const timer = setTimeout(() => setAviso(''), 5000);
+    return () => clearTimeout(timer);
+  }, [aviso, setAviso]);
+
   async function ejecutar(accion, mensaje) {
     setGuardando(true);
     setError('');
@@ -73,8 +81,19 @@ export function usePlannerActions({
   });
 
   function abrirWizard(ot) {
+    setAviso('');
     setSeleccion(ot ? { ot } : {});
     setWizard({ ot });
+  }
+
+  function cambiarVista(nuevaVista) {
+    setAviso('');
+    setVista(nuevaVista);
+  }
+
+  function simular() {
+    setAviso('');
+    accionesSimulacion.simular();
   }
 
   async function guardarWizard({ ot, taskPlans }) {
@@ -228,12 +247,13 @@ export function usePlannerActions({
 
   return {
     abrirWizard,
+    cambiarVista,
     guardarWizard,
     guardarConfig,
     moverFecha,
     moverOT,
     deshacer,
-    simular: accionesSimulacion.simular,
+    simular,
     aplicarSimulacion: accionesSimulacion.aplicarSimulacion,
     guardarWizardHerencia,
   };

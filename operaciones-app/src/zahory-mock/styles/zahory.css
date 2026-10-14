@@ -4377,6 +4377,7 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 .dx-planner-error,.dx-planner-notice { display:flex; justify-content:space-between; gap:12px; margin:0 0 14px; padding:12px 14px; border-radius:8px; background:var(--dx-ui-red-bg); color:var(--dx-ui-red-fg); }
 .dx-planner-error button { border:0; background:transparent; color:inherit; font-weight:700; text-decoration:underline; cursor:pointer; }
 .dx-planner-notice { display:block; background:var(--dx-ui-green-bg); color:var(--dx-ui-green-fg); }
+.dx-planner-notice.is-warning { background:var(--dx-ui-amber-bg); color:var(--dx-ui-amber-fg); }
 .dx-planner-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,340px); gap:16px; align-items:start; }
 .dx-planner .dx-ui-card { min-width:0; }
 .dx-planner .dx-ui-toolbar { min-width:0; }

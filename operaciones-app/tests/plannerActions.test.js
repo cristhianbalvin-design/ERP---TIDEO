@@ -8,28 +8,33 @@ import { Configurator } from '../src/zahory-mock/pages/planner/Configurator.jsx'
 import { usePlannerActions } from '../src/zahory-mock/pages/planner/usePlannerActions.js';
 import { sincronizarOcupacionesOT } from '../src/services/plannerService.js';
 
+const sesionMock = vi.hoisted(() => ({
+  empresaId: 'E-1',
+  sociedadId: null,
+  permiteEscritura: false,
+  vistaConsolidada: true,
+  cargando: true,
+}));
+
 vi.mock('../src/services/plannerService.js', async importOriginal => ({
   ...await importOriginal(),
   sincronizarOcupacionesOT: vi.fn().mockResolvedValue(undefined),
+  guardarPuesto: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/lib/sesionOperativa.js', () => ({
-  useSesionOperativa: () => ({
-    empresaId: 'E-1',
-    sociedadId: null,
-    permiteEscritura: false,
-    vistaConsolidada: true,
-    cargando: true,
-  }),
+  useSesionOperativa: () => sesionMock,
 }));
 
 describe('Planner en vista consolidada', () => {
   it('muestra el aviso y deshabilita las acciones para escribir', () => {
+    Object.assign(sesionMock, { cargando: false, empresaId: 'E-1' });
     const pagina = renderToStaticMarkup(createElement(PlannerPage));
     expect(pagina).toContain(
       'Elige una sociedad concreta (no la vista consolidada) para configurar o planificar el taller.',
     );
     expect(pagina).toContain('role="status"');
+    expect(pagina).toContain('dx-planner-notice is-warning');
     const cabecera = renderToStaticMarkup(createElement(PlannerHeader, {
       vista: 'panel',
       permiteEscritura: false,
@@ -47,6 +52,26 @@ describe('Planner en vista consolidada', () => {
     expect(configurador).toContain('<input required="" disabled=""');
     expect(configurador).toContain('<select disabled=""');
     expect(configurador).toContain('disabled=""');
+  });
+
+  it('oculta el aviso consolidado mientras carga o no hay empresa activa', async () => {
+    Object.assign(sesionMock, { cargando: true, empresaId: 'E-1' });
+    expect(renderToStaticMarkup(createElement(PlannerPage))).not.toContain(
+      'Elige una sociedad concreta (no la vista consolidada)',
+    );
+    Object.assign(sesionMock, { cargando: false, empresaId: null });
+    expect(renderToStaticMarkup(createElement(PlannerPage))).not.toContain(
+      'Elige una sociedad concreta (no la vista consolidada)',
+    );
+    let pagina;
+    await act(async () => { pagina = create(createElement(PlannerPage)); });
+    const alertas = pagina.root.findAll(node => node.props.className === 'dx-planner-error');
+    expect(alertas.length).toBe(1);
+    expect(alertas[0].children.join('')).toContain('No hay una empresa activa');
+    expect(pagina.root.findAll(node => node.props.className === 'dx-planner-notice is-warning'))
+      .toHaveLength(0);
+    pagina.unmount();
+    Object.assign(sesionMock, { cargando: true, empresaId: 'E-1' });
   });
 
   it('bloquea GRUPO y deja visible el aviso al guardar desde el asistente', async () => {
@@ -175,6 +200,51 @@ describe('resultado de acciones del Planner', () => {
     });
     expect(captura.estado.vista).toBe('panel');
     expect(captura.estado.simulacion).toBe(null);
+  });
+});
+
+describe('aviso del Planner', () => {
+  it('se limpia al cambiar de vista y se oculta tras cinco segundos', async () => {
+    vi.useFakeTimers();
+    const captura = {};
+    function PruebaHook() {
+      const [aviso, setAviso] = useState('');
+      captura.acciones = usePlannerActions({
+        sesion: { empresaId: 'E-1', sociedadId: 'S-1', permiteEscritura: true },
+        aviso,
+        datos: { ots: [] }, ots: [], recursos: {}, undo: null, seleccion: {}, simulacion: null,
+        cargar: vi.fn().mockResolvedValue(undefined), setGuardando: vi.fn(), setError: vi.fn(),
+        setAviso, setUndo: vi.fn(), setWizard: vi.fn(), setVista: vi.fn(),
+        setSeleccion: vi.fn(), setSimulacion: vi.fn(),
+      });
+      return createElement('span', null, aviso);
+    }
+    let renderer;
+    await act(async () => { renderer = create(createElement(PruebaHook)); });
+    await act(async () => {
+      await captura.acciones.guardarConfig('puesto', { nombre: 'Puesto' });
+    });
+    expect(renderer.root.findByType('span').children).toEqual(['Configuración guardada.']);
+    act(() => captura.acciones.cambiarVista('tablero'));
+    expect(renderer.root.findByType('span').children).toEqual([]);
+    await act(async () => {
+      await captura.acciones.guardarConfig('puesto', { nombre: 'Puesto' });
+    });
+    expect(renderer.root.findByType('span').children).toEqual(['Configuración guardada.']);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(renderer.root.findByType('span').children).toEqual([]);
+    await act(async () => {
+      await captura.acciones.guardarConfig('puesto', { nombre: 'Puesto' });
+    });
+    act(() => captura.acciones.abrirWizard(null));
+    expect(renderer.root.findByType('span').children).toEqual([]);
+    await act(async () => {
+      await captura.acciones.guardarConfig('puesto', { nombre: 'Puesto' });
+    });
+    act(() => captura.acciones.simular());
+    expect(renderer.root.findByType('span').children).toEqual([]);
+    renderer.unmount();
+    vi.useRealTimers();
   });
 });
 
