@@ -25811,8 +25811,21 @@ function RRHH_Operativo() {
               <select className="dx-personal-select" value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} aria-label="Filtrar por estado"><option value="">Todos los estados</option><option value="activo">Activo (Disponible)</option><option value="no_disponible">No Disponible</option><option value="bloqueado">Bloqueado</option><option value="inactivo">Inactivo / Cesado</option></select>
               <select className="dx-personal-select" value={filtroModalidad} onChange={e => setFiltroModalidad(e.target.value)} aria-label="Filtrar por modalidad"><option value="">Todas las modalidades</option><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select>
             </div>
-            <div className="dx-personal-table-head" style={{gridTemplateColumns:['minmax(220px, 2fr)', ...['cargo','unidad','sede','turno','jornada','contrato','modalidad','vacaciones','estado','acciones'].filter(key => visibleCols.includes(key)).map(key => key === 'acciones' ? '112px' : 'minmax(0, 1fr)')].join(' ')}}>
-              <span>Técnico</span>{[['cargo','Cargo'],['unidad','Unidad organizacional'],['sede','Sede'],['turno','Turno'],['jornada','Jornada'],['contrato','Contrato'],['modalidad','Modalidad'],['vacaciones','Vacaciones'],['estado','Estado'],['acciones','Acciones']].filter(([key]) => visibleCols.includes(key)).map(([key,label]) => <span key={key}>{label}</span>)}
+            {(() => {
+              const bloquesVisibles = [
+                {id:'tecnico', title:'Técnico', keys:['tecnico'], width:'minmax(0, 2.1fr)', compact:'minmax(0, 2fr)'},
+                {id:'cargo', title:'Cargo / unidad', keys:['cargo','unidad','sede'], width:'minmax(0, 1.4fr)', compact:'minmax(0, 1.3fr)'},
+                {id:'turno', title:'Turno / jornada', keys:['turno','jornada'], width:'minmax(0, 1.3fr)', compact:null},
+                {id:'contrato', title:'Contrato', keys:['contrato'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
+                {id:'vacaciones', title:'Vacaciones / modalidad', keys:['vacaciones','modalidad'], width:'minmax(0, .9fr)', compact:'minmax(0, .8fr)'},
+                {id:'estado', title:'Estado', keys:['estado'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
+                {id:'acciones', title:'Acciones', keys:['acciones'], width:'112px', compact:'100px'}
+              ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
+              const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
+              const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
+              return <>
+            <div className="dx-personal-table-head" style={{'--dx-personal-cols':colsDesktop, '--dx-personal-cols-compact':colsCompact}}>
+              {bloquesVisibles.map(b => <span key={b.id} className={'dx-personal-head-'+b.id}>{b.title}</span>)}
             </div>
             {personal.length === 0 ? <div className="dx-personal-empty">Sin personal operativo registrado.</div> : personal.filter(p => {
               if (filtroEstado && p.estado !== filtroEstado) return false;
@@ -25825,30 +25838,47 @@ function RRHH_Operativo() {
               const contratoDocFila = rrhhContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
               const contratoInfoFila = rrhhContratoVencimientoInfo(contratoDocFila);
               const abrirFicha = () => { setSelTecnico(p); setFichaTab('ficha'); };
-              const campos = ['codigo', 'cargo', 'unidad', 'sede', 'turno', 'jornada', 'contrato', 'modalidad', 'vacaciones', 'estado', 'acciones'];
-              const visibles = campos.filter(key => key !== 'codigo' && visibleCols.includes(key));
-              const gridTemplateColumns = ['minmax(220px, 2fr)', ...visibles.map(key => key === 'acciones' ? '112px' : 'minmax(0, 1fr)')].join(' ');
-              return <div key={p.id} className="dx-personal-row" style={{gridTemplateColumns}} role="group" tabIndex={0} aria-label={`Abrir ficha de ${p.nombre}`} onClick={abrirFicha} onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFicha(); } }}>
+              const bloquesVisibles = [
+                {id:'tecnico', keys:['tecnico'], width:'minmax(0, 2.1fr)', compact:'minmax(0, 2fr)'},
+                {id:'cargo', keys:['cargo','unidad','sede'], width:'minmax(0, 1.4fr)', compact:'minmax(0, 1.3fr)'},
+                {id:'turno', keys:['turno','jornada'], width:'minmax(0, 1.3fr)', compact:null},
+                {id:'contrato', keys:['contrato'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
+                {id:'vacaciones', keys:['vacaciones','modalidad'], width:'minmax(0, .9fr)', compact:'minmax(0, .8fr)'},
+                {id:'estado', keys:['estado'], width:'minmax(0, 1.1fr)', compact:'minmax(0, 1.1fr)'},
+                {id:'acciones', keys:['acciones'], width:'112px', compact:'100px'}
+              ].filter(b => b.id === 'tecnico' || b.keys.some(key => visibleCols.includes(key)));
+              const colsDesktop = bloquesVisibles.map(b => b.width).join(' ');
+              const colsCompact = bloquesVisibles.filter(b => b.id !== 'turno').map(b => b.compact || b.width).join(' ');
+              const mobileAreas = [`'tecnico ${bloquesVisibles.some(b => b.id === 'acciones') ? 'acciones' : '.'}'`, ...bloquesVisibles.filter(b => !['tecnico','turno','acciones'].includes(b.id)).map(b => `'${b.id} ${b.id}'`)].join(' ');
+              return <div key={p.id} className="dx-personal-row" style={{'--dx-personal-cols':colsDesktop, '--dx-personal-cols-compact':colsCompact, '--dx-personal-areas':mobileAreas}} role="group" tabIndex={0} aria-label={`Abrir ficha de ${p.nombre}`} onClick={abrirFicha} onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirFicha(); } }}>
                 <div className="dx-personal-cell dx-personal-who"><span className="dx-personal-avatar">{p.nombre.split(' ').map(x => x[0]).slice(0, 2).join('')}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">DNI {p.dni || p.documento || '—'}{visibleCols.includes('codigo') && <> · <span className="dx-personal-mono">{p.codigo || '—'}</span></>}</span>
                   {vistaSociedadConcretaPersonal && resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}
                   {mostrarBadgeSociedadPersonal && <span className="dx-personal-pills">{(resolucionPersonalSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => <SociedadBadge key={sociedadId} sociedadId={sociedadId} />)}{resolucionPersonalSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="dx-personal-pill is-amber">Sin contrato vigente</span>}</span>}
                 </div></div>
-                {visibleCols.includes('cargo') && <div className="dx-personal-cell"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo || '—'}</span></div>}
-                {visibleCols.includes('unidad') && <div className="dx-personal-cell"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{resolverUnidadOrganizacional(p) || <span className="dx-personal-muted">Sin posición</span>}</span></div>}
-                {visibleCols.includes('sede') && <div className="dx-personal-cell"><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray">{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
-                {visibleCols.includes('turno') && <div className="dx-personal-cell"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{esHon ? '—' : turnoNombre || 'Sin turno'}</span></div>}
-                {visibleCols.includes('jornada') && <div className="dx-personal-cell"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></div>}
-                {visibleCols.includes('contrato') && <div className="dx-personal-cell"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))}>{contratoInfoFila.texto}</span>}</div>}
-                {visibleCols.includes('modalidad') && <div className="dx-personal-cell"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(esHon ? 'is-gray' : 'is-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></div>}
-                {visibleCols.includes('vacaciones') && <div className="dx-personal-cell"><span className="dx-personal-label">Vacaciones</span><span className="dx-personal-t1">{esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</span></div>}
-                {visibleCols.includes('estado') && <div className="dx-personal-cell"><span className="dx-personal-label">Estado</span><span className="dx-personal-pills"><span className={'dx-personal-pill '+(badgeToPill(estBadge(p.estado)))}><i />{p.estado.toUpperCase()}</span>{!esHon && !p.sede && !p.turno_id && <span className="dx-personal-pill is-gray">Ficha incompleta</span>}</span></div>}
-                {visibleCols.includes('acciones') && <div className="dx-personal-cell dx-personal-row-actions" onClick={e => e.stopPropagation()}>
+                {visibleCols.some(key => ['cargo','unidad','sede'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-cargo">
+                  {visibleCols.includes('cargo') && <div className="dx-personal-fragment"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo || '—'}</span></div>}
+                  {visibleCols.includes('unidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{resolverUnidadOrganizacional(p) || <span className="dx-personal-muted">Sin posición</span>}</span></div>}
+                  {visibleCols.includes('sede') && <div className="dx-personal-fragment"><span className="dx-personal-label">Sede</span>{p.sede ? <span className="dx-personal-pill is-gray">{p.sede}</span> : <span className="dx-personal-muted">—</span>}</div>}
+                </div>}
+                {visibleCols.some(key => ['turno','jornada'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-turno">
+                  {visibleCols.includes('turno') && <div className="dx-personal-fragment"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{esHon ? '—' : turnoNombre || 'Sin turno'}</span></div>}
+                  {visibleCols.includes('jornada') && <div className="dx-personal-fragment"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></div>}
+                </div>}
+                {visibleCols.includes('contrato') && <div className="dx-personal-cell dx-personal-block dx-personal-block-contrato"><div className="dx-personal-fragment"><span className="dx-personal-label">Contrato</span>{esHon ? <span className="dx-personal-muted">—</span> : <span className={'dx-personal-pill '+(contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'is-red' : badgeToPill(contratoInfoFila.badge))}>{contratoInfoFila.texto}</span>}</div></div>}
+                {visibleCols.some(key => ['vacaciones','modalidad'].includes(key)) && <div className="dx-personal-cell dx-personal-block dx-personal-block-vacaciones">
+                  {visibleCols.includes('vacaciones') && <div className="dx-personal-fragment"><span className="dx-personal-label">Vacaciones</span><span className="dx-personal-t1">{esHon ? '—' : `${solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso || null, p.dias_vacaciones_total ?? 30, solicitudesRRHH.filter(s => s.personal_id === p.id)).saldo} días`}</span></div>}
+                  {visibleCols.includes('modalidad') && <div className="dx-personal-fragment"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(esHon ? 'is-gray' : 'is-green')}>{esHon ? 'Honorarios' : 'Planilla'}</span></div>}
+                </div>}
+                {visibleCols.includes('estado') && <div className="dx-personal-cell dx-personal-block dx-personal-block-estado"><div className="dx-personal-fragment"><span className="dx-personal-label">Estado</span><span className="dx-personal-pills"><span className={'dx-personal-pill '+(badgeToPill(estBadge(p.estado)))}><i />{p.estado.toUpperCase()}</span>{!esHon && !p.sede && !p.turno_id && <span className="dx-personal-pill is-gray">Ficha incompleta</span>}</span></div></div>}
+                {visibleCols.includes('acciones') && <div className="dx-personal-cell dx-personal-block dx-personal-block-acciones dx-personal-row-actions" onClick={e => e.stopPropagation()}>
                   <button type="button" className="dx-personal-icon-btn" aria-label={`Ver ficha de ${p.nombre}`} title="Ver ficha" onClick={abrirFicha}><span aria-hidden="true">{I.eye}</span></button>
                   <button type="button" className="dx-personal-icon-btn" aria-label={`Editar a ${p.nombre}`} title="Editar colaborador" onClick={() => abrirEditarTecnico(p)}><span aria-hidden="true">{I.edit}</span></button>
                   <button type="button" className="dx-personal-icon-btn is-delete" aria-label={`Eliminar a ${p.nombre}`} title="Eliminar colaborador" onClick={() => eliminarTecnico(p)}><span aria-hidden="true">{I.trash}</span></button>
                 </div>}
               </div>;
             })}
+              </>;
+            })()}
           </section>}
 
           {tab === 'reportes' && <div className="dx-personal-reports">
