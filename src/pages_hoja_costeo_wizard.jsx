@@ -97,6 +97,7 @@ export default function HojaCosteoWizard() {
   const [logistica, setLogistica] = useState([]);
   const [referenciasMateriales, setReferenciasMateriales] = useState([]);
   const [tipoCambioPenUsd, setTipoCambioPenUsd] = useState(null);
+  const [tasaUsdPorPen, setTasaUsdPorPen] = useState(null);
   const [eliminandoMaterialId, setEliminandoMaterialId] = useState(null);
   const [guardandoBloqueJson, setGuardandoBloqueJson] = useState('');
   const [creandoTrabajo, setCreandoTrabajo] = useState(false);
@@ -186,6 +187,19 @@ export default function HojaCosteoWizard() {
     if (monedaHoja === 'USD') return montoUsd;
     return numero(tipoCambioPenUsd) > 0 ? montoUsd / numero(tipoCambioPenUsd) : null;
   };
+  // La tarifa de planilla (tarifa_hora del personal) está en soles; el costo manual por cargo y el de activos, en US$.
+  const convertirPenAMonedaHoja = value => {
+    if (value == null) return null;
+    const montoPen = numero(value);
+    if (monedaHoja === 'PEN') return montoPen;
+    return numero(tasaUsdPorPen) > 0 ? montoPen * numero(tasaUsdPorPen) : null;
+  };
+  const costoHoraCargo = cargoId => {
+    const manual = configuracionPorCargo.get(cargoId)?.costo_hora_manual;
+    if (manual != null && numero(manual) > 0) return convertirUsdAMonedaHoja(manual);
+    const planilla = tarifaPorCargo.get(cargoId);
+    return planilla != null ? convertirPenAMonedaHoja(planilla) : null;
+  };
   const money = value => moneyD(numero(value), simboloMoneda);
   const costoMaterialCalculadoEnMoneda = convertirUsdAMonedaHoja(materialSeleccionado?.costo_usd_calculado);
 
@@ -216,9 +230,7 @@ export default function HojaCosteoWizard() {
         sb.from('hoja_costeo_lineas_activos').select('*').eq('hoja_costeo_id', hoja.id).order('orden').order('creado_en'),
         sb.from('hojas_costeo').select('servicios_terceros, logistica, margen_objetivo_pct, gasto_administrativo_manual_pct').eq('id', hoja.id).single(),
         sb.from('vw_gasto_administrativo_pct_grupo').select('porcentaje_calculado').eq('empresa_id', empresa.id).maybeSingle(),
-        monedaHoja === 'PEN'
-          ? sb.rpc('obtener_tipo_cambio_vigente', { p_moneda_base: 'PEN' })
-          : Promise.resolve({ data: 1, error: null }),
+        sb.rpc('obtener_tipo_cambio_vigente', { p_moneda_base: 'PEN' }),
         hoja.diagnostico_id
           ? sb.from('diagnostico_tecnico_lineas').select('id, tarea_id, hallazgo').eq('diagnostico_id', hoja.diagnostico_id)
           : Promise.resolve({ data: [], error: null }),
@@ -249,6 +261,7 @@ export default function HojaCosteoWizard() {
         : gastoResult.data?.porcentaje_calculado != null ? String(numero(gastoResult.data.porcentaje_calculado) * 100) : '');
       setMargenObjetivo(String(hojaJsonResult.data?.margen_objetivo_pct ?? hoja.margen_objetivo_pct ?? 35));
       setTipoCambioPenUsd(monedaHoja === 'PEN' ? numero(tipoCambioResult.data) || null : 1);
+      setTasaUsdPorPen(numero(tipoCambioResult.data) || null);
       const hallazgosPorTarea = new Map((hallazgosResult.data || []).map(item => [item.id, item.hallazgo || '']));
       setDetallesTarea(Object.fromEntries((lineasResult.data || []).map(item => [item.id, hallazgosPorTarea.get(item.diagnostico_linea_id) || ''])));
     } catch (error) {
@@ -269,8 +282,7 @@ export default function HojaCosteoWizard() {
     const activosNuevos = [...lineasActivos];
     let cambios = 0;
     for (const linea of pendientesMo) {
-      const costoBase = configuracionPorCargo.get(linea.cargo_id)?.costo_hora_manual ?? tarifaPorCargo.get(linea.cargo_id) ?? null;
-      const costoHora = costoBase != null ? numero(convertirUsdAMonedaHoja(costoBase)) : 0;
+      const costoHora = numero(costoHoraCargo(linea.cargo_id));
       if (!linea.cargo_id || costoHora <= 0) continue;
       const payload = { costo_hora_snapshot: costoHora, subtotal: numero(linea.horas) * costoHora, metodo_usado: tarifaPorCargo.has(linea.cargo_id) && configuracionPorCargo.get(linea.cargo_id)?.costo_hora_manual == null ? 'planilla' : 'manual', pendiente_valoracion: false };
       const { data, error } = await sb.from('hoja_costeo_lineas_mano_obra').update(payload).eq('id', linea.id).select().single();
@@ -438,10 +450,8 @@ export default function HojaCosteoWizard() {
     if (bloqueada || guardandoTareaId) return;
     const siguiente = { ...linea, ...cambios };
     const horas = numero(siguiente.horas);
-    const costoBase = configuracionPorCargo.get(siguiente.cargo_id)?.costo_hora_manual
-      ?? tarifaPorCargo.get(siguiente.cargo_id)
-      ?? siguiente.costo_hora_snapshot;
-    const costoHora = cambios.cargo_id && costoBase != null ? convertirUsdAMonedaHoja(costoBase) : numero(siguiente.costo_hora_snapshot);
+    const costoCargo = cambios.cargo_id ? costoHoraCargo(siguiente.cargo_id) : null;
+    const costoHora = costoCargo != null ? numero(costoCargo) : numero(siguiente.costo_hora_snapshot);
     if (!siguiente.cargo_id || horas <= 0 || costoHora <= 0) {
       addToast('Cargo y horas deben tener valores mayores a cero.', 'error');
       return;
@@ -936,8 +946,7 @@ export default function HojaCosteoWizard() {
       const nuevosActivos = [];
       for (const fila of filas) {
         const cargoId = valorReceta(fila, 'cargo_id');
-        const costoBase = configuracionPorCargo.get(cargoId)?.costo_hora_manual ?? tarifaPorCargo.get(cargoId) ?? null;
-        const costoHora = convertirUsdAMonedaHoja(costoBase);
+        const costoHora = costoHoraCargo(cargoId);
         if (costoHora == null || costoHora <= 0) throw new Error(`El cargo ${cargoPorId.get(cargoId)?.nombre || cargoId} no tiene costo/hora.`);
         const payload = {
           hoja_costeo_id: hoja.id,
