@@ -47,6 +47,25 @@ export function WizardResourceTasks({
       <fieldset className="dx-planner-task-assignment" key={task.id}>
         <legend>{task.titulo || task.descripcion || 'Tarea'} · {Number(task.horas_estimadas) || 0} h</legend>
         <label>
+          Responsable
+          <select
+            disabled={disabled}
+            value={assignment.responsableId || assignment.personaIds[0] || ''}
+            onChange={event => changeAssignment(task.id, {
+              responsableId: event.target.value,
+              personaIds: [...new Set([
+                ...assignment.personaIds.filter(id => id !== assignment.responsableId),
+                ...(event.target.value ? [event.target.value] : []),
+              ])],
+            })}
+          >
+            <option value="">Automático</option>
+            {datos.personas.map(person => (
+              <option key={person.id} value={person.id}>{person.nombre}</option>
+            ))}
+          </select>
+        </label>
+        <label>
           Personas
           <select
             multiple
@@ -124,6 +143,11 @@ export function WizardResourceTasks({
               horasMaquina: Number(event.target.value),
             })}
           />
+        </label>
+        <label>
+          No empezar antes de
+          <input type="date" disabled={disabled} value={assignment.fechaNoAntes || ''}
+            onChange={event => changeAssignment(task.id, { fechaNoAntes: event.target.value })} />
         </label>
       </fieldset>
     );

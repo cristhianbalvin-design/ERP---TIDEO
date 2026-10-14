@@ -107,6 +107,23 @@ describe('motor de planificación', () => {
     expect(plans[0].p50.fechas[0].fecha).toBe('2026-10-13');
   });
 
+  it('respeta la fecha mínima de inicio y el puesto elegido para toda la OT', () => {
+    const plans = planificarTareas({
+      id: 'OT-F',
+      ot_tareas: [{ id: 'T-4', horas_estimadas: 8 }],
+    }, {
+      __puestoOt: { value: 'P-2' },
+      'T-4': { fechaNoAntes: '2026-10-15' },
+    }, {
+      personas: [],
+      maquinas: [],
+      puestos: [{ id: 'P-2', capacidad: 1 }],
+    }, '2026-10-12');
+    expect(plans[0].fechaDesde).toBe('2026-10-15');
+    expect(plans[0].p50.fechas[0].fecha).toBe('2026-10-15');
+    expect(plans[0].assignment.puestoId).toBe('P-2');
+  });
+
   it('rechaza ocupación diaria del puesto cuando alcanza su capacidad', () => {
     expect(validarCapacidadPuesto([
       { ot_id: 'OT-A', puesto_id: 'P-1', fecha_desde: '2026-10-12', fecha_hasta: '2026-10-13' },

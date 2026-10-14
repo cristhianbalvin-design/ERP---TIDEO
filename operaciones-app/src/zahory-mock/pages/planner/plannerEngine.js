@@ -161,9 +161,15 @@ export function planificarTareas(ot, assignments = {}, resources = {}, fechaInic
   const resultado = [];
 
   for (const item of resumirTareas(ot)) {
-    const assignment = assignments[item.tarea.id] || {};
+    const taskAssignment = assignments[item.tarea.id] || {};
+    const assignment = {
+      ...taskAssignment,
+      puestoId: taskAssignment.puestoId || assignments.__puestoOt?.value || '',
+    };
     const capacidad = capForTask(assignment, contexto);
-    const start = isoDate(cursor);
+    const cursorDate = isoDate(cursor);
+    const start = assignment.fechaNoAntes > cursorDate
+      ? assignment.fechaNoAntes : cursorDate;
     const p50 = distribuirPorRecursos(item.horasPendientes, assignment, contexto, start);
     const conservadora = distribuirPorRecursos(item.horasPendientes * 1.25, assignment, contexto, start);
     resultado.push({

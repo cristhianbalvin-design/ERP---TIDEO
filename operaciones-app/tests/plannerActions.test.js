@@ -49,7 +49,7 @@ describe('Planner en vista consolidada', () => {
     expect(configurador).toContain('disabled=""');
   });
 
-  it('captura el rechazo de escritura y resuelve el handler con el aviso claro', async () => {
+  it('bloquea GRUPO y deja visible el aviso al guardar desde el asistente', async () => {
     const setters = Object.fromEntries([
       'setGuardando', 'setError', 'setAviso', 'setUndo', 'setWizard', 'setVista',
       'setSeleccion', 'setSimulacion',
@@ -75,6 +75,13 @@ describe('Planner en vista consolidada', () => {
     });
     await act(async () => {
       await expect(captura.acciones.guardarConfig('puesto', {})).resolves.toBe(false);
+    });
+    expect(setters.setError).toHaveBeenLastCalledWith(
+      'Elige una sociedad concreta (no la vista consolidada) para configurar o planificar el taller.',
+    );
+    await act(async () => {
+      await expect(captura.acciones.guardarWizard({ ot: { id: 'OT-1' }, taskPlans: [] }))
+        .resolves.toBe(false);
     });
     expect(setters.setError).toHaveBeenLastCalledWith(
       'Elige una sociedad concreta (no la vista consolidada) para configurar o planificar el taller.',
@@ -144,6 +151,7 @@ describe('resultado de acciones del Planner', () => {
       })).resolves.toBe(true);
     });
     expect(renderer.root.findByType('span').children).toEqual(['Wizard cerrado']);
+    expect(captura.estado.vista).toBe('panel');
     renderer.unmount();
   });
 

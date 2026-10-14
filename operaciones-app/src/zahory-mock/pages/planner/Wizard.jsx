@@ -1,28 +1,26 @@
 import { useMemo, useState } from 'react';
 import { calcularPronostico, esOtPlanificable, planificarTareas } from './plannerEngine.js';
 import { puntuarPuestoAfin } from './plannerAffinity.js';
-import { WizardResourceTasks } from './WizardResourceTasks.jsx';
-import { WizardSummary } from './WizardSummary.jsx';
+import { WizardStepper } from './WizardStepper.jsx';
+import { WizardSteps } from './WizardSteps.jsx';
+import { WizardSide } from './WizardSide.jsx';
 
-const formatDate = value => value
-  ? new Date(`${value}T12:00:00`).toLocaleDateString('es-PE')
-  : 'Por calcular';
-
-const emptyAssignment = () => ({ personaIds: [], maquinaIds: [], puestoId: '', horasPersona: 8, horasMaquina: 8 });
+const PASOS = ['Elegir OT', 'Demanda heredada', 'Recursos', 'Impacto y confirmar'];
+const hoy = () => new Date().toISOString().slice(0, 10);
 
 export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave, busy }) {
   const [step, setStep] = useState(1);
   const [otId, setOtId] = useState(initialOT?.id || '');
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(hoy);
   const [assignments, setAssignments] = useState({});
   const [error, setError] = useState('');
   const ot = datos.ots.find(item => item.id === otId);
-  const positions = useMemo(() => datos.puestos.map(position => ({
-    ...position,
-    bahia: datos.bahias.find(bay => bay.id === position.bahia_id),
+  const tareas = ot?.ot_tareas || [];
+  const puestos = useMemo(() => datos.puestos.map(puesto => ({
+    ...puesto,
+    bahia: datos.bahias.find(bahia => bahia.id === puesto.bahia_id),
   })), [datos]);
-  const tasks = ot?.ot_tareas || [];
-  const taskPlans = useMemo(() => planificarTareas(ot, assignments, {
+  const plans = useMemo(() => planificarTareas(ot, assignments, {
     personas: datos.personas,
     maquinas: datos.maquinas,
     puestos: datos.puestos,
@@ -31,194 +29,81 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
     ocupaciones: datos.ocupaciones,
   }, startDate), [ot, assignments, datos, startDate]);
   const forecast = ot ? calcularPronostico(ot, recursos, startDate) : null;
-  const lastP50 = taskPlans.at(-1)?.p50.fechaFin || forecast?.p50.fechaFin;
-  const lastConservative = taskPlans.at(-1)?.conservadora.fechaFin || forecast?.conservadora.fechaFin;
-  const osCommitment = ot?.orden_servicio?.fecha_fin;
+  const lastP50 = plans.at(-1)?.p50.fechaFin || forecast?.p50.fechaFin;
+  const lastConservative = plans.at(-1)?.conservadora.fechaFin
+    || forecast?.conservadora.fechaFin;
+  const related = ot ? datos.ots.filter(item => item.id === ot.id
+    || (ot.os_cliente_id && item.os_cliente_id === ot.os_cliente_id)) : [];
+  const positionOptions = task => [...puestos].sort((a, b) => (
+    Number(puntuarPuestoAfin(b, task, datos.familiasTrabajo))
+      - Number(puntuarPuestoAfin(a, task, datos.familiasTrabajo))
+  ));
 
-  function changeAssignment(taskId, patchValue) {
-    setAssignments(current => ({
-      ...current,
-      [taskId]: { ...emptyAssignment(), ...current[taskId], ...patchValue },
-    }));
+  function updateAssignment(taskId, changes) {
+    setAssignments(current => ({ ...current, [taskId]: { ...current[taskId], ...changes } }));
   }
 
-  function affinityPositions(task) {
-    return [...positions].sort((left, right) => {
-      const leftMatch = puntuarPuestoAfin(left, task, datos.familiasTrabajo);
-      const rightMatch = puntuarPuestoAfin(right, task, datos.familiasTrabajo);
-      return Number(rightMatch) - Number(leftMatch);
-    });
-  }
-
-  async function nextStep() {
+  async function next() {
     setError('');
-    if (step === 1 && !ot) {
-      setError('Selecciona una OT para continuar.');
-      return;
-    }
-    if (step === 1 && !tasks.length) {
-      const confirmed = window.confirm(
-        'Esta OT no tiene tareas. ¿Ejecutar la herencia de tareas desde su OS antes de continuar?',
-      );
-      if (!confirmed) return;
+    if (step === 1 && !ot) return;
+    if (step === 1 && !tareas.length) {
       try {
-        await onInherit(ot.id);
+        const inherited = await onInherit(ot.id);
+        if (!inherited) setError('No se pudieron heredar las tareas de la orden de servicio.');
       } catch (inheritError) {
-        setError(inheritError.message);
+        setError(inheritError.message || 'No se pudieron heredar las tareas de la orden de servicio.');
       }
       return;
     }
     setStep(current => Math.min(4, current + 1));
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
-    if (step < 4) {
-      nextStep();
-      return;
-    }
-    onSave({ ot, assignments, taskPlans, startDate });
+    if (step < 4) return next();
+    setError('');
+    const saved = await onSave({ ot, assignments, taskPlans: plans, startDate });
+    if (!saved) setError('No se guardó el plan. Revisa el aviso y vuelve a intentar.');
   }
 
   return (
-    <div className="dx-ui dx-planner dx-planner-scrim" role="presentation">
-      <section
-        className="dx-planner-modal dx-ui-card dx-planner-wizard-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="planner-wizard-title"
-      >
-        <div className="dx-ui-toolbar">
-          <div>
-            <span className="dx-ui-eyebrow">Planificación · Paso {step} de 4</span>
-            <h2 id="planner-wizard-title">Planificar una OT</h2>
-          </div>
-          <button className="dx-planner-close" onClick={onClose} aria-label="Cerrar">×</button>
+    <section className="dx-planner-wizard dx-ui-card" aria-labelledby="planner-wizard-title">
+      <header className="dx-planner-wizard-head">
+        <div>
+          <span className="dx-ui-eyebrow">Planificación del taller</span>
+          <h2 id="planner-wizard-title">Planificar OT</h2>
         </div>
-        <div className="dx-planner-wizard-grid">
-          <form onSubmit={submit}>
-            <nav className="dx-planner-steps" aria-label="Pasos de planificación">
-              {['Orden', 'Tareas', 'Recursos', 'Confirmar'].map((label, index) => (
-                <button
-                  type="button"
-                  className={step === index + 1 ? 'is-current' : ''}
-                  disabled={busy}
-                  key={label}
-                  onClick={() => index + 1 < step && setStep(index + 1)}
-                >
-                  {index + 1}. {label}
-                </button>
-              ))}
-            </nav>
-
-            {step === 1 && (
-              <div className="dx-planner-step">
-                <h3>1. Elige la orden de trabajo</h3>
-                <p>La planificación programa las tareas heredadas de la orden de servicio.</p>
-                <label>
-                  Orden de trabajo
-                  <select required disabled={busy} value={otId} onChange={event => setOtId(event.target.value)}>
-                    <option value="">Selecciona OT</option>
-                    {datos.ots.filter(esOtPlanificable).map(item => (
-                      <option key={item.id} value={item.id}>
-                        OT {item.numero || item.id} · {item.descripcion || item.servicio || 'Orden de trabajo'}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {ot && !tasks.length && (
-                  <p className="dx-planner-note">Esta OT no tiene tareas heredadas. Puedes heredarlas desde su OS.</p>
-                )}
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="dx-planner-step">
-                <h3>2. Revisa las tareas heredadas</h3>
-                <p>La tarea es la unidad de asignación y programación.</p>
-                {tasks.length ? (
-                  <ul className="dx-planner-task-list">
-                    {tasks.map(task => (
-                      <li key={task.id}>
-                        <span>
-                          <b>{task.titulo || task.descripcion || 'Tarea'}</b>
-                          <small>{task.familia_trabajo_id || 'Sin familia'} · {task.horas_reales || 0} h reales</small>
-                        </span>
-                        <b>{Number(task.horas_estimadas) || 0} h estimadas</b>
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p>Sin tareas heredadas.</p>}
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="dx-planner-step">
-                <h3>3. Asigna recursos por tarea</h3>
-                <label>
-                  Fecha de inicio
-                  <input
-                    type="date"
-                    disabled={busy}
-                    value={startDate}
-                    onChange={event => setStartDate(event.target.value)}
-                  />
-                </label>
-                <WizardResourceTasks
-                  tasks={tasks}
-                  assignments={assignments}
-                  datos={datos}
-                  positions={positions}
-                  affinityPositions={affinityPositions}
-                  changeAssignment={changeAssignment}
-                  disabled={busy}
-                />
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="dx-planner-step">
-                <h3>4. Confirma el plan</h3>
-                <p>Las asignaciones se guardan enlazadas a cada tarea y el puesto ocupa el rango
-                  calculado.</p>
-                <dl className="dx-planner-confirm">
-                  <dt>OT</dt><dd>{ot?.numero || ot?.id}</dd>
-                  <dt>Tareas</dt><dd>{taskPlans.length}</dd>
-                  <dt>Fecha probable P50</dt><dd>{formatDate(lastP50)}</dd>
-                  <dt>Conservadora</dt><dd>{formatDate(lastConservative)}</dd>
-                  <dt>Compromiso OS</dt><dd>{formatDate(osCommitment)}</dd>
-                  <dt>Efecto en compromiso</dt>
-                  <dd>{lastConservative && osCommitment && lastConservative > osCommitment
-                    ? `Riesgo: ${formatDate(lastConservative)} supera el compromiso`
-                    : 'Dentro del compromiso estimado'}</dd>
-                </dl>
-              </div>
-            )}
-            {error && <p role="alert" className="dx-planner-inline-error">{error}</p>}
-            <footer>
-              <button
-                type="button"
-                className="dx-btn"
-                onClick={() => step > 1 ? setStep(step - 1) : onClose()}
-              >
-                {step > 1 ? 'Atrás' : 'Cancelar'}
-              </button>
-              <button type="submit" className="dx-btn primary" disabled={busy}>
-                {step < 4 ? 'Continuar' : busy ? 'Guardando…' : 'Confirmar planificación'}
-              </button>
-            </footer>
-          </form>
-
-          <WizardSummary
-            ot={ot}
-            forecast={forecast}
-            taskPlans={taskPlans}
-            lastP50={lastP50}
-            lastConservative={lastConservative}
-            commitment={osCommitment}
-          />
+        <button className="dx-btn" type="button" disabled={busy} onClick={onClose}>
+          Cancelar
+        </button>
+      </header>
+      <WizardStepper steps={PASOS} current={step} />
+      <form className="dx-planner-wizard-form" onSubmit={submit}>
+        <div className="dx-planner-wizard-content-grid">
+          <WizardSteps step={step} datos={datos} ot={ot} otId={otId} setOtId={setOtId}
+            related={related} tareas={tareas} plans={plans} forecast={forecast}
+            lastP50={lastP50} lastConservative={lastConservative} startDate={startDate}
+            setStartDate={setStartDate} assignments={assignments}
+            updateAssignment={updateAssignment} puestos={puestos}
+            positionOptions={positionOptions} busy={busy} />
+          <WizardSide ot={ot} plans={plans} forecast={forecast} p50={lastP50}
+            conservative={lastConservative} />
         </div>
-      </section>
-    </div>
+        {error && <p role="alert" className="dx-planner-inline-error">{error}</p>}
+        <footer className="dx-planner-wizard-footer">
+          <button className="dx-btn" type="button" disabled={busy}
+            onClick={() => step > 1 ? setStep(step - 1) : onClose()}>
+            {step > 1 ? 'Atrás' : 'Cancelar'}
+          </button>
+          <span className="dx-planner-wizard-hint">
+            Paso {step} de 4 · no se guarda nada hasta confirmar
+          </span>
+          <button className="dx-btn primary" type="submit"
+            disabled={busy || (step === 1 && !ot)}>
+            {step < 4 ? 'Siguiente' : busy ? 'Guardando…' : 'Confirmar plan'}
+          </button>
+        </footer>
+      </form>
+    </section>
   );
 }

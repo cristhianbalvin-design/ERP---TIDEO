@@ -96,7 +96,10 @@ export function usePlannerActions({
         for (const plan of tareasActivas) await guardarAsignacionesTarea(ot, plan);
         await sincronizarOcupacionesOT({ otId: ot.id });
       }, 'La planificación quedó guardada.');
-      if (guardado) setWizard(null);
+      if (guardado) {
+        setWizard(null);
+        setVista('panel');
+      }
       return guardado;
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.

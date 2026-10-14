@@ -107,7 +107,7 @@ export function PlannerPage() {
         />
       )}
       {cargando && <CargandoPlanner />}
-      {!cargando && datos && (
+      {!wizard && !cargando && datos && (
         <PlannerVistas
           vista={vista}
           datos={datos}
@@ -127,7 +127,7 @@ export function PlannerPage() {
           permiteEscritura={sesion.permiteEscritura}
         />
       )}
-      {!cargando && datos && !datos.bahias.length && vista === 'panel' && (
+      {!wizard && !cargando && datos && !datos.bahias.length && vista === 'panel' && (
         <SinBahias onConfigure={() => setVista('config')} />
       )}
       {wizard && datos && (
@@ -136,7 +136,10 @@ export function PlannerPage() {
           recursos={recursos}
           initialOT={wizard.ot}
           busy={guardando || !sesion.permiteEscritura}
-          onClose={() => setWizard(null)}
+          onClose={() => {
+            setWizard(null);
+            setVista('panel');
+          }}
           onInherit={acciones.guardarWizardHerencia}
           onSave={acciones.guardarWizard}
         />
