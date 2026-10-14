@@ -20,10 +20,29 @@ export const ILUMINACION_GEMELO = { hemisferioCielo: 0xffffff, hemisferioSuelo: 
 export function leerTokens(element) {
   const style = getComputedStyle(element);
   const css = Object.fromEntries(Object.entries(TOKENS).map(([name, fallback]) => [name, style.getPropertyValue(name).trim() || fallback]));
-  const dark = element.matches?.('[data-theme="dark"],.dark') || element.closest?.('[data-theme="dark"]');
+  const dark = detectarTemaOscuro(element);
   const theme = dark ? ESCENA_TEMAS.oscuro : ESCENA_TEMAS.claro;
   const colors = { floor: theme.piso, grid: theme.cuadricula, pad: theme.losa, bg1: theme.fondoSuperior, bg2: theme.fondoInferior, idle: theme.personalLibre, mach: theme.maquina };
   return { ...css, '--sc-floor': colors.floor, '--sc-grid': colors.grid, '--sc-pad': colors.pad, '--sc-bg1': colors.bg1, '--sc-bg2': colors.bg2, '--sc-idle': colors.idle, '--sc-mach': colors.mach };
+}
+
+export function detectarTemaOscuro(element, documentRef = globalThis.document) {
+  const candidatos = [element, element?.closest?.('[data-theme],.dark'), documentRef?.documentElement, documentRef?.body];
+  const shadowHost = element?.getRootNode?.()?.host;
+  if (shadowHost) candidatos.push(shadowHost);
+  return candidatos.some(candidate => candidate && (
+    candidate.matches?.('[data-theme="dark"],.dark')
+    || candidate.getAttribute?.('data-theme') === 'dark'
+    || candidate.classList?.contains('dark')
+  ));
+}
+
+export function observarTemaEscena(root, actualizar, documentRef = globalThis.document, Observer = globalThis.MutationObserver) {
+  if (!root || typeof Observer !== 'function') return () => {};
+  const observer = new Observer(actualizar);
+  const targets = new Set([root, documentRef?.documentElement, documentRef?.body, root.getRootNode?.()?.host]);
+  targets.forEach(target => target && observer.observe(target, { attributes: true, attributeFilter: ['data-theme', 'class'] }));
+  return () => observer.disconnect();
 }
 
 export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones = {}) {

@@ -6,8 +6,10 @@ import { createElement } from 'react';
 import { calcularEncuadre, colorUtilizacion, crearLayout, mapearEscena } from '../src/zahory-mock/pages/planner/gemelo3d/sceneModel.js';
 import { generarDatosEjemplo } from '../src/zahory-mock/pages/planner/gemelo3d/exampleData.js';
 import { crearModeloMaquina, FAMILIAS_CONSTRUCTOR, resolverConstructor } from '../src/zahory-mock/pages/planner/gemelo3d/machineBuilders.js';
-import { crearEscena } from '../src/zahory-mock/pages/planner/gemelo3d/scene.js';
+import { crearEscena, detectarTemaOscuro, observarTemaEscena } from '../src/zahory-mock/pages/planner/gemelo3d/scene.js';
 import { GemeloView } from '../src/zahory-mock/pages/planner/gemelo3d/GemeloView.jsx';
+import { resolverSeleccionTablero } from '../src/zahory-mock/pages/planner/PlannerPage.jsx';
+import { PlannerVistas } from '../src/zahory-mock/pages/planner/PlannerShell.jsx';
 
 const datos = {
   bahias: [{ id: 'b1', nombre: 'Mecánica', categoria: 'mec', activa: true }, { id: 'b2', nombre: 'Soldadura', activa: true }],
@@ -92,5 +94,77 @@ describe('modelo del Gemelo 3D', () => {
     expect(view.root.findByProps({ className: 'dx-planner-3d-fallback' }).children.join(''))
       .toBe('Tu navegador no pudo iniciar la vista 3D. El tablero muestra el mismo plan.');
     view.unmount();
+  });
+
+  it('lleva al Tablero la OT real canónica que corresponde a la OT resumida de la escena 3D', () => {
+    const otReal = { id: 'ot1', numero: 'OT-1', orden_servicio: { id: 'os1' }, ot_tareas: [{ id: 'tarea1' }] };
+    const otEscena = { id: 'ot1', numero: 'OT-1' };
+    const seleccionada = resolverSeleccionTablero(otEscena, [otReal]);
+    expect(seleccionada).toBe(otReal);
+    expect(seleccionada).toHaveProperty('orden_servicio.id', 'os1');
+
+    let tablero;
+    act(() => {
+      tablero = create(createElement(PlannerVistas, {
+        vista: 'tablero', datos: { ots: [seleccionada], personas: [], maquinas: [], asignaciones: [], equipos: [] },
+        ots: [seleccionada], recursos: {}, seleccion: { ot: seleccionada }, permiteEscritura: false,
+      }));
+    });
+    expect(tablero.root.findByProps({ children: 'Tablero de recursos' })).toBeTruthy();
+    tablero.unmount();
+    expect(resolverSeleccionTablero(otEscena, [])).toBeNull();
+  });
+
+  it('detecta tema oscuro en documentElement, body, contenedor, atributo y host del Shadow DOM', () => {
+    const node = ({ darkClass = false, darkAttribute = false, parentDark = false, hostDark = false } = {}) => ({
+      matches: selector => selector.includes('.dark') && darkClass,
+      getAttribute: name => name === 'data-theme' && darkAttribute ? 'dark' : null,
+      classList: { contains: name => name === 'dark' && darkClass },
+      closest: () => parentDark ? { classList: { contains: name => name === 'dark' } } : null,
+      getRootNode: () => ({ host: hostDark ? { getAttribute: () => 'dark' } : null }),
+    });
+    expect(detectarTemaOscuro(node({ darkClass: true }), {})).toBe(true);
+    expect(detectarTemaOscuro(node(), { documentElement: node({ darkClass: true }) })).toBe(true);
+    expect(detectarTemaOscuro(node(), { body: node({ darkClass: true }) })).toBe(true);
+    expect(detectarTemaOscuro(node({ parentDark: true }), {})).toBe(true);
+    expect(detectarTemaOscuro(node({ darkAttribute: true }), {})).toBe(true);
+    expect(detectarTemaOscuro(node({ hostDark: true }), {})).toBe(true);
+    expect(detectarTemaOscuro(node(), {})).toBe(false);
+  });
+
+  it('observa cambios de tema en el contenedor, documentElement y body', () => {
+    const targets = [];
+    class ObserverMock {
+      constructor(callback) { this.callback = callback; }
+      observe(target, options) { targets.push({ target, options }); }
+      disconnect() { this.disconnected = true; }
+    }
+    const root = {};
+    const html = {};
+    const body = {};
+    const stop = observarTemaEscena(root, () => {}, { documentElement: html, body }, ObserverMock);
+    expect(targets.map(item => item.target)).toEqual([root, html, body]);
+    expect(targets[1].options.attributeFilter).toEqual(['data-theme', 'class']);
+    stop();
+  });
+
+  it('mantiene el realce del objeto elegido y restaura materiales al cerrar la selección', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/zahory-mock/pages/planner/gemelo3d/scene.js'), 'utf8');
+    expect(source).toMatch(/setSelection\(selection\)[\s\S]*?selectedTargets\.forEach[\s\S]*?selectedTargets = \[\]/);
+    expect(source).toMatch(/material\.emissive\.set\(tokens\['--dx-ui-cyan'\]\); material\.emissiveIntensity = \.55/);
+    expect(source).toMatch(/if \(!selection\) \{ render\(\); return; \}/);
+  });
+
+  it('mantiene la leyenda y el HUD utilizables con detalle en cualquier ancho', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/zahory-mock/styles/zahory.css'), 'utf8');
+    expect(css).toMatch(/\.dx-planner-3d-detail\s*\{[^}]*position:relative/);
+    expect(css).toMatch(/\.dx-planner-3d-hud\s*\{[^}]*bottom:12px/);
+    expect(css).toMatch(/\.dx-planner-3d-legend\s*\{[^}]*z-index:3/);
+  });
+
+  it('desactiva el salto desde las OTs de ejemplo y explica que no existen en el taller', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/zahory-mock/pages/planner/gemelo3d/GemeloView.jsx'), 'utf8');
+    expect(source).toContain('disabled={ejemploActivo}');
+    expect(source).toContain('Ejemplo: esta OT no existe en tu taller');
   });
 });

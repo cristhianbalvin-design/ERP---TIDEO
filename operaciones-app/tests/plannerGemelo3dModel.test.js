@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calcularDestinosPersonal, calcularParedDias, crearDetalleSeleccion, mapearEscena, resolverIlustracionOT } from '../src/zahory-mock/pages/planner/gemelo3d/sceneModel.js';
+import { calcularDestinosPersonal, calcularParedDias, crearDetalleSeleccion, etiquetaComponenteCliente, etiquetaEquipoCliente, etiquetaEstadoOT, etiquetaMaquina, mapearEscena, resolverIlustracionOT } from '../src/zahory-mock/pages/planner/gemelo3d/sceneModel.js';
 import { generarDatosEjemplo } from '../src/zahory-mock/pages/planner/gemelo3d/exampleData.js';
 
 describe('modelo extendido del Gemelo 3D', () => {
@@ -27,6 +27,23 @@ describe('modelo extendido del Gemelo 3D', () => {
     expect(crearDetalleSeleccion('ot', ot, scene)).toMatchObject({ tipo: 'ot', equipo: 'Ilustración genérica', componente: 'Ilustración genérica' });
     expect(crearDetalleSeleccion('persona', { nombre: 'Ana', cargo: 'Mecánica', horas: 6 }, scene)).toMatchObject({ tipo: 'persona', cargo: 'Mecánica', horas: 6 });
     expect(crearDetalleSeleccion('maquina', { nombre: 'Torno', asignaciones: [] }, scene)).toMatchObject({ uso: 'Libre' });
+  });
+
+  it('traduce códigos del catálogo CAT7 y MCAT y oculta claves desconocidas', () => {
+    const scene = mapearEscena({
+      ots: [{ id: 'ot1', numero: 'OT-1', equipo_tipo: 'exc', componente_tipo: 'piston' }],
+      personas: [], bahias: [], puestos: [], maquinas: [],
+      asignaciones: [{ ot_id: 'ot1', fecha: '2026-10-14', estado: 'programado' }],
+    }, '2026-10-14');
+    expect(crearDetalleSeleccion('ot', scene.ots[0], scene)).toMatchObject({
+      equipo: 'Excavadora', componente: 'Pistón',
+    });
+    expect(etiquetaEquipoCliente('interno')).toBe('Ilustración genérica');
+    expect(etiquetaComponenteCliente('interno')).toBe('Ilustración genérica');
+    expect(etiquetaMaquina('lathe')).toBe('Torno convencional');
+    expect(etiquetaMaquina('futura')).toBe('Ilustración genérica');
+    expect(etiquetaEstadoOT('en_proceso')).toBe('En proceso');
+    expect(etiquetaEstadoOT('interno')).toBe('No informado');
   });
 
   it('mantiene datos de ejemplo deterministas con ausencia y OT de varios tipos', () => {

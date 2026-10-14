@@ -9,6 +9,11 @@ import { PlannerHeader, PlannerVistas, CargandoPlanner, SinBahias } from './Plan
 const AVISO_VISTA_CONSOLIDADA = 'Elige una sociedad concreta (no la vista consolidada) para configurar '
   + 'o planificar el taller.';
 
+export function resolverSeleccionTablero(ot, ots = []) {
+  if (!ot?.id) return null;
+  return ots.find(item => item.id === ot.id) || null;
+}
+
 function obtenerRecursos(datos) {
   return {
     personas: Math.max(1, datos?.personas?.length || 0),
@@ -131,7 +136,8 @@ export function PlannerPage() {
           onSaveConfig={acciones.guardarConfig}
           permiteEscritura={sesion.permiteEscritura}
           onVerEnTablero={ot => {
-            if (ot) setSeleccion({ ot });
+            const otDelPlanner = resolverSeleccionTablero(ot, ots);
+            setSeleccion(otDelPlanner ? { ot: otDelPlanner } : {});
             setVista('tablero');
           }}
         />
