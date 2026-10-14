@@ -20,7 +20,22 @@ export function crearLayout(bahias = [], puestos = []) {
       posicionesPuesto[puesto.id] = { x: x - (propios.length - 1) * 3.5 + index * 7, z, width: 6, depth: 9 };
     });
   }));
-  return { posicionesBahia, posicionesPuesto, ancho: Math.max(32, dimensiones[0] + dimensiones[1] + 22), profundidad: Math.max(32, Math.ceil(activas.length / 2) * 20) };
+  const posiciones = Object.values(posicionesBahia);
+  const limites = posiciones.reduce((bounds, pos) => ({
+    minX: Math.min(bounds.minX, pos.x - pos.width / 2), maxX: Math.max(bounds.maxX, pos.x + pos.width / 2),
+    minZ: Math.min(bounds.minZ, pos.z - pos.depth / 2), maxZ: Math.max(bounds.maxZ, pos.z + pos.depth / 2),
+  }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+  if (!posiciones.length) Object.assign(limites, { minX: -16, maxX: 16, minZ: -16, maxZ: 16 });
+  return { posicionesBahia, posicionesPuesto, limites, ancho: Math.max(32, limites.maxX - limites.minX + 28), profundidad: Math.max(32, limites.maxZ - limites.minZ + 20) };
+}
+
+export function calcularEncuadre(limites, aspect = 1, fov = 36) {
+  const width = Math.max(16, limites.maxX - limites.minX);
+  const depth = Math.max(16, limites.maxZ - limites.minZ);
+  const center = { x: (limites.minX + limites.maxX) / 2, z: (limites.minZ + limites.maxZ) / 2 };
+  const horizontalFov = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * Math.max(.55, aspect));
+  const distance = Math.min(180, Math.max(24, Math.max(width / (2 * Math.tan(horizontalFov / 2)), depth / (2 * Math.tan(fov * Math.PI / 360))) * 1.32));
+  return { ...center, distance, minDistance: Math.max(12, Math.min(24, distance * .42)), maxDistance: Math.min(240, Math.max(90, distance * 2.4)), azimuth: .48, elevation: .72 };
 }
 
 export function mapearEscena(datos, fecha) {

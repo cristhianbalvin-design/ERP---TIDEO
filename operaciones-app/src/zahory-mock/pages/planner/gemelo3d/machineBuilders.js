@@ -50,10 +50,34 @@ export function resolverConstructor(tipo) {
   return Object.hasOwn(DISEÑOS, base) ? base : 'generic';
 }
 
-export function crearModeloMaquina(THREE, tipo, color = CATEGORIAS[tipo?.familia] || '#6B7280') {
+export function crearModeloMaquina(THREE, tipo, color = CATEGORIAS[tipo?.familia] || '#6B7280', outlineColor = '#CFF7FF') {
   const constructor = resolverConstructor(tipo);
   const group = new THREE.Group();
   piezas(THREE, group, color, DISEÑOS[constructor]);
+  const addBox = (w, h, d, x, y, z, tint = '#2B3445') => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: tint, roughness: .72, metalness: .25 }));
+    mesh.position.set(x, y, z); group.add(mesh);
+  };
+  const addCylinder = (r, h, x, y, z, tint = '#9AA9BE') => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 16), new THREE.MeshStandardMaterial({ color: tint, roughness: .34, metalness: .72 }));
+    mesh.position.set(x, y, z); mesh.rotation.z = Math.PI / 2; group.add(mesh);
+  };
+  const led = '#22D3EE';
+  if (['lathe', 'mill', 'drill', 'grind', 'saw', 'cnc', 'cmm'].includes(constructor)) {
+    addBox(.16, .16, 1.5, .2, 2.2, 1.45, led); addCylinder(.13, 1.1, -.3, 2.7, -.2, '#DCE6F5'); addBox(.28, .42, .28, 1.35, 2.65, .7, '#E3A72F');
+  }
+  if (['cnc', 'oven', 'booth', 'wash', 'chrome', 'plasma'].includes(constructor)) { addBox(2.3, 1.5, .12, .1, 1.7, 1.6, '#8FD8E8'); addBox(.12, .18, .12, 1.25, 2.2, 1.7, led); }
+  if (['crane', 'jib', 'hoist'].includes(constructor)) { addCylinder(.08, 2.4, 1.1, 3.7, 0, '#2B3445'); addBox(.65, .38, .65, 1.1, 2.25, 0, '#2B3445'); addBox(.9, .18, .9, -1.8, .08, 0, '#2B3445'); }
+  if (['fork', 'stand', 'bench', 'compr'].includes(constructor)) { for (const x of [-1.5, 1.5]) addCylinder(.42, .38, x, .48, 1.25, '#2B3445'); addBox(.24, .12, 2.8, 0, .24, 2.3, '#9AA9BE'); }
+  if (['press', 'roll', 'plasma'].includes(constructor)) { addCylinder(.46, 3.7, -.78, 1.8, .1, '#DCE6F5'); addCylinder(.46, 3.7, .78, 1.8, .1, '#DCE6F5'); addBox(.22, .22, .22, 1.7, 2.3, .8, led); }
+  if (['weld', 'booth'].includes(constructor)) { addBox(1.5, .8, 1.3, -1.6, .5, -.4, '#2B3445'); addCylinder(.1, 1.8, 1.4, 1.8, .5, '#9AA9BE'); addBox(.22, .18, .16, 0, 2.7, 1.35, '#FFA94D'); }
+  if (typeof THREE.EdgesGeometry === 'function' && typeof group.traverse === 'function') group.traverse(mesh => {
+    if (!mesh.isMesh || mesh.userData.noEdge) return;
+    const lineMaterial = new THREE.LineBasicMaterial({ color: outlineColor, transparent: true, opacity: .78 });
+    lineMaterial.userData.themeToken = '--dx-ui-cyan';
+    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), lineMaterial);
+    edge.userData.noRay = true; if (typeof mesh.add === 'function') mesh.add(edge);
+  });
   group.userData.constructorMaquina = constructor;
   return group;
 }

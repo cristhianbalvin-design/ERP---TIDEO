@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { colorUtilizacion, mapearEscena } from './sceneModel.js';
 import { leerTokens } from './scene.js';
+import { generarDatosEjemplo } from './exampleData.js';
 
 const FECHA_HOY = () => {
   const ahora = new Date();
@@ -23,10 +24,14 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
   const [errorWebGL, setErrorWebGL] = useState(false);
   const [movimientoReducido] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [tooltip, setTooltip] = useState(null);
+  const [zoomHint, setZoomHint] = useState(false);
+  const [ejemploActivo, setEjemploActivo] = useState(false);
+  const [capasPlegadas, setCapasPlegadas] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 1099px)').matches);
   const [capas, setCapas] = useState({ categorias: {}, objetos: { maquinas: true, personas: true, componentes: true } });
   const hoy = useMemo(FECHA_HOY, []);
   const fecha = sumarDia(hoy, dia);
-  const escena = useMemo(() => mapearEscena(datos, fecha), [datos, fecha]);
+  const datosEscena = useMemo(() => ejemploActivo ? generarDatosEjemplo(hoy) : datos, [ejemploActivo, hoy, datos]);
+  const escena = useMemo(() => mapearEscena(datosEscena, fecha), [datosEscena, fecha]);
   const fechas = useMemo(() => Array.from({ length: 10 }, (_, index) => sumarDia(hoy, index)), [hoy]);
 
   useEffect(() => {
@@ -42,6 +47,7 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
         const session = crearEscena(THREE, OrbitControls, host, escena, tokensDeEscena(host.closest('.dx-ui') || host), {
           onError: () => activo && setErrorWebGL(true),
           onTooltip: setTooltip,
+          onZoomHint: () => { if (activo && typeof window !== 'undefined') { setZoomHint(true); window.clearTimeout(host._zoomHintTimer); host._zoomHintTimer = window.setTimeout(() => setZoomHint(false), 1800); } },
         });
         if (!session) { setErrorWebGL(true); return; }
         sceneRef.current = session;
@@ -55,6 +61,7 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
     return () => {
       activo = false;
       observer?.disconnect();
+      if (typeof window !== 'undefined') window.clearTimeout(host?._zoomHintTimer);
       sceneRef.current?.dispose();
       sceneRef.current = null;
       setTooltip(null);
@@ -86,12 +93,17 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
         <button className="dx-btn" type="button" disabled={movimientoReducido} onClick={() => setReproduciendo(value => !value)} aria-pressed={reproduciendo}>
           {reproduciendo ? 'Pausar' : 'Reproducir'}
         </button>
+        <button className="dx-btn" type="button" onClick={() => setEjemploActivo(value => !value)}>{ejemploActivo ? 'Volver a mis datos' : 'Ver con datos de ejemplo'}</button>
+        <button className="dx-btn" type="button" onClick={() => sceneRef.current?.centerView()}>Centrar vista</button>
         {movimientoReducido && <small>La reproducción está desactivada por la preferencia de movimiento reducido.</small>}
       </div>
+      {ejemploActivo && <div className="dx-planner-3d-sample-banner" role="status"><b>Datos de ejemplo: no es tu taller</b><button className="dx-btn" type="button" onClick={() => setEjemploActivo(false)}>Volver a los datos reales</button></div>}
       <div className="dx-planner-3d-stage" ref={hostRef}>
         {errorWebGL && <div className="dx-planner-3d-fallback" role="status">Tu navegador no pudo iniciar la vista 3D. El tablero muestra el mismo plan.</div>}
-        <div className="dx-planner-3d-tip" aria-hidden="true">Arrastra para girar · rueda o pellizco para acercar</div>
-        <aside className="dx-planner-3d-legend" aria-label="Capas de la escena">
+        <div className="dx-planner-3d-tip" aria-live="polite">{zoomHint ? 'Usa Ctrl + rueda para acercar' : 'Arrastra para girar · Ctrl + rueda o pellizco para acercar'}</div>
+        <aside className={`dx-planner-3d-legend${capasPlegadas ? ' is-collapsed' : ''}`} aria-label="Capas de la escena">
+          <button type="button" className="dx-planner-3d-layer-toggle" aria-expanded={!capasPlegadas} onClick={() => setCapasPlegadas(value => !value)}>{capasPlegadas ? 'Mostrar capas' : 'Ocultar capas'}</button>
+          {!capasPlegadas && <>
           <b>Capas</b>
           <fieldset><legend>Bahías por categoría</legend>{Object.entries(CATEGORIAS).map(([category, label]) => (
             <label key={category}><input type="checkbox" checked={capas.categorias[category] !== false} onChange={event => cambiarCapa('categorias', category, event.target.checked)} />{label}</label>
@@ -101,10 +113,12 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
           ))}</fieldset>
           <label><input type="checkbox" checked={mostrarTextos} onChange={event => setMostrarTextos(event.target.checked)} />Mostrar textos</label>
           <small>Pasa el cursor sobre una bahía, persona o máquina para ver su detalle.</small>
+          </>}
         </aside>
         {tooltip && <div className="dx-planner-3d-tooltip" style={{ left: Math.min(tooltip.x + 12, 190), top: Math.max(tooltip.y - 12, 10) }} role="status">
           <b>{tooltip.data.nombre || tooltip.data.codigo || tooltip.data.numero}</b>
           <span>{tooltip.kind === 'bahia' ? `Carga: ${tooltip.data.horas} / ${tooltip.data.capacidad} h · ${Math.round(tooltip.data.utilizacion * 100)}%` : tooltip.kind === 'persona' ? `${tooltip.data.cargo || tooltip.data.especialidad || 'Personal'} · ${tooltip.data.horas} h` : tooltip.kind === 'maquina' ? `${tooltip.data.tipo?.nombre || tooltip.data.tipo_clave} · ${tooltip.data.estado} · ${escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'Sin bahía'}` : 'Componente del equipo asignado'}</span>
+          {tooltip.kind === 'puesto' && <span>Puesto de {escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'bahía'} · capacidad {tooltip.data.capacidad || 1}</span>}
           <span>OT: {otList(tooltip.data.ots || [])}</span>
         </div>}
         <div className="dx-planner-3d-hud"><span>{fechaCorta(fecha)} · {escena.bahias.length} bahías · {escena.personas.length} personas</span>

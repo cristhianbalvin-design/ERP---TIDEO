@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { act, create } from 'react-test-renderer';
 import { createElement } from 'react';
-import { colorUtilizacion, crearLayout, mapearEscena } from '../src/zahory-mock/pages/planner/gemelo3d/sceneModel.js';
+import { calcularEncuadre, colorUtilizacion, crearLayout, mapearEscena } from '../src/zahory-mock/pages/planner/gemelo3d/sceneModel.js';
+import { generarDatosEjemplo } from '../src/zahory-mock/pages/planner/gemelo3d/exampleData.js';
 import { crearModeloMaquina, FAMILIAS_CONSTRUCTOR, resolverConstructor } from '../src/zahory-mock/pages/planner/gemelo3d/machineBuilders.js';
 import { crearEscena } from '../src/zahory-mock/pages/planner/gemelo3d/scene.js';
 import { GemeloView } from '../src/zahory-mock/pages/planner/gemelo3d/GemeloView.jsx';
@@ -50,6 +51,29 @@ describe('modelo del Gemelo 3D', () => {
     class Shape { constructor() { this.position = { set() {} }; } }
     const THREE = { Group, Mesh: Shape, BoxGeometry: Shape, CylinderGeometry: Shape, MeshStandardMaterial: Shape };
     expect(crearModeloMaquina(THREE, { base_3d: 'nuevo-futuro' }).userData.constructorMaquina).toBe('generic');
+  });
+
+  it('encuadra talleres pequeños y grandes con el centro de sus límites', () => {
+    const small = crearLayout(datos.bahias, datos.puestos);
+    const bays = Array.from({ length: 12 }, (_, i) => ({ id: `b${i}`, activa: true }));
+    const posts = bays.flatMap(bay => [0, 1, 2].map(slot => ({ id: `${bay.id}p${slot}`, bahia_id: bay.id, activo: true })));
+    const large = crearLayout(bays, posts);
+    const close = calcularEncuadre(small.limites, 1.6);
+    const wide = calcularEncuadre(large.limites, 1.6);
+    expect(close.distance).toBeGreaterThan(0);
+    expect(wide.distance).toBeGreaterThan(close.distance);
+    expect(wide.x).toBeCloseTo((large.limites.minX + large.limites.maxX) / 2);
+    expect(wide.z).toBeCloseTo((large.limites.minZ + large.limites.maxZ) / 2);
+  });
+
+  it('genera ejemplos repetibles con ocupación verde, ámbar y roja', () => {
+    const first = generarDatosEjemplo('2026-10-14');
+    expect(generarDatosEjemplo('2026-10-14')).toEqual(first);
+    expect(first.bahias).toHaveLength(10);
+    expect(first.maquinas.length).toBeGreaterThanOrEqual(25);
+    expect(first.personas.length).toBeGreaterThanOrEqual(12);
+    const colors = new Set(mapearEscena(first, '2026-10-14').bahias.map(bay => colorUtilizacion(bay.utilizacion)));
+    expect(colors).toEqual(new Set(['green', 'amber', 'red']));
   });
 
   it('activa el mensaje de respaldo cuando WebGL no crea el renderer', () => {

@@ -1,10 +1,10 @@
-import { colorUtilizacion, crearLayout } from './sceneModel.js';
+import { calcularEncuadre, colorUtilizacion, crearLayout } from './sceneModel.js';
 import { crearModeloMaquina } from './machineBuilders.js';
 
 const TOKENS = {
   '--dx-ui-green-fg': '#14633A', '--dx-ui-amber-fg': '#8A4B00', '--dx-ui-red-fg': '#B42318',
   '--dx-ui-cyan': '#00ACC1', '--dx-ui-ink': '#1F2937', '--dx-ui-card': '#FFFFFF',
-  '--dx-ui-line': '#E4E7EB', '--dx-ui-gray': '#6B7280',
+  '--dx-ui-line': '#E4E7EB', '--dx-ui-gray': '#6B7280', '--dx-ui-navy': '#1A2B4A',
 };
 const CATEGORIA = { green: '--dx-ui-green-fg', amber: '--dx-ui-amber-fg', red: '--dx-ui-red-fg' };
 
@@ -42,12 +42,19 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
   renderer.domElement.tabIndex = 0;
   renderer.domElement.className = 'dx-planner-3d-canvas';
   scene.add(new THREE.HemisphereLight(0xffffff, 0x56627a, 1.5));
-  const light = new THREE.DirectionalLight(0xffffff, 1.4);
+  const light = new THREE.DirectionalLight(0xffffff, 1.05);
   light.position.set(-25, 40, 30);
+  light.castShadow = true;
+  light.shadow.mapSize.set(1024, 1024);
+  light.shadow.camera.left = -layout.ancho / 2; light.shadow.camera.right = layout.ancho / 2;
+  light.shadow.camera.top = layout.profundidad / 2; light.shadow.camera.bottom = -layout.profundidad / 2;
+  light.shadow.camera.near = 1; light.shadow.camera.far = 100;
   scene.add(light);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene.add(root);
   const mat = (color, opacity = 1, token = null) => {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: .78, transparent: opacity < 1, opacity });
+    const material = new THREE.MeshStandardMaterial({ color, roughness: .6, metalness: .25, transparent: opacity < 1, opacity });
     material.userData.themeToken = token;
     return material;
   };
@@ -58,9 +65,16 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
   };
   const floor = box(layout.ancho, .4, layout.profundidad, mat(tokens['--dx-ui-card'], 1, '--dx-ui-card'), 0, -.3, 0);
   floor.userData.noRay = true;
+  floor.receiveShadow = true;
   root.add(floor);
   const addTarget = (mesh, kind, datum, category) => {
     mesh.userData = { kind, datum, category };
+    if (kind === 'componente') {
+      const edgeMaterial = new THREE.LineBasicMaterial({ color: tokens['--dx-ui-cyan'] });
+      edgeMaterial.userData.themeToken = '--dx-ui-cyan';
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), edgeMaterial);
+      edge.userData.noRay = true; edge.raycast = () => {}; mesh.add(edge);
+    }
     targets.push(mesh);
     root.add(mesh);
     return mesh;
@@ -91,9 +105,11 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     const token = CATEGORIA[colorUtilizacion(bahia.utilizacion)];
     const zone = box(pos.width, .14, pos.depth, mat(tint, bahia.horas ? .22 : .1, bahia.horas ? token : '--dx-ui-gray'), pos.x, .02, pos.z);
     addTarget(zone, 'bahia', bahia, bahia.categoria || 'general');
-    addLabel(bahia.nombre, pos.x, 3.2, pos.z - pos.depth / 2 + .6, bahia.categoria || 'general');
-    const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(pos.width, .18, pos.depth)),
-      new THREE.LineBasicMaterial({ color: tint }));
+    addLabel(`${bahia.nombre} · ${Math.round(bahia.utilizacion * 100)}%`, pos.x, 3.2, pos.z - pos.depth / 2 + .6, bahia.categoria || 'general');
+    const outlineMaterial = new THREE.LineBasicMaterial({ color: tint });
+    outlineMaterial.userData.themeToken = bahia.horas ? token : '--dx-ui-gray';
+    const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(pos.width, .18, pos.depth)), outlineMaterial);
+    outline.raycast = () => {};
     outline.position.set(pos.x, .1, pos.z);
     outline.userData.category = bahia.categoria || 'general';
     root.add(outline);
@@ -123,23 +139,42 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
       cylinder.position.set(pos.x - pos.width / 2 + 1.2, 1.1, pos.z + offset);
       addAccessory(cylinder);
     }
+    if (category === 'sold') {
+      addAccessory(box(2.2, .9, 2.2, mat('#7A889F'), pos.x, .45, pos.z));
+      addAccessory(box(1.1, .2, .5, mat('#FFA94D'), pos.x, 2.4, pos.z - pos.depth / 2 + .8));
+    }
+    if (category === 'crom') addAccessory(box(.18, 2.2, pos.depth * .8, mat('#E8F4FA'), pos.x - pos.width / 2 + 4, 2.6, pos.z));
   });
 
+  const maquinasPorUbicacion = new Map();
+  model.maquinas.forEach(maquina => {
+    const key = maquina.puesto_id || maquina.bahia_id;
+    maquinasPorUbicacion.set(key, (maquinasPorUbicacion.get(key) || 0) + 1);
+  });
+  const indiceMaquina = new Map();
   model.maquinas.forEach(maquina => {
     const bay = layout.posicionesBahia[maquina.bahia_id];
     const post = layout.posicionesPuesto[maquina.puesto_id];
     const loc = post || bay;
     if (!loc) return;
-    const machine = crearModeloMaquina(THREE, maquina.tipo || { tipo_clave: maquina.tipo_clave });
-    machine.position.set(loc.x, .3, loc.z);
-    machine.scale.setScalar(post ? .42 : .5);
+    const key = maquina.puesto_id || maquina.bahia_id;
+    const count = maquinasPorUbicacion.get(key) || 1;
+    const slot = (indiceMaquina.get(key) || 0) + 1;
+    indiceMaquina.set(key, slot);
+    const spacing = (post ? loc.width : Math.min(7, loc.depth / count)) / count;
+    const x = post ? loc.x - loc.width / 2 + spacing * (slot - .5) : loc.x + loc.width / 2 + 2.8;
+    const z = post ? loc.z - loc.depth / 2 + 2.8 : loc.z + (slot - (count + 1) / 2) * spacing;
+    const machine = crearModeloMaquina(THREE, maquina.tipo || { tipo_clave: maquina.tipo_clave }, undefined, tokens['--dx-ui-cyan']);
+    machine.traverse(obj => { if (obj.isMesh) { obj.castShadow = true; obj.receiveShadow = true; } });
+    machine.position.set(x, .3, z);
+    machine.scale.setScalar(post ? Math.min(.42, spacing / 7) : Math.min(.5, spacing / 6.5));
     if (maquina.estado !== 'disponible') machine.traverse(obj => {
       if (obj.isMesh) { obj.material.transparent = true; obj.material.opacity = .38; }
     });
     machine.traverse(obj => { if (obj.isMesh) targets.push(obj); });
     machine.userData = { kind: 'maquina', datum: maquina, category: model.bahias.find(item => item.id === maquina.bahia_id)?.categoria || 'general' };
     root.add(machine);
-    addLabel(maquina.nombre, loc.x, 5, loc.z, machine.userData.category);
+    addLabel(maquina.nombre, x, 5, z, machine.userData.category);
   });
 
   model.personas.forEach((persona, index) => {
@@ -159,21 +194,34 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     group.userData = { kind: 'persona', datum: persona, category: 'personas' };
     targets.push(torso, head);
     root.add(group);
-    addLabel(persona.nombre, group.position.x, 2.8, group.position.z, 'personas');
+    addLabel(`${persona.nombre} · ${Math.round(Math.min(1, persona.horas / 8) * 100)}%`, group.position.x, 2.8, group.position.z, 'personas');
   });
 
   model.bahias.forEach(bahia => {
     const pos = layout.posicionesBahia[bahia.id];
     if (!pos) return;
     bahia.ots.forEach((ot, index) => {
-      const component = box(.8, .8, .8, mat(tokens['--dx-ui-violet'] || tokens['--dx-ui-cyan']), pos.x - pos.width / 2 + 2 + index, .7, pos.z);
+      const x = pos.x - pos.width / 2 + 2 + index * 1.35;
+      const component = index % 3 === 0
+        ? new THREE.Mesh(new THREE.CylinderGeometry(.46, .46, 2.8, 18), mat(tokens['--dx-ui-cyan']))
+        : box(index % 3 === 1 ? 1.8 : 1.1, index % 3 === 1 ? .45 : 1.2, index % 3 === 1 ? 1.2 : .8, mat(index % 3 === 1 ? '#8FB8E8' : '#9AA9BE'));
+      component.position.set(x, index % 3 === 0 ? 1.4 : index % 3 === 1 ? .45 : .6, pos.z);
       addTarget(component, 'componente', { ot, bahia }, bahia.categoria || 'general');
     });
   });
 
-  camera.position.set(65, 58, 78);
-  controls.target.set(0, 0, 0);
+  const applyFrame = aspect => {
+    const fit = calcularEncuadre(layout.limites, aspect || 1, camera.fov);
+    controls.target.set(fit.x, 0, fit.z);
+    camera.position.set(fit.x + fit.distance * Math.sin(fit.azimuth) * Math.cos(fit.elevation), fit.distance * Math.sin(fit.elevation), fit.z + fit.distance * Math.cos(fit.azimuth) * Math.cos(fit.elevation));
+    controls.minDistance = fit.minDistance; controls.maxDistance = fit.maxDistance;
+    controls.minPolarAngle = .26; controls.maxPolarAngle = 1.38;
+    controls.update(); render();
+  };
+  applyFrame(1);
   controls.enableDamping = !reduced;
+  controls.enableZoom = false;
+  renderer.domElement.style.touchAction = 'pan-y';
   controls.addEventListener('change', render);
   host.appendChild(renderer.domElement);
   const resize = new ResizeObserver(entries => {
@@ -182,6 +230,7 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    applyFrame(camera.aspect);
     render();
   });
   resize.observe(host);
@@ -210,6 +259,15 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     render();
   };
   renderer.domElement.addEventListener('keydown', keyboard);
+  const wheel = event => {
+    if (!event.ctrlKey && !event.metaKey) { opciones.onZoomHint?.(); return; }
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? 1.12 : .89;
+    const offset = camera.position.clone().sub(controls.target).multiplyScalar(direction);
+    const distance = Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()));
+    camera.position.copy(controls.target).add(offset.setLength(distance)); render();
+  };
+  renderer.domElement.addEventListener('wheel', wheel, { passive: false });
   let tooltip;
   const pointerMove = event => {
     const rect = renderer.domElement.getBoundingClientRect();
@@ -228,6 +286,7 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
 
   return {
     renderer,
+    centerView() { applyFrame(camera.aspect); },
     setLayers(next) {
       Object.assign(layerState.categorias, next.categorias || {});
       Object.assign(layerState.objetos, next.objetos || {});
@@ -261,6 +320,7 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
       renderer.domElement.removeEventListener('pointermove', pointerMove);
       renderer.domElement.removeEventListener('pointerleave', pointerLeave);
       renderer.domElement.removeEventListener('keydown', keyboard);
+      renderer.domElement.removeEventListener('wheel', wheel);
       resize.disconnect();
       controls.removeEventListener('change', render);
       controls.dispose();
