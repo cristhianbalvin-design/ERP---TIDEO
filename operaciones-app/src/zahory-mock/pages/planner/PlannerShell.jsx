@@ -1,6 +1,7 @@
 import { PanelView } from './PanelView.jsx';
 import { BoardView } from './BoardView.jsx';
 import { Configurator } from './Configurator.jsx';
+import { GemeloView } from './gemelo3d/GemeloView.jsx';
 
 export function PlannerHeader({ vista, permiteEscritura, onChangeVista, onSimulate, onPlanificar }) {
   const tabs = [
@@ -43,12 +44,9 @@ export function PlannerHeader({ vista, permiteEscritura, onChangeVista, onSimula
             key={id}
             role="tab"
             aria-selected={vista === id}
-            disabled={id === '3d'}
-            title={id === '3d' ? 'Próximamente' : undefined}
             onClick={() => onChangeVista(id)}
           >
             {label}
-            {id === '3d' && <small>Próximamente</small>}
           </button>
         ))}
       </nav>
@@ -111,6 +109,7 @@ export function PlannerVistas({
       permiteEscritura={permiteEscritura}
     />;
   }
+  if (vista === '3d') return <GemeloView datos={datos} />;
   return null;
 }
 
