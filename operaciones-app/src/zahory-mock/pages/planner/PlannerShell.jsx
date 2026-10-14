@@ -71,6 +71,7 @@ export function PlannerVistas({
   onUndo,
   onSaveConfig,
   permiteEscritura,
+  onVerEnTablero,
 }) {
   if (vista === 'panel') {
     return (
@@ -109,7 +110,7 @@ export function PlannerVistas({
       permiteEscritura={permiteEscritura}
     />;
   }
-  if (vista === '3d') return <GemeloView datos={datos} />;
+  if (vista === '3d') return <GemeloView datos={datos} onVerEnTablero={onVerEnTablero} />;
   return null;
 }
 

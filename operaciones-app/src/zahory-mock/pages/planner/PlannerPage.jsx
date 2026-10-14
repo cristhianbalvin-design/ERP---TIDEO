@@ -130,6 +130,10 @@ export function PlannerPage() {
           onUndo={acciones.deshacer}
           onSaveConfig={acciones.guardarConfig}
           permiteEscritura={sesion.permiteEscritura}
+          onVerEnTablero={ot => {
+            if (ot) setSeleccion({ ot });
+            setVista('tablero');
+          }}
         />
       )}
       {!wizard && !cargando && datos && !datos.bahias.length && vista === 'panel' && (

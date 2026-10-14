@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { colorUtilizacion, mapearEscena } from './sceneModel.js';
+import { colorUtilizacion, crearDetalleSeleccion, mapearEscena } from './sceneModel.js';
 import { leerTokens } from './scene.js';
 import { generarDatosEjemplo } from './exampleData.js';
 
@@ -15,7 +15,7 @@ const sumarDia = (date, days) => {
 const fechaCorta = value => new Date(`${value}T12:00:00`).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
 const CATEGORIAS = { general: 'General', pesada: 'Pesada', sold: 'Soldadura', crom: 'Cromado', mec: 'Mecánica', hidr: 'Hidráulica' };
 
-export function GemeloView({ datos, importarThree = () => import('three') }) {
+export function GemeloView({ datos, importarThree = () => import('three'), onVerEnTablero = () => {} }) {
   const hostRef = useRef(null);
   const sceneRef = useRef(null);
   const [dia, setDia] = useState(0);
@@ -24,14 +24,19 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
   const [errorWebGL, setErrorWebGL] = useState(false);
   const [movimientoReducido] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [tooltip, setTooltip] = useState(null);
+  const [seleccion, setSeleccion] = useState(null);
   const [zoomHint, setZoomHint] = useState(false);
   const [ejemploActivo, setEjemploActivo] = useState(false);
   const [capasPlegadas, setCapasPlegadas] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 1099px)').matches);
-  const [capas, setCapas] = useState({ categorias: {}, objetos: { maquinas: true, personas: true, componentes: true } });
+  const [capas, setCapas] = useState({ categorias: {}, objetos: { maquinas: true, personas: true, componentes: true, equipos: true } });
+  function elegirSeleccion(value) {
+    setSeleccion(value);
+    sceneRef.current?.setSelection(value);
+  }
   const hoy = useMemo(FECHA_HOY, []);
   const fecha = sumarDia(hoy, dia);
   const datosEscena = useMemo(() => ejemploActivo ? generarDatosEjemplo(hoy) : datos, [ejemploActivo, hoy, datos]);
-  const escena = useMemo(() => mapearEscena(datosEscena, fecha), [datosEscena, fecha]);
+  const escena = useMemo(() => mapearEscena(datosEscena, fecha, hoy), [datosEscena, fecha, hoy]);
   const fechas = useMemo(() => Array.from({ length: 10 }, (_, index) => sumarDia(hoy, index)), [hoy]);
 
   useEffect(() => {
@@ -47,6 +52,13 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
         const session = crearEscena(THREE, OrbitControls, host, escena, tokensDeEscena(host.closest('.dx-ui') || host), {
           onError: () => activo && setErrorWebGL(true),
           onTooltip: setTooltip,
+          onSelect: value => {
+            setTooltip(null);
+            if (value?.kind === 'dia') {
+              const index = fechas.indexOf(value.data.fecha);
+              if (index >= 0) setDia(index);
+            } else elegirSeleccion(value);
+          },
           onZoomHint: () => { if (activo && typeof window !== 'undefined') { setZoomHint(true); window.clearTimeout(host._zoomHintTimer); host._zoomHintTimer = window.setTimeout(() => setZoomHint(false), 1800); } },
         });
         if (!session) { setErrorWebGL(true); return; }
@@ -66,7 +78,14 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
       sceneRef.current = null;
       setTooltip(null);
     };
-  }, [escena]);
+  }, [escena, fechas]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const cerrar = event => { if (event.key === 'Escape') elegirSeleccion(null); };
+    window.addEventListener('keydown', cerrar);
+    return () => window.removeEventListener('keydown', cerrar);
+  }, []);
 
   useEffect(() => { sceneRef.current?.setLayers(capas); }, [capas]);
   useEffect(() => { sceneRef.current?.setLabels(mostrarTextos); }, [mostrarTextos]);
@@ -80,6 +99,8 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
     setCapas(current => ({ ...current, [grupo]: { ...current[grupo], [clave]: value } }));
   }
   const otList = items => items.map(item => item.numero || item.id).join(', ') || 'Sin OT asignadas';
+  const detalle = seleccion ? crearDetalleSeleccion(seleccion.kind, seleccion.data, escena) : null;
+  const seleccionarDesdeLista = (kind, data) => elegirSeleccion({ kind, data });
 
   return (
     <section className="dx-ui-card dx-planner-3d" aria-labelledby="planner-3d-title">
@@ -108,7 +129,7 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
           <fieldset><legend>Bahías por categoría</legend>{Object.entries(CATEGORIAS).map(([category, label]) => (
             <label key={category}><input type="checkbox" checked={capas.categorias[category] !== false} onChange={event => cambiarCapa('categorias', category, event.target.checked)} />{label}</label>
           ))}</fieldset>
-          <fieldset><legend>Objetos</legend>{[['maquinas', 'Máquinas'], ['personas', 'Personal'], ['componentes', 'Componentes']].map(([key, title]) => (
+          <fieldset><legend>Objetos</legend>{[['maquinas', 'Máquinas'], ['personas', 'Personal'], ['equipos', 'Equipo del cliente'], ['componentes', 'Componentes']].map(([key, title]) => (
             <label key={key}><input type="checkbox" checked={capas.objetos[key]} onChange={event => cambiarCapa('objetos', key, event.target.checked)} />{title}</label>
           ))}</fieldset>
           <label><input type="checkbox" checked={mostrarTextos} onChange={event => setMostrarTextos(event.target.checked)} />Mostrar textos</label>
@@ -116,8 +137,8 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
           </>}
         </aside>
         {tooltip && <div className="dx-planner-3d-tooltip" style={{ left: Math.min(tooltip.x + 12, 190), top: Math.max(tooltip.y - 12, 10) }} role="status">
-          <b>{tooltip.data.nombre || tooltip.data.codigo || tooltip.data.numero}</b>
-          <span>{tooltip.kind === 'bahia' ? `Carga: ${tooltip.data.horas} / ${tooltip.data.capacidad} h · ${Math.round(tooltip.data.utilizacion * 100)}%` : tooltip.kind === 'persona' ? `${tooltip.data.cargo || tooltip.data.especialidad || 'Personal'} · ${tooltip.data.horas} h` : tooltip.kind === 'maquina' ? `${tooltip.data.tipo?.nombre || tooltip.data.tipo_clave} · ${tooltip.data.estado} · ${escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'Sin bahía'}` : 'Componente del equipo asignado'}</span>
+          <b>{tooltip.data.ot?.numero ? `OT ${tooltip.data.ot.numero}` : tooltip.data.nombre || tooltip.data.codigo || tooltip.data.numero || tooltip.data.fecha}</b>
+          <span>{tooltip.kind === 'dia' ? `${fechaCorta(tooltip.data.fecha)} · ${Math.round(tooltip.data.utilizacion * 100)}% de uso` : tooltip.kind === 'equipo' ? `${tooltip.data.ot?.numero || 'OT'} · ${tooltip.data.ot?.tipo_equipo || tooltip.data.ot?.equipo_tipo || 'ilustración genérica'}` : tooltip.kind === 'componente' ? `${tooltip.data.ot?.componente_tipo || tooltip.data.ot?.componente_clave || 'ilustración genérica'} · ${tooltip.data.ot?.numero || 'OT'}` : tooltip.kind === 'bahia' ? `Carga: ${tooltip.data.horas} / ${tooltip.data.capacidad} h · ${Math.round(tooltip.data.utilizacion * 100)}%` : tooltip.kind === 'persona' ? `${tooltip.data.cargo || tooltip.data.especialidad || 'Personal'} · ${tooltip.data.horas} h` : tooltip.kind === 'maquina' ? `${tooltip.data.tipo?.nombre || tooltip.data.tipo_clave} · ${tooltip.data.asignaciones?.length ? 'En uso' : 'Libre'} · ${escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'Sin bahía'}` : 'Puesto del taller'}</span>
           {tooltip.kind === 'puesto' && <span>Puesto de {escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'bahía'} · capacidad {tooltip.data.capacidad || 1}</span>}
           <span>OT: {otList(tooltip.data.ots || [])}</span>
         </div>}
@@ -125,8 +146,18 @@ export function GemeloView({ datos, importarThree = () => import('three') }) {
           <div className="dx-planner-3d-legend-key"><span className="is-green" /> &lt;75% <span className="is-amber" /> 75–89% <span className="is-red" /> ≥90%</div>
         </div>
       </div>
+      {detalle && <aside className="dx-planner-3d-detail" aria-live="polite" aria-label="Detalle seleccionado">
+        <button type="button" className="dx-planner-3d-detail-close" onClick={() => elegirSeleccion(null)} aria-label="Cerrar detalle">Cerrar</button>
+        {detalle.tipo === 'bahia' && <><h3>{detalle.bahia.nombre}</h3><p>Categoría: {CATEGORIAS[detalle.bahia.categoria] || 'General'} · capacidad {detalle.bahia.capacidad} h · utilización {Math.round(detalle.bahia.utilizacion * 100)}%.</p><p>OT: {otList(detalle.ots)} · Personal: {detalle.personas.map(item => item.nombre).join(', ') || 'Sin personas asignadas'}.</p><button type="button" className="dx-btn" onClick={() => onVerEnTablero(detalle.ots[0])} disabled={!detalle.ots.length}>Ver en el tablero</button></>}
+        {detalle.tipo === 'ot' && <><h3>OT {detalle.ot.numero || detalle.ot.id}</h3><p>Trabajo: {detalle.trabajo}</p><p>Equipo: {detalle.equipo} · componente: {detalle.componente}</p><p>Bahía: {detalle.bahia?.nombre || 'No informada'} · fechas: {detalle.fechas.join(', ') || escena.fecha}</p><p>Personas: {detalle.personas.map(item => item.nombre).join(', ') || 'No informadas'} · {detalle.horas} h · estado: {detalle.ot.estado || 'No informado'} · {detalle.conflicto ? 'Con conflicto' : 'Sin conflicto'}</p><button type="button" className="dx-btn" onClick={() => onVerEnTablero(detalle.ot)}>Ver en el tablero</button></>}
+        {detalle.tipo === 'persona' && <><h3>{detalle.persona.nombre}</h3><p>{detalle.cargo} · {detalle.horas} h en el día</p><p>OT: {otList(detalle.ots)}</p></>}
+        {detalle.tipo === 'maquina' && <><h3>{detalle.maquina.nombre || detalle.maquina.tipo?.nombre || 'Máquina'}</h3><p>Tipo: {detalle.maquina.tipo?.nombre || detalle.maquina.tipo_clave || 'No informado'} · {detalle.uso}</p><p>OT: {otList(detalle.maquina.ots)}</p></>}
+      </aside>}
       <details className="dx-planner-3d-summary"><summary>Resumen textual del día</summary>
-        <ul>{escena.bahias.map(bahia => <li key={bahia.id}><b>{bahia.nombre}</b>: {bahia.horas} de {bahia.capacidad} h ({Math.round(bahia.utilizacion * 100)}%); {bahia.ots.length ? `OT ${otList(bahia.ots)}` : 'sin OT asignadas'}.</li>)}</ul>
+        <h3>Bahías</h3><ul>{escena.bahias.map(bahia => <li key={bahia.id}><button type="button" className="dx-btn dx-planner-3d-list-button" onClick={() => seleccionarDesdeLista('bahia', bahia)}>{bahia.nombre}: {bahia.horas} de {bahia.capacidad} h ({Math.round(bahia.utilizacion * 100)}%); {bahia.ots.length ? `OT ${otList(bahia.ots)}` : 'sin OT asignadas'}.</button></li>)}</ul>
+        <h3>OT del día</h3><ul>{escena.ots.map(ot => <li key={ot.id}><button type="button" className="dx-btn dx-planner-3d-list-button" onClick={() => seleccionarDesdeLista('ot', ot)}>OT {ot.numero || ot.id} · {ot.descripcion || ot.servicio || 'Trabajo no informado'} · equipo y componente: ilustración genérica</button></li>)}</ul>
+        <h3>Personal</h3><ul>{escena.personas.map(persona => <li key={persona.id}><button type="button" className="dx-btn dx-planner-3d-list-button" onClick={() => seleccionarDesdeLista('persona', persona)}>{persona.nombre} · {persona.cargo || persona.especialidad || 'Personal'} · {persona.horas} h</button></li>)}</ul>
+        <h3>Máquinas</h3><ul>{escena.maquinas.map(maquina => <li key={maquina.id}><button type="button" className="dx-btn dx-planner-3d-list-button" onClick={() => seleccionarDesdeLista('maquina', maquina)}>{maquina.nombre || maquina.tipo?.nombre} · {maquina.tipo?.nombre || maquina.tipo_clave}</button></li>)}</ul>
       </details>
     </section>
   );

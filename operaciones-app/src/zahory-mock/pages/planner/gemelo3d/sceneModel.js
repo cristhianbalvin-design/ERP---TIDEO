@@ -38,7 +38,7 @@ export function calcularEncuadre(limites, aspect = 1, fov = 36) {
   return { ...center, distance, minDistance: Math.max(12, Math.min(24, distance * .42)), maxDistance: Math.min(240, Math.max(90, distance * 2.4)), azimuth: .48, elevation: .72 };
 }
 
-export function mapearEscena(datos, fecha) {
+export function mapearEscena(datos, fecha, fechaInicio = fecha) {
   const ots = new Map((datos.ots || []).map(ot => [ot.id, ot]));
   const bahias = (datos.bahias || []).map(bahia => {
     const puestos = (datos.puestos || []).filter(puesto => puesto.bahia_id === bahia.id && puesto.activo !== false);
@@ -46,12 +46,15 @@ export function mapearEscena(datos, fecha) {
     const asignaciones = (datos.asignaciones || []).filter(item => item.fecha === fecha && item.estado !== 'cancelado' && ids.has(item.puesto_id));
     const capacidad = puestos.reduce((total, puesto) => total + Number(puesto.capacidad || 1) * 8, 0);
     const horas = asignaciones.reduce((total, item) => total + Number(item.horas_estimadas || 8), 0);
+    const otsDia = [...new Set(asignaciones.map(item => item.ot_id))].map(id => ots.get(id)).filter(Boolean);
     return { ...bahia, puestos, asignaciones, horas, capacidad, utilizacion: capacidad ? horas / capacidad : 0,
-      ots: [...new Set(asignaciones.map(item => item.ot_id))].map(id => ots.get(id)).filter(Boolean) };
+      conflicto: puestos.some(puesto => new Set(asignaciones.filter(item => item.puesto_id === puesto.id).map(item => item.ot_id)).size > Number(puesto.capacidad || 1)),
+      ots: otsDia };
   });
   const personas = (datos.personas || []).map(persona => {
     const asignaciones = (datos.asignaciones || []).filter(item => item.tecnico_id === persona.id && item.fecha === fecha && item.estado !== 'cancelado');
-    return { ...persona, asignaciones, horas: asignaciones.reduce((sum, item) => sum + Number(item.horas_estimadas || 8), 0),
+    const ausente = (datos.ausencias || []).some(item => item.tecnico_id === persona.id && item.fecha === fecha);
+    return { ...persona, estado: ausente ? 'ausente' : persona.estado, ausente, asignaciones, horas: asignaciones.reduce((sum, item) => sum + Number(item.horas_estimadas || 8), 0),
       ots: [...new Set(asignaciones.map(item => item.ot_id))].map(id => ots.get(id)).filter(Boolean) };
   });
   const maquinas = (datos.maquinas || []).map(maquina => {
@@ -61,7 +64,66 @@ export function mapearEscena(datos, fecha) {
     return { ...maquina, tipo, bahia_id: puesto?.bahia_id || maquina.bahia_id, asignaciones,
       ots: [...new Set(asignaciones.map(item => item.ot_id))].map(id => ots.get(id)).filter(Boolean) };
   });
-  return { fecha, bahias, personas, maquinas, puestos: datos.puestos || [], ots: [...ots.values()] };
+  const asignacionesOt = (datos.asignaciones || []).filter(item => item.fecha === fecha && item.estado !== 'cancelado');
+  const otsActivas = [...new Set(asignacionesOt.map(item => item.ot_id))].map(id => ots.get(id)).filter(Boolean);
+  const base = new Date(`${fechaInicio}T12:00:00`);
+  const fechas = Array.from({ length: 10 }, (_, index) => { const day = new Date(base); day.setDate(day.getDate() + index); return day.toISOString().slice(0, 10); });
+  return { fecha, bahias, personas, maquinas, puestos: datos.puestos || [], ots: otsActivas,
+    asignaciones: asignacionesOt, asignacionesTotales: (datos.asignaciones || []).filter(item => item.estado !== 'cancelado'), ocupaciones: datos.ocupaciones || [],
+    equipoPorOt: Object.fromEntries(otsActivas.map(ot => [ot.id, resolverIlustracionOT(ot)])),
+    paredDias: calcularParedDias(datos, fechas) };
+}
+
+// El servicio Planner solo incluye equipo_id en la OT; no trae tipo del equipo ni componente.
+export function resolverIlustracionOT(ot = {}) {
+  const equipo = ot.tipo_equipo || ot.equipo?.tipo || ot.equipo_tipo || null;
+  const componente = ot.componente_tipo || ot.componente?.tipo || ot.componente_clave || null;
+  return { equipo: equipo || 'generico', componente: componente || 'generico',
+    equipoGenerico: !equipo, componenteGenerico: !componente };
+}
+
+export function calcularParedDias(datos, fechas, horasDia = 8) {
+  return (fechas || []).map(fecha => {
+    const personas = datos?.personas || [];
+    const ocupados = (datos?.asignaciones || []).filter(item => item.fecha === fecha && item.estado !== 'cancelado');
+    const ausentes = new Set((datos?.ausencias || []).filter(item => item.fecha === fecha).map(item => item.tecnico_id));
+    const capacidad = personas.filter(persona => persona.estado !== 'ausente' && !ausentes.has(persona.id)).length * horasDia;
+    const horas = ocupados.reduce((sum, item) => sum + Number(item.horas_estimadas || horasDia), 0);
+    return { fecha, horas, capacidad, utilizacion: capacidad ? horas / capacidad : 0, color: colorUtilizacion(capacidad ? horas / capacidad : 0) };
+  });
+}
+
+export function calcularDestinosPersonal(personas = [], bahias = [], layout = {}) {
+  return personas.map((persona, index) => {
+    const assignment = persona.asignaciones?.[0];
+    const bahia = bahias.find(item => item.puestos.some(puesto => puesto.id === assignment?.puesto_id));
+    const pos = bahia ? layout.posicionesBahia?.[bahia.id] : null;
+    return { persona, bahia, x: pos?.x ?? 0, z: pos?.z ?? 0, espera: !assignment,
+      ausente: persona.estado === 'ausente' || persona.ausente === true,
+      xOffset: ((index % 3) - 1) * 1.5, zOffset: Math.floor(index / 3) * 1.6 };
+  });
+}
+
+export function crearDetalleSeleccion(tipo, dato, escena = {}) {
+  if (!dato) return null;
+  if (tipo === 'ot' || tipo === 'componente' || tipo === 'equipo') {
+    const ot = dato.ot || dato;
+    const bahia = dato.bahia || escena.bahias?.find(item => item.ots.some(itemOt => itemOt.id === ot.id));
+    const tareas = ot.ot_tareas || [];
+    const personas = (escena.personas || []).filter(persona => persona.ots?.some(item => item.id === ot.id));
+    const ilustracion = resolverIlustracionOT(ot);
+    return { tipo: 'ot', ot, trabajo: tareas.map(tarea => tarea.familia_trabajo?.nombre || tarea.titulo).filter(Boolean).join(', ') || ot.descripcion || ot.servicio || 'Trabajo no informado',
+      equipo: ilustracion.equipoGenerico ? 'Ilustración genérica' : ilustracion.equipo,
+      componente: ilustracion.componenteGenerico ? 'Ilustración genérica' : ilustracion.componente,
+      bahia, fechas: [...new Set((escena.asignacionesTotales || escena.asignaciones || []).filter(item => item.ot_id === ot.id).map(item => item.fecha))],
+      personas, horas: (escena.asignaciones || []).filter(item => item.ot_id === ot.id).reduce((sum, item) => sum + Number(item.horas_estimadas || 0), 0),
+      conflicto: Boolean(bahia?.conflicto) };
+  }
+  if (tipo === 'persona') return { tipo, persona: dato, cargo: dato.cargo || dato.especialidad || 'Personal', horas: dato.horas || 0, ots: dato.ots || [] };
+  if (tipo === 'maquina') return { tipo, maquina: dato, uso: dato.asignaciones?.length ? 'En uso' : 'Libre' };
+  if (tipo === 'bahia') return { tipo, bahia: dato, ots: dato.ots || [], personas: (escena.personas || []).filter(persona => persona.asignaciones?.some(item => dato.puestos.some(puesto => puesto.id === item.puesto_id))) };
+  if (tipo === 'dia') return { tipo, dia: dato };
+  return { tipo, dato };
 }
 
 export function colorUtilizacion(value) {
