@@ -187,7 +187,6 @@ export default function HojaCosteoWizard() {
     return numero(tipoCambioPenUsd) > 0 ? montoUsd / numero(tipoCambioPenUsd) : null;
   };
   const money = value => moneyD(numero(value), simboloMoneda);
-  const tarifaPlanillaEnMoneda = convertirUsdAMonedaHoja(tarifaPlanilla);
   const costoMaterialCalculadoEnMoneda = convertirUsdAMonedaHoja(materialSeleccionado?.costo_usd_calculado);
 
   const cargarDatos = async () => {
@@ -1350,117 +1349,6 @@ export default function HojaCosteoWizard() {
               ? <button className="btn btn-primary" type="button" disabled={guardandoResumen || aprobando || divisorPrecio <= 0} onClick={enviarARevision}>Enviar a revisión</button>
               : <button className="btn btn-primary" type="button" disabled={guardandoResumen || aprobando || divisorPrecio <= 0} onClick={solicitarAprobacion}>{aprobando ? 'Aprobando...' : 'Aprobar hoja de costeo'}</button>}
           </div>}
-        </section>
-      </>
-    );
-  };
-
-  const renderPasoLegacy = () => {
-    if (paso === 'materiales') return renderPasoMateriales();
-    if (paso === 'terceros') return renderPasoTerceros();
-    if (paso === 'activos') return renderPasoActivos();
-    if (paso === 'resumen') return renderPasoResumen();
-
-    return (
-      <>
-        {bloqueada && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.10)', color: 'var(--orange)', fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span aria-hidden="true" style={{ width: 16, height: 16, flex: '0 0 16px', display: 'inline-flex' }}>{I.lock}</span>
-            <span>Esta Hoja de Costeo está aprobada. Las líneas de mano de obra solo se muestran en modo lectura.</span>
-          </div>
-        )}
-        <section className="card" style={{ padding: 20, marginBottom: 18 }}>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Nueva línea</div>
-          <div className="text-muted" style={{ fontSize: 13, marginBottom: 18 }}>El costo/hora se toma de planilla cuando existe; en caso contrario se registra como manual.</div>
-          <form onSubmit={agregarLinea}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
-              <div className="input-group" style={{ margin: 0 }}>
-                <label>Trabajo</label>
-                <select className="select" disabled={bloqueada || cargando} value={form.familia_trabajo_id} onChange={e => setForm(prev => ({ ...prev, familia_trabajo_id: e.target.value }))}>
-                  <option value="">Seleccionar trabajo...</option>
-                  {familias.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
-                </select>
-                {!bloqueada && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <input className="input" value={trabajoNuevo} onChange={e => setTrabajoNuevo(e.target.value)} placeholder="Nuevo trabajo" aria-label="Nuevo trabajo" />
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={!trabajoNuevo.trim() || creandoTrabajo} onClick={crearTrabajo}>{I.plus} Crear</button>
-                  </div>
-                )}
-              </div>
-              <div className="input-group" style={{ margin: 0 }}>
-                <label>Actividad</label>
-                <select className="select" disabled={bloqueada || cargando} value={form.actividad_id} onChange={e => setForm(prev => ({ ...prev, actividad_id: e.target.value }))}>
-                  <option value="">Seleccionar actividad...</option>
-                  {actividades.map(item => <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} — ` : ''}{item.nombre}</option>)}
-                </select>
-              </div>
-              <div className="input-group" style={{ margin: 0 }}>
-                <label>Cargo</label>
-                <select className="select" disabled={bloqueada || cargando} value={form.cargo_id} onChange={e => {
-                  const cargoId = e.target.value;
-                  const sugeridoUsd = configuracionPorCargo.get(cargoId)?.costo_hora_manual ?? tarifaPorCargo.get(cargoId) ?? null;
-                  const sugerido = convertirUsdAMonedaHoja(sugeridoUsd);
-                  setForm(prev => ({ ...prev, cargo_id: cargoId, costo_hora_manual: sugerido == null ? '' : String(sugerido) }));
-                }}>
-                  <option value="">Seleccionar cargo...</option>
-                  {cargos.map(item => <option key={item.id} value={item.id}>{item.codigo ? `${item.codigo} — ` : ''}{item.nombre}</option>)}
-                </select>
-              </div>
-              <div className="input-group" style={{ margin: 0 }}>
-                <label>Horas</label>
-                <input type="number" className="input" min="0.01" step="0.01" disabled={bloqueada || cargando} value={form.horas} onChange={e => setForm(prev => ({ ...prev, horas: e.target.value }))} placeholder="0.00" />
-              </div>
-              {form.cargo_id && (
-                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
-                  <div className="input-group" style={{ margin: 0 }}>
-                      <label>Costo/hora de planilla</label>
-                      <div className="input" style={{ background: 'var(--bg-subtle)', color: 'var(--fg-muted)' }}>
-                        {tarifaPlanillaEnMoneda != null ? money(tarifaPlanillaEnMoneda) : '—'}
-                        {tarifaPlanillaEnMoneda != null && <span style={{ marginLeft: 8 }} className="badge badge-cyan">Referencia</span>}
-                      </div>
-                    </div>
-                  <div className="input-group" style={{ margin: 0 }}>
-                    <label>Costo/hora manual</label>
-                    <input type="number" className="input" min="0.01" step="0.01" disabled={bloqueada || cargando} value={form.costo_hora_manual} onChange={e => setForm(prev => ({ ...prev, costo_hora_manual: e.target.value }))} placeholder={`${simboloMoneda} 0.00`} />
-                    <div className="text-muted" style={{ fontSize: 12, marginTop: 5 }}>Se usa este valor para el snapshot de la línea. Puedes ajustarlo sin cambiar la configuración del cargo.</div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-              <button className="btn btn-primary" type="submit" disabled={bloqueada || cargando || guardando}>{I.plus} {guardando ? 'Agregando...' : 'Agregar línea'}</button>
-            </div>
-          </form>
-        </section>
-
-        <section className="card" style={{ padding: 20 }}>
-          <div className="cost-section-head">
-            <div className="row" style={{ gap: 10, alignItems: 'center' }}><h3>Mano de obra agregada</h3><span className="badge badge-cyan">{lineas.length}</span></div>
-            <span className="num" style={{ fontWeight: 700 }}>{money(subtotalManoObra)}</span>
-          </div>
-          {cargando ? <div className="text-muted" style={{ padding: 16 }}>Cargando líneas...</div> : lineas.length === 0 ? (
-            <div className="text-muted" style={{ padding: '12px 0', fontSize: 13 }}>Aún no hay líneas de mano de obra.</div>
-          ) : (
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead><tr><th>Trabajo</th><th>Actividad</th><th>Cargo</th><th className="num">Horas</th><th className="num">Costo/hora</th><th>Método</th><th className="num">Subtotal</th>{!bloqueada && <th />}</tr></thead>
-                <tbody>
-                  {lineas.map(linea => (
-                    <tr key={linea.id}>
-                      <td>{familiaPorId.get(linea.familia_trabajo_id)?.nombre || linea.familia_trabajo_id}</td>
-                      <td>{actividadPorId.get(linea.actividad_id)?.nombre || linea.actividad_id}</td>
-                      <td>{cargoPorId.get(linea.cargo_id)?.nombre || linea.cargo_id}</td>
-                      <td className="num">{numero(linea.horas).toLocaleString('es-PE', { maximumFractionDigits: 2 })}</td>
-                      <td className="num">{money(linea.costo_hora_snapshot)}</td>
-                      <td><span className={`badge ${linea.metodo_usado === 'planilla' ? 'badge-cyan' : 'badge-gray'}`}>{linea.metodo_usado}</span></td>
-                      <td className="num" style={{ fontWeight: 700 }}>{money(linea.subtotal)}</td>
-                      {!bloqueada && <td><button className="icon-btn text-danger" type="button" disabled={eliminandoId === linea.id} onClick={() => eliminarLinea(linea)} title="Eliminar línea">{I.trash}</button></td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </section>
       </>
     );
