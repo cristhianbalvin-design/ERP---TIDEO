@@ -21,6 +21,7 @@ export function CatalogoMaquinas({
   onSetUbicacion,
   onChoose,
   onClose,
+  permiteEscritura,
 }) {
   const tipos = (datos.tipos || []).filter(tipo => {
     const texto = `${tipo.nombre} ${tipo.clave} ${tipo.familia} ${tipo.descripcion || ''}`;
@@ -74,7 +75,11 @@ export function CatalogoMaquinas({
         </div>
         <div className="dx-planner-catalog-grid">
           {tipos.map(tipo => (
-            <button key={tipo.clave} onClick={() => onChoose(tipo)}>
+            <button
+              key={tipo.clave}
+              disabled={!permiteEscritura}
+              onClick={() => onChoose(tipo)}
+            >
               <b>{tipo.nombre}</b>
               <small>{FAMILIAS[tipo.familia] || tipo.familia}</small>
               <span>{tipo.descripcion}</span>

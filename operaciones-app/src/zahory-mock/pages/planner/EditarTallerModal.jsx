@@ -13,10 +13,18 @@ export function EditarTallerModal({
   onSave,
   onClose,
   onOpenCatalog,
+  permiteEscritura,
 }) {
   const titulo = editBahia ? 'Editar bahía' : editPuesto ? 'Editar puesto' : 'Editar máquina';
+  function guardar(...args) {
+    return Promise.resolve(onSave(...args)).then(guardado => {
+      if (guardado) onClose();
+      return guardado;
+    });
+  }
+
   return (
-    <div className="dx-planner-scrim">
+    <div className="dx-ui dx-planner dx-planner-scrim">
       <section className="dx-planner-modal dx-ui-card" role="dialog" aria-modal="true">
         <div className="dx-ui-toolbar">
           <h2>{titulo}</h2>
@@ -26,8 +34,9 @@ export function EditarTallerModal({
           <EditarBahia
             bahia={editBahia}
             busy={busy}
+            permiteEscritura={permiteEscritura}
             onChange={onSetBahia}
-            onSave={onSave}
+            onSave={guardar}
           />
         )}
         {editPuesto && (
@@ -35,8 +44,9 @@ export function EditarTallerModal({
             datos={datos}
             puesto={editPuesto}
             busy={busy}
+            permiteEscritura={permiteEscritura}
             onChange={onSetPuesto}
-            onSave={onSave}
+            onSave={guardar}
           />
         )}
         {seleccion && (
@@ -47,8 +57,9 @@ export function EditarTallerModal({
             ubicacion={ubicacion}
             onChange={onSetSeleccion}
             onChangeUbicacion={onSetUbicacion}
-            onSave={onSave}
+            onSave={guardar}
             onOpenCatalog={onOpenCatalog}
+            permiteEscritura={permiteEscritura}
           />
         )}
       </section>
@@ -56,21 +67,21 @@ export function EditarTallerModal({
   );
 }
 
-function EditarBahia({ bahia, busy, onChange, onSave }) {
+function EditarBahia({ bahia, busy, permiteEscritura, onChange, onSave }) {
   return (
     <form className="dx-planner-config-body" onSubmit={event => {
       event.preventDefault();
       onSave('bahia', bahia);
     }}>
-      <label>Código<input value={bahia.codigo} onChange={event => (
+      <label>Código<input disabled={!permiteEscritura} value={bahia.codigo} onChange={event => (
         onChange({ ...bahia, codigo: event.target.value })
       )} /></label>
-      <label>Nombre<input value={bahia.nombre} onChange={event => (
+      <label>Nombre<input disabled={!permiteEscritura} value={bahia.nombre} onChange={event => (
         onChange({ ...bahia, nombre: event.target.value })
       )} /></label>
       <label>
         Categoría
-        <select value={bahia.categoria} onChange={event => (
+        <select disabled={!permiteEscritura} value={bahia.categoria} onChange={event => (
           onChange({ ...bahia, categoria: event.target.value })
         )}>
           <option value="general">General</option>
@@ -81,12 +92,12 @@ function EditarBahia({ bahia, busy, onChange, onSave }) {
           <option value="hidr">Hidráulica / banco</option>
         </select>
       </label>
-      <button className="dx-btn primary" disabled={busy}>Guardar</button>
+      <button className="dx-btn primary" disabled={busy || !permiteEscritura}>Guardar</button>
     </form>
   );
 }
 
-function EditarPuesto({ datos, puesto, busy, onChange, onSave }) {
+function EditarPuesto({ datos, puesto, busy, permiteEscritura, onChange, onSave }) {
   return (
     <form className="dx-planner-config-body" onSubmit={event => {
       event.preventDefault();
@@ -94,7 +105,7 @@ function EditarPuesto({ datos, puesto, busy, onChange, onSave }) {
     }}>
       <label>
         Bahía
-        <select value={puesto.bahia_id} onChange={event => (
+        <select disabled={!permiteEscritura} value={puesto.bahia_id} onChange={event => (
           onChange({ ...puesto, bahia_id: event.target.value })
         )}>
           {datos.bahias.map(bahia => (
@@ -102,20 +113,21 @@ function EditarPuesto({ datos, puesto, busy, onChange, onSave }) {
           ))}
         </select>
       </label>
-      <label>Código<input value={puesto.codigo} onChange={event => (
+      <label>Código<input disabled={!permiteEscritura} value={puesto.codigo} onChange={event => (
         onChange({ ...puesto, codigo: event.target.value })
       )} /></label>
-      <label>Nombre<input value={puesto.nombre || ''} onChange={event => (
+      <label>Nombre<input disabled={!permiteEscritura} value={puesto.nombre || ''} onChange={event => (
         onChange({ ...puesto, nombre: event.target.value })
       )} /></label>
       <label>Capacidad<input
         type="number"
         min="1"
         max="6"
+        disabled={!permiteEscritura}
         value={puesto.capacidad}
         onChange={event => onChange({ ...puesto, capacidad: event.target.value })}
       /></label>
-      <button className="dx-btn primary" disabled={busy}>Guardar</button>
+      <button className="dx-btn primary" disabled={busy || !permiteEscritura}>Guardar</button>
     </form>
   );
 }
@@ -129,6 +141,7 @@ function EditarMaquina({
   onChangeUbicacion,
   onSave,
   onOpenCatalog,
+  permiteEscritura,
 }) {
   function submit(event) {
     event.preventDefault();
@@ -146,13 +159,17 @@ function EditarMaquina({
       <label>
         Tipo
         <input value={maquina.tipo_clave} readOnly />
-        <button type="button" className="dx-btn" onClick={onOpenCatalog}>
+        <button type="button" className="dx-btn" disabled={!permiteEscritura} onClick={onOpenCatalog}>
           Cambiar del catálogo
         </button>
       </label>
       <label>
         Bahía y puesto
-        <select value={ubicacion} onChange={event => onChangeUbicacion(event.target.value)}>
+        <select
+          disabled={!permiteEscritura}
+          value={ubicacion}
+          onChange={event => onChangeUbicacion(event.target.value)}
+        >
           {datos.bahias.flatMap(bahia => [
             [`${bahia.id}|`, `${bahia.nombre} · Bahía completa`],
             ...puestos
@@ -164,10 +181,10 @@ function EditarMaquina({
           ]).map(([value, label]) => <option value={value} key={value}>{label}</option>)}
         </select>
       </label>
-      <label>Nombre<input value={maquina.nombre} onChange={event => (
+      <label>Nombre<input disabled={!permiteEscritura} value={maquina.nombre} onChange={event => (
         onChange({ ...maquina, nombre: event.target.value })
       )} /></label>
-      <button className="dx-btn primary">Guardar máquina</button>
+      <button className="dx-btn primary" disabled={!permiteEscritura}>Guardar máquina</button>
     </form>
   );
 }

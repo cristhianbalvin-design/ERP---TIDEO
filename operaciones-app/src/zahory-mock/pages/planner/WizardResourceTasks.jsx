@@ -15,6 +15,7 @@ export function WizardResourceTasks({
   positions,
   affinityPositions,
   changeAssignment,
+  disabled,
 }) {
   return tasks.map(task => {
     const assignment = { ...asignacionVacia, ...assignments[task.id] };
@@ -49,6 +50,7 @@ export function WizardResourceTasks({
           Personas
           <select
             multiple
+            disabled={disabled}
             value={assignment.personaIds}
             onChange={event => changeAssignment(task.id, {
               personaIds: [...event.target.selectedOptions].map(option => option.value),
@@ -65,6 +67,7 @@ export function WizardResourceTasks({
           Horas por persona
           <input
             type="number"
+            disabled={disabled}
             min="1"
             max="24"
             value={assignment.horasPersona}
@@ -76,6 +79,7 @@ export function WizardResourceTasks({
         <label>
           Puesto · categoría afín sugerida primero
           <select
+            disabled={disabled}
             value={assignment.puestoId}
             onChange={event => changeAssignment(task.id, {
               puestoId: event.target.value,
@@ -95,6 +99,7 @@ export function WizardResourceTasks({
           Máquinas
           <select
             multiple
+            disabled={disabled}
             value={assignment.maquinaIds}
             onChange={event => changeAssignment(task.id, {
               maquinaIds: [...event.target.selectedOptions].map(option => option.value),
@@ -111,6 +116,7 @@ export function WizardResourceTasks({
           Horas por máquina
           <input
             type="number"
+            disabled={disabled}
             min="1"
             max="24"
             value={assignment.horasMaquina}

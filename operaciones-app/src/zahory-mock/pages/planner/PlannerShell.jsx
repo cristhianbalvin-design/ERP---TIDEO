@@ -2,7 +2,7 @@ import { PanelView } from './PanelView.jsx';
 import { BoardView } from './BoardView.jsx';
 import { Configurator } from './Configurator.jsx';
 
-export function PlannerHeader({ vista, onChangeVista, onSimulate, onPlanificar }) {
+export function PlannerHeader({ vista, permiteEscritura, onChangeVista, onSimulate, onPlanificar }) {
   const tabs = [
     ['panel', 'Panel'],
     ['tablero', 'Tablero'],
@@ -20,11 +20,19 @@ export function PlannerHeader({ vista, onChangeVista, onSimulate, onPlanificar }
           </p>
         </div>
         <div className="dx-planner-actions">
-          <button className="dx-btn" onClick={() => onChangeVista('config')}>
+          <button
+            className="dx-btn"
+            disabled={!permiteEscritura}
+            onClick={() => onChangeVista('config')}
+          >
             Configurar taller
           </button>
-          <button className="dx-btn" onClick={onSimulate}>Simular OT urgente</button>
-          <button className="dx-btn primary" onClick={() => onPlanificar(null)}>
+          <button className="dx-btn" disabled={!permiteEscritura} onClick={onSimulate}>Simular OT urgente</button>
+          <button
+            className="dx-btn primary"
+            disabled={!permiteEscritura}
+            onClick={() => onPlanificar(null)}
+          >
             Planificar OT
           </button>
         </div>
@@ -64,11 +72,13 @@ export function PlannerVistas({
   onMoveOT,
   onUndo,
   onSaveConfig,
+  permiteEscritura,
 }) {
   if (vista === 'panel') {
     return (
       <PanelView
         datos={datos}
+        permiteEscritura={permiteEscritura}
         ots={ots}
         seleccionada={seleccion.ot}
         recursoSeleccionado={seleccion.recurso}
@@ -84,6 +94,7 @@ export function PlannerVistas({
     return (
       <BoardView
         datos={datos}
+        permiteEscritura={permiteEscritura}
         onSelect={onSelect}
         onMoveDate={onMoveDate}
         onMoveOT={onMoveOT}
@@ -93,7 +104,12 @@ export function PlannerVistas({
     );
   }
   if (vista === 'config') {
-    return <Configurator datos={datos} onSave={onSaveConfig} busy={guardando} />;
+    return <Configurator
+      datos={datos}
+      onSave={onSaveConfig}
+      busy={guardando}
+      permiteEscritura={permiteEscritura}
+    />;
   }
   return null;
 }

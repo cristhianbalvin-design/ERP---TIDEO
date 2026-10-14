@@ -11,7 +11,7 @@ import {
 export function crearAccionGuardarConfig({ sesion, ejecutar }) {
   async function guardarConfig(tipo, payload) {
     const comunes = { empresaId: sesion.empresaId, sociedadId: sesion.sociedadId };
-    await ejecutar(async () => {
+    return ejecutar(async () => {
       if (tipo === 'bahia') await guardarBahia({ ...comunes, ...payload });
       if (tipo === 'puesto') await guardarPuesto({ ...comunes, ...payload });
       if (tipo === 'desactivarBahia') {

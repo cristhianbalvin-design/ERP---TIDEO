@@ -12,7 +12,7 @@ const CATEGORIAS = {
   hidr: 'Hidráulica / banco',
 };
 
-export function Configurator({ datos, onSave, busy }) {
+export function Configurator({ datos, onSave, busy, permiteEscritura }) {
   const [bahia, setBahia] = useState({ codigo: '', nombre: '', categoria: 'general' });
   const [puesto, setPuesto] = useState({ bahia_id: '', codigo: '', nombre: '', capacidad: 1 });
   const [editBahia, setEditBahia] = useState(null);
@@ -50,8 +50,11 @@ export function Configurator({ datos, onSave, busy }) {
       return;
     }
     const [bahiaId, puestoId] = ubicacion.split('|');
-    onSave('maquina', { tipo, bahiaId, puestoId: puestoId || null, nombre: tipo.nombre });
-    setCatalogo(false);
+    Promise.resolve(onSave('maquina', {
+      tipo, bahiaId, puestoId: puestoId || null, nombre: tipo.nombre,
+    })).then(guardada => {
+      if (guardada) setCatalogo(false);
+    });
   }
 
   return (
@@ -62,6 +65,7 @@ export function Configurator({ datos, onSave, busy }) {
         bahia={bahia}
         puesto={puesto}
         busy={busy}
+        permiteEscritura={permiteEscritura}
         onSubmit={submit}
         onSave={onSave}
         onChangeBahia={setBahia}
@@ -78,6 +82,7 @@ export function Configurator({ datos, onSave, busy }) {
         onEditPuesto={setEditPuesto}
         onEditMaquina={seleccionarMaquina}
         onSave={onSave}
+        permiteEscritura={permiteEscritura}
       />
       {(editBahia || editPuesto || seleccion) && (
         <EditarTallerModal
@@ -88,6 +93,7 @@ export function Configurator({ datos, onSave, busy }) {
           seleccion={seleccion}
           ubicacion={ubicacion}
           busy={busy}
+          permiteEscritura={permiteEscritura}
           onSetBahia={setEditBahia}
           onSetPuesto={setEditPuesto}
           onSetSeleccion={setSeleccion}
@@ -108,6 +114,7 @@ export function Configurator({ datos, onSave, busy }) {
           onSetFamilia={setFamilia}
           onSetUbicacion={setUbicacion}
           onChoose={seleccionarTipo}
+          permiteEscritura={permiteEscritura}
           onClose={() => setCatalogo(false)}
         />
       )}
@@ -126,6 +133,7 @@ function FormularioTaller({
   onChangeBahia,
   onChangePuesto,
   onOpenCatalog,
+  permiteEscritura,
 }) {
   return (
     <section className="dx-ui-card">
@@ -135,19 +143,21 @@ function FormularioTaller({
       </div>
       <div className="dx-planner-config-body">
         <form onSubmit={event => onSubmit(event, () => {
-          onSave('bahia', { ...bahia, orden: datos.bahias.length });
-          onChangeBahia({ codigo: '', nombre: '', categoria: 'general' });
+          return Promise.resolve(onSave('bahia', { ...bahia, orden: datos.bahias.length }))
+            .then(guardada => {
+              if (guardada) onChangeBahia({ codigo: '', nombre: '', categoria: 'general' });
+            });
         })}>
           <h3>Nueva bahía</h3>
-          <label>Código<input required value={bahia.codigo} onChange={event => (
+          <label>Código<input required disabled={!permiteEscritura} value={bahia.codigo} onChange={event => (
             onChangeBahia({ ...bahia, codigo: event.target.value })
           )} /></label>
-          <label>Nombre<input required value={bahia.nombre} onChange={event => (
+          <label>Nombre<input required disabled={!permiteEscritura} value={bahia.nombre} onChange={event => (
             onChangeBahia({ ...bahia, nombre: event.target.value })
           )} /></label>
           <label>
             Categoría
-            <select value={bahia.categoria} onChange={event => (
+            <select disabled={!permiteEscritura} value={bahia.categoria} onChange={event => (
               onChangeBahia({ ...bahia, categoria: event.target.value })
             )}>
               {Object.entries(CATEGORIAS).map(([key, label]) => (
@@ -155,13 +165,16 @@ function FormularioTaller({
               ))}
             </select>
           </label>
-          <button className="dx-btn primary" disabled={busy}>Agregar bahía</button>
+          <button className="dx-btn primary" disabled={busy || !permiteEscritura}>
+            Agregar bahía
+          </button>
         </form>
         <FormularioPuesto
           datos={datos}
           puestos={puestos}
           puesto={puesto}
           busy={busy}
+          permiteEscritura={permiteEscritura}
           onSubmit={onSubmit}
           onSave={onSave}
           onChange={onChangePuesto}
@@ -171,7 +184,7 @@ function FormularioTaller({
           <p>Catálogo de tipos y ubicaciones actuales.</p>
           <button
             className="dx-btn primary"
-            disabled={!datos.tipos?.length || !datos.bahias.length}
+            disabled={!permiteEscritura || !datos.tipos?.length || !datos.bahias.length}
             onClick={onOpenCatalog}
           >
             Abrir catálogo · {datos.tipos?.length || 0} tipos
@@ -182,40 +195,44 @@ function FormularioTaller({
   );
 }
 
-function FormularioPuesto({ datos, puestos, puesto, busy, onSubmit, onSave, onChange }) {
+function FormularioPuesto({
+  datos, puestos, puesto, busy, onSubmit, onSave, onChange, permiteEscritura,
+}) {
   return (
     <form onSubmit={event => onSubmit(event, () => {
-      onSave('puesto', {
+      return Promise.resolve(onSave('puesto', {
         ...puesto,
         capacidad: Number(puesto.capacidad),
         orden: puestos.length,
+      })).then(guardado => {
+        if (guardado) onChange({ ...puesto, codigo: '', nombre: '' });
       });
-      onChange({ ...puesto, codigo: '', nombre: '' });
     })}>
       <h3>Nuevo puesto</h3>
       <label>
         Bahía
-        <select required value={puesto.bahia_id} onChange={event => (
+        <select required disabled={!permiteEscritura} value={puesto.bahia_id} onChange={event => (
           onChange({ ...puesto, bahia_id: event.target.value })
         )}>
           <option value="">Elige bahía</option>
           {datos.bahias.map(item => <option key={item.id} value={item.id}>{item.nombre}</option>)}
         </select>
       </label>
-      <label>Código<input required value={puesto.codigo} onChange={event => (
+      <label>Código<input required disabled={!permiteEscritura} value={puesto.codigo} onChange={event => (
         onChange({ ...puesto, codigo: event.target.value })
       )} /></label>
-      <label>Nombre<input value={puesto.nombre} onChange={event => (
+      <label>Nombre<input disabled={!permiteEscritura} value={puesto.nombre} onChange={event => (
         onChange({ ...puesto, nombre: event.target.value })
       )} /></label>
       <label>Capacidad (1–6)<input
         type="number"
         min="1"
         max="6"
+        disabled={!permiteEscritura}
         value={puesto.capacidad}
         onChange={event => onChange({ ...puesto, capacidad: event.target.value })}
       /></label>
-      <button className="dx-btn primary" disabled={busy}>Agregar puesto</button>
+      <button className="dx-btn primary" disabled={busy || !permiteEscritura}>Agregar puesto</button>
     </form>
   );
 }

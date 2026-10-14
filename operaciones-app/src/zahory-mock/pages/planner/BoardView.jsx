@@ -8,7 +8,8 @@ const fechaLabel = value => new Date(`${value}T12:00:00`).toLocaleDateString('es
   month: 'short',
 });
 
-export function BoardView({ datos, onSelect, onMoveDate, onMoveOT, undoDisponible, onUndo }) {
+export function BoardView({ datos, permiteEscritura, onSelect, onMoveDate, onMoveOT,
+  undoDisponible, onUndo }) {
   const [dias, setDias] = useState(10);
   const [inicio, setInicio] = useState(new Date().toISOString().slice(0, 10));
   const ordenes = useMemo(() => new Map(datos.ots.map(ot => [ot.id, ot])), [datos.ots]);
@@ -21,6 +22,7 @@ export function BoardView({ datos, onSelect, onMoveDate, onMoveOT, undoDisponibl
         inicio={inicio}
         dias={dias}
         undoDisponible={undoDisponible}
+        permiteEscritura={permiteEscritura}
         onChangeInicio={setInicio}
         onChangeDias={setDias}
         onUndo={onUndo}
@@ -34,10 +36,11 @@ export function BoardView({ datos, onSelect, onMoveDate, onMoveOT, undoDisponibl
           onSelect={onSelect}
           onMoveDate={onMoveDate}
           onMoveOT={onMoveOT}
+          permiteEscritura={permiteEscritura}
         />
         : <div className="dx-ui-empty">No hay personas ni máquinas activas para mostrar.</div>}
       {recursos.length > 0 && (
-        <DestinosOT datos={datos} onMoveOT={onMoveOT} />
+        <DestinosOT datos={datos} onMoveOT={onMoveOT} permiteEscritura={permiteEscritura} />
       )}
       <p className="dx-planner-board-hint">
         Arrastra un bloque a otro día para reprogramarlo o suéltalo sobre una OT destino
@@ -66,7 +69,8 @@ function construirRecursos(datos) {
   ];
 }
 
-function CabeceraTablero({ inicio, dias, undoDisponible, onChangeInicio, onChangeDias, onUndo }) {
+function CabeceraTablero({ inicio, dias, undoDisponible, permiteEscritura, onChangeInicio,
+  onChangeDias, onUndo }) {
   return (
     <div className="dx-ui-toolbar">
       <div>
@@ -86,13 +90,16 @@ function CabeceraTablero({ inicio, dias, undoDisponible, onChangeInicio, onChang
             <option value="20">20 días</option>
           </select>
         </label>
-        <button className="dx-btn" disabled={!undoDisponible} onClick={onUndo}>Deshacer</button>
+        <button className="dx-btn" disabled={!permiteEscritura || !undoDisponible} onClick={onUndo}>
+          Deshacer
+        </button>
       </div>
     </div>
   );
 }
 
-function GrillaRecursos({ datos, recursos, fechas, ordenes, onSelect, onMoveDate, onMoveOT }) {
+function GrillaRecursos({ datos, recursos, fechas, ordenes, onSelect, onMoveDate, onMoveOT,
+  permiteEscritura }) {
   return (
     <div className="dx-planner-timeline" style={{ '--planner-days': fechas.length }}>
       <div className="dx-planner-time-label">Recurso / OT</div>
@@ -109,13 +116,15 @@ function GrillaRecursos({ datos, recursos, fechas, ordenes, onSelect, onMoveDate
           onSelect={onSelect}
           onMoveDate={onMoveDate}
           onMoveOT={onMoveOT}
+          permiteEscritura={permiteEscritura}
         />
       ))}
     </div>
   );
 }
 
-function FilaRecurso({ datos, recurso, fechas, ordenes, onSelect, onMoveDate, onMoveOT }) {
+function FilaRecurso({ datos, recurso, fechas, ordenes, onSelect, onMoveDate, onMoveOT,
+  permiteEscritura }) {
   const especialidad = recurso.especialidad || recurso.cargo || recurso.tipo_clave || 'Taller';
   return (
     <div className="dx-planner-time-row">
@@ -136,23 +145,25 @@ function FilaRecurso({ datos, recurso, fechas, ordenes, onSelect, onMoveDate, on
           onSelect={onSelect}
           onMoveDate={onMoveDate}
           onMoveOT={onMoveOT}
+          permiteEscritura={permiteEscritura}
         />
       ))}
     </div>
   );
 }
 
-function CeldaRecurso({ datos, recurso, fecha, ordenes, onSelect, onMoveDate, onMoveOT }) {
+function CeldaRecurso({ datos, recurso, fecha, ordenes, onSelect, onMoveDate, onMoveOT,
+  permiteEscritura }) {
   function dropDate(event) {
     event.preventDefault();
     const movimiento = leerMovimiento(event);
-    if (movimiento) onMoveDate(movimiento, fecha);
+    if (permiteEscritura && movimiento) onMoveDate(movimiento, fecha);
   }
   return (
     <div
       className="dx-planner-time-cell"
       data-target-day={fecha}
-      onDragOver={event => event.preventDefault()}
+      onDragOver={event => permiteEscritura && event.preventDefault()}
       onDrop={dropDate}
     >
       {recurso.asignaciones
@@ -165,13 +176,15 @@ function CeldaRecurso({ datos, recurso, fecha, ordenes, onSelect, onMoveDate, on
             tabla={recurso.tabla}
             onSelect={onSelect}
             onMoveOT={onMoveOT}
+            permiteEscritura={permiteEscritura}
           />
         ))}
     </div>
   );
 }
 
-function BloqueAsignacion({ datos, asignacion, ordenes, tabla, onSelect, onMoveOT }) {
+function BloqueAsignacion({ datos, asignacion, ordenes, tabla, onSelect, onMoveOT,
+  permiteEscritura }) {
   const ot = ordenes.get(asignacion.ot_id);
   const bloqueada = edicionBloqueada(ot, asignacion);
   const movimiento = {
@@ -184,16 +197,17 @@ function BloqueAsignacion({ datos, asignacion, ordenes, tabla, onSelect, onMoveO
     fecha: asignacion.fecha,
   };
   function startDrag(event) {
+    if (!permiteEscritura) return;
     event.dataTransfer.setData('application/json', JSON.stringify(movimiento));
     event.dataTransfer.effectAllowed = 'move';
   }
   function changeOT(event) {
-    if (event.target.value) onMoveOT(movimiento, event.target.value);
+    if (permiteEscritura && event.target.value) onMoveOT(movimiento, event.target.value);
   }
   return (
     <div
       className={`dx-planner-block ${bloqueada ? 'is-locked' : ''}`}
-      draggable={!bloqueada}
+      draggable={permiteEscritura && !bloqueada}
       title={bloqueada ? 'OT cerrada o asignación bloqueada' : 'Arrastra a otro día u OT'}
       onDragStart={startDrag}
     >
@@ -203,7 +217,7 @@ function BloqueAsignacion({ datos, asignacion, ordenes, tabla, onSelect, onMoveO
       </button>
       <select
         aria-label="Mover asignación a otra OT"
-        disabled={bloqueada}
+        disabled={!permiteEscritura || bloqueada}
         value=""
         onChange={changeOT}
       >
@@ -217,15 +231,17 @@ function BloqueAsignacion({ datos, asignacion, ordenes, tabla, onSelect, onMoveO
   );
 }
 
-function DestinosOT({ datos, onMoveOT }) {
+function DestinosOT({ datos, onMoveOT, permiteEscritura }) {
   return (
     <div className="dx-planner-ot-drop">
       <b>OT destino</b>
       {datos.ots.filter(esOtPlanificable).map(ot => (
         <button
           key={ot.id}
-          onDragOver={event => event.preventDefault()}
+          disabled={!permiteEscritura}
+          onDragOver={event => permiteEscritura && event.preventDefault()}
           onDrop={event => {
+            if (!permiteEscritura) return;
             event.preventDefault();
             event.stopPropagation();
             const movimiento = leerMovimiento(event);

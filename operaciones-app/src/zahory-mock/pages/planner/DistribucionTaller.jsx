@@ -14,6 +14,7 @@ export function DistribucionTaller({
   onEditPuesto,
   onEditMaquina,
   onSave,
+  permiteEscritura,
 }) {
   return (
     <section className="dx-ui-card">
@@ -25,7 +26,12 @@ export function DistribucionTaller({
               {bahia.nombre}
               <span>{CATEGORIAS[bahia.categoria] || bahia.categoria}</span>
             </h3>
-            <AccionesBahia bahia={bahia} onEdit={onEditBahia} onSave={onSave} />
+            <AccionesBahia
+              bahia={bahia}
+              onEdit={onEditBahia}
+              onSave={onSave}
+              permiteEscritura={permiteEscritura}
+            />
             <p>
               {puestos.filter(item => item.bahia_id === bahia.id).length} puestos ·
               {' '}{maquinasActivas(datos, bahia.id).length} máquinas
@@ -37,6 +43,7 @@ export function DistribucionTaller({
                   puesto={puesto}
                   onEdit={onEditPuesto}
                   onSave={onSave}
+                  permiteEscritura={permiteEscritura}
                 />
               ))}
               {maquinasActivas(datos, bahia.id).map(maquina => (
@@ -46,6 +53,7 @@ export function DistribucionTaller({
                   puestos={puestos}
                   onEdit={onEditMaquina}
                   onSave={onSave}
+                  permiteEscritura={permiteEscritura}
                 />
               ))}
             </ul>
@@ -65,35 +73,45 @@ function maquinasActivas(datos, bahiaId) {
   ));
 }
 
-function AccionesBahia({ bahia, onEdit, onSave }) {
+function AccionesBahia({ bahia, onEdit, onSave, permiteEscritura }) {
   return (
     <div className="dx-planner-config-actions">
-      <button className="dx-btn" onClick={() => onEdit({ ...bahia })}>Editar bahía</button>
-      <button className="dx-btn" onClick={() => onSave('desactivarBahia', bahia.id)}>
+      <button className="dx-btn" disabled={!permiteEscritura} onClick={() => onEdit({ ...bahia })}>
+        Editar bahía
+      </button>
+      <button
+        className="dx-btn"
+        disabled={!permiteEscritura}
+        onClick={() => onSave('desactivarBahia', bahia.id)}
+      >
         Desactivar
       </button>
     </div>
   );
 }
 
-function PuestoFila({ puesto, onEdit, onSave }) {
+function PuestoFila({ puesto, onEdit, onSave, permiteEscritura }) {
   const { bahia, ...campos } = puesto;
   return (
     <li>
       {puesto.nombre || puesto.codigo} · capacidad {puesto.capacidad}
-      {' '}<button onClick={() => onEdit(campos)}>Editar</button>
-      {' '}<button onClick={() => onSave('desactivarPuesto', puesto.id)}>Desactivar</button>
+      {' '}<button disabled={!permiteEscritura} onClick={() => onEdit(campos)}>Editar</button>
+      {' '}<button disabled={!permiteEscritura} onClick={() => onSave('desactivarPuesto', puesto.id)}>
+        Desactivar
+      </button>
     </li>
   );
 }
 
-function MaquinaFila({ maquina, puestos, onEdit, onSave }) {
+function MaquinaFila({ maquina, puestos, onEdit, onSave, permiteEscritura }) {
   const puesto = puestos.find(item => item.id === maquina.puesto_id);
   return (
     <li>
       {maquina.nombre} · {maquina.horas_dia} h/día · {puesto?.nombre || 'Bahía completa'}
-      {' '}<button onClick={() => onEdit(maquina)}>Editar ubicación / tipo</button>
-      {' '}<button onClick={() => onSave('maquina', { ...maquina, estado: 'baja' })}>
+      {' '}<button disabled={!permiteEscritura} onClick={() => onEdit(maquina)}>
+        Editar ubicación / tipo
+      </button>
+      {' '}<button disabled={!permiteEscritura} onClick={() => onSave('maquina', { ...maquina, estado: 'baja' })}>
         Retirar
       </button>
     </li>

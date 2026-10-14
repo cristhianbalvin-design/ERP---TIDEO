@@ -6,6 +6,9 @@ import { SimulacionView } from './SimulacionView.jsx';
 import { usePlannerActions } from './usePlannerActions.js';
 import { PlannerHeader, PlannerVistas, CargandoPlanner, SinBahias } from './PlannerShell.jsx';
 
+const AVISO_VISTA_CONSOLIDADA = 'Elige una sociedad concreta (no la vista consolidada) para configurar '
+  + 'o planificar el taller.';
+
 function obtenerRecursos(datos) {
   return {
     personas: Math.max(1, datos?.personas?.length || 0),
@@ -82,6 +85,7 @@ export function PlannerPage() {
     <main className="dx-ui dx-planner" aria-busy={cargando}>
       <PlannerHeader
         vista={vista}
+        permiteEscritura={sesion.permiteEscritura}
         onChangeVista={setVista}
         onSimulate={acciones.simular}
         onPlanificar={acciones.abrirWizard}
@@ -91,11 +95,13 @@ export function PlannerPage() {
           {error}<button onClick={() => cargar()}>Reintentar</button>
         </div>
       )}
-      {aviso && <p className="dx-planner-notice" role="status">{aviso}</p>}
+      {!sesion.permiteEscritura
+        ? <p className="dx-planner-notice" role="status">{AVISO_VISTA_CONSOLIDADA}</p>
+        : aviso && <p className="dx-planner-notice" role="status">{aviso}</p>}
       {simulacion && (
         <SimulacionView
           simulacion={simulacion}
-          guardando={guardando}
+          guardando={guardando || !sesion.permiteEscritura}
           onClose={() => setSimulacion(null)}
           onApply={acciones.aplicarSimulacion}
         />
@@ -118,6 +124,7 @@ export function PlannerPage() {
           onMoveOT={acciones.moverOT}
           onUndo={acciones.deshacer}
           onSaveConfig={acciones.guardarConfig}
+          permiteEscritura={sesion.permiteEscritura}
         />
       )}
       {!cargando && datos && !datos.bahias.length && vista === 'panel' && (
@@ -128,7 +135,7 @@ export function PlannerPage() {
           datos={datos}
           recursos={recursos}
           initialOT={wizard.ot}
-          busy={guardando}
+          busy={guardando || !sesion.permiteEscritura}
           onClose={() => setWizard(null)}
           onInherit={acciones.guardarWizardHerencia}
           onSave={acciones.guardarWizard}

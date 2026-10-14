@@ -97,7 +97,15 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
 
 export async function guardarBahia({ empresaId, sociedadId, id, ...valores }) {
   const sb = getSupabaseClient();
-  const datos = { ...valores, empresa_id: empresaId, sociedad_id: sociedadId || null };
+  const datos = {
+    codigo: valores.codigo,
+    nombre: valores.nombre,
+    categoria: valores.categoria,
+    orden: valores.orden,
+    activa: valores.activa,
+    empresa_id: empresaId,
+    sociedad_id: sociedadId || null,
+  };
   const q = id
     ? sb.from('planner_bahias').update(datos).eq('id', id).eq('empresa_id', empresaId)
     : sb.from('planner_bahias').insert(datos);
@@ -108,7 +116,15 @@ export async function guardarBahia({ empresaId, sociedadId, id, ...valores }) {
 
 export async function guardarPuesto({ empresaId, id, ...valores }) {
   const sb = getSupabaseClient();
-  const datos = { ...valores, empresa_id: empresaId };
+  const datos = {
+    bahia_id: valores.bahia_id,
+    codigo: valores.codigo,
+    nombre: valores.nombre,
+    capacidad: valores.capacidad,
+    orden: valores.orden,
+    activo: valores.activo,
+    empresa_id: empresaId,
+  };
   const q = id
     ? sb.from('planner_puestos').update(datos).eq('id', id).eq('empresa_id', empresaId)
     : sb.from('planner_puestos').insert(datos);

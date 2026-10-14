@@ -18,6 +18,7 @@ export function PanelView({
   busqueda,
   setBusqueda,
   recursos,
+  permiteEscritura,
 }) {
   const planificables = ots.filter(esOtPlanificable);
   const recursosCalc = recursos || {
@@ -78,12 +79,16 @@ export function PanelView({
           />
         </div>
         <aside className="dx-planner-side-stack">
-          <BandejaPlanificacion pendientes={pendientes} onPlanificar={onPlanificar} />
+          <BandejaPlanificacion
+            pendientes={pendientes}
+            onPlanificar={onPlanificar}
+            permiteEscritura={permiteEscritura}
+          />
           <Inspector
             ot={seleccionada}
             recurso={recursoSeleccionado}
             recursos={recursos}
-            onPlanificar={onPlanificar}
+            onPlanificar={permiteEscritura ? onPlanificar : null}
           />
         </aside>
       </div>
@@ -220,7 +225,7 @@ function FilaOrden({ ot, recursos, seleccionada, onSelect }) {
   );
 }
 
-function BandejaPlanificacion({ pendientes, onPlanificar }) {
+function BandejaPlanificacion({ pendientes, onPlanificar, permiteEscritura }) {
   return (
     <section className="dx-ui-card">
       <div className="dx-ui-toolbar">
@@ -236,7 +241,11 @@ function BandejaPlanificacion({ pendientes, onPlanificar }) {
                 {ot.descripcion || ot.servicio || 'Sin descripción'} · {ot.ot_tareas.length} tareas
               </small>
             </span>
-            <button className="dx-btn primary" onClick={() => onPlanificar(ot)}>Planificar</button>
+            <button
+              className="dx-btn primary"
+              disabled={!permiteEscritura}
+              onClick={() => onPlanificar(ot)}
+            >Planificar</button>
           </div>
         ))
         : <div className="dx-ui-empty">

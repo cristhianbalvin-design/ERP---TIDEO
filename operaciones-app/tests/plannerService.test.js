@@ -1,16 +1,86 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
-
-vi.mock('../src/lib/supabaseClient.js', () => ({
-  getSupabaseClient: () => ({ rpc }),
+const { rpc, from, insert, update, eq, select, single } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  from: vi.fn(),
+  insert: vi.fn(),
+  update: vi.fn(),
+  eq: vi.fn(),
+  select: vi.fn(),
+  single: vi.fn(),
 }));
 
-const { actualizarFechaAsignacion, mensajeErrorPlanner, sincronizarOcupacionesOT } =
+vi.mock('../src/lib/supabaseClient.js', () => ({
+  getSupabaseClient: () => ({ rpc, from }),
+}));
+
+const { actualizarFechaAsignacion, guardarBahia, guardarPuesto, mensajeErrorPlanner,
+  sincronizarOcupacionesOT } =
   await import('../src/services/plannerService.js');
 
 describe('RPC transaccionales del Planner', () => {
-  beforeEach(() => rpc.mockReset());
+  beforeEach(() => {
+    [rpc, from, insert, update, eq, select, single].forEach(mock => mock.mockReset());
+    const query = { insert, update, eq, select, single };
+    from.mockReturnValue(query);
+    [insert, update, eq, select].forEach(mock => mock.mockReturnValue(query));
+  });
+
+  it('solo envía columnas snake_case al guardar un puesto', async () => {
+    single.mockResolvedValue({ data: { id: 'P-1' }, error: null });
+    await guardarPuesto({
+      empresaId: 'E-1',
+      sociedadId: 'S-1',
+      id: null,
+      bahia_id: 'B-1',
+      codigo: 'P1',
+      nombre: 'Puesto 1',
+      capacidad: 2,
+      orden: 0,
+    });
+    expect(insert).toHaveBeenCalledWith({
+      bahia_id: 'B-1',
+      codigo: 'P1',
+      nombre: 'Puesto 1',
+      capacidad: 2,
+      orden: 0,
+      activo: undefined,
+      empresa_id: 'E-1',
+    });
+    expect(Object.keys(insert.mock.calls[0][0]).every(key => /^[a-z][a-z0-9_]*$/.test(key)))
+      .toBe(true);
+    await guardarPuesto({
+      empresaId: 'E-1',
+      sociedadId: 'S-1',
+      id: 'P-1',
+      bahia_id: 'B-2',
+      codigo: 'P2',
+      nombre: 'Puesto 2',
+      capacidad: 3,
+    });
+    expect(update.mock.calls[0][0]).not.toHaveProperty('sociedadId');
+    expect(Object.keys(update.mock.calls[0][0]).every(key => /^[a-z][a-z0-9_]*$/.test(key)))
+      .toBe(true);
+  });
+
+  it.each([
+    ['mec', 'Mecanizado'],
+    ['sold', 'Soldadura'],
+  ])('persiste y lee la categoría %s de una bahía', async (categoria, nombre) => {
+    const bahia = { id: 'B-1', categoria };
+    single.mockResolvedValue({ data: bahia, error: null });
+    await expect(guardarBahia({
+      empresaId: 'E-1',
+      sociedadId: 'S-1',
+      codigo: `B-${categoria}`,
+      nombre,
+      categoria,
+      orden: 0,
+    })).resolves.toEqual(bahia);
+    expect(insert.mock.calls[0][0].categoria).toBe(categoria);
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('categoria'));
+    expect(single).toHaveBeenCalledOnce();
+  });
 
   it('sincroniza ocupaciones de OT mediante RPC', async () => {
     rpc.mockResolvedValue({ data: null, error: null });

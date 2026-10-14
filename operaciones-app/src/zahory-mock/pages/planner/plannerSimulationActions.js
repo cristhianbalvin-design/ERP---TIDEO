@@ -41,7 +41,7 @@ export function crearAccionesSimulacion({
     if (!simulacion) return;
     const urgente = simulacion.urgente;
     try {
-      await ejecutar(async () => {
+      const aplicada = await ejecutar(async () => {
         const dias = Math.max(1, simulacion.resultado.esperaDias);
         const asignaciones = [
           ...(datos.asignaciones || []).map(item => ({ ...item, tabla: 'planner_asignaciones' })),
@@ -59,12 +59,16 @@ export function crearAccionesSimulacion({
         }
         for (const ot of ots) await sincronizarOcupacionesOT({ otId: ot.id });
       }, 'El plan se ajustó para dar prioridad al trabajo urgente.');
-      setVista('panel');
-      setSeleccion({ ot: urgente });
-      setWizard({ ot: urgente });
-      setSimulacion(null);
+      if (aplicada) {
+        setVista('panel');
+        setSeleccion({ ot: urgente });
+        setWizard({ ot: urgente });
+        setSimulacion(null);
+      }
+      return aplicada;
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.
+      return false;
     }
   }
 

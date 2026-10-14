@@ -35,18 +35,23 @@ export function usePlannerActions({
     setGuardando(true);
     setError('');
     setAviso('');
+    if (!sesion.permiteEscritura) {
+      setError(
+        'Elige una sociedad concreta (no la vista consolidada) para configurar o planificar el taller.',
+      );
+      setGuardando(false);
+      return false;
+    }
     try {
-      if (!sesion.permiteEscritura) {
-        throw new Error('Selecciona una sociedad activa con permiso de escritura para planificar.');
-      }
       await accion();
       if (mensaje) setAviso(mensaje);
       await cargar();
+      return true;
     } catch (accionError) {
       const mensajeError = mensajeErrorPlanner(accionError);
       await cargar(false);
       setError(mensajeError);
-      throw accionError;
+      return false;
     } finally {
       setGuardando(false);
     }
@@ -74,7 +79,7 @@ export function usePlannerActions({
 
   async function guardarWizard({ ot, taskPlans }) {
     try {
-      await ejecutar(async () => {
+      const guardado = await ejecutar(async () => {
         validarOtPlanificable(ot);
         const tareasActivas = taskPlans.filter(plan => plan.horasPendientes > 0);
         if (!tareasActivas.length) {
@@ -91,9 +96,11 @@ export function usePlannerActions({
         for (const plan of tareasActivas) await guardarAsignacionesTarea(ot, plan);
         await sincronizarOcupacionesOT({ otId: ot.id });
       }, 'La planificación quedó guardada.');
-      setWizard(null);
+      if (guardado) setWizard(null);
+      return guardado;
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.
+      return false;
     }
   }
 
@@ -128,7 +135,7 @@ export function usePlannerActions({
 
   async function moverFecha(asignacion, fechaDestino) {
     try {
-      await ejecutar(async () => {
+      return await ejecutar(async () => {
         if (asignacion.estado !== 'programado' || !asignacion.ot) {
           throw new Error('Esta asignación no está programada y no se puede mover.');
         }
@@ -147,12 +154,13 @@ export function usePlannerActions({
       }, 'La asignación se movió al nuevo día.');
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.
+      return false;
     }
   }
 
   async function moverOT(asignacion, destino) {
     try {
-      await ejecutar(async () => {
+      return await ejecutar(async () => {
         const original = datos.ots.find(ot => ot.id === asignacion.otId);
         const nueva = datos.ots.find(ot => ot.id === destino);
         validarOtPlanificable(original);
@@ -170,13 +178,14 @@ export function usePlannerActions({
       }, 'La asignación se movió a la OT seleccionada.');
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.
+      return false;
     }
   }
 
   async function deshacer() {
     try {
       if (!undo) return;
-      await ejecutar(async () => {
+      return await ejecutar(async () => {
         if (undo.kind === 'ot') await deshacerMovimientoOT(undo);
         else {
           await actualizarFechaAsignacion({
@@ -189,6 +198,7 @@ export function usePlannerActions({
       }, 'Se deshizo el último movimiento.');
     } catch {
       // ejecutar muestra el error y recarga los datos del tablero.
+      return false;
     }
   }
 
@@ -210,7 +220,7 @@ export function usePlannerActions({
   }
 
   async function guardarWizardHerencia(otId) {
-    await ejecutar(() => heredarTareasOT(otId), 'Se heredaron las tareas de la OT.');
+    return ejecutar(() => heredarTareasOT(otId), 'Se heredaron las tareas de la OT.');
   }
 
   return {

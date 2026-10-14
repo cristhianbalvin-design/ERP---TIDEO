@@ -81,7 +81,7 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
   }
 
   return (
-    <div className="dx-planner-scrim" role="presentation">
+    <div className="dx-ui dx-planner dx-planner-scrim" role="presentation">
       <section
         className="dx-planner-modal dx-ui-card dx-planner-wizard-modal"
         role="dialog"
@@ -102,6 +102,7 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
                 <button
                   type="button"
                   className={step === index + 1 ? 'is-current' : ''}
+                  disabled={busy}
                   key={label}
                   onClick={() => index + 1 < step && setStep(index + 1)}
                 >
@@ -116,7 +117,7 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
                 <p>La planificación programa las tareas heredadas de la orden de servicio.</p>
                 <label>
                   Orden de trabajo
-                  <select required value={otId} onChange={event => setOtId(event.target.value)}>
+                  <select required disabled={busy} value={otId} onChange={event => setOtId(event.target.value)}>
                     <option value="">Selecciona OT</option>
                     {datos.ots.filter(esOtPlanificable).map(item => (
                       <option key={item.id} value={item.id}>
@@ -156,7 +157,12 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
                 <h3>3. Asigna recursos por tarea</h3>
                 <label>
                   Fecha de inicio
-                  <input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} />
+                  <input
+                    type="date"
+                    disabled={busy}
+                    value={startDate}
+                    onChange={event => setStartDate(event.target.value)}
+                  />
                 </label>
                 <WizardResourceTasks
                   tasks={tasks}
@@ -165,6 +171,7 @@ export function Wizard({ datos, recursos, initialOT, onClose, onInherit, onSave,
                   positions={positions}
                   affinityPositions={affinityPositions}
                   changeAssignment={changeAssignment}
+                  disabled={busy}
                 />
               </div>
             )}
