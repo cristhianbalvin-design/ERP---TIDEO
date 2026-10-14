@@ -4137,6 +4137,8 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-solpe .dx-solpe-datef input { flex:1; width:auto; }
 }
 
+.dx-ui.dx-minas { padding:24px 28px 60px; }
+@media (max-width:600px) { .dx-ui.dx-minas { padding:16px 16px 60px; } }
 /* Minas y proyectos · WMS */
 .dx-minas { min-width:0; }
 .dx-min-grid { display:grid; grid-template-columns:minmax(260px,340px) minmax(0,1fr); gap:16px; align-items:start; }
