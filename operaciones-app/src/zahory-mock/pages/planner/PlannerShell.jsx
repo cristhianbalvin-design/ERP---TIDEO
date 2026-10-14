@@ -93,6 +93,7 @@ export function PlannerVistas({
     return (
       <BoardView
         datos={datos}
+        seleccionada={seleccion.ot}
         permiteEscritura={permiteEscritura}
         onSelect={onSelect}
         onMoveDate={onMoveDate}

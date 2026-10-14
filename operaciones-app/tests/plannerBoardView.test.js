@@ -4,6 +4,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { BoardView } from '../src/zahory-mock/pages/planner/BoardView.jsx';
 
 describe('BoardView', () => {
+  it('resalta la OT seleccionada en los bloques y en los destinos', () => {
+    const fecha = new Date().toISOString().slice(0, 10);
+    const html = renderToStaticMarkup(createElement(BoardView, {
+      datos: {
+        ots: [{ id: 'OT-1', numero: '1001', estado: 'abierta' }],
+        personas: [{ id: 'P-1', nombre: 'Técnico' }], maquinas: [],
+        asignaciones: [{ id: 'A-1', ot_id: 'OT-1', tecnico_id: 'P-1', fecha, horas_estimadas: 4, estado: 'programado' }],
+        equipos: [],
+      },
+      seleccionada: { id: 'OT-1' }, permiteEscritura: false,
+      onSelect: vi.fn(), onMoveDate: vi.fn(), onMoveOT: vi.fn(), undoDisponible: false, onUndo: vi.fn(),
+    }));
+    expect(html).toContain('dx-planner-block is-selected');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('class="is-selected"');
+  });
+
   it('renderiza una asignación de una persona sin lanzar y muestra el bloque de OT', () => {
     const fecha = new Date().toISOString().slice(0, 10);
     const html = renderToStaticMarkup(createElement(BoardView, {

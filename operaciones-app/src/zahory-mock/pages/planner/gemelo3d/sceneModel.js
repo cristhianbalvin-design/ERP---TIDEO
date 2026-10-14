@@ -4,12 +4,17 @@ export const ETIQUETAS_COMPONENTE_CLIENTE = { cil: 'Cilindro', eje: 'Eje', bomba
 export const ETIQUETAS_MAQUINA = {
   lathe: 'Torno convencional', cnc: 'Torno CNC', vlathe: 'Torno vertical (carrusel)', mill: 'Fresadora universal', vmc: 'Centro de mecanizado vertical', hmc: 'Centro de mecanizado horizontal', bore: 'Mandrinadora', drill: 'Taladro de columna', radial: 'Taladro radial', shaper: 'Limadora / cepillo', gear: 'Talladora de engranajes', broach: 'Brochadora', honing: 'Máquina de bruñido (honing)', edm: 'Electroerosión (EDM)', grind: 'Rectificadora plana', cgrind: 'Rectificadora cilíndrica', crank: 'Rectificadora de cigüeñales', vgrind: 'Rectificadora de asientos de válvulas', toolg: 'Afiladora de herramientas', polish: 'Pulidora de vástagos', lap: 'Lapeadora', saw: 'Sierra de cinta', cutoff: 'Sierra circular de corte', plasma: 'Corte por plasma / oxicorte', laser: 'Corte láser', wjet: 'Corte por chorro de agua', shear: 'Cizalla de guillotina', press: 'Prensa hidráulica', pressm: 'Prensa mecánica', bpress: 'Prensa de bujes y rodamientos', straight: 'Prensa enderezadora', brake: 'Plegadora', roll: 'Roladora de planchas', weld: 'Equipo de soldadura (MIG/TIG/SMAW)', sarc: 'Soldadura por arco sumergido', hardf: 'Equipo de recargue duro', wpos: 'Posicionador de soldadura', spray: 'Metalizado / termorociado', furn: 'Horno de tratamiento térmico', stress: 'Horno de alivio de tensiones', varn: 'Horno de barnizado', chrome: 'Tanque de cromado', plat: 'Línea de niquelado / galvanizado', blast: 'Cabina de granallado / arenado', paint: 'Cabina de pintura', wash: 'Lavadora industrial de piezas', usonic: 'Limpieza ultrasónica', crane: 'Grúa puente', gantry: 'Pórtico móvil', jib: 'Grúa pluma', hoist: 'Polipasto', fork: 'Montacargas', stand: 'Caballetes y soportes de componentes', bench: 'Banco de pruebas hidráulico', pump: 'Banco de pruebas de bombas', cyl: 'Banco de pruebas de cilindros', inj: 'Banco de inyectores', dyno: 'Dinamómetro', motorb: 'Banco de pruebas de motores eléctricos', bal: 'Balanceadora dinámica', cmm: 'Máquina de medición (CMM)', laserA: 'Alineación láser', hardt: 'Durómetro', compr: 'Compresor de aire', gen: 'Generador eléctrico', vacuum: 'Bomba de vacío', rewind: 'Bobinadora',
 };
-export const ETIQUETAS_ESTADO_OT = { programado: 'Programado', en_proceso: 'En proceso', pendiente: 'Pendiente', cancelado: 'Cancelado', finalizado: 'Finalizado', cerrado: 'Cerrado', completado: 'Completado' };
+export const ETIQUETAS_ESTADO_OT = { programado: 'Programada', programada: 'Programada', planificado: 'Planificada', planificada: 'Planificada', en_proceso: 'En proceso', pendiente: 'Pendiente', cancelado: 'Cancelada', cancelada: 'Cancelada', reprogramado: 'Reprogramada', reprogramada: 'Reprogramada', ejecutado: 'Ejecutada', ejecutada: 'Ejecutada', finalizado: 'Finalizada', finalizada: 'Finalizada', cerrado: 'Cerrada', cerrada: 'Cerrada', completado: 'Completada', completada: 'Completada' };
 export const ETIQUETAS_ESPECIALIDAD = { mec: 'Mecánico diésel', sold: 'Soldador', hid: 'Hidráulico', ele: 'Electricista', tor: 'Operador de torno' };
 export const etiquetaEquipoCliente = value => ETIQUETAS_EQUIPO_CLIENTE[value] || 'Ilustración genérica';
 export const etiquetaComponenteCliente = value => ETIQUETAS_COMPONENTE_CLIENTE[value] || 'Ilustración genérica';
 export const etiquetaMaquina = value => ETIQUETAS_MAQUINA[value] || 'Ilustración genérica';
-export const etiquetaEstadoOT = value => ETIQUETAS_ESTADO_OT[value] || 'No informado';
+export const etiquetaEstadoOT = value => {
+  const estado = String(value ?? '').trim();
+  if (!estado) return 'No informado';
+  const normalizado = estado.toLocaleLowerCase('es-PE');
+  return ETIQUETAS_ESTADO_OT[normalizado] || `${estado.charAt(0).toLocaleUpperCase('es-PE')}${estado.slice(1)}`;
+};
 export const etiquetaEspecialidad = value => ETIQUETAS_ESPECIALIDAD[value] || (value && !/^[a-z0-9_-]+$/i.test(value) ? value : 'Personal');
 
 export function crearLayout(bahias = [], puestos = []) {
@@ -48,6 +53,35 @@ export function calcularEncuadre(limites, aspect = 1, fov = 36) {
   const horizontalFov = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * Math.max(.55, aspect));
   const distance = Math.min(180, Math.max(24, Math.max(width / (2 * Math.tan(horizontalFov / 2)), depth / (2 * Math.tan(fov * Math.PI / 360))) * 1.32));
   return { ...center, distance, minDistance: Math.max(12, Math.min(24, distance * .42)), maxDistance: Math.min(240, Math.max(90, distance * 2.4)), azimuth: .48, elevation: .72 };
+}
+
+export function calcularVectorPaneo(azimuth, direction, amount = 1) {
+  const avanceX = -Math.sin(azimuth);
+  const avanceZ = -Math.cos(azimuth);
+  const derechaX = Math.cos(azimuth);
+  const derechaZ = -Math.sin(azimuth);
+  const vectores = {
+    arriba: [avanceX, avanceZ], abajo: [-avanceX, -avanceZ],
+    derecha: [derechaX, derechaZ], izquierda: [-derechaX, -derechaZ],
+  };
+  const vector = vectores[direction] || [0, 0];
+  const limpiarCero = value => Math.abs(value) < 1e-12 ? 0 : value;
+  return { x: limpiarCero(vector[0] * amount), z: limpiarCero(vector[1] * amount) };
+}
+
+export function limitarPaneo(x, z, limites, margen = .6) {
+  const ancho = Math.max(1, limites.maxX - limites.minX);
+  const profundidad = Math.max(1, limites.maxZ - limites.minZ);
+  const centroX = (limites.minX + limites.maxX) / 2;
+  const centroZ = (limites.minZ + limites.maxZ) / 2;
+  return {
+    x: Math.max(centroX - ancho * (0.5 + margen), Math.min(centroX + ancho * (0.5 + margen), x)),
+    z: Math.max(centroZ - profundidad * (0.5 + margen), Math.min(centroZ + profundidad * (0.5 + margen), z)),
+  };
+}
+
+export function calcularDistanciaZoom(distance, amount, minDistance, maxDistance) {
+  return Math.max(minDistance, Math.min(maxDistance, distance - amount));
 }
 
 export function mapearEscena(datos, fecha, fechaInicio = fecha) {
@@ -124,7 +158,12 @@ export function crearDetalleSeleccion(tipo, dato, escena = {}) {
     const tareas = ot.ot_tareas || [];
     const personas = (escena.personas || []).filter(persona => persona.ots?.some(item => item.id === ot.id));
     const ilustracion = resolverIlustracionOT(ot);
-    return { tipo: 'ot', ot, trabajo: tareas.map(tarea => tarea.familia_trabajo?.nombre || tarea.titulo).filter(Boolean).join(', ') || ot.descripcion || ot.servicio || 'Trabajo no informado',
+    const asignacionesOt = [
+      ...(escena.asignacionesTotales || escena.asignaciones || []),
+      ...(escena.maquinas || []).flatMap(maquina => maquina.asignaciones || []),
+    ].filter(item => item.ot_id === ot.id);
+    const estado = asignacionesOt.find(item => item.estado)?.estado || ot.estado;
+    return { tipo: 'ot', ot, estado, trabajo: tareas.map(tarea => tarea.familia_trabajo?.nombre || tarea.titulo).filter(Boolean).join(', ') || ot.descripcion || ot.servicio || 'Trabajo no informado',
       equipo: etiquetaEquipoCliente(ilustracion.equipo),
       componente: etiquetaComponenteCliente(ilustracion.componente),
       bahia, fechas: [...new Set((escena.asignacionesTotales || escena.asignaciones || []).filter(item => item.ot_id === ot.id).map(item => item.fecha))],

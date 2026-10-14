@@ -1,4 +1,4 @@
-import { calcularEncuadre, colorUtilizacion, crearLayout } from './sceneModel.js';
+import { calcularDistanciaZoom, calcularEncuadre, calcularVectorPaneo, colorUtilizacion, crearLayout, limitarPaneo } from './sceneModel.js';
 import { crearModeloMaquina } from './machineBuilders.js';
 import { crearModeloComponenteCliente, crearModeloEquipoCliente } from './clientModels.js';
 import { resolverIlustracionOT } from './sceneModel.js';
@@ -7,13 +7,13 @@ const TOKENS = {
   '--dx-ui-green-fg': '#14633A', '--dx-ui-amber-fg': '#8A4B00', '--dx-ui-red-fg': '#B42318',
   '--dx-ui-cyan': '#00ACC1', '--dx-ui-ink': '#1F2937', '--dx-ui-card': '#FFFFFF',
   '--dx-ui-line': '#E4E7EB', '--dx-ui-gray': '#6B7280', '--dx-ui-navy': '#1A2B4A',
-  '--sc-floor': '#12203A', '--sc-grid': '#26406A', '--sc-pad': '#1A2D4D', '--sc-bg1': '#142443', '--sc-bg2': '#0A1220',
+  '--sc-floor': '#12203A', '--sc-grid': '#26406A', '--sc-pad': '#1A2D4D', '--sc-bg1': '#000000', '--sc-bg2': '#000000',
   '--sc-idle': '#7186A4', '--sc-mach': '#5F86BF', '--sk-mec': '#22D3EE', '--sk-sold': '#FFA94D', '--sk-hid': '#A78BFA', '--sk-ele': '#60A5FA', '--sk-tor': '#4ADE80',
 };
 const CATEGORIA = { green: '--dx-ui-green-fg', amber: '--dx-ui-amber-fg', red: '--dx-ui-red-fg' };
 export const ESCENA_TEMAS = {
-  oscuro: { piso: '#12203A', cuadricula: '#26406A', losa: '#1A2D4D', fondoSuperior: '#142443', fondoInferior: '#0A1220', personalLibre: '#7186A4', maquina: '#5F86BF' },
-  claro: { piso: '#DDE5F0', cuadricula: '#B5C3D8', losa: '#EDF2F8', fondoSuperior: '#F8FAFD', fondoInferior: '#DCE5F1', personalLibre: '#8A99B0', maquina: '#6F8BB5' },
+  oscuro: { piso: '#12203A', cuadricula: '#26406A', losa: '#1A2D4D', fondoSuperior: '#000000', fondoInferior: '#000000', personalLibre: '#7186A4', maquina: '#5F86BF' },
+  claro: { piso: '#DDE5F0', cuadricula: '#B5C3D8', losa: '#EDF2F8', fondoSuperior: '#000000', fondoInferior: '#000000', personalLibre: '#8A99B0', maquina: '#6F8BB5' },
 };
 export const ILUMINACION_GEMELO = { hemisferioCielo: 0xffffff, hemisferioSuelo: 0x40506e, intensidadHemisferio: .95, intensidadDireccional: .8, posicionDireccional: [-20, 34, 22], toneMapping: 'NoToneMapping', salidaColor: 'SRGBColorSpace' };
 
@@ -48,7 +48,7 @@ export function observarTemaEscena(root, actualizar, documentRef = globalThis.do
 export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones = {}) {
   let renderer;
   try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   } catch (error) {
     opciones.onError?.(error);
     return null;
@@ -57,6 +57,7 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
   // Three 0.186 usa iluminación física y salida sRGB; estas intensidades equivalen al r128 no físico de la maqueta.
   renderer.outputColorSpace = THREE[ILUMINACION_GEMELO.salidaColor];
   renderer.toneMapping = THREE[ILUMINACION_GEMELO.toneMapping];
+  renderer.setClearColor(0x000000, 1);
   const hemi = new THREE.HemisphereLight(ILUMINACION_GEMELO.hemisferioCielo, ILUMINACION_GEMELO.hemisferioSuelo, ILUMINACION_GEMELO.intensidadHemisferio);
   const directional = new THREE.DirectionalLight(0xffffff, ILUMINACION_GEMELO.intensidadDireccional);
   directional.position.set(...ILUMINACION_GEMELO.posicionDireccional);
@@ -129,9 +130,13 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     canvas.width = 512;
     canvas.height = 96;
     const context = canvas.getContext('2d');
-    context.fillStyle = tokens['--dx-ui-ink'];
+    context.fillStyle = '#F8FAFC';
+    context.strokeStyle = '#000000';
+    context.lineWidth = 8;
+    context.lineJoin = 'round';
     context.font = '600 34px sans-serif';
     context.textAlign = 'center';
+    context.strokeText(String(text).slice(0, 28), 256, 60);
     context.fillText(String(text).slice(0, 28), 256, 60);
     const texture = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
@@ -346,7 +351,7 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     controls.update(); render();
   };
   applyFrame(1);
-  controls.enableDamping = !reduced;
+  controls.enableDamping = false;
   controls.enableZoom = false;
   renderer.domElement.style.touchAction = 'pan-y';
   controls.addEventListener('change', render);
@@ -388,8 +393,8 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
   document.addEventListener('visibilitychange', visibility);
   if (visible && !reduced) raf = requestAnimationFrame(animate);
   const keyboard = event => {
-    if (event.key === '+' || event.key === '=') camera.position.multiplyScalar(.9);
-    else if (event.key === '-') camera.position.multiplyScalar(1.1);
+    if (event.key === '+' || event.key === '=') zoomView(2);
+    else if (event.key === '-') zoomView(-2);
     else if (event.key === 'ArrowLeft') controls.rotateLeft(.12);
     else if (event.key === 'ArrowRight') controls.rotateLeft(-.12);
     else if (event.key === 'ArrowUp') controls.rotateUp(.12);
@@ -399,13 +404,33 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     controls.update();
     render();
   };
+  function moveView(direction, amount = 1) {
+    const offset = camera.position.clone().sub(controls.target);
+    const step = calcularVectorPaneo(Math.atan2(offset.x, offset.z), direction, amount);
+    const next = limitarPaneo(controls.target.x + step.x, controls.target.z + step.z, layout.limites);
+    const dx = next.x - controls.target.x;
+    const dz = next.z - controls.target.z;
+    controls.target.x = next.x;
+    controls.target.z = next.z;
+    camera.position.x += dx;
+    camera.position.z += dz;
+    controls.update();
+    render();
+  }
+  function zoomView(amount = 1) {
+    const offset = camera.position.clone().sub(controls.target);
+    const distance = calcularDistanciaZoom(offset.length(), amount, controls.minDistance, controls.maxDistance);
+    camera.position.copy(controls.target).add(offset.setLength(distance));
+    controls.update();
+    render();
+  }
   renderer.domElement.addEventListener('keydown', keyboard);
   const wheel = event => {
     if (!event.ctrlKey && !event.metaKey) { opciones.onZoomHint?.(); return; }
     event.preventDefault();
-    const direction = event.deltaY > 0 ? 1.12 : .89;
-    const offset = camera.position.clone().sub(controls.target).multiplyScalar(direction);
-    const distance = Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()));
+    const direction = event.deltaY > 0 ? 2 : -2;
+    const offset = camera.position.clone().sub(controls.target);
+    const distance = calcularDistanciaZoom(camera.position.distanceTo(controls.target), direction > 0 ? -2 : 2, controls.minDistance, controls.maxDistance);
     camera.position.copy(controls.target).add(offset.setLength(distance)); render();
   };
   renderer.domElement.addEventListener('wheel', wheel, { passive: false });
@@ -445,6 +470,8 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
 
   return {
     renderer,
+    moveView,
+    zoomView,
     centerView() { applyFrame(camera.aspect); },
     setLayers(next) {
       Object.assign(layerState.categorias, next.categorias || {});
@@ -460,16 +487,20 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     setLabels(value) { labels = value; textObjects.forEach(item => { item.visible = labels; }); renderer.domElement.dataset.labels = String(labels); render(); },
     updateTheme(nextTokens) {
       if (floor.material.userData.themeToken) floor.material.color.set(nextTokens['--sc-floor']);
-      backdrop.material.uniforms.top.value.set(nextTokens['--sc-bg1']); backdrop.material.uniforms.bottom.value.set(nextTokens['--sc-bg2']);
+      backdrop.material.uniforms.top.value.set('#000000'); backdrop.material.uniforms.bottom.value.set('#000000');
       root.traverse(child => {
         if (child.material?.userData?.themeToken) child.material.color.set(nextTokens[child.material.userData.themeToken]);
         if (child.material?.name === 'machineBody' && child.material.emissiveIntensity) child.material.emissive.set(nextTokens['--dx-ui-cyan']);
         if (child.userData.labelCanvas) {
           const context = child.userData.labelCanvas.getContext('2d');
           context.clearRect(0, 0, 512, 96);
-          context.fillStyle = nextTokens['--dx-ui-ink'];
+          context.fillStyle = '#F8FAFC';
+          context.strokeStyle = '#000000';
+          context.lineWidth = 8;
+          context.lineJoin = 'round';
           context.font = '600 34px sans-serif';
           context.textAlign = 'center';
+          context.strokeText(child.userData.labelText, 256, 60);
           context.fillText(child.userData.labelText, 256, 60);
           child.material.map.needsUpdate = true;
         }

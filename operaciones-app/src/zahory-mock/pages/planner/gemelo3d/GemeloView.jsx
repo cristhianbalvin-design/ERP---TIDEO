@@ -18,6 +18,7 @@ const CATEGORIAS = { general: 'General', pesada: 'Pesada', sold: 'Soldadura', cr
 export function GemeloView({ datos, importarThree = () => import('three'), onVerEnTablero = () => {} }) {
   const hostRef = useRef(null);
   const sceneRef = useRef(null);
+  const mandoRef = useRef({ raf: 0, last: 0, action: null });
   const [dia, setDia] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
   const [mostrarTextos, setMostrarTextos] = useState(false);
@@ -86,6 +87,11 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
     return () => window.removeEventListener('keydown', cerrar);
   }, []);
 
+  useEffect(() => () => {
+    globalThis.cancelAnimationFrame?.(mandoRef.current.raf);
+    mandoRef.current.action = null;
+  }, []);
+
   useEffect(() => { sceneRef.current?.setLayers(capas); }, [capas]);
   useEffect(() => { sceneRef.current?.setLabels(mostrarTextos); }, [mostrarTextos]);
   useEffect(() => {
@@ -97,6 +103,49 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
   function cambiarCapa(grupo, clave, value) {
     setCapas(current => ({ ...current, [grupo]: { ...current[grupo], [clave]: value } }));
   }
+  function detenerMando() {
+    globalThis.cancelAnimationFrame?.(mandoRef.current.raf);
+    mandoRef.current.raf = 0;
+    mandoRef.current.action = null;
+  }
+  function iniciarMando(action) {
+    detenerMando();
+    const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const ejecutar = elapsed => {
+      if (action.direction) sceneRef.current?.moveView(action.direction, reduced ? 6 : elapsed * 18);
+      else sceneRef.current?.zoomView(reduced ? action.zoom * 2 : action.zoom * elapsed * 12);
+    };
+    pasoMando(action);
+    if (reduced) return;
+    mandoRef.current.action = action;
+    mandoRef.current.last = 0;
+    const repetir = time => {
+      if (!mandoRef.current.action) return;
+      const elapsed = mandoRef.current.last ? Math.min((time - mandoRef.current.last) / 1000, .05) : 0;
+      mandoRef.current.last = time;
+      if (elapsed) ejecutar(elapsed);
+      mandoRef.current.raf = requestAnimationFrame(repetir);
+    };
+    mandoRef.current.raf = requestAnimationFrame(repetir);
+  }
+  function pasoMando(action) {
+    if (action.direction) sceneRef.current?.moveView(action.direction, 6);
+    else sceneRef.current?.zoomView(action.zoom * 2);
+  }
+  const controlMando = (label, action, symbol) => (
+    <button
+      key={label}
+      type="button"
+      aria-label={label}
+      title={label}
+      onPointerDown={() => iniciarMando(action)}
+      onPointerUp={detenerMando}
+      onPointerCancel={detenerMando}
+      onPointerLeave={detenerMando}
+      onClick={event => { if (event.detail === 0) pasoMando(action); }}
+      className={`dx-planner-3d-control is-${action.direction || (action.zoom > 0 ? 'in' : 'out')}`}
+    >{symbol}</button>
+  );
   const otList = items => items.map(item => item.numero || item.id).join(', ') || 'Sin OT asignadas';
   const detalle = seleccion ? crearDetalleSeleccion(seleccion.kind, seleccion.data, escena) : null;
   const seleccionarDesdeLista = (kind, data) => elegirSeleccion({ kind, data });
@@ -121,6 +170,14 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
       <div className="dx-planner-3d-stage" ref={hostRef}>
         {errorWebGL && <div className="dx-planner-3d-fallback" role="status">Tu navegador no pudo iniciar la vista 3D. El tablero muestra el mismo plan.</div>}
         <div className="dx-planner-3d-tip" aria-live="polite">{zoomHint ? 'Usa Ctrl + rueda para acercar' : 'Arrastra para girar · Ctrl + rueda o pellizco para acercar'}</div>
+        <div className="dx-planner-3d-controller" role="group" aria-label="Controles de cámara">
+          {controlMando('Mover vista arriba', { direction: 'arriba' }, '↑')}
+          {controlMando('Mover vista a la izquierda', { direction: 'izquierda' }, '←')}
+          {controlMando('Mover vista abajo', { direction: 'abajo' }, '↓')}
+          {controlMando('Mover vista a la derecha', { direction: 'derecha' }, '→')}
+          {controlMando('Acercar', { zoom: 1 }, '+')}
+          {controlMando('Alejar', { zoom: -1 }, '−')}
+        </div>
         <aside className={`dx-planner-3d-legend${capasPlegadas ? ' is-collapsed' : ''}`} aria-label="Capas de la escena">
           <button type="button" className="dx-planner-3d-layer-toggle" aria-expanded={!capasPlegadas} onClick={() => setCapasPlegadas(value => !value)}>{capasPlegadas ? 'Mostrar capas' : 'Ocultar capas'}</button>
           {!capasPlegadas && <>
@@ -148,7 +205,7 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
       {detalle && <aside className="dx-planner-3d-detail" aria-live="polite" aria-label="Detalle seleccionado">
         <button type="button" className="dx-planner-3d-detail-close" onClick={() => elegirSeleccion(null)} aria-label="Cerrar detalle">Cerrar</button>
         {detalle.tipo === 'bahia' && <><h3>{detalle.bahia.nombre}</h3><p>Categoría: {CATEGORIAS[detalle.bahia.categoria] || 'General'} · capacidad {detalle.bahia.capacidad} h · utilización {Math.round(detalle.bahia.utilizacion * 100)}%.</p><p>OT: {otList(detalle.ots)} · Personal: {detalle.personas.map(item => item.nombre).join(', ') || 'Sin personas asignadas'}.</p><button type="button" className="dx-btn" onClick={() => onVerEnTablero(detalle.ots[0])} disabled={!detalle.ots.length || ejemploActivo}>Ver en el tablero</button>{ejemploActivo && <small>Ejemplo: esta OT no existe en tu taller</small>}</>}
-        {detalle.tipo === 'ot' && <><h3>OT {detalle.ot.numero || detalle.ot.id}</h3><p>Trabajo: {detalle.trabajo}</p><p>Equipo: {detalle.equipo} · componente: {detalle.componente}</p><p>Bahía: {detalle.bahia?.nombre || 'No informada'} · fechas: {detalle.fechas.join(', ') || escena.fecha}</p><p>Personas: {detalle.personas.map(item => item.nombre).join(', ') || 'No informadas'} · {detalle.horas} h · estado: {etiquetaEstadoOT(detalle.ot.estado)} · {detalle.conflicto ? 'Con conflicto' : 'Sin conflicto'}</p><button type="button" className="dx-btn" onClick={() => onVerEnTablero(detalle.ot)} disabled={ejemploActivo}>Ver en el tablero</button>{ejemploActivo && <small>Ejemplo: esta OT no existe en tu taller</small>}</>}
+        {detalle.tipo === 'ot' && <><h3>OT {detalle.ot.numero || detalle.ot.id}</h3><p>Trabajo: {detalle.trabajo}</p><p>Equipo: {detalle.equipo} · componente: {detalle.componente}</p><p>Bahía: {detalle.bahia?.nombre || 'No informada'} · fechas: {detalle.fechas.join(', ') || escena.fecha}</p><p>Personas: {detalle.personas.map(item => item.nombre).join(', ') || 'No informadas'} · {detalle.horas} h · estado: {etiquetaEstadoOT(detalle.estado)} · {detalle.conflicto ? 'Con conflicto' : 'Sin conflicto'}</p><button type="button" className="dx-btn" onClick={() => onVerEnTablero(detalle.ot)} disabled={ejemploActivo}>Ver en el tablero</button>{ejemploActivo && <small>Ejemplo: esta OT no existe en tu taller</small>}</>}
         {detalle.tipo === 'persona' && <><h3>{detalle.persona.nombre}</h3><p>{detalle.cargo} · {detalle.horas} h en el día</p><p>OT: {otList(detalle.ots)}</p></>}
         {detalle.tipo === 'maquina' && <><h3>{detalle.maquina.nombre || detalle.maquina.tipo?.nombre || 'Máquina'}</h3><p>Tipo: {etiquetaMaquina(detalle.maquina.tipo?.clave || detalle.maquina.tipo_clave) || 'No informado'} · {detalle.uso}</p><p>OT: {otList(detalle.maquina.ots)}</p></>}
       </aside>}
