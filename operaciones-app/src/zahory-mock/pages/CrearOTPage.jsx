@@ -768,6 +768,10 @@ export const CrearOTPage = ({ onNav }) => {
     horometroApertura: '',
   });
   const proyectosOtCliente = useMemo(() => filtrarProyectosPorCliente(proyectosOt, form.clienteId), [proyectosOt, form.clienteId]);
+  const proyectoSeleccionadoOt = proyectosOtCliente.find(proyecto => String(proyecto.id) === String(form.proyectoId));
+  const proyectoResumen = form.proyectoId && proyectoSeleccionadoOt
+    ? `${proyectoSeleccionadoOt.mina_nombre ? `${proyectoSeleccionadoOt.mina_nombre} · ` : ''}${proyectoSeleccionadoOt.codigo} · ${proyectoSeleccionadoOt.nombre}`
+    : 'Sin proyecto';
 
   useEffect(() => {
     let vigente = true;
@@ -2503,6 +2507,7 @@ export const CrearOTPage = ({ onNav }) => {
               <div className="dx-ot-review-title">Resumen de la orden</div>
               {[
                 ['Contexto', `Línea: ${LINEA_NEGOCIO_LABELS[form.lineaNegocio] || 'Pendiente'} · Raíz: ${{ contrato: 'Contrato', os_cliente: 'OS Cliente', equipo_interno: 'Equipo interno' }[objetoCostoTipo]} · ${nombreCliente(cliente) || 'Sin cliente'} · ${contrato?.numero || 'Sin contrato'} · ${equipo?.codigo || equipo?.cod || 'Sin equipo'} · CC ${form.centro_costo || form.centro_beneficio_id || 'sin centro'}`, 1],
+                ['Proyecto', proyectoResumen, 1],
                 ['Lugar', `${form.lugarEjecucion || 'Sin definir'} · ${form.unidadMinera || 'Sin unidad minera'} · Horómetro ${form.horometroApertura || 'sin registrar'}`, 2],
                 ['Matriz DBS', `${trabajoLabel(form.tipoTrabajo)} · ${cargoLabel(form.tipoCargo)} · ${segmentos.length} segmento(s): ${segmentos.map(s => s.descripcion || s.codigo).join(', ')} · ${backlogs.length} backlog(s)`, 3],
                 ['Responsable', `${tecnicosReales.find(t => t.id === form.tecnico)?.nombre || 'Sin responsable'} · Inicio ${form.fechaProgramadaInicio || 'sin fecha'} · Aprobación ${form.fechaAprobacionComercial || 'sin fecha'} · Ingreso USD ${noFacturable(form.tipoCargo) ? '0' : form.ingreso || '0'}`, 4],
