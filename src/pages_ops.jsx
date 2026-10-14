@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ColumnFilter } from './components/ColumnFilter.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
+import RenovacionFirmaDigitalModal from './components/RenovacionFirmaDigitalModal.jsx';
 import { PosicionSelector } from './components/PosicionSelector.jsx';
 import { CAMPO_MODULE_OPTIONS, SelectorModulosCampo } from './components/SelectorModulosCampo.jsx';
 import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './components/SociedadFormField.jsx';
@@ -36,6 +37,7 @@ import * as storageService from './services/storageService.js';
 import * as solicitudesRrhhService from './services/solicitudesRrhhService.js';
 import * as tareosAdminService from './services/tareosAdminService.js';
 import * as personalDocumentosService from './services/personalDocumentosService.js';
+import { contratoFirmaService } from './contratoFirmaService.js';
 import { CATEGORIA_FIRMA_RUBRICA, obtenerFirmaParaDocumento } from './services/firmaPersonalService.js';
 import { getPrimaSeguroAfp, nominaService, mapCalculoANominaDetalle, INGRESO_EXTRAORDINARIO_SUBTIPOS } from './services/nominaService.js';
 import { aplicarContratoATrabajador, datosNominaDesdeContrato, resolverContratoConAdendasEnFecha, resolverContratosNominaSociedad, resolverParametrosNominaSociedad, resolverPersonalConContratosVigentes, resolverSociedadDocumentoLaboral } from './services/nominaSociedadService.js';
@@ -22713,6 +22715,22 @@ function RRHH_Operativo() {
   const [retroWallInline, setRetroWallInline] = useState(null);
   const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocOps, setModalEnviarFirmaDocOps] = useState(null);
+  const [renovacionFirmaDigitalOps, setRenovacionFirmaDigitalOps] = useState(null);
+  const [solicitudesFirmaDigitalOps, setSolicitudesFirmaDigitalOps] = useState({});
+  const [accionFirmaDigitalDocOps, setAccionFirmaDigitalDocOps] = useState(null);
+  const cargarSolicitudesFirmaDigitalOps = useCallback(async () => {
+    const docs = (personalDocumentos || []).filter(d => {
+      const tipo = tiposDocumento.find(t => t.id === d.tipo_documento_id || t.id === d.tipo_doc);
+      return rrhhEsTipoContrato(tipo) || (!rrhhEsTipoAdenda(tipo, d.tipo_doc) && String(d.tipo_doc || '').toLowerCase().includes('contrato'));
+    });
+    try {
+      const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
+      const agrupadas = {};
+      for (const solicitud of rows) (agrupadas[solicitud.documento_id] ||= []).push(solicitud);
+      setSolicitudesFirmaDigitalOps(agrupadas);
+    } catch { setSolicitudesFirmaDigitalOps({}); }
+  }, [personalDocumentos, tiposDocumento]);
+  useEffect(() => { cargarSolicitudesFirmaDigitalOps(); }, [cargarSolicitudesFirmaDigitalOps]);
   const [enviarFirmaMensajeOps, setEnviarFirmaMensajeOps] = useState('');
   const [enviandoFirmaOps, setEnviandoFirmaOps] = useState(false);
   const [documentoAEliminar, setDocumentoAEliminar] = useState(null);
@@ -23652,7 +23670,7 @@ function RRHH_Operativo() {
                     setDocValidandoId(null);
                   }
                 }}
-                onCorregir={() => {
+                onCorregir={docPreviewReq?.doc?.estado_firma === 'firmado_trabajador' ? undefined : () => {
                   const req = docPreviewReq;
                   const persona = docPreviewPersona;
                   cerrarPreviewDocumento();
@@ -23917,6 +23935,16 @@ function RRHH_Operativo() {
     return (
       <>
         {previewDocumentoNode}
+        {renovacionFirmaDigitalOps && <RenovacionFirmaDigitalModal
+          empresa={empresa}
+          persona={selTecnico}
+          documento={renovacionFirmaDigitalOps}
+          onClose={() => setRenovacionFirmaDigitalOps(null)}
+          onComplete={async (renovacion, envio) => {
+            addNotificacion(envio?.aviso || (envio?.ok === false ? `La renovación se creó, pero el envío falló: ${envio.error || 'error desconocido'}. Usa «Enviar a firma digital» en el contrato.` : 'Renovación creada. El enlace se envió por los canales disponibles.'));
+            if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(selTecnico.id);
+          }}
+        />}
         {documentoAEliminar && (
           <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && (setDocumentoAEliminar(null), setErrorEliminarDocumento(''))}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
@@ -25092,13 +25120,16 @@ function RRHH_Operativo() {
                                                     )
                                                   )}
                                                    {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
-                                                   <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
-                                                   {puedeEliminarDocumentosRrhh && <>
+                                                   {req.doc.estado_firma !== 'firmado_trabajador' && <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>}
+                                                   {puedeEliminarDocumentosRrhh && req.doc.estado_firma !== 'firmado_trabajador' && <>
                                                      <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc: req.doc, persona: p }); }}>{I.trash} Eliminar</button>
                                                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc: req.doc, persona: p }); }}>{I.archive} Archivar</button>
                                                    </>}
                                                    {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
-                                                    <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
+                                                    <>
+                                                      <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
+                                                      {rrhhEsTipoContrato(req.tipo) && <button type="button" className="btn btn-primary btn-sm" onClick={() => setRenovacionFirmaDigitalOps({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'operativo' })}>Renovar con firma digital</button>}
+                                                    </>
                                                   )}
                                                   {canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false && (() => {
                                                     const ef = req.doc?.estado_firma || 'no_requiere';
@@ -25141,6 +25172,25 @@ function RRHH_Operativo() {
                                               )}
 
                                             </div>
+
+                                            {req.doc && rrhhEsTipoContrato(req.tipo) && (() => {
+                                              const firmaRows = solicitudesFirmaDigitalOps[req.doc.id] || [];
+                                              const solicitudActiva = firmaRows.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+                                              const solicitud = solicitudActiva || firmaRows[0];
+                                              const firmado = solicitud?.estado === 'firmado' || req.doc.estado_firma === 'firmado_trabajador';
+                                              const activa = Boolean(solicitudActiva);
+                                              const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
+                                              return (activa || firmado) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
+                                                  {firmado ? `Firmado electrónicamente${solicitud?.firmado_en ? ` · ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma · vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
+                                                </span>
+                                                {firmado && solicitud?.pdf_firmado_path && <button className="btn btn-ghost btn-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(solicitud.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
+                                                {activa && <>
+                                                  <button className="btn btn-ghost btn-sm" disabled={accionFirmaDigitalDocOps === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: solicitud.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalOps(); addNotificacion('Se generó un nuevo enlace de firma.'); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Reenviar enlace</button>
+                                                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={accionFirmaDigitalDocOps === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(req.doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: solicitud.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalOps(); addNotificacion('Solicitud de firma anulada.'); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Anular solicitud</button>
+                                                </>}
+                                              </div> : renovacionFirmable && !solicitudActiva ? <div style={{ margin: '0 16px 12px' }}><button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocOps === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocOps(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: ['whatsapp', 'email'] }); await cargarSolicitudesFirmaDigitalOps(); addNotificacion('Se creó la solicitud de firma digital.'); } catch (e) { addNotificacion(e.message || 'No se pudo enviar a firma digital.'); } finally { setAccionFirmaDigitalDocOps(null); } }}>Enviar a firma digital</button></div> : null;
+                                            })()}
 
                                             {docsVinculados.map(dv => {
                                               const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
@@ -25514,7 +25564,7 @@ function RRHH_Operativo() {
                                  {doc.estado_validacion}
                                </span>
                                <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
-                               {puedeEliminarDocumentosRrhh && <>
+                               {puedeEliminarDocumentosRrhh && doc.estado_firma !== 'firmado_trabajador' && <>
                                  <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); }}>{I.trash} Eliminar</button>
                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); }}>{I.archive} Archivar</button>
                                </>}
