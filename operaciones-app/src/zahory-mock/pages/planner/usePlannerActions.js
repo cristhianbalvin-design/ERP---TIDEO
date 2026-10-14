@@ -3,15 +3,19 @@ import {
   asignarEquipo,
   asignarPersona,
   actualizarFechaAsignacion,
+  cambiarPuestoOT,
   heredarTareasOT,
   mensajeErrorPlanner,
   moverAsignacion,
   moverAsignacionEquipo,
+  reasignarMaquina,
+  reasignarTecnico,
   restaurarTareaAsignacion,
   sincronizarOcupacionesOT,
 } from '../../../services/plannerService.js';
-import { validarOtPlanificable } from './plannerEngine.js';
-import { crearAccionGuardarConfig } from './plannerConfigActions.js';
+import { validarCapacidadPuesto, validarOtPlanificable } from './plannerEngine.js';
+import { puestoDeOT, sumarHabiles } from './plannerModelo.js';
+import { crearAccionGuardarConfig, crearAccionGuardarTaller } from './plannerConfigActions.js';
 import { crearAccionesSimulacion } from './plannerSimulationActions.js';
 
 export function usePlannerActions({
@@ -66,6 +70,7 @@ export function usePlannerActions({
   }
 
   const guardarConfig = crearAccionGuardarConfig({ sesion, ejecutar });
+  const guardarTaller = crearAccionGuardarTaller({ sesion, ejecutar, onGuardado: () => setVista('panel') });
   const accionesSimulacion = crearAccionesSimulacion({
     datos,
     ots,
@@ -88,6 +93,7 @@ export function usePlannerActions({
 
   function cambiarVista(nuevaVista) {
     setAviso('');
+    setError('');
     setVista(nuevaVista);
   }
 
@@ -209,7 +215,10 @@ export function usePlannerActions({
       if (!undo) return;
       return await ejecutar(async () => {
         if (undo.kind === 'ot') await deshacerMovimientoOT(undo);
-        else {
+        else if (undo.kind === 'lote') await deshacerLote(undo);
+        else if (undo.kind === 'puesto') {
+          if (undo.puestoAnterior) await cambiarPuestoOT({ otId: undo.otId, puestoId: undo.puestoAnterior });
+        } else {
           await actualizarFechaAsignacion({
             tabla: nombreTabla(undo.tabla),
             id: undo.id,
@@ -241,6 +250,104 @@ export function usePlannerActions({
     await sincronizarOcupacionesOT({ otId: item.oldOT });
   }
 
+  // Mueve un grupo de asignaciones: cambia su recurso (técnico o máquina) y/o las corre «delta» días hábiles.
+  async function moverLote({ items, delta = 0, recursoDestino = null }, mensaje) {
+    try {
+      return await ejecutar(async () => {
+        if (!items?.length) throw new Error('No hay asignaciones programadas para mover.');
+        for (const { asignacion } of items) {
+          if (asignacion.estado !== 'programado') {
+            throw new Error('Solo se pueden mover asignaciones programadas.');
+          }
+          validarOtPlanificable(datos.ots.find(ot => ot.id === asignacion.ot_id));
+        }
+        if (recursoDestino) {
+          const personas = items.filter(item => item.tabla === 'persona').map(item => item.asignacion.id);
+          const equipos = items.filter(item => item.tabla === 'equipo').map(item => item.asignacion.id);
+          if (personas.length) await reasignarTecnico({ ids: personas, tecnicoId: recursoDestino });
+          if (equipos.length) await reasignarMaquina({ ids: equipos, maquinaId: recursoDestino });
+        }
+        if (delta) {
+          const ordenados = [...items].sort((a, b) => (delta > 0 ? -1 : 1) * a.asignacion.fecha.localeCompare(b.asignacion.fecha));
+          for (const item of ordenados) {
+            await actualizarFechaAsignacion({
+              tabla: nombreTabla(item.tabla),
+              id: item.asignacion.id,
+              fecha: sumarHabiles(item.asignacion.fecha, delta),
+            });
+          }
+        }
+        for (const otId of new Set(items.map(item => item.asignacion.ot_id))) await sincronizarOcupacionesOT({ otId });
+        setUndo({
+          kind: 'lote',
+          items: items.map(item => ({
+            tabla: item.tabla,
+            id: item.asignacion.id,
+            fecha: item.asignacion.fecha,
+            recurso: item.tabla === 'equipo' ? item.asignacion.maquina_id : item.asignacion.tecnico_id,
+            otId: item.asignacion.ot_id,
+          })),
+        });
+      }, mensaje);
+    } catch {
+      return false;
+    }
+  }
+
+  async function deshacerLote(item) {
+    for (const fila of item.items) {
+      if (fila.tabla === 'equipo') await reasignarMaquina({ ids: [fila.id], maquinaId: fila.recurso });
+      else await reasignarTecnico({ ids: [fila.id], tecnicoId: fila.recurso });
+      await actualizarFechaAsignacion({ tabla: nombreTabla(fila.tabla), id: fila.id, fecha: fila.fecha });
+    }
+    for (const otId of new Set(item.items.map(fila => fila.otId))) await sincronizarOcupacionesOT({ otId });
+  }
+
+  const comoItems = (asignaciones, tabla) => asignaciones.map(asignacion => ({
+    tabla: tabla || (asignacion.maquina_id ? 'equipo' : 'persona'),
+    asignacion,
+  }));
+
+  function moverBloque({ tabla, asignaciones, delta, recursoDestino }) {
+    return moverLote(
+      { items: comoItems(asignaciones, tabla), delta, recursoDestino },
+      recursoDestino ? 'El bloque cambió de responsable.' : 'El bloque se movió a la nueva fecha.',
+    );
+  }
+
+  function cambiarResponsable(asignaciones, tecnicoId) {
+    return moverLote({ items: comoItems(asignaciones, 'persona'), recursoDestino: tecnicoId }, 'La tarea cambió de responsable.');
+  }
+
+  function cambiarMaquina(asignaciones, maquinaId) {
+    return moverLote({ items: comoItems(asignaciones, 'equipo'), recursoDestino: maquinaId }, 'La tarea cambió de máquina.');
+  }
+
+  function noEmpezarAntes(asignaciones, delta) {
+    return moverLote({ items: comoItems(asignaciones), delta }, 'La tarea se movió a la nueva fecha de inicio.');
+  }
+
+  async function cambiarPuesto(ot, puestoId) {
+    try {
+      return await ejecutar(async () => {
+        validarOtPlanificable(ot);
+        const anterior = puestoDeOT(datos, ot.id);
+        const puesto = datos.puestos.find(item => item.id === puestoId);
+        const fechas = [...datos.asignaciones, ...datos.equipos]
+          .filter(item => item.ot_id === ot.id && item.estado === 'programado').map(item => item.fecha).sort();
+        if (!fechas.length) throw new Error('Planifica la OT antes de elegir su puesto.');
+        const capacidad = validarCapacidadPuesto(datos.ocupaciones, puestoId, fechas[0], fechas.at(-1), puesto?.capacidad || 1, ot.id);
+        if (!capacidad.valido) {
+          throw new Error(`El puesto no tiene capacidad disponible el ${capacidad.fecha}. Ajusta la planificación.`);
+        }
+        await cambiarPuestoOT({ otId: ot.id, puestoId });
+        setUndo({ kind: 'puesto', otId: ot.id, puestoAnterior: anterior?.id || null });
+      }, 'El equipo cambió de puesto.');
+    } catch {
+      return false;
+    }
+  }
+
   async function guardarWizardHerencia(otId) {
     return ejecutar(() => heredarTareasOT(otId), 'Se heredaron las tareas de la OT.');
   }
@@ -250,10 +357,17 @@ export function usePlannerActions({
     cambiarVista,
     guardarWizard,
     guardarConfig,
+    guardarTaller,
     moverFecha,
     moverOT,
     deshacer,
     simular,
+    moverBloque,
+    cambiarResponsable,
+    cambiarMaquina,
+    noEmpezarAntes,
+    cambiarPuesto,
+    elegirUrgente: accionesSimulacion.elegirUrgente,
     aplicarSimulacion: accionesSimulacion.aplicarSimulacion,
     guardarWizardHerencia,
   };

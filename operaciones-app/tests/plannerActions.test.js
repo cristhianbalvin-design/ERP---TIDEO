@@ -44,14 +44,15 @@ describe('Planner en vista consolidada', () => {
     }));
     expect(cabecera.match(/disabled=""/g).length).toBeGreaterThanOrEqual(3);
     const configurador = renderToStaticMarkup(createElement(Configurator, {
-      datos: { bahias: [], puestos: [], maquinas: [], tipos: [] },
+      datos: { bahias: [{ id: 'b1', codigo: 'B1', nombre: 'Bahía 1', categoria: 'general' }], puestos: [], maquinas: [], tipos: [] },
       permiteEscritura: false,
       busy: false,
-      onSave: vi.fn(),
+      onGuardar: vi.fn(),
+      onCancel: vi.fn(),
     }));
-    expect(configurador).toContain('<input required="" disabled=""');
+    expect(configurador).toContain('<input disabled=""');
     expect(configurador).toContain('<select disabled=""');
-    expect(configurador).toContain('disabled=""');
+    expect(configurador).toMatch(/<button type="button" class="dx-pl-btn is-pri" disabled="">Guardar<\/button>/);
   });
 
   it('oculta el aviso consolidado mientras carga o no hay empresa activa', async () => {
@@ -249,8 +250,8 @@ describe('aviso del Planner', () => {
 });
 
 describe('categoría de bahía', () => {
-  it('conserva la categoría elegida en el submit de nueva bahía', async () => {
-    const onSave = vi.fn();
+  it('conserva la categoría elegida al guardar una bahía nueva del borrador', async () => {
+    const onGuardar = vi.fn();
     const datos = { bahias: [], puestos: [], maquinas: [], tipos: [] };
     let renderer;
     await act(async () => {
@@ -258,19 +259,20 @@ describe('categoría de bahía', () => {
         datos,
         permiteEscritura: true,
         busy: false,
-        onSave,
+        onGuardar,
+        onCancel: vi.fn(),
       }));
     });
+    const agregar = renderer.root.findAll(node => node.type === 'button' && node.children.join('') === '+ Agregar bahía')[0];
+    await act(async () => agregar.props.onClick());
     const categoria = renderer.root.findAllByType('select')[0];
     await act(async () => categoria.props.onChange({ target: { value: 'mec' } }));
-    const formularioBahia = renderer.root.findAllByType('form')[0];
-    await act(async () => formularioBahia.props.onSubmit({ preventDefault: vi.fn() }));
-    expect(onSave).toHaveBeenCalledWith('bahia', {
-      codigo: '',
-      nombre: '',
-      categoria: 'mec',
-      orden: 0,
-    });
+    const guardar = renderer.root.findAll(node => node.type === 'button' && node.children.join('') === 'Guardar')[0];
+    await act(async () => guardar.props.onClick());
+    expect(onGuardar).toHaveBeenCalledTimes(1);
+    const diferencias = onGuardar.mock.calls[0][0];
+    expect(diferencias.bahiasNuevas).toHaveLength(1);
+    expect(diferencias.bahiasNuevas[0]).toMatchObject({ nombre: 'Bahía 1', categoria: 'mec', codigo: 'B1' });
     renderer.unmount();
   });
 });

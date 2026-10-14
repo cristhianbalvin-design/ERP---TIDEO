@@ -476,10 +476,13 @@ export function crearEscena(THREE, OrbitControls, host, model, tokens, opciones 
     setLayers(next) {
       Object.assign(layerState.categorias, next.categorias || {});
       Object.assign(layerState.objetos, next.objetos || {});
+      layerState.roles = { ...(layerState.roles || {}), ...(next.roles || {}) };
       root.children.forEach(child => {
         const kind = child.userData.kind || child.parent?.userData.kind;
         const category = child.userData.category || child.parent?.userData.category;
-        const objectVisible = kind === 'maquina' ? layerState.objetos.maquinas : kind === 'persona' ? layerState.objetos.personas : kind === 'componentes' ? layerState.objetos.componentes : kind === 'equipos' ? layerState.objetos.equipos : true;
+        const datum = child.userData.datum || child.parent?.userData.datum;
+        const rol = kind === 'persona' ? String(datum?.cargo || datum?.especialidad || 'Sin cargo').trim() : null;
+        const objectVisible = kind === 'maquina' ? layerState.objetos.maquinas : kind === 'persona' ? layerState.objetos.personas && layerState.roles[rol] !== false : kind === 'componentes' ? layerState.objetos.componentes : kind === 'equipos' ? layerState.objetos.equipos : true;
         child.visible = objectVisible && layerState.categorias[category] !== false;
       });
       render();

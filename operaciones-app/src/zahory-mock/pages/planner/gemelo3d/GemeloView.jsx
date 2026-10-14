@@ -13,9 +13,11 @@ const sumarDia = (date, days) => {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
 };
 const fechaCorta = value => new Date(`${value}T12:00:00`).toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
-const CATEGORIAS = { general: 'General', pesada: 'Pesada', sold: 'Soldadura', crom: 'Cromado', mec: 'Mecánica', hidr: 'Hidráulica' };
+const CATEGORIAS = { general: 'General', pesada: 'Reparación pesada', sold: 'Soldadura', crom: 'Cromado', mec: 'Mecanizado', hidr: 'Hidráulica / banco' };
+const COLOR_CATEGORIA = { general: '#5C7FB0', pesada: '#E3A72F', sold: '#FF5A36', crom: '#DDEBF7', mec: '#3BC6A5', hidr: '#5B8DEF' };
 
-export function GemeloView({ datos, importarThree = () => import('three'), onVerEnTablero = () => {} }) {
+export function GemeloView({ datos, importarThree = () => import('three'), onVerEnTablero = () => {}, onSelectOT = null, cargos = [], modo = 'plan' }) {
+  const enConfig = modo === 'config';
   const hostRef = useRef(null);
   const sceneRef = useRef(null);
   const mandoRef = useRef({ raf: 0, last: 0, action: null });
@@ -28,14 +30,22 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
   const [seleccion, setSeleccion] = useState(null);
   const [zoomHint, setZoomHint] = useState(false);
   const [ejemploActivo, setEjemploActivo] = useState(false);
-  const [capasPlegadas, setCapasPlegadas] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 1099px)').matches);
-  const [capas, setCapas] = useState({ categorias: {}, objetos: { maquinas: true, personas: true, componentes: true, equipos: true } });
+  const [capasPlegadas, setCapasPlegadas] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 760px)').matches);
+  const [capas, setCapas] = useState({ categorias: {}, roles: {}, objetos: { maquinas: true, personas: true, componentes: true, equipos: true } });
   function elegirSeleccion(value) {
+    if (value?.kind === 'ot' && onSelectOT && !ejemploRef.current) {
+      sceneRef.current?.setSelection(value);
+      setSeleccion(null);
+      onSelectOT(value.data);
+      return;
+    }
     setSeleccion(value);
     sceneRef.current?.setSelection(value);
   }
+  const ejemploRef = useRef(false);
   const hoy = useMemo(FECHA_HOY, []);
   const fecha = sumarDia(hoy, dia);
+  ejemploRef.current = ejemploActivo;
   const datosEscena = useMemo(() => ejemploActivo ? generarDatosEjemplo(hoy) : datos, [ejemploActivo, hoy, datos]);
   const escena = useMemo(() => mapearEscena(datosEscena, fecha, hoy), [datosEscena, fecha, hoy]);
   const fechas = useMemo(() => Array.from({ length: 10 }, (_, index) => sumarDia(hoy, index)), [hoy]);
@@ -146,25 +156,28 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
       className={`dx-planner-3d-control is-${action.direction || (action.zoom > 0 ? 'in' : 'out')}`}
     >{symbol}</button>
   );
+  const rolesEscena = cargos.map(rol => [rol, escena.personas.filter(persona => String(persona.cargo || persona.especialidad || 'Sin cargo').trim() === rol).length]);
+  const colorRol = rol => `var(--dx-pl-sk${(cargos.indexOf(rol) % 6) + 1})`;
+  function marcarTodo(valor) {
+    setCapas({
+      categorias: Object.fromEntries(Object.keys(CATEGORIAS).map(clave => [clave, valor])),
+      roles: Object.fromEntries(cargos.map(rol => [rol, valor])),
+      objetos: { maquinas: valor, personas: valor, componentes: valor, equipos: valor },
+    });
+    setMostrarTextos(valor && mostrarTextos);
+  }
   const otList = items => items.map(item => item.numero || item.id).join(', ') || 'Sin OT asignadas';
   const detalle = seleccion ? crearDetalleSeleccion(seleccion.kind, seleccion.data, escena) : null;
   const seleccionarDesdeLista = (kind, data) => elegirSeleccion({ kind, data });
 
   return (
     <section className="dx-ui-card dx-planner-3d" aria-labelledby="planner-3d-title">
-      <div className="dx-planner-3d-heading">
-        <div><h2 id="planner-3d-title">Gemelo digital · taller, puestos y personal</h2><p>Vista de solo lectura del plan del día seleccionado.</p></div>
-        <label className="dx-planner-3d-date">Día del plan
-          <select value={dia} onChange={event => { setDia(Number(event.target.value)); setReproduciendo(false); }}>
-            {fechas.map((value, index) => <option key={value} value={index}>{fechaCorta(value)}</option>)}
-          </select>
-        </label>
-        <button className="dx-btn" type="button" disabled={movimientoReducido} onClick={() => setReproduciendo(value => !value)} aria-pressed={reproduciendo}>
-          {reproduciendo ? 'Pausar' : 'Reproducir'}
-        </button>
-        <button className="dx-btn" type="button" onClick={() => setEjemploActivo(value => !value)}>{ejemploActivo ? 'Volver a mis datos' : 'Ver con datos de ejemplo'}</button>
-        <button className="dx-btn" type="button" onClick={() => sceneRef.current?.centerView()}>Centrar vista</button>
-        {movimientoReducido && <small>La reproducción está desactivada por la preferencia de movimiento reducido.</small>}
+      <div className="dx-pl-ph dx-planner-3d-heading">
+        <h2 id="planner-3d-title">{enConfig ? 'Vista previa 3D · así queda tu taller' : 'Gemelo digital · taller, puestos y personal'}</h2>
+        <div className="dx-pl-acts">
+          {!enConfig && <button className="dx-pl-btn is-sm" type="button" onClick={() => setEjemploActivo(value => !value)}>{ejemploActivo ? 'Volver a mis datos' : 'Ver con datos de ejemplo'}</button>}
+          <button className="dx-pl-btn is-sm" type="button" onClick={() => sceneRef.current?.centerView()}>Centrar vista</button>
+        </div>
       </div>
       {ejemploActivo && <div className="dx-planner-3d-sample-banner" role="status"><b>Datos de ejemplo: no es tu taller</b><button className="dx-btn" type="button" onClick={() => setEjemploActivo(false)}>Volver a los datos reales</button></div>}
       <div className="dx-planner-3d-stage" ref={hostRef}>
@@ -179,17 +192,29 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
           {controlMando('Alejar', { zoom: -1 }, '−')}
         </div>
         <aside className={`dx-planner-3d-legend${capasPlegadas ? ' is-collapsed' : ''}`} aria-label="Capas de la escena">
-          <button type="button" className="dx-planner-3d-layer-toggle" aria-expanded={!capasPlegadas} onClick={() => setCapasPlegadas(value => !value)}>{capasPlegadas ? 'Mostrar capas' : 'Ocultar capas'}</button>
+          <div className="dx-planner-3d-lh">
+            <b>Capas</b>
+            <span>
+              <button type="button" className="dx-pl-mini" onClick={() => marcarTodo(true)}>Todo</button>
+              <button type="button" className="dx-pl-mini" onClick={() => marcarTodo(false)}>Nada</button>
+              <button type="button" className="dx-pl-mini dx-planner-3d-layer-toggle" aria-expanded={!capasPlegadas} aria-label={capasPlegadas ? 'Mostrar capas' : 'Ocultar capas'} onClick={() => setCapasPlegadas(value => !value)}>{capasPlegadas ? '▸' : '▾'}</button>
+            </span>
+          </div>
           {!capasPlegadas && <>
-          <b>Capas</b>
-          <fieldset><legend>Bahías por categoría</legend>{Object.entries(CATEGORIAS).map(([category, label]) => (
-            <label key={category}><input type="checkbox" checked={capas.categorias[category] !== false} onChange={event => cambiarCapa('categorias', category, event.target.checked)} />{label}</label>
-          ))}</fieldset>
-          <fieldset><legend>Objetos</legend>{[['maquinas', 'Máquinas'], ['personas', 'Personal'], ['equipos', 'Equipo del cliente'], ['componentes', 'Componentes']].map(([key, title]) => (
-            <label key={key}><input type="checkbox" checked={capas.objetos[key]} onChange={event => cambiarCapa('objetos', key, event.target.checked)} />{title}</label>
-          ))}</fieldset>
-          <label><input type="checkbox" checked={mostrarTextos} onChange={event => setMostrarTextos(event.target.checked)} />Mostrar textos</label>
-          <small>Pasa el cursor sobre una bahía, persona o máquina para ver su detalle.</small>
+          {rolesEscena.length > 0 && <div className="dx-planner-3d-lg"><span className="dx-planner-3d-lgh">Personal</span>{rolesEscena.map(([rol, total]) => (
+            <label key={rol} className={total ? '' : 'is-zero'}><input type="checkbox" checked={capas.roles[rol] !== false} onChange={event => cambiarCapa('roles', rol, event.target.checked)} /><i className="is-dot" style={{ '--c': colorRol(rol) }} /><span>{rol}</span><em>{total}</em></label>
+          ))}</div>}
+          <div className="dx-planner-3d-lg"><span className="dx-planner-3d-lgh">Bahías por categoría</span>{Object.entries(CATEGORIAS).map(([category, label]) => {
+            const total = escena.bahias.filter(bahia => (bahia.categoria || 'general') === category).length;
+            return <label key={category} className={total ? '' : 'is-zero'}><input type="checkbox" checked={capas.categorias[category] !== false} onChange={event => cambiarCapa('categorias', category, event.target.checked)} /><i className="is-tile" style={{ '--c': COLOR_CATEGORIA[category] }} /><span>{label}</span><em>{total}</em></label>;
+          })}</div>
+          <div className="dx-planner-3d-lg"><span className="dx-planner-3d-lgh">Objetos</span>{[['componentes', 'Componente del cliente', escena.ots.length], ['maquinas', 'Máquina de taller', escena.maquinas.length], ['equipos', 'Equipo (ilustración)', null], ['personas', 'Personal', escena.personas.length]].map(([key, title, total]) => (
+            <label key={key}><input type="checkbox" checked={capas.objetos[key]} onChange={event => cambiarCapa('objetos', key, event.target.checked)} /><span>{title}</span>{total !== null && <em>{total}</em>}</label>
+          ))}</div>
+          <div className="dx-planner-3d-lg"><span className="dx-planner-3d-lgh">Textos</span>
+            <label><input type="checkbox" checked={mostrarTextos} onChange={event => setMostrarTextos(event.target.checked)} /><span>Mostrar textos sobre el 3D</span></label>
+            <small>Pasa el cursor sobre una bahía, persona u objeto para ver su detalle.</small>
+          </div>
           </>}
         </aside>
         {tooltip && <div className="dx-planner-3d-tooltip" style={{ left: Math.min(tooltip.x + 12, 190), top: Math.max(tooltip.y - 12, 10) }} role="status">
@@ -198,9 +223,15 @@ export function GemeloView({ datos, importarThree = () => import('three'), onVer
           {tooltip.kind === 'puesto' && <span>Puesto de {escena.bahias.find(item => item.id === tooltip.data.bahia_id)?.nombre || 'bahía'} · capacidad {tooltip.data.capacidad || 1}</span>}
           <span>OT: {otList(tooltip.data.ots || [])}</span>
         </div>}
-        <div className="dx-planner-3d-hud"><span>{fechaCorta(fecha)} · {escena.bahias.length} bahías · {escena.personas.length} personas</span>
+        {!enConfig && <div className="dx-planner-3d-hud">
+          <button className="dx-pl-btn is-sm" type="button" disabled={movimientoReducido} onClick={() => setReproduciendo(value => !value)} aria-pressed={reproduciendo} aria-label={reproduciendo ? 'Pausar' : 'Reproducir los próximos días'}>
+            {reproduciendo ? 'Pausar' : 'Reproducir'}
+          </button>
+          <span className="dx-planner-3d-dd">{fechaCorta(fecha)}</span>
+          <label className="dx-pl-sr" htmlFor="planner-3d-dia">Día del plan</label>
+          <input id="planner-3d-dia" type="range" min="0" max={fechas.length - 1} value={dia} onChange={event => { setDia(Number(event.target.value)); setReproduciendo(false); }} />
           <div className="dx-planner-3d-legend-key"><span className="is-green" /> &lt;75% <span className="is-amber" /> 75–89% <span className="is-red" /> ≥90%</div>
-        </div>
+        </div>}
       </div>
       {detalle && <aside className="dx-planner-3d-detail" aria-live="polite" aria-label="Detalle seleccionado">
         <button type="button" className="dx-planner-3d-detail-close" onClick={() => elegirSeleccion(null)} aria-label="Cerrar detalle">Cerrar</button>

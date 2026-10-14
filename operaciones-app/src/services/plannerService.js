@@ -15,6 +15,9 @@ const CAMPOS = {
   equipos: 'id,empresa_id,sociedad_id,ot_id,maquina_id,tarea_id,fecha,horas_estimadas,estado,motivo_reprogramacion',
 };
 
+// El personal operativo usa «disponible» como estado habitual; «activo» se conserva por compatibilidad.
+const ESTADOS_PERSONAL_ACTIVO = ['activo', 'Activo', 'disponible'];
+
 function filtrarSociedad(query, sociedadId, sociedadesIdsAlcance) {
   if (sociedadId) return query.eq('sociedad_id', sociedadId);
   if (Array.isArray(sociedadesIdsAlcance) && sociedadesIdsAlcance.length) {
@@ -60,7 +63,7 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
     leer(baseQuery('planner_ocupaciones', CAMPOS.ocupaciones, empresaId, sociedadId, sociedadesIdsAlcance)
       .neq('estado', 'cancelado')),
     leer(baseQuery('personal_operativo', CAMPOS.personas, empresaId, sociedadId, sociedadesIdsAlcance)
-      .eq('estado', 'activo').order('nombre')),
+      .in('estado', ESTADOS_PERSONAL_ACTIVO).order('nombre')),
     leer(baseQuery('planner_asignaciones', CAMPOS.asignaciones, empresaId, sociedadId, sociedadesIdsAlcance)
       .neq('estado', 'cancelado')),
     leer(baseQuery('planner_asignaciones_equipo', CAMPOS.equipos, empresaId, sociedadId, sociedadesIdsAlcance)
@@ -293,4 +296,28 @@ export async function heredarTareasOT(otId) {
   const { data, error } = await getSupabaseClient().rpc('planner_heredar_tareas_ot', { p_ot_id: otId });
   if (error) throw error;
   return data;
+}
+
+export async function reasignarTecnico({ ids, tecnicoId }) {
+  if (!ids?.length) return [];
+  const { data, error } = await getSupabaseClient().from('planner_asignaciones')
+    .update({ tecnico_id: tecnicoId }).in('id', ids).eq('estado', 'programado').select(CAMPOS.asignaciones);
+  if (error) throw new Error(mensajeErrorPlanner(error));
+  return data || [];
+}
+
+export async function reasignarMaquina({ ids, maquinaId }) {
+  if (!ids?.length) return [];
+  const { data, error } = await getSupabaseClient().from('planner_asignaciones_equipo')
+    .update({ maquina_id: maquinaId }).in('id', ids).eq('estado', 'programado').select(CAMPOS.equipos);
+  if (error) throw new Error(mensajeErrorPlanner(error));
+  return data || [];
+}
+
+export async function cambiarPuestoOT({ otId, puestoId }) {
+  const { data, error } = await getSupabaseClient().from('planner_asignaciones')
+    .update({ puesto_id: puestoId }).eq('ot_id', otId).eq('estado', 'programado').select('id');
+  if (error) throw new Error(mensajeErrorPlanner(error));
+  await sincronizarOcupacionesOT({ otId });
+  return data || [];
 }

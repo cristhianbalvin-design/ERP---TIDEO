@@ -20,11 +20,19 @@ export function crearAccionesSimulacion({
   setWizard,
 }) {
   function simular() {
-    const urgente = seleccion?.ot;
-    if (!urgente) {
-      setError('Selecciona una OT en Plan por OS para simular el impacto urgente.');
+    if (simulacion) {
+      setSimulacion(null);
       return;
     }
+    const urgente = seleccion?.ot;
+    if (!urgente) {
+      setSimulacion({ elegir: true });
+      return;
+    }
+    elegirUrgente(urgente);
+  }
+
+  function elegirUrgente(urgente) {
     try {
       validarOtPlanificable(urgente);
       const resultado = simularUrgencia(ots, urgente, {
@@ -38,7 +46,7 @@ export function crearAccionesSimulacion({
   }
 
   async function aplicarSimulacion() {
-    if (!simulacion) return;
+    if (!simulacion?.urgente) return;
     const urgente = simulacion.urgente;
     try {
       const aplicada = await ejecutar(async () => {
@@ -72,5 +80,5 @@ export function crearAccionesSimulacion({
     }
   }
 
-  return { simular, aplicarSimulacion };
+  return { simular, elegirUrgente, aplicarSimulacion };
 }

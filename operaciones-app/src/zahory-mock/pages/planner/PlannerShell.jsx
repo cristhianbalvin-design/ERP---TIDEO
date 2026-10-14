@@ -1,91 +1,64 @@
 import { PanelView } from './PanelView.jsx';
 import { BoardView } from './BoardView.jsx';
-import { Configurator } from './Configurator.jsx';
 import { GemeloView } from './gemelo3d/GemeloView.jsx';
 
-export function PlannerHeader({ vista, permiteEscritura, onChangeVista, onSimulate, onPlanificar }) {
-  const tabs = [
-    ['panel', 'Panel'],
-    ['tablero', 'Tablero'],
-    ['3d', 'Gemelo 3D'],
-    ['config', 'Configurador'],
-  ];
+const ICONOS = {
+  panel: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
+  tablero: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 4v16" /></>,
+  '3d': <><path d="M12 3l9 5v8l-9 5-9-5V8z" /><path d="M12 12l9-4M12 12v9M12 12L3 8" /></>,
+};
+
+export function PlannerHeader({
+  vista, subtitulo, permiteEscritura, ocupado = false, undoDisponible = false, simulando = false,
+  onChangeVista, onUndo = () => {}, onConfigurar, onSimulate, onPlanificar,
+}) {
+  const tabs = [['panel', 'Panel'], ['tablero', 'Tablero'], ['3d', 'Gemelo 3D']];
   return (
-    <>
-      <header className="dx-ui-head-page">
-        <div>
-          <span className="dx-ui-eyebrow">Taller &amp; Operaciones</span>
-          <h1 className="dx-ui-title">Planner</h1>
-          <p className="dx-ui-sub">
-            Capacidad finita, fechas calculadas y recursos del taller en un solo lugar.
-          </p>
+    <header className="dx-pl-hd">
+      <div>
+        <div className="dx-pl-eyebrow">Taller &amp; Operaciones</div>
+        <h1>Planner</h1>
+        <p className="dx-pl-sub">{subtitulo}</p>
+      </div>
+      <div className="dx-pl-acts">
+        <div className="dx-pl-seg" role="tablist" aria-label="Vista del plan">
+          {tabs.map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={vista === id} disabled={ocupado} onClick={() => onChangeVista(id)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">{ICONOS[id]}</svg>
+              {label}
+            </button>
+          ))}
         </div>
-        <div className="dx-planner-actions">
-          <button
-            className="dx-btn"
-            disabled={!permiteEscritura}
-            onClick={() => onChangeVista('config')}
-          >
-            Configurar taller
-          </button>
-          <button className="dx-btn" disabled={!permiteEscritura} onClick={onSimulate}>Simular OT urgente</button>
-          <button
-            className="dx-btn primary"
-            disabled={!permiteEscritura}
-            onClick={() => onPlanificar(null)}
-          >
-            Planificar OT
-          </button>
-        </div>
-      </header>
-      <nav className="dx-planner-tabs" role="tablist" aria-label="Vistas del Planner">
-        {tabs.map(([id, label]) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={vista === id}
-            onClick={() => onChangeVista(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-    </>
+        <button type="button" className="dx-pl-btn" disabled={!permiteEscritura || !undoDisponible || ocupado} onClick={onUndo}>Deshacer</button>
+        <button type="button" className="dx-pl-btn is-ghost" disabled={!permiteEscritura || ocupado} onClick={onConfigurar || (() => onChangeVista('config'))}>
+          Configurar taller
+        </button>
+        <button type="button" className="dx-pl-btn is-warn" disabled={!permiteEscritura || ocupado} onClick={onSimulate}>
+          {simulando ? 'Quitar OT urgente' : 'Simular OT urgente'}
+        </button>
+        <button type="button" className="dx-pl-btn is-pri" disabled={!permiteEscritura || ocupado || simulando} onClick={() => onPlanificar(null)}>
+          Planificar OT
+        </button>
+      </div>
+    </header>
   );
 }
 
 export function PlannerVistas({
-  vista,
-  datos,
-  ots,
-  recursos,
-  seleccion,
-  undo,
-  guardando,
-  busqueda,
-  onBusqueda,
-  onSelect,
-  onPlanificar,
-  onMoveDate,
-  onMoveOT,
-  onUndo,
-  onSaveConfig,
-  permiteEscritura,
-  onVerEnTablero,
+  vista, datos, modelo, seleccion, busqueda, onBusqueda, onSelect, onPlanificar, permiteEscritura,
+  onMoverBloque, onMoverUnidad, onConfigurar, onVerEnTablero,
 }) {
   if (vista === 'panel') {
     return (
       <PanelView
         datos={datos}
-        permiteEscritura={permiteEscritura}
-        ots={ots}
-        seleccionada={seleccion.ot}
-        recursoSeleccionado={seleccion.recurso}
-        recursos={recursos}
-        onSelect={onSelect}
-        onPlanificar={onPlanificar}
+        modelo={modelo}
+        seleccion={seleccion}
         busqueda={busqueda}
         setBusqueda={onBusqueda}
+        onSelect={onSelect}
+        onPlanificar={onPlanificar}
+        permiteEscritura={permiteEscritura}
       />
     );
   }
@@ -93,25 +66,26 @@ export function PlannerVistas({
     return (
       <BoardView
         datos={datos}
-        seleccionada={seleccion.ot}
+        modelo={modelo}
+        seleccion={seleccion}
         permiteEscritura={permiteEscritura}
         onSelect={onSelect}
-        onMoveDate={onMoveDate}
-        onMoveOT={onMoveOT}
-        undoDisponible={Boolean(undo)}
-        onUndo={onUndo}
+        onMoverBloque={onMoverBloque}
+        onMoverUnidad={onMoverUnidad}
+        onConfigurar={onConfigurar}
       />
     );
   }
-  if (vista === 'config') {
-    return <Configurator
-      datos={datos}
-      onSave={onSaveConfig}
-      busy={guardando}
-      permiteEscritura={permiteEscritura}
-    />;
+  if (vista === '3d') {
+    return (
+      <GemeloView
+        datos={datos}
+        cargos={modelo.cargos}
+        onVerEnTablero={onVerEnTablero}
+        onSelectOT={ot => onSelect({ ot })}
+      />
+    );
   }
-  if (vista === '3d') return <GemeloView datos={datos} onVerEnTablero={onVerEnTablero} />;
   return null;
 }
 

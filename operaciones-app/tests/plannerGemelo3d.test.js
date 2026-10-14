@@ -8,7 +8,7 @@ import { generarDatosEjemplo } from '../src/zahory-mock/pages/planner/gemelo3d/e
 import { crearModeloMaquina, FAMILIAS_CONSTRUCTOR, resolverConstructor } from '../src/zahory-mock/pages/planner/gemelo3d/machineBuilders.js';
 import { crearEscena, detectarTemaOscuro, observarTemaEscena } from '../src/zahory-mock/pages/planner/gemelo3d/scene.js';
 import { GemeloView } from '../src/zahory-mock/pages/planner/gemelo3d/GemeloView.jsx';
-import { resolverSeleccionTablero } from '../src/zahory-mock/pages/planner/PlannerPage.jsx';
+import { construirModelo, resolverSeleccionTablero } from '../src/zahory-mock/pages/planner/PlannerPage.jsx';
 import { PlannerVistas } from '../src/zahory-mock/pages/planner/PlannerShell.jsx';
 
 const datos = {
@@ -103,14 +103,15 @@ describe('modelo del Gemelo 3D', () => {
     expect(seleccionada).toBe(otReal);
     expect(seleccionada).toHaveProperty('orden_servicio.id', 'os1');
 
+    const datosTablero = { ots: [seleccionada], personas: [], maquinas: [], asignaciones: [], equipos: [], puestos: [], bahias: [], ocupaciones: [] };
     let tablero;
     act(() => {
       tablero = create(createElement(PlannerVistas, {
-        vista: 'tablero', datos: { ots: [seleccionada], personas: [], maquinas: [], asignaciones: [], equipos: [] },
-        ots: [seleccionada], recursos: {}, seleccion: { ot: seleccionada }, permiteEscritura: false,
+        vista: 'tablero', datos: datosTablero, modelo: construirModelo(datosTablero),
+        seleccion: { ot: seleccionada }, permiteEscritura: false,
       }));
     });
-    expect(tablero.root.findByProps({ children: 'Tablero de recursos' })).toBeTruthy();
+    expect(tablero.root.findAllByType('h2').some(nodo => nodo.children.join('').includes('Tablero de recursos'))).toBe(true);
     tablero.unmount();
     expect(resolverSeleccionTablero(otEscena, [])).toBeNull();
   });
