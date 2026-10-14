@@ -97,7 +97,7 @@ serve(async (req) => {
     } else await admin.from("contrato_firma_solicitudes").delete().eq("id", solicitudId);
     return json({ ok: false, error: "No se pudo preparar el contrato." }, 500, origin);
   }
-  const link = `${APP_URL}/#/firmar/${token}`;
+  const link = `${APP_URL}/#firmar/${token}`;
   const canales: Record<string, unknown> = {};
   if (channels.includes("email")) {
     const resend = Deno.env.get("RESEND_API_KEY");

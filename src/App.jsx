@@ -475,8 +475,9 @@ function ApplicationEntry() {
 export default function App() {
   const hash = window.location.hash;
 
-  if (hash.startsWith('#firmar/')) {
-    const token = hash.slice('#firmar/'.length).split('?')[0];
+  if (hash.startsWith('#firmar/') || hash.startsWith('#/firmar/')) {
+    const prefijo = hash.startsWith('#/firmar/') ? '#/firmar/' : '#firmar/';
+    const token = hash.slice(prefijo.length).split('?')[0];
     return (
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
