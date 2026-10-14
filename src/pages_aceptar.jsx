@@ -9,7 +9,7 @@ const sb = createClient(
 
 const fmtMoney = (n, m = 'PEN') => {
   const s = m === 'USD' ? 'US$' : m === 'EUR' ? '€' : 'S/';
-  return s + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
+  return s + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00');
 };
 
 const fmtDt = (iso) => iso ? new Date(iso).toLocaleString('es-PE', { dateStyle: 'long', timeStyle: 'short' }) : '—';

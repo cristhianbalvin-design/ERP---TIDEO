@@ -4,7 +4,8 @@ export function calcularCostosPorTarea({ lineas = [], activos = [], materiales =
   const grupos = new Map();
   lineas.forEach(linea => {
     const tarifa = n(linea.costo_hora_snapshot ?? tarifas[linea.cargo_id]);
-    const subtotalManoObra = n(linea.horas) * tarifa;
+    // El subtotal guardado manda: evita diferencias de céntimos por el costo/hora redondeado del snapshot.
+    const subtotalManoObra = linea.subtotal != null && linea.subtotal !== '' ? n(linea.subtotal) : n(linea.horas) * tarifa;
     const activo = activos.filter(item => item.linea_mano_obra_id === linea.id || (!item.linea_mano_obra_id && item.tarea_id === linea.tarea_id));
     const subtotalMaquina = activo.reduce((suma, item) => suma + (item.depreciacion_asignada != null
       ? n(item.depreciacion_asignada)

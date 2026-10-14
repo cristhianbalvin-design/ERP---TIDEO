@@ -50,6 +50,11 @@ describe('cálculos de Hoja de Costeo', () => {
     expect(grupos[0].subtotal).toBe(24);
   });
 
+  it('usa el subtotal guardado de la tarea para evitar diferencias por redondeo del costo/hora', () => {
+    const [trabajo] = calcularCostosPorTarea({ lineas: [{ id: 'mo-1', familia_trabajo_id: 'f1', tarea_id: 't1', horas: 7.5, costo_hora_snapshot: 21.13, subtotal: 158.46 }] });
+    expect(trabajo.tareas[0].subtotal_mano_obra).toBe(158.46);
+  });
+
   it('recalcula el snapshot y subtotal de una tarea editada', () => {
     const antes = calcularCostosPorTarea({ lineas: [{ id: 'mo-1', familia_trabajo_id: 'f1', tarea_id: 't1', horas: 2, costo_hora_snapshot: 20 }] });
     const despues = calcularCostosPorTarea({ lineas: [{ id: 'mo-1', familia_trabajo_id: 'f1', tarea_id: 't1', horas: 3.5, costo_hora_snapshot: 32 }] });

@@ -4,7 +4,7 @@ import { currencySymbol, normalizeCurrency } from './lib/currency.js';
 import { renderTextoComercial } from './lib/textoComercial.js';
 
 const fmt = (n, sym = 'S/') =>
-  sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0');
+  sym + ' ' + (n != null ? Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00');
 
 function richTextInline(nodes = [], keyPrefix = '', textoCtx = {}) {
   return nodes.filter(node => node?.type === 'text').map((node, index) => {

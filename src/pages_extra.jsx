@@ -1108,7 +1108,7 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
     toCotNumber(cot.subtotal_rec) <= 0 || toCotNumber(cot.total_rec) <= 0
   );
   const subtotalImplDetalle = usarTotalesPartidasHC ? subtotalDetalleImpl : (cot.subtotal_impl ?? cot.subtotal);
-  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18) / 100) : (cot.igv_impl ?? cot.igv);
+  const igvImplDetalle = usarTotalesPartidasHC ? Math.round(subtotalDetalleImpl * toCotNumber(cot.igv_pct || 18)) / 100 : (cot.igv_impl ?? cot.igv);
   const totalImplDetalle = usarTotalesPartidasHC ? subtotalImplDetalle + igvImplDetalle : (cot.total_impl ?? cot.total);
   const subtotalRecDetalle = usarTotalesRecPartidasHC ? subtotalDetalleRec : cot.subtotal_rec;
   const igvRecDetalle = usarTotalesRecPartidasHC ? Math.round(subtotalDetalleRec * toCotNumber(cot.igv_pct || 18) / 100) : cot.igv_rec;
@@ -1294,8 +1294,8 @@ function DetalleCotizacion({ cot, opp, cuenta, contacto, usuarios, empresaConfig
                     </td>
                     <td className="num">{p.cantidad}</td>
                     <td className="text-muted" style={{fontSize:12}}>{renderComercial(p.detalle_cantidad) || '—'}</td>
-                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : money(p.precio_unitario || 0, sym)}</td>
-                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : money(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
+                    <td className="num">{p.incluido ? <span className="badge badge-gray">Incluido</span> : moneyD(p.precio_unitario || 0, sym)}</td>
+                    <td className="num" style={{fontWeight:600}}>{p.incluido ? '—' : moneyD(p.total || (p.cantidad * p.precio_unitario), sym)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1529,13 +1529,13 @@ function TotalesBox({ subtotal, igvPct, igv, total, suffix = '', sym = 'S/' }) {
   return (
     <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, border:'1px solid var(--border)'}}>
       <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{money(subtotal || 0, sym)}{suffix}</span>
+        <span className="text-muted">Subtotal s/ IGV</span><span className="num">{moneyD(subtotal || 0, sym)}{suffix}</span>
       </div>
       <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{money(igv || 0, sym)}{suffix}</span>
+        <span className="text-muted">IGV ({igvPct}%)</span><span className="num">{moneyD(igv || 0, sym)}{suffix}</span>
       </div>
       <div className="row" style={{justifyContent:'space-between', paddingTop:8, borderTop:'1px solid var(--border)', fontWeight:700, fontSize:16, fontFamily:'Sora'}}>
-        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{money(total || 0, sym)}{suffix}</span>
+        <span>Total{suffix === '/mes' ? ' mensual' : ''}</span><span className="num">{moneyD(total || 0, sym)}{suffix}</span>
       </div>
     </div>
   );
