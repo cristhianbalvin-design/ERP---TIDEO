@@ -171,6 +171,7 @@ function CeldaRecurso({ datos, recurso, fecha, ordenes, onSelect, onMoveDate, on
         .map(asignacion => (
           <BloqueAsignacion
             key={asignacion.id}
+            datos={datos}
             asignacion={asignacion}
             ordenes={ordenes}
             tabla={recurso.tabla}
