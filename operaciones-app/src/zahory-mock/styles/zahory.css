@@ -4727,11 +4727,12 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
   .dx-planner-3d-heading { align-items:stretch; }
   .dx-planner-3d-date { flex:1 1 100%; justify-content:space-between; }
   .dx-planner-3d-date select { flex:1; }
-  .dx-planner-3d-legend { top:auto; bottom:66px; left:12px; width:auto; max-width:calc(100% - 24px); max-height:45%; }
-  .dx-planner-3d-legend.is-collapsed { bottom:66px; }
-  .dx-planner-3d-tip { bottom:12px; }
-  .dx-planner-3d-controller { top:8px; left:8px; }
-  .dx-planner-3d-control { width:44px; min-width:44px; height:44px; min-height:44px; }
+  .dx-planner-3d-legend { top:auto; right:8px; bottom:88px; left:auto; width:auto; max-width:calc(100% - 16px); max-height:45%; }
+  .dx-planner-3d-legend.is-collapsed { right:8px; bottom:88px; left:auto; }
+  .dx-planner-3d-tip { top:8px; right:8px; bottom:auto; left:auto; max-width:calc(100% - 156px); text-align:right; }
+  .dx-planner-3d-controller { top:8px; left:8px; grid-template-columns:repeat(3,40px); grid-template-rows:repeat(3,40px); gap:2px; padding:4px; }
+  .dx-planner-3d-control { width:40px; min-width:40px; height:40px; min-height:40px; }
+  .dx-planner-3d-hud { right:8px; bottom:8px; left:8px; flex-direction:column; align-items:flex-start; gap:5px; padding:7px 9px; }
 }
 @container dx-planner (max-width:760px) {
   .dx-planner-layout,.dx-planner-config { grid-template-columns:minmax(0,1fr); }
