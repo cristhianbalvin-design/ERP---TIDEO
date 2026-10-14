@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ColumnFilter } from './components/ColumnFilter.jsx';
+import { PersonalAccionesMenu } from './components/PersonalAccionesMenu.jsx';
 import { DocumentoPreviewModal } from './components/DocumentoPreviewModal.jsx';
 import { TIPO_CONTRATO_LABELS, MODALIDAD_TRABAJO_LABELS, REGIMEN_JORNADA_LABELS, ESTADO_VALIDACION_LABELS, labelOr } from './utils/rrhhLabels.js';
 import { I, money } from './icons.jsx';
@@ -12,6 +13,7 @@ import { SociedadBadge, SociedadFormField, SociedadReadOnlyField } from './compo
 import { CatalogoDocumentosCondiciones } from './components/CatalogoDocumentosCondiciones.jsx';
 import CatalogoComponentesPanel from './components/CatalogoComponentesPanel.jsx';
 import './components/CatalogoComponentesPanel.css';
+import './personal_operativo.css';
 import {
   actualizarSociedad,
   crearSociedad,
@@ -11559,6 +11561,7 @@ function RRHHAdmin() {
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   const [view, setView] = useState('personal');
+  const [documentosAtencionExpandido, setDocumentosAtencionExpandido] = useState(false);
   const [filtroPersonal, setFiltroPersonal] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroModalidad, setFiltroModalidad] = useState('');
@@ -14904,244 +14907,42 @@ function RRHHAdmin() {
 
   return (
     <>
-      <div className="page-header">
-        <div><h1 className="page-title">RRHH Administrativo</h1><div className="page-sub">{colaboradoresActivos} colaboradores activos</div></div>
-        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4}}>
-          <div style={{display:'flex', gap:8}}>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
-            <button className="btn btn-secondary btn-sm" onClick={descargarPersonalAdministrativoExcel} title="Descargar todos los registros de personal administrativo en Excel">{I.download} Descargar Excel</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowCargaMasivaAdmin(true)} title="Carga masiva de colaboradores">{I.upload} Carga masiva</button>
-            <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>
-          </div>
-          {!turnosOptions.length && <span style={{fontSize:11, color:'var(--danger, #e53e3e)'}}>Crea un turno en Turnos y Horarios para habilitar esta opción.</span>}
-        </div>
-      </div>
-
-      {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => { setShowRequisitosRRHH(false); setShowTiposDocumentoRRHH(true); }} />}
-      {showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => { setShowTiposDocumentoRRHH(false); setShowRequisitosRRHH(true); }} />}
-      {showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} personalAdmin={personalAdmin} />}
-
-      <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">Colaboradores activos</div><div className="kpi-value">{colaboradoresActivos}</div><div className="kpi-icon cyan">{I.users}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Contratos por vencer</div><div className="kpi-value" style={{color:'var(--orange)'}}>{contratosVencer.filter(p => p.dias_restantes <= 14).length}</div><div className="kpi-icon orange">{I.alert}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Vacaciones pendientes</div><div className="kpi-value" style={{color: vacPendientes.length > 0 ? 'var(--orange)' : 'inherit'}}>{vacPendientes.length}</div><div className="kpi-icon purple">{I.calendar}</div></div>
-        <div className="kpi-card"><div className="kpi-label">Docs vencidos / por vencer</div><div className="kpi-value" style={{color:'var(--danger)'}}>{vencimientosDocumentos.length}</div><div className="kpi-icon red">{I.shield}</div></div>
-      </div>
-
-      <div className="tabs" style={{marginTop: 24}}>
-        <div className={'tab '+(view==='personal'?'active':'')} onClick={()=>setView('personal')}>Personal</div>
-        <div className={'tab '+(view==='reportes'?'active':'')} onClick={()=>setView('reportes')}>Reportes</div>
-      </div>
-
-      {vencimientosDocumentos.length > 0 && (
-        <div style={{padding:'12px 16px', background:'rgba(220,38,38,0.08)', border:'1px solid var(--danger)', borderRadius:10, marginBottom:16}} className="row">
-          <span style={{display:'flex',alignItems:'center',flexShrink:0,width:18,height:18,color:'var(--danger)'}}>{I.alert}</span>
-          <div><strong>Documentos que requieren atención:</strong> {vencimientosDocumentos.map(d => `${d.persona} — ${d.doc} (${d.estado.replace('_',' ')})`).join(' · ')}</div>
-        </div>
-      )}
-
-      {view === 'personal' && (
-        <div className="card">
-          <div className="card-head row" style={{gap:12}}>
-            <input className="input" placeholder="Buscar personal..." value={filtroPersonal} onChange={e=>setFiltroPersonal(e.target.value)} style={{flex:'1 1 200px'}} />
-            <select className="input" value={filtroEstado} onChange={e=>setFiltroEstado(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todos los estados</option>
-              <option value="activo">Activo (Disponible)</option>
-              <option value="no_disponible">No Disponible</option>
-              <option value="bloqueado">Bloqueado</option>
-              <option value="inactivo">Inactivo / Cesado</option>
-            </select>
-            <select className="input" value={filtroModalidad} onChange={e=>setFiltroModalidad(e.target.value)} style={{flex:'1 1 140px'}}>
-              <option value="">Todas las modalidades</option>
-              <option value="planilla">Planilla</option>
-              <option value="honorarios">Honorarios</option>
-            </select>
-            <ColumnFilter columns={COLUMNAS_DEFAULT_ADMIN} visibleCols={visibleColsAdmin} onChange={setVisibleColsAdmin} />
-          </div>
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead><tr>
-                {visibleColsAdmin.includes('codigo') && <th>Código</th>}
-                {visibleColsAdmin.includes('colaborador') && <th>Colaborador</th>}
-                {mostrarBadgeSociedadPersonalAdmin && <th>Sociedad</th>}
-                {visibleColsAdmin.includes('cargo') && <th>Cargo</th>}
-                {visibleColsAdmin.includes('unidad') && <th>Unidad organizacional</th>}
-                {visibleColsAdmin.includes('sede') && <th>Sede</th>}
-                {visibleColsAdmin.includes('turno') && <th>Turno</th>}
-                {visibleColsAdmin.includes('jornada') && <th>Jornada</th>}
-                {visibleColsAdmin.includes('contrato') && <th>Contrato</th>}
-                {visibleColsAdmin.includes('modalidad') && <th>Modalidad</th>}
-                {visibleColsAdmin.includes('vacaciones') && <th>Vacaciones disp.</th>}
-                {visibleColsAdmin.includes('estado') && <th>Estado</th>}
-                {visibleColsAdmin.includes('acciones') && <th style={{textAlign:'right'}}>Acciones</th>}
-              </tr></thead>
-              <tbody>
-                {todosPersonal.length === 0 && <tr><td colSpan={Math.max(visibleColsAdmin.length + (mostrarBadgeSociedadPersonalAdmin ? 1 : 0), 1)} style={{textAlign:'center', color:'var(--fg-muted)', padding:28}}>Sin personal administrativo registrado.</td></tr>}
-                {todosPersonal.filter(p => {
-                  if (filtroEstado && p.estado !== filtroEstado) return false;
-                  if (filtroModalidad) {
-                    const esHon = normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios';
-                    if (filtroModalidad === 'honorarios' && !esHon) return false;
-                    if (filtroModalidad === 'planilla' && esHon) return false;
-                  }
-                  if (filtroPersonal) {
-                    const q = filtroPersonal.toLowerCase();
-                    if (!p.nombre?.toLowerCase().includes(q) && !p.cargo?.toLowerCase().includes(q)) return false;
-                  }
-                  return true;
-                }).map(p => {
-                  const esHon = normalizarModalidadContrato(p.modalidad_contrato || p.tipo_contrato) === 'honorarios';
-                  const contratoDocFila = rrhhAdminContratoActivoPersonal(personalDocumentos, p.id, tiposDocumento);
-                  const contratoInfoFila = rrhhAdminContratoVencimientoInfo(contratoDocFila);
-                  return (
-                  <tr key={p.id} className="hover-row" onClick={() => { setSel(p.id); setTab('ficha'); }} style={{cursor:'pointer'}}>
-                    {visibleColsAdmin.includes('codigo') && <td className="mono text-muted">{p.codigo || '—'}</td>}
-                    {visibleColsAdmin.includes('colaborador') && <td>
-                      <div className="row">
-                        <div className="avatar" style={{width:30,height:30,fontSize:11}}>{p.nombre.split(' ').map(x=>x[0]).slice(0,2).join('')}</div>
-                        <div>
-                          <strong>{p.nombre}</strong>
-                          <div className="text-muted" style={{fontSize:11}}>DNI: {p.dni || p.documento || '—'}</div>
-                          {vistaSociedadConcretaPersonalAdmin && resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id) && (
-                            <span className="badge badge-orange" style={{fontSize:10, marginTop:4}}>Sin contrato vigente</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>}
-                    {mostrarBadgeSociedadPersonalAdmin && <td>
-                      <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
-                        {(resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id) || []).map(sociedadId => (
-                          <SociedadBadge key={sociedadId} sociedadId={sociedadId} />
-                        ))}
-                        {resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id) && <span className="badge badge-orange">Sin contrato vigente</span>}
-                      </div>
-                    </td>}
-                    {visibleColsAdmin.includes('cargo') && <td>{p.cargo}</td>}
-                    {visibleColsAdmin.includes('unidad') && <td>{unidadNombrePorId.get(posiciones.find(pos => pos.id === p.posicion_id)?.unidad_organizacional_id) || p.area || <span className="text-subtle">Sin posición</span>}</td>}
-                    {visibleColsAdmin.includes('sede') && <td>{p.sede ? <span className="badge badge-gray" style={{fontSize:11}}>{p.sede}</span> : <span className="text-subtle">—</span>}</td>}
-                    {visibleColsAdmin.includes('turno') && <td>{esHon ? <span className="text-subtle">—</span> : <span className="text-muted" style={{fontSize:12}}>{turnosOptions.find(t => t.id === p.turno_id)?.nombre || 'Sin turno'}</span>}</td>}
-                    {visibleColsAdmin.includes('jornada') && <td><span className="text-muted" style={{fontSize:12}}>{labelOr(REGIMEN_JORNADA_LABELS, p.regimen_jornada || p.personal_asignaciones_jornada || 'general')}</span></td>}
-                    {visibleColsAdmin.includes('contrato') && <td>{esHon ? <span className="text-subtle">—</span> : (
-                      <span className={`badge ${contratoInfoFila.estado === 'sin_contrato' && !p.cargo_confianza ? 'badge-red' : contratoInfoFila.badge}`}>
-                        {contratoInfoFila.texto}
-                      </span>
-                    )}</td>}
-                    {visibleColsAdmin.includes('modalidad') && <td>{esHon ? <span className="text-subtle">—</span> : p.modalidad}</td>}
-                    {visibleColsAdmin.includes('vacaciones') && <td className="num">{esHon ? <span className="text-subtle">—</span> : `${rrhhAdminCalcVacProp(p, solicitudesRRHH)} días`}</td>}
-                    {visibleColsAdmin.includes('estado') && <td>
-                      <span className="badge badge-green">{p.estado}</span>
-                      {!esHon && !p.sede && !p.turno_id && <span className="badge badge-gray" style={{fontSize:10, marginLeft:4}}>Ficha incompleta</span>}
-                    </td>}
-                    {visibleColsAdmin.includes('acciones') && <td>
-                      <div style={{display:'flex', gap:4, justifyContent:'flex-end'}}>
-                        <button className="btn btn-sm btn-ghost" onClick={e=>{e.stopPropagation();setSel(p.id);setTab('ficha');}}>Ver ficha</button>
-                        <button className="icon-btn" title="Editar colaborador" style={{color:'var(--cyan)'}} onClick={e=>{e.stopPropagation();abrirEditarColaborador(p);}}>{I.edit}</button>
-                        <button className="icon-btn" title="Eliminar colaborador" style={{color:'var(--danger)'}} onClick={e=>{e.stopPropagation();eliminarColaborador(p);}}>{I.trash}</button>
-                      </div>
-                    </td>}
-                  </tr>
-                );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {view === 'reportes' && (
-          <div style={{display:'grid', gap:24}}>
-            {/* Headcount por área */}
-            <div className="card">
-              <div className="card-head"><h3>Headcount por Unidad organizacional</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total: {todosPersonal.length} colaboradores</span></div>
-              <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:12}}>
-                {Object.entries(porArea).map(([area, cnt]) => (
-                  <div key={area} style={{display:'grid', gridTemplateColumns:'140px 1fr 40px', gap:12, alignItems:'center'}}>
-                    <span style={{fontSize:13, fontWeight:500}}>{area}</span>
-                    <div style={{background:'var(--bg-subtle)', borderRadius:4, height:10}}>
-                      <div style={{width:Math.round(cnt/maxArea*100)+'%', height:'100%', background:'var(--cyan)', borderRadius:4}}/>
-                    </div>
-                    <span style={{fontSize:13, fontWeight:700, textAlign:'right'}}>{cnt}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{padding:'0 20px 16px', display:'flex', gap:24, fontSize:12, color:'var(--fg-subtle)'}}>
-                <span>Remoto: <strong>{todosPersonal.filter(p=>p.modalidad==='Remoto').length}</strong></span>
-                <span>Presencial: <strong>{todosPersonal.filter(p=>p.modalidad==='Presencial').length}</strong></span>
-                <span>Híbrido: <strong>{todosPersonal.filter(p=>p.modalidad==='Híbrido').length}</strong></span>
-              </div>
-            </div>
-
-            {/* Contratos por vencer */}
-            <div className="card">
-              <div className="card-head"><h3>Contratos Próximos a Vencer</h3></div>
-              {contratosVencer.length === 0 ? (
-                <div style={{padding:'20px', textAlign:'center', color:'var(--fg-muted)', fontSize:13}}>Sin contratos próximos a vencer.</div>
-              ) : (
-                <table className="tbl">
-                  <thead><tr><th>Colaborador</th><th>Cargo</th><th>Tipo</th><th>Fecha fin</th><th>Días restantes</th></tr></thead>
-                  <tbody>
-                    {contratosVencer.map(p => (
-                      <tr key={p.id}>
-                        <td style={{fontWeight:600}}>{p.nombre}</td>
-                        <td>{p.cargo}</td>
-                        <td><span className={'badge badge-'+contratoColor(p.tipo_contrato)}>{p.tipo_contrato}</span></td>
-                        <td>{p.contratoDoc?.fecha_vencimiento || '—'}</td>
-                        <td><span className={'badge '+(p.dias_restantes<=30?'badge-red':p.dias_restantes<=60?'badge-yellow':'badge-green')}>{p.dias_restantes}d</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Vacaciones disponibles */}
-            <div className="card">
-              <div className="card-head"><h3>Vacaciones Disponibles</h3><span style={{fontSize:12,color:'var(--fg-subtle)'}}>Total acumulado: {vacRanking.reduce((s,p)=>s+p._vacDisp,0)} días</span></div>
-              <table className="tbl">
-                <thead><tr><th>Colaborador</th><th>Unidad organizacional</th><th>Días totales</th><th>Usados</th><th>Disponibles</th></tr></thead>
-                <tbody>
-                  {vacRanking.map(p => (
-                    <tr key={p.id}>
-                      <td style={{fontWeight:600}}>{p.nombre}</td>
-                      <td>{p.area}</td>
-                      <td>{p.dias_vacaciones_total}</td>
-                      <td>{p.dias_vacaciones_usados}</td>
-                      <td>
-                        <span style={{fontWeight:700, color:p._vacDisp>10?'var(--green)':p._vacDisp>0?'var(--warning)':'var(--fg-muted)'}}>
-                          {p._vacDisp} días
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Solicitudes internas pendientes */}
-            {solPend.length > 0 && (
-              <div className="card">
-                <div className="card-head"><h3>Solicitudes Pendientes de Atención</h3><span className="badge badge-orange">{solPend.length}</span></div>
-                <table className="tbl">
-                  <thead><tr><th>Colaborador</th><th>Tipo</th><th>Descripción</th><th>Fecha</th></tr></thead>
-                  <tbody>
-                    {solPend.map(s => {
-                      const p = todosPersonal.find(x=>x.id===s.personal_id);
-                      return (
-                        <tr key={s.id}>
-                          <td style={{fontWeight:600}}>{p?.nombre||s.personal_id}</td>
-                          <td style={{textTransform:'capitalize'}}>{s.tipo}</td>
-                          <td>{s.descripcion}{s.monto?<span className="badge badge-orange" style={{marginLeft:6}}>S/ {s.monto}</span>:null}</td>
-                          <td>{s.fecha}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-      )}
+      <div className="dx-personal"><div className="dx-personal-in">
+        <header className="dx-personal-top"><div><div className="dx-personal-eyebrow">RRHH</div><h1 className="dx-personal-title">RRHH Administrativo</h1><p className="dx-personal-sub">{colaboradoresActivos} colaboradores activos</p></div><div className="dx-personal-head-actions"><PersonalAccionesMenu columnas={COLUMNAS_DEFAULT_ADMIN} visibleCols={visibleColsAdmin} setVisibleCols={setVisibleColsAdmin} descargarExcel={descargarPersonalAdministrativoExcel} abrirCargaMasiva={() => setShowCargaMasivaAdmin(true)} abrirTiposDocumento={() => setShowTiposDocumentoRRHH(true)} abrirRequisitos={() => setShowRequisitosRRHH(true)} /><button type="button" className="dx-personal-btn is-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button></div></header>
+        {!turnosOptions.length && <p className="dx-personal-warn">Crea un turno en Turnos y Horarios para habilitar esta opción.</p>}
+        {showRequisitosRRHH && <RequisitosPorCargo onClose={() => setShowRequisitosRRHH(false)} onGoToTiposDoc={() => {setShowRequisitosRRHH(false);setShowTiposDocumentoRRHH(true);}} />}{showTiposDocumentoRRHH && <TiposDocumentoPanel onClose={() => setShowTiposDocumentoRRHH(false)} onGoToRequisitos={() => {setShowTiposDocumentoRRHH(false);setShowRequisitosRRHH(true);}} />}{showCargaMasivaAdmin && <CargaMasivaAdminPanel onClose={() => setShowCargaMasivaAdmin(false)} turnosOptions={turnosOptions} cargosAdminOptions={cargosAdminOptions} areasOptions={areasOptions} sedesOptions={sedesOptions} cecosActivos={cecosActivos} empresaConfig={empresaConfig} crearAdminPersonalCtx={crearAdminPersonalCtx} addNotificacion={addNotificacion} personalAdmin={personalAdmin} />}
+        <section className="dx-personal-kpis" aria-label="Resumen de personal administrativo">
+          <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Colaboradores activos</span><span className="dx-personal-ico is-cyan">{I.users}</span></div><strong className="dx-personal-kpi-val">{colaboradoresActivos}</strong><span className="dx-personal-kpi-note">de {todosPersonal.length} registrados</span></div>
+          <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Contratos por vencer</span><span className={'dx-personal-ico '+(contratosVencer.filter(p=>p.dias_restantes<=14).length?'is-amber':'is-green')}>{I.alert}</span></div><strong className={'dx-personal-kpi-val '+(contratosVencer.filter(p=>p.dias_restantes<=14).length?'is-amber':'')}>{contratosVencer.filter(p=>p.dias_restantes<=14).length}</strong><span className="dx-personal-kpi-note">Vencen en ≤14 días</span></div>
+          <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Vacaciones pendientes</span><span className={'dx-personal-ico '+(vacPendientes.length?'is-amber':'is-green')}>{I.calendar}</span></div><strong className={'dx-personal-kpi-val '+(vacPendientes.length?'is-amber':'')}>{vacPendientes.length}</strong><span className="dx-personal-kpi-note">Con saldo pendiente</span></div>
+          <div className="dx-personal-kpi"><div className="dx-personal-kpi-top"><span>Docs vencidos / por vencer</span><span className={'dx-personal-ico '+(vencimientosDocumentos.length?'is-red':'is-green')}>{I.shield}</span></div><strong className={'dx-personal-kpi-val '+(vencimientosDocumentos.length?'is-red':'')}>{vencimientosDocumentos.length}</strong><span className="dx-personal-kpi-note">Vencidos, por vencer o rechazados</span></div>
+        </section>
+        <div className="dx-personal-tabs" role="tablist" aria-label="Secciones de personal administrativo"><button type="button" role="tab" aria-selected={view==='personal'} className={'dx-personal-tab'+(view==='personal'?' is-on':'')} onClick={()=>setView('personal')}>Personal</button><button type="button" role="tab" aria-selected={view==='reportes'} className={'dx-personal-tab'+(view==='reportes'?' is-on':'')} onClick={()=>setView('reportes')}>Reportes</button></div>
+        {vencimientosDocumentos.length>0&&<section className="dx-personal-alert" aria-label="Documentos que requieren atención"><span className="dx-personal-alert-ico" aria-hidden="true">{I.alert}</span><div className="dx-personal-alert-content"><h2>Documentos que requieren atención</h2><div className="dx-personal-alert-chips">{(documentosAtencionExpandido?vencimientosDocumentos:vencimientosDocumentos.slice(0,3)).map((d,i)=><span key={i} className="dx-personal-alert-chip" title={d.persona+' — '+d.doc+' ('+d.estado.replace('_',' ')+')'}><span>{d.persona} — {d.doc} ({d.estado.replace('_',' ')})</span></span>)}{vencimientosDocumentos.length>3&&<button type="button" className="dx-personal-alert-more" aria-expanded={documentosAtencionExpandido} onClick={()=>setDocumentosAtencionExpandido(x=>!x)}>{documentosAtencionExpandido?'Mostrar menos':'+'+(vencimientosDocumentos.length-3)+' más'}</button>}</div></div></section>}
+        {view==='personal'&&<section className="dx-personal-card" aria-label="Listado de personal administrativo">
+          <div className="dx-personal-toolbar"><h2>Personal</h2><span className="dx-personal-count">{todosPersonal.length} registros</span><label className="dx-personal-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar por nombre o cargo…" value={filtroPersonal} onChange={e=>setFiltroPersonal(e.target.value)} aria-label="Buscar personal por nombre o cargo"/></label><select className="dx-personal-select" value={filtroEstado} onChange={e=>setFiltroEstado(e.target.value)} aria-label="Filtrar por estado"><option value="">Todos los estados</option><option value="activo">Activo (Disponible)</option><option value="no_disponible">No Disponible</option><option value="bloqueado">Bloqueado</option><option value="inactivo">Inactivo / Cesado</option></select><select className="dx-personal-select" value={filtroModalidad} onChange={e=>setFiltroModalidad(e.target.value)} aria-label="Filtrar por modalidad"><option value="">Todas las modalidades</option><option value="planilla">Planilla</option><option value="honorarios">Honorarios</option></select></div>
+          {(()=>{const bloques=[{id:'colaborador',title:'Colaborador',keys:['colaborador'],width:'minmax(174px, 2.1fr)',compact:'minmax(174px, 2.1fr)'},{id:'cargo',title:'Cargo / unidad',keys:['cargo','unidad','sede'],width:'minmax(150px, 1.4fr)',compact:'minmax(150px, 1.4fr)'},{id:'turno',title:'Turno / jornada',keys:['turno','jornada'],width:'minmax(120px, 1.3fr)',compact:null},{id:'contrato',title:'Contrato',keys:['contrato'],width:'minmax(132px, 1.1fr)',compact:'minmax(132px, 1.1fr)'},{id:'vacaciones',title:'Vacaciones / modalidad',keys:['vacaciones','modalidad'],width:'minmax(150px, .9fr)',compact:'minmax(150px, .9fr)'},{id:'estado',title:'Estado',keys:['estado'],width:'minmax(132px, 1.1fr)',compact:'minmax(132px, 1.1fr)'},{id:'acciones',title:'Acciones',keys:['acciones'],width:'112px',compact:'112px'}].filter(b=>b.id==='colaborador'||b.keys.some(k=>visibleColsAdmin.includes(k))), cols=bloques.map(b=>b.width).join(' '), compact=bloques.filter(b=>b.id!=='turno').map(b=>b.compact||b.width).join(' '), filtrado=todosPersonal.filter(p=>{if(filtroEstado&&p.estado!==filtroEstado)return false;if(filtroModalidad){const h=normalizarModalidadContrato(p.modalidad_contrato||p.tipo_contrato)==='honorarios';if(filtroModalidad==='honorarios'&&!h)return false;if(filtroModalidad==='planilla'&&h)return false;}if(filtroPersonal){const q=filtroPersonal.toLowerCase();if(!p.nombre?.toLowerCase().includes(q)&&!p.cargo?.toLowerCase().includes(q))return false;}return true;});return <>
+            <div className="dx-personal-table-head" style={{'--dx-personal-cols':cols,'--dx-personal-cols-compact':compact}}>{bloques.map(b=><span key={b.id} className={'dx-personal-head-'+b.id}>{b.title}</span>)}</div>
+            {todosPersonal.length===0?<div className="dx-personal-empty">Sin personal administrativo registrado.</div>:filtrado.length===0?<div className="dx-personal-empty">No hay colaboradores que coincidan con los filtros.</div>:filtrado.map(p=>{
+              const hon=normalizarModalidadContrato(p.modalidad_contrato||p.tipo_contrato)==='honorarios', doc=rrhhAdminContratoActivoPersonal(personalDocumentos,p.id,tiposDocumento), info=rrhhAdminContratoVencimientoInfo(doc), unidad=unidadNombrePorId.get(posiciones.find(x=>x.id===p.posicion_id)?.unidad_organizacional_id)||p.area, abrir=()=>{setSel(p.id);setTab('ficha');}, sin=resolucionPersonalAdminSociedad.personalSinContratoVigenteIds.has(p.id), estado=({activo:'is-green',no_disponible:'is-amber',bloqueado:'is-red',inactivo:'is-gray'})[p.estado]||'is-gray', contrato=info.estado==='sin_contrato'&&!p.cargo_confianza?'is-red':({'badge-green':'is-green','badge-cyan':'is-cyan','badge-orange':'is-amber','badge-red':'is-red','badge-gray':'is-gray'}[info.badge]||'is-gray');
+              return <div key={p.id} className="dx-personal-row" style={{'--dx-personal-cols':cols,'--dx-personal-cols-compact':compact}} role="group" tabIndex={0} aria-label={'Abrir ficha de '+p.nombre} onClick={abrir} onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();abrir();}}}>
+                <div className="dx-personal-cell dx-personal-who"><span className="dx-personal-avatar">{(p.nombre||'?').split(' ').map(x=>x[0]).slice(0,2).join('')}</span><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">DNI {p.dni||p.documento||'—'}{visibleColsAdmin.includes('codigo')&&<> · <span className="dx-personal-mono">{p.codigo||'—'}</span></>}</span>{vistaSociedadConcretaPersonalAdmin&&sin&&<span className="dx-personal-pill is-amber">Sin contrato vigente</span>}{mostrarBadgeSociedadPersonalAdmin&&<span className="dx-personal-pills dx-personal-society-pills">{(resolucionPersonalAdminSociedad.sociedadesPorPersonal.get(p.id)||[]).map(id=><SociedadBadge key={id} sociedadId={id}/>)}{sin&&<span className="dx-personal-pill is-amber">Sin contrato vigente</span>}</span>}</div></div>
+                {visibleColsAdmin.some(k=>['cargo','unidad','sede'].includes(k))&&<div className="dx-personal-cell dx-personal-block dx-personal-block-cargo">{visibleColsAdmin.includes('cargo')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Cargo</span><span className="dx-personal-t1">{p.cargo||'—'}</span></div>}{visibleColsAdmin.includes('unidad')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Unidad organizacional</span><span className="dx-personal-t1">{unidad||<span className="dx-personal-muted">Sin posición</span>}</span></div>}{visibleColsAdmin.includes('sede')&&p.sede&&<div className="dx-personal-fragment"><span className="dx-personal-label">Sede</span><span className="dx-personal-pill is-gray" title={p.sede}>{p.sede}</span></div>}</div>}
+                {visibleColsAdmin.some(k=>['turno','jornada'].includes(k))&&<div className="dx-personal-cell dx-personal-block dx-personal-block-turno">{visibleColsAdmin.includes('turno')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Turno</span><span className="dx-personal-t1">{hon?'—':turnosOptions.find(t=>t.id===p.turno_id)?.nombre||'Sin turno'}</span></div>}{visibleColsAdmin.includes('jornada')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Jornada</span><span className="dx-personal-t2">{labelOr(REGIMEN_JORNADA_LABELS,p.regimen_jornada||p.personal_asignaciones_jornada||'general')}</span></div>}</div>}
+                {visibleColsAdmin.includes('contrato')&&<div className="dx-personal-cell dx-personal-block dx-personal-block-contrato"><div className="dx-personal-fragment"><span className="dx-personal-label">Contrato</span>{hon?<span className="dx-personal-muted">—</span>:<span className={'dx-personal-pill '+contrato} title={info.texto}>{info.texto}</span>}</div></div>}
+                {visibleColsAdmin.some(k=>['vacaciones','modalidad'].includes(k))&&<div className="dx-personal-cell dx-personal-block dx-personal-block-vacaciones">{visibleColsAdmin.includes('vacaciones')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Vacaciones disponibles</span><span className="dx-personal-t1">{hon?'—':rrhhAdminCalcVacProp(p,solicitudesRRHH)+' días'}</span></div>}{visibleColsAdmin.includes('modalidad')&&<div className="dx-personal-fragment"><span className="dx-personal-label">Modalidad</span><span className={'dx-personal-pill '+(hon?'is-gray':'is-green')}>{hon?'Honorarios':p.modalidad||'Planilla'}</span></div>}</div>}
+                {visibleColsAdmin.includes('estado')&&<div className="dx-personal-cell dx-personal-block dx-personal-block-estado"><div className="dx-personal-fragment"><span className="dx-personal-label">Estado</span><span className="dx-personal-pills"><span className={'dx-personal-pill '+estado}><i/>{String(p.estado||'').toUpperCase()}</span>{!hon&&!p.sede&&!p.turno_id&&<span className="dx-personal-pill is-gray">Ficha incompleta</span>}</span></div></div>}
+                {visibleColsAdmin.includes('acciones')&&<div className="dx-personal-cell dx-personal-block dx-personal-block-acciones dx-personal-row-actions" onClick={e=>e.stopPropagation()}><button type="button" className="dx-personal-icon-btn" aria-label={'Ver ficha de '+p.nombre} title="Ver ficha" onClick={abrir}><span aria-hidden="true">{I.eye}</span></button><button type="button" className="dx-personal-icon-btn" aria-label={'Editar a '+p.nombre} title="Editar colaborador" onClick={()=>abrirEditarColaborador(p)}><span aria-hidden="true">{I.edit}</span></button><button type="button" className="dx-personal-icon-btn is-delete" aria-label={'Eliminar a '+p.nombre} title="Eliminar colaborador" onClick={()=>eliminarColaborador(p)}><span aria-hidden="true">{I.trash}</span></button></div>}
+              </div>;
+            })}</>;})()}
+        </section>}
+        {view==='reportes'&&<div className="dx-personal-reports">
+          <section className="dx-personal-card" aria-label="Headcount por unidad organizacional"><div className="dx-personal-report-head"><h2>Headcount por unidad organizacional</h2><span className="dx-personal-count">Total: {todosPersonal.length} colaboradores</span></div>{Object.keys(porArea).length===0?<div className="dx-personal-report-empty">Sin datos de unidades organizacionales.</div>:<div className="dx-personal-bars">{Object.entries(porArea).sort((a,b)=>b[1]-a[1]).map(([area,cnt])=><div key={area||'sin-unidad'} className="dx-personal-bar-row"><span title={area&&area!=='null'&&area!=='undefined'?area:'Sin unidad'}>{area&&area!=='null'&&area!=='undefined'?area:'Sin unidad'}</span><progress className="dx-personal-progress" value={cnt} max={maxArea} aria-label={(area&&area!=='null'&&area!=='undefined'?area:'Sin unidad')+': '+cnt+' colaboradores'}/><b>{cnt}</b></div>)}</div>}<div className="dx-personal-report-foot"><span>Remoto: <b>{todosPersonal.filter(p=>p.modalidad==='Remoto').length}</b></span><span>Presencial: <b>{todosPersonal.filter(p=>p.modalidad==='Presencial').length}</b></span><span>Híbrido: <b>{todosPersonal.filter(p=>p.modalidad==='Híbrido').length}</b></span></div></section>
+          <section className="dx-personal-card" aria-label="Contratos próximos a vencer"><div className="dx-personal-report-head"><h2>Contratos próximos a vencer</h2>{contratosVencer.length>0&&<span className="dx-personal-pill is-amber">{contratosVencer.length}</span>}</div>{contratosVencer.length===0?<div className="dx-personal-report-empty">Sin contratos próximos a vencer.</div>:contratosVencer.map(p=><div className="dx-personal-list-row dx-personal-report-row" key={p.id}><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{[p.cargo,p.tipo_contrato].filter(Boolean).join(' · ')}</span></div><span className={'dx-personal-pill '+({green:'is-green',orange:'is-amber',cyan:'is-cyan'}[contratoColor(p.tipo_contrato)]||'is-gray')}>{p.tipo_contrato}</span><span className="dx-personal-report-date">{p.contratoDoc?.fecha_vencimiento||'—'}</span><span className={'dx-personal-pill '+(p.dias_restantes<=30?'is-red':p.dias_restantes<=60?'is-amber':'is-green')}>{p.dias_restantes} días</span></div>)}</section>
+          <section className="dx-personal-card" aria-label="Vacaciones disponibles"><div className="dx-personal-report-head"><h2>Vacaciones disponibles</h2><span className="dx-personal-count">Total acumulado: {vacRanking.reduce((s,p)=>s+p._vacDisp,0)} días</span></div>{vacRanking.length===0?<div className="dx-personal-report-empty">Sin personal para mostrar vacaciones.</div>:vacRanking.map(p=><div className="dx-personal-list-row dx-personal-report-row" key={p.id}><div className="dx-personal-name"><strong>{p.nombre}</strong><span className="dx-personal-meta">{[p.area||unidadNombrePorId.get(posiciones.find(x=>x.id===p.posicion_id)?.unidad_organizacional_id),p.cargo].filter(Boolean).join(' · ')}</span></div><span className="dx-personal-report-number">{p.dias_vacaciones_total??30} total</span><span className="dx-personal-report-number">{p.dias_vacaciones_usados??0} usados</span><span className={'dx-personal-pill '+(p._vacDisp>10?'is-green':p._vacDisp>0?'is-amber':'is-gray')}>{p._vacDisp} días disponibles</span></div>)}</section>
+          {solPend.length>0&&<section className="dx-personal-card" aria-label="Solicitudes pendientes"><div className="dx-personal-report-head"><h2>Solicitudes pendientes de atención</h2><span className="dx-personal-pill is-amber">{solPend.length}</span></div>{solPend.map(s=>{const p=todosPersonal.find(x=>x.id===s.personal_id), detalle=[s.descripcion,s.fecha].filter(Boolean).join(' · ');return <div className="dx-personal-list-row dx-personal-report-row dx-personal-request-row" key={s.id}><div className="dx-personal-name"><strong>{p?.nombre||s.personal_id}</strong><span className="dx-personal-meta">{[s.tipo,detalle].filter(Boolean).join(' · ')}</span></div>{s.monto&&<span className="dx-personal-pill is-amber">S/ {s.monto}</span>}</div>;})}</section>}
+        </div>}
+      </div></div>
 
       {panelAlta && <>
         <div className="side-panel-backdrop" onClick={cerrarPanelColaborador}/>
