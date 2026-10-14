@@ -102,6 +102,27 @@ beforeEach(() => {
 });
 
 describe('HallazgosTrabajoPanel', () => {
+  it('no duplica interim y final reenviados con el mismo resultIndex por Android', async () => {
+    let recognition;
+    const previousWindow = globalThis.window;
+    globalThis.window = { webkitSpeechRecognition: class { constructor() { recognition = this; } start() {} stop() {} }, addEventListener() {}, removeEventListener() {} };
+    globalThis.requestAnimationFrame = callback => { callback(); return 1; };
+    const { renderer } = await renderPanel([{ ...baseHallazgo, observacion: 'Llegó' }]);
+    await openEditor(renderer);
+    const dictar = renderer.root.findByProps({ 'aria-label': 'Dictar observaciones' });
+    await act(async () => dictar.props.onClick());
+    const emit = (isFinal, transcript) => act(async () => recognition.onresult({ resultIndex: 0, results: [{ 0: { transcript }, isFinal }] }));
+    await emit(false, ' la válvula');
+    expect(renderer.root.findByType('textarea').props.value).toBe('Llegó la válvula');
+    await emit(false, ' la válvula');
+    expect(renderer.root.findByType('textarea').props.value).toBe('Llegó la válvula');
+    await emit(true, ' la válvula');
+    expect(renderer.root.findByType('textarea').props.value).toBe('Llegó la válvula');
+    await emit(true, ' la válvula llegó');
+    expect(renderer.root.findByType('textarea').props.value).toBe('Llegó la válvula llegó');
+    await act(async () => renderer.unmount());
+    if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
+  });
   it('rehidrata hallazgos persistidos con mediciones y zonas sin marcarlos como cambios', async () => {
     const hallazgoGuardado = {
       ...baseHallazgo,
@@ -293,8 +314,10 @@ describe('HallazgosTrabajoPanel', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     const damageOption = renderer.root.findAllByType('button').find(button => button.children.join('') === 'Desgaste');
     await act(async () => damageOption.props.onClick());
-    const cause = renderer.root.findAllByType('select').find(select => select.props['aria-label'] === 'Causa probable');
-    await act(async () => cause.props.onChange({ target: { value: 'desgaste_normal' } }));
+    const cause = renderer.root.findByProps({ role: 'combobox', 'aria-label': 'Causa probable' });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     mocks.crearDiagnosticoHallazgo.mockResolvedValue({ id: 'hallazgo-new', prioridad_calculada: 'P4', prioridad_efectiva: 'P4' });
     await act(async () => callbacks.save());
     expect(mocks.crearDiagnosticoHallazgo).toHaveBeenCalled();
@@ -317,8 +340,10 @@ describe('HallazgosTrabajoPanel', () => {
     const result = await callbacks.save();
     expect(result.error).toContain('Falta la causa probable.');
     expect(mocks.actualizarDiagnosticoHallazgo).not.toHaveBeenCalled();
-    const cause = renderer.root.findAllByType('select').find(select => select.props['aria-label'] === 'Causa probable');
-    await act(async () => cause.props.onChange({ target: { value: 'desgaste_normal' } }));
+    const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     expect(callbacks.error).toBe('');
     renderer.unmount();
   });
@@ -401,6 +426,17 @@ describe('HallazgosTrabajoPanel', () => {
     const option = renderer.root.findAllByType('button').find(button => button.children.join('') === 'Desgaste');
     await act(async () => option.props.onClick());
     expect(renderer.root.findByProps({ role: 'combobox', 'aria-label': 'Tipo de daño' }).props.value).toBe('Desgaste');
+    renderer.unmount();
+  });
+
+  it('cierra el menú de tipo de daño con Escape', async () => {
+    const { renderer } = await renderPanel([baseHallazgo]);
+    await openEditor(renderer);
+    const damage = renderer.root.findByProps({ role: 'combobox', 'aria-label': 'Tipo de daño' });
+    await act(async () => damage.props.onFocus());
+    const menu = renderer.root.find(node => node.props.className?.includes('dx-tipo-dano-menu'));
+    await act(async () => menu.props.onKeyDown({ key: 'Escape', preventDefault: vi.fn() }));
+    expect(renderer.root.findAll(node => node.props.className?.includes('dx-tipo-dano-menu'))).toHaveLength(0);
     renderer.unmount();
   });
 

@@ -6,6 +6,7 @@ import { OperationalHeader } from './OperationalHeader.jsx';
 import { ZahoryScreenHost } from './zahory-mock/ZahoryScreenHost.jsx';
 import { availableZahoryRoutes } from './zahory-mock/ZahoryRoutes.jsx';
 import { Icon } from './zahory-mock/components/shell.jsx';
+import { requestWorkBack } from './workMode.js';
 import {
   findAreaForRoute,
   findGroupForRoute,
@@ -134,12 +135,27 @@ export function OperationalApp() {
   });
   const [openAreaId, setOpenAreaId] = useState(() => findAreaForRoute(readLocation().route, zahoryNavigation));
   const [moduleSearch, setModuleSearch] = useState('');
-  const [diagnosticoWorkMode, setDiagnosticoWorkMode] = useState(() => typeof document !== 'undefined' && document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true');
+  const [workMode, setWorkModeActive] = useState(() => typeof document !== 'undefined' && (document.documentElement?.dataset.dxWorkMode === 'true' || document.documentElement?.dataset.dxDiagnosticoWorkMode === 'true'));
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width:700px), (max-height:520px)').matches);
+  const [navOpen, setNavOpen] = useState(false);
   useEffect(() => {
-    const onWorkMode = event => setDiagnosticoWorkMode(Boolean(event.detail?.active));
+    const onWorkMode = event => setWorkModeActive(Boolean(event.detail?.active));
+    const media = window.matchMedia('(max-width:700px), (max-height:520px)');
+    const onCompact = event => setCompact(event.matches);
+    window.addEventListener('dx-work-mode', onWorkMode);
     window.addEventListener('dx-diagnostico-work-mode', onWorkMode);
-    return () => window.removeEventListener('dx-diagnostico-work-mode', onWorkMode);
+    media.addEventListener?.('change', onCompact);
+    return () => { window.removeEventListener('dx-work-mode', onWorkMode); window.removeEventListener('dx-diagnostico-work-mode', onWorkMode); media.removeEventListener?.('change', onCompact); };
   }, []);
+  const workCompact = workMode && compact;
+  useEffect(() => {
+    if (!workCompact) { setNavOpen(false); return undefined; }
+    const openNav = () => setNavOpen(true);
+    const closeOnEscape = event => { if (event.key === 'Escape') setNavOpen(false); };
+    window.addEventListener('dx-open-nav', openNav);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { window.removeEventListener('dx-open-nav', openNav); window.removeEventListener('keydown', closeOnEscape); };
+  }, [workCompact]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('opera_ops_sidebar_collapsed') === 'true';
@@ -159,7 +175,8 @@ export function OperationalApp() {
   useEffect(() => {
     const updateRoute = () => setLocation(readLocation());
     window.addEventListener('hashchange', updateRoute);
-    return () => window.removeEventListener('hashchange', updateRoute);
+    window.addEventListener('popstate', updateRoute);
+    return () => { window.removeEventListener('hashchange', updateRoute); window.removeEventListener('popstate', updateRoute); };
   }, []);
 
   useEffect(() => {
@@ -196,6 +213,7 @@ export function OperationalApp() {
   }, [flyoutGroupId, sidebarCollapsed]);
 
   const navigate = (key, params = {}) => {
+    setNavOpen(false);
     setFlyoutGroupId(null);
     setFlyoutPosition(null);
     const queryString = new URLSearchParams(
@@ -262,7 +280,9 @@ export function OperationalApp() {
 
   return (
     <div className="ops-shell">
-      <aside className={`ops-sidebar${diagnosticoWorkMode ? ' is-diagnostico-rail' : ''}${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+      {workCompact && navOpen && <button type="button" className="ops-drawer-backdrop" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
+      <aside className={`ops-sidebar${workCompact ? ` is-work-drawer${navOpen ? ' is-open' : ''}` : workMode ? ' is-diagnostico-rail' : ''}${sidebarCollapsed ? ' is-collapsed' : ''}`} aria-hidden={workCompact && !navOpen ? 'true' : undefined} inert={workCompact && !navOpen ? '' : undefined}>
+        {workCompact && <button type="button" className="ops-work-drawer-back" onClick={() => { requestWorkBack(); setNavOpen(false); }}>← Volver a la bandeja</button>}
         <a className="ops-brand" href={adminAppUrl} aria-label="Ir al selector de aplicaciones">
           <div className="ops-brand-logo-box">
             <img src={operaIsotipo} alt="OPERA" />
@@ -413,7 +433,7 @@ export function OperationalApp() {
         </button>
       </aside>
       <section className="ops-main-column">
-        <OperationalHeader title={title} sesionOperativa={sesionOperativa} />
+        <OperationalHeader title={title} sesionOperativa={sesionOperativa} workCompact={workCompact} onMenu={() => setNavOpen(true)} navOpen={navOpen} />
         {page ? (
           <main className="ops-main">
             <div className="ops-eyebrow">Operaciones</div>

@@ -70,6 +70,34 @@ const listRows = () => renderer.root.findAll(node => node.props.className?.inclu
 let renderer;
 let documentListeners;
 
+function installHistoryWindow() {
+  let currentHash = '#/diagnostico-tecnico';
+  const historyEntries = [currentHash];
+  const listeners = new Map();
+  window.addEventListener = (name, listener) => listeners.set(name, listener);
+  window.removeEventListener = name => listeners.delete(name);
+  window.dispatchEvent = event => listeners.get(event.type)?.(event);
+  window.location = {
+    pathname: '/', search: '',
+    get hash() { return currentHash; },
+    set hash(value) { currentHash = value.startsWith('#') ? value : `#${value}`; historyEntries.push(currentHash); listeners.get('hashchange')?.({ type: 'hashchange' }); },
+  };
+  window.history = {
+    replaceState: (_state, _title, url) => {
+      const hashIndex = String(url).indexOf('#');
+      currentHash = hashIndex >= 0 ? String(url).slice(hashIndex) : '';
+      historyEntries[historyEntries.length - 1] = currentHash;
+    },
+    back: () => {
+      if (historyEntries.length < 2) return;
+      historyEntries.pop();
+      currentHash = historyEntries[historyEntries.length - 1];
+      listeners.get('popstate')?.({ type: 'popstate' });
+      listeners.get('hashchange')?.({ type: 'hashchange' });
+    },
+  };
+}
+
 beforeEach(() => {
   mocks.session.empresaId = 'empresa-prueba';
   mocks.session.estado = 'listo';
@@ -142,9 +170,9 @@ afterEach(() => {
   renderer = null;
 });
 
-async function renderPage() {
+async function renderPage(routeParams = {}) {
   await act(async () => {
-    renderer = create(<DiagnosticoTecnicoPage />);
+    renderer = create(<DiagnosticoTecnicoPage routeParams={routeParams} />);
     await wait(0);
     await wait(0);
   });
@@ -504,7 +532,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     expect(textOf(renderer.root)).toContain('2 cambios sin guardar');
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
@@ -533,7 +563,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
@@ -564,7 +596,9 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { damage.props.onFocus(); damage.props.onChange({ target: { value: 'Desgaste' } }); });
     await act(async () => { buttonByText(renderer, 'Desgaste').props.onClick(); });
     const cause = renderer.root.findByProps({ 'aria-label': 'Causa probable' });
-    await act(async () => { cause.props.onChange({ target: { value: 'desgaste_normal' } }); });
+    await act(async () => cause.props.onFocus());
+    const causeOption = renderer.root.findAll(node => node.props.role === 'option').find(node => node.children.join('').toLowerCase().includes('desgaste normal'));
+    await act(async () => causeOption.props.onClick());
     await goToWorkStep(5);
     await act(async () => { buttonByText(renderer, 'Guardar todo').props.onClick(); await wait(100); });
     expect(mocks.service.guardarDiagnosticoLinea).toHaveBeenCalledTimes(1);
@@ -1167,6 +1201,32 @@ describe('Diagnostico Tecnico - Etapa B', () => {
     await act(async () => { motivo.props.onChange({ target: { value: 'Unsaved change' } }); await wait(0); });
     await act(async () => { buttonContaining(renderer, 'Diagnósticos').props.onClick(); await wait(0); });
     expect(renderer.root.findByProps({ role: 'alertdialog' })).toBeTruthy();
+  });
+
+  it('cierra el detalle limpio cuando el historial vuelve a la bandeja', async () => {
+    installHistoryWindow();
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
+    window.location.hash = '#/diagnostico-tecnico?trabajo=two';
+    await renderPage({ trabajo: 'two' });
+    await waitFor(() => renderer.root.findAllByProps({ className: 'dx-work-identity' })[0]);
+    await act(async () => { window.history.back(); renderer.update(<DiagnosticoTecnicoPage routeParams={{}} />); await wait(0); });
+    expect(renderer.root.findAllByProps({ className: 'dx-work-identity' })).toHaveLength(0);
+    expect(window.location.hash).toBe('#/diagnostico-tecnico');
+  });
+
+  it('restaura la URL del trabajo y abre la confirmación al volver con cambios', async () => {
+    installHistoryWindow();
+    mocks.service.obtenerDiagnosticoTecnico.mockResolvedValue(detail('two', 'mantenimiento'));
+    window.location.hash = '#/diagnostico-tecnico?trabajo=two';
+    await renderPage({ trabajo: 'two' });
+    await waitFor(() => renderer.root.findAllByProps({ className: 'dx-work-identity' })[0]);
+    await act(async () => { renderer.root.findAllByProps({ className: 'dx-work-steps' })[0].findAllByType('button')[2].props.onClick(); await wait(0); });
+    const motivo = renderer.root.findByType('textarea');
+    await act(async () => { motivo.props.onChange({ target: { value: 'Unsaved back change' } }); await wait(0); });
+    await act(async () => { window.history.back(); renderer.update(<DiagnosticoTecnicoPage routeParams={{}} />); await wait(0); });
+    expect(renderer.root.findByProps({ role: 'alertdialog' })).toBeTruthy();
+    expect(textOf(renderer.root)).toContain('Tienes cambios sin guardar');
+    expect(window.location.hash).toBe('#/diagnostico-tecnico?trabajo=two');
   });
 
 });

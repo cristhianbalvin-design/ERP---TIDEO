@@ -27,6 +27,7 @@ describe('sidebar de Operaciones en modo de trabajo del diagnóstico', () => {
       location: { hash: '#/diagnostico-tecnico' },
       addEventListener: vi.fn((name, listener) => listeners.set(name, listener)),
       removeEventListener: vi.fn(name => listeners.delete(name)),
+      matchMedia: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
     };
     vi.stubGlobal('document', document);
     vi.stubGlobal('window', window);

@@ -490,3 +490,19 @@ body {
   .header { padding: 0 14px; border: 0; }
   .ops-main { padding: 30px 18px; }
 }
+
+@media (max-width: 700px), (max-height: 520px) {
+  .header:has(.ops-work-menu-button) { display:none !important; }
+  .ops-shell:has(.ops-sidebar.is-work-drawer) { display:block; }
+  .ops-sidebar.is-work-drawer { position:fixed; inset:0 auto 0 0; z-index:1001; width:min(84vw,320px); max-width:320px; height:100dvh; min-height:0; padding:16px 8px; transform:translateX(-105%); transition:transform .18s ease; overflow-y:auto; box-shadow:0 12px 32px color-mix(in srgb,var(--navy) 30%,transparent); }
+  .ops-sidebar.is-work-drawer.is-open { transform:translateX(0); }
+  .ops-sidebar.is-work-drawer .ops-work-drawer-back { display:block; width:100%; min-height:48px; margin:0 0 8px; padding:10px 12px; border:1px solid var(--line,#D5DCE7); border-radius:10px; background:var(--surface,#fff); color:var(--text,#1F2D46); text-align:left; font:700 14px sans-serif; cursor:pointer; }
+  .ops-drawer-backdrop { position:fixed; inset:0; z-index:1000; border:0; background:color-mix(in srgb,var(--navy) 48%,transparent); }
+  .ops-work-menu-button { display:inline-grid; flex:0 0 44px; width:44px; height:44px; place-items:center; border:0; border-radius:8px; background:transparent; color:inherit; font-size:22px; cursor:pointer; }
+  .ops-work-menu-button:focus-visible,.ops-drawer-backdrop:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+  .header:has(.ops-work-menu-button) { height:48px; min-height:48px; max-height:48px; overflow:hidden; gap:6px; padding-inline:8px !important; }
+  .header:has(.ops-work-menu-button) .header-title { flex:1 1 auto !important; min-width:0; max-width:none !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .header:has(.ops-work-menu-button) .header-spacer,.header:has(.ops-work-menu-button) .row > button[title='Dark mode'],.header:has(.ops-work-menu-button) .row > button[title='Modo campo'],.header:has(.ops-work-menu-button) > div:has(> button[title^='Sociedad']),.header:has(.ops-work-menu-button) > button[title='Cerrar sesión'] { display:none !important; }
+  .header:has(.ops-work-menu-button) .icon-btn { flex:0 0 40px; width:40px; height:40px; }
+  .header:has(.ops-work-menu-button) .user-zone { flex:0 0 40px; width:40px; overflow:hidden; }
+}

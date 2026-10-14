@@ -93,6 +93,34 @@ export async function generarConclusionIA(diagnosticoId) {
   }
 }
 
+export async function mejorarRedaccion({ diagnosticoId, texto, signal }) {
+  const value = String(texto || '');
+  if (!value.trim()) throw new Error('Escribe un texto para mejorar.');
+  if (value.length > 4000) throw new Error('El texto supera el máximo de 4000 caracteres.');
+  try {
+    const { data, error } = await getSupabaseClient().functions.invoke('mejorar-redaccion', { body: { diagnostico_id: diagnosticoId, texto: value }, signal });
+    if (error) {
+      const status = error.context?.status;
+      let body = data;
+      if (error.context && typeof error.context.json === 'function') {
+        try { body = await error.context.json(); } catch { /* El cuerpo puede no ser JSON o ya haberse consumido. */ }
+      }
+      if (error.name === 'FunctionsFetchError') throw new Error('No se pudo conectar con el servicio de IA.');
+      if (status === 401 || status === 403) throw new Error('No tienes permiso para mejorar la redacción del diagnóstico.');
+      if (status === 429) throw new Error(body?.error || 'Se agotó tu cuota diaria de IA.');
+      if (status === 504) throw new Error(body?.error || 'La IA tardó demasiado en responder.');
+      if (status === 400) throw new Error(body?.error || 'El texto no es válido o supera el límite permitido.');
+      throw new Error(body?.error || 'No se pudo mejorar la redacción.');
+    }
+    if (!data?.ok || typeof data.texto_mejorado !== 'string') throw new Error(data?.error || 'No se pudo mejorar la redacción.');
+    return data;
+  } catch (error) {
+    if (error?.name === 'FunctionsFetchError') throw new Error('No se pudo conectar con el servicio de IA.');
+    if (error instanceof Error) throw error;
+    throw new Error('No se pudo mejorar la redacción.');
+  }
+}
+
 export async function obtenerIdentidadEmpresa(empresaId) {
   if (!empresaId) return null;
   try {
