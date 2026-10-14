@@ -423,7 +423,7 @@ export default function HojaCosteoWizard() {
       const sb = await getSupabaseClient();
       const { error } = await sb.from('hoja_costeo_lineas_mano_obra').delete().eq('id', linea.id);
       if (error) throw error;
-      await sincronizarTotales({ manoObra: Math.max(0, subtotalManoObra - numero(linea.subtotal)) });
+      await sincronizarTotales({ manoObra: lineas.filter(item => item.id !== linea.id).reduce((total, item) => total + numero(item.subtotal), 0) });
       setLineas(prev => prev.filter(item => item.id !== linea.id));
       addToast('Línea eliminada.', 'success');
     } catch (error) {
@@ -469,6 +469,7 @@ export default function HojaCosteoWizard() {
         horas,
         costo_hora_snapshot: costoHora,
         subtotal: horas * costoHora,
+        pendiente_valoracion: false,
       };
       const { data, error } = await sb.from('hoja_costeo_lineas_mano_obra').update({
         cargo_id: lineaActualizada.cargo_id,
@@ -505,7 +506,8 @@ export default function HojaCosteoWizard() {
         const result = await sb.from('hoja_costeo_lineas_activos').delete().eq('id', activoAnterior.id);
         if (result.error) throw result.error;
       }
-      const manoObraNueva = subtotalManoObra - numero(linea.subtotal) + numero(lineaActualizada.subtotal);
+      // linea puede venir de calcularCostosPorTarea, donde subtotal incluye máquina y materiales: se suma desde el estado.
+      const manoObraNueva = lineas.reduce((total, item) => total + (item.id === linea.id ? numero(lineaActualizada.subtotal) : numero(item.subtotal)), 0);
       const activosNuevo = activosSiguientes.reduce((sum, item) => sum + numero(item.depreciacion_asignada), 0);
       await sincronizarTotales({ manoObra: manoObraNueva, activos: activosNuevo });
       setLineas(prev => prev.map(item => item.id === linea.id ? { ...item, ...data, ...lineaActualizada } : item));
