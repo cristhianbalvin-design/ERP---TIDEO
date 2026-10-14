@@ -71,6 +71,8 @@ import { listNavModules, listNavSections, useTenantNavLabels } from './services/
 import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoService.js';
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 import { RecetasActividadPanel } from './components/RecetasActividadPanel.jsx';
+import RenovacionFirmaDigitalModal from './components/RenovacionFirmaDigitalModal.jsx';
+import { contratoFirmaService } from './contratoFirmaService.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
 const rrhhDesplazarPeriodoMes = (periodo, delta) => {
@@ -11704,6 +11706,19 @@ function RRHHAdmin() {
   const [retroWallInline, setRetroWallInline] = useState(null);
   const [retroWallMotivoInline, setRetroWallMotivoInline] = useState('');
   const [modalEnviarFirmaDocAdmin, setModalEnviarFirmaDocAdmin] = useState(null);
+  const [renovacionFirmaDigitalAdmin, setRenovacionFirmaDigitalAdmin] = useState(null);
+  const [solicitudesFirmaDigitalAdmin, setSolicitudesFirmaDigitalAdmin] = useState({});
+  const [accionFirmaDigitalDocAdmin, setAccionFirmaDigitalDocAdmin] = useState(null);
+  const cargarSolicitudesFirmaDigitalAdmin = useCallback(async () => {
+    const docs = (personalDocumentos || []).filter(d => rrhhAdminEsTipoContrato(d.tipo || d) || String(d.tipo_doc || '').toLowerCase().includes('contrato'));
+    try {
+      const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
+      const agrupadas = {};
+      for (const solicitud of rows) (agrupadas[solicitud.documento_id] ||= []).push(solicitud);
+      setSolicitudesFirmaDigitalAdmin(agrupadas);
+    } catch { setSolicitudesFirmaDigitalAdmin({}); }
+  }, [personalDocumentos]);
+  useEffect(() => { cargarSolicitudesFirmaDigitalAdmin(); }, [cargarSolicitudesFirmaDigitalAdmin]);
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
   const [enviandoFirmaAdmin, setEnviandoFirmaAdmin] = useState(false);
   const [documentoAEliminarAdmin, setDocumentoAEliminarAdmin] = useState(null);
@@ -13613,7 +13628,7 @@ function RRHHAdmin() {
                     setDocValidandoId(null);
                   }
                 }}
-                onCorregir={() => {
+                onCorregir={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' ? undefined : () => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'corregir');
@@ -13630,6 +13645,16 @@ function RRHHAdmin() {
             return (
               <>
               {previewNodeAdmin}
+              {renovacionFirmaDigitalAdmin && <RenovacionFirmaDigitalModal
+                empresa={empresa}
+                persona={persona}
+                documento={renovacionFirmaDigitalAdmin}
+                onClose={() => setRenovacionFirmaDigitalAdmin(null)}
+                onComplete={async (renovacion, envio) => {
+                  addNotificacion(envio?.aviso || (envio?.ok === false ? `La renovación se creó, pero el envío falló: ${envio.error || 'error desconocido'}. Usa «Enviar a firma digital» en el contrato.` : 'Renovación creada. El enlace se envió por los canales disponibles.'));
+                  if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(persona.id);
+                }}
+              />}
               {modalEnviarFirmaDocAdmin && (
                 <div className="modal-backdrop" onClick={() => !enviandoFirmaAdmin && setModalEnviarFirmaDocAdmin(null)}>
                   <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
@@ -13848,12 +13873,15 @@ function RRHHAdmin() {
                                   </button>
                                   {tooltipPredecesor && !req.doc && <span style={{fontSize:9, color:'var(--danger)', maxWidth:140, textAlign:'center', lineHeight:1.1}}>{tooltipPredecesor}</span>}
                                 </div>
-                                {req.doc && puedeEliminarDocumentosRrhhAdmin && <>
+                                {req.doc && puedeEliminarDocumentosRrhhAdmin && req.doc.estado_firma !== 'firmado_trabajador' && <>
                                   <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumentoAdmin(''); setDocumentoAEliminarAdmin({ doc: req.doc, persona }); }}>{I.trash} Eliminar</button>
                                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumentoAdmin(''); setDocumentoAArchivarAdmin({ doc: req.doc, persona }); }}>{I.archive} Archivar</button>
                                 </>}
                                 {req.doc && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
-                                  <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>
+                                  <>
+                                    <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>
+                                    {rrhhAdminEsTipoContrato(req.tipo) && <button type="button" className="btn btn-primary btn-sm" onClick={() => setRenovacionFirmaDigitalAdmin({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'administrativo' })}>Renovar con firma digital</button>}
+                                  </>
                                 )}
                                 {docPadreValidado && tiposHijos.map(th => (
                                   <button key={th.id} className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', borderColor:'var(--cyan)'}}
@@ -13895,6 +13923,24 @@ function RRHHAdmin() {
                               </div>
                               </div>
                             </div>
+                            {req.doc && rrhhAdminEsTipoContrato(req.tipo) && (() => {
+                              const firmaRows = solicitudesFirmaDigitalAdmin[req.doc.id] || [];
+                              const solicitudActiva = firmaRows.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
+                              const solicitud = solicitudActiva || firmaRows[0];
+                              const firmado = solicitud?.estado === 'firmado' || req.doc.estado_firma === 'firmado_trabajador';
+                              const activa = Boolean(solicitudActiva);
+                              const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
+                              return (activa || firmado) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
+                                  {firmado ? `Firmado electrónicamente${solicitud?.firmado_en ? ` · ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma · vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
+                                </span>
+                                {firmado && solicitud?.pdf_firmado_path && <button className="btn btn-ghost btn-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(solicitud.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
+                                {activa && <>
+                                  <button className="btn btn-ghost btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: solicitud.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Se generó un nuevo enlace de firma.'); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Reenviar enlace</button>
+                                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: solicitud.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Solicitud de firma anulada.'); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Anular solicitud</button>
+                                </>}
+                              </div> : renovacionFirmable && !solicitudActiva ? <div style={{ margin: '0 16px 12px' }}><button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: ['whatsapp', 'email'] }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Se creó la solicitud de firma digital.'); } catch (e) { addNotificacion(e.message || 'No se pudo enviar a firma digital.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Enviar a firma digital</button></div> : null;
+                            })()}
                             {docsVinculados.map(dv => {
                               const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id);
                               const dvCond = dv.condiciones_laborales || {};
@@ -14291,7 +14337,7 @@ function RRHHAdmin() {
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
                               {doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirDocUrl(doc)}>{I.file} Ver</button>}
-                              {puedeEliminarDocumentosRrhhAdmin && <>
+                              {puedeEliminarDocumentosRrhhAdmin && doc.estado_firma !== 'firmado_trabajador' && <>
                                 <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumentoAdmin(''); setDocumentoAEliminarAdmin({ doc, persona }); }}>{I.trash} Eliminar</button>
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumentoAdmin(''); setDocumentoAArchivarAdmin({ doc, persona }); }}>{I.archive} Archivar</button>
                               </>}
