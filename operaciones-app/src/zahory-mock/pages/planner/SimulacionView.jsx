@@ -1,7 +1,7 @@
 import { esOtPlanificable } from './plannerEngine.js';
-import { fmtDia, numeroOT } from './plannerModelo.js';
+import { fmtDia, numeroOT, sumarHabiles } from './plannerModelo.js';
 
-export function SimulacionView({ simulacion, ots = [], guardando, onClose, onApply, onElegir }) {
+export function SimulacionView({ simulacion, ots = [], infos = new Map(), guardando, onClose, onApply, onElegir }) {
   if (simulacion.elegir) {
     const opciones = ots.filter(esOtPlanificable);
     return (
@@ -27,9 +27,15 @@ export function SimulacionView({ simulacion, ots = [], guardando, onClose, onApp
       </section>
     );
   }
-  const nombres = new Map(ots.map(ot => [ot.id, ot]));
-  const desplazadas = simulacion.resultado.desplazadas
-    .filter(item => item.otId !== simulacion.urgente.id && item.fechaOriginal !== item.fechaConUrgencia);
+  // «Aplicar al plan» corre las asignaciones programadas de las demás OT esta cantidad de días hábiles.
+  const dias = Math.max(1, simulacion.resultado.esperaDias);
+  const critico = simulacion.resultado.impacto?.critico;
+  const desplazadas = [...infos.values()]
+    .filter(info => info.id !== simulacion.urgente.id && info.planificada && info.st !== 'done' && info.end)
+    .map(info => {
+      const nueva = sumarHabiles(info.end, dias);
+      return { info, nueva, rompe: info.comp && nueva > info.comp && !(info.end > info.comp) };
+    });
   return (
     <section className="dx-pl-banner dx-planner-sim" aria-label="Escenario borrador">
       <div>
@@ -37,13 +43,17 @@ export function SimulacionView({ simulacion, ots = [], guardando, onClose, onApp
           Escenario borrador · {numeroOT(simulacion.urgente)} como urgente
           {' '}({simulacion.resultado.horasUrgentes} h de trabajo)
         </b>
-        <p>{desplazadas.length ? 'Así cambia el resto del plan al meter el trabajo urgente:' : 'Sin impacto en las otras OT.'}</p>
+        <p>
+          {desplazadas.length
+            ? `Al meter el trabajo urgente, las demás OT planificadas se corren ${dias} día${dias > 1 ? 's' : ''} hábil${dias > 1 ? 'es' : ''}${critico ? ` (cuello de botella: ${critico.nombre})` : ''}:`
+            : 'No hay otras OT planificadas que se muevan.'}
+        </p>
         {desplazadas.length > 0 && (
           <ul className="dx-pl-imp">
-            {desplazadas.map(item => (
-              <li key={item.otId}>
-                <b>{numeroOT(nombres.get(item.otId))}</b>
-                {': entrega de '}{fmtDia(item.fechaOriginal)} a {fmtDia(item.fechaConUrgencia)} (+{item.diasDesplazada} d) · {item.causa}
+            {desplazadas.map(({ info, nueva, rompe }) => (
+              <li key={info.id}>
+                <b>{numeroOT(info.ot)}</b>
+                {': entrega de '}{fmtDia(info.end)} a {fmtDia(nueva)} (+{dias} d){rompe ? ' · rompe el compromiso' : ''}
               </li>
             ))}
           </ul>

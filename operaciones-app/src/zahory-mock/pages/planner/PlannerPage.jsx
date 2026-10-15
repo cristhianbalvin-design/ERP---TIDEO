@@ -145,6 +145,7 @@ export function PlannerPage() {
           <SimulacionView
             simulacion={simulacion}
             ots={ots}
+            infos={modelo?.infos}
             guardando={guardando || !sesion.permiteEscritura}
             onClose={() => setSimulacion(null)}
             onApply={acciones.aplicarSimulacion}
