@@ -109,6 +109,7 @@ const ApiKeys           = lazy(() => import('./pages_api_keys.jsx').then(m => ({
 const PaginaAceptacion    = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaAceptacion })));
 const PaginaAceptacionEspecial = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaAceptacionEspecial })));
 const PaginaConformidadOT = lazy(() => import('./pages_aceptar.jsx').then(m => ({ default: m.PaginaConformidadOT })));
+const PaginaFirmarContrato = lazy(() => import('./pages_firmar_contrato.jsx'));
 const PostulacionPublica  = lazy(() => import('./pages_reclutamiento.jsx').then(m => ({ default: m.PostulacionPublica })));
 
 // ─── iOS Install Banner ───────────────────────────────────────────────────────
@@ -473,6 +474,29 @@ function ApplicationEntry() {
 
 export default function App() {
   const hash = window.location.hash;
+
+  if (hash.startsWith('#firmar/') || hash.startsWith('#/firmar/')) {
+    const prefijo = hash.startsWith('#/firmar/') ? '#/firmar/' : '#firmar/';
+    const token = hash.slice(prefijo.length).split('?')[0];
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PaginaFirmarContrato token={decodeURIComponent(token)} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  const rutaFirmaContrato = window.location.pathname.match(/^\/firmar\/([^/]+)\/?$/);
+  if (rutaFirmaContrato) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <PaginaFirmarContrato token={decodeURIComponent(rutaFirmaContrato[1])} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
 
   if (hash.startsWith('#aceptar-especial/')) {
     const token = hash.slice('#aceptar-especial/'.length).split('?')[0];
