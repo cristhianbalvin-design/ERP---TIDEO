@@ -31,3 +31,24 @@ test('las nueve cláusulas base resuelven sus variables con el contexto del moda
     assert.ok(text.includes(value), `falta valor resuelto: ${value}`);
   }
 });
+
+test('contexto renovacion prioriza la sociedad y conserva el resultado previo sin sociedad', () => {
+  const empresa = { razon_social: 'Grupo', ruc: '20111111111', direccion: 'Direccion grupo' };
+  const args = { empresa, persona: {}, documento: {}, fechaInicio: '2026-01-01', fechaFin: '2026-12-31' };
+  const contextoAnterior = construirContextoRenovacion(args);
+  assert.deepEqual(contextoAnterior, {
+    empresa: { ...empresa, razon_social: 'Grupo', ruc: '20111111111', direccion: 'Direccion grupo' },
+    empleado: { documento: '', direccion: '', cargo: '', area: '', moneda: 'PEN', modalidad_contrato: '' },
+    contrato: { condiciones_laborales: {}, fecha_inicio: '2026-01-01', fecha_fin: '2026-12-31', tipo_contrato: '', modalidad: '' },
+    condiciones_laborales: {},
+    vigencia_efectiva: { fecha_desde: '2026-01-01', fecha_hasta: '2026-12-31' },
+    cargo: { nombre: '', area: '' },
+  });
+  const contextoSociedad = construirContextoRenovacion({
+    ...args,
+    sociedad: { razon_social: 'Empleadora S.A.C.', ruc: '20999999999', direccion_fiscal: 'Av. Legal 456' },
+  });
+  assert.equal(contextoSociedad.empresa.razon_social, 'Empleadora S.A.C.');
+  assert.equal(contextoSociedad.empresa.ruc, '20999999999');
+  assert.equal(contextoSociedad.empresa.direccion, 'Av. Legal 456');
+});

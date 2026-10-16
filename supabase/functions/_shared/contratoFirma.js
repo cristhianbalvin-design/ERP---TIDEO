@@ -90,7 +90,7 @@ export function ajustarRunsPdf(runs, maxWidth, measure) {
   return lines;
 }
 
-export function construirContextoRenovacion({ empresa = {}, persona = {}, documento = {}, snapshot = {}, fechaInicio, fechaFin } = {}) {
+export function construirContextoRenovacion({ empresa = {}, sociedad = null, persona = {}, documento = {}, snapshot = {}, fechaInicio, fechaFin } = {}) {
   const condiciones = { ...(documento.condiciones_laborales || {}), ...snapshot };
   const empleado = {
     ...persona,
@@ -103,9 +103,9 @@ export function construirContextoRenovacion({ empresa = {}, persona = {}, docume
   };
   const empresaContext = {
     ...empresa,
-    razon_social: empresa.razon_social || empresa.nombre_legal || empresa.nombre_comercial || '',
-    ruc: empresa.ruc || empresa.numero_ruc || '',
-    direccion: empresa.direccion || empresa.direccion_fiscal || empresa.domicilio_fiscal || '',
+    razon_social: sociedad?.razon_social || empresa.razon_social || empresa.nombre_legal || empresa.nombre_comercial || '',
+    ruc: sociedad?.ruc || empresa.ruc || empresa.numero_ruc || '',
+    direccion: sociedad?.direccion_fiscal || empresa.direccion || empresa.direccion_fiscal || empresa.domicilio_fiscal || '',
   };
   const contrato = {
     ...documento,

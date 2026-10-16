@@ -6,11 +6,25 @@ import { ajustarRunsPdf, construirContextoRenovacion, extraerParrafosTipTap } fr
 import { contratoFirmaService } from '../contratoFirmaService.js';
 import * as personalDocumentosService from '../services/personalDocumentosService.js';
 
+const fechaLocalHoy = () => {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+};
+
+const fechaInicioRenovacion = documento => {
+  if (!documento?.fecha_vencimiento) return fechaLocalHoy();
+  const fecha = new Date(`${documento.fecha_vencimiento}T00:00:00`);
+  fecha.setDate(fecha.getDate() + 1);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+};
+
 export default function RenovacionFirmaDigitalModal({ empresa, persona, documento, onClose, onComplete }) {
   const [plantillas, setPlantillas] = useState([]);
   const [plantillaId, setPlantillaId] = useState('');
-  const [fechaInicio, setFechaInicio] = useState(new Date().toISOString().slice(0, 10));
-  const [fechaFin, setFechaFin] = useState(documento?.fecha_vencimiento || '');
+  const [fechaInicio, setFechaInicio] = useState(() => fechaInicioRenovacion(documento));
+  const [fechaFin, setFechaFin] = useState('');
+  const [sociedad, setSociedad] = useState(null);
+  const [direccionEmpresa, setDireccionEmpresa] = useState('');
   const [cargo, setCargo] = useState(documento?.condiciones_laborales?.cargo_nombre || documento?.condiciones_laborales?.cargo || persona?.cargo || '');
   const [remuneracion, setRemuneracion] = useState(documento?.condiciones_laborales?.remuneracion_base ?? persona?.sueldo_base ?? '');
   const [modalidad, setModalidad] = useState(documento?.condiciones_laborales?.modalidad || persona?.modalidad_contrato || persona?.tipo_contrato || '');
@@ -36,11 +50,31 @@ export default function RenovacionFirmaDigitalModal({ empresa, persona, document
     return () => { active = false; };
   }, [empresa?.id]);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const sb = await getSupabaseClient();
+        const sociedadId = documento?.sociedad_id || plantillas.find(p => p.id === plantillaId)?.sociedad_id || null;
+        let sociedadRow = null;
+        if (sociedadId && empresa?.id) {
+          const { data, error: queryError } = await sb.from('sociedades').select('id,razon_social,ruc,direccion_fiscal').eq('id', sociedadId).eq('empresa_id', empresa.id).maybeSingle();
+          if (queryError) throw queryError;
+          sociedadRow = data || null;
+        }
+        const { data: config, error: configError } = await sb.from('empresa_config').select('direccion').eq('empresa_id', empresa.id).maybeSingle();
+        if (configError) throw configError;
+        if (active) { setSociedad(sociedadRow); setDireccionEmpresa(config?.direccion || ''); }
+      } catch { if (active) { setSociedad(null); setDireccionEmpresa(''); } }
+    })();
+    return () => { active = false; };
+  }, [empresa?.id, documento?.sociedad_id, plantillaId, plantillas]);
+
   const generarPdf = async (plantilla, snapshot) => {
     const sb = await getSupabaseClient();
     const { data: blocks, error: blocksError } = await sb.from('documento_bloques').select('tipo_bloque,titulo,contenido_json,contenido_texto_plano,orden,activo').eq('plantilla_documento_id', plantilla.id).eq('activo', true).order('orden');
     if (blocksError) throw blocksError;
-    const ctx = construirContextoRenovacion({ empresa, persona, documento, snapshot, fechaInicio, fechaFin });
+    const ctx = construirContextoRenovacion({ empresa: { ...empresa, direccion: direccionEmpresa || empresa?.direccion }, sociedad, persona, documento, snapshot, fechaInicio, fechaFin });
     const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
     const margin = 18; const maxY = 278; let y = 20;
     const addPlainText = (raw, bold = false) => {
@@ -85,7 +119,7 @@ export default function RenovacionFirmaDigitalModal({ empresa, persona, document
 
   const guardar = async () => {
     if (!plantillaId) { setError('No hay una plantilla publicada de contrato laboral. Publica una en el Constructor de Documentos para continuar.'); return; }
-    if (!fechaInicio || (!documento?.es_indefinido && !fechaFin)) { setError('Completa las fechas del nuevo período contractual.'); return; }
+    if (!fechaInicio || !fechaFin || fechaFin < fechaInicio) { setError('Completa una fecha de fin igual o posterior a la fecha de inicio.'); return; }
     setGuardando(true); setError('');
     let created = null;
     try {
@@ -108,9 +142,10 @@ export default function RenovacionFirmaDigitalModal({ empresa, persona, document
     finally { setGuardando(false); }
   };
 
-  return <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,.48)', display: 'grid', placeItems: 'center', padding: 14 }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="renovacion-firma-title" style={{ width: 'min(620px,100%)', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg-panel)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 12, padding: 20 }}>
-      <h2 id="renovacion-firma-title" style={{ marginTop: 0 }}>Renovar con firma digital</h2>
+  return <div className="modal-backdrop" role="presentation" style={{ zIndex: 10000 }}>
+    <section className="modal" role="dialog" aria-modal="true" aria-labelledby="renovacion-firma-title" style={{ width: 'min(620px,100%)', maxHeight: '90vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-head"><h2 id="renovacion-firma-title">Renovar con firma digital</h2></div>
+      <div className="modal-body">
       {!cargando && !plantillas.length && <div className="alert alert-warning">No hay una plantilla publicada de categoría contrato laboral. Publica una en el Constructor de Documentos; no se continuará con esta renovación.</div>}
       {plantillas.length > 0 && <div style={{ display: 'grid', gap: 12 }}>
         <label className="input-group">Plantilla publicada<select className="select" value={plantillaId} onChange={e => setPlantillaId(e.target.value)}>{plantillas.map(p => <option key={p.id} value={p.id}>{p.nombre_interno} · v{p.version}</option>)}</select></label>
@@ -118,10 +153,21 @@ export default function RenovacionFirmaDigitalModal({ empresa, persona, document
         <label className="input-group">Cargo<input className="input" value={cargo} onChange={e => setCargo(e.target.value)} /></label>
         <div className="grid-2"><label className="input-group">Remuneración base<input className="input" type="number" min="0" value={remuneracion} onChange={e => setRemuneracion(e.target.value)} /></label><label className="input-group">Modalidad<input className="input" value={modalidad} onChange={e => setModalidad(e.target.value)} /></label></div>
         <div><strong>Enviar enlace por</strong>{['whatsapp', 'email'].map(ch => <label key={ch} style={{ display: 'flex', gap: 8, marginTop: 8 }}><input type="checkbox" checked={canales[ch]} onChange={e => setCanales(s => ({ ...s, [ch]: e.target.checked }))} />{ch === 'email' ? 'Correo electrónico' : 'WhatsApp'}</label>)}</div>
+        {(() => {
+          const direccionEmpleador = sociedad?.direccion_fiscal || direccionEmpresa || empresa?.direccion || empresa?.direccion_fiscal || '';
+          const vacios = [
+            !persona?.direccion && 'domicilio del trabajador',
+            !direccionEmpleador && 'domicilio del empleador',
+            !(persona?.documento || persona?.dni || persona?.numero_documento) && 'documento de identidad',
+            !cargo && 'cargo',
+          ].filter(Boolean);
+          return vacios.length ? <div className="alert alert-warning">Faltan estos datos: {vacios.join(', ')}. El contrato saldrá con esos espacios vacíos.</div> : null;
+        })()}
       </div>}
       {cargando && <p>Cargando plantillas publicadas…</p>}
       {error && <div className="alert alert-danger" style={{ marginTop: 12 }}>{error}</div>}
-      <div className="row" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 18 }}><button className="btn btn-ghost" onClick={onClose}>Cerrar</button><button className="btn btn-primary" disabled={cargando || !plantillas.length || guardando || !Object.values(canales).some(Boolean)} onClick={guardar}>{guardando ? 'Generando y enviando…' : 'Crear renovación y enviar enlace'}</button></div>
+      </div>
+      <div className="modal-foot"><div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}><button className="btn btn-ghost" onClick={onClose}>Cerrar</button><button className="btn btn-primary" disabled={cargando || !plantillas.length || guardando || !fechaFin || fechaFin < fechaInicio || !Object.values(canales).some(Boolean)} onClick={guardar}>{guardando ? 'Generando y enviando…' : 'Crear renovación y enviar enlace'}</button></div></div>
     </section>
   </div>;
 }

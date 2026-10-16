@@ -22647,6 +22647,22 @@ function RRHH_Operativo() {
   const [editandoId, setEditandoId] = useState(null);
   const [selTecnico, setSelTecnico] = useState(null);
   const [fichaTab, setFichaTab] = useState('ficha');
+  useEffect(() => {
+    const personaId = selTecnico?.id;
+    if (!personaId || fichaTab !== 'documentos' || typeof recargarPersonalDocumentosPersonaCtx !== 'function') return undefined;
+    let ultimaRecarga = 0;
+    const recargarAlVolver = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - ultimaRecarga < 15000) return;
+      ultimaRecarga = Date.now();
+      Promise.resolve(recargarPersonalDocumentosPersonaCtx(personaId)).catch(() => {});
+    };
+    window.addEventListener('focus', recargarAlVolver);
+    document.addEventListener('visibilitychange', recargarAlVolver);
+    return () => {
+      window.removeEventListener('focus', recargarAlVolver);
+      document.removeEventListener('visibilitychange', recargarAlVolver);
+    };
+  }, [selTecnico?.id, fichaTab, recargarPersonalDocumentosPersonaCtx]);
   const [formDatosBancarios, setFormDatosBancarios] = useState([]);
   const [crearUsuarioSistema, setCrearUsuarioSistema] = useState(false);
   const [usuarioSistemaForm, setUsuarioSistemaForm] = useState({ email:'', rol:'', posicion_id:'', acceso_campo:false, campo_modulos:[] });
@@ -22851,7 +22867,7 @@ function RRHH_Operativo() {
   const usuariosEmpresa = usuarios.filter(u => u.empresa_id === empresa?.id);
   const vacacionesSugeridas = diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general');
   const vacRegimenLabel = { general: 'General', pequena_empresa: 'Pequeña empresa', microempresa: 'Microempresa' }[empresaConfig?.regimen_laboral_empresa || 'general'] || 'General';
-  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
+  const formAltaBase = { nombre:'', dni:'', telefono:'', email:'', email_personal:'', celular_personal:'', direccion:'', codigo:'', cargo:'', cargo_id:'', posicion_id:'', especialidad:'', especialidad2:'', supervisor_id:'', supervisor:'', area:'', sede:'', turno_id:'', centro_costo_id:'', fecha_ingreso:'', modalidad:'planilla', tipo_contrato:'indefinido', moneda:'PEN', metodo_pago:'mensual', monto_mensual:'', horas_base_mes:'', tarifa_hora:'0', costo:'', costo_extra:'', estado:'disponible', sueldo_base:'', sistema_pensionario:'AFP', afp_nombre:'Integra', tiene_hijos:false, cargo_confianza:false, regimen_laboral:'general', cuota_prestamo_mes:'0', descuento_judicial:'0', regimen_jornada:'general', dias_ciclo_trabajo:'', dias_ciclo_descanso:'', horas_diarias_pactadas:'8', fecha_inicio_ciclo:'', bonif_altitud:'0', tipo_comision_afp:'mixta', pct_comision_afp_flujo:'0', ruc_colaborador:'', retencion_ir:'8', suspension_retenciones:false, vencimiento_suspension:'', tarifa_hora_referencial:'', auth_user_id:'' };
   const [formAlta, setFormAlta] = useState(formAltaBase);
   const cuentaUsuarioVinculada = usuariosEmpresa.find(usuario => usuario.id === formAlta.auth_user_id) || null;
   const modulosCuentaVinculada = cuentaUsuarioVinculada?.campo
@@ -23066,6 +23082,7 @@ function RRHH_Operativo() {
       telefono: sanitizePhone(p.telefono || ''),
       email: p.email || '',
       email_personal: p.email_personal || '',
+      direccion: p.direccion || '',
       celular_personal: sanitizePhone(p.celular_personal || ''),
       codigo: p.codigo || p.id || '',
       cargo: p.cargo || '',
@@ -23205,6 +23222,7 @@ function RRHH_Operativo() {
       telefono: formAlta.telefono,
       email: formAlta.email,
       email_personal: formAlta.email_personal || null,
+      direccion: formAlta.direccion || null,
       celular_personal: formAlta.celular_personal || null,
       nombre: formAlta.nombre || 'Nuevo técnico',
       cargo: formAlta.cargo || 'Técnico de Campo',
@@ -24071,6 +24089,7 @@ function RRHH_Operativo() {
                     ['Teléfono celular', p.telefono],
                     ['Email corporativo', p.email],
                     ['Correo personal', p.email_personal],
+                    ['Domicilio', p.direccion],
                     ['Celular / WhatsApp', p.celular_personal],
                     p.especialidad ? ['Especialidad principal', p.especialidad] : null,
                     p.especialidad2 ? ['Especialidad secundaria', p.especialidad2] : null,
@@ -26042,6 +26061,7 @@ function RRHH_Operativo() {
               <div className="input-group"><label>Teléfono celular</label><input className="input" type="tel" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.telefono} onChange={e=>setFormAlta(v=>({...v,telefono:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Email</label><input className="input" type="email" value={formAlta.email} onChange={e=>setFormAlta(v=>({...v,email:e.target.value}))} placeholder="tecnico@empresa.pe"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Correo personal</label><input className="input" type="email" value={formAlta.email_personal} onChange={e=>setFormAlta(v=>({...v,email_personal:e.target.value}))} placeholder="correo@personal.com"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado como canal de verificación para firma electrónica y notificaciones. Debe ser un correo de uso personal, no corporativo.</div></div>
+              <div className="input-group" style={{gridColumn:'1/-1'}}><label>Domicilio</label><input className="input" value={formAlta.direccion} onChange={e=>setFormAlta(v=>({...v,direccion:e.target.value}))} placeholder="Domicilio del trabajador"/></div>
               <div className="input-group" style={{gridColumn:'1/-1'}}><label>Celular personal (WhatsApp)</label><input className="input" type="text" inputMode="numeric" pattern={PHONE_PATTERN} maxLength={9} value={formAlta.celular_personal} onChange={e=>setFormAlta(v=>({...v,celular_personal:sanitizePhone(e.target.value)}))} placeholder="9XXXXXXXX"/><div className="text-muted" style={{fontSize:11, marginTop:4}}>Usado para notificaciones por WhatsApp y verificación. Debe ser un número personal, no asignado por la empresa.</div></div>
               {esHonorarios && (
                 <div className="input-group" style={{gridColumn:'1/-1'}}>

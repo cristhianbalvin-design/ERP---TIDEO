@@ -11560,6 +11560,22 @@ function RRHHAdmin() {
   const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
+  useEffect(() => {
+    const personaId = typeof sel === 'string' ? sel : null;
+    if (!personaId || tab !== 'documentos' || typeof recargarPersonalDocumentosPersonaCtx !== 'function') return undefined;
+    let ultimaRecarga = 0;
+    const recargarAlVolver = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - ultimaRecarga < 15000) return;
+      ultimaRecarga = Date.now();
+      Promise.resolve(recargarPersonalDocumentosPersonaCtx(personaId)).catch(() => {});
+    };
+    window.addEventListener('focus', recargarAlVolver);
+    document.addEventListener('visibilitychange', recargarAlVolver);
+    return () => {
+      window.removeEventListener('focus', recargarAlVolver);
+      document.removeEventListener('visibilitychange', recargarAlVolver);
+    };
+  }, [sel, tab, recargarPersonalDocumentosPersonaCtx]);
   const [view, setView] = useState('personal');
   const [filtroPersonal, setFiltroPersonal] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
