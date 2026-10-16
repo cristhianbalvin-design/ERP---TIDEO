@@ -15,40 +15,92 @@ const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'o
 export function BoardView({ datos, modelo, seleccion, permiteEscritura, onSelect, onMoverBloque, onMoverUnidad, onConfigurar }) {
   const { dias, cargos } = modelo;
   const hoyIdx = indiceHoy(dias, modelo.hoy);
-  const arrastre = useRef(null);
+  const arrastre = useRef(false);
   const [destino, setDestino] = useState(null);
   const ots = new Map((datos.ots || []).map(ot => [ot.id, ot]));
-  const contexto = { datos, modelo, dias, hoyIdx, cargos, ots, seleccion, permiteEscritura, onSelect, arrastre };
+  const contexto = { datos, modelo, dias, hoyIdx, cargos, ots, seleccion, permiteEscritura, onSelect, arrastre, iniciarArrastre };
 
-  function soltarEnCarril(event, carril) {
-    event.preventDefault();
-    setDestino(null);
-    const dato = arrastre.current;
-    arrastre.current = null;
-    if (!dato || dato.tipo !== 'bloque' || !permiteEscritura) return;
-    const pista = event.currentTarget.getBoundingClientRect();
+  // Arrastre con eventos de puntero: funciona con mouse real y en pantallas táctiles.
+  function claveBajo(raiz, x, y, tipo) {
+    const objetivo = raiz.elementFromPoint?.(x, y);
+    if (!objetivo) return null;
+    if (tipo === 'unidad') {
+      const grupo = objetivo.closest('[data-puesto-id]');
+      return grupo ? { clave: `b:${grupo.dataset.puestoId}`, puestoId: grupo.dataset.puestoId } : null;
+    }
+    const pista = objetivo.closest('[data-carril-id]');
+    if (!pista) return null;
+    const { carrilTabla: tabla, carrilId: id } = pista.dataset;
+    return { clave: `${tabla === 'persona' ? 'p' : 'm'}:${id}`, tabla, id, pista };
+  }
+
+  function soltar(dato, bajo, x) {
+    if (!bajo) return;
+    if (dato.tipo === 'unidad') {
+      if (bajo.puestoId !== dato.puestoId) onMoverUnidad(dato.ot, bajo.puestoId);
+      return;
+    }
+    const pista = bajo.pista.getBoundingClientRect();
     const ancho = pista.width / dias.length;
-    const indice = Math.max(0, Math.min(dias.length - 1, Math.floor((event.clientX - pista.left) / ancho) - dato.agarre));
+    const indice = Math.max(0, Math.min(dias.length - 1, Math.floor((x - pista.left) / ancho) - dato.agarre));
     const delta = indice - dato.bloque.s;
-    const cambiaRecurso = carril.tabla === dato.tabla && carril.id !== dato.recursoId ? carril.id : null;
+    const cambiaRecurso = bajo.tabla === dato.tabla && bajo.id !== dato.recursoId ? bajo.id : null;
     if (!delta && !cambiaRecurso) return;
     onMoverBloque({ tabla: dato.tabla, asignaciones: dato.bloque.asignaciones, delta, recursoDestino: cambiaRecurso });
   }
 
-  function soltarEnPuesto(event, puesto) {
-    event.preventDefault();
-    setDestino(null);
-    const dato = arrastre.current;
-    arrastre.current = null;
-    if (!dato || dato.tipo !== 'unidad' || !permiteEscritura || dato.puestoId === puesto.id) return;
-    onMoverUnidad(dato.ot, puesto.id);
+  function iniciarArrastre(event, dato) {
+    if (!permiteEscritura || event.button !== 0) return;
+    const elemento = event.currentTarget;
+    const raiz = elemento.getRootNode();
+    const x0 = event.clientX;
+    const y0 = event.clientY;
+    const scroll0 = window.scrollY;
+    let activo = false;
+    let ultimo = null;
+    let desplazar = 0;
+    // Si el puntero se acerca al borde de la ventana, la página se desplaza para llegar a otros puestos.
+    const reloj = setInterval(() => {
+      if (!activo || !desplazar || !ultimo) return;
+      window.scrollBy(0, desplazar);
+      mover(ultimo);
+    }, 30);
+    const limpiar = () => {
+      clearInterval(reloj);
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', terminar);
+      window.removeEventListener('pointercancel', cancelar);
+      elemento.classList.remove('is-drag');
+      elemento.style.transform = '';
+      elemento.style.pointerEvents = '';
+      setDestino(null);
+    };
+    function mover(e) {
+      const dx = e.clientX - x0;
+      const dy = e.clientY - y0 + window.scrollY - scroll0;
+      if (!activo && Math.hypot(dx, dy) < 5) return;
+      activo = true;
+      ultimo = { clientX: e.clientX, clientY: e.clientY, preventDefault() {} };
+      desplazar = e.clientY < 48 ? -14 : e.clientY > window.innerHeight - 48 ? 14 : 0;
+      e.preventDefault();
+      elemento.classList.add('is-drag');
+      elemento.style.pointerEvents = 'none';
+      elemento.style.transform = `translate(${dx}px, ${dy}px)`;
+      const bajo = claveBajo(raiz, e.clientX, e.clientY, dato.tipo);
+      setDestino(bajo?.clave || null);
+    }
+    function terminar(e) {
+      limpiar();
+      if (!activo) return;
+      arrastre.current = true;
+      setTimeout(() => { arrastre.current = false; }, 0);
+      soltar(dato, claveBajo(raiz, e.clientX, e.clientY, dato.tipo), e.clientX);
+    }
+    function cancelar() { limpiar(); }
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', terminar);
+    window.addEventListener('pointercancel', cancelar);
   }
-
-  const marcarDestino = (event, clave) => {
-    if (!permiteEscritura || !arrastre.current) return;
-    event.preventDefault();
-    if (destino !== clave) setDestino(clave);
-  };
 
   return (
     <section className="dx-pl-panel" aria-labelledby="pl-board">
@@ -85,8 +137,6 @@ export function BoardView({ datos, modelo, seleccion, permiteEscritura, onSelect
               color={colorCargo(cargos, claveCargo(persona))}
               persona={persona}
               resaltado={destino === `p:${persona.id}`}
-              onDragOver={event => marcarDestino(event, `p:${persona.id}`)}
-              onDrop={event => soltarEnCarril(event, { tabla: 'persona', id: persona.id })}
             />
           ))}
           {!(datos.personas || []).length && <Vacio texto="No hay personal activo en esta sociedad." />}
@@ -102,8 +152,6 @@ export function BoardView({ datos, modelo, seleccion, permiteEscritura, onSelect
               bloques={bloquesRecurso(datos.equipos || [], 'maquina_id', maquina.id, dias)}
               espejo
               resaltado={destino === `m:${maquina.id}`}
-              onDragOver={event => marcarDestino(event, `m:${maquina.id}`)}
-              onDrop={event => soltarEnCarril(event, { tabla: 'equipo', id: maquina.id })}
             />
           ))}
           {!(datos.maquinas || []).some(maquina => maquina.estado !== 'baja') && <Vacio texto="No hay máquinas configuradas." />}
@@ -114,10 +162,6 @@ export function BoardView({ datos, modelo, seleccion, permiteEscritura, onSelect
               contexto={contexto}
               puesto={puesto}
               resaltado={destino === `b:${puesto.id}`}
-              onDragOver={event => {
-                if (arrastre.current?.tipo === 'unidad') marcarDestino(event, `b:${puesto.id}`);
-              }}
-              onDrop={event => soltarEnPuesto(event, puesto)}
             />
           ))}
           {!(datos.puestos || []).length && <Vacio texto="No hay puestos configurados. Usa «Configurar taller»." />}
@@ -159,7 +203,7 @@ function BaseCarril({ hoyIdx }) {
   );
 }
 
-function Carril({ contexto, titulo, detalle, tabla, recursoId, bloques, color, persona, espejo = false, resaltado, onDragOver, onDrop }) {
+function Carril({ contexto, titulo, detalle, tabla, recursoId, bloques, color, persona, espejo = false, resaltado }) {
   const filas = bloques[0]?.filas || 1;
   return (
     <div
@@ -167,7 +211,7 @@ function Carril({ contexto, titulo, detalle, tabla, recursoId, bloques, color, p
       style={filas > 2 ? { '--rows': filas } : undefined}
     >
       <div className="dx-pl-lab"><b>{titulo}</b><span>{detalle}</span></div>
-      <div className="dx-pl-trk" onDragOver={onDragOver} onDrop={onDrop}>
+      <div className="dx-pl-trk" data-carril-tabla={tabla} data-carril-id={recursoId}>
         <BaseCarril hoyIdx={contexto.hoyIdx} />
         {persona && contexto.dias.map((dia, indice) => {
           const motivo = ausencia(contexto.datos, persona.id, dia);
@@ -184,7 +228,7 @@ function Carril({ contexto, titulo, detalle, tabla, recursoId, bloques, color, p
 }
 
 function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) {
-  const { datos, modelo, ots, cargos, seleccion, permiteEscritura, onSelect, arrastre, hoyIdx } = contexto;
+  const { datos, modelo, ots, cargos, seleccion, permiteEscritura, onSelect, arrastre, iniciarArrastre, hoyIdx } = contexto;
   const ot = ots.get(bloque.otId);
   const tarea = bloque.tareaId ? tareaDe(datos, bloque.otId, bloque.tareaId) : null;
   const info = modelo.infos.get(bloque.otId);
@@ -208,18 +252,15 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
       className={clases}
       aria-label={etiqueta}
       title={editable ? 'Arrastra a otro día o a otro recurso' : 'No editable'}
-      draggable={editable}
-      onDragStart={event => {
+      onPointerDown={editable ? event => {
         const rect = event.currentTarget.getBoundingClientRect();
         const ancho = rect.width / (bloque.e - bloque.s + 1);
-        arrastre.current = { tipo: 'bloque', tabla, recursoId, bloque, agarre: Math.max(0, Math.floor((event.clientX - rect.left) / ancho)) };
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData('text/plain', bloque.clave);
-      }}
-      onDragEnd={() => { arrastre.current = null; }}
-      onClick={() => ot && onSelect({ ot, tareaId: bloque.tareaId, tecnicoId: tabla === 'persona' ? recursoId : null })}
+        iniciarArrastre(event, { tipo: 'bloque', tabla, recursoId, bloque, agarre: Math.max(0, Math.floor((event.clientX - rect.left) / ancho)) });
+      } : undefined}
+      onClick={() => !arrastre.current && ot && onSelect({ ot, tareaId: bloque.tareaId, tecnicoId: tabla === 'persona' ? recursoId : null })}
       style={{
         '--c': tono,
+        ...(editable ? { touchAction: 'none' } : {}),
         left: `calc(${bloque.s} * var(--dw) + 3px)`,
         width: `calc(${bloque.e - bloque.s + 1} * var(--dw) - 6px)`,
         ...(fino ? { top: `${4 + bloque.fila * 25}px` } : {}),
@@ -233,14 +274,14 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
   );
 }
 
-function GrupoPuesto({ contexto, puesto, resaltado, onDragOver, onDrop }) {
-  const { datos, modelo, dias, ots, cargos, seleccion, permiteEscritura, onSelect, arrastre, hoyIdx } = contexto;
+function GrupoPuesto({ contexto, puesto, resaltado }) {
+  const { datos, modelo, dias, ots, cargos, seleccion, permiteEscritura, onSelect, arrastre, iniciarArrastre, hoyIdx } = contexto;
   const capacidad = Math.max(1, Number(puesto.capacidad) || 1);
   const bahia = (datos.bahias || []).find(item => item.id === puesto.bahia_id);
   const unidades = (datos.ocupaciones || []).filter(item => item.puesto_id === puesto.id && item.estado !== 'cancelado'
     && item.fecha_hasta >= dias[0] && item.fecha_desde <= dias.at(-1));
   return (
-    <div className={`dx-pl-bgrp${resaltado ? ' is-drop' : ''}`} onDragOver={onDragOver} onDrop={onDrop}>
+    <div className={`dx-pl-bgrp${resaltado ? ' is-drop' : ''}`} data-puesto-id={puesto.id}>
       <div className="dx-pl-row dx-pl-bayh">
         <div className="dx-pl-lab">
           <b>{nombrePuesto(datos, puesto)}</b>
@@ -289,16 +330,10 @@ function GrupoPuesto({ contexto, puesto, resaltado, onDragOver, onDrop }) {
               <button
                 type="button"
                 className={`dx-pl-unit${exceso ? ' is-bad' : ''}${seleccion?.ot?.id === ocupacion.ot_id ? ' is-sel' : ''}`}
-                draggable={Boolean(editable)}
                 aria-label={`${ot?.descripcion || 'Equipo'}, ${numeroOT(ot)}, en ${nombrePuesto(datos, puesto)} del ${fmtDia(ocupacion.fecha_desde)} al ${fmtDia(ocupacion.fecha_hasta)}`}
-                onDragStart={event => {
-                  arrastre.current = { tipo: 'unidad', ot, puestoId: puesto.id };
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('text/plain', ocupacion.id);
-                }}
-                onDragEnd={() => { arrastre.current = null; }}
-                onClick={() => ot && onSelect({ ot })}
-                style={{ left: `calc(${s} * var(--dw) + 3px)`, width: `calc(${largo} * var(--dw) - 6px)` }}
+                onPointerDown={editable ? event => iniciarArrastre(event, { tipo: 'unidad', ot, puestoId: puesto.id }) : undefined}
+                onClick={() => !arrastre.current && ot && onSelect({ ot })}
+                style={{ ...(editable ? { touchAction: 'none' } : {}), left: `calc(${s} * var(--dw) + 3px)`, width: `calc(${largo} * var(--dw) - 6px)` }}
               >
                 <small>En taller · {fmtCorto(ocupacion.fecha_desde)} – {fmtCorto(ocupacion.fecha_hasta)}</small>
                 <strong>{ot?.descripcion || ot?.servicio || numeroOT(ot)}</strong>

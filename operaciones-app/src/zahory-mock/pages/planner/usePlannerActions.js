@@ -2,14 +2,13 @@ import { useEffect } from 'react';
 import {
   asignarEquipo,
   asignarPersona,
+  actualizarAsignacion,
   actualizarFechaAsignacion,
   cambiarPuestoOT,
   heredarTareasOT,
   mensajeErrorPlanner,
   moverAsignacion,
   moverAsignacionEquipo,
-  reasignarMaquina,
-  reasignarTecnico,
   restaurarTareaAsignacion,
   sincronizarOcupacionesOT,
 } from '../../../services/plannerService.js';
@@ -267,23 +266,17 @@ export function usePlannerActions({
           recursoFinal: item.recurso || recursoDestino || null,
           fechaFinal: item.fecha || (delta ? sumarHabiles(item.asignacion.fecha, delta) : null),
         }));
-        const grupos = new Map();
-        for (const item of destinos) {
+        const ordenados = [
+          ...destinos.filter(item => item.fechaFinal && item.fechaFinal < item.asignacion.fecha)
+            .sort((a, b) => a.fechaFinal.localeCompare(b.fechaFinal)),
+          ...destinos.filter(item => !(item.fechaFinal && item.fechaFinal < item.asignacion.fecha))
+            .sort((a, b) => b.asignacion.fecha.localeCompare(a.asignacion.fecha)),
+        ];
+        for (const item of ordenados) {
           const actual = item.tabla === 'equipo' ? item.asignacion.maquina_id : item.asignacion.tecnico_id;
-          if (!item.recursoFinal || item.recursoFinal === actual) continue;
-          const clave = `${item.tabla}|${item.recursoFinal}`;
-          if (!grupos.has(clave)) grupos.set(clave, []);
-          grupos.get(clave).push(item.asignacion.id);
-        }
-        for (const [clave, ids] of grupos) {
-          const [tabla, recurso] = clave.split('|');
-          if (tabla === 'equipo') await reasignarMaquina({ ids, maquinaId: recurso });
-          else await reasignarTecnico({ ids, tecnicoId: recurso });
-        }
-        const conFecha = destinos.filter(item => item.fechaFinal && item.fechaFinal !== item.asignacion.fecha)
-          .sort((a, b) => (a.fechaFinal > a.asignacion.fecha ? -1 : 1) * a.asignacion.fecha.localeCompare(b.asignacion.fecha));
-        for (const item of conFecha) {
-          await actualizarFechaAsignacion({ tabla: nombreTabla(item.tabla), id: item.asignacion.id, fecha: item.fechaFinal });
+          const recurso = item.recursoFinal && item.recursoFinal !== actual ? item.recursoFinal : null;
+          const fecha = item.fechaFinal && item.fechaFinal !== item.asignacion.fecha ? item.fechaFinal : null;
+          if (recurso || fecha) await actualizarAsignacion({ tabla: item.tabla, id: item.asignacion.id, recurso, fecha });
         }
         for (const otId of new Set(items.map(item => item.asignacion.ot_id))) await sincronizarOcupacionesOT({ otId });
         setUndo({
@@ -294,6 +287,7 @@ export function usePlannerActions({
             fecha: item.asignacion.fecha,
             recurso: item.tabla === 'equipo' ? item.asignacion.maquina_id : item.asignacion.tecnico_id,
             otId: item.asignacion.ot_id,
+            actual: destinos.find(destino => destino.asignacion.id === item.asignacion.id)?.fechaFinal || item.asignacion.fecha,
           })),
         });
       }, mensaje);
@@ -307,10 +301,12 @@ export function usePlannerActions({
   }
 
   async function deshacerLote(item) {
-    for (const fila of item.items) {
-      if (fila.tabla === 'equipo') await reasignarMaquina({ ids: [fila.id], maquinaId: fila.recurso });
-      else await reasignarTecnico({ ids: [fila.id], tecnicoId: fila.recurso });
-      await actualizarFechaAsignacion({ tabla: nombreTabla(fila.tabla), id: fila.id, fecha: fila.fecha });
+    // Primero las que vuelven hacia atrás (de la más temprana a la más tardía) y luego las que avanzan
+    // (de la más tardía a la más temprana), para no pisar a otra asignación del mismo técnico.
+    const atras = item.items.filter(fila => fila.actual && fila.fecha < fila.actual).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const resto = item.items.filter(fila => !atras.includes(fila)).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    for (const fila of [...atras, ...resto]) {
+      await actualizarAsignacion({ tabla: fila.tabla, id: fila.id, recurso: fila.recurso, fecha: fila.fecha });
     }
     for (const otId of new Set(item.items.map(fila => fila.otId))) await sincronizarOcupacionesOT({ otId });
   }

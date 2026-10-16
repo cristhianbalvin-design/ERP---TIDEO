@@ -79,6 +79,7 @@ export function crearAccionesSimulacion({
             fecha: item.fecha,
             recurso: item.clase === 'equipo' ? item.maquina_id : item.tecnico_id,
             otId: item.ot_id,
+            actual: sumarHabiles(item.fecha, dias),
           })),
         });
       }, 'El plan se ajustó para dar prioridad al trabajo urgente.');

@@ -317,26 +317,29 @@ export async function heredarTareasOT(otId) {
   return data;
 }
 
-export async function reasignarTecnico({ ids, tecnicoId }) {
-  if (!ids?.length) return [];
-  const { data, error } = await getSupabaseClient().from('planner_asignaciones')
-    .update({ tecnico_id: tecnicoId }).in('id', ids).eq('estado', 'programado').select(CAMPOS.asignaciones);
-  if (error) throw new Error(mensajeErrorPlanner(error));
-  return data || [];
-}
-
-export async function reasignarMaquina({ ids, maquinaId }) {
-  if (!ids?.length) return [];
-  const { data, error } = await getSupabaseClient().from('planner_asignaciones_equipo')
-    .update({ maquina_id: maquinaId }).in('id', ids).eq('estado', 'programado').select(CAMPOS.equipos);
-  if (error) throw new Error(mensajeErrorPlanner(error));
-  return data || [];
-}
-
 export async function cambiarPuestoOT({ otId, puestoId }) {
   const { data, error } = await getSupabaseClient().from('planner_asignaciones')
     .update({ puesto_id: puestoId }).eq('ot_id', otId).eq('estado', 'programado').select('id');
   if (error) throw new Error(mensajeErrorPlanner(error));
   await sincronizarOcupacionesOT({ otId });
   return data || [];
+}
+
+// Cambia recurso y fecha en una sola escritura: evita choques intermedios con la clave única
+// (empresa, OT, técnico, fecha) al repartir o juntar días entre técnicos.
+export async function actualizarAsignacion({ tabla, id, recurso, fecha }) {
+  const esEquipo = tabla === 'equipo';
+  const cambios = {};
+  if (recurso) cambios[esEquipo ? 'maquina_id' : 'tecnico_id'] = recurso;
+  if (fecha) cambios.fecha = fecha;
+  if (!Object.keys(cambios).length) return null;
+  const { data, error } = await getSupabaseClient()
+    .from(esEquipo ? 'planner_asignaciones_equipo' : 'planner_asignaciones')
+    .update(cambios).eq('id', id).eq('estado', 'programado')
+    .select(esEquipo ? CAMPOS.equipos : CAMPOS.asignaciones).single();
+  if (error) {
+    if (error.code === '23505') throw new Error('Ese técnico ya tiene esta OT asignada ese día.');
+    throw new Error(mensajeErrorPlanner(error));
+  }
+  return data;
 }
