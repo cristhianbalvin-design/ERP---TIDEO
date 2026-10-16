@@ -352,5 +352,18 @@
   .dx-ficha-dacts { padding-left:0; }
   .dx-ficha-chain.is-linked::before, .dx-ficha-node { display:none; }
   .dx-ficha-linkd { margin-left:12px; }
+  .dx-ficha-hd { gap:12px; padding:16px; }
+  .dx-ficha-av { width:44px; height:44px; font-size:16px; }
+  .dx-ficha-hd-main { flex-basis:calc(100% - 56px); }
+  .dx-ficha-pill { white-space:normal; text-align:left; }
+  .dx-ficha-pill > span { overflow:visible; text-overflow:clip; }
+  .dx-ficha-kv > div { flex-wrap:wrap; }
+}
+@container (max-width:420px) {
+  .dx-ficha-in { padding:8px 0 32px; }
+  .dx-ficha-hd { flex-direction:column; align-items:flex-start; }
+  .dx-ficha-hd-main { flex-basis:auto; width:100%; }
+  .dx-ficha-card { padding:14px; }
+  .dx-ficha-doc-in > .dx-ficha-dic, .dx-ficha-hab-ic { display:none; }
 }
 @media (prefers-reduced-motion:reduce) { .dx-ficha * { transition:none !important; animation:none !important; } }

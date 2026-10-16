@@ -12723,7 +12723,7 @@ function RRHHAdmin() {
                   <FichaCard title="Resumen">
                     <FichaKV items={[
                       { label: 'Habilitación', value: <FichaPill tone={tonoHabFichaAdmin}>{textoHabFichaAdmin}</FichaPill> },
-                      { label: 'Contrato vigente', value: contratoDoc ? (contratoDoc.nombre_archivo || contratoDoc.nombre || contratoDoc.tipo_doc_nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
+                      { label: 'Contrato vigente', value: contratoDoc ? ((tiposDocumento || []).find(t => t.id === contratoDoc.tipo_documento_id)?.nombre || contratoDoc.tipo_doc_nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
                       contratoDoc ? { label: 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias != null ? ` · ${contratoInfo.dias} días` : ''}` : 'Indefinido' } : null,
                       { label: 'Jornada', value: jornadaFichaTexto || 'Sin asignar', nil: !jornadaFichaTexto },
                     ]} />
