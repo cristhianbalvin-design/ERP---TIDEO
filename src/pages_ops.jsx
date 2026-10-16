@@ -84,6 +84,8 @@ import { MantenimientoFlotaPanel } from './components/MantenimientoFlotaPanel.js
 import { ReportesFlotaPanel } from './components/ReportesFlotaPanel.jsx';
 import './compras_gastos.css';
 import './personal_operativo.css';
+import './ficha_personal.css';
+import { FichaHeader, FichaTabs, FichaCard, FichaDL, FichaKV, FichaAlert, FichaStats, FichaEmpty, FichaTable, FichaMenu, FichaDocRow, FichaHabilitacion, FichaModalHead, FichaPill, fichaTonoDeBadge, fichaIniciales } from './components/FichaPersonalKit.jsx';
 
 const filtrarOpcionesPorSociedadEscritura = (opciones = [], sociedadIdEscritura = null) => (
   sociedadIdEscritura
@@ -21837,21 +21839,21 @@ function DatosBancariosSection({ cuentas = [], onChange, readOnly = false }) {
   const abrirEditar = (c) => { setForm({ banco:c.banco, numero_cuenta:c.numero_cuenta, cci:c.cci, tipo_cuenta:c.tipo_cuenta, moneda:c.moneda, es_principal:c.es_principal }); setEditId(c.id); setShowForm(true); };
 
   return (
-    <div>
-      <div style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos bancarios</div>
-      {cuentas.length === 0 && <div style={{color:'var(--fg-muted)', fontSize:13, marginBottom:12}}>Sin cuentas bancarias registradas.</div>}
+    <div className="dx-bank">
+      <div className="dx-bank-h" style={{fontWeight:600, fontSize:13, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:12}}>Datos bancarios</div>
+      {cuentas.length === 0 && <div className="dx-bank-empty" style={{color:'var(--fg-muted)', fontSize:13, marginBottom:12}}>Sin cuentas bancarias registradas.</div>}
       {cuentas.map(c => (
-        <div key={c.id} className="card" style={{padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
+        <div key={c.id} className="card dx-bank-row" style={{padding:'10px 14px', marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:10}}>
           <div>
-            <div style={{fontWeight:600, fontSize:13}}>{c.banco} — •••• {String(c.numero_cuenta||'').slice(-4)}</div>
-            <div className="text-muted" style={{fontSize:12}}>{c.tipo_cuenta} · {c.moneda}{c.es_principal && <span className="badge badge-green" style={{marginLeft:6, fontSize:10}}>Principal</span>}</div>
+            <div className="dx-bank-t" style={{fontWeight:600, fontSize:13}}>{c.banco} — •••• {String(c.numero_cuenta||'').slice(-4)}</div>
+            <div className="text-muted" style={{fontSize:12}}>{c.tipo_cuenta} · {c.moneda}{c.es_principal && <span className="badge badge-green dx-bank-main" style={{marginLeft:6, fontSize:10}}>Principal</span>}</div>
           </div>
           {!readOnly && <div style={{display:'flex', gap:4}}><button type="button" className="icon-btn" onClick={() => abrirEditar(c)}>{I.edit}</button><button type="button" className="icon-btn" style={{color:'var(--danger)'}} onClick={() => onChange(cuentas.filter(x => x.id !== c.id))}>{I.trash}</button></div>}
         </div>
       ))}
       {!readOnly && !showForm && <button type="button" className="btn btn-secondary btn-sm" style={{marginTop:4}} onClick={() => setShowForm(true)}>{I.plus} Agregar cuenta</button>}
       {!readOnly && showForm && (
-        <div className="card" style={{padding:16, marginTop:8, border:'1px solid var(--border)'}}>
+        <div className="card dx-bank-form" style={{padding:16, marginTop:8, border:'1px solid var(--border)'}}>
           <div className="grid-2" style={{gap:12}}>
             <div className="input-group"><label>Banco</label><select className="select" value={form.banco} onChange={e=>setForm(v=>({...v,banco:e.target.value}))}>{BANCOS_PERU.map(b=><option key={b}>{b}</option>)}</select></div>
             <div className="input-group"><label>Número de cuenta</label><input className="input" value={form.numero_cuenta} onChange={e=>setForm(v=>({...v,numero_cuenta:e.target.value}))} placeholder="Número de cuenta"/></div>
@@ -21973,39 +21975,49 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
 
   const activas = rows.filter(a => a.estado === 'activo');
   return (
-    <div className="card-body">
-      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:8}}>
-        <div>
-          <span className="badge badge-red" style={{fontSize:12, marginRight:8}}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</span>
-          <span className="text-muted" style={{fontSize:12}}>{rows.length} total</span>
-        </div>
-        {canRegister && <button className="btn btn-sm btn-secondary" onClick={() => { setForm(formBase); setPanel(true); setErr(''); }}>{I.plus} Registrar</button>}
-      </div>
-      {loading && <div className="text-muted" style={{padding:20}}>Cargando...</div>}
-      {!loading && rows.length === 0 && <div className="text-muted" style={{textAlign:'center', padding:'24px 0'}}>Sin amonestaciones registradas.</div>}
-      {!loading && rows.map(a => (
-        <div key={a.id} className="card" style={{padding:'10px 14px', marginBottom:8, opacity: a.estado === 'anulado' ? 0.6 : 1, borderLeft:`3px solid ${a.estado === 'anulado' ? 'var(--border)' : a.tipo === 'suspension' ? 'var(--danger)' : a.tipo === 'escrita' ? 'var(--orange)' : 'var(--fg-muted)'}` }}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
-            <div style={{flex:1}}>
-              <div style={{display:'flex', gap:6, flexWrap:'wrap', marginBottom:3}}>
-                <span className={`badge ${tipoBadge[a.tipo] || 'badge-gray'}`} style={{fontSize:11}}>{tipoLabel[a.tipo] || a.tipo}</span>
-                {a.estado === 'anulado' && <span className="badge badge-gray" style={{fontSize:10}}>Anulada</span>}
-                <span className="text-muted" style={{fontSize:11}}>{a.fecha}</span>
-              </div>
-              <div style={{fontWeight:600, fontSize:13}}>{a.motivo}</div>
-              {a.descripcion && <div className="text-muted" style={{fontSize:12}}>{a.descripcion}</div>}
-              {a.tipo === 'suspension' && <div style={{fontSize:12, color:'var(--danger)', marginTop:3}}>Suspensión {a.dias_suspension} días · {a.fecha_inicio_suspension} → {a.fecha_fin_suspension}</div>}
-              {a.evidencia_url && <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer" className="text-muted" style={{fontSize:11}}>Evidencia</a>}
-            </div>
-            {canRegister && a.estado === 'activo' && (
-              <div style={{display:'flex', gap:8, alignItems:'center', flexShrink:0}}>
-                <button className="btn btn-sm btn-ghost" onClick={() => descargarAmonestacion(a)}>Descargar PDF</button>
-                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => { setAnularId(a.id); setMotivoAnulacion(''); }}>Anular</button>
-              </div>
-            )}
+      <FichaCard
+        icon={I.alert}
+        title="Amonestaciones"
+        meta={<><FichaPill tone={activas.length ? 'red' : 'gray'}>{activas.length} activa{activas.length !== 1 ? 's' : ''}</FichaPill> <span className="dx-ficha-card-meta">{rows.length} en historial</span></>}
+        extra={canRegister ? <button type="button" className="dx-ficha-btn is-sm is-primary" onClick={() => { setForm(formBase); setPanel(true); setErr(''); }}>{I.plus} Registrar amonestación</button> : null}
+      >
+        {loading && <div className="dx-ficha-help" style={{padding:20}}>Cargando…</div>}
+        {!loading && rows.length === 0 && (
+          <FichaEmpty icon={I.alert} title="Sin amonestaciones" text="No hay amonestaciones registradas para este colaborador." />
+        )}
+        {!loading && rows.length > 0 && (
+          <div className="dx-ficha-chain">
+            {rows.map(a => {
+              const anulada = a.estado === 'anulado';
+              const tono = anulada ? 'gray' : a.tipo === 'suspension' ? 'red' : a.tipo === 'escrita' ? 'amber' : 'cyan';
+              return (
+                <FichaDocRow
+                  key={a.id}
+                  tone={tono}
+                  icon={I.alert}
+                  historico={anulada}
+                  titulo={a.motivo}
+                  estado={<>
+                    <FichaPill tone={fichaTonoDeBadge(tipoBadge[a.tipo])} dot={false}>{tipoLabel[a.tipo] || a.tipo}</FichaPill>
+                    {anulada && <FichaPill>Anulada</FichaPill>}
+                    {a.tipo === 'suspension' && a.impactar_asistencia && <FichaPill tone="red" dot={false}>Impacto en asistencia</FichaPill>}
+                  </>}
+                  meta={[
+                    a.fecha,
+                    a.tipo === 'suspension' ? <span className="is-err">Suspensión: {a.dias_suspension} días ({a.fecha_inicio_suspension} → {a.fecha_fin_suspension})</span> : null,
+                    a.evidencia_url ? <a href={a.evidencia_url} target="_blank" rel="noopener noreferrer">Ver evidencia</a> : null,
+                  ]}
+                  hint={anulada && a.motivo_anulacion ? `Anulada por ${a.anulado_por}: ${a.motivo_anulacion}` : a.descripcion}
+                  actions={canRegister && a.estado === 'activo' ? <>
+                    <button type="button" className="dx-ficha-btn is-sm" onClick={() => descargarAmonestacion(a)}>{I.download} PDF</button>
+                    <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={() => { setAnularId(a.id); setMotivoAnulacion(''); }}>Anular</button>
+                  </> : null}
+                />
+              );
+            })}
           </div>
-        </div>
-      ))}
+        )}
+
       {panel && <>
         <div className="side-panel-backdrop" onClick={() => setPanel(false)} />
         <div className="side-panel" style={{width:'min(480px,96vw)', zIndex:70}}>
@@ -22042,21 +22054,26 @@ function AmonestacionesTab({ personalId, personalNombre, personalTipo, empresaId
           </div>
         </div>
       </>}
-      {anularId && <>
-        <div className="side-panel-backdrop" onClick={() => setAnularId(null)} />
-        <div className="modal" style={{zIndex:80}}>
-          <div className="modal-head"><h3>Anular amonestación</h3><button className="icon-btn" onClick={() => setAnularId(null)}>{I.x}</button></div>
-          <div className="modal-body">
-            <p>La amonestación permanecerá en el historial como anulada.</p>
-            <div className="input-group" style={{marginTop:8}}><label>Motivo *</label><textarea className="input" rows={3} value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} /></div>
-            <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:14}}>
-              <button className="btn btn-secondary" onClick={() => setAnularId(null)}>Cancelar</button>
-              <button className="btn btn-primary" style={{background:'var(--danger)', borderColor:'var(--danger)'}} onClick={anular} disabled={!motivoAnulacion.trim()}>Confirmar</button>
+
+        {anularId && (
+          <div className="modal-backdrop" onClick={() => setAnularId(null)}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Anular amonestación" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.alert} tone="red" title="Anular amonestación" sub={personalNombre} onClose={() => setAnularId(null)} />
+              <div className="dx-ficha-mb">
+                <FichaAlert tone="warn">Esta acción no se puede deshacer. La amonestación quedará en el historial como anulada.</FichaAlert>
+                <div className="input-group">
+                  <label>Motivo de anulación *</label>
+                  <textarea className="input" rows={3} value={motivoAnulacion} onChange={e => setMotivoAnulacion(e.target.value)} placeholder="Explica por qué se anula esta amonestación..." />
+                </div>
+              </div>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" onClick={() => setAnularId(null)}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-danger-fill" onClick={anular} disabled={!motivoAnulacion.trim()}>Confirmar anulación</button>
+              </div>
             </div>
           </div>
-        </div>
-      </>}
-    </div>
+        )}
+      </FichaCard>
   );
 }
 
@@ -22694,6 +22711,7 @@ function RRHH_Operativo() {
   // Estado para subir documentos en ficha
   const docUploadFormBase = { tipoDoc: '', sociedadId: '', fechaEmision: '', fechaVencimiento: '', notas: '', cargoFirma: '', cargoIdFirma: '', remuneracionFirma: '', modalidadFirma: '', sedeIdFirma: '', sedeFirma: '', areaIdFirma: '', areaNombreFirma: '', regimenJornadaFirma: '', tipoContratoFirma: '', contratoReferenciaId: '', cambioCargo: false, cambioRemuneracion: false, cambioModalidad: false, cambioSede: false, cambioOtro: false, descripcionCambio: '', fechaVigenciaCambio: '', esIndefinido: false };
   const [docUploadForm, setDocUploadForm] = useState(docUploadFormBase);
+  const [fichaDocAdicionalOpen, setFichaDocAdicionalOpen] = useState(false);
   const [docUploadFile, setDocUploadFile] = useState(null);
   const [docUploading, setDocUploading] = useState(false);
   const [docUploadError, setDocUploadError] = useState('');
@@ -23858,6 +23876,7 @@ function RRHH_Operativo() {
         }
         setDocUploadFile(null);
         setDocUploadForm(docUploadFormBase);
+        setFichaDocAdicionalOpen(false);
         addNotificacion('Documento subido. Pendiente de aprobación por RRHH.');
         if (recargarPersonalDocumentosPersonaCtx) await recargarPersonalDocumentosPersonaCtx(p.id);
       } catch (err) {
@@ -23948,73 +23967,74 @@ function RRHH_Operativo() {
       tipo: 'operativo',
     })[0]?.bajaProductividad;
 
+    const habFicha = habIdx[p.id] || { estado_global: 'sin_configurar', docs: [] };
+    const docsProblemaFicha = (habFicha.docs || []).filter(d => ['vencido','rechazado','incompleto','falta','por_vencer','en_revision'].includes(d.estado) && d.es_habilitante);
+    const docsGravesFicha = docsProblemaFicha.filter(d => ['vencido','rechazado','incompleto','falta'].includes(d.estado)).length;
+    const FICHA_TAB_LABELS = { ficha:'Ficha', contrato:'Contrato', jornada:'Jornada', vacaciones:'Vacaciones', licencias:'Licencias', solicitudes:'Solicitudes', documentos:'Documentos', reembolsos:'Reembolsos', disponibilidad:'Disponibilidad', amonestaciones:'Amonestaciones', bancarios:'Bancarios' };
+    const tabsFicha = tabs.map(t => ({
+      key: t,
+      label: FICHA_TAB_LABELS[t] || t,
+      count: t === 'documentos' && docsProblemaFicha.length ? docsProblemaFicha.length : null,
+      countTone: docsGravesFicha ? 'red' : 'amber',
+      countLabel: t === 'documentos' ? `${docsProblemaFicha.length} documentos requieren atención` : undefined,
+    }));
+    const tonoContratoFicha = { green:'green', orange:'amber', cyan:'cyan' }[contratoColor(p.tipo_contrato)] || 'cyan';
+    const cerrarEliminarDoc = () => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); };
+    const cerrarArchivarDoc = () => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); };
+
     return (
-      <>
+      <div className="dx-ficha"><div className="dx-ficha-in">
         {previewDocumentoNode}
         {documentoAEliminar && (
-          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && (setDocumentoAEliminar(null), setErrorEliminarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
-              <div className="modal-head">
-                <h2>Eliminar documento</h2>
-                <button className="icon-btn" onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }} disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)}>{I.x}</button>
+          <div className="modal-backdrop" onClick={() => !eliminandoDocumentoId && !archivandoDocumentoId && cerrarEliminarDoc()}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Eliminar documento" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+              <FichaModalHead icon={I.trash} tone="red" title="Eliminar documento" sub={documentoAEliminar.doc.nombre_archivo || 'este documento'} onClose={cerrarEliminarDoc} closeDisabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} />
+              <div className="dx-ficha-mb">
+                <p style={{margin:0}}>¿Eliminar definitivamente este documento?</p>
+                <FichaAlert tone="warn">Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.</FichaAlert>
+                {errorEliminarDocumento && <FichaAlert tone="danger" title="No se pudo eliminar" role="alert">{errorEliminarDocumento}</FichaAlert>}
               </div>
-              <div className="modal-body">
-                <p>¿Eliminar definitivamente <strong>{documentoAEliminar.doc.nombre_archivo || 'este documento'}</strong>?</p>
-                <div className="alert alert-warning" style={{marginTop:12, fontSize:12}}>
-                  Esta acción no se puede deshacer. Si el documento tiene dependencias, firma iniciada o fue usado en nómina, el sistema rechazará el borrado y deberás archivarlo.
-                </div>
-                {errorEliminarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorEliminarDocumento}</div>}
-              </div>
-              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
-                <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => { setDocumentoAEliminar(null); setErrorEliminarDocumento(''); }}>Cancelar</button>
-                {errorEliminarDocumento && <button className="btn btn-secondary" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar en su lugar'}</button>}
-                <button className="btn btn-danger" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando...' : 'Eliminar definitivamente'}</button>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={cerrarEliminarDoc}>Cancelar</button>
+                {errorEliminarDocumento && <button type="button" className="dx-ficha-btn" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento(documentoAEliminar, true)}>{I.archive} {archivandoDocumentoId ? 'Archivando…' : 'Archivar en su lugar'}</button>}
+                <button type="button" className="dx-ficha-btn is-danger-fill" disabled={Boolean(eliminandoDocumentoId || archivandoDocumentoId)} onClick={confirmarEliminarDocumento}>{I.trash} {eliminandoDocumentoId ? 'Eliminando…' : 'Eliminar definitivamente'}</button>
               </div>
             </div>
           </div>
         )}
         {documentoAArchivar && (
-          <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && (setDocumentoAArchivar(null), setErrorArchivarDocumento(''))}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:520}}>
-              <div className="modal-head">
-                <h2>Archivar documento</h2>
-                <button className="icon-btn" onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }} disabled={Boolean(archivandoDocumentoId)}>{I.x}</button>
+          <div className="modal-backdrop" onClick={() => !archivandoDocumentoId && cerrarArchivarDoc()}>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Archivar documento" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.archive} tone="gray" title="Archivar documento" sub={documentoAArchivar.doc.nombre_archivo || 'este documento'} onClose={cerrarArchivarDoc} closeDisabled={Boolean(archivandoDocumentoId)} />
+              <div className="dx-ficha-mb">
+                <FichaAlert tone="info">El documento se conserva como registro histórico, pero dejará de estar vigente.</FichaAlert>
+                {errorArchivarDocumento && <FichaAlert tone="danger" title="No se pudo archivar" role="alert">{errorArchivarDocumento}</FichaAlert>}
               </div>
-              <div className="modal-body">
-                <p>¿Archivar <strong>{documentoAArchivar.doc.nombre_archivo || 'este documento'}</strong>?</p>
-                <div className="alert alert-info" style={{marginTop:12, fontSize:12}}>
-                  El documento se conserva como registro histórico, pero dejará de estar vigente.
-                </div>
-                {errorArchivarDocumento && <div className="alert alert-danger" role="alert" style={{marginTop:12, marginBottom:0, fontSize:12}}>{errorArchivarDocumento}</div>}
-              </div>
-              <div className="modal-foot" style={{display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap'}}>
-                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => { setDocumentoAArchivar(null); setErrorArchivarDocumento(''); }}>Cancelar</button>
-                <button className="btn btn-secondary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando...' : 'Archivar documento'}</button>
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" disabled={Boolean(archivandoDocumentoId)} onClick={cerrarArchivarDoc}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-primary" disabled={Boolean(archivandoDocumentoId)} onClick={() => confirmarArchivarDocumento()}>{I.archive} {archivandoDocumentoId ? 'Archivando…' : 'Archivar documento'}</button>
               </div>
             </div>
           </div>
         )}
         {modalEnviarFirmaDocOps && (
           <div className="modal-backdrop" onClick={() => !enviandoFirmaOps && setModalEnviarFirmaDocOps(null)}>
-            <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:440}}>
-              <div className="modal-head">
-                <h3>Enviar a firma del trabajador</h3>
-                <button className="icon-btn" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>{I.x}</button>
-              </div>
-              <div className="modal-body" style={{display:'flex', flexDirection:'column', gap:12}}>
-                <div style={{padding:'10px 14px', background:'var(--bg-subtle)', borderRadius:8}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:2}}>Documento</div>
-                  <div style={{fontWeight:600}}>{modalEnviarFirmaDocOps.nombre}</div>
-                  <div style={{fontSize:12, color:'var(--fg-muted)', marginTop:2}}>Colaborador: {selTecnico?.nombre}</div>
+            <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Enviar a firma del trabajador" onClick={e => e.stopPropagation()} style={{maxWidth:460}}>
+              <FichaModalHead icon={I.send} tone="cyan" title="Enviar a firma del trabajador" sub="Llega a la app del trabajador" onClose={() => setModalEnviarFirmaDocOps(null)} closeDisabled={enviandoFirmaOps} />
+              <div className="dx-ficha-mb">
+                <div className="dx-ficha-cur">
+                  <span className="dx-ficha-dic is-sm is-cyan" aria-hidden="true">{I.file}</span>
+                  <div className="dx-ficha-cur-t"><b>{modalEnviarFirmaDocOps.nombre}</b><span>Colaborador: {selTecnico?.nombre}</span></div>
                 </div>
                 <div className="input-group">
-                  <label>Mensaje para el trabajador <span style={{fontSize:11, color:'var(--fg-muted)'}}>(opcional)</span></label>
+                  <label>Mensaje para el trabajador <span className="dx-ficha-help">(opcional)</span></label>
                   <textarea className="input" rows={3} value={enviarFirmaMensajeOps} onChange={e => setEnviarFirmaMensajeOps(e.target.value)} placeholder="Ej: Tu contrato de renovacion esta listo para firma." />
                 </div>
+                {!selTecnico?.auth_user_id && <FichaAlert dashed>Este colaborador aún no tiene acceso al ERP; necesita una cuenta para firmar desde la app.</FichaAlert>}
               </div>
-              <div style={{display:'flex', justifyContent:'flex-end', gap:8, padding:'12px 20px', borderTop:'1px solid var(--border)'}}>
-                <button className="btn btn-secondary" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>Cancelar</button>
-                <button className="btn btn-primary" disabled={enviandoFirmaOps} onClick={async () => {
+              <div className="dx-ficha-mf">
+                <button type="button" className="dx-ficha-btn" onClick={() => setModalEnviarFirmaDocOps(null)} disabled={enviandoFirmaOps}>Cancelar</button>
+                <button type="button" className="dx-ficha-btn is-primary" disabled={enviandoFirmaOps} onClick={async () => {
                   setEnviandoFirmaOps(true);
                   try {
                     await enviarDocumentoAFirmaCtx({ documentoId: modalEnviarFirmaDocOps.doc.id, workerAuthUserId: selTecnico?.auth_user_id, mensaje: enviarFirmaMensajeOps });
@@ -24026,397 +24046,295 @@ function RRHH_Operativo() {
                     setEnviandoFirmaOps(false);
                   }
                 }}>
-                  {enviandoFirmaOps ? 'Enviando...' : 'Enviar'}
+                  {I.send} {enviandoFirmaOps ? 'Enviando…' : 'Enviar'}
                 </button>
               </div>
             </div>
           </div>
         )}
-        <div className="page-header">
-          <div className="row" style={{gap:12}}>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setSelTecnico(null); setFichaTab('ficha'); }}>{I.chev} Volver</button>
-            <div>
-              <h1 className="page-title">{p.nombre}</h1>
-              <div className="page-sub">{p.cargo} · {p.especialidad} · Ingreso: {p.fecha_ingreso || '—'}</div>
-            </div>
-          </div>
-          <div className="row">
-            <span className={'badge badge-' + contratoColor(p.tipo_contrato)}>{labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato)}</span>
-            <span className={'badge ' + (p.estado === 'disponible' ? 'badge-green' : 'badge-gray')}>{p.estado?.toUpperCase()}</span>
-            {bajaProductividadFicha && <span className="badge badge-red">Baja productividad</span>}
-            {p.usuario_bloqueado_en ? (
-              <span className="badge badge-red" title={`Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}`}>Acceso bloqueado</span>
-            ) : p.auth_user_id ? (
-              <span className="badge badge-green">Tiene acceso al ERP</span>
-            ) : (
-              <span className="badge badge-gray">Sin acceso al ERP</span>
-            )}
-            <button className="btn btn-ghost btn-sm" title="Editar técnico" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit}</button>
-            <button className="btn btn-ghost btn-sm" title="Eliminar técnico" style={{color:'var(--danger)'}} onClick={() => eliminarTecnico(p)}>{I.trash}</button>
-          </div>
-        </div>
 
-        <div className="card">
-          <div style={{padding:'0 20px'}}>
-            <div className="tabs">
-              {tabs.map(t => (
-                <div key={t} className={'tab '+(fichaTab===t?'active':'')} onClick={() => setFichaTab(t)} style={{textTransform:'capitalize'}}>{t}</div>
-              ))}
-            </div>
-          </div>
+        <FichaHeader
+          onBack={() => { setSelTecnico(null); setFichaTab('ficha'); }}
+          backLabel="Volver a Personal Operativo"
+          initials={fichaIniciales(p.nombre)}
+          eyebrow={`Ficha${p.codigo ? ` · ${p.codigo}` : ''}`}
+          nombre={p.nombre}
+          subParts={[p.cargo, p.especialidad, p.fecha_ingreso ? `Ingreso ${p.fecha_ingreso}` : 'Ingreso —']}
+          pills={[
+            { tone: tonoContratoFicha, label: labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato) },
+            { tone: p.estado === 'disponible' ? 'green' : 'gray', label: p.estado?.toUpperCase() },
+            bajaProductividadFicha ? { tone: 'red', label: 'Baja productividad' } : null,
+            p.usuario_bloqueado_en
+              ? { tone: 'red', label: 'Acceso bloqueado', title: `Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}` }
+              : p.auth_user_id ? { tone: 'green', label: 'Tiene acceso al ERP' } : { tone: 'gray', label: 'Sin acceso al ERP' },
+          ]}
+          actions={<>
+            <button type="button" className="dx-ficha-btn" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit} Editar</button>
+            <button type="button" className="dx-ficha-btn is-danger" aria-label="Eliminar técnico" title="Eliminar técnico" onClick={() => eliminarTecnico(p)}>{I.trash}</button>
+          </>}
+        />
+        <FichaTabs tabs={tabsFicha} active={fichaTab} onChange={setFichaTab} />
 
-          {fichaTab === 'ficha' && (
-            <div className="card-body" style={{display:'flex', flexDirection:'column', gap:24}}>
+          {fichaTab === 'ficha' && (() => {
+            const hoyFicha = new Date().toISOString().slice(0, 10);
+            const asigFicha = asignacionesJornada.find(a => a.personal_id === p.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= hoyFicha && (!a.fecha_fin || a.fecha_fin >= hoyFicha));
+            const jornadaFichaTexto = !asigFicha ? null : (asigFicha.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asigFicha.dias_ciclo_trabajo}×${asigFicha.dias_ciclo_descanso}`);
+            const accesoPill = p.usuario_bloqueado_en
+              ? <FichaPill tone="red" title={`Bloqueado el ${p.usuario_bloqueado_en?.slice(0,10)} por ${p.usuario_bloqueado_por || '—'}`}>Acceso bloqueado</FichaPill>
+              : p.auth_user_id ? <FichaPill tone="green">Tiene acceso al ERP</FichaPill> : <FichaPill>Sin acceso al ERP</FichaPill>;
+            return (
+              <div className="dx-ficha-grid">
+                <div className="dx-ficha-col">
+                  <FichaCard icon={I.users} title="Datos personales">
+                    <FichaDL items={[
+                      { label: 'DNI', value: p.documento || p.dni },
+                      { label: 'Teléfono celular', value: p.telefono },
+                      { label: 'Email corporativo', value: p.email },
+                      { label: 'Correo personal', value: p.email_personal },
+                      { label: 'Celular / WhatsApp', value: p.celular_personal },
+                      p.especialidad ? { label: 'Especialidad principal', value: p.especialidad } : null,
+                      p.especialidad2 ? { label: 'Especialidad secundaria', value: p.especialidad2 } : null,
+                      p.perfil_campo ? { label: 'Perfil de campo', value: p.perfil_campo } : null,
+                    ]} />
+                  </FichaCard>
 
-              {/* Sección 1 — Datos personales */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos personales</div>
-                <div className="grid-2" style={{gap:12}}>
-                  {[
-                    ['DNI', p.documento || p.dni],
-                    ['Teléfono celular', p.telefono],
-                    ['Email corporativo', p.email],
-                    ['Correo personal', p.email_personal],
-                    ['Celular / WhatsApp', p.celular_personal],
-                    p.especialidad ? ['Especialidad principal', p.especialidad] : null,
-                    p.especialidad2 ? ['Especialidad secundaria', p.especialidad2] : null,
-                    p.perfil_campo ? ['Perfil de campo', p.perfil_campo] : null,
-                  ].filter(Boolean).map(([label, val]) => (
-                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  <FichaCard icon={I.clipboard} title="Datos laborales">
+                    <FichaDL items={[
+                      { label: 'Código de empleado', value: p.codigo },
+                      { label: 'Estado', value: p.estado ? <FichaPill tone={p.estado === 'disponible' || p.estado === 'activo' ? 'green' : 'gray'}>{p.estado.toUpperCase()}</FichaPill> : null },
+                      { label: 'Cargo', value: p.cargo },
+                      { label: 'Área', value: p.area },
+                      { label: 'Sede base', value: p.sede },
+                      p.supervisor ? { label: 'Supervisor', value: p.supervisor } : null,
+                      { label: 'Centro de costo', value: centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || null },
+                      { label: 'Turno asignado', value: turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : null },
+                      { label: 'Modalidad', value: labelOr(MODALIDAD_TRABAJO_LABELS, p.modalidad) },
+                      { label: 'Fecha de ingreso', value: p.fecha_ingreso },
+                      { label: 'Tipo de contrato', value: labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato) },
+                      { label: 'Régimen de jornada', value: (
+                        <>
+                          {jornadaFichaTexto || <span className="dx-ficha-help">Sin jornada asignada</span>}
+                          <div className="dx-ficha-pills">
+                            <FichaPill dot={false}>Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</FichaPill>
+                            <FichaPill dot={false}>Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</FichaPill>
+                          </div>
+                        </>
+                      ) },
+                      p.cargo_confianza ? { label: 'Cargo especial', value: <FichaPill tone="amber">Dirección o confianza</FichaPill> } : null,
+                    ]} />
+                  </FichaCard>
 
-              {/* Sección 2 — Datos laborales */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Datos laborales</div>
-                <div className="grid-2" style={{gap:12}}>
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Código de empleado</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{p.codigo || '—'}</div>
-                  </div>
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Estado</div>
-                    <span className={`badge ${p.estado === 'disponible' || p.estado === 'activo' ? 'badge-green' : 'badge-gray'}`}>{p.estado?.toUpperCase() || '—'}</span>
-                  </div>
-                  {[
-                    ['Cargo', p.cargo],
-                    ['Área', p.area],
-                    ['Sede base', p.sede],
-                    p.supervisor ? ['Supervisor', p.supervisor] : null,
-                    ['Centro de costo', centrosCosto?.find(c => c.id === p.centro_costo_id)?.nombre || p.centro_costo_id || null],
-                    ['Turno asignado', turnoP ? `${turnoP.nombre} (${turnoP.hora_entrada} — ${turnoP.hora_salida})` : null],
-                    ['Modalidad', labelOr(MODALIDAD_TRABAJO_LABELS, p.modalidad)],
-                    ['Fecha de ingreso', p.fecha_ingreso],
-                    ['Tipo de contrato', labelOr(TIPO_CONTRATO_LABELS, p.tipo_contrato)],
-                  ].filter(Boolean).map(([label, val]) => (
-                    <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                      <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                    </div>
-                  ))}
-                  <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Régimen de jornada</div>
-                    <div style={{fontWeight:500, fontSize:13, marginBottom:6}}>{(() => {
-                      const asig = asignacionesJornada.find(a => a.personal_id === p.id && a.tipo_tramo === 'normal' && a.fecha_inicio <= new Date().toISOString().slice(0, 10) && (!a.fecha_fin || a.fecha_fin >= new Date().toISOString().slice(0, 10)));
-                      if (!asig) return <span className="text-muted">Sin jornada asignada</span>;
-                      return asig.regimen_jornada === 'general' ? labelOr(REGIMEN_JORNADA_LABELS, 'general') : `Minero ${asig.dias_ciclo_trabajo}×${asig.dias_ciclo_descanso}`;
-                    })()}</div>
-                    <div className="row" style={{gap:6, flexWrap:'wrap'}}>
-                      <span className="badge badge-gray">Fiscalización: {fiscalizacionLabel(getTipoFiscalizacion(p))}</span>
-                      <span className="badge badge-gray">Vacaciones: {diasVacacionesPorRegimen(empresaConfig?.regimen_laboral_empresa || 'general')} días/año</span>
-                    </div>
-                  </div>
-                  {p.cargo_confianza && (
-                    <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                      <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cargo especial</div>
-                      <span className="badge badge-orange">Dirección o confianza</span>
-                    </div>
+                  {canFinanzas && (
+                    <FichaCard icon={I.dollar} title="Nómina y finanzas" extra={<FichaPill tone="violet" dot={false}>Solo con permiso de finanzas</FichaPill>}>
+                      <FichaDL items={[
+                        ['Sueldo base', (p.sueldo_base != null || p.monto_mensual != null) ? `S/ ${Number(p.sueldo_base ?? p.monto_mensual ?? 0).toLocaleString()}` : null],
+                        ['Horas base del mes', p.horas_base_mes ? `${p.horas_base_mes} h` : null],
+                        ['Tarifa por hora', p.tarifa_hora != null ? `S/ ${Number(p.tarifa_hora).toFixed(2)}/h` : null],
+                        ['Costo hora extra', p.costo_hora_extra != null ? `S/ ${Number(p.costo_hora_extra).toFixed(2)}/h` : null],
+                        ['Sistema pensionario', esHon ? null : p.sistema_pensionario],
+                        ['AFP', esHon ? null : p.afp_nombre],
+                        ['Tipo de comisión AFP', esHon ? null : p.tipo_comision_afp],
+                      ].filter(([, val]) => val != null).map(([label, value]) => ({ label, value }))} />
+                    </FichaCard>
+                  )}
+
+                  {canFinanzas && (
+                    <FichaCard icon={I.bank} title="Datos bancarios" extra={<button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('bancarios')}>Gestionar</button>}>
+                      <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
+                    </FichaCard>
+                  )}
+
+                  {canGestionarDocsRrhh && (
+                    <FichaCard icon={I.edit} title="Firma / Rúbrica" extra={<FichaPill tone="violet" dot={false}>Gestión de documentos RRHH</FichaPill>} className="dx-ficha-firma">
+                      <FileUpload
+                        entidadTipo="personal_operativo"
+                        entidadId={p.id}
+                        empresaId={empresa?.id}
+                        categoria={CATEGORIA_FIRMA_RUBRICA}
+                        multiple={false}
+                        soloImagenes
+                        soloUltimo
+                        subidoPor={role?.id}
+                      />
+                    </FichaCard>
                   )}
                 </div>
-              </div>
 
-              {/* Sección 3 — Nómina y finanzas */}
-              {canFinanzas && (
-                <div>
-                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Nómina y finanzas</div>
-                  <div className="grid-2" style={{gap:12}}>
-                    {[
-                      ['Sueldo base', (p.sueldo_base != null || p.monto_mensual != null) ? `S/ ${Number(p.sueldo_base ?? p.monto_mensual ?? 0).toLocaleString()}` : null],
-                      ['Horas base del mes', p.horas_base_mes ? `${p.horas_base_mes} h` : null],
-                      ['Tarifa por hora', p.tarifa_hora != null ? `S/ ${Number(p.tarifa_hora).toFixed(2)}/h` : null],
-                      ['Costo hora extra', p.costo_hora_extra != null ? `S/ ${Number(p.costo_hora_extra).toFixed(2)}/h` : null],
-                      ['Sistema pensionario', esHon ? null : p.sistema_pensionario],
-                      ['AFP', esHon ? null : p.afp_nombre],
-                      ['Tipo de comisión AFP', esHon ? null : p.tipo_comision_afp],
-                    ].filter(([, val]) => val != null).map(([label, val]) => (
-                      <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                        <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                        <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sección 4 — Datos bancarios */}
-              {canFinanzas && (
-                <DatosBancariosSection cuentas={p.datos_bancarios ?? []} readOnly />
-              )}
-
-              {/* Sección 4.5 — Firma / Rúbrica */}
-              {canGestionarDocsRrhh && (
-                <div>
-                  <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Firma / Rúbrica</div>
-                  <FileUpload
-                    entidadTipo="personal_operativo"
-                    entidadId={p.id}
-                    empresaId={empresa?.id}
-                    categoria={CATEGORIA_FIRMA_RUBRICA}
-                    multiple={false}
-                    soloImagenes
-                    soloUltimo
-                    subidoPor={role?.id}
-                  />
-                </div>
-              )}
-
-              {/* Sección 5 — Acceso al sistema */}
-              <div>
-                <div style={{fontWeight:600, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10}}>Acceso al sistema</div>
-                <div style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                  <div className="text-muted" style={{fontSize:11, marginBottom:6, textTransform:'uppercase', letterSpacing:'0.08em'}}>Cuenta de usuario vinculada</div>
-                  {p.usuario_bloqueado_en ? (
-                    <span className="badge badge-red">Acceso bloqueado</span>
-                  ) : p.auth_user_id ? (
-                    <div className="row" style={{gap:8, alignItems:'center'}}>
-                      <span className="badge badge-green">Tiene acceso al ERP</span>
-                      {p.email && <span className="text-muted" style={{fontSize:12}}>{p.email}</span>}
+                <aside className="dx-ficha-col" aria-label="Resumen del colaborador">
+                  <FichaCard title="Resumen">
+                    <FichaKV items={[
+                      { label: 'Habilitación', value: <FichaPill tone={{ no_habilitado:'red', alerta:'amber', habilitado:'green' }[habFicha.estado_global] || 'gray'}>{HAB_GLOBAL_LABEL[habFicha.estado_global] || 'Sin configurar'}</FichaPill> },
+                      { label: 'Contrato vigente', value: contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || 'Contrato') : 'Sin contrato digital', nil: !contratoDoc },
+                      contratoDoc ? { label: 'Vence', value: contratoDoc.fecha_vencimiento ? `${contratoDoc.fecha_vencimiento}${contratoInfo.dias != null ? ` · ${contratoInfo.dias} días` : ''}` : 'Indefinido' } : null,
+                      { label: 'Jornada', value: jornadaFichaTexto || 'Sin asignar', nil: !jornadaFichaTexto },
+                    ]} />
+                    <div className="dx-ficha-aside-acts">
+                      <button type="button" className="dx-ficha-btn is-sm" onClick={() => setFichaTab('documentos')}>{I.clipboard} {docsProblemaFicha.length ? `Ver documentos pendientes (${docsProblemaFicha.length})` : 'Ver documentos'}</button>
+                      <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('contrato')}>Ver contrato</button>
+                      {!jornadaFichaTexto && <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => setFichaTab('jornada')}>Asignar jornada</button>}
                     </div>
-                  ) : (
-                    <span className="badge badge-gray">Sin acceso al ERP</span>
-                  )}
-                </div>
+                  </FichaCard>
+                  <FichaCard title="Acceso al sistema">
+                    <FichaKV items={[
+                      { label: 'Cuenta de usuario', value: accesoPill },
+                      p.auth_user_id && p.email ? { label: 'Correo vinculado', value: p.email } : null,
+                    ]} />
+                  </FichaCard>
+                </aside>
               </div>
+            );
+          })()}
 
-            </div>
-          )}
-
-          {fichaTab === 'contrato' && (
-            <div className="card-body">
-              {!tieneContratoAprobado && (
-                <div style={{marginBottom:16, padding:'14px 16px', background: p.cargo_confianza ? 'var(--bg-subtle)' : 'rgba(229,62,62,0.08)', border:`1px solid ${p.cargo_confianza ? 'var(--border)' : 'rgba(229,62,62,0.3)'}`, borderRadius:8}}>
-                  {p.cargo_confianza ? (
-                    <div style={{fontSize:13, color:'var(--fg-muted)'}}>Este colaborador tiene cargo de dirección o confianza — no requiere contrato digital para el control de asistencia. Se recomienda igualmente registrar el contrato para trazabilidad.</div>
-                  ) : (
-                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
-                      <div>
-                        <div style={{fontWeight:600, fontSize:13, color:'var(--danger)', marginBottom:4}}>Sin contrato digital registrado</div>
-                        <div style={{fontSize:12, color:'var(--fg-muted)'}}>La asistencia está bloqueada hasta que RRHH suba y valide el contrato en la pestaña Documentos.</div>
-                      </div>
-                      <button type="button" className="btn btn-sm btn-primary" onClick={irADocumentoContrato}>Ir a Documentos → Subir contrato</button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="grid-2" style={{gap:16}}>
-                {[
-                  ['Tipo de contrato', condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null],
-                  ['Fecha de ingreso', p.fecha_ingreso],
-                  ['Cargo vigente', condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null],
-                  ['Remuneración vigente', condicionesContrato ? (canFinanzas ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null],
-                  ['Modalidad vigente', condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad || 'presencial') : null],
-                  ['Sede vigente', condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null],
-                  ['Área vigente', condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null],
-                  ['Contrato digital', contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || contratoDoc.nombre_archivo || 'Contrato') : 'Sin contrato digital'],
-                  ['Fecha inicio contrato', contratoDoc?.fecha_emision || '—'],
-                  ['Vencimiento contrato', contratoDoc?.fecha_vencimiento || '—'],
-                  ['Régimen de jornada', condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null],
-                ].map(([label, val]) => (
-                  <div key={label} style={{padding:'12px 16px', background:'var(--bg-subtle)', borderRadius:8}}>
-                    <div className="text-muted" style={{fontSize:11, marginBottom:4, textTransform:'uppercase', letterSpacing:'0.08em'}}>{label}</div>
-                    <div style={{fontWeight:500, fontSize:13}}>{val || '—'}</div>
-                  </div>
+          {fichaTab === 'contrato' && (() => {
+            const diasContratoVigente = (contratoDoc?.fecha_vencimiento && contratoInfo.dias !== null) ? contratoInfo.dias : null;
+            const textoVencimiento = diasContratoVigente === null ? null
+              : diasContratoVigente < 0 ? `Este contrato venció hace ${Math.abs(diasContratoVigente)} días.`
+              : diasContratoVigente === 0 ? 'Este contrato vence hoy.'
+              : `Este contrato vence en ${diasContratoVigente} días.`;
+            const historialContractual = personalDocumentos.filter(d => d.personal_id === p.id && (esDocContratoLocal(d) || esDocAdendaLocal(d)));
+            const hoy = new Date().toISOString().slice(0, 10);
+            const periodosMap = {};
+            const sinGrupo = [];
+            historialContractual.forEach(d => {
+              if (!d.periodo_grupo_id) {
+                sinGrupo.push(d);
+                return;
+              }
+              if (!periodosMap[d.periodo_grupo_id]) {
+                periodosMap[d.periodo_grupo_id] = {
+                  id: d.periodo_grupo_id,
+                  docs: [],
+                  activo: false,
+                  fechaInicio: d.fecha_emision || 'Sin fecha',
+                  fechaFin: d.fecha_vencimiento || 'Sin fecha'
+                };
+              }
+              periodosMap[d.periodo_grupo_id].docs.push(d);
+              if (d.activo) periodosMap[d.periodo_grupo_id].activo = true;
+              // Mantenemos la fecha del documento representativo
+              if (!periodosMap[d.periodo_grupo_id].docRepresentativo || (d.version > (periodosMap[d.periodo_grupo_id].docRepresentativo.version || 0))) {
+                  periodosMap[d.periodo_grupo_id].docRepresentativo = d;
+                  periodosMap[d.periodo_grupo_id].fechaInicio = d.fecha_emision || periodosMap[d.periodo_grupo_id].fechaInicio;
+                  periodosMap[d.periodo_grupo_id].fechaFin = d.fecha_vencimiento || periodosMap[d.periodo_grupo_id].fechaFin;
+              }
+            });
+            Object.values(periodosMap).forEach(g => {
+              const tieneActivoAprobado = g.docs.some(v => v.activo && v.estado_validacion === 'aprobado');
+              const fVenc = g.fechaFin !== 'Sin fecha' ? g.fechaFin : null;
+              const fIni = g.fechaInicio !== 'Sin fecha' ? g.fechaInicio : null;
+              if (fIni && fIni > hoy) {
+                g.badge_color = 'badge-cyan';
+                g.badge_texto = `Futuro · inicia ${fIni}`;
+              } else if (fVenc && fVenc < hoy && !g.activo) {
+                g.badge_color = 'badge-gray';
+                g.badge_texto = 'Archivado';
+              } else if ((!fVenc || fVenc >= hoy) && tieneActivoAprobado) {
+                g.badge_color = 'badge-green';
+                g.badge_texto = 'Período activo';
+              } else {
+                g.badge_color = 'badge-orange';
+                g.badge_texto = 'Pendiente de activación';
+              }
+            });
+            const periodos = Object.values(periodosMap).sort((a, b) => {
+              if (a.activo && !b.activo) return -1;
+              if (b.activo && !a.activo) return 1;
+              return (b.fechaInicio || '').localeCompare(a.fechaInicio || '');
+            });
+            const verEnDocumentos = (doc) => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); };
+            const filaContractual = (doc, anterior = false) => {
+              const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
+              const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
+              const esAdenda = esDocAdendaLocal(doc);
+              const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
+              const esFutura = doc.fecha_vigencia_cambio && doc.fecha_vigencia_cambio > hoy;
+              return (
+                <FichaDocRow
+                  key={doc.id}
+                  linked
+                  tone={esAdenda ? 'cyan' : anterior ? 'gray' : 'green'}
+                  icon={esAdenda ? I.copy : I.file}
+                  titulo={badgeStr}
+                  estado={<>
+                    <FichaPill tone={anterior ? 'gray' : fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion])}>{labelOr(ESTADO_VALIDACION_LABELS, doc.estado_validacion)}</FichaPill>
+                    {!anterior && doc.activo && <FichaPill tone="green" dot={false}>Activo</FichaPill>}
+                  </>}
+                  meta={[
+                    doc.fecha_emision ? `Emitido ${doc.fecha_emision}` : 'Sin emisión',
+                    <span className={tieneSnapshot ? undefined : 'is-muted'}>{resumen}</span>,
+                    doc.fecha_vigencia_cambio ? <span className={esFutura ? 'is-warn' : undefined}>{esFutura ? `Entra en vigor el ${doc.fecha_vigencia_cambio}` : `Vigente desde ${doc.fecha_vigencia_cambio}`}</span> : null,
+                  ]}
+                  historico={anterior}
+                  actions={<button type="button" className="dx-ficha-btn is-sm" onClick={() => verEnDocumentos(doc)}>Ver</button>}
+                />
+              );
+            };
+            return (
+              <div className="dx-ficha-stack">
+                {!tieneContratoAprobado && (p.cargo_confianza ? (
+                  <FichaAlert dashed>Este colaborador tiene cargo de dirección o confianza — no requiere contrato digital para el control de asistencia. Se recomienda igualmente registrar el contrato para trazabilidad.</FichaAlert>
+                ) : (
+                  <FichaAlert tone="danger" title="Sin contrato digital registrado" actions={<button type="button" className="dx-ficha-btn is-sm is-primary" onClick={irADocumentoContrato}>{I.upload} Subir contrato</button>}>
+                    La asistencia está bloqueada hasta que RRHH suba y valide el contrato en la pestaña Documentos.
+                  </FichaAlert>
                 ))}
-              </div>
-              <div style={{marginTop:16, padding:14, background:'var(--bg-subtle)', border:'1px solid var(--border)', borderRadius:8}} className="row">
-                <span className={`badge ${contratoInfo.badge}`}>{contratoInfo.texto}</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={irADocumentoContrato}>
-                  {contratoDoc ? 'Ver documento' : 'Subir contrato'}
-                </button>
-              </div>
-              {(() => {
-                const diasContratoVigente = (contratoDoc?.fecha_vencimiento && contratoInfo.dias !== null)
-                  ? contratoInfo.dias
-                  : null;
-                if (diasContratoVigente !== null && diasContratoVigente <= 30) {
-                  const texto = diasContratoVigente < 0
-                    ? `Este contrato venció hace ${Math.abs(diasContratoVigente)} días.`
-                    : diasContratoVigente === 0
-                    ? 'Este contrato vence hoy.'
-                    : `Este contrato vence en ${diasContratoVigente} días.`;
-                  return (
-                    <div style={{marginTop:14, padding:'10px 14px', background:'rgba(255,160,0,0.08)', border:'1px solid var(--orange)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12}}>
-                      <div style={{fontSize:12, color:'var(--orange)', fontWeight:500}}>⚡ {texto} ¿Deseas preparar la renovación?</div>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--orange)', flexShrink:0}} onClick={irADocumentoContrato}>→ Nuevo contrato</button>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              <div style={{marginTop:24}}>
-                <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:10}}>Línea de tiempo contractual</div>
-                {(() => {
-                  const historialContractual = personalDocumentos.filter(d => d.personal_id === p.id && (esDocContratoLocal(d) || esDocAdendaLocal(d)));
-                  if (historialContractual.length === 0) {
-                    return (
-                      <div style={{padding:20, textAlign:'center', border:'1px dashed var(--border)', borderRadius:8}}>
-                        <div className="text-muted" style={{fontSize:13, marginBottom:10}}>Sin contrato digital registrado</div>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={irADocumentoContrato}>Subir contrato</button>
-                      </div>
-                    );
-                  }
+                {textoVencimiento && diasContratoVigente <= 30 && (
+                  <FichaAlert tone="warn" icon={I.clock} title={textoVencimiento} actions={<button type="button" className="dx-ficha-btn is-sm is-amber" onClick={irADocumentoContrato}>{I.refresh} Nuevo contrato</button>}>
+                    ¿Deseas preparar la renovación?
+                  </FichaAlert>
+                )}
+                <FichaCard
+                  icon={I.file}
+                  title="Condiciones vigentes"
+                  meta={<FichaPill tone={fichaTonoDeBadge(contratoInfo.badge)}>{contratoInfo.texto}</FichaPill>}
+                  extra={<button type="button" className="dx-ficha-btn is-sm" onClick={irADocumentoContrato}>{contratoDoc ? <>{I.eye} Ver documento</> : <>{I.upload} Subir contrato</>}</button>}
+                >
+                  <FichaDL cols={3} items={[
+                    { label: 'Tipo de contrato', value: condicionesContrato ? labelOr(TIPO_CONTRATO_LABELS, condicionesContrato.tipo_contrato) : null },
+                    { label: 'Fecha de ingreso', value: p.fecha_ingreso },
+                    { label: 'Régimen de jornada', value: condicionesContrato ? labelOr(REGIMEN_JORNADA_LABELS, condicionesContrato.regimen_jornada) : null },
+                    { label: 'Cargo vigente', value: condicionesContrato ? (condicionesContrato.cargo_nombre || condicionesContrato.cargo) : null },
+                    { label: 'Remuneración vigente', value: condicionesContrato ? (canFinanzas ? `S/ ${Number(condicionesContrato.remuneracion_base || 0).toLocaleString()}` : '***') : null },
+                    { label: 'Modalidad vigente', value: condicionesContrato ? labelOr(MODALIDAD_TRABAJO_LABELS, condicionesContrato.modalidad || 'presencial') : null },
+                    { label: 'Sede vigente', value: condicionesContrato ? (condicionesContrato.sede_nombre || condicionesContrato.sede) : null },
+                    { label: 'Área vigente', value: condicionesContrato ? ((areasEmpresa.find(a => a.id === condicionesContrato.area_id)?.nombre) || condicionesContrato.area_nombre || condicionesContrato.area || null) : null },
+                    { label: 'Contrato digital', value: contratoDoc ? (docTipoInfoLocal(contratoDoc)?.nombre || contratoDoc.nombre_archivo || 'Contrato') : 'Sin contrato digital' },
+                    { label: 'Inicio del contrato', value: contratoDoc?.fecha_emision },
+                    { label: 'Vencimiento', value: contratoDoc?.fecha_vencimiento },
+                  ]} />
+                </FichaCard>
 
-                  const hoy = new Date().toISOString().slice(0, 10);
-                  
-                  // Agrupar por periodo_grupo_id
-                  const periodosMap = {};
-                  const sinGrupo = [];
-                  
-                  historialContractual.forEach(d => {
-                    if (!d.periodo_grupo_id) {
-                      sinGrupo.push(d);
-                      return;
-                    }
-                    if (!periodosMap[d.periodo_grupo_id]) {
-                      periodosMap[d.periodo_grupo_id] = {
-                        id: d.periodo_grupo_id,
-                        docs: [],
-                        activo: false,
-                        fechaInicio: d.fecha_emision || 'Sin fecha',
-                        fechaFin: d.fecha_vencimiento || 'Sin fecha'
-                      };
-                    }
-                    periodosMap[d.periodo_grupo_id].docs.push(d);
-                    if (d.activo) periodosMap[d.periodo_grupo_id].activo = true;
-                    // Mantenemos la fecha del documento representativo
-                    if (!periodosMap[d.periodo_grupo_id].docRepresentativo || (d.version > (periodosMap[d.periodo_grupo_id].docRepresentativo.version || 0))) {
-                        periodosMap[d.periodo_grupo_id].docRepresentativo = d;
-                        periodosMap[d.periodo_grupo_id].fechaInicio = d.fecha_emision || periodosMap[d.periodo_grupo_id].fechaInicio;
-                        periodosMap[d.periodo_grupo_id].fechaFin = d.fecha_vencimiento || periodosMap[d.periodo_grupo_id].fechaFin;
-                    }
-                  });
-
-                  const hoyStr = new Date().toISOString().slice(0, 10);
-                  Object.values(periodosMap).forEach(g => {
-                    const tieneActivoAprobado = g.docs.some(v => v.activo && v.estado_validacion === 'aprobado');
-                    const fVenc = g.fechaFin !== 'Sin fecha' ? g.fechaFin : null;
-                    const fIni = g.fechaInicio !== 'Sin fecha' ? g.fechaInicio : null;
-
-                    if (fIni && fIni > hoyStr) {
-                      g.badge_color = 'badge-cyan';
-                      g.badge_texto = `Futuro · inicia ${fIni}`;
-                    } else if (fVenc && fVenc < hoyStr && !g.activo) {
-                      g.badge_color = 'badge-gray';
-                      g.badge_texto = 'Archivado';
-                    } else if ((!fVenc || fVenc >= hoyStr) && tieneActivoAprobado) {
-                      g.badge_color = 'badge-green';
-                      g.badge_texto = 'Período activo';
-                    } else {
-                      g.badge_color = 'badge-orange';
-                      g.badge_texto = 'Pendiente de activación';
-                    }
-                  });
-
-                  const periodos = Object.values(periodosMap).sort((a, b) => {
-                    if (a.activo && !b.activo) return -1;
-                    if (b.activo && !a.activo) return 1;
-                    return (b.fechaInicio || '').localeCompare(a.fechaInicio || '');
-                  });
-
-                  return (
-                    <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                <FichaCard icon={I.activity} title="Línea de tiempo contractual" meta={periodos.length ? `${periodos.length} ${periodos.length === 1 ? 'período' : 'períodos'}` : null}>
+                  {historialContractual.length === 0 ? (
+                    <FichaEmpty icon={I.file} title="Sin contrato digital registrado" action={<button type="button" className="dx-ficha-btn is-primary" onClick={irADocumentoContrato}>{I.upload} Subir contrato</button>} />
+                  ) : (
+                    <div className="dx-ficha-stack" style={{gap:10}}>
                       {periodos.map(periodo => {
-                        const esVigente = periodo.activo;
                         const rangoLabel = [periodo.fechaInicio, periodo.fechaFin].filter(Boolean).join(' → ') || 'Sin fechas';
-                        
                         return (
-                          <details key={periodo.id} open={esVigente} style={{border:'1px solid var(--border)', borderRadius:8, overflow:'hidden'}}>
-                            <summary style={{padding:'10px 14px', cursor:'pointer', display:'flex', alignItems:'center', gap:8, userSelect:'none', background: esVigente ? 'var(--bg-subtle)' : 'transparent'}}>
-                              <span className={`badge ${periodo.badge_color}`}>{periodo.badge_texto}</span>
-                              <span style={{fontSize:12, color:'var(--fg-muted)'}}>{rangoLabel}</span>
+                          <details key={periodo.id} open={periodo.activo} className="dx-ficha-periodo">
+                            <summary>
+                              <span className="dx-ficha-periodo-rango">{rangoLabel}</span>
+                              <FichaPill tone={fichaTonoDeBadge(periodo.badge_color)}>{periodo.badge_texto}</FichaPill>
                             </summary>
-                            <div style={{padding:'0 14px 12px', display:'flex', flexDirection:'column', gap:8}}>
-                              {periodo.docs.sort((a, b) => (b.version || 0) - (a.version || 0)).map(doc => {
-                                const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
-                                const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
-                                const esAdenda = esDocAdendaLocal(doc);
-                                const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
-                                
-                                return (
-                                  <div key={doc.id} style={{padding:'10px 12px', border:'1px solid var(--border)', borderRadius:6, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', background: tieneSnapshot ? 'transparent' : 'var(--bg-subtle)'}}>
-                                    <div>
-                                      <div className="row" style={{gap:6, marginBottom:3}}>
-                                        <span className={`badge ${esAdenda ? 'badge-cyan' : 'badge-green'}`}>{badgeStr}</span>
-                                        <span className="text-muted" style={{fontSize:11}}>{doc.fecha_emision || 'Sin emisión'}</span>
-                                        <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>{doc.estado_validacion}</span>
-                                        {doc.activo && <span className="badge badge-green" style={{fontSize:10}}>Activo</span>}
-                                      </div>
-                                      <div style={{fontSize:12, fontWeight: tieneSnapshot ? 500 : 400, color: tieneSnapshot ? 'var(--fg)' : 'var(--fg-muted)'}}>{resumen}</div>
-                                      {doc.fecha_vigencia_cambio && (() => {
-                                        const esFutura = doc.fecha_vigencia_cambio > hoy;
-                                        return (
-                                          <div style={{fontSize:11, marginTop:3, color: esFutura ? 'var(--orange)' : 'var(--fg-muted)'}}>
-                                            {esFutura ? `Entra en vigor el ${doc.fecha_vigencia_cambio}` : `Vigente desde: ${doc.fecha_vigencia_cambio}`}
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); }}>Ver</button>
-                                  </div>
-                                );
-                              })}
+                            <div className="dx-ficha-periodo-body">
+                              {periodo.docs.sort((a, b) => (b.version || 0) - (a.version || 0)).map(doc => filaContractual(doc))}
                             </div>
                           </details>
                         );
                       })}
-                      
                       {sinGrupo.length > 0 && (
-                        <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)'}}>
-                          <div style={{fontSize: 12, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', marginBottom: 12}}>Documentos anteriores</div>
-                          <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                            {sinGrupo.sort((a, b) => String(b.fecha_emision || b.creado_en || '').localeCompare(String(a.fecha_emision || a.creado_en || ''))).map(doc => {
-                                const tieneSnapshot = Boolean(doc.condiciones_laborales && Object.keys(doc.condiciones_laborales).length > 0);
-                                const resumen = tieneSnapshot ? rrhhContratoResumen(doc, null, tiposDocumento) : 'Condiciones no registradas — documento previo al sistema';
-                                const esAdenda = esDocAdendaLocal(doc);
-                                const badgeStr = esAdenda ? 'Adenda' : `Contrato v${doc.version || 1}${doc.es_correccion ? ' (corrección)' : ''}`;
-                                
-                                return (
-                                  <div key={doc.id} style={{padding:'10px 12px', border:'1px solid var(--border)', borderRadius:6, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start', opacity: 0.8, background: 'var(--bg-subtle)'}}>
-                                    <div>
-                                      <div className="row" style={{gap:6, marginBottom:3}}>
-                                        <span className={`badge ${esAdenda ? 'badge-cyan' : 'badge-gray'}`}>{badgeStr}</span>
-                                        <span className="text-muted" style={{fontSize:11}}>{doc.fecha_emision || 'Sin emisión'}</span>
-                                        <span className={'badge badge-gray'}>{doc.estado_validacion}</span>
-                                      </div>
-                                      <div style={{fontSize:12, color: 'var(--fg-muted)'}}>{resumen}</div>
-                                    </div>
-                                    <button className="btn btn-ghost btn-sm" onClick={() => { setFichaTab('documentos'); setDocHighlightTipo(doc.tipo_documento_id || doc.tipo_doc); }}>Ver</button>
-                                  </div>
-                                );
-                            })}
-                          </div>
-                        </div>
+                        <>
+                          <div className="dx-ficha-dcat">Documentos anteriores</div>
+                          {sinGrupo.sort((a, b) => String(b.fecha_emision || b.creado_en || '').localeCompare(String(a.fecha_emision || a.creado_en || ''))).map(doc => filaContractual(doc, true))}
+                        </>
                       )}
                     </div>
-                  );
-                })()}
+                  )}
+                </FichaCard>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {fichaTab === 'jornada' && (() => {
             const asigsTrabajador = asignacionesJornada.filter(a => a.personal_id === p.id).sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
@@ -24558,37 +24476,43 @@ function RRHH_Operativo() {
               }
               finally { setSavingAsig(false); }
             };
+            const abrirNuevaAsignacion = () => {
+              setShowFormAsig(v => !v);
+              setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
+              setFormAsig(f => {
+                if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
+                const esCicloFicha = esRegimenMinero(p.regimen_jornada);
+                return {
+                  ...f,
+                  fecha_inicio: fechaInicioSugerida,
+                  fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '',
+                  regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
+                  fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
+                };
+              });
+            };
             return (
-              <div className="card-body">
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
-                  <div>
-                    <div style={{fontWeight:600, marginBottom:4}}>Asignación vigente</div>
-                    {asigActiva
-                      ? <div><span className="badge badge-green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</span>{' '}<span className="badge badge-blue">{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</span><span className="text-muted" style={{fontSize:12, marginLeft:8}}>desde {asigActiva.fecha_inicio}</span>{asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="text-muted" style={{fontSize:12, marginLeft:8}}>Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}</div>
-                      : <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
-                    }
-                  </div>
-                  <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => {
-                    setShowFormAsig(v => !v);
-                    setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError('');
-                    setFormAsig(f => {
-                      if (asigActiva) return { ...f, fecha_inicio: fechaInicioSugerida, fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '', regimen_jornada: presetDeAsignacion(asigActiva), fecha_inicio_ciclo: asigActiva.fecha_inicio_ciclo || '' };
-                      const esCicloFicha = esRegimenMinero(p.regimen_jornada);
-                      return {
-                        ...f,
-                        fecha_inicio: fechaInicioSugerida,
-                        fecha_fin: finContratoParaFecha(fechaInicioSugerida) || '',
-                        regimen_jornada: esCicloFicha ? p.regimen_jornada : 'general',
-                        fecha_inicio_ciclo: esCicloFicha ? (p.fecha_inicio_ciclo || '') : '',
-                      };
-                    });
-                  }}>+ Nueva asignación</button>
-                </div>
+              <div className="dx-ficha-stack">
+                <FichaCard
+                  icon={I.clock}
+                  title="Asignación vigente"
+                  extra={<button type="button" className="dx-ficha-btn is-sm is-primary" data-local-form="true" aria-expanded={showFormAsig} onClick={abrirNuevaAsignacion}>{I.plus} Nueva asignación</button>}
+                >
+                  {asigActiva ? (
+                    <div className="dx-ficha-pills">
+                      <FichaPill tone="green">{tipoTramoLabel[asigActiva.tipo_tramo] || asigActiva.tipo_tramo}</FichaPill>
+                      <FichaPill tone="cyan" dot={false}>{presetJornada[presetDeAsignacion(asigActiva)]?.label || 'Régimen inválido'}</FichaPill>
+                      <span className="dx-ficha-help">desde {asigActiva.fecha_inicio}</span>
+                      {asigActiva.regimen_jornada === 'ciclo_acumulativo' && <span className="dx-ficha-help">Ciclo {asigActiva.dias_ciclo_trabajo}×{asigActiva.dias_ciclo_descanso} · inicio {asigActiva.fecha_inicio_ciclo}</span>}
+                    </div>
+                  ) : (
+                    <FichaAlert dashed title="Sin jornada asignada">Asigna el régimen para que asistencia y nómina calculen sus días.</FichaAlert>
+                  )}
+                </FichaCard>
 
                 {showFormAsig && (
-                  <div className="card" style={{padding:16, marginBottom:20, background:'rgba(6,182,212,0.04)', border:'1px solid var(--cyan)'}}>
-                    <div style={{fontWeight:600, marginBottom:12}}>Nueva asignación</div>
-                    <div className="grid-2" style={{gap:12}}>
+                  <FichaCard icon={I.calendar} title="Nueva asignación">
+                    <div className="dx-ficha-fg">
                       <div className="input-group"><label>Tipo de tramo</label>
                         <select className="select" value={formAsig.tipo_tramo} onChange={e => setFormAsig(f => ({ ...f, tipo_tramo: e.target.value }))}>
                           <option value="normal">Normal</option>
@@ -24617,199 +24541,159 @@ function RRHH_Operativo() {
                       </>}
                       <div className="input-group" style={{gridColumn:'1/-1'}}><label>Motivo (opcional)</label><input className="input" type="text" value={formAsig.motivo} onChange={e => setFormAsig(f => ({ ...f, motivo: e.target.value }))} placeholder="Ej. Fin de proyecto en mina, baja a Lima en espera de nuevo destino"/></div>
                     </div>
-                    {formAsigError && <div className="alert alert-danger" style={{fontSize:12, marginTop:12}}>{formAsigError}</div>}
-                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div className="alert alert-warning" style={{fontSize:12, marginTop:8}}>Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</div>}
-
+                    {formAsigError && <div className="dx-ficha-error" role="alert" style={{marginTop:12}}>{formAsigError}</div>}
+                    {formAsig.tipo_tramo === 'suspension_perfecta' && <div style={{marginTop:8}}><FichaAlert tone="warn">Suspensión perfecta: los días de este tramo no generan remuneración. La relación laboral y la antigüedad continúan sin interrupción.</FichaAlert></div>}
                     {retroWallAsig && (
-                      <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginTop:8}}>
-                        <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
-                        <div>{retroWallAsig}</div>
-                        <div className="input-group">
-                          <label>Justificación para forzar el cambio (obligatoria)</label>
-                          <textarea className="input" rows={2} value={retroWallMotivoAsig} onChange={e=>setRetroWallMotivoAsig(e.target.value)} />
-                        </div>
-                        <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                          <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            disabled={savingAsig || !retroWallMotivoAsig.trim()}
-                            onClick={() => guardarAsig({ forzarOverride: true, motivoOverride: retroWallMotivoAsig.trim() })}
-                          >
-                            Forzar cambio (requiere autorización)
-                          </button>
-                        </div>
+                      <div style={{marginTop:12}}>
+                        <FichaAlert tone="danger" title="Cambio bloqueado por nómina ya procesada" role="alert">
+                          <div className="dx-ficha-retro">
+                            <div>{retroWallAsig}</div>
+                            <div className="input-group">
+                              <label>Justificación para forzar el cambio (obligatoria)</label>
+                              <textarea className="input" rows={2} value={retroWallMotivoAsig} onChange={e=>setRetroWallMotivoAsig(e.target.value)} />
+                            </div>
+                            <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                              <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallAsig(null); setRetroWallMotivoAsig(''); }}>Cancelar</button>
+                              <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={savingAsig || !retroWallMotivoAsig.trim()} onClick={() => guardarAsig({ forzarOverride: true, motivoOverride: retroWallMotivoAsig.trim() })}>Forzar cambio (requiere autorización)</button>
+                            </div>
+                          </div>
+                        </FichaAlert>
                       </div>
                     )}
-
-                    <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:12}}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError(''); }}>Cancelar</button>
-                      <button className="btn btn-primary btn-sm" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando...' : 'Guardar asignación'}</button>
+                    <div className="dx-ficha-form-acts">
+                      <button type="button" className="dx-ficha-btn" onClick={() => { setShowFormAsig(false); setRetroWallAsig(null); setRetroWallMotivoAsig(''); setFormAsigError(''); }}>Cancelar</button>
+                      <button type="button" className="dx-ficha-btn is-primary" data-local-form="true" onClick={() => guardarAsig()} disabled={savingAsig}>{savingAsig ? 'Guardando…' : 'Guardar asignación'}</button>
                     </div>
-                  </div>
+                  </FichaCard>
                 )}
 
                 {retroWallDeleteAsig && (
-                  <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8, marginBottom:16}}>
-                    <div style={{color:'var(--danger)', fontWeight:600}}>Eliminación bloqueada por nómina ya procesada</div>
-                    <div>{retroWallDeleteAsig}</div>
-                    <div className="input-group">
-                      <label>Justificación para forzar la eliminación (obligatoria)</label>
-                      <textarea className="input" rows={2} value={retroWallMotivoDeleteAsig} onChange={e=>setRetroWallMotivoDeleteAsig(e.target.value)} />
+                  <FichaAlert tone="danger" title="Eliminación bloqueada por nómina ya procesada" role="alert">
+                    <div className="dx-ficha-retro">
+                      <div>{retroWallDeleteAsig}</div>
+                      <div className="input-group">
+                        <label>Justificación para forzar la eliminación (obligatoria)</label>
+                        <textarea className="input" rows={2} value={retroWallMotivoDeleteAsig} onChange={e=>setRetroWallMotivoDeleteAsig(e.target.value)} />
+                      </div>
+                      <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                        <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig(''); setDeletingAsigId(null); }}>Cancelar</button>
+                        <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={!deletingAsigId || !retroWallMotivoDeleteAsig.trim()} onClick={() => eliminarAsig(deletingAsigId, { forzarOverride: true, motivoOverride: retroWallMotivoDeleteAsig.trim() })}>Forzar eliminación (requiere autorización)</button>
+                      </div>
                     </div>
-                    <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                      <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallDeleteAsig(null); setRetroWallMotivoDeleteAsig(''); setDeletingAsigId(null); }}>Cancelar</button>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        disabled={!deletingAsigId || !retroWallMotivoDeleteAsig.trim()}
-                        onClick={() => eliminarAsig(deletingAsigId, { forzarOverride: true, motivoOverride: retroWallMotivoDeleteAsig.trim() })}
-                      >
-                        Forzar eliminación (requiere autorización)
-                      </button>
-                    </div>
-                  </div>
+                  </FichaAlert>
                 )}
 
-                <div style={{fontWeight:600, marginBottom:8}}>Historial</div>
-                {asigsTrabajador.length === 0
-                  ? <div className="text-muted" style={{fontSize:13}}>Sin jornada asignada.</div>
-                  : <div className="table-wrap" style={{margin:'0 -16px'}}><table className="tbl" style={{fontSize:12, width:'100%'}}>
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Tipo</th><th>Régimen</th><th>Ciclo</th><th>Motivo</th><th>Acciones</th></tr></thead>
-                      <tbody>
-                        {asigsTrabajador.map((a, i) => {
-                          const isVigente = i === 0;
-                          return (
-                            <tr key={a.id}>
-                              <td>{a.fecha_inicio}</td>
-                              <td>{a.fecha_fin || <span className="badge badge-green" style={{fontSize:10}}>Vigente</span>}</td>
-                              <td>{a.tipo_tramo === 'suspension_perfecta' ? <span className="badge badge-orange">Suspensión</span> : <span className="badge badge-gray">Normal</span>}</td>
-                              <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
-                              <td>{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
-                              <td className="text-muted">{a.motivo || '—'}</td>
-                              <td>
-                                {isVigente && (
-                                  <button
-                                    className="btn btn-danger btn-sm"
-                                    onClick={() => eliminarAsig(a.id)}
-                                    disabled={deletingAsigId === a.id}
-                                    style={{padding:'2px 8px', fontSize:11}}
-                                  >
-                                    {deletingAsigId === a.id ? 'Eliminando...' : 'Eliminar'}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table></div>
-                }
-                <div className="alert alert-info" style={{fontSize:12, marginTop:16}}>La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</div>
+                <FichaCard flush icon={I.list} title="Historial" meta={asigsTrabajador.length ? asigsTrabajador.length : null}>
+                  {asigsTrabajador.length === 0 ? (
+                    <FichaEmpty compact text="Sin jornada asignada." />
+                  ) : (
+                    <FichaTable columns={['Desde', 'Hasta', 'Tipo', 'Régimen', 'Ciclo', 'Motivo', '']}>
+                      {asigsTrabajador.map((a, i) => {
+                        const isVigente = i === 0;
+                        return (
+                          <tr key={a.id}>
+                            <td className="is-strong">{a.fecha_inicio}</td>
+                            <td>{a.fecha_fin || <FichaPill tone="green">Vigente</FichaPill>}</td>
+                            <td>{a.tipo_tramo === 'suspension_perfecta' ? <FichaPill tone="amber" dot={false}>Suspensión</FichaPill> : <FichaPill dot={false}>Normal</FichaPill>}</td>
+                            <td>{a.regimen_jornada ? (presetJornada[presetDeAsignacion(a)]?.label || a.regimen_jornada) : '—'}</td>
+                            <td className="is-muted">{a.regimen_jornada === 'ciclo_acumulativo' ? `${a.dias_ciclo_trabajo}×${a.dias_ciclo_descanso} (inicio ${a.fecha_inicio_ciclo})` : '—'}</td>
+                            <td className="is-muted">{a.motivo || '—'}</td>
+                            <td className="is-acts">
+                              {isVigente && (
+                                <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={() => eliminarAsig(a.id)} disabled={deletingAsigId === a.id}>
+                                  {I.trash} {deletingAsigId === a.id ? 'Eliminando…' : 'Eliminar'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </FichaTable>
+                  )}
+                </FichaCard>
+                <FichaAlert tone="info">La fecha de ingreso del trabajador ({p.fecha_ingreso || '—'}) nunca se modifica al crear asignaciones de jornada.</FichaAlert>
               </div>
             );
           })()}
 
           {fichaTab === 'vacaciones' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen derecho a vacaciones remuneradas.
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="card-body" style={{paddingBottom:0}}>
-                    <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:16}}>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días disponibles</div><div className="kpi-value" style={{color:'var(--green)'}}>{solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, vacPersona).saldo}</div></div>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Días usados</div><div className="kpi-value">{vacPersona.filter(s => solicitudesRrhhService.ESTADOS_VACACIONES_DESCUENTA.includes(s.estado)).reduce((acc,s) => acc + (s.dias_habiles||0), 0)}</div></div>
-                      <div className="kpi-card" style={{padding:16}}><div className="kpi-label">Solicitudes</div><div className="kpi-value">{vacPersona.length}</div></div>
-                    </div>
-                  </div>
-                  <div className="table-wrap">
-                    <table className="tbl">
-                      <thead><tr><th>Desde</th><th>Hasta</th><th>Días calendario</th><th>Motivo</th><th>Estado</th></tr></thead>
-                      <tbody>
-                        {vacPersona.length === 0 && <tr><td colSpan={5} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes de vacaciones.</td></tr>}
-                        {vacPersona.map(v => (
-                          <tr key={v.id}>
-                            <td>{v.fecha_inicio}</td>
-                            <td>{v.fecha_fin}</td>
-                            <td className="num">{v.dias_habiles}</td>
-                            <td className="text-muted">{v.motivo}</td>
-                            <td><span className={'badge badge-'+(v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'orange':'red')}>{v.estado?.replace(/_/g,' ')}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen derecho a vacaciones remuneradas.</FichaAlert>
+            ) : (
+              <div className="dx-ficha-stack">
+                <FichaStats items={[
+                  { label: 'Días disponibles', value: solicitudesRrhhService.computarSaldoVacaciones(p.fecha_ingreso||null, p.dias_vacaciones_total??30, vacPersona).saldo, tone: 'green', note: 'acumulados a hoy' },
+                  { label: 'Días usados', value: vacPersona.filter(s => solicitudesRrhhService.ESTADOS_VACACIONES_DESCUENTA.includes(s.estado)).reduce((acc,s) => acc + (s.dias_habiles||0), 0), note: 'en el período' },
+                  { label: 'Solicitudes', value: vacPersona.length, note: 'registradas' },
+                ]} />
+                <FichaCard flush icon={I.calendar} title="Solicitudes de vacaciones" meta={vacPersona.length}>
+                  {vacPersona.length === 0 ? (
+                    <FichaEmpty icon={I.calendar} title="Sin solicitudes de vacaciones" text="Cuando el colaborador pida vacaciones aparecerán aquí con sus fechas y estado." />
+                  ) : (
+                    <FichaTable columns={['Desde', 'Hasta', { label: 'Días calendario', num: true }, 'Motivo', 'Estado']}>
+                      {vacPersona.map(v => (
+                        <tr key={v.id}>
+                          <td>{v.fecha_inicio}</td>
+                          <td>{v.fecha_fin}</td>
+                          <td className="is-num">{v.dias_habiles}</td>
+                          <td className="is-muted">{v.motivo}</td>
+                          <td><FichaPill tone={v.estado==='confirmada_rrhh'||v.estado==='activa'?'green':v.estado==='enviada'||v.estado==='aprobada_jefe'?'amber':'red'}>{v.estado?.replace(/_/g,' ')}</FichaPill></td>
+                        </tr>
+                      ))}
+                    </FichaTable>
+                  )}
+                </FichaCard>
+              </div>
+            )
           )}
-
           {fichaTab === 'licencias' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen derecho a licencias laborales remuneradas.
-                  </div>
-                </div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {licPersona.length === 0 && <tr><td colSpan={6} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin licencias registradas.</td></tr>}
-                      {licPersona.map(l => (
-                        <tr key={l.id}>
-                          <td style={{textTransform:'capitalize'}}>{l.tipo?.replace(/_/g,' ')}</td>
-                          <td>{l.fecha_inicio}</td>
-                          <td>{l.fecha_fin}</td>
-                          <td className="num">{l.dias_habiles}</td>
-                          <td className="text-muted">{l.motivo}</td>
-                          <td><span className={'badge badge-'+(l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'orange':'red')}>{l.estado?.replace(/_/g,' ')}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen derecho a licencias laborales remuneradas.</FichaAlert>
+            ) : (
+              <FichaCard flush icon={I.activity} title="Licencias" meta={licPersona.length}>
+                {licPersona.length === 0 ? (
+                  <FichaEmpty icon={I.activity} title="Sin licencias registradas" text="Descansos médicos, maternidad y paternidad aparecerán aquí." />
+                ) : (
+                  <FichaTable columns={['Tipo', 'Desde', 'Hasta', { label: 'Días', num: true }, 'Motivo', 'Estado']}>
+                    {licPersona.map(l => (
+                      <tr key={l.id}>
+                        <td className="is-strong is-cap">{l.tipo?.replace(/_/g,' ')}</td>
+                        <td>{l.fecha_inicio}</td>
+                        <td>{l.fecha_fin}</td>
+                        <td className="is-num">{l.dias_habiles}</td>
+                        <td className="is-muted">{l.motivo}</td>
+                        <td><FichaPill tone={l.estado==='confirmada_rrhh'||l.estado==='activa'?'green':l.estado==='enviada'?'amber':'red'}>{l.estado?.replace(/_/g,' ')}</FichaPill></td>
+                      </tr>
+                    ))}
+                  </FichaTable>
+                )}
+              </FichaCard>
+            )
           )}
-
           {fichaTab === 'solicitudes' && (
-            <>
-              {esHon ? (
-                <div className="card-body">
-                  <div style={{padding:16, background:'var(--bg-subtle)', borderRadius:8, color:'var(--fg-muted)', fontSize:13}}>
-                    Los trabajadores bajo modalidad de honorarios no tienen acceso a permisos laborales remunerados.
-                  </div>
-                </div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Motivo</th><th>Impacto nómina</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {permPersona.length === 0 && <tr><td colSpan={7} style={{textAlign:'center', color:'var(--fg-muted)', padding:24}}>Sin solicitudes registradas.</td></tr>}
-                      {permPersona.map(s => (
-                        <tr key={s.id}>
-                          <td style={{textTransform:'capitalize'}}>{s.tipo?.replace(/_/g,' ')}</td>
-                          <td>{s.fecha_inicio}</td>
-                          <td>{s.fecha_fin}</td>
-                          <td className="num">{s.dias_habiles}</td>
-                          <td className="text-muted">{s.motivo}</td>
-                          <td><span className={'badge '+(s.impacto_nomina==='sin_descuento'?'badge-green':s.impacto_nomina==='descuento_total'?'badge-red':'badge-orange')}>{s.impacto_nomina?.replace(/_/g,' ')}</span></td>
-                          <td><span className={'badge badge-'+(s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'orange':'red')}>{s.estado?.replace(/_/g,' ')}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
+            esHon ? (
+              <FichaAlert tone="neutral" dashed>Los trabajadores bajo modalidad de honorarios no tienen acceso a permisos laborales remunerados.</FichaAlert>
+            ) : (
+              <FichaCard flush icon={I.clipboard} title="Permisos y solicitudes" meta={permPersona.length}>
+                {permPersona.length === 0 ? (
+                  <FichaEmpty icon={I.clipboard} title="Sin solicitudes registradas" text="Permisos con o sin goce y compensaciones de horas aparecerán aquí con su impacto en nómina." />
+                ) : (
+                  <FichaTable columns={['Tipo', 'Desde', 'Hasta', { label: 'Días', num: true }, 'Motivo', 'Impacto en nómina', 'Estado']}>
+                    {permPersona.map(s => (
+                      <tr key={s.id}>
+                        <td className="is-strong is-cap">{s.tipo?.replace(/_/g,' ')}</td>
+                        <td>{s.fecha_inicio}</td>
+                        <td>{s.fecha_fin}</td>
+                        <td className="is-num">{s.dias_habiles}</td>
+                        <td className="is-muted">{s.motivo}</td>
+                        <td><FichaPill dot={false} tone={s.impacto_nomina==='sin_descuento'?'green':s.impacto_nomina==='descuento_total'?'red':'amber'}>{s.impacto_nomina?.replace(/_/g,' ')}</FichaPill></td>
+                        <td><FichaPill tone={s.estado==='confirmada_rrhh'||s.estado==='activa'?'green':s.estado==='enviada'||s.estado==='aprobada_jefe'?'amber':'red'}>{s.estado?.replace(/_/g,' ')}</FichaPill></td>
+                      </tr>
+                    ))}
+                  </FichaTable>
+                )}
+              </FichaCard>
+            )
           )}
 
           {fichaTab === 'documentos' && (() => {
@@ -24969,320 +24853,219 @@ function RRHH_Operativo() {
               finally { setInlineUploading(false); }
             };
 
-            return (
-              <div className="card-body">
+            const DOC_TONO = { vigente:'green', por_vencer:'amber', vencido:'red', en_revision:'cyan', rechazado:'red', falta:'gray', incompleto:'amber', historico:'gray', anulado:'gray' };
+            const docEstadoLabel = (req) => {
+              const base = req.estado === 'historico' ? 'Histórico' : (DOC_LBL[req.estado] || req.estado);
+              return req.estado === 'por_vencer' && req.dias_restantes != null ? `${base} (${req.dias_restantes} d)` : base;
+            };
+            const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc]);
+            const cerrarInline = () => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); };
+            const accionesEliminarArchivar = (doc) => puedeEliminarDocumentosRrhh ? [
+              { label: 'Archivar', icon: I.archive, onClick: () => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); } },
+              'sep',
+              { label: 'Eliminar', icon: I.trash, danger: true, onClick: () => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); } },
+            ] : [];
+            const pieRechazo = (doc, onConfirm) => ({ tone: 'rej', content: (
+              <>
+                <strong>Rechazar:</strong>
+                <input className="input" aria-label="Motivo de rechazo" placeholder="Motivo de rechazo…" value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
+                <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={!motivoRechazo.trim() || docValidandoId === doc.id} onClick={onConfirm}>Confirmar rechazo</button>
+                <button type="button" className="dx-ficha-btn is-sm is-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
+              </>
+            ) });
+            const pieValidacion = (doc, etiquetaAprobar = 'Validar') => ({ tone: 'val', content: (
+              <>
+                <strong>Pendiente de validación por RRHH</strong>
+                <span className="dx-ficha-sp" />
+                <button type="button" className="dx-ficha-btn is-sm is-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>{docValidandoId === doc.id ? 'Validando…' : etiquetaAprobar}</button>
+                <button type="button" className="dx-ficha-btn is-sm is-danger-text" disabled={docValidandoId === doc.id} onClick={() => setShowRechazoInput(doc.id)}>Rechazar</button>
+              </>
+            ) });
 
-                {/* ── Badge habilitacional ── */}
-                <div style={{marginBottom:20, display:'flex', alignItems:'center', gap:12, padding:'14px 18px', background:'var(--bg-subtle)', borderRadius:10, border:'1px solid var(--border-subtle)'}}>
-                  <span className={'badge ' + cfgBadge.cls} style={{fontSize:12, padding:'5px 16px', flexShrink:0, letterSpacing:'0.02em'}}
-                    title={tooltipBadge || undefined}>
-                    {cfgBadge.txt}
-                  </span>
-                  {tooltipBadge && (
-                    <span style={{fontSize:12, color:'var(--fg-muted)', flex:1}}>
-                      {docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id).join(' · ')}
-                    </span>
+            const renderRequisito = (req, chain) => {
+              const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
+              const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
+              const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
+              const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
+              const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
+              const hoy = new Date().toISOString().slice(0, 10);
+              const isHistorico = req.estado === 'historico';
+              const nombreTipo = req.tipo?.nombre || req.tipo_documento_id;
+              const tono = DOC_TONO[req.estado] || 'gray';
+              const enRechazo = req.doc && showRechazoInput === req.doc.id;
+              const puedeValidar = req.doc?.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh;
+              const meta = [
+                <>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}{req.es_habilitante ? ' · Habilitante' : ''}</>,
+                req.doc?.version ? `v${req.doc.version}` : null,
+                req.doc?.fecha_emision ? <>Emitido <b>{req.doc.fecha_emision}</b></> : null,
+                req.doc?.fecha_vencimiento ? <>Vence <b>{req.doc.fecha_vencimiento}</b></> : null,
+                req.doc?.dias_restantes != null ? <span className={req.doc.dias_restantes <= 0 ? 'is-err' : req.doc.dias_restantes <= 30 ? 'is-warn' : undefined}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span> : null,
+                !req.doc && req.tipo?.renovable ? 'Renovable' : null,
+                !req.doc && req.tipo?.permite_firma_trabajador ? 'Se envía a firma del trabajador' : null,
+              ];
+
+              // Estado de firma (solo documentos con snapshot laboral que admiten firma)
+              let pillFirma = null; let pieFirma = null; let botonFirma = null;
+              if (req.doc && canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false) {
+                const ef = req.doc?.estado_firma || 'no_requiere';
+                if (ef === 'pendiente_trabajador') {
+                  pieFirma = { tone: 'sig', content: (
+                    <>
+                      <strong>Esperando firma del trabajador</strong>
+                      <span className="dx-ficha-sp" />
+                      <button type="button" className="dx-ficha-btn is-sm is-ghost" title="Reenviar notificación al trabajador" onClick={async () => { await reenviarNotificacionFirmaCtx({ documentoId: req.doc.id, workerAuthUserId: p.auth_user_id }); addNotificacion('Notificacion reenviada.'); }}>Reenviar aviso</button>
+                      <button type="button" className="dx-ficha-btn is-sm is-danger-text" onClick={async () => { await cancelarEnvioFirmaCtx({ documentoId: req.doc.id }); addNotificacion('Envio a firma cancelado.'); }}>Cancelar envío</button>
+                    </>
+                  ) };
+                } else if (ef === 'firmado_trabajador') {
+                  pillFirma = <FichaPill tone="cyan">Firmado por el trabajador</FichaPill>;
+                } else {
+                  const yaSubioFirmado = personalDocumentos.some(pd =>
+                    pd.personal_id === p.id &&
+                    (pd.tipo_documento_id === req.doc.tipo_documento_id || pd.tipo_doc === req.doc.tipo_doc) &&
+                    pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
+                  );
+                  if (yaSubioFirmado) pillFirma = <FichaPill tone="amber">Firmado · Por validar</FichaPill>;
+                  else botonFirma = <button type="button" className="dx-ficha-btn is-sm is-cyan" onClick={() => { setModalEnviarFirmaDocOps({ doc: req.doc, nombre: nombreTipo }); setEnviarFirmaMensajeOps(''); }}>{I.send} Enviar a firma</button>;
+                }
+              }
+
+              const acciones = req.doc ? (
+                <>
+                  {req.doc.archivo_url && <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento(req, p)}>{I.eye} Ver</button>}
+                  <button type="button" className={'dx-ficha-btn is-sm' + (req.estado === 'rechazado' ? ' is-primary' : '')} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
+                  {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
+                    <button type="button" className="dx-ficha-btn is-sm is-amber" onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>{I.refresh} Renovar</button>
                   )}
+                  {botonFirma}
+                  <FichaMenu label={`Más acciones de ${nombreTipo}`} items={accionesEliminarArchivar(req.doc)} />
+                </>
+              ) : (
+                <button type="button" className="dx-ficha-btn is-sm is-primary" title={tooltipPredecesor || undefined} aria-label={`Subir ${nombreTipo}`} disabled={!hasAprobadoPredecesor} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>{I.upload} Subir documento</button>
+              );
+
+              const pies = [];
+              if (req.doc?.estado_validacion === 'rechazado' && req.doc.comentarios_validacion) pies.push({ tone: 'rej', content: <><strong>Rechazado:</strong> <span>{req.doc.comentarios_validacion}</span></> });
+              if (puedeValidar) pies.push(enRechazo ? pieRechazo(req.doc, () => handleValidar(req.doc.id, 'rechazado')) : pieValidacion(req.doc));
+              if (pieFirma) pies.push(pieFirma);
+
+              return (
+                <div key={req.tipo_documento_id} className="dx-ficha-crow">
+                  {chain.length > 1 && <div className="dx-ficha-node" style={{'--c': isHistorico ? 'var(--dx-ficha-border)' : `var(--dx-ficha-${tono === 'gray' ? 'border' : tono})`}}><i /></div>}
+                  <div className="dx-ficha-crow-main">
+                    <FichaDocRow
+                      tone={tono}
+                      titulo={nombreTipo}
+                      estado={<><FichaPill tone={tono}>{docEstadoLabel(req)}</FichaPill>{pillFirma}</>}
+                      meta={meta}
+                      archivo={req.doc?.nombre_archivo}
+                      hint={!req.doc ? (tooltipPredecesor || (tPredecesor ? `Requiere el ${tPredecesor.nombre} aprobado · cumplido` : null)) : null}
+                      hintTone={tooltipPredecesor ? 'warn' : 'ok'}
+                      actions={acciones}
+                      footers={pies}
+                      missing={!req.doc}
+                      highlight={destacado}
+                      historico={isHistorico}
+                    />
+                    {docsVinculados.map(dv => {
+                      const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
+                      const dvCambios = [
+                        dv.cambio_cargo && 'Cargo',
+                        dv.cambio_remuneracion && 'Remuneración',
+                        dv.cambio_modalidad && 'Modalidad',
+                        dv.cambio_sede && 'Sede',
+                        dv.cambio_otro && 'Otro'
+                      ].filter(Boolean);
+                      let dvCond = {};
+                      try { dvCond = typeof dv.condiciones_json === 'string' ? JSON.parse(dv.condiciones_json) : (dv.condiciones_json || {}); } catch(e){}
+                      const dvResumen = [
+                        dvCambios.includes('Cargo') ? `Cargo: ${dvCond.cargo || '-'}` : '',
+                        dvCambios.includes('Remuneración') ? `Sueldo: S/ ${Number(dvCond.remuneracion_base || 0).toLocaleString()}` : '',
+                        dvCambios.includes('Modalidad') ? `Modalidad: ${dvCond.modalidad || '-'}` : '',
+                        dvCambios.includes('Sede') ? `Sede: ${dvCond.sede || '-'}` : '',
+                        dvCambios.includes('Otro') && dvCond.descripcion_cambio ? dvCond.descripcion_cambio : '',
+                      ].filter(Boolean).join(' · ') || 'Documento vinculado';
+                      const dvVigenciaFutura = dv.fecha_vigencia_cambio && dv.fecha_vigencia_cambio > hoy;
+                      return (
+                        <FichaDocRow
+                          key={dv.id}
+                          linked
+                          tone={fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion])}
+                          icon={I.copy}
+                          titulo={dvTipo?.nombre || dv.tipo_doc}
+                          estado={<FichaPill tone={fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion])}>{labelOr(ESTADO_VALIDACION_LABELS, dv.estado_validacion)}</FichaPill>}
+                          meta={[
+                            dvResumen,
+                            dv.fecha_emision ? `Emitido ${dv.fecha_emision}` : null,
+                            dvVigenciaFutura ? <span className="is-info">Vigente desde {dv.fecha_vigencia_cambio}</span> : null,
+                            dv.fecha_vencimiento ? `Vence ${dv.fecha_vencimiento}` : null,
+                          ]}
+                          actions={dv.archivo_url ? <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ doc: dv, tipo: dvTipo, tipo_documento_id: dv.tipo_documento_id, estado: dv.estado_validacion }, p)}>{I.eye} Ver</button> : null}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
+              );
+            };
 
-                {/* Documentos requeridos por cargo */}
-                {(!p.cargo_id) ? (
-                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
-                    <div style={{fontWeight:600, marginBottom:8}}>Este colaborador no tiene cargo asignado</div>
-                    <div className="text-muted" style={{fontSize:13, marginBottom:16}}>Asigna un cargo para determinar sus requisitos documentales.</div>
-                    <button className="btn btn-primary btn-sm" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>Editar ficha</button>
-                  </div>
-                ) : (!hab.docs || hab.docs.length === 0) ? (
-                  <div style={{marginBottom:20, padding:'24px', textAlign:'center', background:'var(--bg-subtle)', borderRadius:8, border:'1px dashed var(--border)'}}>
-                    <div style={{fontWeight:600, marginBottom:8}}>El cargo "{p.cargo}" aún no tiene requisitos documentales</div>
-                    <div className="text-muted" style={{fontSize:13}}>Ve a Maestros Base para configurar la matriz de requisitos.</div>
-                  </div>
-                ) : (
-                  <div style={{marginBottom:20}}>
-                    <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12}}>
-                      <div style={{fontWeight:700, fontSize:11, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.07em'}}>Requisitos del cargo</div>
-                      {hab.docs.length > 0 && <span style={{fontSize:11, color:'var(--fg-muted)'}}>{hab.docs.filter(d => d.doc).length} / {hab.docs.length}</span>}
-                    </div>
-                    <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                      {(() => {
-
-                        const groupedDocs = {};
-                        hab.docs.forEach(req => {
-                          const cat = req.tipo?.categoria || 'Otros';
-                          if (!groupedDocs[cat]) groupedDocs[cat] = [];
-                          groupedDocs[cat].push(req);
-                        });
-                        Object.entries(groupedDocs).forEach(([cat, catDocs]) => {
-                          const chains = [];
-                          const added = new Set();
-                          const buildChain = (doc, currentChain = []) => {
-                            if (added.has(doc.tipo_documento_id)) return currentChain;
-                            currentChain.push(doc);
-                            added.add(doc.tipo_documento_id);
-                            const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
-                            for (const th of tHijos) {
-                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id);
-                              if (docHijo) return buildChain(docHijo, currentChain);
-                            }
-                            return currentChain;
-                          };
-                          const heads = catDocs.filter(d => !d.tipo?.documento_padre_tipo_id);
-                          heads.forEach(head => {
-                            const chain = buildChain(head);
-                            if (chain.length > 0) chains.push(chain);
-                          });
-                          catDocs.forEach(doc => {
-                            if (!added.has(doc.tipo_documento_id)) {
-                              if (doc.tipo?.documento_padre_tipo_id && hab.docs.some(d => d.tipo_documento_id === doc.tipo.documento_padre_tipo_id)) return;
-                              const chain = buildChain(doc);
-                              if (chain.length > 0) chains.push(chain);
-                            }
-                          });
-                                                                              chains.sort((a, b) => {
-                            const reqA = a[0];
-                            const reqB = b[0];
-                            const nA = (reqA.tipo?.nombre || reqA.tipo_documento_id || '').toLowerCase();
-                            const nB = (reqB.tipo?.nombre || reqB.tipo_documento_id || '').toLowerCase();
-                            
-                            const getW = (n) => {
-                              if (n.includes('primigenio')) return 1;
-                              if (n.includes('laboral')) return 2;
-                              if (n.includes('adenda')) return 3;
-                              return 99;
-                            };
-                            
-                            const wA = getW(nA);
-                            const wB = getW(nB);
-                            
-                            if (wA !== wB) return wA - wB;
-                            return nA.localeCompare(nB);
-                          });
-                          groupedDocs[cat] = chains;
-                        });
-
-                        return (
-                          <div style={{display:'flex', flexDirection:'column', gap:24}}>
-                            {Object.entries(groupedDocs).map(([catName, chains]) => (
-                              <div key={catName} style={{display:'flex', flexDirection:'column', gap:10}}>
-                                <div style={{fontSize: 13, fontWeight: 700, color: 'var(--fg)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 6, marginBottom: 4, textTransform:'uppercase', letterSpacing:'0.05em'}}>{catName}</div>
-                                {chains.map((chain, chainIdx) => (
-                                  <div key={'chain-'+chainIdx} style={{ display: 'flex', flexDirection: 'column', position: 'relative', gap: 12 }}>
-                                    {chain.length > 1 && (
-                                      <div style={{ position: 'absolute', top: 30, bottom: 30, left: 15, width: 2, background: 'var(--border)', zIndex: 0 }} />
-                                    )}
-                                    {chain.map((req, idx) => {
-                                      const destacado = docHighlightTipo && req.tipo_documento_id === docHighlightTipo;
-                                      const tPredecesor = tiposDocumento.find(t => t.tipo_sucesor_id === req.tipo_documento_id || t.tipo_sucesor_id === req.tipo?.id);
-                                      const hasAprobadoPredecesor = tPredecesor ? docsPersona.some(d => (d.tipo_documento_id === tPredecesor.id || d.tipo_doc === tPredecesor.id || d.tipo_doc === tPredecesor.codigo || d.tipo_doc === tPredecesor.nombre) && d.estado_validacion === 'aprobado' && d.activo) : true;
-                                      const tooltipPredecesor = tPredecesor && !hasAprobadoPredecesor ? `Primero debes cargar el ${tPredecesor.nombre} aprobado para este colaborador.` : null;
-                                      const tiposHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === req.tipo_documento_id && t.estado === 'activo');
-                                      const docPadreValidado = req.doc?.estado_validacion === 'aprobado';
-                                      const docsVinculados = docsPersona.filter(d => d.activo && d.contrato_referencia_id === req.doc?.id).sort((a, b) => (a.creado_en || '').localeCompare(b.creado_en || ''));
-                                                                            const hoy = new Date().toISOString().slice(0, 10);
-                                      const _borderColor = {vigente:'#22c55e',por_vencer:'#f97316',vencido:'#ef4444',en_revision:'#06b6d4',rechazado:'#ef4444',falta:'#d1d5db',incompleto:'#f97316'}[req.estado] || '#d1d5db';
-                                      const isHistorico = req.estado === 'historico';
-                                      const opacityStyle = isHistorico ? 0.65 : 1;
-
-                                      return (
-                                        <div key={req.tipo_documento_id} style={{ display: 'flex', gap: 12, position: 'relative', zIndex: 1 }}>
-                                          {chain.length > 1 && (
-                                            <div style={{ width: 32, flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: 16 }}>
-                                              <div style={{ width: 10, height: 10, borderRadius: '50%', background: isHistorico ? 'var(--border)' : 'var(--primary)', border: '2px solid var(--bg)' }} />
-                                            </div>
-                                          )}
-                                          <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{background:destacado ? 'rgba(251,191,36,0.12)' : 'var(--bg-subtle)', borderRadius:10, border:destacado ? '1px solid var(--orange)' : '1px solid var(--border-subtle)', borderLeft:destacado ? '4px solid var(--orange)' : `4px solid ${_borderColor}`, opacity: opacityStyle}}>
-                                              <div style={{display:'flex', alignItems:'flex-start', justifyContent:'space-between', padding:'12px 16px', gap:12, flexWrap:'wrap'}}>
-                                              <div style={{flex:1, minWidth:0}}>
-                                                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap'}}>
-                                                  <span style={{fontWeight:700, fontSize:14}}>{req.tipo?.nombre || req.tipo_documento_id}</span>
-                                                  <span className={'badge ' + (DOC_BDG[req.estado] || 'badge-gray')} style={{fontSize:10}}>{DOC_LBL[req.estado] || req.estado}{req.estado === 'por_vencer' && req.dias_restantes != null ? ` (${req.dias_restantes}d)` : ''}</span>
-                                                </div>
-                                                <div style={{fontSize:11, color:'var(--fg-muted)', display:'flex', gap:10, flexWrap:'wrap'}}>
-                                                  <span style={{fontWeight:500}}>{!req.obligatorio ? 'Opcional' : 'Obligatorio'}</span>
-                                                  {req.doc?.version && <span>v{req.doc.version}</span>}
-                                                  {req.doc?.fecha_vencimiento && <span>Vence: {req.doc.fecha_vencimiento}</span>}
-                                                  {req.doc?.dias_restantes != null && <span style={{color: req.doc.dias_restantes <= 0 ? 'var(--red)' : req.doc.dias_restantes <= 30 ? 'var(--orange)' : 'inherit'}}>{req.doc.dias_restantes <= 0 ? 'Vencido' : `Faltan ${req.doc.dias_restantes} días`}</span>}
-                                                </div>
-                                                {req.doc && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:6}}>{req.doc.nombre_archivo}</div>}
-                                              </div>
-                                              
-                                              {req.doc ? (
-                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                  {req.doc.estado_validacion === 'pendiente' && req.tipo?.requiere_validacion && canGestionarDocsRrhh && (
-                                                    showRechazoInput === req.doc.id ? (
-                                                      <>
-                                                        <input className="input" style={{fontSize:12, padding:'4px 8px', minWidth:160}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
-                                                        <button className="btn btn-sm btn-danger" disabled={!motivoRechazo.trim() || docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'rechazado')}>Confirmar</button>
-                                                        <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
-                                                      </>
-                                                    ) : (
-                                                      <>
-                                                        <button className="btn btn-sm btn-primary" disabled={docValidandoId === req.doc.id} onClick={() => handleValidar(req.doc.id, 'aprobado')}>
-                                                          {docValidandoId === req.doc.id ? '...' : 'Validar'}
-                                                        </button>
-                                                        <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} disabled={docValidandoId === req.doc.id} onClick={() => setShowRechazoInput(req.doc.id)}>Rechazar</button>
-                                                      </>
-                                                    )
-                                                  )}
-                                                   {req.doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento(req, p)}>Ver</button>}
-                                                   <button className="btn btn-sm" onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Actualizar</button>
-                                                   {puedeEliminarDocumentosRrhh && <>
-                                                     <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc: req.doc, persona: p }); }}>{I.trash} Eliminar</button>
-                                                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc: req.doc, persona: p }); }}>{I.archive} Archivar</button>
-                                                   </>}
-                                                   {req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
-                                                    <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, hab.docs, p, 'nuevo_contrato')}>Renovar</button>
-                                                  )}
-                                                  {canGestionarDocsRrhh && req.tipo?.captura_snapshot_laboral && !req.tipo?.documento_padre_tipo_id && req.tipo?.permite_firma_trabajador !== false && (() => {
-                                                    const ef = req.doc?.estado_firma || 'no_requiere';
-                                                    if (ef === 'pendiente_trabajador') return (
-                                                      <>
-                                                        <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Esperando firma</span>
-                                                        <button className="btn btn-sm btn-ghost" style={{fontSize:11}} title="Reenviar notificacion al trabajador" onClick={async () => { await reenviarNotificacionFirmaCtx({ documentoId: req.doc.id, workerAuthUserId: p.auth_user_id }); addNotificacion('Notificacion reenviada.'); }}>Reenviar</button>
-                                                        <button className="btn btn-sm btn-ghost" style={{fontSize:11, color:'var(--danger)'}} onClick={async () => { await cancelarEnvioFirmaCtx({ documentoId: req.doc.id }); addNotificacion('Envio a firma cancelado.'); }}>Cancelar</button>
-                                                      </>
-                                                    );
-                                                    if (ef === 'firmado_trabajador') return (
-                                                      <span className="badge badge-cyan" style={{fontSize:10, flexShrink:0}}>Firmado por trabajador</span>
-                                                    );
-                                                    const yaSubioFirmado = personalDocumentos.some(pd =>
-                                                      pd.personal_id === p.id &&
-                                                      (pd.tipo_documento_id === req.doc.tipo_documento_id || pd.tipo_doc === req.doc.tipo_doc) &&
-                                                      pd.estado_validacion === 'pendiente' && pd.subido_desde === 'mobile' && pd.activo === false
-                                                    );
-                                                    if (yaSubioFirmado) return (
-                                                      <span className="badge badge-orange" style={{fontSize:10, flexShrink:0}}>Firmado · Por validar</span>
-                                                    );
-                                                    return (
-                                                      <button className="btn btn-sm btn-ghost" style={{color:'var(--cyan)', borderColor:'rgba(0,178,198,0.4)', fontSize:11}} onClick={() => { setModalEnviarFirmaDocOps({ doc: req.doc, nombre: req.tipo?.nombre || req.tipo_documento_id }); setEnviarFirmaMensajeOps(''); }}>
-                                                        Enviar a firma
-                                                      </button>
-                                                    );
-                                                  })()}
-                                                </div>
-                                              ) : (
-                                                <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                  <button className="btn btn-sm btn-primary" title={tooltipPredecesor || undefined} disabled={!hasAprobadoPredecesor} style={{opacity: hasAprobadoPredecesor ? 1 : 0.5}} onClick={() => handleOpenInlineUpload(req, hab.docs, p)}>Subir {req.tipo?.nombre || req.tipo_documento_id}</button>
-                                                </div>
-                                              )}
-                                              </div>
-                                              
-                                              {req.doc?.estado_validacion === 'rechazado' && req.doc.comentarios_validacion && (
-                                                <div style={{padding:'8px 16px', background:'rgba(239,68,68,0.08)', borderTop:'1px solid rgba(239,68,68,0.2)', fontSize:12, color:'var(--red)'}}>
-                                                  <strong>Rechazado:</strong> {req.doc.comentarios_validacion}
-                                                </div>
-                                              )}
-
-                                            </div>
-
-                                            {docsVinculados.map(dv => {
-                                              const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id || t.id === dv.tipo_doc || t.codigo === dv.tipo_doc || t.nombre === dv.tipo_doc);
-                                              const dvCambios = [
-                                                dv.cambio_cargo && 'Cargo',
-                                                dv.cambio_remuneracion && 'Remuneración',
-                                                dv.cambio_modalidad && 'Modalidad',
-                                                dv.cambio_sede && 'Sede',
-                                                dv.cambio_otro && 'Otro'
-                                              ].filter(Boolean);
-                                              let dvCond = {};
-                                              try { dvCond = typeof dv.condiciones_json === 'string' ? JSON.parse(dv.condiciones_json) : (dv.condiciones_json || {}); } catch(e){}
-                                              const dvResumen = [
-                                                dvCambios.includes('Cargo') ? `Cargo: ${dvCond.cargo || '-'}` : '',
-                                                dvCambios.includes('Remuneración') ? `Sueldo: S/ ${Number(dvCond.remuneracion_base || 0).toLocaleString()}` : '',
-                                                dvCambios.includes('Modalidad') ? `Modalidad: ${dvCond.modalidad || '-'}` : '',
-                                                dvCambios.includes('Sede') ? `Sede: ${dvCond.sede || '-'}` : '',
-                                                dvCambios.includes('Otro') && dvCond.descripcion_cambio ? dvCond.descripcion_cambio : '',
-                                              ].filter(Boolean).join(' · ') || 'Documento vinculado';
-                                              const dvVigenciaFutura = dv.fecha_vigencia_cambio && dv.fecha_vigencia_cambio > hoy;
-                                              return (
-                                                <div key={dv.id} style={{marginTop:8, marginLeft: chain.length > 1 ? 52 : 20, border:'1px solid var(--border)', borderLeft:'3px solid #06b6d4', borderRadius:10, overflow:'hidden', opacity: opacityStyle}}>
-                                                  <div style={{padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
-                                                  <div style={{flex:1, minWidth:0}}>
-                                                    <div style={{display:'flex', gap:6, alignItems:'center', marginBottom:4, flexWrap:'wrap'}}>
-                                                      <span style={{fontWeight:700, fontSize:13}}>{dvTipo?.nombre || dv.tipo_doc}</span>
-                                                      <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[dv.estado_validacion] || 'badge-gray')} style={{fontSize:10}}>{labelOr(ESTADO_VALIDACION_LABELS, dv.estado_validacion)}</span>
-                                                      {dv.fecha_emision && <span className="text-muted" style={{fontSize:11}}>Emitido: {dv.fecha_emision}</span>}
-                                                    </div>
-                                                    <div style={{fontSize:12, color:'var(--fg-muted)'}}>{dvResumen}</div>
-                                                    {dvVigenciaFutura && <div style={{fontSize:11, color:'var(--cyan)', marginTop:2}}>Vigente desde {dv.fecha_vigencia_cambio}</div>}
-                                                    {dv.fecha_vencimiento && <div style={{fontSize:11, color:'var(--fg-muted)', marginTop:2}}>Vence: {dv.fecha_vencimiento}</div>}
-                                                  </div>
-                                                  <div style={{display:'flex', gap:5, flexShrink:0, flexWrap:'wrap', alignItems:'flex-start'}}>
-                                                    {dv.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ doc: dv, tipo: dvTipo, tipo_documento_id: dv.tipo_documento_id, estado: dv.estado_validacion }, p)}>Ver</button>}
-                                                  </div>
-                                                  </div>
-                                                </div>
-                                              );
-                                            })}
-
-                                            
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+            return (
+              <>
+                {inlineUploadReq && (
+                  <div className="modal-backdrop" onClick={cerrarInline}>
+                    <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label={`Subir ${inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}`} onClick={e => e.stopPropagation()} style={{maxWidth:640}}>
+                      <FichaModalHead
+                        icon={inlineUploadReq.doc ? I.file : I.upload}
+                        tone={inlineUploadReq.doc ? 'green' : 'cyan'}
+                        eyebrow={`Requisito del cargo · ${p.nombre}`}
+                        title={`${inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Nuevo período de' : inlineUploadReq.doc ? 'Actualizar' : 'Subir'} ${inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}`}
+                        sub={inlineUploadReq.doc ? `Documento actual: versión ${inlineUploadReq.doc?.version || 1}` : 'Nuevo documento · versión 1'}
+                        onClose={cerrarInline}
+                      />
+                      <form onSubmit={handleSubirInline} className="dx-ficha-modal-form">
+                        <div className="dx-ficha-mb">
+                          {visorUrl && (
+                            <div className="dx-ficha-cur">
+                              <span className="dx-ficha-dic is-sm is-green" aria-hidden="true">{I.file}</span>
+                              <div className="dx-ficha-cur-t"><b>Documento actual · v{inlineUploadReq.doc?.version}</b><span>{inlineUploadReq.doc?.nombre_archivo}</span></div>
+                              <button type="button" className="dx-ficha-btn is-sm" onClick={async () => {
+                                try {
+                                  const ref = inlineUploadReq.doc?.storage_path || inlineUploadReq.doc?.archivo_url;
+                                  if (ref && isSupabaseConfigured && isSupabaseConfigured()) {
+                                    const svc = await import('./services/personalDocumentosService.js');
+                                    const freshUrl = await svc.renovarUrlDocumento(ref);
+                                    window.open(freshUrl, '_blank');
+                                  } else {
+                                    window.open(visorUrl, '_blank');
+                                  }
+                                } catch { window.open(visorUrl, '_blank'); }
+                              }}>{I.eye} Ver archivo</button>
+                            </div>
+                          )}
+                          {inlineUploadReq.tipo?.renovable && inlineUploadReq.tipo?.permite_firma_trabajador && (
+                            <FichaAlert tone="ok" icon={I.send}>Renovación de contrato. El trabajador recibirá una notificación para firmarlo desde su app.</FichaAlert>
+                          )}
+                          {inlineUploadReq.tipo?.nombre === 'Contrato Primigenio' && (
+                            <FichaAlert tone="info">Este es el contrato original histórico. No requiere firma digital ni renovación. Se capturará el cargo y remuneración actual del trabajador.</FichaAlert>
+                          )}
+                          {inlineUploadReq.tipo?.requiere_validacion && (
+                            <FichaAlert tone="warn" icon={I.clock}>Al subir este documento quedará «En revisión» hasta que RRHH lo valide.</FichaAlert>
+                          )}
+                          {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (rrhhEsTipoContrato(inlineUploadReq.tipo) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
+                            <div className="input-group">
+                              <label id="dxf-modo-op">¿Qué quieres hacer?</label>
+                              <div className="dx-ficha-seg" role="radiogroup" aria-labelledby="dxf-modo-op">
+                                {[['nueva_version','Subir nueva versión'],['corregir','Corregir este documento']].map(([v,l])=>(
+                                  <button key={v} type="button" role="radio" aria-checked={inlineUploadForm.modoSubida===v} onClick={()=>setInlineUploadForm(f=>({...f,modoSubida:v}))}>{l}</button>
                                 ))}
                               </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-
-                    </div>
-                  </div>
-                )}
-
-                {/* Modal inline upload */}
-                {inlineUploadReq && (
-                  <div className="modal-backdrop" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>
-                    <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:500}}>
-                      <div className="modal-head">
-                        <h3>Subir {inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id}</h3>
-                        <button className="icon-btn" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>{I.x}</button>
-                      </div>
-                      <div className="modal-body">
-                        {/* Documento actual con URL fresca al descargar/ver */}
-                        {visorUrl && (
-                          <div style={{marginBottom:16, padding:12, background:'var(--bg-subtle)', borderRadius:6, border:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-                            <div>
-                              <div style={{fontWeight:500, fontSize:13}}>Documento actual (v{inlineUploadReq.doc?.version})</div>
-                              <div className="text-muted" style={{fontSize:11}}>{inlineUploadReq.doc?.nombre_archivo}</div>
-                            </div>
-                            <button className="btn btn-sm btn-ghost" onClick={async () => {
-                              try {
-                                const ref = inlineUploadReq.doc?.storage_path || inlineUploadReq.doc?.archivo_url;
-                                if (ref && isSupabaseConfigured && isSupabaseConfigured()) {
-                                  const svc = await import('./services/personalDocumentosService.js');
-                                  const freshUrl = await svc.renovarUrlDocumento(ref);
-                                  window.open(freshUrl, '_blank');
-                                } else {
-                                  window.open(visorUrl, '_blank');
-                                }
-                              } catch { window.open(visorUrl, '_blank'); }
-                            }}>{I.file} Ver archivo</button>
-                          </div>
-                        )}
-                        <form onSubmit={handleSubirInline} style={{display:'grid', gap:14}}>
-                          {inlineUploadReq.tipo?.requiere_validacion && (
-                            <div style={{fontSize:12, color:'var(--orange)', padding:'8px 12px', background:'rgba(255,160,0,0.1)', borderRadius:6, border:'1px solid rgba(255,160,0,0.3)'}}>
-                              Al subir este documento, quedará "En revisión" hasta que sea validado por RRHH.
+                              <div className="dx-ficha-help" style={{marginTop:6}}>{inlineUploadForm.modoSubida==='corregir' ? 'Se actualiza este documento sin crear una nueva versión. Si no adjuntas un archivo nuevo, se mantiene el actual.' : 'Se crea una nueva versión y la anterior queda en el historial.'}</div>
                             </div>
                           )}
                           <div className="input-group">
                             <label>Tipo de documento</label>
                             <input className="input" type="text" value={inlineUploadReq.tipo?.nombre || inlineUploadReq.tipo_documento_id} disabled />
                           </div>
-                          {inlineUploadReq.tipo?.nombre === 'Contrato Primigenio' && (
-                            <div style={{fontSize:12, color:'var(--blue)', padding:'8px 12px', background:'rgba(0,112,243,0.1)', borderRadius:6, border:'1px solid rgba(0,112,243,0.3)'}}>
-                              Este es el contrato original histórico. No requiere firma digital ni renovación. Se capturará el cargo y remuneración actual del trabajador.
-                            </div>
-                          )}
-                          {inlineUploadReq.tipo?.renovable && inlineUploadReq.tipo?.permite_firma_trabajador && (
-                            <div style={{fontSize:12, color:'var(--green)', padding:'8px 12px', background:'rgba(16,185,129,0.1)', borderRadius:6, border:'1px solid rgba(16,185,129,0.3)'}}>
-                              Renovación de contrato. El trabajador recibirá una notificación para firmarlo desde su app.
-                            </div>
-                          )}
                           <div className="input-group">
                             <label>Archivo {inlineUploadForm.modoSubida !== 'corregir' ? '*' : ''}</label>
                             <input className="input" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setInlineUploadFile(e.target.files?.[0]||null)} required={inlineUploadForm.modoSubida !== 'corregir'} />
@@ -25316,28 +25099,13 @@ function RRHH_Operativo() {
                             </div>
                           )}
                           {(rrhhEsTipoContrato(inlineUploadReq.tipo) || rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id)) && (
-                            <div style={{display:'grid', gap:12, padding:12, background:'var(--bg-subtle)', borderRadius:8}}>
+                            <div className="dx-ficha-group">
+                              <div className="dx-ficha-group-h">Condiciones laborales<small>Se guardan como foto del momento del documento</small></div>
                               {rrhhEsTipoContrato(inlineUploadReq.tipo) && (
                                 <SociedadFormField label="Sociedad empleadora" value={inlineUploadForm.sociedadId} onChange={sociedadId=>setInlineUploadForm(f=>({...f,sociedadId}))} />
                               )}
-                              {inlineUploadReq.doc && inlineUploadForm.modoSubida !== 'nuevo_contrato' && (
-                                <div className="input-group" style={{gridColumn:'1/-1'}}>
-                                  <label>Modo de guardado</label>
-                                  <div className="row" style={{gap:8}}>
-                                    {[['nueva_version','Subir nueva versión'],['corregir','Corregir este documento']].map(([v,l])=>(
-                                      <label key={v} className="row" style={{gap:6, cursor:'pointer'}}>
-                                        <input type="radio" name="modoSubida" value={v} checked={inlineUploadForm.modoSubida===v} onChange={()=>setInlineUploadForm(f=>({...f,modoSubida:v}))}/>
-                                        <span style={{fontSize:13}}>{l}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                  {inlineUploadForm.modoSubida==='corregir' && <div style={{fontSize:11,color:'var(--fg-muted)',marginTop:4}}>Se actualiza este documento sin crear una nueva versión. Si no adjuntas un archivo nuevo, se mantiene el actual.</div>}
-                                </div>
-                              )}
                               {inlineUploadForm.modoSubida === 'nuevo_contrato' && (
-                                <div style={{gridColumn:'1/-1', padding:'10px 12px', background:'rgba(255,160,0,0.08)', border:'1px solid var(--orange)', borderRadius:8, fontSize:12, color:'var(--orange)'}}>
-                                  Nuevo período contractual · versión 1. El período anterior quedará archivado al guardar.
-                                </div>
+                                <FichaAlert tone="warn">Nuevo período contractual · versión 1. El período anterior quedará archivado al guardar.</FichaAlert>
                               )}
                               {rrhhEsTipoAdenda(inlineUploadReq.tipo, inlineUploadReq.tipo_documento_id) && <>
                                 <div className="input-group" style={{gridColumn:'1/-1'}}><label>Contrato original *</label><select className="select" value={inlineUploadForm.contratoReferenciaId||''} onChange={e=>setInlineUploadForm(f=>({...f,contratoReferenciaId:e.target.value}))} required><option value="">Seleccionar contrato validado...</option>{contratosValidados.map(d=><option key={d.id} value={d.id}>{d.fecha_emision||'Sin emisión'} · vence {d.fecha_vencimiento||'sin vencimiento'}</option>)}</select></div>
@@ -25374,54 +25142,46 @@ function RRHH_Operativo() {
                             <label>Notas (opcional)</label>
                             <input className="input" type="text" placeholder="Alguna observación sobre este documento..." value={inlineUploadForm.notas} onChange={e=>setInlineUploadForm(f=>({...f,notas:e.target.value}))} />
                           </div>
-
-                          {inlineUploadError && <div style={{fontSize:12, color:'var(--danger)'}}>{inlineUploadError}</div>}
-
+                          {inlineUploadError && <div className="dx-ficha-error" role="alert">{inlineUploadError}</div>}
                           {retroWallInline && (
-                            <div style={{fontSize:12, background:'var(--bg-subtle)', border:'1px solid var(--danger)', borderRadius:8, padding:12, display:'flex', flexDirection:'column', gap:8}}>
-                              <div style={{color:'var(--danger)', fontWeight:600}}>Cambio bloqueado por nómina ya procesada</div>
-                              <div>{retroWallInline}</div>
-                              <div className="input-group">
-                                <label>Justificación para forzar el cambio (obligatoria)</label>
-                                <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                            <FichaAlert tone="danger" title="Cambio bloqueado por nómina ya procesada" role="alert">
+                              <div className="dx-ficha-retro">
+                                <div>{retroWallInline}</div>
+                                <div className="input-group">
+                                  <label>Justificación para forzar el cambio (obligatoria)</label>
+                                  <textarea className="input" rows={2} value={retroWallMotivoInline} onChange={e=>setRetroWallMotivoInline(e.target.value)} />
+                                </div>
+                                <div className="dx-ficha-form-acts" style={{marginTop:0}}>
+                                  <button type="button" className="dx-ficha-btn is-sm" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
+                                  <button type="button" className="dx-ficha-btn is-sm is-danger-fill" disabled={inlineUploading || !retroWallMotivoInline.trim()} onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}>Forzar cambio (requiere autorización)</button>
+                                </div>
                               </div>
-                              <div className="row" style={{justifyContent:'flex-end', gap:8}}>
-                                <button type="button" className="btn btn-secondary" onClick={() => { setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
-                                <button
-                                  type="button"
-                                  className="btn btn-danger"
-                                  disabled={inlineUploading || !retroWallMotivoInline.trim()}
-                                  onClick={() => handleSubirInline(null, { forzarOverride: true, motivoOverride: retroWallMotivoInline.trim() })}
-                                >
-                                  Forzar cambio (requiere autorización)
-                                </button>
-                              </div>
-                            </div>
+                            </FichaAlert>
                           )}
-
-                          <div className="row" style={{justifyContent:'flex-end', gap:8, marginTop:8}}>
-                            <button type="button" className="btn btn-secondary" onClick={() => { setInlineUploadReq(null); setRetroWallInline(null); setRetroWallMotivoInline(''); }}>Cancelar</button>
-                            <button type="submit" className="btn btn-primary" disabled={inlineUploading}>
-                              {inlineUploading ? 'Guardando...' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
-                            </button>
-                          </div>
-                        </form>
-                      </div>
+                        </div>
+                        <div className="dx-ficha-mf">
+                          <button type="button" className="dx-ficha-btn" onClick={cerrarInline}>Cancelar</button>
+                          <button type="submit" className="dx-ficha-btn is-primary" disabled={inlineUploading}>
+                            {inlineUploading ? 'Guardando…' : (inlineUploadForm.modoSubida === 'nuevo_contrato' ? 'Crear nuevo contrato' : inlineUploadForm.modoSubida === 'corregir' ? 'Guardar corrección' : (inlineUploadReq.doc ? 'Subir nueva versión' : 'Subir documento'))}
+                          </button>
+                        </div>
+                      </form>
                     </div>
                   </div>
                 )}
 
-                <div style={{marginTop:40, borderTop:'1px solid var(--border)', paddingTop:24}}>
-                  <details>
-                    <summary style={{cursor:'pointer', fontWeight:600, fontSize:13, padding:'10px 0', userSelect:'none'}}>
-                      + Subir documento adicional (fuera de los requisitos del cargo)
-                    </summary>
-                    {tiposRestantes.length === 0 ? (
-                      <div className="text-muted" style={{fontSize:12, padding:'12px 0'}}>
-                        No hay más tipos de documentos aplicables fuera de los requeridos.
-                      </div>
-                    ) : (
-                      <form onSubmit={handleSubirDoc} style={{display:'grid', gap:12, marginTop:12, padding:16, background:'var(--bg-subtle)', borderRadius:8}}>
+                {fichaDocAdicionalOpen && (
+                  <div className="modal-backdrop" onClick={() => !docUploading && setFichaDocAdicionalOpen(false)}>
+                    <div className="modal dx-ficha-modal" role="dialog" aria-modal="true" aria-label="Documento adicional" onClick={e => e.stopPropagation()} style={{maxWidth:640}}>
+                      <FichaModalHead icon={I.plus} tone="cyan" eyebrow="Fuera de los requisitos del cargo" title="Documento adicional" sub={p.nombre} onClose={() => setFichaDocAdicionalOpen(false)} closeDisabled={docUploading} />
+                      {tiposRestantes.length === 0 ? (
+                        <>
+                          <div className="dx-ficha-mb"><FichaEmpty compact text="No hay más tipos de documentos aplicables fuera de los requeridos por el cargo." /></div>
+                          <div className="dx-ficha-mf"><button type="button" className="dx-ficha-btn" onClick={() => setFichaDocAdicionalOpen(false)}>Cerrar</button></div>
+                        </>
+                      ) : (
+                        <form onSubmit={handleSubirDoc} className="dx-ficha-modal-form">
+                          <div className="dx-ficha-mb">
                         <div className="grid-2" style={{gap:12}}>
                           <div className="input-group">
                             <label>Tipo de documento *</label>
@@ -25510,155 +25270,208 @@ function RRHH_Operativo() {
                       <label>Notas</label>
                       <input className="input" type="text" placeholder="Observaciones opcionales" value={docUploadForm.notas} onChange={e => setDocUploadForm(f => ({...f, notas: e.target.value}))} />
                     </div>
-                    {docUploadError && <div className="text-danger" style={{fontSize:12}}>{docUploadError}</div>}
-                    <button className="btn btn-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo...' : 'Subir documento'}</button>
-                  </form>
-                )}
-                </details>
-              </div>
-
-                {(() => {
-                  const docsAdicionales = docsPersona.filter(doc => !docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc]);
-                  if (docsAdicionales.length === 0) return null;
-                  return (<>
-                    <div style={{fontWeight:600, fontSize:12, color:'var(--fg-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:8}}>Documentos adicionales</div>
-                    <div style={{display:'flex', flexDirection:'column', gap:10}}>
-                    {docsAdicionales.map(doc => {
-                      const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
-                      const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
-                      const estadoMotor = reqDoc?.estado;
-                      return (
-                        <div key={doc.id} style={{padding:'14px 16px', border:'1px solid var(--border)', borderRadius:8, display:'flex', flexDirection:'column', gap:8}}>
-                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8}}>
-                            <div>
-                              <div style={{fontWeight:600, fontSize:13}}>{tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}</div>
-                              <div className="text-muted" style={{fontSize:11}}>
-                                {doc.nombre_archivo || '—'} · v{doc.version}
-                                {doc.fecha_emision && ` · Emitido: ${doc.fecha_emision}`}
-                                {doc.es_indefinido ? ' · Indefinido' : (doc.fecha_vencimiento && ` · Vence: ${doc.fecha_vencimiento}`)}
-                              </div>
-                            </div>
-                            <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
-                              {estadoMotor && (
-                                <span className={'badge ' + (DOC_BDG[estadoMotor] || 'badge-gray')} style={{fontSize:11}}>
-                                  {DOC_LBL[estadoMotor] || estadoMotor}
-                                </span>
-                              )}
-                               <span className={'badge ' + (personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion] || 'badge-gray')}>
-                                 {doc.estado_validacion}
-                               </span>
-                               <button className="btn btn-ghost btn-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.file} Ver</button>
-                               {puedeEliminarDocumentosRrhh && <>
-                                 <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumento(''); setDocumentoAEliminar({ doc, persona: p }); }}>{I.trash} Eliminar</button>
-                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumento(''); setDocumentoAArchivar({ doc, persona: p }); }}>{I.archive} Archivar</button>
-                               </>}
-                             </div>
+                            {docUploadError && <div className="dx-ficha-error" role="alert">{docUploadError}</div>}
                           </div>
-                          {doc.motivo_rechazo && (
-                            <div style={{fontSize:12, color:'var(--danger)', padding:'6px 10px', background:'rgba(229,62,62,0.08)', borderRadius:4}}>
-                              Motivo de rechazo: {doc.motivo_rechazo}
-                            </div>
-                          )}
-                          {doc.notas && <div className="text-muted" style={{fontSize:12}}>Nota: {doc.notas}</div>}
-                          {doc.estado_validacion === 'pendiente' && tipoInfo?.requiere_validacion && canGestionarDocsRrhh && (
-                            <div style={{display:'flex', gap:8, alignItems:'flex-start', flexWrap:'wrap'}}>
-                              <button className="btn btn-sm btn-primary" disabled={docValidandoId === doc.id} onClick={() => handleValidar(doc.id, 'aprobado')}>
-                                {docValidandoId === doc.id ? '...' : 'Aprobar'}
-                              </button>
-                              {showRechazoInput === doc.id ? (
-                                <div style={{display:'flex', gap:6, flex:1, minWidth:200}}>
-                                  <input className="input" style={{flex:1, fontSize:12, padding:'4px 8px'}} placeholder="Motivo de rechazo..." value={motivoRechazo} onChange={e => setMotivoRechazo(e.target.value)} />
-                                  <button className="btn btn-sm btn-danger" onClick={() => handleValidar(doc.id, 'rechazado')}>Confirmar rechazo</button>
-                                  <button className="btn btn-sm btn-ghost" onClick={() => { setShowRechazoInput(null); setMotivoRechazo(''); }}>Cancelar</button>
-                                </div>
-                              ) : (
-                                <button className="btn btn-sm btn-ghost" style={{color:'var(--danger)'}} onClick={() => setShowRechazoInput(doc.id)}>Rechazar</button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                          <div className="dx-ficha-mf">
+                            <button type="button" className="dx-ficha-btn" onClick={() => setFichaDocAdicionalOpen(false)} disabled={docUploading}>Cancelar</button>
+                            <button className="dx-ficha-btn is-primary" type="submit" disabled={docUploading}>{docUploading ? 'Subiendo…' : 'Subir documento'}</button>
+                          </div>
+                        </form>
+                      )}
                     </div>
-                  </>);
-                })()}
-              </div>
+                  </div>
+                )}
+
+                <div className="dx-ficha-stack">
+                  <FichaHabilitacion
+                    estadoGlobal={hab.estado_global}
+                    etiqueta={cfgBadge.txt}
+                    docs={p.cargo_id ? (hab.docs || []) : []}
+                    problemas={docsConProblema.map(d => d.tipo?.nombre || d.tipo_documento_id)}
+                  />
+
+                  <FichaCard
+                    icon={I.clipboard}
+                    title="Requisitos del cargo"
+                    meta={p.cargo ? p.cargo : null}
+                    extra={<button type="button" className="dx-ficha-btn is-sm" onClick={() => { setDocUploadError(''); setFichaDocAdicionalOpen(true); }}>{I.plus} Documento adicional</button>}
+                  >
+                    {(!p.cargo_id) ? (
+                      <FichaEmpty icon={I.users} title="Este colaborador no tiene cargo asignado" text="Asigna un cargo para determinar sus requisitos documentales." action={<button type="button" className="dx-ficha-btn is-primary" onClick={() => { abrirEditarTecnico(p); setSelTecnico(null); }}>{I.edit} Editar ficha</button>} />
+                    ) : (!hab.docs || hab.docs.length === 0) ? (
+                      <FichaEmpty icon={I.clipboard} title={`El cargo "${p.cargo}" aún no tiene requisitos documentales`} text="Ve a Maestros Base para configurar la matriz de requisitos." />
+                    ) : (() => {
+                        const groupedDocs = {};
+                        hab.docs.forEach(req => {
+                          const cat = req.tipo?.categoria || 'Otros';
+                          if (!groupedDocs[cat]) groupedDocs[cat] = [];
+                          groupedDocs[cat].push(req);
+                        });
+                        Object.entries(groupedDocs).forEach(([cat, catDocs]) => {
+                          const chains = [];
+                          const added = new Set();
+                          const buildChain = (doc, currentChain = []) => {
+                            if (added.has(doc.tipo_documento_id)) return currentChain;
+                            currentChain.push(doc);
+                            added.add(doc.tipo_documento_id);
+                            const tHijos = tiposDocumento.filter(t => t.documento_padre_tipo_id === doc.tipo_documento_id);
+                            for (const th of tHijos) {
+                              const docHijo = catDocs.find(d => d.tipo_documento_id === th.id);
+                              if (docHijo) return buildChain(docHijo, currentChain);
+                            }
+                            return currentChain;
+                          };
+                          const heads = catDocs.filter(d => !d.tipo?.documento_padre_tipo_id);
+                          heads.forEach(head => {
+                            const chain = buildChain(head);
+                            if (chain.length > 0) chains.push(chain);
+                          });
+                          catDocs.forEach(doc => {
+                            if (!added.has(doc.tipo_documento_id)) {
+                              if (doc.tipo?.documento_padre_tipo_id && hab.docs.some(d => d.tipo_documento_id === doc.tipo.documento_padre_tipo_id)) return;
+                              const chain = buildChain(doc);
+                              if (chain.length > 0) chains.push(chain);
+                            }
+                          });
+                                                                              chains.sort((a, b) => {
+                            const reqA = a[0];
+                            const reqB = b[0];
+                            const nA = (reqA.tipo?.nombre || reqA.tipo_documento_id || '').toLowerCase();
+                            const nB = (reqB.tipo?.nombre || reqB.tipo_documento_id || '').toLowerCase();
+                            
+                            const getW = (n) => {
+                              if (n.includes('primigenio')) return 1;
+                              if (n.includes('laboral')) return 2;
+                              if (n.includes('adenda')) return 3;
+                              return 99;
+                            };
+                            
+                            const wA = getW(nA);
+                            const wB = getW(nB);
+                            
+                            if (wA !== wB) return wA - wB;
+                            return nA.localeCompare(nB);
+                          });
+                          groupedDocs[cat] = chains;
+                        });
+                      return Object.entries(groupedDocs).map(([catName, chains]) => {
+                        const reqsCat = chains.flat();
+                        return (
+                          <div key={catName}>
+                            <div className="dx-ficha-dcat">{catName} <span className="dx-ficha-ct">{reqsCat.filter(r => r.doc).length} / {reqsCat.length}</span></div>
+                            {chains.map((chain, chainIdx) => (
+                              <div key={'chain-'+chainIdx} className={'dx-ficha-chain' + (chain.length > 1 ? ' is-linked' : '')}>
+                                {chain.map(req => renderRequisito(req, chain))}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </FichaCard>
+
+                  <FichaCard icon={I.list} title="Documentos adicionales" meta={docsAdicionales.length ? docsAdicionales.length : 'Fuera de los requisitos del cargo'}>
+                    {docsAdicionales.length === 0 ? (
+                      <FichaEmpty compact text="Aún no hay documentos adicionales. Usa «Documento adicional» para cargar, por ejemplo, el CV o un certificado." />
+                    ) : (
+                      <div className="dx-ficha-chain">
+                        {docsAdicionales.map(doc => {
+                          const tipoInfo = tiposDocumento.find(t => t.id === (doc.tipo_documento_id || doc.tipo_doc)) || personalDocumentosService.TIPOS_DOC_OPERATIVO.find(t => t.key === doc.tipo_doc);
+                          const reqDoc = docReqPorTipo[doc.tipo_documento_id || doc.tipo_doc] || { tipo_documento_id: doc.tipo_documento_id || doc.tipo_doc, tipo: tipoInfo, doc, estado: doc.estado_validacion === 'rechazado' ? 'rechazado' : 'vigente', fecha_vencimiento: doc.fecha_vencimiento };
+                          const estadoMotor = reqDoc?.estado;
+                          const tono = DOC_TONO[estadoMotor] || 'gray';
+                          const tonoVal = fichaTonoDeBadge(personalDocumentosService.BADGE_VALIDACION[doc.estado_validacion]);
+                          const pies = [];
+                          if (doc.motivo_rechazo) pies.push({ tone: 'rej', content: <><strong>Motivo de rechazo:</strong> <span>{doc.motivo_rechazo}</span></> });
+                          if (doc.estado_validacion === 'pendiente' && tipoInfo?.requiere_validacion && canGestionarDocsRrhh) {
+                            pies.push(showRechazoInput === doc.id ? pieRechazo(doc, () => handleValidar(doc.id, 'rechazado')) : pieValidacion(doc, 'Aprobar'));
+                          }
+                          return (
+                            <FichaDocRow
+                              key={doc.id}
+                              tone={tono}
+                              titulo={tipoInfo?.nombre || tipoInfo?.label || doc.tipo_doc}
+                              estado={<>
+                                {estadoMotor && <FichaPill tone={tono}>{DOC_LBL[estadoMotor] || estadoMotor}</FichaPill>}
+                                {doc.estado_validacion !== 'aprobado' && <FichaPill tone={tonoVal}>{labelOr(ESTADO_VALIDACION_LABELS, doc.estado_validacion)}</FichaPill>}
+                              </>}
+                              meta={[
+                                `v${doc.version}`,
+                                doc.fecha_emision ? <>Emitido <b>{doc.fecha_emision}</b></> : null,
+                                doc.es_indefinido ? 'Indefinido' : (doc.fecha_vencimiento ? <>Vence <b>{doc.fecha_vencimiento}</b></> : 'Sin vencimiento'),
+                              ]}
+                              archivo={doc.nombre_archivo}
+                              hint={doc.notas ? `Nota: ${doc.notas}` : null}
+                              actions={<>
+                                <button type="button" className="dx-ficha-btn is-sm" onClick={() => abrirPreviewDocumento({ ...reqDoc, doc }, p)}>{I.eye} Ver</button>
+                                <FichaMenu label={`Más acciones de ${tipoInfo?.nombre || doc.tipo_doc}`} items={accionesEliminarArchivar(doc)} />
+                              </>}
+                              footers={pies}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </FichaCard>
+                </div>
+              </>
             );
           })()}
 
           {fichaTab === 'reembolsos' && (
-            <div className="card-body">
-              <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, marginBottom:20}}>
-                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Total reembolsos</div>
-                  <div style={{fontWeight:700, fontSize:18}}>{reembolsosPersona.length}</div>
-                </div>
-                <div style={{background:'var(--bg-subtle)', borderRadius:8, padding:'12px 16px'}}>
-                  <div style={{fontSize:11, color:'var(--fg-muted)', marginBottom:4}}>Pendiente de pago</div>
-                  <div style={{fontWeight:700, fontSize:18, color:totalReembolsoPend > 0 ? 'var(--orange)' : 'var(--fg)'}}>{money(totalReembolsoPend)}</div>
-                </div>
-              </div>
-              {reembolsosPersona.length === 0 ? (
-                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'32px 0'}}>No hay reembolsos de viáticos registrados para este técnico.</div>
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>Concepto</th><th>OT</th><th>Monto</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {reembolsosPersona.map(r => {
-                        const pagos = (cxpPagos || []).filter(pg => pg.cxp_id === r.id);
-                        const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
-                        return (
-                          <tr key={r.id}>
-                            <td>{r.fecha_emision}</td>
-                            <td style={{fontSize:12}}>{r.concepto}</td>
-                            <td className="mono text-muted" style={{fontSize:11}}>{r.ot_vinc_id || '—'}</td>
-                            <td className="num"><strong>{money(r.monto_total)}</strong></td>
-                            <td>
-                              <span className={'badge ' + (r.estado === 'pagada' ? 'badge-green' : r.estado === 'anulada' ? 'badge-gray' : 'badge-orange')}>
-                                {r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}
-                              </span>
-                              {ultimoPago && <span className="text-muted" style={{fontSize:11, marginLeft:6}}>{ultimoPago.fecha_pago}</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className="dx-ficha-stack">
+              <FichaStats cols={2} items={[
+                { label: 'Total reembolsos', value: reembolsosPersona.length, note: reembolsosPersona.length === 1 ? 'solicitud registrada' : 'solicitudes registradas' },
+                { label: 'Pendiente de pago', value: money(totalReembolsoPend), tone: totalReembolsoPend > 0 ? 'amber' : undefined, note: 'aprobado sin pagar' },
+              ]} />
+              <FichaCard flush icon={I.receipt} title="Reembolsos de viáticos" meta={reembolsosPersona.length}>
+                {reembolsosPersona.length === 0 ? (
+                  <FichaEmpty icon={I.receipt} title="Sin reembolsos registrados" text="No hay reembolsos de viáticos registrados para este técnico." />
+                ) : (
+                  <FichaTable columns={['Fecha', 'Concepto', 'OT', { label: 'Monto', num: true }, 'Estado']}>
+                    {reembolsosPersona.map(r => {
+                      const pagos = (cxpPagos || []).filter(pg => pg.cxp_id === r.id);
+                      const ultimoPago = pagos.sort((a,b) => (b.fecha_pago||'').localeCompare(a.fecha_pago||''))[0];
+                      return (
+                        <tr key={r.id}>
+                          <td>{r.fecha_emision}</td>
+                          <td className="is-strong">{r.concepto}</td>
+                          <td className="is-muted">{r.ot_vinc_id || '—'}</td>
+                          <td className="is-num">{money(r.monto_total)}</td>
+                          <td>
+                            <FichaPill tone={r.estado === 'pagada' ? 'green' : r.estado === 'anulada' ? 'gray' : 'amber'}>{r.estado === 'pagada' ? 'Pagado' : r.estado === 'anulada' ? 'Anulado' : 'Pendiente'}</FichaPill>
+                            {ultimoPago && <span className="dx-ficha-help" style={{marginLeft:8}}>{ultimoPago.fecha_pago}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </FichaTable>
+                )}
+              </FichaCard>
             </div>
           )}
 
           {fichaTab === 'disponibilidad' && (
-            <div className="card-body">
-              <div style={{fontWeight:600, fontSize:13, marginBottom:12}}>Asignaciones recientes en el Planner</div>
+            <FichaCard flush icon={I.calendar} title="Asignaciones recientes en el Planner" meta={asigRecientes.length}>
               {asigRecientes.length === 0 ? (
-                <div style={{textAlign:'center', color:'var(--fg-muted)', padding:'24px 0', fontSize:13}}>
-                  Sin asignaciones registradas en el Planner para este técnico.
-                </div>
+                <FichaEmpty icon={I.calendar} title="Sin asignaciones en el Planner" text="Cuando se programe a este técnico en una OT aparecerá aquí con las horas asignadas." />
               ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead><tr><th>Fecha</th><th>OT</th><th>Horas</th><th>Estado</th></tr></thead>
-                    <tbody>
-                      {asigRecientes.map(a => (
-                        <tr key={a.id}>
-                          <td>{a.fecha}</td>
-                          <td className="mono text-muted" style={{fontSize:12}}>{a.ot_id || '—'}</td>
-                          <td className="num">{a.horas_programadas != null ? `${a.horas_programadas}h` : '—'}</td>
-                          <td><span className={'badge badge-' + (a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan')}>{a.estado || 'asignado'}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <FichaTable columns={['Fecha', 'OT', { label: 'Horas', num: true }, 'Estado']}>
+                  {asigRecientes.map(a => (
+                    <tr key={a.id}>
+                      <td>{a.fecha}</td>
+                      <td className="is-strong">{a.ot_id || '—'}</td>
+                      <td className="is-num">{a.horas_programadas != null ? `${a.horas_programadas} h` : '—'}</td>
+                      <td><FichaPill tone={a.estado === 'completado' ? 'green' : a.estado === 'cancelado' ? 'red' : 'cyan'}>{a.estado || 'asignado'}</FichaPill></td>
+                    </tr>
+                  ))}
+                </FichaTable>
               )}
-            </div>
+            </FichaCard>
           )}
 
           {fichaTab === 'bancarios' && canFinanzas && (
-            <div className="card-body">
+            <FichaCard icon={I.bank} title="Datos bancarios" extra={<FichaPill tone="violet" dot={false}>Requiere permiso de finanzas</FichaPill>}>
               <DatosBancariosSection
                 cuentas={p.datos_bancarios ?? []}
                 onChange={async (nuevas) => {
@@ -25668,7 +25481,7 @@ function RRHH_Operativo() {
                   } catch (e) { addNotificacion('Error al guardar datos bancarios.', 'error'); }
                 }}
               />
-            </div>
+            </FichaCard>
           )}
 
           {fichaTab === 'amonestaciones' && (
@@ -25681,8 +25494,7 @@ function RRHH_Operativo() {
               addNotificacion={addNotificacion}
             />
           )}
-        </div>
-      </>
+        </div></div>
     );
   }
 
