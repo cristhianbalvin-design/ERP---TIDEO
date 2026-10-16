@@ -1,0 +1,461 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mock Operaciones — Reportes de mina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Variables copiadas de zahory.css, sección DX-UI base */
+.dx-ui{
+  --dx-ui-navy:#1A2B4A; --dx-ui-cyan:#00ACC1; --dx-ui-cyan-fg:#0B4F5A; --dx-ui-violet:#5B3A8C;
+  --dx-ui-gray:#6B7280; --dx-ui-line:#E4E7EB; --dx-ui-line-soft:#EEF0F3; --dx-ui-border:#C9CFD8;
+  --dx-ui-bg:#F4F6F8; --dx-ui-head:#F8F9FA; --dx-ui-card:#FFFFFF; --dx-ui-ink:#1F2937;
+  --dx-ui-hover:#F6FBFC; --dx-ui-cyan-bg:#E0F7FA; --dx-ui-violet-bg:#F0EAFB;
+  --dx-ui-amber-bg:#FFF3E0; --dx-ui-amber-fg:#8A4B00; --dx-ui-amber-dot:#E08A00;
+  --dx-ui-green-bg:#E3F6EA; --dx-ui-green-fg:#14633A;
+  --dx-ui-red-bg:#FDE8E7; --dx-ui-red-fg:#9B2C2C; --dx-ui-red-dot:#DC2626;
+  --dx-ui-gray-bg:#F1F3F5; --dx-ui-gray-fg:#4B5563; --dx-ui-gray-dot:#6B7280;
+  width:100%; margin-bottom:18px; color:var(--dx-ui-ink); font:14px/1.4 'DM Sans',system-ui,sans-serif;
+}
+[data-theme='dark'] .dx-ui{
+  --dx-ui-navy:#F8FAFC; --dx-ui-cyan:#22D3EE; --dx-ui-cyan-fg:#67E8F9; --dx-ui-violet:#D8B4FE;
+  --dx-ui-gray:#94A3B8; --dx-ui-line:rgba(255,255,255,.1); --dx-ui-line-soft:rgba(255,255,255,.08); --dx-ui-border:#475569;
+  --dx-ui-bg:#020617; --dx-ui-head:#0F172A; --dx-ui-card:#1E293B; --dx-ui-ink:#F8FAFC;
+  --dx-ui-hover:#172033; --dx-ui-cyan-bg:#0A3038; --dx-ui-violet-bg:#321B3B;
+  --dx-ui-amber-bg:#3A2810; --dx-ui-amber-fg:#FDBA74; --dx-ui-amber-dot:#F59E0B;
+  --dx-ui-green-bg:#12351F; --dx-ui-green-fg:#86EFAC;
+  --dx-ui-red-bg:#3B1D20; --dx-ui-red-fg:#FCA5A5; --dx-ui-red-dot:#F87171;
+  --dx-ui-gray-bg:#273244; --dx-ui-gray-fg:#CBD5E1; --dx-ui-gray-dot:#94A3B8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#F4F6F8;font-family:'DM Sans',system-ui,sans-serif}
+[data-theme='dark'] body{background:#020617}
+.mock-shell{display:flex;min-height:100vh}
+.mock-side{width:240px;flex:none;background:#1A2B4A;color:#fff;padding:18px 14px}
+.mock-side b{display:block;font:700 15px 'Sora',sans-serif;margin-bottom:16px}
+.mock-side span{display:block;padding:9px 10px;border-radius:8px;font-size:13px;color:#C7D2E4}
+.mock-side span.on{background:rgba(255,255,255,.12);color:#fff}
+.mock-side small{display:block;margin:14px 10px 6px;font-size:10px;letter-spacing:.08em;color:#8FA2C0}
+.mock-main{flex:1;min-width:0;padding:24px 28px}
+.mock-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px;padding:10px 12px;border:1px dashed #9AA3B2;border-radius:10px;font:12px 'DM Sans',sans-serif;color:#6B7280}
+.mock-bar button{height:30px;padding:0 10px;border-radius:6px;border:1px solid #C9CFD8;background:#fff;cursor:pointer;font:600 12px 'DM Sans',sans-serif}
+.mock-bar button.on{background:#1A2B4A;color:#fff;border-color:#1A2B4A}
+@media (max-width:900px){.mock-side{display:none}.mock-main{padding:16px}}
+
+.dx-ui-head-page{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-eyebrow{color:var(--dx-ui-cyan);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dx-ui-title{margin:2px 0 0;color:var(--dx-ui-navy);font:700 24px/1.2 'Sora',sans-serif}
+.dx-ui-sub{margin:4px 0 0;color:var(--dx-ui-gray)}
+.dx-ui-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.dx-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--dx-ui-border);background:var(--dx-ui-card);color:var(--dx-ui-navy);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-btn:hover{background:var(--dx-ui-hover)}
+.dx-btn.primary{background:var(--dx-ui-navy);color:var(--dx-ui-bg);border-color:var(--dx-ui-navy)}
+.dx-btn.primary:hover{opacity:.88}
+.dx-btn.danger{background:var(--dx-ui-card);color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot)}
+.dx-btn:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+
+.dx-ui-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.dx-ui-chip{display:flex;align-items:baseline;gap:8px;padding:8px 16px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);cursor:pointer;font:inherit}
+.dx-ui-chip b{color:var(--dx-ui-navy);font:700 20px 'Sora',sans-serif}
+.dx-ui-chip span{color:var(--dx-ui-gray);font-size:12px}
+.dx-ui-chip.on{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui-card{container-type:inline-size;overflow:hidden;width:100%;border:1px solid var(--dx-ui-line);border-radius:14px;background:var(--dx-ui-card);box-shadow:0 1px 2px rgba(15,27,48,.04);margin-bottom:16px}
+.dx-ui-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-ui-toolbar h2{margin:0 auto 0 0;color:var(--dx-ui-navy);font:700 16px/1.4 'Sora',sans-serif}
+.dx-ui-count{color:var(--dx-ui-gray);font-size:12px;white-space:nowrap}
+.dx-ui-search{display:flex;align-items:center;gap:8px;width:320px;max-width:100%;height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray)}
+.dx-ui-search:focus-within{border-color:var(--dx-ui-cyan);box-shadow:0 0 0 3px color-mix(in srgb,var(--dx-ui-cyan) 15%,transparent)}
+.dx-ui-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-ui-head,.dx-ui-row{display:grid;grid-template-columns:var(--dx-ui-cols,minmax(0,1fr));column-gap:16px;align-items:center;padding-inline:20px}
+.dx-ui-head{min-height:38px;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dx-ui-row{min-height:68px;border-bottom:1px solid var(--dx-ui-line-soft);cursor:pointer;transition:background .12s}
+.dx-ui-row:last-child{border-bottom:0}
+.dx-ui-row:hover{background:var(--dx-ui-hover)}
+.dx-ui-row:hover .dx-ui-arrow{color:var(--dx-ui-navy);transform:translateX(2px)}
+.dx-ui-row:focus-visible{position:relative;z-index:1;outline:2px solid var(--dx-ui-cyan);outline-offset:-2px}
+.dx-ui-icon{display:flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px}
+.dx-ui-icon.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui-icon.is-violet{background:var(--dx-ui-violet-bg);color:var(--dx-ui-violet)}
+.dx-ui-pill{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.dx-ui-pill i{width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.dx-ui-pill.is-amber{background:var(--dx-ui-amber-bg);color:var(--dx-ui-amber-fg)}
+.dx-ui-pill.is-amber i{background:var(--dx-ui-amber-dot)}
+.dx-ui-pill.is-green{background:var(--dx-ui-green-bg);color:var(--dx-ui-green-fg)}
+.dx-ui-pill.is-red{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg)}
+.dx-ui-pill.is-red i{background:var(--dx-ui-red-dot)}
+.dx-ui-pill.is-gray{background:var(--dx-ui-gray-bg);color:var(--dx-ui-gray-fg)}
+.dx-ui-pill.is-cyan{background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg)}
+.dx-ui-pill.is-violet{background:var(--dx-ui-violet-bg);color:var(--dx-ui-violet)}
+.dx-ui-arrow{color:#9AA3B2;transition:.12s}
+.dx-ui-empty{padding:48px 20px;color:var(--dx-ui-gray);text-align:center}
+svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ================= Reglas propias: Reportes de mina (dx-rmina-) ================= */
+.dx-rmina{--dx-rmina-bar-ht:#00ACC1;--dx-rmina-bar-prev:#5B3A8C;--dx-rmina-bar-corr:#DC2626;--dx-rmina-bar-sb:#C9CFD8}
+[data-theme='dark'] .dx-rmina{--dx-rmina-bar-ht:#22D3EE;--dx-rmina-bar-prev:#C084FC;--dx-rmina-bar-corr:#F87171;--dx-rmina-bar-sb:#475569}
+.dx-rmina-panel{display:none}.dx-rmina-panel.on{display:block}
+
+/* Listado */
+.dx-rmina-list{--dx-ui-cols:minmax(130px,1fr) minmax(140px,1.2fr) minmax(140px,1.2fr) 96px 118px 18px}
+.dx-rmina-filters{display:flex;gap:8px;flex-wrap:wrap}
+.dx-rmina-select{height:40px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+.dx-rmina-cell b{display:block;color:var(--dx-ui-navy);font-weight:600}
+.dx-rmina-cell small{display:block;color:var(--dx-ui-gray);font-size:12px;margin-top:2px}
+.dx-rmina-id{display:flex;align-items:center;gap:12px;min-width:0}
+.dx-rmina-kpi{font:700 15px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-rmina-kpi small{display:block;font:500 11px 'DM Sans',sans-serif;color:var(--dx-ui-gray)}
+@container (max-width:820px){
+  .dx-rmina-list .dx-ui-head{display:none}
+  .dx-rmina-list .dx-ui-row{grid-template-columns:minmax(0,1fr) auto;row-gap:8px;padding:14px 16px}
+  .dx-rmina-list .dx-ui-row>.dx-rmina-c-ot,.dx-rmina-list .dx-ui-row>.dx-rmina-c-tec{grid-column:1/-1}
+  .dx-rmina-list .dx-ui-row>.dx-rmina-c-kpi{grid-column:1}
+  .dx-rmina-list .dx-ui-row>.dx-rmina-c-est{grid-column:2;justify-self:end}
+  .dx-rmina-list .dx-ui-row>.dx-ui-arrow{display:none}
+}
+
+/* Formulario */
+.dx-rmina-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+@media (max-width:1100px){.dx-rmina-grid{grid-template-columns:minmax(0,1fr)}}
+.dx-rmina-sec{padding:18px 20px;border-bottom:1px solid var(--dx-ui-line)}
+.dx-rmina-sec:last-child{border-bottom:0}
+.dx-rmina-sec-h{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.dx-rmina-sec-h h3{margin:0;color:var(--dx-ui-navy);font:700 15px 'Sora',sans-serif}
+.dx-rmina-sec-h p{margin:2px 0 0;color:var(--dx-ui-gray);font-size:12px}
+.dx-rmina-sec-h .dx-ui-pill{margin-left:auto}
+.dx-rmina-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px 14px}
+.dx-rmina-field{display:grid;gap:6px;min-width:0}
+.dx-rmina-field.wide{grid-column:1/-1}
+.dx-rmina-field label{color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.dx-rmina-field input,.dx-rmina-field select,.dx-rmina-field textarea{width:100%;min-height:44px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:15px 'DM Sans',sans-serif}
+.dx-rmina-field textarea{padding:10px 12px;min-height:96px;resize:vertical;line-height:1.45}
+.dx-rmina-field input:focus,.dx-rmina-field select:focus,.dx-rmina-field textarea:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-rmina-field input[readonly]{background:var(--dx-ui-head);color:var(--dx-ui-gray)}
+.dx-rmina-field input.is-error{border-color:var(--dx-ui-red-dot)}
+.dx-rmina-hint{color:var(--dx-ui-gray);font-size:12px}
+.dx-rmina-hint.is-error{color:var(--dx-ui-red-fg);font-weight:600}
+.dx-rmina-ctx{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--dx-ui-cyan-bg);color:var(--dx-ui-cyan-fg);font-size:13px}
+.dx-rmina-ctx b{font-weight:700}
+.dx-rmina-seg{display:inline-flex;padding:3px;border:1px solid var(--dx-ui-border);border-radius:10px;background:var(--dx-ui-head);gap:3px}
+.dx-rmina-seg button{min-height:38px;padding:0 16px;border:0;border-radius:8px;background:transparent;color:var(--dx-ui-gray);font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.dx-rmina-seg button.on{background:var(--dx-ui-card);color:var(--dx-ui-navy);box-shadow:0 1px 2px rgba(15,27,48,.12)}
+.dx-rmina-seg button:focus-visible{outline:2px solid var(--dx-ui-cyan)}
+
+/* Horómetros */
+.dx-rmina-horo{display:grid;grid-template-columns:140px minmax(0,1fr) minmax(0,1fr) 90px;gap:10px 12px;align-items:center}
+.dx-rmina-horo .h{color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.dx-rmina-horo .n{color:var(--dx-ui-navy);font-weight:600}
+.dx-rmina-horo input{width:100%;min-height:44px;padding:0 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:15px 'DM Sans',sans-serif;text-align:right;font-variant-numeric:tabular-nums}
+.dx-rmina-horo input:focus{outline:2px solid var(--dx-ui-cyan);outline-offset:1px}
+.dx-rmina-horo .d{font:700 15px 'Sora',sans-serif;color:var(--dx-ui-cyan-fg);text-align:right}
+.dx-rmina-horo .d.is-error{color:var(--dx-ui-red-fg)}
+@container (max-width:560px){.dx-rmina-horo{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.dx-rmina-horo .h{display:none}.dx-rmina-horo .n{grid-column:1/-1;margin-top:6px}.dx-rmina-horo .d{grid-column:1/-1;text-align:left}}
+
+/* Distribución de horas */
+.dx-rmina-hours{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px 14px}
+.dx-rmina-hours .dx-rmina-field label{display:flex;align-items:center;gap:6px}
+.dx-rmina-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dx-rmina-bar{display:flex;height:12px;margin-top:16px;border-radius:999px;overflow:hidden;background:var(--dx-ui-line-soft)}
+.dx-rmina-bar span{display:block;height:100%;transition:width .2s}
+.dx-rmina-total{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--dx-ui-gray)}
+.dx-rmina-total b{color:var(--dx-ui-navy);font:700 15px 'Sora',sans-serif}
+
+/* Opciones táctiles */
+.dx-rmina-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:10px}
+.dx-rmina-opt{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 14px;border:1.5px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-card);color:var(--dx-ui-gray);font:600 14px 'DM Sans',sans-serif;cursor:pointer;text-align:left}
+.dx-rmina-opt .box{display:flex;align-items:center;justify-content:center;width:20px;height:20px;flex:none;border:1.5px solid var(--dx-ui-border);border-radius:6px;color:transparent}
+.dx-rmina-opt.on{border-color:var(--dx-ui-navy);color:var(--dx-ui-navy);background:var(--dx-ui-hover)}
+.dx-rmina-opt.on .box{background:var(--dx-ui-navy);border-color:var(--dx-ui-navy);color:var(--dx-ui-card)}
+.dx-rmina-opt:focus-visible{outline:2px solid var(--dx-ui-cyan);outline-offset:2px}
+.dx-rmina-opt.st .box{border-radius:50%}
+.dx-rmina-opt.st.on.g{border-color:var(--dx-ui-green-fg);color:var(--dx-ui-green-fg);background:var(--dx-ui-green-bg)}
+.dx-rmina-opt.st.on.g .box{background:var(--dx-ui-green-fg);border-color:var(--dx-ui-green-fg)}
+.dx-rmina-opt.st.on.a{border-color:var(--dx-ui-amber-dot);color:var(--dx-ui-amber-fg);background:var(--dx-ui-amber-bg)}
+.dx-rmina-opt.st.on.a .box{background:var(--dx-ui-amber-dot);border-color:var(--dx-ui-amber-dot)}
+.dx-rmina-opt.st.on.r{border-color:var(--dx-ui-red-dot);color:var(--dx-ui-red-fg);background:var(--dx-ui-red-bg)}
+.dx-rmina-opt.st.on.r .box{background:var(--dx-ui-red-dot);border-color:var(--dx-ui-red-dot)}
+.dx-rmina-opt.st.on.v{border-color:var(--dx-ui-violet);color:var(--dx-ui-violet);background:var(--dx-ui-violet-bg)}
+.dx-rmina-opt.st.on.v .box{background:var(--dx-ui-violet);border-color:var(--dx-ui-violet)}
+.dx-rmina-note{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--dx-ui-violet-bg);color:var(--dx-ui-violet);font-size:13px}
+.dx-rmina-note textarea{margin-top:8px}
+
+/* Líneas de materiales */
+.dx-rmina-lines{display:grid;gap:8px}
+.dx-rmina-line{display:grid;grid-template-columns:minmax(0,1fr) 90px 70px 40px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--dx-ui-line);border-radius:10px}
+.dx-rmina-line b{display:block;color:var(--dx-ui-navy);font-weight:600}
+.dx-rmina-line small{display:block;color:var(--dx-ui-gray);font-size:12px}
+.dx-rmina-line input{width:100%;min-height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:15px 'DM Sans',sans-serif;text-align:right}
+.dx-rmina-line .u{color:var(--dx-ui-gray);font-size:13px}
+.dx-rmina-x{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--dx-ui-line);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-gray);cursor:pointer}
+.dx-rmina-x:hover{color:var(--dx-ui-red-fg);border-color:var(--dx-ui-red-dot)}
+.dx-rmina-urg{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 10px;border:1px solid var(--dx-ui-line);border-radius:999px;background:var(--dx-ui-card);color:var(--dx-ui-gray);font:700 12px 'DM Sans',sans-serif;cursor:pointer}
+.dx-rmina-urg.on{background:var(--dx-ui-red-bg);color:var(--dx-ui-red-fg);border-color:transparent}
+.dx-rmina-line.ped{grid-template-columns:minmax(0,1fr) 90px 70px auto 40px}
+@container (max-width:560px){.dx-rmina-line,.dx-rmina-line.ped{grid-template-columns:minmax(0,1fr) 80px 40px}.dx-rmina-line .u{display:none}.dx-rmina-line.ped .dx-rmina-urg{grid-column:1/-1;justify-self:start;order:5}}
+.dx-rmina-add{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.dx-rmina-add .dx-ui-search{flex:1;width:auto;min-width:200px}
+.dx-rmina-lub{width:100%;border-collapse:collapse;font-size:14px}
+.dx-rmina-lub th{padding:8px 10px;text-align:left;color:var(--dx-ui-gray);font-size:11px;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--dx-ui-line);background:var(--dx-ui-head)}
+.dx-rmina-lub td{padding:6px 10px;border-bottom:1px solid var(--dx-ui-line-soft);color:var(--dx-ui-ink)}
+.dx-rmina-lub input{width:100px;min-height:40px;padding:0 10px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:15px 'DM Sans',sans-serif;text-align:right}
+
+/* Avance */
+.dx-rmina-range{display:flex;align-items:center;gap:16px}
+.dx-rmina-range input{flex:1;height:32px;accent-color:var(--dx-ui-cyan)}
+.dx-rmina-range output{min-width:84px;text-align:right;font:700 28px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+
+/* Fotos y backlog */
+.dx-rmina-photos{display:flex;gap:10px;flex-wrap:wrap}
+.dx-rmina-photo{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:110px;height:90px;border:1px solid var(--dx-ui-line);border-radius:10px;background:var(--dx-ui-head);color:var(--dx-ui-gray);font-size:11px}
+.dx-rmina-photo.add{border-style:dashed;cursor:pointer;color:var(--dx-ui-cyan-fg)}
+.dx-rmina-blog{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--dx-ui-line);border-radius:10px;margin-bottom:8px}
+.dx-rmina-blog b{display:block;color:var(--dx-ui-navy);font-weight:600}
+.dx-rmina-blog small{color:var(--dx-ui-gray);font-size:12px}
+
+/* Resumen lateral */
+.dx-rmina-side{position:sticky;top:16px}
+.dx-rmina-sum{padding:16px 18px}
+.dx-rmina-sum h3{margin:0 0 12px;color:var(--dx-ui-navy);font:700 15px 'Sora',sans-serif}
+.dx-rmina-kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--dx-ui-line-soft);font-size:13px}
+.dx-rmina-kv:last-of-type{border-bottom:0}
+.dx-rmina-kv span{color:var(--dx-ui-gray)}
+.dx-rmina-kv b{color:var(--dx-ui-navy);text-align:right}
+.dx-rmina-big{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 12px}
+.dx-rmina-big div{padding:12px;border-radius:10px;background:var(--dx-ui-head);border:1px solid var(--dx-ui-line)}
+.dx-rmina-big b{display:block;font:700 22px 'Sora',sans-serif;color:var(--dx-ui-navy)}
+.dx-rmina-big span{color:var(--dx-ui-gray);font-size:12px}
+.dx-rmina-checks{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:6px;font-size:13px}
+.dx-rmina-checks li{display:flex;gap:8px;align-items:center;color:var(--dx-ui-gray)}
+.dx-rmina-checks li.ok{color:var(--dx-ui-green-fg)}
+.dx-rmina-checks li.no{color:var(--dx-ui-red-fg)}
+.dx-rmina-foot{position:sticky;bottom:0;z-index:2;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 20px;border-top:1px solid var(--dx-ui-line);background:var(--dx-ui-card)}
+@media (max-width:600px){.dx-rmina-foot .dx-btn{flex:1;min-height:48px}}
+
+/* Detalle / revisión */
+.dx-rmina-dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px 18px}
+.dx-rmina-dl div span{display:block;color:var(--dx-ui-gray);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.dx-rmina-dl div b{display:block;margin-top:3px;color:var(--dx-ui-navy);font-weight:600}
+.dx-rmina-text{margin:0;color:var(--dx-ui-ink);line-height:1.55}
+.dx-rmina-obs{margin-top:12px}
+.dx-rmina-obs textarea{width:100%;min-height:80px;padding:10px 12px;border:1px solid var(--dx-ui-border);border-radius:8px;background:var(--dx-ui-card);color:var(--dx-ui-ink);font:14px 'DM Sans',sans-serif}
+</style></head><body>
+<div class="mock-shell"><aside class="mock-side"><b>OPERA · Operaciones</b><small>TALLER &amp; OPERACIONES</small><span>Bandeja de OTs</span><span>Partes Taller</span><span class="on">Reportes Mina</span><span>Cierre y conformidad</span><small>SUPPLY CHAIN</small><span>Reserva de Repuestos</span><span>Minas y proyectos</span></aside>
+<main class="mock-main">
+<div class="mock-bar">Maqueta · vista:
+  <button class="on" data-v="lista" onclick="vista('lista')">1 · Listado</button>
+  <button data-v="nuevo" onclick="vista('nuevo')">2 · Nuevo reporte</button>
+  <button data-v="detalle" onclick="vista('detalle')">3 · Revisión del supervisor</button>
+  <span style="flex:1"></span>
+  <button onclick="tema()">Modo claro / oscuro</button>
+</div>
+<div class="dx-ui dx-rmina">
+
+<!-- ============ 1. LISTADO ============ -->
+<section class="dx-rmina-panel on" id="v-lista">
+  <div class="dx-ui-head-page"><div><div class="dx-ui-eyebrow">Taller &amp; Operaciones · Campo</div><h1 class="dx-ui-title">Reportes de mina</h1><p class="dx-ui-sub">Parte diario por turno de los equipos que trabajan en mina: horómetros, horas, mantenimiento y repuestos.</p></div>
+    <div class="dx-ui-actions"><button class="dx-btn primary" onclick="vista('nuevo')"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuevo reporte</button></div></div>
+  <div class="dx-ui-summary">
+    <button class="dx-ui-chip on" onclick="filtro(this,'')"><b>6</b><span>todos</span></button>
+    <button class="dx-ui-chip" onclick="filtro(this,'rev')"><b>2</b><span>en revisión</span></button>
+    <button class="dx-ui-chip" onclick="filtro(this,'obs')"><b>1</b><span>observado</span></button>
+    <button class="dx-ui-chip" onclick="filtro(this,'apr')"><b>2</b><span>aprobados</span></button>
+    <button class="dx-ui-chip" onclick="filtro(this,'bor')"><b>1</b><span>borrador</span></button>
+  </div>
+  <div class="dx-ui-card dx-rmina-list">
+    <div class="dx-ui-toolbar"><h2>Reportes del periodo</h2><span class="dx-ui-count" id="cnt">6 reportes</span>
+      <div class="dx-rmina-filters"><select class="dx-rmina-select" aria-label="Filtrar por mina"><option>Todas las minas</option><option>Mina Altiplano (prueba)</option></select><select class="dx-rmina-select" aria-label="Filtrar por turno"><option>Día y noche</option><option>Día</option><option>Noche</option></select></div>
+      <label class="dx-ui-search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" aria-label="Buscar reportes" placeholder="Buscar por N°, OT, equipo o técnico" oninput="buscar()"></label>
+    </div>
+    <div class="dx-ui-head"><span>Reporte</span><span>OT · equipo</span><span>Mina · proyecto</span><span>Horas · D.M.</span><span>Estado</span><span></span></div>
+    <div id="rows"></div>
+    <div class="dx-ui-empty" id="vacio" hidden>No hay reportes que coincidan con la búsqueda.</div>
+  </div>
+</section>
+
+<!-- ============ 2. NUEVO REPORTE ============ -->
+<section class="dx-rmina-panel" id="v-nuevo">
+  <div class="dx-ui-head-page"><div><div class="dx-ui-eyebrow">Reportes de mina · Nuevo</div><h1 class="dx-ui-title">Nuevo reporte de mina</h1><p class="dx-ui-sub">Llénalo al cierre del turno. Se guarda como borrador y se envía al supervisor para revisión.</p></div>
+    <div class="dx-ui-actions"><button class="dx-btn" onclick="vista('lista')">Volver al listado</button></div></div>
+  <div class="dx-rmina-grid">
+    <div>
+      <div class="dx-ui-card">
+        <!-- Orden y equipo -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18M6 21V9l6-5 6 5v12M10 21v-6h4v6"/></svg></span><div><h3>Orden y turno</h3><p>Solo se listan OT programadas o en ejecución con proyecto de mina.</p></div></div>
+          <div class="dx-rmina-fields">
+            <div class="dx-rmina-field wide"><label for="f-ot">Orden de trabajo *</label>
+              <select id="f-ot"><option>OT-26-0838 · PROYECTO 1 · LENOVO PX877</option><option>OT-26-0641 · PROYECTO PRUEBA 2 · LENOVO PX877</option></select>
+              <div class="dx-rmina-ctx"><span class="dx-ui-pill is-violet"><i></i>Mantenimiento</span><span><b>Mina Altiplano (prueba)</b> · PROY-2026-0001 PROYECTO 1</span><span>· Equipo <b>PC · LENOVO PX877</b> (serie 98798798)</span></div>
+            </div>
+            <div class="dx-rmina-field"><label for="f-fecha">Fecha *</label><input id="f-fecha" type="date" value="2026-10-14"></div>
+            <div class="dx-rmina-field"><label>Turno *</label><div class="dx-rmina-seg" role="group" aria-label="Turno"><button class="on" onclick="seg(this)">Día</button><button onclick="seg(this)">Noche</button></div></div>
+            <div class="dx-rmina-field"><label for="f-tec">Técnico</label><input id="f-tec" value="Andre" readonly></div>
+            <div class="dx-rmina-field"><label for="f-sup">Supervisor del cliente</label><input id="f-sup" placeholder="Nombre del supervisor en mina"></div>
+          </div>
+        </div>
+        <!-- Horómetros -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 13l3-3M9 2h6"/></svg></span><div><h3>Horómetros</h3><p>El inicial se trae del último reporte del equipo. El final actualiza el horómetro del activo al aprobarse.</p></div></div>
+          <div class="dx-rmina-horo">
+            <span class="h">Contador</span><span class="h" style="text-align:right">Inicial</span><span class="h" style="text-align:right">Final</span><span class="h" style="text-align:right">Diferencia</span>
+            <span class="n">Motor</span><input aria-label="Motor inicial" value="3588.30" oninput="calc()"><input aria-label="Motor final" value="3590.40" oninput="calc()"><span class="d" id="d0">2.10 h</span>
+            <span class="n">Percusión</span><input aria-label="Percusión inicial" value="2099.70" oninput="calc()"><input aria-label="Percusión final" value="2101.40" oninput="calc()"><span class="d" id="d1">1.70 h</span>
+            <span class="n">Eléctrico</span><input aria-label="Eléctrico inicial" value="3908.10" oninput="calc()"><input aria-label="Eléctrico final" value="3910.20" oninput="calc()"><span class="d" id="d2">2.10 h</span>
+          </div>
+        </div>
+        <!-- Horas -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><h3>Distribución del turno</h3><p>Las horas deben sumar la duración del turno (12 h).</p></div><span class="dx-ui-pill is-green" id="pill-tot"><i></i>12.00 / 12 h</span></div>
+          <div class="dx-rmina-hours">
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-ht)"></span>Trabajadas</label><input class="hh" value="2.10" oninput="calc()"></div>
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-prev)"></span>Prev. programado</label><input class="hh" value="0.00" oninput="calc()"></div>
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-prev)"></span>Preventivo</label><input class="hh" value="0.25" oninput="calc()"></div>
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-corr)"></span>Correctivo</label><input class="hh" value="0.00" oninput="calc()"></div>
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-corr)"></span>Accidente / otro</label><input class="hh" value="0.00" oninput="calc()"></div>
+            <div class="dx-rmina-field"><label><span class="dx-rmina-dot" style="background:var(--dx-rmina-bar-sb)"></span>Stand-by</label><input class="hh" value="9.65" oninput="calc()"></div>
+          </div>
+          <div class="dx-rmina-bar" aria-hidden="true"><span id="b0" style="background:var(--dx-rmina-bar-ht)"></span><span id="b1" style="background:var(--dx-rmina-bar-prev)"></span><span id="b2" style="background:var(--dx-rmina-bar-corr)"></span><span id="b3" style="background:var(--dx-rmina-bar-sb)"></span></div>
+          <div class="dx-rmina-total">Total <b id="tot">12.00 h</b> · Disponibilidad mecánica <b id="dm">97.9 %</b> <span class="dx-rmina-hint">(turno − mantenimientos − correctivos) ÷ turno</span></div>
+        </div>
+        <!-- Mantenimiento y estado -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-violet"><svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></svg></span><div><h3>Mantenimiento y estado final</h3><p>Marca todos los tipos de trabajo del turno.</p></div></div>
+          <div class="dx-rmina-opts" style="margin-bottom:14px">
+            <button class="dx-rmina-opt" onclick="tog(this)"><span class="box">✓</span>Prev. programado</button>
+            <button class="dx-rmina-opt on" onclick="tog(this)"><span class="box">✓</span>Preventivo</button>
+            <button class="dx-rmina-opt" onclick="tog(this)"><span class="box">✓</span>Correctivo</button>
+            <button class="dx-rmina-opt" onclick="tog(this)"><span class="box">✓</span>Accidente</button>
+          </div>
+          <div class="dx-rmina-field" style="margin-bottom:8px"><label>Estado del equipo al cierre *</label></div>
+          <div class="dx-rmina-opts" role="radiogroup" aria-label="Estado del equipo">
+            <button class="dx-rmina-opt st g on" onclick="est(this,false)"><span class="box"></span>Operativo</button>
+            <button class="dx-rmina-opt st a" onclick="est(this,false)"><span class="box"></span>En espera</button>
+            <button class="dx-rmina-opt st r" onclick="est(this,false)"><span class="box"></span>Inoperativo</button>
+            <button class="dx-rmina-opt st v" onclick="est(this,true)"><span class="box"></span>Retorno a taller</button>
+          </div>
+          <div class="dx-rmina-note" id="retorno" hidden><b>Retorno a taller.</b> Se avisará al planner para coordinar el traslado mina ↔ taller. Indica el motivo:
+            <div class="dx-rmina-field"><textarea placeholder="Falla, programación, falta de repuesto…"></textarea></div></div>
+        </div>
+        <!-- Trabajos -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg></span><div><h3>Trabajos realizados</h3><p>Usa el micrófono del teclado del celular para dictar.</p></div></div>
+          <div class="dx-rmina-field"><textarea aria-label="Trabajos realizados">Se inspeccionó el equipo al inicio de guardia. Se reguló el cable de avance y retorno. Se completó aceite de lubricación y se engrasaron partes móviles.</textarea></div>
+          <div class="dx-rmina-field" style="margin-top:14px"><label>Avance de la OT al cierre del turno</label>
+            <div class="dx-rmina-range"><input type="range" min="0" max="100" step="5" value="45" aria-label="Avance de la OT" oninput="document.getElementById('av').value=this.value+' %';document.getElementById('s-av').textContent=this.value+' %'"><output id="av">45 %</output></div>
+            <span class="dx-rmina-hint">Último avance validado: 30 % (PD-2026-0028).</span></div>
+        </div>
+        <!-- Repuestos y lubricantes usados -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5zM3 8v8l9 5 9-5V8"/></svg></span><div><h3>Repuestos y lubricantes utilizados</h3><p>Solo registra el consumo (no mueve stock), igual que el parte de taller.</p></div></div>
+          <div class="dx-rmina-lines" id="usados">
+            <div class="dx-rmina-line"><div><b>Grasa de Litio Multipropósito NLGI 2</b><small>QUI-LUB-044 · Lubricantes</small></div><input aria-label="Cantidad" value="2"><span class="u">UND</span><button class="dx-rmina-x" aria-label="Quitar" onclick="this.parentNode.remove()">✕</button></div>
+            <div class="dx-rmina-line"><div><b>TUBO DELGADO</b><small>G01030101 · reservado en PER-ALT-1</small></div><input aria-label="Cantidad" value="3"><span class="u">m</span><button class="dx-rmina-x" aria-label="Quitar" onclick="this.parentNode.remove()">✕</button></div>
+          </div>
+          <div class="dx-rmina-add"><label class="dx-ui-search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input aria-label="Buscar material" placeholder="Buscar material por código o descripción"></label></div>
+          <table class="dx-rmina-lub" style="margin-top:14px"><thead><tr><th>Lubricante</th><th>UM</th><th style="text-align:right">Cantidad</th></tr></thead><tbody>
+            <tr><td>Aceite 15W-40</td><td>GAL</td><td style="text-align:right"><input aria-label="15W-40" placeholder="0"></td></tr>
+            <tr><td>Aceite hidráulico HD-10W</td><td>GAL</td><td style="text-align:right"><input aria-label="HD-10W" placeholder="0"></td></tr>
+            <tr><td>Refrigerante</td><td>GAL</td><td style="text-align:right"><input aria-label="Refrigerante" placeholder="0"></td></tr>
+            <tr><td>Grasa</td><td>LB</td><td style="text-align:right"><input aria-label="Grasa" value="0.25"></td></tr>
+          </tbody></table>
+        </div>
+        <!-- Pedido -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-violet"><svg class="ic" viewBox="0 0 24 24"><path d="M6 6h15l-2 8H8L6 3H3M9 20a1 1 0 1 0 0-.01M18 20a1 1 0 1 0 0-.01"/></svg></span><div><h3>Pedido de repuestos</h3><p>Al aprobarse entra a la reserva de la OT: periférico de la mina → central → SOLPE.</p></div></div>
+          <div class="dx-rmina-lines">
+            <div class="dx-rmina-line ped"><div><b>Kit de drives</b><small>REP-KIT-DRV · Mecánico</small></div><input aria-label="Cantidad" value="1"><span class="u">KIT</span><button class="dx-rmina-urg on" onclick="this.classList.toggle('on')">● Urgente</button><button class="dx-rmina-x" aria-label="Quitar" onclick="this.parentNode.remove()">✕</button></div>
+            <div class="dx-rmina-line ped"><div><b>Lock tite</b><small>INS-LCK-001 · Consumibles</small></div><input aria-label="Cantidad" value="1"><span class="u">UND</span><button class="dx-rmina-urg" onclick="this.classList.toggle('on')">● Urgente</button><button class="dx-rmina-x" aria-label="Quitar" onclick="this.parentNode.remove()">✕</button></div>
+          </div>
+          <div class="dx-rmina-add"><label class="dx-ui-search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input aria-label="Buscar material a pedir" placeholder="Agregar material al pedido"></label></div>
+        </div>
+        <!-- Fotos, backlog, comentarios -->
+        <div class="dx-rmina-sec">
+          <div class="dx-rmina-sec-h"><span class="dx-ui-icon is-cyan"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg></span><div><h3>Fotos, backlog y comentarios</h3><p>El backlog registra hallazgos o trabajos pendientes para futuras OT.</p></div></div>
+          <div class="dx-rmina-photos"><div class="dx-rmina-photo">▣<span>equipo_01.jpg</span></div><div class="dx-rmina-photo">▣<span>repuesto_02.jpg</span></div><button class="dx-rmina-photo add">＋<span>Tomar foto</span></button></div>
+          <div style="margin-top:14px">
+            <div class="dx-rmina-blog"><span class="dx-ui-pill is-amber"><i></i>Media</span><div><b>Fuga leve en manguera de retorno</b><small>Programar cambio en el próximo preventivo</small></div></div>
+            <button class="dx-btn"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Agregar al backlog</button>
+          </div>
+          <div class="dx-rmina-field" style="margin-top:14px"><label for="f-com">Comentarios finales</label><textarea id="f-com" placeholder="Observaciones para el supervisor"></textarea></div>
+        </div>
+        <div class="dx-rmina-foot"><button class="dx-btn" onclick="vista('lista')">Cancelar</button><button class="dx-btn">Guardar borrador</button><button class="dx-btn primary" onclick="vista('lista')">Enviar a revisión</button></div>
+      </div>
+    </div>
+    <!-- Resumen -->
+    <aside class="dx-rmina-side"><div class="dx-ui-card"><div class="dx-rmina-sum">
+      <h3>Resumen del turno</h3>
+      <div class="dx-rmina-big"><div><b id="s-ht">2.10</b><span>horas trabajadas</span></div><div><b id="s-dm">97.9 %</b><span>disp. mecánica</span></div></div>
+      <div class="dx-rmina-kv"><span>OT</span><b>OT-26-0838</b></div>
+      <div class="dx-rmina-kv"><span>Mina</span><b>Mina Altiplano (prueba)</b></div>
+      <div class="dx-rmina-kv"><span>Turno</span><b>14 oct · Día</b></div>
+      <div class="dx-rmina-kv"><span>Estado del equipo</span><b id="s-est">Operativo</b></div>
+      <div class="dx-rmina-kv"><span>Avance OT</span><b id="s-av">45 %</b></div>
+      <div class="dx-rmina-kv"><span>Repuestos usados</span><b>2 ítems</b></div>
+      <div class="dx-rmina-kv"><span>Pedido</span><b>2 ítems · 1 urgente</b></div>
+      <ul class="dx-rmina-checks" id="checks">
+        <li class="ok">✓ Horómetros finales ≥ iniciales</li>
+        <li class="ok">✓ Horas suman 12 h</li>
+        <li class="ok">✓ Estado del equipo indicado</li>
+      </ul>
+    </div></div></aside>
+  </div>
+</section>
+
+<!-- ============ 3. REVISIÓN ============ -->
+<section class="dx-rmina-panel" id="v-detalle">
+  <div class="dx-ui-head-page"><div><div class="dx-ui-eyebrow">Reportes de mina · Revisión</div><h1 class="dx-ui-title">RM-2026-0006</h1><p class="dx-ui-sub">Enviado por Andre · 14 oct 2026, 19:42</p></div>
+    <div class="dx-ui-actions"><span class="dx-ui-pill is-amber" style="align-self:center"><i></i>En revisión</span><button class="dx-btn" onclick="vista('lista')">Volver</button></div></div>
+  <div class="dx-rmina-grid">
+    <div class="dx-ui-card">
+      <div class="dx-rmina-sec"><div class="dx-rmina-sec-h"><h3>Datos del turno</h3></div>
+        <div class="dx-rmina-dl"><div><span>OT</span><b>OT-26-0838</b></div><div><span>Mina · proyecto</span><b>Mina Altiplano · PROY-2026-0001</b></div><div><span>Equipo</span><b>PC · LENOVO PX877</b></div><div><span>Fecha · turno</span><b>14 oct 2026 · Día</b></div><div><span>Supervisor cliente</span><b>Ing. R. Quispe</b></div><div><span>Estado del equipo</span><b><span class="dx-ui-pill is-green"><i></i>Operativo</span></b></div></div></div>
+      <div class="dx-rmina-sec"><div class="dx-rmina-sec-h"><h3>Horómetros y horas</h3></div>
+        <div class="dx-rmina-dl"><div><span>Motor</span><b>3 588.30 → 3 590.40 (2.10 h)</b></div><div><span>Percusión</span><b>2 099.70 → 2 101.40 (1.70 h)</b></div><div><span>Eléctrico</span><b>3 908.10 → 3 910.20 (2.10 h)</b></div></div>
+        <div class="dx-rmina-bar" aria-hidden="true"><span style="width:17.5%;background:var(--dx-rmina-bar-ht)"></span><span style="width:2.1%;background:var(--dx-rmina-bar-prev)"></span><span style="width:80.4%;background:var(--dx-rmina-bar-sb)"></span></div>
+        <div class="dx-rmina-total">Trabajadas <b>2.10 h</b> · Preventivo <b>0.25 h</b> · Stand-by <b>9.65 h</b> · D.M. <b>97.9 %</b></div></div>
+      <div class="dx-rmina-sec"><div class="dx-rmina-sec-h"><h3>Trabajos realizados</h3><span class="dx-ui-pill is-violet"><i></i>Preventivo</span></div>
+        <p class="dx-rmina-text">Se inspeccionó el equipo al inicio de guardia. Se reguló el cable de avance y retorno. Se completó aceite de lubricación y se engrasaron partes móviles.</p></div>
+      <div class="dx-rmina-sec"><div class="dx-rmina-sec-h"><h3>Repuestos usados y pedido</h3></div>
+        <div class="dx-rmina-lines">
+          <div class="dx-rmina-line"><div><b>Grasa de Litio Multipropósito NLGI 2</b><small>Usado · QUI-LUB-044</small></div><b style="text-align:right">2</b><span class="u">UND</span><span></span></div>
+          <div class="dx-rmina-line"><div><b>Kit de drives</b><small>Pedido · REP-KIT-DRV · <span style="color:var(--dx-ui-red-fg);font-weight:700">urgente</span></small></div><b style="text-align:right">1</b><span class="u">KIT</span><span></span></div>
+        </div></div>
+      <div class="dx-rmina-sec dx-rmina-obs"><div class="dx-rmina-field"><label for="f-obs">Observación del supervisor</label><textarea id="f-obs" placeholder="Obligatoria si se observa el reporte"></textarea></div></div>
+      <div class="dx-rmina-foot"><button class="dx-btn danger">Observar</button><button class="dx-btn primary">Aprobar reporte</button></div>
+    </div>
+    <aside class="dx-rmina-side"><div class="dx-ui-card"><div class="dx-rmina-sum"><h3>Al aprobar</h3>
+      <ul class="dx-rmina-checks"><li class="ok">✓ Horómetro del equipo pasa a 3 590.40</li><li class="ok">✓ Avance de la OT: 30 % → 45 %</li><li class="ok">✓ Pedido entra a la reserva de OT-26-0838</li><li class="ok">✓ Backlog: 1 hallazgo nuevo</li><li>• Consumo de repuestos solo se registra</li></ul></div></div></aside>
+  </div>
+</section>
+</div></main></div>
+<script>
+const R=[
+ {n:'RM-2026-0006',f:'14 oct · Día',ot:'OT-26-0838',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0001',tec:'Andre',ht:'2.10',dm:'97.9',e:'rev'},
+ {n:'RM-2026-0005',f:'13 oct · Noche',ot:'OT-26-0641',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0002',tec:'Betty Cardenas',ht:'8.40',dm:'100',e:'rev'},
+ {n:'RM-2026-0004',f:'13 oct · Día',ot:'OT-26-0838',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0001',tec:'Andre',ht:'6.75',dm:'91.7',e:'obs'},
+ {n:'RM-2026-0003',f:'12 oct · Día',ot:'OT-26-0641',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0002',tec:'Betty Cardenas',ht:'10.20',dm:'100',e:'apr'},
+ {n:'RM-2026-0002',f:'11 oct · Noche',ot:'OT-26-0838',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0001',tec:'Andre',ht:'4.00',dm:'75.0',e:'apr'},
+ {n:'RM-2026-0001',f:'14 oct · Noche',ot:'OT-26-0641',eq:'PC · LENOVO PX877',mina:'Mina Altiplano (prueba)',pr:'PROY-2026-0002',tec:'Betty Cardenas',ht:'—',dm:'—',e:'bor'}];
+const EST={rev:['is-amber','En revisión'],obs:['is-red','Observado'],apr:['is-green','Aprobado'],bor:['is-gray','Borrador']};
+let fEst='';
+function pintar(){const q=document.getElementById('q').value.toLowerCase();const rs=R.filter(r=>(!fEst||r.e===fEst)&&(!q||(r.n+r.ot+r.eq+r.tec).toLowerCase().includes(q)));
+ document.getElementById('rows').innerHTML=rs.map(r=>`<div class="dx-ui-row" role="button" tabindex="0" onclick="vista('detalle')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();vista('detalle')}">
+ <div class="dx-rmina-id"><span class="dx-ui-icon is-cyan">⛏</span><div class="dx-rmina-cell"><b>${r.n}</b><small>${r.f}</small></div></div>
+ <div class="dx-rmina-cell dx-rmina-c-ot"><b>${r.ot}</b><small>${r.eq}</small></div>
+ <div class="dx-rmina-cell dx-rmina-c-tec"><b>${r.mina}</b><small>${r.pr} · ${r.tec}</small></div>
+ <div class="dx-rmina-kpi dx-rmina-c-kpi">${r.ht==='—'?'<small>Sin enviar</small>':r.ht+' h<small>D.M. '+r.dm+' %</small>'}</div>
+ <div class="dx-rmina-c-est"><span class="dx-ui-pill ${EST[r.e][0]}"><i></i>${EST[r.e][1]}</span></div>
+ <svg class="ic dx-ui-arrow" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></div>`).join('');
+ document.getElementById('cnt').textContent=rs.length+(rs.length===1?' reporte':' reportes');document.getElementById('vacio').hidden=rs.length>0;}
+function filtro(el,e){document.querySelectorAll('.dx-ui-chip').forEach(c=>c.classList.remove('on'));el.classList.add('on');fEst=e;pintar()}
+function buscar(){pintar()}
+function vista(v){document.querySelectorAll('.dx-rmina-panel').forEach(p=>p.classList.toggle('on',p.id==='v-'+v));document.querySelectorAll('.mock-bar [data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));window.scrollTo(0,0)}
+function tema(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'}
+function seg(b){b.parentNode.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on')}
+function tog(b){b.classList.toggle('on')}
+function est(b,ret){b.parentNode.querySelectorAll('.dx-rmina-opt').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('retorno').hidden=!ret;document.getElementById('s-est').textContent=b.textContent.trim()}
+function calc(){const hs=[...document.querySelectorAll('.dx-rmina-horo input')].map(i=>parseFloat(i.value)||0);let okH=true;
+ for(let k=0;k<3;k++){const d=hs[k*2+1]-hs[k*2];const el=document.getElementById('d'+k);el.textContent=d.toFixed(2)+' h';el.classList.toggle('is-error',d<0);if(d<0)okH=false}
+ const v=[...document.querySelectorAll('.hh')].map(i=>parseFloat(i.value)||0);const tot=v.reduce((a,b)=>a+b,0);const mant=v[1]+v[2],corr=v[3]+v[4];
+ const dm=Math.max(0,(12-mant-corr)/12*100);const pc=x=>(Math.min(x,12)/12*100)+'%';
+ document.getElementById('b0').style.width=pc(v[0]);document.getElementById('b1').style.width=pc(mant);document.getElementById('b2').style.width=pc(corr);document.getElementById('b3').style.width=pc(v[5]);
+ document.getElementById('tot').textContent=tot.toFixed(2)+' h';document.getElementById('dm').textContent=dm.toFixed(1)+' %';document.getElementById('s-dm').textContent=dm.toFixed(1)+' %';document.getElementById('s-ht').textContent=v[0].toFixed(2);
+ const okT=Math.abs(tot-12)<0.001;const p=document.getElementById('pill-tot');p.className='dx-ui-pill '+(okT?'is-green':'is-red');p.innerHTML='<i></i>'+tot.toFixed(2)+' / 12 h';
+ const c=document.getElementById('checks').children;c[0].className=okH?'ok':'no';c[0].textContent=(okH?'✓ ':'✕ ')+'Horómetros finales ≥ iniciales';c[1].className=okT?'ok':'no';c[1].textContent=(okT?'✓ ':'✕ ')+'Horas suman 12 h'+(okT?'':' (hoy '+tot.toFixed(2)+')');}
+pintar();calc();
+</script></body></html>
