@@ -75,6 +75,7 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
   ]);
   const [bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ordenes,
     familiasTrabajo, actividades, cargos] = consultas;
+  const ausencias = await leerAusencias(sb, empresaId);
   const osIds = [...new Set(ordenes.map(ot => ot.os_cliente_id).filter(Boolean))];
   let ordenesServicio = [];
   if (osIds.length) {
@@ -100,8 +101,26 @@ export async function cargarPlanner({ empresaId, sociedadId, sociedadesIdsAlcanc
   }));
   return {
     bahias, puestos, maquinas, tipos, ocupaciones, personas, asignaciones, equipos, ots,
-    ordenesServicio, familiasTrabajo, actividades, cargos,
+    ordenesServicio, familiasTrabajo, actividades, cargos, ausencias,
   };
+}
+
+// Vacaciones y permisos confirmados por RRHH: el Tablero los pinta como ausencias.
+// Si el usuario no puede leer solicitudes de RRHH, el Planner sigue sin ausencias.
+async function leerAusencias(sb, empresaId) {
+  const desde = new Date();
+  desde.setDate(desde.getDate() - 14);
+  try {
+    const { data, error } = await sb.from('solicitudes_rrhh')
+      .select('id,personal_id,tipo,fecha_inicio,fecha_fin,estado')
+      .eq('empresa_id', empresaId)
+      .eq('estado', 'confirmada_rrhh')
+      .gte('fecha_fin', desde.toISOString().slice(0, 10));
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
 }
 
 export async function guardarBahia({ empresaId, sociedadId, id, ...valores }) {

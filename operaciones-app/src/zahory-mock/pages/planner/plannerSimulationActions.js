@@ -4,7 +4,7 @@ import {
   sincronizarOcupacionesOT,
 } from '../../../services/plannerService.js';
 import { simularUrgencia, validarOtPlanificable } from './plannerEngine.js';
-import { fechaEnDias } from './plannerLogic.js';
+import { sumarHabiles } from './plannerModelo.js';
 
 export function crearAccionesSimulacion({
   datos,
@@ -18,6 +18,7 @@ export function crearAccionesSimulacion({
   setVista,
   setSeleccion,
   setWizard,
+  setUndo = () => {},
 }) {
   function simular() {
     if (simulacion) {
@@ -52,20 +53,34 @@ export function crearAccionesSimulacion({
       const aplicada = await ejecutar(async () => {
         const dias = Math.max(1, simulacion.resultado.esperaDias);
         const asignaciones = [
-          ...(datos.asignaciones || []).map(item => ({ ...item, tabla: 'planner_asignaciones' })),
+          ...(datos.asignaciones || []).map(item => ({ ...item, tabla: 'planner_asignaciones', clase: 'persona' })),
           ...(datos.equipos || []).map(item => ({
             ...item,
             tabla: 'planner_asignaciones_equipo',
+            clase: 'equipo',
           })),
-        ].filter(item => item.ot_id !== urgente.id && item.estado === 'programado');
+        ].filter(item => item.ot_id !== urgente.id && item.estado === 'programado')
+          .sort((a, b) => b.fecha.localeCompare(a.fecha));
+        const movidas = [];
         for (const asignacion of asignaciones) {
           await actualizarFechaAsignacion({
             tabla: asignacion.tabla,
             id: asignacion.id,
-            fecha: fechaEnDias(asignacion.fecha, dias),
+            fecha: sumarHabiles(asignacion.fecha, dias),
           });
+          movidas.push(asignacion);
         }
         for (const ot of ots) await sincronizarOcupacionesOT({ otId: ot.id });
+        setUndo({
+          kind: 'lote',
+          items: movidas.map(item => ({
+            tabla: item.clase,
+            id: item.id,
+            fecha: item.fecha,
+            recurso: item.clase === 'equipo' ? item.maquina_id : item.tecnico_id,
+            otId: item.ot_id,
+          })),
+        });
       }, 'El plan se ajustó para dar prioridad al trabajo urgente.');
       if (aplicada) {
         setVista('panel');

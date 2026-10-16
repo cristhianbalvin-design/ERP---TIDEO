@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { esOtPlanificable } from './plannerEngine.js';
 import {
-  bloquesRecurso, claveCargo, colorCargo, diaSemana, fmtCorto, fmtDia, horas, indiceHoy, nombrePuesto,
+  ausencia, bloquesRecurso, claveCargo, colorCargo, diaSemana, fmtCorto, fmtDia, horas, indiceHoy, nombrePuesto,
   normalizar, numeroOT, ocupacionPuesto, tareaDe, ubicacionMaquina,
 } from './plannerModelo.js';
 
@@ -169,6 +169,12 @@ function Carril({ contexto, titulo, detalle, tabla, recursoId, bloques, color, p
       <div className="dx-pl-lab"><b>{titulo}</b><span>{detalle}</span></div>
       <div className="dx-pl-trk" onDragOver={onDragOver} onDrop={onDrop}>
         <BaseCarril hoyIdx={contexto.hoyIdx} />
+        {persona && contexto.dias.map((dia, indice) => {
+          const motivo = ausencia(contexto.datos, persona.id, dia);
+          return motivo
+            ? <div key={dia} className="dx-pl-offd" style={{ left: `calc(${indice} * var(--dw))`, width: 'var(--dw)' }}>{motivo}</div>
+            : null;
+        })}
         {bloques.map(bloque => (
           <Bloque key={bloque.clave} contexto={contexto} bloque={bloque} tabla={tabla} recursoId={recursoId} color={color} persona={persona} espejo={espejo} />
         ))}
@@ -186,7 +192,8 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
     .some(asig => asig.tecnico_id === item.id && asig.tarea_id === bloque.tareaId && asig.ot_id === bloque.otId));
   const tono = color || (responsable ? colorCargo(cargos, claveCargo(responsable)) : 'var(--dx-pl-sk0)');
   const otraEspecialidad = persona && tarea?.cargo?.nombre && normalizar(tarea.cargo.nombre) !== normalizar(claveCargo(persona));
-  const conAlerta = info?.st === 'bad' || otraEspecialidad;
+  const ausente = persona && bloque.asignaciones.some(item => ausencia(datos, persona.id, item.fecha));
+  const conAlerta = info?.st === 'bad' || otraEspecialidad || ausente;
   const pasado = bloque.e < hoyIdx;
   const editable = permiteEscritura && ot && esOtPlanificable(ot) && bloque.asignaciones.every(item => item.estado === 'programado');
   const elegido = seleccion?.ot?.id === bloque.otId && (!seleccion?.tareaId || seleccion.tareaId === bloque.tareaId);

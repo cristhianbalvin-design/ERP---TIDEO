@@ -1,7 +1,8 @@
 import { esOtPlanificable } from './plannerEngine.js';
 import {
   arbolTareas, claveCargo, colorCargo, diferenciaHabiles, fmtCorto, fmtDia, horas, normalizar,
-  nombrePuesto, numeroOT, ocupacionPuesto, puestoDeOT, resumenTarea, sumarHabiles, ubicacionMaquina,
+  nombrePuesto, numeroOT, ocupacionPuesto, planRefuerzo, planRetiro, puestoDeOT, recomendarTecnico, resumenTarea, sugerencias as calcularSugerencias,
+  sumarHabiles, ubicacionMaquina,
 } from './plannerModelo.js';
 
 const ICONO_OK = (
@@ -17,7 +18,7 @@ const ICONO_CANDADO = (
 
 export function PlannerSide({
   datos, infos, alertas, cargos, dias, hoy, seleccion, permiteEscritura, guardando,
-  onSelect, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto,
+  onSelect, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto, onLote = () => {},
 }) {
   const info = seleccion?.ot ? infos.get(seleccion.ot.id) : null;
   return (
@@ -44,12 +45,20 @@ export function PlannerSide({
           onPlanificar={onPlanificar}
           onConfigurar={onConfigurar}
           onResponsable={onResponsable}
+          onLote={onLote}
           onMaquina={onMaquina}
           onNoAntes={onNoAntes}
           onPuesto={onPuesto}
         />
       )}
-      <PanelAlertas alertas={alertas} onSelect={onSelect} datos={datos} />
+      <PanelAlertas
+        alertas={alertas}
+        sugerencias={calcularSugerencias(datos, infos, hoy)}
+        bloqueado={!permiteEscritura || guardando}
+        onSelect={onSelect}
+        onLote={onLote}
+        datos={datos}
+      />
     </aside>
   );
 }
@@ -175,7 +184,7 @@ function ListaTareas({ datos, info, cargos, elegida, onSelect }) {
 }
 
 function AsignarTarea({
-  datos, info, cargos, hoy, tareaId, tecnicoId, bloqueado, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto,
+  datos, info, cargos, hoy, tareaId, tecnicoId, bloqueado, onPlanificar, onConfigurar, onResponsable, onMaquina, onNoAntes, onPuesto, onLote,
 }) {
   const tarea = tareaElegida(info, tareaId);
   if (!tarea) return null;
@@ -200,6 +209,18 @@ function AsignarTarea({
   const primario = resumen.tecnicos.some(item => item.id === tecnicoId) ? tecnicoId : resumen.tecnicos[0]?.id || null;
   const opciones = opcionesResponsable(datos, resumen, primario);
   const mismas = opciones.filter(item => item.misma || item.actual);
+  const fechasPrimario = resumen.personas.filter(item => item.tecnico_id === primario).map(item => item.fecha);
+  const automaticoCandidato = primario ? recomendarTecnico(datos, resumen, { excluir: resumen.tecnicos.map(item => item.id), fechas: fechasPrimario }) : null;
+  const cargaActual = primario ? resumen.personas.filter(item => item.tecnico_id === primario).length : 0;
+  const automatico = automaticoCandidato && automaticoCandidato.carga < cargaActual * 8 ? automaticoCandidato : null;
+  const apoyo = primario ? recomendarTecnico(datos, resumen, { excluir: resumen.tecnicos.map(item => item.id), soloLibres: true, fechas: fechasPrimario.filter(fecha => fecha >= hoy) }) : null;
+  const refuerzo = apoyo ? planRefuerzo(resumen, primario, apoyo.persona.id, hoy) : null;
+  const saliente = resumen.tecnicos.length > 1 ? resumen.tecnicos.at(-1) : null;
+  const principal = resumen.tecnicos[0] || null;
+  const retiro = saliente && principal ? planRetiro(resumen, principal.id, saliente.id) : null;
+  const ayudaStepper = sinPlan ? 'Planifica la OT para sumar personas'
+    : refuerzo ? `Sumar a ${apoyo.persona.nombre} acorta ${refuerzo.dias} día${refuerzo.dias > 1 ? 's' : ''}`
+      : 'Más personas acortan la tarea';
   const otras = opciones.filter(item => !item.misma && !item.actual);
   const elegir = persona => {
     if (bloqueado || sinPlan || persona.id === primario) return;
@@ -243,11 +264,29 @@ function AsignarTarea({
           </div>
         )}
         <div className="dx-pl-stpr">
-          <div><b>Personas en la tarea</b><small>Más personas acortan la tarea</small></div>
-          <output>{resumen.tecnicos.length}</output>
+          <div><b>Personas en la tarea</b><small>{ayudaStepper}</small></div>
+          <div className="dx-pl-stp">
+            <button type="button" aria-label="Quitar una persona" disabled={bloqueado || !retiro} onClick={() => retiro && onLote(retiro.items, `${saliente?.nombre || 'La persona'} sale de la tarea; sus días pasan a ${principal?.nombre || 'el responsable'}.`)}>−</button>
+            <output>{resumen.tecnicos.length}</output>
+            <button type="button" aria-label="Sumar una persona" disabled={bloqueado || !refuerzo} onClick={() => refuerzo && onLote(refuerzo.items, `${apoyo.persona.nombre} se suma a la tarea; termina ${refuerzo.dias} día${refuerzo.dias > 1 ? 's' : ''} antes.`)}>+</button>
+          </div>
         </div>
         <h3>Responsable</h3>
-        <ul className="dx-pl-tcs">{mismas.map(boton)}</ul>
+        <ul className="dx-pl-tcs">
+          <li>
+            <button
+              type="button"
+              className="dx-pl-tc"
+              disabled={bloqueado || sinPlan || !automatico}
+              onClick={() => automatico && onResponsable(resumen.personas.filter(item => item.tecnico_id === primario), automatico.persona.id)}
+            >
+              <b>Automático</b>
+              <span className="s">{automatico ? `El Planner elige según carga y disponibilidad: ${automatico.persona.nombre}` : 'No hay otro técnico de la especialidad con menos carga'}</span>
+              <span className="a is-ok">Elegir</span>
+            </button>
+          </li>
+          {mismas.map(boton)}
+        </ul>
         {otras.length > 0 && (
           <details className="dx-pl-oth">
             <summary>Cubrir con otra especialidad ({otras.length})</summary>
@@ -340,7 +379,7 @@ function opcionesResponsable(datos, resumen, primario) {
   return filas.sort((a, b) => a.orden - b.orden || a.persona.nombre.localeCompare(b.persona.nombre, 'es'));
 }
 
-function PanelAlertas({ alertas, onSelect, datos }) {
+function PanelAlertas({ alertas, sugerencias = [], bloqueado, onSelect, onLote, datos }) {
   return (
     <section className="dx-pl-panel">
       <div className="dx-pl-ph">
@@ -348,6 +387,22 @@ function PanelAlertas({ alertas, onSelect, datos }) {
         <span className={`dx-pl-pill ${alertas.length ? 'is-bad' : 'is-ok'}`}>{alertas.length}</span>
       </div>
       <div className="dx-pl-pb">
+        {sugerencias.map(sugerencia => (
+          <div className="dx-pl-sug" key={`${sugerencia.otId}-${sugerencia.tareaId}`}>
+            <div>
+              <b>Sugerencia:</b> sumar a {sugerencia.persona.nombre} ({claveCargo(sugerencia.persona).toLowerCase()}) a «{sugerencia.tarea.titulo || 'la tarea'}»
+              {' '}({numeroOT(sugerencia.ot)}) adelanta esa OT {sugerencia.dias} día{sugerencia.dias > 1 ? 's' : ''} sin atrasar a las demás.
+            </div>
+            <div className="dx-pl-acts">
+              <button
+                type="button"
+                className="dx-pl-btn is-sm"
+                disabled={bloqueado}
+                onClick={() => onLote(sugerencia.items, `${sugerencia.persona.nombre} se sumó a «${sugerencia.tarea.titulo || 'la tarea'}».`)}
+              >Aplicar</button>
+            </div>
+          </div>
+        ))}
         {alertas.length
           ? (
             <ul className="dx-pl-alerts">

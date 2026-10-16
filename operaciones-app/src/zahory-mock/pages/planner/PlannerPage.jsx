@@ -207,6 +207,7 @@ export function PlannerPage() {
               onMaquina={acciones.cambiarMaquina}
               onNoAntes={acciones.noEmpezarAntes}
               onPuesto={acciones.cambiarPuesto}
+              onLote={acciones.aplicarLote}
             />
           </div>
         )}

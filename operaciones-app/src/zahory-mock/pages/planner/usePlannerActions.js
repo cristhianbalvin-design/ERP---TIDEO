@@ -83,6 +83,7 @@ export function usePlannerActions({
     setVista,
     setSeleccion,
     setWizard,
+    setUndo,
   });
 
   function abrirWizard(ot) {
@@ -261,21 +262,28 @@ export function usePlannerActions({
           }
           validarOtPlanificable(datos.ots.find(ot => ot.id === asignacion.ot_id));
         }
-        if (recursoDestino) {
-          const personas = items.filter(item => item.tabla === 'persona').map(item => item.asignacion.id);
-          const equipos = items.filter(item => item.tabla === 'equipo').map(item => item.asignacion.id);
-          if (personas.length) await reasignarTecnico({ ids: personas, tecnicoId: recursoDestino });
-          if (equipos.length) await reasignarMaquina({ ids: equipos, maquinaId: recursoDestino });
+        const destinos = items.map(item => ({
+          ...item,
+          recursoFinal: item.recurso || recursoDestino || null,
+          fechaFinal: item.fecha || (delta ? sumarHabiles(item.asignacion.fecha, delta) : null),
+        }));
+        const grupos = new Map();
+        for (const item of destinos) {
+          const actual = item.tabla === 'equipo' ? item.asignacion.maquina_id : item.asignacion.tecnico_id;
+          if (!item.recursoFinal || item.recursoFinal === actual) continue;
+          const clave = `${item.tabla}|${item.recursoFinal}`;
+          if (!grupos.has(clave)) grupos.set(clave, []);
+          grupos.get(clave).push(item.asignacion.id);
         }
-        if (delta) {
-          const ordenados = [...items].sort((a, b) => (delta > 0 ? -1 : 1) * a.asignacion.fecha.localeCompare(b.asignacion.fecha));
-          for (const item of ordenados) {
-            await actualizarFechaAsignacion({
-              tabla: nombreTabla(item.tabla),
-              id: item.asignacion.id,
-              fecha: sumarHabiles(item.asignacion.fecha, delta),
-            });
-          }
+        for (const [clave, ids] of grupos) {
+          const [tabla, recurso] = clave.split('|');
+          if (tabla === 'equipo') await reasignarMaquina({ ids, maquinaId: recurso });
+          else await reasignarTecnico({ ids, tecnicoId: recurso });
+        }
+        const conFecha = destinos.filter(item => item.fechaFinal && item.fechaFinal !== item.asignacion.fecha)
+          .sort((a, b) => (a.fechaFinal > a.asignacion.fecha ? -1 : 1) * a.asignacion.fecha.localeCompare(b.asignacion.fecha));
+        for (const item of conFecha) {
+          await actualizarFechaAsignacion({ tabla: nombreTabla(item.tabla), id: item.asignacion.id, fecha: item.fechaFinal });
         }
         for (const otId of new Set(items.map(item => item.asignacion.ot_id))) await sincronizarOcupacionesOT({ otId });
         setUndo({
@@ -292,6 +300,10 @@ export function usePlannerActions({
     } catch {
       return false;
     }
+  }
+
+  function aplicarLote(items, mensaje) {
+    return moverLote({ items }, mensaje);
   }
 
   async function deshacerLote(item) {
@@ -367,6 +379,7 @@ export function usePlannerActions({
     cambiarMaquina,
     noEmpezarAntes,
     cambiarPuesto,
+    aplicarLote,
     elegirUrgente: accionesSimulacion.elegirUrgente,
     aplicarSimulacion: accionesSimulacion.aplicarSimulacion,
     guardarWizardHerencia,

@@ -47,3 +47,55 @@ describe('modelo del Planner v8', () => {
     expect(diferencias.puestosQuitados.map(p => p.id)).toEqual(['p1']);
   });
 });
+
+import { ausencia, planRefuerzo, planRetiro, recomendarTecnico, resumenTarea, sugerencias, construirInfos } from '../src/zahory-mock/pages/planner/plannerModelo.js';
+
+describe('refuerzo, retiro, automático y ausencias', () => {
+  const tarea = { id: 't', titulo: 'Armado', horas_estimadas: 32, horas_reales: 0, cargo: { nombre: 'Soldador' } };
+  const ot = { id: 'o', numero: 'OT-1', estado: 'programada', ot_tareas: [tarea], orden_servicio: { fecha_fin: '2026-10-19' } };
+  const asig = (id, tec, fecha) => ({ id, ot_id: 'o', tarea_id: 't', tecnico_id: tec, fecha, horas_estimadas: 8, estado: 'programado' });
+  const datos = {
+    ots: [ot], equipos: [], maquinas: [], puestos: [], ocupaciones: [],
+    personas: [
+      { id: 'a', nombre: 'Ana', cargo: 'Soldador' },
+      { id: 'b', nombre: 'Beto', cargo: 'Soldador' },
+      { id: 'c', nombre: 'Caro', cargo: 'Soldador' },
+      { id: 'd', nombre: 'Dani', cargo: 'Mecánico' },
+    ],
+    asignaciones: [asig('1', 'a', '2026-10-14'), asig('2', 'a', '2026-10-15'), asig('3', 'a', '2026-10-16'), asig('4', 'a', '2026-10-19'),
+      { ...asig('9', 'b', '2026-10-14'), ot_id: 'otra', tarea_id: 'x' }],
+    ausencias: [{ personal_id: 'c', tipo: 'vacaciones', fecha_inicio: '2026-10-15', fecha_fin: '2026-10-15' }],
+  };
+
+  it('lee ausencias por persona y día', () => {
+    expect(ausencia(datos, 'c', '2026-10-15')).toBe('Vacaciones');
+    expect(ausencia(datos, 'c', '2026-10-16')).toBeNull();
+  });
+
+  it('recomienda a quien es de la especialidad, no está ausente y tiene menos carga', () => {
+    const resumen = resumenTarea(datos, ot, tarea);
+    expect(recomendarTecnico(datos, resumen, { excluir: ['a'] }).persona.id).toBe('b');
+    expect(recomendarTecnico(datos, resumen, { excluir: ['a'], soloLibres: true })).toBeNull();
+  });
+
+  it('reparte la mitad de los días con el refuerzo y luego los devuelve', () => {
+    const resumen = resumenTarea(datos, ot, tarea);
+    const plan = planRefuerzo(resumen, 'a', 'b', '2026-10-14');
+    expect(plan.dias).toBe(2);
+    expect(plan.items.map(item => [item.asignacion.id, item.recurso, item.fecha]))
+      .toEqual([['3', 'b', '2026-10-14'], ['4', 'b', '2026-10-15']]);
+    const repartido = { ...datos, asignaciones: [asig('1', 'a', '2026-10-14'), asig('2', 'a', '2026-10-15'), asig('3', 'b', '2026-10-14'), asig('4', 'b', '2026-10-15')] };
+    const retiro = planRetiro(resumenTarea(repartido, ot, tarea), 'a', 'b');
+    expect(retiro.items.map(item => [item.asignacion.id, item.recurso, item.fecha]))
+      .toEqual([['3', 'a', '2026-10-16'], ['4', 'a', '2026-10-19']]);
+  });
+
+  it('sugiere sumar un técnico libre a la OT en riesgo', () => {
+    const libre = { ...datos, asignaciones: datos.asignaciones.filter(item => item.tecnico_id !== 'b') };
+    const { infos } = construirInfos(libre, '2026-10-14');
+    const lista = sugerencias(libre, infos, '2026-10-14');
+    expect(lista).toHaveLength(1);
+    expect(lista[0]).toMatchObject({ otId: 'o', dias: 2 });
+    expect(lista[0].persona.id).toBe('b');
+  });
+});

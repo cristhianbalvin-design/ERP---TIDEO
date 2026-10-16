@@ -207,6 +207,16 @@ export function alertas(datos, infos, met, dias) {
       }
     }
   }
+  const avisadas = new Set();
+  for (const item of datos.asignaciones || []) {
+    if (item.estado !== 'programado' || avisadas.has(item.tecnico_id) || !dias.includes(item.fecha)) continue;
+    const motivo = ausencia(datos, item.tecnico_id, item.fecha);
+    if (!motivo) continue;
+    avisadas.add(item.tecnico_id);
+    const persona = (datos.personas || []).find(fila => fila.id === item.tecnico_id);
+    lista.push({ sev: 'bad', otId: item.ot_id, tareaId: item.tarea_id, titulo: `Tarea en día de ausencia · ${persona?.nombre || 'Técnico'}`,
+      mensaje: `${persona?.nombre || 'El técnico'} tiene ${motivo.toLowerCase()} el ${fmtDia(item.fecha)} y está asignado a ${numeroOT(ots.get(item.ot_id))}. Cámbialo de responsable.` });
+  }
   if (met.critico) {
     lista.push({ sev: 'warn', otId: met.cuellos.esperas.find(item => item.recursoId === met.critico.id)?.otId || null,
       titulo: `Cuello de botella · ${met.critico.nombre}`,
@@ -375,3 +385,82 @@ export function puestoDeOT(datos, otId) {
 }
 
 export const normalizar = texto => String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+// Ausencias confirmadas por RRHH (vacaciones, permisos) por persona y fecha.
+const TIPOS_AUSENCIA = {
+  vacaciones: 'Vacaciones', permiso_con_goce: 'Permiso', permiso_sin_goce: 'Permiso',
+  compensacion_horas: 'Compensación', descanso_medico: 'Descanso médico', licencia: 'Licencia',
+};
+export function ausencia(datos, personaId, fecha) {
+  const fila = (datos.ausencias || []).find(item => item.personal_id === personaId
+    && item.fecha_inicio <= fecha && item.fecha_fin >= fecha);
+  return fila ? (TIPOS_AUSENCIA[fila.tipo] || 'Ausencia') : null;
+}
+
+function horasPersona(datos, personaId, fechas, excluirTarea = null) {
+  return (datos.asignaciones || []).filter(item => item.tecnico_id === personaId && fechas.includes(item.fecha)
+    && ESTADOS_ACTIVOS.has(item.estado) && (!excluirTarea || item.tarea_id !== excluirTarea))
+    .reduce((suma, item) => suma + (Number(item.horas_estimadas) || CAP_DIA), 0);
+}
+
+// Técnico recomendado para una tarea: misma especialidad, sin ausencias esos días y con menos carga.
+export function recomendarTecnico(datos, resumen, { excluir = [], soloLibres = false, fechas = null } = {}) {
+  const dias = fechas || resumen.personas.map(item => item.fecha);
+  const cargo = normalizar(resumen.cargo);
+  const candidatos = (datos.personas || [])
+    .filter(persona => !excluir.includes(persona.id))
+    .filter(persona => !resumen.tarea.cargo?.nombre || normalizar(claveCargo(persona)) === cargo)
+    .filter(persona => !dias.some(fecha => ausencia(datos, persona.id, fecha)))
+    .map(persona => ({ persona, carga: horasPersona(datos, persona.id, dias, resumen.tarea.id) }))
+    .filter(item => !soloLibres || item.carga === 0)
+    .sort((a, b) => a.carga - b.carga || a.persona.nombre.localeCompare(b.persona.nombre, 'es'));
+  return candidatos[0] || null;
+}
+
+// Reparte los días pendientes de un técnico con otro en paralelo: la tarea termina antes.
+export function planRefuerzo(resumen, primarioId, nuevoId, hoy = hoyISO()) {
+  const propias = resumen.personas.filter(item => item.tecnico_id === primarioId && item.estado === 'programado' && item.fecha >= hoy)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  if (propias.length < 2) return null;
+  const quedan = Math.ceil(propias.length / 2);
+  const movidas = propias.slice(quedan).map((asignacion, indice) => ({
+    tabla: 'persona', asignacion, recurso: nuevoId, fecha: propias[indice].fecha,
+  }));
+  return { items: movidas, dias: propias.length - quedan };
+}
+
+// Junta en un solo técnico los días de otro: los pone a continuación de los suyos.
+export function planRetiro(resumen, quedaId, saleId) {
+  const propias = resumen.personas.filter(item => item.tecnico_id === quedaId && item.estado === 'programado')
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const salen = resumen.personas.filter(item => item.tecnico_id === saleId && item.estado === 'programado')
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  if (!propias.length || !salen.length) return null;
+  let cursor = propias.at(-1).fecha;
+  const items = salen.map(asignacion => {
+    cursor = sumarHabiles(cursor, 1);
+    return { tabla: 'persona', asignacion, recurso: quedaId, fecha: cursor };
+  });
+  return { items, dias: salen.length };
+}
+
+// Sugerencias del panel: sumar un técnico libre a la tarea que define la entrega de una OT en riesgo.
+export function sugerencias(datos, infos, hoy = hoyISO(), limite = 3) {
+  const lista = [];
+  for (const info of infos.values()) {
+    if (lista.length >= limite) break;
+    if (!['bad', 'warn'].includes(info.st) || !info.planificada) continue;
+    for (const tarea of info.ot.ot_tareas || []) {
+      const resumen = resumenTarea(datos, info.ot, tarea);
+      const primario = resumen.tecnicos[0]?.id;
+      if (!primario || resumen.terminada) continue;
+      const fechas = resumen.personas.filter(item => item.tecnico_id === primario && item.fecha >= hoy).map(item => item.fecha);
+      const candidato = recomendarTecnico(datos, resumen, { excluir: resumen.tecnicos.map(item => item.id), soloLibres: true, fechas });
+      const plan = candidato && planRefuerzo(resumen, primario, candidato.persona.id, hoy);
+      if (!plan || !plan.dias) continue;
+      lista.push({ otId: info.id, tareaId: tarea.id, ot: info.ot, tarea, persona: candidato.persona, cargo: resumen.cargo, dias: plan.dias, items: plan.items });
+      break;
+    }
+  }
+  return lista;
+}

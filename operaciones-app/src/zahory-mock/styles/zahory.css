@@ -5144,3 +5144,11 @@ textarea.dx-mov-field{height:auto;min-height:76px;padding:10px 12px;resize:verti
 }
 .dx-planner-3d .dx-pl-ph.dx-planner-3d-heading > div { flex:0 0 auto; }
 .dx-planner-3d .dx-pl-ph.dx-planner-3d-heading h2 { margin:0; font:600 15px 'Sora',sans-serif; color:var(--dx-pl-fg); }
+.dx-pl-stp { display:inline-flex; align-items:center; border:1px solid var(--dx-pl-line2); border-radius:8px; overflow:hidden; background:var(--dx-pl-bg3); }
+.dx-pl-stp button { width:36px; height:36px; border:0; background:transparent; cursor:pointer; font-size:18px; font-weight:600; color:var(--dx-pl-fg); }
+.dx-pl-stp button:hover:not([disabled]) { background:var(--dx-pl-cyan-bg); }
+.dx-pl-stp button[disabled] { opacity:.35; cursor:not-allowed; }
+.dx-pl-stp output,.dx-pl-stpr .dx-pl-stp output { min-width:30px; height:auto; border:0; background:transparent; }
+.dx-pl-sug { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border-radius:10px; border:1px solid var(--dx-pl-cyan); background:var(--dx-pl-cyan-bg); font-size:13px; }
+.dx-pl-sug b { font-weight:600; }
+.dx-pl-offd { position:absolute; top:0; bottom:0; background:repeating-linear-gradient(135deg,var(--dx-pl-off) 0 6px,transparent 6px 12px); display:flex; align-items:flex-end; justify-content:center; font-size:11px; color:var(--dx-pl-fg3); padding:0 4px 3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; border-inline:1px solid var(--dx-pl-line); }
