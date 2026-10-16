@@ -5,14 +5,14 @@ import { OTDetallePage } from '../pages/pages1.jsx';
 import {
   OTsListadoPage,
   GestionPartesTallerPage,
-  HistorialMinaPage,
   ProgramacionPM,
   DisponibilidadMecanica,
 } from '../pages/pages2_v2.jsx';
 import { CierreConformidadPage } from '../pages/CierreConformidadPage.jsx';
 import { RecepcionActivosClientePage } from '../pages/RecepcionActivosClientePage.jsx';
 import { DiagnosticoTecnicoPage } from '../pages/DiagnosticoTecnicoPage.jsx';
-import { ReporteMinaPage, ParteTallerPage } from '../pages/pages3.jsx';
+import { ParteTallerPage } from '../pages/pages3.jsx';
+import { ReportesMinaPage } from '../pages/ReportesMinaPage.jsx';
 import { SchedulerDespacho } from '../pages/TransportePages.jsx';
 import { AnalisisSOS } from '../pages/ProduccionPages.jsx';
 import { PlaceholderPage } from '../components/PlaceholderPage.jsx';
@@ -49,8 +49,8 @@ export function renderWorkshopOperationsRoute(route, context) {
     case 'partes-taller': return <GestionPartesTallerPage onNav={onNavigate} />;
     case 'partes-mina':
     case 'mina':
-    case 'mis-reportes': return <HistorialMinaPage onNav={onNavigate} />;
-    case 'nuevo-reporte': return <ReporteMinaPage onNav={onNavigate} />;
+    case 'mis-reportes': return <ReportesMinaPage onNav={onNavigate} />;
+    case 'nuevo-reporte': return <ReportesMinaPage onNav={onNavigate} vistaInicial="nuevo" />;
     case 'cierre-conformidad': return <CierreConformidadPage />;
     case 'scheduler-despacho': return <SchedulerDespacho setCurrent={onNavigate} />;
 
