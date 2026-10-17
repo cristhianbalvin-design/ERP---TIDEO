@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import { getSupabaseAnonKey, getSupabaseServiceRoleKey } from "../_shared/supabaseKeys.ts";
-import { crearOtpFirma, distribuirTextoPdf, sha256Hex, extraerIpCliente } from "../_shared/contratoFirma.js";
+import { crearOtpFirma, distribuirTextoPdf, sha256Hex, extraerIpCliente, enmascararEmail } from "../_shared/contratoFirma.js";
 
 const APP_URL = (Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("VITE_APP_URL") || "").replace(/\/$/, "");
 const json = (body: unknown, status = 200, origin = "") => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": origin || APP_URL, "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info", "Vary": "Origin" } });
@@ -11,6 +11,14 @@ const storagePath = (ref: string, bucket: string): string | null => {
   return null;
 };
 const escapePdf = (v: unknown) => String(v ?? "").replace(/[^\x20-\xFF]/g, "?");
+const resolverCorreoPersonal = async (admin: ReturnType<typeof createClient>, empresaId: string, usuarioId: string): Promise<string | null> => {
+  for (const tabla of ["personal_administrativo", "personal_operativo"]) {
+    const { data } = await admin.from(tabla).select("email_personal").eq("empresa_id", empresaId).eq("auth_user_id", usuarioId).maybeSingle();
+    const correo = String(data?.email_personal || "").trim();
+    if (correo) return correo;
+  }
+  return null;
+};
 
 serve(async (req) => {
   const origin = req.headers.get("Origin") || "";
@@ -52,18 +60,20 @@ serve(async (req) => {
     if (!soloFirmante) return json({ ok: false, error: "Solo el firmante autorizado puede firmar este contrato." }, 403, origin);
     const { data: signed, error } = await admin.storage.from(firma.pdf_bucket).createSignedUrl(firma.pdf_path, 300);
     if (error || !signed) return json({ ok: false, error: "No se pudo preparar el PDF para firma." }, 500, origin);
-    return json({ ok: true, firma: { id: firma.id, documento_id: firma.documento_id, empresa_id: firma.empresa_id, estado: firma.estado, firmante_nombre: firma.firmante_nombre, firmante_documento: firma.firmante_documento, firmante_cargo: firma.firmante_cargo, canales_trabajador: firma.canales_trabajador, pdf_url: signed.signedUrl } }, 200, origin);
+    const correo = await resolverCorreoPersonal(admin, firma.empresa_id, firma.firmante_usuario_id);
+    return json({ ok: true, firma: { id: firma.id, documento_id: firma.documento_id, empresa_id: firma.empresa_id, estado: firma.estado, firmante_nombre: firma.firmante_nombre, firmante_documento: firma.firmante_documento, firmante_cargo: firma.firmante_cargo, canales_trabajador: firma.canales_trabajador, destino_email_mask: correo ? enmascararEmail(correo) : null, pdf_url: signed.signedUrl } }, 200, origin);
   }
   if (action === "enviar_otp") {
     if (!soloFirmante) return json({ ok: false, error: "Solo el firmante autorizado puede solicitar el código." }, 403, origin);
     const { data: firmanteActivo } = await admin.from("contrato_firmantes_autorizados").select("activo").eq("id", firma.firmante_id).maybeSingle();
     if (!firmanteActivo?.activo) return json({ ok: false, error: "El firmante autorizado fue desactivado y ya no puede firmar este contrato." }, 403, origin);
-    const email = String(auth.user.email || "").trim(); const resend = Deno.env.get("RESEND_API_KEY");
-    if (!email || !resend) return json({ ok: false, error: "No se pudo enviar el código al correo de la cuenta." }, 400, origin);
+    const email = await resolverCorreoPersonal(admin, firma.empresa_id, firma.firmante_usuario_id); const resend = Deno.env.get("RESEND_API_KEY");
+    if (!email) return json({ ok: false, error: "El firmante no tiene correo personal registrado en su ficha de personal. Reg\u00edstralo para poder firmar." }, 400, origin);
+    if (!resend) return json({ ok: false, error: "No se pudo enviar el c\u00f3digo al correo personal." }, 400, origin);
     const otp = crearOtpFirma(); const { data: registered, error } = await admin.rpc("registrar_otp_firma_empleador", { p_firma_id: firma.id, p_otp: otp });
     if (error || !registered?.ok) return json({ ok: false, error: "No se pudo generar un código de firma." }, 409, origin);
     const sent = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${resend}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: Deno.env.get("RESEND_FROM") || "TIDEO <notificaciones@tideo.tech>", to: [email], subject: "Código para firmar como empresa", html: `<p>Tu código para firmar el contrato como representante de la empresa es:</p><p style="font-size:24px;font-weight:bold;letter-spacing:5px">${otp}</p><p>Vence en 10 minutos.</p>` }) });
-    if (!sent.ok) return json({ ok: false, error: "No se pudo enviar el código al correo de la cuenta." }, 502, origin);
+    if (!sent.ok) return json({ ok: false, error: "No se pudo enviar el c\u00f3digo al correo personal." }, 502, origin);
     return json({ ok: true }, 200, origin);
   }
   if (action === "firmar") {
@@ -81,9 +91,9 @@ serve(async (req) => {
     const [sociedadRes, empresaRes] = doc.sociedad_id
       ? await Promise.all([admin.from("sociedades").select("razon_social,ruc").eq("id", doc.sociedad_id).maybeSingle(), admin.from("empresas").select("razon_social,ruc").eq("id", doc.empresa_id).maybeSingle()])
       : [null, await admin.from("empresas").select("razon_social,ruc").eq("id", doc.empresa_id).maybeSingle()];
-    const empleador = sociedadRes?.data || empresaRes?.data || {}; const email = auth.user.email || ""; const fecha = new Date().toISOString(); const ip = extraerIpCliente(req.headers);
+    const empleador = sociedadRes?.data || empresaRes?.data || {}; const correo = await resolverCorreoPersonal(admin, firma.empresa_id, firma.firmante_usuario_id); const email = correo ? enmascararEmail(correo) : ""; const fecha = new Date().toISOString(); const ip = extraerIpCliente(req.headers);
     const pdfDoc = await PDFDocument.load(originalBytes); let page = pdfDoc.addPage(); const font = await pdfDoc.embedFont(StandardFonts.Helvetica); const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const lines = ["CONSTANCIA DE FIRMA ELECTR\u00d3NICA DEL EMPLEADOR", `Empleador: ${empleador.razon_social || ""} \u00b7 RUC ${empleador.ruc || ""}`, `Representante: ${firma.firmante_nombre || ""}`, `Documento: ${firma.firmante_documento || ""} \u00b7 Cargo: ${firma.firmante_cargo || ""}`, `Correo de la cuenta: ${email}`, `Fecha y hora UTC: ${fecha}`, `Direcci\u00f3n IP: ${ip}`, `Huella del PDF original (SHA-256): ${hash}`, `Identificador de firma: ${firma.id}`, "Acepto suscribir este contrato mediante firma electr\u00f3nica simple, con mi sesi\u00f3n autenticada y el c\u00f3digo de un solo uso enviado al correo de mi cuenta."];
+    const lines = ["CONSTANCIA DE FIRMA ELECTR\u00d3NICA DEL EMPLEADOR", `Empleador: ${empleador.razon_social || ""} \u00b7 RUC ${empleador.ruc || ""}`, `Representante: ${firma.firmante_nombre || ""}`, `Documento: ${firma.firmante_documento || ""} \u00b7 Cargo: ${firma.firmante_cargo || ""}`, `Correo de verificaci\u00f3n: ${email}`, `Fecha y hora UTC: ${fecha}`, `Direcci\u00f3n IP: ${ip}`, `Huella del PDF original (SHA-256): ${hash}`, `Identificador de firma: ${firma.id}`, "Acepto suscribir este contrato mediante firma electr\u00f3nica simple, con mi sesi\u00f3n autenticada y el c\u00f3digo de un solo uso enviado al correo personal."];
     let y = page.getHeight() - 60;
     const draw = (text: string, size: number, activeFont: typeof font) => {
       let localPage = 0;
@@ -100,7 +110,7 @@ serve(async (req) => {
     const finalBytes = await pdfDoc.save(); const signedPath = `${doc.empresa_id}/personal/${doc.personal_id}/contratos-firmados/empresa-${firma.id}.pdf`; const finalHash = await sha256Hex(finalBytes);
     const { error: uploadError } = await admin.storage.from(firma.pdf_bucket).upload(signedPath, finalBytes, { contentType: "application/pdf", upsert: false });
     if (uploadError) return json({ ok: false, error: "No se pudo guardar el contrato firmado." }, 500, origin);
-    const { error: finalizeError } = await admin.rpc("finalizar_firma_empleador", { p_firma_id: firma.id, p_pdf_firmado_path: signedPath, p_pdf_firmado_sha256: finalHash, p_ip: ip, p_user_agent: req.headers.get("user-agent") || "", p_evidencia: { correo: email, pdf_original_sha256: hash, empresa: empleador } });
+    const { error: finalizeError } = await admin.rpc("finalizar_firma_empleador", { p_firma_id: firma.id, p_pdf_firmado_path: signedPath, p_pdf_firmado_sha256: finalHash, p_ip: ip, p_user_agent: req.headers.get("user-agent") || "", p_evidencia: { correo_verificacion: email, pdf_original_sha256: hash, empresa: empleador } });
     if (finalizeError) { await admin.storage.from(firma.pdf_bucket).remove([signedPath]); return json({ ok: false, error: "No se pudo completar la firma de la empresa." }, 409, origin); }
     return json({ ok: true, firmado_en: fecha, pdf_firmado_path: signedPath }, 200, origin);
   }
