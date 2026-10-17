@@ -114,7 +114,20 @@ export function construirContextoRenovacion({ empresa = {}, sociedad = null, per
     fecha_fin: fechaFin,
     tipo_contrato: condiciones.tipo_contrato || persona.tipo_contrato || persona.modalidad_contrato || '',
     modalidad: condiciones.modalidad || persona.modalidad_contrato || persona.tipo_contrato || '',
+    ...(Object.keys(condiciones).some(key => ['modalidad_legal', 'causa_objetiva', 'forma_trabajo', 'representante', 'contrato_anterior', 'horas_diarias', 'jornada_horas_diarias', 'regimen_jornada', 'regimen'].includes(key)) ? {
+      modalidad_legal: condiciones.modalidad_legal || '', causa_objetiva: condiciones.causa_objetiva || '', forma_trabajo: String(condiciones.forma_trabajo || '').toLowerCase(),
+      representante_nombre: condiciones.representante?.nombre || '', representante_documento: condiciones.representante?.documento || '', representante_cargo: condiciones.representante?.cargo || '',
+      anterior_inicio: condiciones.contrato_anterior?.fecha_inicio || '', anterior_fin: condiciones.contrato_anterior?.fecha_fin || '',
+      horas_diarias: condiciones.horas_diarias || condiciones.jornada_horas_diarias || '', regimen_jornada: condiciones.regimen_jornada || condiciones.regimen || '',
+    } : {}),
   };
+  if ('regimen_jornada' in contrato) {
+    const regimenJornada = contrato.regimen_jornada;
+    const minero = String(regimenJornada).match(/^minero_(\d+)x(\d+)$/i);
+    contrato.regimen_jornada_texto = regimenJornada === 'general'
+      ? 'jornada ordinaria de ocho horas diarias o cuarenta y ocho horas semanales'
+      : minero ? `jornada atípica acumulativa de ${minero[1]} días de trabajo por ${minero[2]} días de descanso, cuyo promedio no excede el máximo legal` : '';
+  }
   return { empresa: empresaContext, empleado, contrato, condiciones_laborales: condiciones,
     vigencia_efectiva: { fecha_desde: fechaInicio, fecha_hasta: fechaFin },
     cargo: { nombre: empleado.cargo, area: empleado.area } };

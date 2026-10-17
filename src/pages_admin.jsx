@@ -72,6 +72,8 @@ import { listarSpotCatalogoVigente, spotLabel } from './services/spotCatalogoSer
 import { UNIDADES_MEDIDA_MATERIAL } from './constants/materialUnits.js';
 import { RecetasActividadPanel } from './components/RecetasActividadPanel.jsx';
 import RenovacionFirmaDigitalModal from './components/RenovacionFirmaDigitalModal.jsx';
+import FirmantesContratoModal from './components/FirmantesContratoModal.jsx';
+import FirmaEmpleadorModal from './components/FirmaEmpleadorModal.jsx';
 import { contratoFirmaService } from './contratoFirmaService.js';
 
 const rrhhPeriodoMesActual = () => new Date().toISOString().slice(0, 7);
@@ -6271,7 +6273,7 @@ function Maestros() {
   // El codigo de un nivel jerarquico es el valor real guardado en roles.nivel_jerarquico
   // (ej. 'practicante'), no un correlativo decorativo — se deriva del nombre.
   const slugifyNivel = (nombre) => String(nombre || '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
   // Cuenta asignaciones vigentes en personal_asignaciones_um (sin fecha_fin, o con
@@ -11557,7 +11559,7 @@ function CargaMasivaAdminPanel({ onClose, turnosOptions, cargosAdminOptions, are
 
 
 function RRHHAdmin() {
-  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
+  const { personalAdmin, tiposContrato = [], partes = [], vacacionesSolicitudes, licencias, solicitudesRRHH = [], turnos, cargos = [], sedes = [], areasEmpresa = [], crearAdminPersonalCtx, actualizarAdminPersonalCtx, eliminarAdminPersonalCtx, empresa, perfilSociedad, sociedadesIdsAlcance, sociedadActiva, sociedadesDisponibles = [], addNotificacion, centrosCosto, usuarios = [], authUser, comisiones = [], osClientes = [], oportunidades = [], recibosHonorarios = [], empresaConfig = {}, cxp = [], cxpPagos = [], personalDocumentos = [], subirDocumentoPersonalCtx, validarDocumentoPersonalCtx, corregirDocumentoPersonalCtx, nuevoContratoPeriodoCtx, enviarDocumentoAFirmaCtx, cancelarEnvioFirmaCtx, reenviarNotificacionFirmaCtx, recargarPersonalDocumentosPersonaCtx, cxc = [], facturas = [], activeParams, crearCargo, crearUsuarioConAcceso, actualizarUsuarioAcceso, obtenerConfiguracionOrganigramaPorPosicion, obtenerRolSugeridoPorPosicion, role, roles: rolesCtx = {}, tiposDocumento = [], tiposDocumentoConfig = [], requisitosCargo = [], posiciones = [], posicionesUsuarios = [], unidadesOrganizacionales = [], crearPosicion, asignacionesJornada = [], crearAsignacionJornadaCtx, eliminarAsignacionJornadaCtx } = useApp();
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('ficha');
   useEffect(() => {
@@ -11724,15 +11726,25 @@ function RRHHAdmin() {
   const [modalEnviarFirmaDocAdmin, setModalEnviarFirmaDocAdmin] = useState(null);
   const [renovacionFirmaDigitalAdmin, setRenovacionFirmaDigitalAdmin] = useState(null);
   const [solicitudesFirmaDigitalAdmin, setSolicitudesFirmaDigitalAdmin] = useState({});
+  const [firmasEmpresaAdmin, setFirmasEmpresaAdmin] = useState({});
+  const [firmaEmpresaActivaAdmin, setFirmaEmpresaActivaAdmin] = useState(null);
+  const [mostrarFirmantesAdmin, setMostrarFirmantesAdmin] = useState(false);
+  const [docElegirFirmanteAdmin, setDocElegirFirmanteAdmin] = useState(null);
+  const [firmantesParaSeleccionAdmin, setFirmantesParaSeleccionAdmin] = useState([]);
+  const [firmanteElegidoAdmin, setFirmanteElegidoAdmin] = useState('');
   const [accionFirmaDigitalDocAdmin, setAccionFirmaDigitalDocAdmin] = useState(null);
   const cargarSolicitudesFirmaDigitalAdmin = useCallback(async () => {
     const docs = (personalDocumentos || []).filter(d => rrhhAdminEsTipoContrato(d.tipo || d) || String(d.tipo_doc || '').toLowerCase().includes('contrato'));
     try {
       const rows = await contratoFirmaService.listarSolicitudesDocumentos(docs.map(d => d.id));
+      const empresaRows = await contratoFirmaService.listarFirmasEmpleador(docs.map(d => d.id));
       const agrupadas = {};
       for (const solicitud of rows) (agrupadas[solicitud.documento_id] ||= []).push(solicitud);
       setSolicitudesFirmaDigitalAdmin(agrupadas);
-    } catch { setSolicitudesFirmaDigitalAdmin({}); }
+      const agrupadasEmpresa = {};
+      for (const firma of empresaRows) (agrupadasEmpresa[firma.documento_id] ||= []).push(firma);
+      setFirmasEmpresaAdmin(agrupadasEmpresa);
+    } catch { setSolicitudesFirmaDigitalAdmin({}); setFirmasEmpresaAdmin({}); }
   }, [personalDocumentos]);
   useEffect(() => { cargarSolicitudesFirmaDigitalAdmin(); }, [cargarSolicitudesFirmaDigitalAdmin]);
   const [enviarFirmaMensajeAdmin, setEnviarFirmaMensajeAdmin] = useState('');
@@ -13644,12 +13656,12 @@ function RRHHAdmin() {
                     setDocValidandoId(null);
                   }
                 }}
-                onCorregir={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' ? undefined : () => {
+                onCorregir={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaAdmin[docPreviewReqAdmin?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'corregir');
                 }}
-                onNuevoContrato={() => {
+                onNuevoContrato={docPreviewReqAdmin?.doc?.estado_firma === 'firmado_trabajador' || (firmasEmpresaAdmin[docPreviewReqAdmin?.doc?.id] || []).some(f => f.estado === 'firmado') ? undefined : () => {
                   const req = docPreviewReqAdmin;
                   cerrarPreviewDocumentoAdmin();
                   handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato');
@@ -13660,6 +13672,8 @@ function RRHHAdmin() {
 
             return (
               <>
+              {mostrarFirmantesAdmin && <FirmantesContratoModal onClose={() => setMostrarFirmantesAdmin(false)} />}
+              {firmaEmpresaActivaAdmin && <FirmaEmpleadorModal firmaId={firmaEmpresaActivaAdmin} onClose={() => { setFirmaEmpresaActivaAdmin(null); cargarSolicitudesFirmaDigitalAdmin(); }} onComplete={async resultado => { if (resultado?.aviso) addNotificacion(resultado.aviso); await cargarSolicitudesFirmaDigitalAdmin(); }} />}
               {previewNodeAdmin}
               {renovacionFirmaDigitalAdmin && <RenovacionFirmaDigitalModal
                 empresa={empresa}
@@ -13884,19 +13898,19 @@ function RRHHAdmin() {
                                   </>
                                 )}
                                 <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4}}>
-                                  <button className="btn btn-sm btn-ghost" style={{borderColor:'var(--border)', background:'var(--bg)', opacity: tooltipPredecesor && !req.doc ? 0.5 : 1}} disabled={!!(tooltipPredecesor && !req.doc)} title={tooltipPredecesor || undefined} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona)}>
-                                    {req.estado === 'falta' ? 'Subir' : 'Ver / Reemplazar'}
-                                  </button>
+                                  {<button className="btn btn-sm btn-ghost" style={{borderColor:'var(--border)', background:'var(--bg)', opacity: tooltipPredecesor && !req.doc ? 0.5 : 1}} disabled={!!(tooltipPredecesor && !req.doc)} title={tooltipPredecesor || undefined} onClick={() => (req.doc && ((firmasEmpresaAdmin[req.doc.id] || []).some(f => f.estado === 'firmado') || req.doc.estado_firma === 'firmado_trabajador')) ? abrirPreviewDocumentoAdmin(req, persona) : handleOpenInlineUpload(req, habPersona.docs, persona)}>
+                                    {!req.doc ? 'Subir' : ((firmasEmpresaAdmin[req.doc.id] || []).some(f => f.estado === 'firmado') || req.doc.estado_firma === 'firmado_trabajador') ? 'Ver' : 'Ver / Reemplazar'}
+                                  </button>}
                                   {tooltipPredecesor && !req.doc && <span style={{fontSize:9, color:'var(--danger)', maxWidth:140, textAlign:'center', lineHeight:1.1}}>{tooltipPredecesor}</span>}
                                 </div>
-                                {req.doc && puedeEliminarDocumentosRrhhAdmin && req.doc.estado_firma !== 'firmado_trabajador' && <>
+                                {req.doc && puedeEliminarDocumentosRrhhAdmin && req.doc.estado_firma !== 'firmado_trabajador' && !(firmasEmpresaAdmin[req.doc.id] || []).some(f => f.estado === 'firmado') && <>
                                   <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumentoAdmin(''); setDocumentoAEliminarAdmin({ doc: req.doc, persona }); }}>{I.trash} Eliminar</button>
                                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumentoAdmin(''); setDocumentoAArchivarAdmin({ doc: req.doc, persona }); }}>{I.archive} Archivar</button>
                                 </>}
                                 {req.doc && req.tipo?.renovable && ['vigente','por_vencer','vencido'].includes(req.estado) && (
                                   <>
-                                    <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>
-                                    {rrhhAdminEsTipoContrato(req.tipo) && <button type="button" className="btn btn-primary btn-sm" onClick={() => setRenovacionFirmaDigitalAdmin({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'administrativo' })}>Renovar con firma digital</button>}
+                                    {!((firmasEmpresaAdmin[req.doc.id] || []).some(f => ['pendiente', 'otp_enviado'].includes(f.estado)) || (solicitudesFirmaDigitalAdmin[req.doc.id] || []).some(s => ['pendiente', 'otp_enviado'].includes(s.estado))) && <button className="btn btn-sm btn-ghost" style={{color:'var(--orange)', borderColor:'var(--orange)'}} onClick={() => handleOpenInlineUpload(req, habPersona.docs, persona, 'nuevo_contrato')}>Renovar</button>}
+                                    {rrhhAdminEsTipoContrato(req.tipo) && !((firmasEmpresaAdmin[req.doc.id] || []).some(f => ['pendiente', 'otp_enviado'].includes(f.estado)) || (solicitudesFirmaDigitalAdmin[req.doc.id] || []).some(s => ['pendiente', 'otp_enviado'].includes(s.estado))) && <button type="button" className="btn btn-primary btn-sm" onClick={() => setRenovacionFirmaDigitalAdmin({ ...req.doc, personal_tipo: req.doc.personal_tipo || 'administrativo' })}>Renovar con firma digital</button>}
                                   </>
                                 )}
                                 {docPadreValidado && tiposHijos.map(th => (
@@ -13943,19 +13957,21 @@ function RRHHAdmin() {
                               const firmaRows = solicitudesFirmaDigitalAdmin[req.doc.id] || [];
                               const solicitudActiva = firmaRows.find(s => ['pendiente', 'otp_enviado'].includes(s.estado));
                               const solicitud = solicitudActiva || firmaRows[0];
+                              const firmaEmpresa = (firmasEmpresaAdmin[req.doc.id] || []).find(f => f.estado !== 'anulado');
                               const firmado = solicitud?.estado === 'firmado' || req.doc.estado_firma === 'firmado_trabajador';
                               const activa = Boolean(solicitudActiva);
                               const renovacionFirmable = !req.doc.contrato_referencia_id && Boolean(req.doc.contrato_periodo_predecesor_id) && Boolean(req.doc.contrato_periodo_id) && req.doc.estado_firma !== 'firmado_trabajador';
-                              return (activa || firmado) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
-                                  {firmado ? `Firmado electrónicamente${solicitud?.firmado_en ? ` · ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma · vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
-                                </span>
+                              return (activa || firmado || firmaEmpresa) ? <div style={{ margin: '0 16px 12px', padding: 10, border: '1px solid var(--border)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                {firmaEmpresa && <span className={`badge ${firmaEmpresa.estado === "firmado" ? "badge-green" : "badge-orange"}`}>{firmaEmpresa.estado === "firmado" ? `Firmado por la empresa · ${new Date(firmaEmpresa.firmado_en).toLocaleDateString("es-PE")}` : `Pendiente firma de la empresa · ${firmaEmpresa.firmante_nombre}`}</span>} {firmaEmpresa?.estado !== "firmado" && firmaEmpresa?.firmante_usuario_id === authUser?.id && <button className="btn btn-primary btn-sm" onClick={() => setFirmaEmpresaActivaAdmin(firmaEmpresa.id)}>Firmar como empresa</button>} {firmaEmpresa && (firmaEmpresa.estado !== "firmado" || (!activa && !firmado)) && <button className="btn btn-ghost btn-sm" onClick={async () => { try { await contratoFirmaService.anularFirmaEmpresa(firmaEmpresa.id); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message); } }}>Anular firma de la empresa</button>} {firmaEmpresa?.estado === "firmado" && !activa && !firmado && <button className="btn btn-primary btn-sm" onClick={async () => { try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: firmaEmpresa.canales_trabajador || [] }); await cargarSolicitudesFirmaDigitalAdmin(); } catch (e) { addNotificacion(e.message || "No se pudo enviar a firma del trabajador."); } }}>Enviar a firma del trabajador</button>}
+                                {firmaEmpresa?.estado === "firmado" && firmado ? <span className="badge badge-green">{'Firmado por empresa y trabajador ' + '\u00b7 ' + (solicitud?.firmado_en ? new Date(solicitud.firmado_en).toLocaleDateString('es-PE') : '')}</span> : solicitud && <span className={`badge ${firmado ? 'badge-green' : activa ? 'badge-orange' : 'badge-gray'}`}>
+                                                  {firmado ? `Firmado electr\u00f3nicamente${solicitud.firmado_en ? ` \u00b7 ${new Date(solicitud.firmado_en).toLocaleDateString('es-PE')}` : ''}` : activa ? `Pendiente de firma \u00b7 vence ${new Date(solicitud.expira_en).toLocaleDateString('es-PE')}` : `Solicitud ${solicitud.estado}`}
+                                                </span>}
                                 {firmado && solicitud?.pdf_firmado_path && <button className="btn btn-ghost btn-sm" onClick={async () => { try { window.open(await contratoFirmaService.obtenerPdfFirmado(solicitud.pdf_firmado_path), '_blank', 'noopener,noreferrer'); } catch { addNotificacion('No se pudo abrir el PDF firmado.'); } }}>Ver PDF firmado</button>}
                                 {activa && <>
                                   <button className="btn btn-ghost btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: solicitud.canales, reenviar: true }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Se generó un nuevo enlace de firma.'); } catch (e) { addNotificacion(e.message || 'No se pudo reenviar el enlace.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Reenviar enlace</button>
                                   <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.anularSolicitud({ solicitudId: solicitud.id, empresaId: empresa.id }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Solicitud de firma anulada.'); } catch (e) { addNotificacion(e.message || 'No se pudo anular la solicitud.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Anular solicitud</button>
                                 </>}
-                              </div> : renovacionFirmable && !solicitudActiva ? <div style={{ margin: '0 16px 12px' }}><button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { setAccionFirmaDigitalDocAdmin(req.doc.id); try { await contratoFirmaService.crearSolicitud({ documentoId: req.doc.id, empresaId: empresa.id, canales: ['whatsapp', 'email'] }); await cargarSolicitudesFirmaDigitalAdmin(); addNotificacion('Se creó la solicitud de firma digital.'); } catch (e) { addNotificacion(e.message || 'No se pudo enviar a firma digital.'); } finally { setAccionFirmaDigitalDocAdmin(null); } }}>Enviar a firma digital</button></div> : null;
+                                              </div> : renovacionFirmable && !solicitudActiva ? <div style={{ margin: '0 16px 12px', display: 'flex', gap: 8, alignItems: 'center' }}>{docElegirFirmanteAdmin === req.doc.id ? <><select className="select" value={firmanteElegidoAdmin} onChange={e => setFirmanteElegidoAdmin(e.target.value)}><option value="">Selecciona el firmante de la empresa</option>{firmantesParaSeleccionAdmin.map(f => <option key={f.id} value={f.id}>{f.nombre} - {f.cargo}</option>)}</select><button className="btn btn-primary btn-sm" disabled={!firmanteElegidoAdmin} onClick={async () => { try { const result = await contratoFirmaService.crearFirmaEmpresa({ documentoId: req.doc.id, firmanteId: firmanteElegidoAdmin, canales: ['whatsapp', 'email'] }); setDocElegirFirmanteAdmin(null); await cargarSolicitudesFirmaDigitalAdmin(); if (result.es_firmante) setFirmaEmpresaActivaAdmin(result.id); else addNotificacion('Pendiente de firma de ' + result.firmante + '.'); } catch (e) { addNotificacion(e.message || 'No se pudo preparar la firma de la empresa.'); } }}>Crear firma de empresa</button></> : <button className="btn btn-primary btn-sm" disabled={accionFirmaDigitalDocAdmin === req.doc.id} onClick={async () => { try { const rows = await contratoFirmaService.listarFirmantesActivos(empresa.id); const available = rows.filter(f => !f.sociedad_id || f.sociedad_id === (req.doc.sociedad_id || null)); if (!available.length) { addNotificacion('No hay firmantes activos para esta sociedad.'); return; } setFirmantesParaSeleccionAdmin(available); setFirmanteElegidoAdmin(available[0].id); setDocElegirFirmanteAdmin(req.doc.id); } catch (e) { addNotificacion(e.message || 'No se pudieron cargar los firmantes.'); } }}>Enviar a firma digital</button>}</div> : null;
                             })()}
                             {docsVinculados.map(dv => {
                               const dvTipo = tiposDocumento.find(t => t.id === dv.tipo_documento_id);
@@ -14353,7 +14369,7 @@ function RRHHAdmin() {
                             </div>
                             <div style={{display:'flex', gap:6, alignItems:'center', flexWrap:'wrap'}}>
                               {doc.archivo_url && <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirDocUrl(doc)}>{I.file} Ver</button>}
-                              {puedeEliminarDocumentosRrhhAdmin && doc.estado_firma !== 'firmado_trabajador' && <>
+                              {puedeEliminarDocumentosRrhhAdmin && doc.estado_firma !== 'firmado_trabajador' && !(firmasEmpresaAdmin[doc.id] || []).some(f => f.estado === 'firmado') && <>
                                 <button type="button" className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { setErrorEliminarDocumentoAdmin(''); setDocumentoAEliminarAdmin({ doc, persona }); }}>{I.trash} Eliminar</button>
                                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setErrorArchivarDocumentoAdmin(''); setDocumentoAArchivarAdmin({ doc, persona }); }}>{I.archive} Archivar</button>
                               </>}
@@ -14972,6 +14988,7 @@ function RRHHAdmin() {
           <div style={{display:'flex', gap:8}}>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowTiposDocumentoRRHH(true)} title="Gestionar catálogo de tipos de documento">📄 Tipos de Documento</button>
             <button className="btn btn-secondary btn-sm" onClick={descargarPersonalAdministrativoExcel} title="Descargar todos los registros de personal administrativo en Excel">{I.download} Descargar Excel</button>
+            {Boolean(role?.es_admin_empresa || role?.permisos?.todo) && <button className="btn btn-secondary btn-sm" onClick={() => setMostrarFirmantesAdmin(true)}>Firmantes de contratos</button>}
             <button className="btn btn-secondary btn-sm" onClick={() => setShowRequisitosRRHH(true)} title="Configurar documentos requeridos por cargo">{I.shield} Requisitos por Cargo</button>
             <button className="btn btn-secondary btn-sm" onClick={() => setShowCargaMasivaAdmin(true)} title="Carga masiva de colaboradores">{I.upload} Carga masiva</button>
             <button className="btn btn-primary" data-local-form="true" onClick={abrirNuevoColaborador} disabled={!turnosOptions.length}>{I.plus} Nuevo colaborador</button>

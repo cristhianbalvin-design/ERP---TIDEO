@@ -3,6 +3,11 @@ import { mensajeMotivoFirma } from '../supabase/functions/_shared/contratoFirma.
 
 export const mapearMotivoFirma = mensajeMotivoFirma;
 
+export function filtrarPlantillasPorModalidad(plantillas, modalidad) {
+  const esperada = modalidad === 'honorarios' ? 'honorarios' : 'planilla';
+  return (plantillas || []).filter(p => (p.tipos_documento_electronico?.modalidad_contractual || p.modalidad_contractual || 'planilla') === esperada);
+}
+
 export async function mensajeErrorFuncion(error, fallback) {
   let body = null;
   try { body = await error?.context?.json?.(); } catch { /* respuesta sin JSON */ }
@@ -24,6 +29,31 @@ const llamarPublico = async (payload) => {
 };
 
 export const contratoFirmaService = {
+  async firmaEmpresa(accion, payload = {}) {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.functions.invoke('contrato-firma-empresa', { body: { accion, ...payload } });
+    if (error) throw await mensajeErrorFuncion(error, 'No se pudo completar la firma de la empresa.');
+    if (!data?.ok) throw Object.assign(new Error(data?.error || 'No se pudo completar la firma de la empresa.'), { motivo: data?.motivo });
+    return data;
+  },
+  crearFirmaEmpresa: ({ documentoId, firmanteId, canales = ['whatsapp', 'email'] }) => contratoFirmaService.firmaEmpresa('crear', { documento_id: documentoId, firmante_id: firmanteId, canales }),
+  infoFirmaEmpresa: id => contratoFirmaService.firmaEmpresa('info', { id }),
+  enviarOtpEmpresa: id => contratoFirmaService.firmaEmpresa('enviar_otp', { id }),
+  firmarComoEmpresa: ({ id, otp, acepto }) => contratoFirmaService.firmaEmpresa('firmar', { id, otp, acepto }),
+  anularFirmaEmpresa: id => contratoFirmaService.firmaEmpresa('anular', { id }),
+  async listarFirmasEmpleador(documentoIds) {
+    if (!documentoIds?.length) return [];
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from('contrato_firma_empleador').select('id,empresa_id,sociedad_id,documento_id,personal_id,firmante_id,firmante_usuario_id,firmante_nombre,canales_trabajador,estado,firmado_en,pdf_firmado_path,created_at').in('documento_id', documentoIds).order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async listarFirmantesActivos(empresaId) {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from('contrato_firmantes_autorizados').select('id,empresa_id,sociedad_id,usuario_id,nombre,documento,cargo,activo').eq('empresa_id', empresaId).eq('activo', true).order('nombre');
+    if (error) throw error;
+    return data || [];
+  },
   async crearSolicitud({ documentoId, empresaId, canales = ['whatsapp', 'email'], reenviar = false }) {
     const sb = await getSupabaseClient();
     const { data, error } = await sb.functions.invoke('contrato-firma-enviar', { body: { accion: reenviar ? 'reenviar' : 'crear', documento_id: documentoId, empresa_id: empresaId, canales } });

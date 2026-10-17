@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderTextoDocumental } from './lib/variablesDocumentales.js';
+import { renderTextoDocumental, valorVariableContratoLaboral } from './lib/variablesDocumentales.js';
+import { filtrarPlantillasPorModalidad } from './contratoFirmaService.js';
 import { construirContextoRenovacion } from '../supabase/functions/_shared/contratoFirma.js';
 
 const bloquesPlantillaBase631 = [
@@ -51,4 +52,39 @@ test('contexto renovacion prioriza la sociedad y conserva el resultado previo si
   assert.equal(contextoSociedad.empresa.razon_social, 'Empleadora S.A.C.');
   assert.equal(contextoSociedad.empresa.ruc, '20999999999');
   assert.equal(contextoSociedad.empresa.direccion, 'Av. Legal 456');
+});
+
+test('filtra plantillas por modalidad contractual y conserva planilla por defecto', async () => {
+  const rows = [
+    { id: 'planilla-old' },
+    { id: 'laboral', tipos_documento_electronico: { modalidad_contractual: 'planilla' } },
+    { id: 'honorarios', tipos_documento_electronico: { modalidad_contractual: 'honorarios' } },
+  ];
+  assert.deepEqual(filtrarPlantillasPorModalidad(rows, 'planilla').map(r => r.id), ['planilla-old', 'laboral']);
+  assert.deepEqual(filtrarPlantillasPorModalidad(rows, 'honorarios').map(r => r.id), ['honorarios']);
+});
+
+test('resuelve las variables legales, de jornada, representante y contrato anterior', () => {
+  const base = { empresa: { razon_social: 'Empresa' }, persona: {}, documento: {}, snapshot: {
+    modalidad_legal: 'Necesidad de mercado', causa_objetiva: 'Demanda temporal verificable', forma_trabajo: 'Mixta',
+    regimen_jornada: 'general', horas_diarias: 8, representante: { nombre: 'Ana', documento: '12345678', cargo: 'Gerente' },
+    contrato_anterior: { fecha_inicio: '2025-01-01', fecha_fin: '2025-12-31' },
+  } };
+  const ctx = construirContextoRenovacion(base);
+  assert.equal(renderTextoDocumental('{{contrato.modalidad_legal}}', 'contrato_laboral', ctx), 'Necesidad de mercado');
+  assert.equal(renderTextoDocumental('{{contrato.causa_objetiva}}', 'contrato_laboral', ctx), 'Demanda temporal verificable');
+  assert.equal(renderTextoDocumental('{{contrato.forma_trabajo}}', 'contrato_laboral', ctx), 'mixta');
+  assert.equal(renderTextoDocumental('{{jornada.regimen}}', 'contrato_laboral', ctx), 'jornada ordinaria de ocho horas diarias o cuarenta y ocho horas semanales');
+  assert.equal(renderTextoDocumental('{{jornada.horas_diarias}}', 'contrato_laboral', ctx), '8');
+  assert.equal(renderTextoDocumental('{{empresa.representante_nombre}} / {{empresa.representante_documento}} / {{empresa.representante_cargo}}', 'contrato_laboral', ctx), 'Ana / 12345678 / Gerente');
+  assert.equal(renderTextoDocumental('{{contrato.anterior_inicio}} / {{contrato.anterior_fin}}', 'contrato_laboral', ctx), '2025-01-01 / 2025-12-31');
+  const minero = construirContextoRenovacion({ ...base, snapshot: { ...base.snapshot, regimen_jornada: 'minero_20x10' } });
+  assert.equal(renderTextoDocumental('{{jornada.regimen}}', 'contrato_laboral', minero), 'jornada atípica acumulativa de 20 días de trabajo por 10 días de descanso, cuyo promedio no excede el máximo legal');
+});
+
+test('sin snapshot las variables nuevas se resuelven vacías y el contexto conserva su forma previa', () => {
+  const ctx = construirContextoRenovacion({ empresa: { razon_social: 'Grupo', ruc: '20111111111' }, persona: {}, documento: {}, fechaInicio: '2026-01-01', fechaFin: '2026-12-31' });
+  assert.deepEqual(Object.keys(ctx.contrato), ['condiciones_laborales', 'fecha_inicio', 'fecha_fin', 'tipo_contrato', 'modalidad']);
+  assert.equal(renderTextoDocumental('{{contrato.modalidad_legal}}|{{contrato.causa_objetiva}}|{{jornada.regimen}}|{{empresa.representante_nombre}}', 'contrato_laboral', ctx), '|||');
+  assert.equal(renderTextoDocumental('{{contrato.modalidad}}', 'contrato_laboral', ctx), '');
 });
