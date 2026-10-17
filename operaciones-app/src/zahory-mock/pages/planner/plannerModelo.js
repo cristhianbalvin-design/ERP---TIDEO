@@ -407,14 +407,17 @@ function horasPersona(datos, personaId, fechas, excluirTarea = null) {
 export function recomendarTecnico(datos, resumen, { excluir = [], soloLibres = false, fechas = null } = {}) {
   const dias = fechas || resumen.personas.map(item => item.fecha);
   const cargo = normalizar(resumen.cargo);
-  const candidatos = (datos.personas || [])
+  const evaluar = (mismoCargo) => (datos.personas || [])
     .filter(persona => !excluir.includes(persona.id))
-    .filter(persona => !resumen.tarea.cargo?.nombre || normalizar(claveCargo(persona)) === cargo)
+    .filter(persona => !mismoCargo || normalizar(claveCargo(persona)) === cargo)
     .filter(persona => !dias.some(fecha => ausencia(datos, persona.id, fecha)))
     .map(persona => ({ persona, carga: horasPersona(datos, persona.id, dias, resumen.tarea.id) }))
     .filter(item => !soloLibres || item.carga === 0)
     .sort((a, b) => a.carga - b.carga || a.persona.nombre.localeCompare(b.persona.nombre, 'es'));
-  return candidatos[0] || null;
+  // Con cargo en la tarea solo vale esa especialidad; sin cargo, se prefiere la del responsable actual.
+  if (resumen.tarea.cargo?.nombre) return evaluar(true)[0] || null;
+  const tieneCargo = resumen.cargo && resumen.cargo !== 'Sin cargo';
+  return (tieneCargo && evaluar(true)[0]) || evaluar(false)[0] || null;
 }
 
 // Reparte los días pendientes de un técnico con otro en paralelo: la tarea termina antes.

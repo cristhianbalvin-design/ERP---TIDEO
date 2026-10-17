@@ -117,7 +117,7 @@ describe('Planner en vista consolidada', () => {
 });
 
 describe('resultado de acciones del Planner', () => {
-  function montarHook({ ots = [], simulacion = null } = {}) {
+  function montarHook({ ots = [], simulacion = null, asignaciones = [] } = {}) {
     const captura = {};
     function PruebaHook() {
       const [wizard, setWizard] = useState({ ot: { id: 'OT-1' } });
@@ -127,7 +127,7 @@ describe('resultado de acciones del Planner', () => {
       const setError = vi.fn();
       captura.acciones = usePlannerActions({
         sesion: { empresaId: 'E-1', sociedadId: 'S-1', permiteEscritura: true },
-        datos: { ots, asignaciones: [], equipos: [] },
+        datos: { ots, asignaciones, equipos: [] },
         ots,
         recursos: { personas: 1, maquinas: 1 },
         undo: null,
@@ -201,6 +201,18 @@ describe('resultado de acciones del Planner', () => {
     });
     expect(captura.estado.vista).toBe('panel');
     expect(captura.estado.simulacion).toBe(null);
+  });
+
+  it('tras aplicar, una OT urgente que ya tiene plan se muestra en el Tablero sin abrir el asistente', async () => {
+    const simulacion = { urgente: { id: 'OT-1' }, resultado: { esperaDias: 1 } };
+    const asignaciones = [{ id: 'a1', ot_id: 'OT-1', tecnico_id: 'P-1', fecha: '2026-10-19', estado: 'programado' }];
+    const { captura } = montarHook({ ots: [{ id: 'OT-1' }], simulacion, asignaciones });
+    sincronizarOcupacionesOT.mockResolvedValue(undefined);
+    await act(async () => {
+      await expect(captura.acciones.aplicarSimulacion()).resolves.toBe(true);
+    });
+    expect(captura.estado.vista).toBe('tablero');
+    expect(captura.estado.seleccion).toEqual({ ot: { id: 'OT-1' } });
   });
 });
 

@@ -78,6 +78,17 @@ describe('refuerzo, retiro, automático y ausencias', () => {
     expect(recomendarTecnico(datos, resumen, { excluir: ['a'], soloLibres: true })).toBeNull();
   });
 
+  it('sin cargo en la tarea, «Automático» prefiere la especialidad del responsable actual', () => {
+    const sinCargo = { ...tarea, cargo: null };
+    const otSin = { ...ot, ot_tareas: [sinCargo] };
+    const libres = { ...datos, ots: [otSin], asignaciones: [asig('1', 'a', '2026-10-14')],
+      personas: datos.personas.map(item => (item.id === 'd' ? { ...item, nombre: 'Aarón' } : item)) };
+    const resumen = resumenTarea(libres, otSin, sinCargo);
+    expect(recomendarTecnico(libres, resumen, { excluir: ['a'] }).persona.cargo).toBe('Soldador');
+    const soloMecanico = { ...libres, personas: libres.personas.filter(item => ['a', 'd'].includes(item.id)) };
+    expect(recomendarTecnico(soloMecanico, resumenTarea(soloMecanico, otSin, sinCargo), { excluir: ['a'] }).persona.id).toBe('d');
+  });
+
   it('reparte la mitad de los días con el refuerzo y luego los devuelve', () => {
     const resumen = resumenTarea(datos, ot, tarea);
     const plan = planRefuerzo(resumen, 'a', 'b', '2026-10-14');

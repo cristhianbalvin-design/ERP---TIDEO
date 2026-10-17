@@ -84,9 +84,11 @@ export function crearAccionesSimulacion({
         });
       }, 'El plan se ajustó para dar prioridad al trabajo urgente.');
       if (aplicada) {
-        setVista('panel');
+        // Si la OT urgente ya tiene plan, se muestra en el Tablero; si no, se abre el asistente para planificarla.
+        const planificada = (datos.asignaciones || []).some(item => item.ot_id === urgente.id && item.estado !== 'cancelado');
+        setVista(planificada ? 'tablero' : 'panel');
         setSeleccion({ ot: urgente });
-        setWizard({ ot: urgente });
+        if (!planificada) setWizard({ ot: urgente });
         setSimulacion(null);
       }
       return aplicada;

@@ -2,7 +2,7 @@ import { esOtPlanificable } from './plannerEngine.js';
 import {
   arbolTareas, claveCargo, colorCargo, diferenciaHabiles, fmtCorto, fmtDia, horas, normalizar,
   nombrePuesto, numeroOT, ocupacionPuesto, planRefuerzo, planRetiro, puestoDeOT, recomendarTecnico, resumenTarea, sugerencias as calcularSugerencias,
-  sumarHabiles, ubicacionMaquina,
+  esHabil, sumarHabiles, ubicacionMaquina,
 } from './plannerModelo.js';
 
 const ICONO_OK = (
@@ -244,7 +244,7 @@ function AsignarTarea({
   const puesto = puestoDeOT(datos, info.ot.id);
   const desde = resumen.desde;
   const fechasNoAntes = [];
-  let cursor = desde && desde < hoy ? desde : hoy;
+  let cursor = desde && desde < hoy ? desde : esHabil(hoy) ? hoy : sumarHabiles(hoy, 1);
   while (fechasNoAntes.length < 10) { fechasNoAntes.push(cursor); cursor = sumarHabiles(cursor, 1); }
   if (desde && !fechasNoAntes.includes(desde)) fechasNoAntes.unshift(desde);
   const maquinaActual = resumen.maquinas[0]?.id || '';
