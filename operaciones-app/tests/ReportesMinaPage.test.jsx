@@ -98,4 +98,23 @@ describe('ReportesMinaPage', () => {
     expect(texto(root.root)).toContain('Aún no hay reportes de mina.');
     expect(boton(root, 'Nuevo reporte')).toBeUndefined();
   });
+
+  it('al corregir un reporte observado, lo ya pedido queda bloqueado y el texto de retorno no promete avisos', async () => {
+    const observado = {
+      ...reporte, estado: 'observado', es_propio: true,
+      datos_mina: { ...reporte.datos_mina, estado_equipo: 'retorno', motivo_retorno: 'Falla de bomba',
+        revision: { accion: 'observar', observacion: 'Agrega el tubo' },
+        pedido: [{ material_id: 'm1', codigo: 'QUI-LUB-044', descripcion: 'Grasa', unidad: 'UND', cantidad: 1, urgente: false }],
+        pedido_resultado: { lineas: [{ material_id: 'm1', reservado: 1, faltante: 0 }] } },
+    };
+    mocks.listar.mockResolvedValue({ reportes: [observado], permisos: { crear: true, aprobar: false } });
+    const root = await renderPage();
+    await act(async () => { root.root.find(n => n.props.className === 'dx-ui-row').props.onClick(); });
+    await act(async () => { await boton(root, 'Corregir y reenviar').props.onClick(); });
+    const cantidad = root.root.find(n => n.type === 'input' && n.props['aria-label'] === 'Cantidad pedida de QUI-LUB-044');
+    expect(cantidad.props.disabled).toBe(true);
+    expect(texto(root.root)).toContain('ya en la reserva de la OT');
+    expect(texto(root.root)).toContain('Agrega el tubo');
+    expect(texto(root.root)).not.toContain('planner');
+  });
 });
