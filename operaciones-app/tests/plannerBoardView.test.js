@@ -31,4 +31,12 @@ describe('BoardView', () => {
     expect(html).toContain('Técnico de prueba');
     expect(html).toContain('1001 · 4 h');
   });
+
+  it('repite en el bloque la ausencia que queda tapada bajo él', () => {
+    const datos = { ...datosBase('programado'), ausencias: [{ personal_id: 'P-1', tipo: 'permiso_con_goce', fecha_inicio: HOY, fecha_fin: HOY }] };
+    const html = renderToStaticMarkup(createElement(BoardView, props(datos)));
+    expect(html).toContain('1001 · 4 h · Permiso 14 oct');
+    expect(html).toContain('Técnico de prueba con Permiso 14 oct');
+    expect(html).toContain('dx-pl-offd');
+  });
 });

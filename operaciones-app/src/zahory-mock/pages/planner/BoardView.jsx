@@ -236,7 +236,12 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
     .some(asig => asig.tecnico_id === item.id && asig.tarea_id === bloque.tareaId && asig.ot_id === bloque.otId));
   const tono = color || (responsable ? colorCargo(cargos, claveCargo(responsable)) : 'var(--dx-pl-sk0)');
   const otraEspecialidad = persona && tarea?.cargo?.nombre && normalizar(tarea.cargo.nombre) !== normalizar(claveCargo(persona));
-  const ausente = persona && bloque.asignaciones.some(item => ausencia(datos, persona.id, item.fecha));
+  // El rayado de la ausencia queda debajo del bloque: el bloque repite el motivo para que se lea.
+  const ausencias = persona ? bloque.asignaciones
+    .map(item => ({ fecha: item.fecha, motivo: ausencia(datos, persona.id, item.fecha) }))
+    .filter(item => item.motivo) : [];
+  const ausente = ausencias.length > 0;
+  const textoAusencia = ausente ? `${ausencias[0].motivo} ${fmtCorto(ausencias[0].fecha)}${ausencias.length > 1 ? ` +${ausencias.length - 1}` : ''}` : '';
   const conAlerta = info?.st === 'bad' || otraEspecialidad || ausente;
   const pasado = bloque.e < hoyIdx;
   const editable = permiteEscritura && ot && esOtPlanificable(ot) && bloque.asignaciones.every(item => item.estado === 'programado');
@@ -244,7 +249,7 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
   const fino = bloque.filas > 1;
   const nombre = tarea?.titulo || ot?.descripcion || 'Trabajo';
   const corto = (ot?.numero || bloque.otId || '').toString();
-  const etiqueta = `${numeroOT(ot)} ${nombre}, ${horas(bloque.h)}, ${fmtDia(modelo.dias[bloque.s])}${conAlerta ? ', con alerta' : ''}`;
+  const etiqueta = `${numeroOT(ot)} ${nombre}, ${horas(bloque.h)}, ${fmtDia(modelo.dias[bloque.s])}${ausente ? `, ${persona.nombre} con ${textoAusencia}` : ''}${conAlerta ? ', con alerta' : ''}`;
   const clases = ['dx-pl-blk', fino && 'is-thin', conAlerta && 'is-bad', elegido && 'is-sel', espejo && 'is-mirror', pasado && 'is-done'].filter(Boolean).join(' ');
   return (
     <button
@@ -268,8 +273,8 @@ function Bloque({ contexto, bloque, tabla, recursoId, color, persona, espejo }) 
     >
       {conAlerta && <span className="ic">{ICONO_AVISO}</span>}
       {fino
-        ? <strong>{corto} · {nombre} · {horas(bloque.h)}</strong>
-        : <><small>{corto} · {horas(bloque.h)}</small><strong>{nombre}</strong></>}
+        ? <strong>{corto} · {nombre} · {horas(bloque.h)}{ausente ? ` · ${textoAusencia}` : ''}</strong>
+        : <><small>{corto} · {horas(bloque.h)}{ausente ? ` · ${textoAusencia}` : ''}</small><strong>{nombre}</strong></>}
     </button>
   );
 }

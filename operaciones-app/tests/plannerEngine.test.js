@@ -146,6 +146,29 @@ describe('motor de planificación', () => {
     expect(report.esperas[0].causa).toContain('Técnico A');
   });
 
+  it('solo usa el cuello de botella si la OT urgente comparte ese recurso', () => {
+    const otA = { id: 'OT-A', estado: 'ejecucion', ot_tareas: [{ id: 'T-1', horas_estimadas: 8 }] };
+    const urgente = { id: 'OT-U', estado: 'ejecucion', ot_tareas: [{ id: 'T-2', horas_estimadas: 8 }] };
+    const base = {
+      personas: [{ id: 'A', nombre: 'Técnico A' }, { id: 'B', nombre: 'Técnico B' }],
+      maquinas: [],
+      puestos: [],
+      equipos: [],
+      ocupaciones: [{ ot_id: 'OT-A', puesto_id: 'X', fecha_desde: '2026-10-12', fecha_hasta: '2026-10-15', estado: 'programado' }],
+    };
+    const recursos = { horasPersonaDisponibles: 8, horasMaquinaDisponibles: 8 };
+    const ajena = simularUrgencia([otA, urgente], urgente, recursos, '2026-10-12', {
+      ...base, asignaciones: [{ ot_id: 'OT-A', tecnico_id: 'A' }, { ot_id: 'OT-U', tecnico_id: 'B' }],
+    });
+    expect(ajena.impacto.critico).toBeNull();
+    expect(ajena.esperaDias).toBe(1);
+    const compartida = simularUrgencia([otA, urgente], urgente, recursos, '2026-10-12', {
+      ...base, asignaciones: [{ ot_id: 'OT-A', tecnico_id: 'A' }, { ot_id: 'OT-U', tecnico_id: 'A' }],
+    });
+    expect(compartida.impacto.critico.nombre).toBe('Técnico A');
+    expect(compartida.esperaDias).toBeGreaterThan(1);
+  });
+
   it('incluye causa del cuello de botella en la simulación urgente', () => {
     const ot = { id: 'OT-A', estado: 'ejecucion', ot_tareas: [{ id: 'T-1', horas_estimadas: 8 }] };
     const result = simularUrgencia([ot], ot, {

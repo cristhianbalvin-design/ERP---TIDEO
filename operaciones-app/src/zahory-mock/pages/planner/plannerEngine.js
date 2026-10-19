@@ -327,7 +327,14 @@ export function validarCapacidadPuesto(ocupaciones, puestoId, fechaDesde, fechaH
 }
 
 export function simularUrgencia(ots, otUrgente, recursos, fechaInicio = new Date(), data = {}) {
-  const impacto = analizarCuellos(ots, data, fechaInicio);
+  const general = analizarCuellos((ots || []).filter(ot => ot.id !== otUrgente?.id), data, fechaInicio);
+  // La OT urgente no espera a nadie; solo cuenta el cuello de botella si es un recurso que también necesita la OT urgente.
+  const propios = new Set([
+    ...(data.asignaciones || []).filter(item => item.ot_id === otUrgente?.id).map(item => item.tecnico_id),
+    ...(data.equipos || []).filter(item => item.ot_id === otUrgente?.id).map(item => item.maquina_id),
+    ...(data.ocupaciones || []).filter(item => item.ot_id === otUrgente?.id && item.estado !== 'cancelado').map(item => item.puesto_id),
+  ]);
+  const impacto = { ...general, critico: general.impacto.find(item => propios.has(item.id)) || null };
   const horasUrgentes = resumirTareas(otUrgente)
     .reduce((sum, item) => sum + item.horasPendientes, 0);
   const capacity = Math.max(1, Math.min(
