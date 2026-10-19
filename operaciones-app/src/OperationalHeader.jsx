@@ -258,6 +258,10 @@ export function OperationalHeader({ title, sesionOperativa, workCompact = false,
               cursor: 'default',
               whiteSpace: 'nowrap',
               userSelect: 'none',
+              minWidth: 0,
+              maxWidth: 360,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
           >
             Commit: {commitLabel}

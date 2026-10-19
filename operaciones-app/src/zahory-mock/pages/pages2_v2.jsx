@@ -790,15 +790,6 @@ export const OTsListadoPage = ({ onNav }) => {
   );
 };
 
-const PARTES_MINA_MOCK = [
-  { id: 'PM-2026-016', fecha: '2026-04-16', mecanico: 'Miranda B.', ot: 'OT-2026-047', horas: 2.9, estado: 'Aprobado',  tecnico_id: 'TEC-002', tecnico_nombre: 'Miranda Barra, Sandro', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 45, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PM-2026-015', fecha: '2026-04-15', mecanico: 'Pajuelo E.', ot: 'OT-2026-045', horas: 3.9, estado: 'Aprobado',  tecnico_id: 'TEC-001', tecnico_nombre: 'Pajuelo Jurado, Edson', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecatrónico', contrato_id: 'CT-2026-003', centro_costo: 'FLO-ALQ', equipo_id: 'SC-701', avance_ot_pct: 60, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PM-2026-014', fecha: '2026-04-14', mecanico: 'Torres M.',  ot: 'OT-2026-043', horas: 2.5, estado: 'Rechazado', tecnico_id: 'TEC-004', tecnico_nombre: 'Torres Mamani, Miguel', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Electricista', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-26', avance_ot_pct: 20, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PM-2026-013', fecha: '2026-04-13', mecanico: 'Miranda B.', ot: 'OT-2026-041', horas: 4.1, estado: 'Aprobado',  tecnico_id: 'TEC-002', tecnico_nombre: 'Miranda Barra, Sandro', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecánico', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-24', avance_ot_pct: 100, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PM-2026-012', fecha: '2026-04-12', mecanico: 'Pajuelo E.', ot: 'OT-2026-040', horas: 3.5, estado: 'Pendiente', tecnico_id: 'TEC-001', tecnico_nombre: 'Pajuelo Jurado, Edson', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Mecatrónico', contrato_id: 'CT-2026-003', centro_costo: 'FLO-ALQ', equipo_id: 'SC-701', avance_ot_pct: 35, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-  { id: 'PM-2026-011', fecha: '2026-04-11', mecanico: 'Torres M.',  ot: 'OT-2026-038', horas: 2.0, estado: 'Pendiente', tecnico_id: 'TEC-004', tecnico_nombre: 'Torres Mamani, Miguel', supervisor: 'Supervisor Mina', taller: 'Mina', especialidad: 'Electricista', contrato_id: 'CT-2026-002', centro_costo: 'FLO-ALQ', equipo_id: 'JB-26', avance_ot_pct: 50, actividades: [], repuestos_consumidos: [], fluidos_consumidos: [], trabajos_pendientes: null, observaciones: null, backlog_generado_id: null },
-];
-
 // ── Shared UI — Partes Diarios ─────────────────────────────────────────────
 
 const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -1061,48 +1052,6 @@ export const GestionPartesTallerPage = ({ onNav }) => {
       />
       {cargandoPartes && <div className="muted" style={{ marginTop: 12, textAlign: 'center' }}>Cargando partes diarios reales...</div>}
       {errorPartes && <div style={{ marginTop: 12, color: 'var(--text-danger)', textAlign: 'center' }}>{errorPartes}</div>}
-      <FooterBrand/>
-    </div>
-  );
-};
-
-// ── Gestión de Partes Diarios — Campo / Mina ──────────────────────────────
-export const HistorialMinaPage = ({ onNav }) => {
-  const [tab,      setTab]      = useS2('todos');
-  const [search,   setSearch]   = useS2('');
-  const [dateFrom, setDateFrom] = useS2('');
-  const [dateTo,   setDateTo]   = useS2('');
-  const [openMenu, setOpenMenu] = useS2(null);
-
-  const filtered = PARTES_MINA_MOCK
-    .filter(r => tab === 'todos' || r.estado === tab)
-    .filter(r => !search   || r.mecanico.toLowerCase().includes(search.toLowerCase()) || r.ot.toLowerCase().includes(search.toLowerCase()))
-    .filter(r => !dateFrom || r.fecha >= dateFrom)
-    .filter(r => !dateTo   || r.fecha <= dateTo);
-
-  return (
-    <div className="page" onClick={() => setOpenMenu(null)}>
-      <div className="page-header">
-        <div>
-          <h1>Gestión de Partes Diarios — Campo / Mina</h1>
-          <div className="sub">Buenaventura · Antapaccay · Pepas de Oro · {PARTES_MINA_MOCK.length} registros</div>
-        </div>
-        <div className="spacer"/>
-        <button className="btn btn-primary" onClick={() => onNav?.('nuevo-reporte')}>
-          <Icon name="plus" size={13}/> Nuevo Parte Diario
-        </button>
-      </div>
-      <PartesDiariosToolbar
-        tab={tab} setTab={setTab} allRows={PARTES_MINA_MOCK}
-        search={search} setSearch={setSearch}
-        dateFrom={dateFrom} setDateFrom={setDateFrom}
-        dateTo={dateTo} setDateTo={setDateTo}
-      />
-      <PartesDiariosDataTable
-        rows={filtered} onNav={onNav}
-        editRoute="nuevo-reporte"
-        openMenu={openMenu} setOpenMenu={setOpenMenu}
-      />
       <FooterBrand/>
     </div>
   );

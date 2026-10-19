@@ -57,7 +57,7 @@ Fuente: `navigation.js`, `components/shell.jsx` (sidebar) y los tres archivos en
 | Taller & Operaciones | Órdenes de Trabajo | Bandeja Maestra | `#/ots` | `pages/pages2_v2.jsx` — `OTsListadoPage` | A |
 | Taller & Operaciones | Órdenes de Trabajo | Nueva OT · DBS | `#/crear-ot` | `pages/CrearOTPage.jsx` — `CrearOTPage` | A |
 | Taller & Operaciones | Órdenes de Trabajo | Partes Taller | `#/taller` | `pages/pages3.jsx` — `ParteTallerPage` | A |
-| Taller & Operaciones | Órdenes de Trabajo | Reportes Mina | `#/partes-mina` | `pages/pages2_v2.jsx` — `HistorialMinaPage` | A |
+| Taller & Operaciones | Órdenes de Trabajo | Reportes Mina | `#/partes-mina` | `pages/ReportesMinaPage.jsx` — `ReportesMinaPage` | A |
 | Taller & Operaciones | Órdenes de Trabajo | Cierre & Conformidad | `#/cierre-conformidad` | `components/AdministrativeAppLinkPage.jsx` — `AdministrativeAppLinkPage` (puente a Administrativo: `cierre`); referencia mock intacta: `pages/pages2_v2.jsx` — `CierreConformidad` | B1 |
 | Taller & Operaciones | Órdenes de Trabajo | Scheduler · Despacho | `#/scheduler-despacho` | `pages/TransportePages.jsx` — `SchedulerDespacho` | A |
 | Taller & Operaciones | HSE — Seguridad | Dashboard HSE | `#/hse-dashboard` | `pages/HSEPage.jsx` — `HSEDashboard` | C |
